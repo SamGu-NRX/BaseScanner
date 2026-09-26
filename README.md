@@ -2,48 +2,41 @@
 
 We're exploring a simpler way to survey a home for a Base Power battery. 
 
-A homeowner walks the outside of their house with a phone app. The app measures the wall around the electric meter, and our code decides whether a Base Power battery can be installed there and, if so, where. The homeowner sees the spot in AR before they put the phone away.
+A homeowner walks the outside wall around their electric meter with an iPhone. The app guides the scan until it has seen everything the placement rules need, and sends what it captured. The server builds a 3D model, decides in plain code whether a Base Power battery fits and where, and the app shows the spot in AR.
 
-This is a four-person hackathon project for Base Power. Success means one capture session gives Base enough to decide, with no follow-up photos. A person can still review the result.
+This is a four-person hackathon project for Base Power, started 2026-09-25. Success means one capture session gives Base enough to decide, with no follow-up photos.
 
-## Why measure instead of photograph
+Two teams share the work. The client team, Sam with AI agents and Aiden on video and sample data, builds the iPhone app and the capture packet it sends. The server team, Hunter with his agents, turns the packet into a 3D model and checks the rules on it.
 
-Base's site survey starts from a few customer photos, and three things go wrong with them:
+## Where to start
 
-- Distances are estimated by eye, so borderline clearances go to a reviewer.
-- Unordered photos can't show whether two things are on the same wall or how far apart they are.
-- Nobody knows what sits just outside the frame, so the homeowner gets asked for more photos.
-
-An AR session tracks the phone's position as it moves. The app can measure the wall in feet, and it knows which stretches nobody has looked at yet. It asks for those while the homeowner is still standing there.
-
-## How it works
-
-1. The homeowner marks the electric meter, walks the wall to its end in each direction, and takes close-ups of the meter and the electrical panel. The app saves frames along with where the camera was for each one.
-2. A server lays the walls out as one line, measured in feet from the meter. It slides the battery's footprint along that line and checks each clearance: gas equipment, driveways, doors and windows, room overhead, and the gap to a facing fence. Each check returns pass, fail, or unsure, with the measurement error counted.
-3. The app shows the chosen spot, the battery, and the cable route from the meter in AR.
-
-Plain code makes the placement decision. Vision models only recognize things, such as where a gas meter is or what the meter label says. Several clearance numbers are not final. Base still has to confirm the rules for driveways, pools, the fence gap, and cable length.
-
-## What we're testing now
-
-The plan targets iPhones, and a LiDAR iPhone makes some measurements easier. Most homeowners don't have one, so the experiments ask how far an ordinary phone gets:
-
-- Can AR taps on the ground and the wall measure the wall line, the room overhead, and the gap to a fence without LiDAR?
-- Can plain phone video do the job instead? [OOOSplat](https://github.com/ooolabdev/ooosplat) turns a video into a 3D scene. We scale the scene from one known distance and check a second distance against a tape measure.
-- How close does each method get? We tape-measure one real house and compare AR, a depth model on plain photos, and a vision model's guesses against the tape.
-
-A convincing 3D view can still miss an obstacle or get a distance wrong, so every result keeps its original photos beside it.
-
-## Read next
-
-| File | What it covers |
+| Read | For |
 | --- | --- |
-| [docs/00-overview.md](docs/00-overview.md) | The goal, decisions made so far, and open questions |
-| [docs/01-feature-map.md](docs/01-feature-map.md) | The four work lanes, features by priority, the `scene.json` format, and the rules table |
-| [docs/02-implementation-plan.md](docs/02-implementation-plan.md) | How each part gets built, the schedule, and risks |
-| [docs/03-stack-research.md](docs/03-stack-research.md) | The open-source projects and libraries we build on, and the ones we skip |
-| [docs/04-prior-art-and-codes.md](docs/04-prior-art-and-codes.md) | Base's public rules, similar products, and electrical-code citations |
-| [docs/05-live-guided-survey-hld.md](docs/05-live-guided-survey-hld.md) | Proposed live guidance and automatic capture architecture, diagrams, evidence flow, and technical resources |
-| [docs/eli5.html](docs/eli5.html) | A visual walkthrough with an interactive demo of the placement search |
+| [docs/how-it-works.html](docs/how-it-works.html) | A picture-first walkthrough of the system, about fifteen minutes |
+| [docs/00-overview.md](docs/00-overview.md) | The plan, the decisions and their reasons, the evidence so far, and open questions |
+| [AGENTS.md](AGENTS.md) | The rules for anyone changing this repository, person or agent |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branches, CI checks and TestFlight |
 
-Contributors and coding agents start with [AGENTS.md](AGENTS.md). This repository is public, so materials Base gave the team stay in the git-ignored `private/` folder.
+## Repository map
+
+Paths marked with a pull request exist only on that branch until it merges.
+
+| Path | What it is | State |
+| --- | --- | --- |
+| `ios/` | The iPhone app (Swift, ARKit, RealityKit) | On `main`, an AR session that shows tracking. Guided capture is in PR #10, and the live 3D map in PR #21 |
+| `packet/` | The capture packet's spec, validator and samples | PR #22 |
+| `server/` | The rules engine and placement API (Python, uv) | On `main`, a skeleton. The engine is in PR #11 |
+| `recon/` | Turns photos and depth into a 3D model and a coverage map | PR #20, handed to the server team |
+| `experiments/` | One folder per experiment | Accuracy evals in PR #12, Measure Lab in PR #7, meter reading in PR #16, panel labels in PR #17, the first device field test in PR #23 |
+| `web/` | Browser toolchain for a reviewer view | The review page (PR #15) is parked |
+| `docs/` | The overview, the walkthrough, public rules and code citations, and the live-survey design | |
+| `.agents/skills/` | Shared agent skills for writing, planning and review, linked from `.claude/skills/` | |
+| `sites/landing` | The landing page, a submodule | Change it in its own repository |
+
+## What's live
+
+- The demo server at https://house-scanning-server.vercel.app runs the engine from PR #11 with public rules only, and every answer says so. `GET /health` shows which rules are loaded. A second deployment loads Base's rules and requires a key.
+- TestFlight builds of the app and Measure Lab start by hand from the Actions tab, as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
+- `make check` runs the server, web and iOS suites that CI runs.
+
+This repository is public. Materials Base gave the team stay in the git-ignored `private/` folder, and photos of real homes never enter git.
