@@ -237,7 +237,7 @@ final class Autopilot {
             return
         }
         await pause(hold)
-        engine.answerOverhead(clear: true)
+        await answerOpenSky()
         log("answered the overhead question: open sky; \(overheadSummary)")
     }
 
@@ -254,8 +254,16 @@ final class Autopilot {
             return
         }
         await pause(hold)
-        engine.answerOverhead(clear: true)
+        await answerOpenSky()
         log("answered the overhead request: open sky; \(overheadSummary)")
+    }
+
+    /// "Open sky or nothing overhead", then a wait for the view to be stored: it counts as an
+    /// overhead view only once its photo is on disk.
+    private func answerOpenSky() async {
+        let before = engine.coverage?.overheadCameras.count ?? 0
+        engine.answerOverhead(clear: true)
+        _ = await waitUntil(timeout: 5) { (self.engine.coverage?.overheadCameras.count ?? 0) > before }
     }
 
     /// The overhead views kept and the stretches they show clear, as the export will send them.
