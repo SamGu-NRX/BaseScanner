@@ -11,6 +11,8 @@ final class DemoEngine: ScanActions {
     private let noFeed: Bool
     private let offline: Bool
     private let passResult: Bool
+    /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
+    private let overlapResult: Bool
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -55,6 +57,7 @@ final class DemoEngine: ScanActions {
         noFeed = arguments.contains("-uiDemoNoFeed")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
+        overlapResult = arguments.contains("-uiDemoOverlap")
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -274,6 +277,8 @@ final class DemoEngine: ScanActions {
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
         if let serverItem {
+            // The demo's check asks for one view at most.
+            state.followUps = 1
             state.gap?.origin = .server
             state.gap?.reason = .server(detail: serverItem.text)
             run { engine in await engine.gapScript(span: span) }
@@ -320,6 +325,7 @@ final class DemoEngine: ScanActions {
         state.path = []
         state.target = nil
         state.upload = .packaging
+        state.followUps = 0
         run { engine in await engine.uploadScript() }
     }
 
@@ -451,6 +457,7 @@ final class DemoEngine: ScanActions {
         if !followedUp, let item = sample.missing.first(where: \.capturable) {
             state.shareableScan = Self.demoScan
             state.result = sample
+            state.followUps = 1
             state.upload = .done
             followedUp = true
             guard await pause(1.6) else { return }
@@ -463,6 +470,7 @@ final class DemoEngine: ScanActions {
     /// The check's answer, before or after its follow-up view.
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
+        if overlapResult { return Self.overlapSample }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
     }
@@ -474,6 +482,7 @@ final class DemoEngine: ScanActions {
         script?.cancel()
         state.shareableScan = Self.demoScan
         state.result = Self.reviewSample
+        state.followUps = 1
         state.upload = .done
         followedUp = true
         if phase == .gapRequest {
@@ -936,7 +945,7 @@ final class DemoEngine: ScanActions {
                      reason: "The gas meter is well to the left of the spot."),
             CheckRow(id: "window", title: "Distance from the window", outcome: .unsure,
                      reason: "The window is close to the spot's right edge.",
-                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1),
+                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
                      reason: "Part of the ground was only seen from one place.", needsPerson: false),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
@@ -952,6 +961,19 @@ final class DemoEngine: ScanActions {
         ],
         isSample: true
     )
+
+    /// Field test run 2's working-space line: the spot overlaps the meter's working space by
+    /// 1 ft 3 in (measured_ft -1.25), within the measurement's 1 ft 6 in error (#40).
+    static let overlapSample: ResultPresentation = {
+        var sample = reviewSample
+        sample.checks.insert(
+            CheckRow(id: "meter_working_space", title: "Clear of the meter's working space", outcome: .unsure,
+                     reason: "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
+                     needsPerson: true, measured: -0.381, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
+            at: 0
+        )
+        return sample
+    }()
 
     static let passSample: ResultPresentation = {
         var sample = reviewSample

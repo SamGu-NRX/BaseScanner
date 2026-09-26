@@ -125,7 +125,8 @@ import Testing
     /// The request's span is read as the server sent it and the export as written. Ground seen up
     /// to an end at 0.5 m (1.64042 ft) is written to 1.6404 ft, rounded inward. The server reads
     /// a shortfall under its 0.01 ft tolerance as rounding, so a request to 1.64042 ft is met, but
-    /// one 0.02 ft past what was seen is not.
+    /// one 0.02 ft past what was seen is not. Past the (unexplored) end by that much, it has no
+    /// capture request at all (`reachesPastEnd`), so it is planned here as if no end were marked.
     @Test func aRequestSpanIsReadInTheServersFeet() throws {
         var map = CoverageMap(wall: standardWall())
         for out: Float in [1.0, 4.0] {
@@ -135,8 +136,9 @@ import Testing
         let rounding = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.64042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
         #expect(GapPlanner().isSatisfied(rounding, map))
-        let short = try #require(GapPlanner().plan(
-            for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.66042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        let pastEnd = try item(#"{"kind":"band","band":"ground","span_ft":[0,1.66042],"out_ft":7.0,"message":"m"}"#)
+        #expect(GapPlanner().plan(for: pastEnd, leftEnd: nil, rightEnd: map.rightEnd) == nil)
+        let short = try #require(GapPlanner().plan(for: pastEnd, leftEnd: nil, rightEnd: nil))
         #expect(!GapPlanner().isSatisfied(short, map))
         let exact = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.6404],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
@@ -213,6 +215,28 @@ import Testing
         #expect(planner.isSatisfied(plan, map))
     }
 
+    /// A band request reaching past a marked end can't be met: the map records nothing past an
+    /// end, except ground past a limit end, so its bar would stay at 0 % (issue #35). It has no
+    /// request and goes to review. Reaching the end, within the server's 0.01 ft, is not past it.
+    @Test func aBandRequestPastAMarkedEndIsNotACaptureRequest() throws {
+        let planner = GapPlanner()
+        // Ends at -1 m and 1 m (3.28084 ft).
+        let wall = try item(#"{"kind":"band","band":"wall","span_ft":[2.0,4.0],"message":"m"}"#)
+        #expect(planner.plan(for: wall, leftEnd: -1, rightEnd: 1) == nil)
+        #expect(planner.plan(for: wall, leftEnd: -1, rightEnd: 1, limitEnds: [.right]) == nil)
+        #expect(planner.plan(for: wall, leftEnd: -1, rightEnd: nil) != nil)
+        let ground = try item(#"{"kind":"band","band":"ground","span_ft":[-4.0,-2.0],"out_ft":2.5,"message":"m"}"#)
+        #expect(planner.plan(for: ground, leftEnd: -1, rightEnd: 1) == nil)
+        #expect(planner.plan(for: ground, leftEnd: -1, rightEnd: 1, limitEnds: [.right]) == nil)
+        #expect(planner.plan(for: ground, leftEnd: -1, rightEnd: 1, limitEnds: [.left]) != nil)
+        // A walk past a limit end records nothing facing the wall there.
+        let facing = try item(#"{"kind":"band","band":"facing","span_ft":[2.0,4.0],"out_ft":5.0,"message":"m"}"#)
+        #expect(planner.plan(for: facing, leftEnd: -1, rightEnd: 1, limitEnds: [.right]) == nil)
+        // The server rounds a span outward: 3.2809 ft ends at the right end.
+        let toEnd = try item(#"{"kind":"band","band":"wall","span_ft":[0.5,3.2809],"message":"m"}"#)
+        #expect(planner.plan(for: toEnd, leftEnd: -1, rightEnd: 1) != nil)
+    }
+
     @Test func pastEndAsksForTheGroundBeyondThatEnd() throws {
         // Left end at s = -3 m: ask for -5...-3. Right end at 4 m: ask for 4...6.
         let left = try #require(GapPlanner().plan(for: item(#"{"kind":"past_end","side":"left","message":"m"}"#), leftEnd: -3, rightEnd: 4))
@@ -223,27 +247,85 @@ import Testing
 
     /// Issue #39: the answer asks for two views and the homeowner can't get to the first. The
     /// next answer, which still lists it, moves on to the second instead of raising the first
-    /// again or stopping; once both were raised, none is left and the result shows. The past-end
-    /// item comes back with its end cleared, so a different request, and is still not raised twice.
+    /// again or stopping; once both were raised, none is left and the result shows. The skipped
+    /// past_end request gets its end back (`ScanEngine.settleClearedEnd`), so it comes back as
+    /// the same request; a met one moves its end on, and the next asks for new ground.
     @Test func eachServerItemIsAskedForOnceAndARefusalMovesOnToTheNext() throws {
         let planner = GapPlanner()
         let pastEnd = try item(#"{"kind":"past_end","side":"left","message":"Walk past the left end."}"#)
         let ground = try item(#"{"kind":"band","band":"ground","span_ft":[3.0,5.5],"message":"Film the ground."}"#)
-        let first = try #require(planner.nextServerRequest(in: [pastEnd, ground], leftEnd: -3, rightEnd: 4, asked: [], skipped: []))
-        #expect(first.item == pastEnd && first.plan.span == -5 ... -3)
+        let requests = planner.serverRequests(in: [pastEnd, ground], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5)
+        #expect(requests.map { $0.item } == [pastEnd, ground])
+        let first = try #require(requests.first)
+        #expect(first.plan.span == -5 ... -3)
 
-        // "I can't get there": raised and skipped. The end it cleared stays unmarked.
+        // "I can't get there": raised and skipped, with the end it cleared put back.
         let reworded = try item(#"{"kind":"past_end","side":"left","message":"Keep walking past the left end."}"#)
         let second = try #require(planner.nextServerRequest(
-            in: [reworded, ground], leftEnd: nil, rightEnd: 4, asked: [first.item], skipped: [first.plan]))
+            in: [reworded, ground], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [first.plan], skipped: [first.plan]))
         #expect(second.item == ground)
 
         #expect(planner.nextServerRequest(
-            in: [reworded, ground], leftEnd: nil, rightEnd: 4, asked: [first.item, second.item], skipped: [first.plan])?.item == nil)
+            in: [reworded, ground], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [first.plan, second.plan], skipped: [first.plan])?.item == nil)
         // A right past-end is a different view.
         let right = try item(#"{"kind":"past_end","side":"right","message":"m"}"#)
         #expect(planner.nextServerRequest(
-            in: [reworded, ground, right], leftEnd: nil, rightEnd: 4, asked: [first.item, second.item], skipped: [])?.item == right)
+            in: [reworded, ground, right], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [first.plan, second.plan], skipped: [])?.item == right)
+        // Met, the left end moved on to -5 m: the next past_end request is the 2 m after it.
+        #expect(planner.nextServerRequest(
+            in: [reworded], leftEnd: -5, rightEnd: 4, limitEnds: [], asked: [first.plan], skipped: [])?.plan.span == -7 ... -5)
+    }
+
+    /// The next answer works a refused view out again from the new scene, so it can come back with
+    /// its span or reach moved by a few hundredths of a foot. It is still the view the homeowner
+    /// said they can't get to, and isn't raised again; another stretch of the band is a new view.
+    @Test func aRefusedViewWithSlightlyDifferentNumbersIsNotRaisedAgain() throws {
+        let planner = GapPlanner()
+        let refused = try item(#"{"kind":"band","band":"ground","span_ft":[2.4,7.9],"out_ft":4.833334,"message":"m"}"#)
+        let plan = try #require(planner.plan(for: refused, leftEnd: -3, rightEnd: 4))
+        let moved = try item(#"{"kind":"band","band":"ground","span_ft":[2.41,7.9],"out_ft":4.9,"message":"m"}"#)
+        #expect(planner.nextServerRequest(in: [moved], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == nil)
+        let elsewhere = try item(#"{"kind":"band","band":"ground","span_ft":[-7.9,-2.4],"out_ft":4.833334,"message":"m"}"#)
+        #expect(planner.nextServerRequest(
+            in: [moved, elsewhere], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == elsewhere)
+    }
+
+    /// Requests raised without a tap keep the past-end guard (issue #35): ground past a marked
+    /// unexplored end isn't raised, ground past a limit end is.
+    @Test func theAutomaticRequestsKeepThePastEndGuard() throws {
+        let planner = GapPlanner()
+        let ground = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,4.0],"message":"m"}"#)
+        #expect(planner.nextServerRequest(in: [ground], leftEnd: -1, rightEnd: 1, limitEnds: [], asked: [], skipped: [])?.item == nil)
+        #expect(planner.nextServerRequest(in: [ground], leftEnd: -1, rightEnd: 1, limitEnds: [.right], asked: [], skipped: [])?.item != nil)
+    }
+
+    /// "N more views to finish" counts what the answer will raise: two items asking for the same
+    /// view count once, and no more than the requests left in the pass.
+    @Test func theViewsLeftCountEachViewOnceUpToTheLimit() throws {
+        let planner = GapPlanner()
+        let ground = try item(#"{"kind":"band","band":"ground","span_ft":[3.0,5.5],"message":"Film the ground."}"#)
+        let sameView = try item(#"{"kind":"band","band":"ground","span_ft":[3.0,5.5],"message":"Another check wants it too."}"#)
+        let pastEnd = try item(#"{"kind":"past_end","side":"left","message":"m"}"#)
+        let all = [ground, sameView, pastEnd]
+        #expect(planner.serverRequests(in: all, leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [ground, pastEnd])
+        #expect(planner.serverRequests(in: all, leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 1).count == 1)
+        #expect(planner.serverRequests(in: all, leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 0).isEmpty)
+    }
+
+    /// A met past_end request moves its end on past the ground it showed, and the next one asks
+    /// for the 2 m after that. With the end left cleared, the next request asked for the ground
+    /// at the meter (issue #35).
+    @Test func aMetPastEndRequestMovesItsEndOn() throws {
+        let planner = GapPlanner()
+        let pastLeft = try item(#"{"kind":"past_end","side":"left","message":"m"}"#)
+        let first = try #require(planner.plan(for: pastLeft, leftEnd: -3, rightEnd: 4))
+        let moved = planner.endAfterPastEnd(first, side: .left, clearedAt: -3)
+        #expect(moved == -5)
+        #expect(planner.plan(for: pastLeft, leftEnd: moved, rightEnd: 4)?.span == -7 ... -5)
+        #expect(planner.plan(for: pastLeft, leftEnd: nil, rightEnd: 4)?.span == -2 ... 0)
+        let pastRight = try item(#"{"kind":"past_end","side":"right","message":"m"}"#)
+        let right = try #require(planner.plan(for: pastRight, leftEnd: -3, rightEnd: 4))
+        #expect(planner.endAfterPastEnd(right, side: .right, clearedAt: 4) == 6)
     }
 
     @Test func clearingAnEndLetsCoverageGrowPastIt() throws {

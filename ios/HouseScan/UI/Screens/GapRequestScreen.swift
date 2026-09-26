@@ -45,7 +45,8 @@ struct GapRequestScreen: View {
                         OverheadAnswers(actions: actions)
                             .transition(.opacity)
                     }
-                    if followUps > 0, state.gap?.isSatisfied != true, !asking {
+                    // With one view left, "I can't get there" already leads to the result.
+                    if followUps > 1, state.gap?.isSatisfied != true, !asking {
                         Button {
                             actions.showResultNow()
                         } label: {
@@ -83,8 +84,8 @@ struct GapRequestScreen: View {
     /// Views the finished check still wants, counting this one, when this request is one of
     /// them: a server request while the check's answer is in. Zero otherwise.
     private var followUps: Int {
-        guard state.gap?.origin == .server, let result = state.result else { return 0 }
-        return max(1, result.missing.filter(\.capturable).count)
+        guard state.gap?.origin == .server, state.result != nil else { return 0 }
+        return max(1, state.followUps)
     }
 
     /// What "I can't get there" leads to: the check's next view while it wants more than this

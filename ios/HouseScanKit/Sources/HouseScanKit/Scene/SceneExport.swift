@@ -389,7 +389,20 @@ public enum SceneExport {
             index == chain.meter ? input.wallID
                 : "\(input.wallID)-\(index < chain.meter ? "left" : "right")-\(abs(index - chain.meter))"
         }
-        let wallIDAt = { (s: Float) in wallIDs[WallSegment.index(in: chain.segments, atS: s)] }
+        // Only pieces inside the baseline are written (`walls`), so an object past an end that
+        // comes before a corner belongs to the last written wall, which the server continues past
+        // its end; the piece round the corner has no wall in the scene to refer to.
+        let writtenPieces = chain.segments.indices.filter {
+            max(chain.segments[$0].span.lowerBound, input.baselineS.lowerBound) < min(chain.segments[$0].span.upperBound, input.baselineS.upperBound)
+        }
+        let wallIDAt = { (s: Float) -> String in
+            let index = WallSegment.index(in: chain.segments, atS: s)
+            if writtenPieces.contains(index) || writtenPieces.isEmpty { return wallIDs[index] }
+            // Past the written chain: the written piece nearest along the chain, which is the one
+            // at that end.
+            let nearest = writtenPieces.min { abs($0 - index) < abs($1 - index) } ?? chain.meter
+            return wallIDs[nearest]
+        }
 
         var objects: [SceneDocument.Object] = []
         var ground: [SceneDocument.Ground] = []

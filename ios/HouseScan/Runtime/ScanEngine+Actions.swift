@@ -306,6 +306,18 @@ extension ScanEngine: ScanActions {
 
     func finishWalk() {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
+        if let map = coverage, map.endsTooClose, let left = map.leftEnd, let right = map.rightEnd {
+            // Ends closer than a battery is wide (`WallFrame.minWallLength`): both sides ended
+            // without walking, as "Wall ends here" or "Can't get there" at the meter does.
+            // Nothing between them to scan, and an end can't be moved, so both go and the walk
+            // goes on; the card says why.
+            RuntimeLog.engine.info("finish refused: ends at s=\(left) and s=\(right) are closer than \(WallFrame.minWallLength) m")
+            clearEnd(.left)
+            clearEnd(.right)
+            state.wallTooShort = true
+            if let frame = currentFrame { resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp) }
+            return
+        }
         // Done while a request is still up passes it by.
         resolveGuidance(.superseded)
         state.marking = nil
@@ -398,7 +410,7 @@ extension ScanEngine: ScanActions {
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }
         let item = missing[index]
-        guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
+        guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds) else { return }
         beginServerGap(item, plan: plan)
     }
 
@@ -426,6 +438,16 @@ extension ScanEngine: ScanActions {
     /// Where a tap lands on the wall plane, in wall coordinates.
     func wallHit(_ point: CGPoint?, viewSize: CGSize, frame: SourceFrame, wall: WallFrame) -> WallPoint? {
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
-        return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
+        return nearbyWallHit(frame.camera.ray(throughPixel: pixel), camera: frame.camera, wall: wall)
+    }
+
+    /// Where `ray` meets the wall, or nil when that is farther along the wall from the camera than
+    /// the coverage map lets a camera see (`maxDistance`). A ray nearly parallel to the wall meets
+    /// its line hundreds of meters away; an end placed there, or drawn on the strip, would be
+    /// nothing the homeowner pointed at.
+    func nearbyWallHit(_ ray: Ray, camera: CameraFrame, wall: WallFrame) -> WallPoint? {
+        guard let hit = wall.intersectWall(ray) else { return nil }
+        let reach = coverage?.config.maxDistance ?? CoverageConfig().maxDistance
+        return abs(hit.s - wall.wallPoint(camera.position).s) <= reach ? hit : nil
     }
 }

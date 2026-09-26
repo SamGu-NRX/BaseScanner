@@ -105,9 +105,17 @@ final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
         self.progress = progress
     }
 
+    /// Once the whole body is sent the server is working out the spot in the same request, so
+    /// report 1 and let the screen move on to "Check clearances". Before that, stop at 0.99 so
+    /// rounding never shows 100%. Holding 0.99 until the answer left the screen on "Sending
+    /// measurements, 99%" for the whole analysis (field test run 1).
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         guard totalBytesExpectedToSend > 0 else { return }
-        progress(min(0.99, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
+        if totalBytesSent >= totalBytesExpectedToSend {
+            progress(1)
+        } else {
+            progress(min(0.99, Double(totalBytesSent) / Double(totalBytesExpectedToSend)))
+        }
     }
 }
 
