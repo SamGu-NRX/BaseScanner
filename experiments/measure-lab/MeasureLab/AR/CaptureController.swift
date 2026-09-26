@@ -99,17 +99,21 @@ final class CaptureController {
             session.keyframeDelivered(result.delivery)
             guard case .success(let saved) = result.delivery.result, let cgImage = result.image else { return }
             let snapshot = saved.snapshot
+            guard let mapping = PortraitFillMapping(
+                imageWidth: Double(snapshot.imageWidth),
+                imageHeight: Double(snapshot.imageHeight),
+                viewWidth: Double(viewSize.width),
+                viewHeight: Double(viewSize.height)
+            ) else {
+                session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera view isn't ready yet. Try again.")
+                return
+            }
             frozen = FrozenFrame(
                 snapshot: snapshot,
                 // .right rotates the landscape sensor image 90° clockwise for an upright phone,
                 // the same rotation PortraitFillMapping assumes.
                 image: UIImage(cgImage: cgImage, scale: 1, orientation: .right),
-                mapping: PortraitFillMapping(
-                    imageWidth: Double(snapshot.imageWidth),
-                    imageHeight: Double(snapshot.imageHeight),
-                    viewWidth: viewSize.width,
-                    viewHeight: viewSize.height
-                )
+                mapping: mapping
             )
         } catch {
             session.recorderFailed(error)
@@ -171,6 +175,10 @@ final class CaptureController {
             session.refuseUnresolvedTap(reason: "noFrame", message: "The camera hasn't delivered a frame yet.")
             return nil
         }
+        guard viewSize.width.isFinite, viewSize.height.isFinite, viewSize.width > 0, viewSize.height > 0 else {
+            session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera view isn't ready yet. Try again.")
+            return nil
+        }
         let delivery: KeyframeRecorder.Delivery
         do {
             delivery = try session.recorder.save(frame, reason: .tap).delivery
@@ -189,9 +197,13 @@ final class CaptureController {
         let mapping = PortraitFillMapping(
             imageWidth: Double(snapshot.imageWidth),
             imageHeight: Double(snapshot.imageHeight),
-            viewWidth: viewSize.width,
-            viewHeight: viewSize.height
+            viewWidth: Double(viewSize.width),
+            viewHeight: Double(viewSize.height)
         )
+        guard let mapping else {
+            session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera image or view isn't ready yet. Try again.")
+            return nil
+        }
         let mapped = mapping.imagePixel(forViewPoint: point.x, point.y)
         let check = ((mapped.u - pixel.u) * (mapped.u - pixel.u) + (mapped.v - pixel.v) * (mapped.v - pixel.v)).squareRoot()
         return (snapshot, pixel, check)

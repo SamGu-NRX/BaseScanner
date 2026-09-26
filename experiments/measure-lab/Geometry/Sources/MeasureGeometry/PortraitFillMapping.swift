@@ -10,7 +10,12 @@ public struct PortraitFillMapping: Sendable, Equatable {
     public let viewWidth: Double
     public let viewHeight: Double
 
-    public init(imageWidth: Double, imageHeight: Double, viewWidth: Double, viewHeight: Double) {
+    public init?(imageWidth: Double, imageHeight: Double, viewWidth: Double, viewHeight: Double) {
+        let dimensions = [imageWidth, imageHeight, viewWidth, viewHeight]
+        guard dimensions.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        let scale = max(viewWidth / imageHeight, viewHeight / imageWidth)
+        guard scale.isFinite, scale > 0,
+              (imageHeight * scale).isFinite, (imageWidth * scale).isFinite else { return nil }
         self.imageWidth = imageWidth
         self.imageHeight = imageHeight
         self.viewWidth = viewWidth

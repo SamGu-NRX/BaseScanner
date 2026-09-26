@@ -38,6 +38,9 @@ struct MeasureSheet: View {
                             Text(label(for: point)).tag(point.id)
                         }
                     }
+                    .onChange(of: fromID) { _, newID in
+                        if case .point(let id) = target, id == newID { target = nil }
+                    }
                 }
                 Section("To") {
                     Picker("Point or wall", selection: $target) {
@@ -115,6 +118,7 @@ struct MeasureSheet: View {
 
     private var values: [MeasuredQuantity: Double] {
         guard let target else { return [:] }
+        if case .point(let id) = target, id == fromID { return [:] }
         return session.values(from: fromID, to: target, referenceWall: referenceWall)
     }
 
@@ -170,6 +174,7 @@ struct MeasureSheet: View {
 
     private func save() {
         guard let target, let quantity = selectedQuantity else { return }
+        if case .point(let id) = target, id == fromID { return }
         let reading = if case .success(let reading) = tape { reading } else { TapeReading?.none }
         session.addMeasurement(from: fromID, to: target, referenceWall: referenceWall, compared: quantity, tape: reading)
         dismiss()
