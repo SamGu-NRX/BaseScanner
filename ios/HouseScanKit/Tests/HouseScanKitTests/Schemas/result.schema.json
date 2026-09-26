@@ -35,7 +35,7 @@
       "properties": {
         "id": {"type": ["string", "null"]},
         "version": {"type": ["string", "null"]},
-        "auto_approve": {"type": "boolean", "description": "False while the rules hold placeholder values or no policy is selected; every would-be pass or reject then becomes manual_review."},
+        "auto_approve": {"type": "boolean", "description": "Whether the rules allow automatic decisions: false when no policy is selected or the rules file sets auto_approve false (the public rules.yaml does, because it holds placeholder values). When false, every would-be pass or reject becomes manual_review. Each check's rule.placeholder says which values decided it."},
         "sources": {"type": "array", "items": {"enum": ["public", "private"]}, "description": "Which rules files were loaded."},
         "rules_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Hash of the merged rules the decision used."}
       }
@@ -49,12 +49,12 @@
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/route"}]
     },
     "checks": {
-      "description": "Every check at the chosen spot, or, when `spot` is null, at the nearest spot considered (see `nearest_considered`).",
+      "description": "Every check at the chosen spot, or, when `spot` is null, at `nearest_considered`.",
       "type": "array",
       "items": {"$ref": "#/$defs/check"}
     },
     "nearest_considered": {
-      "description": "When `spot` is null: the spot with the shortest route that was evaluated, and why it fails. Null otherwise.",
+      "description": "When `spot` is null: the evaluated spot closest to passing (fewest failing checks, then fewest unsure, then shortest route), whose checks explain why it fails. Null otherwise.",
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/spot"}]
     },
     "missing_evidence": {
@@ -92,7 +92,8 @@
         "required": ["wall_id", "start_ft", "outcome", "failing", "unsure"],
         "properties": {
           "wall_id": {"type": "string"},
-          "start_ft": {"$ref": "#/$defs/span", "description": "Range of battery start positions (left edge, in s) in this run."},
+          "segment": {"type": "integer", "minimum": 0, "description": "Straight baseline segment of `wall_id`; runs never cross a corner."},
+          "start_ft": {"$ref": "#/$defs/span", "description": "Range of battery start positions (left edge, in s) in this run. Stretches too far along the wall for any cable route are one failing run, not evaluated start by start."},
           "outcome": {"$ref": "#/$defs/outcome"},
           "failing": {"type": "array", "items": {"type": "string"}},
           "unsure": {"type": "array", "items": {"type": "string"}}
@@ -144,6 +145,7 @@
         "measured_ft": {"type": ["number", "null"], "description": "The deciding measurement, for example the gap to the nearest gas meter. Null when nothing relevant was found or it was not observed."},
         "plus_minus_ft": {"type": ["number", "null"]},
         "threshold_ft": {"type": ["number", "null"]},
+        "review_threshold_ft": {"type": "number", "description": "Present on checks with a review band (route_length): a value that doesn't clear this line (at_most: measured + error < review_threshold_ft) is at best unsure, even when it clears threshold_ft. Same convention as the scoring harness's review_threshold."},
         "comparison": {"enum": ["at_least", "at_most", null], "description": "at_least: pass needs measured - error > threshold. at_most: pass needs measured + error < threshold."},
         "subject": {"type": ["string", "null"], "description": "What the measurement is to, for example \"objects[2] gas_meter\"."},
         "rule": {

@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts. They came from origin/t3/server at 69c6c3c
+/// Vendored copies of the server's contracts. They came from origin/t3/server at 6fdb440
 /// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json);
 /// `vendoredCopiesMatchServer` fails if the server's files change and these are not refreshed.
 enum SceneSchemas {
@@ -123,7 +123,7 @@ enum SceneSchemas {
 
     @Test func vendoredCopiesMatchServer() throws {
         // Without the server tree (before the server branch is merged) there is nothing to compare;
-        // the vendored copies then stand as taken from origin/t3/server 69c6c3c.
+        // the vendored copies then stand as taken from origin/t3/server 6fdb440.
         guard let root = SceneSchemas.repoRoot() else { return }
         for (name, serverPath) in SceneSchemas.vendored {
             let serverFile = root.appendingPathComponent(serverPath)

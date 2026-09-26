@@ -26,6 +26,7 @@
       "description": "Wall chain in order from the left end to the right end, as seen from outside. Consecutive walls that share an endpoint meet at a corner; a gap between the end of one wall and the start of the next is a stretch with no wall, which no battery can back onto and no cable can cross. The first wall starts at the chain's left end.",
       "type": "array",
       "minItems": 1,
+      "maxItems": 50,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -36,15 +37,17 @@
             "description": "The wall's line along the ground, [x, z] points ordered left to right as seen from outside. The outward direction of each segment is therefore its direction turned 90 degrees clockwise in the x-z plane viewed from above (+y). Each straight segment is where a battery can sit flush.",
             "type": "array",
             "minItems": 2,
+            "maxItems": 500,
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' default for AR taps."}
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' wall default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
     "objects": {
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -65,11 +68,12 @@
           },
           "source": {"enum": ["vlm", "tap", "tape"], "description": "How the position was measured: a vision model, an AR tap, or a tape measure. Sets the default error."},
           "conf": {"type": "number", "minimum": 0, "maximum": 1, "description": "Recognition confidence. Not a distance error and never used as one."},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error. Absent means the rules' default for `source`."},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error. Absent means the rules' default for `source`; for tap and vlm it grows with distance along the walls from the meter (errors.drift_per_ft)."},
           "footprint": {
             "description": "Optional ground outline of the object in plan, [x, z] points. Give it for anything that stands off the wall (a gas regulator, pipe run, AC unit, pool edge) so clearances are measured to every part. Without it the object is the stretch of wall line over `span_ft`.",
             "type": "array",
             "minItems": 1,
+            "maxItems": 500,
             "items": {"$ref": "#/$defs/point2"}
           }
         }
@@ -77,20 +81,22 @@
     },
     "ground": {
       "type": "array",
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["type", "polygon"],
         "properties": {
           "type": {"enum": ["drive", "concrete", "gravel", "lawn", "mulch", "deck"]},
-          "polygon": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/point2"}},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft"}
+          "polygon": {"type": "array", "minItems": 3, "maxItems": 500, "items": {"$ref": "#/$defs/point2"}},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of the outline. Absent means the rules' tap default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
     "overheads": {
       "description": "Anything overhead (porch roof, eave, stairs, landing) along the wall, with the clear height beneath it.",
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -106,6 +112,7 @@
     "facing": {
       "description": "Gap from the wall straight out to the nearest fence, hedge or wall.",
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -133,6 +140,7 @@
         },
         "observed": {
           "type": "array",
+          "maxItems": 500,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -140,7 +148,7 @@
             "properties": {
               "band": {
                 "enum": ["wall", "ground", "overhead", "facing"],
-                "description": "wall: the wall face from the ground to battery height, which also covers the cable route. ground: the ground in front of the wall out to `out_ft`. overhead: the space above the ground strip up to headroom height. facing: the gap straight out from the wall to whatever faces it."
+                "description": "wall: the wall face from the ground up to headroom height (boxes and vents above the battery, openings), which also covers the cable route. ground: the ground in front of the wall out to `out_ft`. overhead: the space above the ground strip up to headroom height. facing: the gap straight out from the wall to whatever faces it."
               },
               "span_ft": {"$ref": "#/$defs/span", "description": "Observed stretch in s. May extend past the chain's ends, continuing the end segments' lines."},
               "out_ft": {"type": "number", "minimum": 0, "description": "Required for the ground band: how far out from the wall the ground was seen."}
@@ -153,6 +161,7 @@
     },
     "keyframes": {
       "type": "array",
+      "maxItems": 5000,
       "items": {
         "type": "object",
         "additionalProperties": false,

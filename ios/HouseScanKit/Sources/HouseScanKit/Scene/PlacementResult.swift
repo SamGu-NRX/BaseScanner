@@ -1,13 +1,18 @@
 import Foundation
 
-// The placement server's answer (contract C2, server/schemas/result.schema.json), decoded strictly:
-// an unknown key, an unknown enum value, a wrong array length or a schema_version other than "1.0"
-// throws PlacementDecodingError naming the JSON path, so a server change fails loudly on the phone
-// instead of being dropped. Keys marked required-but-nullable in the schema must be present.
+// The placement server's answer (contract C2, server/schemas/result.schema.json). A missing
+// required key, a wrong type, an unknown enum value, a wrong array length or a schema_version
+// other than "1.0" throws PlacementDecodingError naming the JSON path. Keys marked
+// required-but-nullable in the schema must be present.
+//
+// Unknown keys are ignored. The server adds optional fields within schema 1.0 without changing
+// schema_version: `checks[].review_threshold_ft` and `sweep[].segment` arrived that way on
+// 2026-09-26, and rejecting them stopped every real upload from reaching the result screen. An
+// unknown enum value still fails, because the app can't present a decision or outcome it doesn't
+// know.
 
 public enum PlacementDecodingError: Error, Equatable, CustomStringConvertible {
     case unsupportedSchemaVersion(String)
-    case unknownKey(path: String)
     case unknownEnumValue(path: String, value: String)
     case wrongArrayLength(path: String, expected: Int, actual: Int)
     case missingKey(path: String)
@@ -16,7 +21,6 @@ public enum PlacementDecodingError: Error, Equatable, CustomStringConvertible {
     public var description: String {
         switch self {
         case .unsupportedSchemaVersion(let v): "result schema_version \"\(v)\" is not supported; expected \"1.0\""
-        case .unknownKey(let path): "unknown key at \(path)"
         case .unknownEnumValue(let path, let value): "unknown value \"\(value)\" at \(path)"
         case .wrongArrayLength(let path, let e, let a): "\(path) has \(a) items, expected \(e)"
         case .missingKey(let path): "missing required key \(path)"
@@ -112,7 +116,6 @@ public struct PlacementReason: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey, CaseIterable { case code, message, checks }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         code = try c.decode(PlacementReasonCode.self, forKey: .code)
         message = try c.decode(String.self, forKey: .message)
@@ -134,7 +137,6 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String?.self, forKey: .id)
         version = try c.decode(String?.self, forKey: .version)
@@ -183,7 +185,6 @@ public struct PlacementSpot: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         outcome = try c.decode(PlacementOutcome.self, forKey: .outcome)
         wallID = try c.decode(String.self, forKey: .wallID)
@@ -228,7 +229,6 @@ public struct PlacementDetour: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         subject = try c.decode(String.self, forKey: .subject)
         extraFt = try c.decode(Double.self, forKey: .extraFt)
@@ -246,7 +246,6 @@ public struct PlacementCrossing: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         subject = try c.decode(String.self, forKey: .subject)
         spanFt = try c.placementPair(.spanFt)
@@ -280,7 +279,6 @@ public struct PlacementRoute: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         outcome = try c.decode(PlacementOutcome.self, forKey: .outcome)
         lengthFt = try c.decode(Double.self, forKey: .lengthFt)
@@ -311,7 +309,6 @@ public struct PlacementRule: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey, CaseIterable { case key, source, placeholder }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         key = try c.decode(String.self, forKey: .key)
         source = try c.decode(String.self, forKey: .source)
@@ -341,7 +338,6 @@ public struct PlacementCheck: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
         label = try c.decode(String.self, forKey: .label)
@@ -386,7 +382,6 @@ public struct PlacementMissingEvidence: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(PlacementEvidenceKind.self, forKey: .kind)
         band = try c.decodeIfPresent(PlacementBand.self, forKey: .band)
@@ -421,7 +416,6 @@ public struct PlacementEnd: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         kind = try c.decode(PlacementEndKind.self, forKey: .kind)
         sFt = try c.decode(Double.self, forKey: .sFt)
@@ -445,7 +439,6 @@ public struct PlacementEnds: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey, CaseIterable { case left, right }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         left = try c.decode(PlacementEnd.self, forKey: .left)
         right = try c.decode(PlacementEnd.self, forKey: .right)
@@ -467,7 +460,6 @@ public struct PlacementSweepRun: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         wallID = try c.decode(String.self, forKey: .wallID)
         startFt = try c.placementPair(.startFt)
@@ -501,7 +493,6 @@ public struct PlacementStats: Codable, Sendable, Equatable {
     }
 
     public init(from decoder: any Decoder) throws {
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         let c = try decoder.container(keyedBy: CodingKeys.self)
         candidates = try c.decode(Int.self, forKey: .candidates)
         pass = try c.decode(Int.self, forKey: .pass)
@@ -556,7 +547,6 @@ public struct PlacementResult: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try c.decode(String.self, forKey: .schemaVersion)
         guard schemaVersion == "1.0" else { throw PlacementDecodingError.unsupportedSchemaVersion(schemaVersion) }
-        try placementRejectUnknownKeys(decoder, CodingKeys.self)
         decision = try c.decode(PlacementDecision.self, forKey: .decision)
         summary = try c.decode(String.self, forKey: .summary)
         reasons = try c.decode([PlacementReason].self, forKey: .reasons)
@@ -591,16 +581,6 @@ public struct PlacementResult: Codable, Sendable, Equatable {
 
 // MARK: - Strict decoding helpers
 
-private struct PlacementAnyKey: CodingKey {
-    var stringValue: String
-    var intValue: Int?
-    init(stringValue: String) { self.stringValue = stringValue }
-    init?(intValue: Int) {
-        self.stringValue = String(intValue)
-        self.intValue = intValue
-    }
-}
-
 /// "checks[2].rule.key" style path for error messages.
 private func placementPath(_ codingPath: [any CodingKey]) -> String {
     var path = ""
@@ -612,14 +592,6 @@ private func placementPath(_ codingPath: [any CodingKey]) -> String {
         }
     }
     return path.isEmpty ? "$" : path
-}
-
-private func placementRejectUnknownKeys<K: CodingKey & CaseIterable>(_ decoder: any Decoder, _: K.Type) throws {
-    let known = Set(K.allCases.map(\.stringValue))
-    let present = try decoder.container(keyedBy: PlacementAnyKey.self).allKeys.map(\.stringValue)
-    if let unknown = present.filter({ !known.contains($0) }).sorted().first {
-        throw PlacementDecodingError.unknownKey(path: placementPath(decoder.codingPath + [PlacementAnyKey(stringValue: unknown)]))
-    }
 }
 
 private func placementEnum<E: RawRepresentable>(_ decoder: any Decoder) throws -> E where E.RawValue == String {

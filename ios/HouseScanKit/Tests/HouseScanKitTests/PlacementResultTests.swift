@@ -63,11 +63,24 @@ import simd
         #expect(abs(end.s - 0.9144) < 1e-5 && abs(end.out) < 1e-5)  // 3 ft
     }
 
-    @Test func rejectsUnknownKeysNamingThePath() throws {
-        expectError(.unknownKey(path: "extra"),
-                    try Self.sample(replacing: #""schema_version": "1.0","#, with: #""schema_version": "1.0", "extra": true,"#))
-        expectError(.unknownKey(path: "checks[1].rule.bogus"),
-                    try Self.sample(replacing: #""key": "sample_window_clearance_ft""#, with: #""key": "sample_window_clearance_ft", "bogus": 1"#))
+    /// The server adds optional fields within schema 1.0; the phone must keep decoding.
+    @Test func ignoresUnknownKeys() throws {
+        _ = try PlacementResult.decode(
+            try Self.sample(replacing: #""schema_version": "1.0","#, with: #""schema_version": "1.0", "extra": true,"#))
+        _ = try PlacementResult.decode(
+            try Self.sample(replacing: #""key": "sample_window_clearance_ft""#, with: #""key": "sample_window_clearance_ft", "bogus": 1"#))
+    }
+
+    /// A real answer from the server branch (origin/t3/server at 6fdb440) to the synthetic replay's
+    /// scene, carrying fields newer than the first published schema.
+    @Test func decodesARealServerAnswer() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Schemas/server-answer-synthetic-wall.json")
+        let data = try Data(contentsOf: url)
+        #expect(try SceneSchemas.result().validate(data) == [])
+        let result = try PlacementResult.decode(data)
+        #expect(result.decision == .manualReview)
+        #expect(!result.checks.isEmpty)
     }
 
     @Test func rejectsUnknownEnumValues() throws {
