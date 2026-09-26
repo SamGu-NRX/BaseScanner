@@ -1,42 +1,48 @@
 {
-  "generated_at": "2026-09-26T05:43:41-05:00",
+  "generated_at": "2026-09-26T06:13:39-05:00",
   "command": "uv run python -m hsverify.scoreboard",
-  "slow": true,
+  "slow": false,
   "prs": [
     {
       "number": 16,
       "title": "experiments: measure on-device meter close-up reading and retake thresholds",
       "branch": "t3/meter-closeup",
-      "head": "03e04b54290b6dedd220eac4e4c4054bdf3c1e0c",
+      "head": "c5cb30d782fa8bd9a91e30f6997b7239764db640",
       "draft": true,
-      "updated": "2026-09-26T10:36:35Z",
+      "updated": "2026-09-26T11:13:17Z",
       "ci": {
         "counts": {
-          "success": 5,
-          "failure": 0,
+          "success": 3,
+          "failure": 1,
           "pending": 0,
           "skipped": 0
         },
-        "failing": [],
-        "text": "5 success"
+        "failing": [
+          "Vercel"
+        ],
+        "text": "3 success, 1 failure; failing: Vercel"
       }
     },
     {
       "number": 15,
       "title": "web: placement review page",
       "branch": "t3/web-review",
-      "head": "c69f88809c06175373079d7ec3b6b414194a73cf",
+      "head": "a7c9b129a52d46a87a9542e665dffcff0fc4d167",
       "draft": true,
-      "updated": "2026-09-26T10:06:25Z",
+      "updated": "2026-09-26T11:08:48Z",
       "ci": {
         "counts": {
-          "success": 5,
-          "failure": 0,
+          "success": 3,
+          "failure": 3,
           "pending": 0,
           "skipped": 0
         },
-        "failing": [],
-        "text": "5 success"
+        "failing": [
+          "Label PR size",
+          "Web checks",
+          "Vercel"
+        ],
+        "text": "3 success, 3 failure; failing: Label PR size, Web checks, Vercel"
       }
     },
     {
@@ -61,9 +67,9 @@
       "number": 13,
       "title": "verification: independent end-to-end checks (S4)",
       "branch": "t3/verification",
-      "head": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
+      "head": "4b4425b5cf899c1c43d78b75f2172a77aaa24c82",
       "draft": true,
-      "updated": "2026-09-26T10:41:29Z",
+      "updated": "2026-09-26T10:53:26Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -81,9 +87,9 @@
       "number": 12,
       "title": "feat(evals): real-data accuracy evals for ARKit drift and photo-based wall reconstruction",
       "branch": "t3/evals",
-      "head": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
+      "head": "779d33918a4d4dd997364b5a9345392ac9cff45e",
       "draft": true,
-      "updated": "2026-09-26T10:38:42Z",
+      "updated": "2026-09-26T11:03:22Z",
       "ci": {
         "counts": {
           "success": 3,
@@ -103,7 +109,7 @@
       "branch": "t3/server",
       "head": "f2705dd5580ccd8c18ebd34a743b448bcb59ae03",
       "draft": false,
-      "updated": "2026-09-26T10:35:26Z",
+      "updated": "2026-09-26T10:55:25Z",
       "ci": {
         "counts": {
           "success": 5,
@@ -119,18 +125,18 @@
       "number": 10,
       "title": "ios: guided wall scan, from meter to battery spot",
       "branch": "t3/ios-mvf",
-      "head": "525ea401641553fad581925023ed1bb82c0f7352",
+      "head": "beede15f568b3a4d694fb275caf9eaaa882c546b",
       "draft": true,
-      "updated": "2026-09-26T10:21:08Z",
+      "updated": "2026-09-26T11:12:52Z",
       "ci": {
         "counts": {
-          "success": 5,
+          "success": 4,
           "failure": 0,
-          "pending": 0,
+          "pending": 1,
           "skipped": 0
         },
         "failing": [],
-        "text": "5 success"
+        "text": "4 success, 1 pending"
       }
     },
     {
@@ -232,7 +238,7 @@
       "refs": [
         {
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738"
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e"
         }
       ],
       "metrics": [
@@ -240,7 +246,7 @@
           "id": "S1-1",
           "text": "One command regenerates every number from a clean checkout",
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e",
           "status": "partial",
           "evidence": "make drift at b5ca7af from a clean worktree reproduced advio_drift.md and advio_drift.json byte for byte (85 MB peak). ETH3D recon not rerun: it loads the laser scans, whose memory has not been bounded on this shared Mac.",
           "links": []
@@ -249,13 +255,13 @@
           "id": "S1-2",
           "text": "Dataset URLs and sha256 recorded",
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e",
           "status": "met",
           "evidence": "all 2 found",
           "links": [
             [
               "experiments/evals/README.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/README.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/README.md"
             ]
           ]
         },
@@ -263,30 +269,30 @@
           "id": "S1-3",
           "text": "Metric code tested on hand-computed cases",
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
-          "status": "partial",
-          "evidence": "exit 0: Installed 20 packages in 60ms / .................................................. [100%] / 50 passed in 1.60s (tests pass; whether the cases are hand-computed needs a read)",
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e",
+          "status": "not run",
+          "evidence": "slow; run with --slow",
           "links": []
         },
         {
           "id": "S1-4",
           "text": "ADVIO drift report, median and p90 inches after 3, 10, 20 and 30 ft",
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e",
           "status": "met",
           "evidence": "all 5 found",
           "links": [
             [
               "experiments/evals/README.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/README.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/README.md"
             ],
             [
               "experiments/evals/results/advio_drift.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/results/advio_drift.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/results/advio_drift.md"
             ],
             [
-              "experiments/evals/results/eth3d_recon.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/results/eth3d_recon.md"
+              "experiments/evals/results/modern_arkit.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/results/modern_arkit.md"
             ]
           ]
         },
@@ -294,21 +300,21 @@
           "id": "S1-5",
           "text": "ETH3D errors per model (median and p90 inches for 1-3 m and 3-10 m pairs, scale error %) with a verdict per question",
           "ref": "origin/t3/evals",
-          "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
+          "sha": "779d33918a4d4dd997364b5a9345392ac9cff45e",
           "status": "partial",
           "evidence": "found 1-3 m row, 3-10 m row, scale error; missing verdict",
           "links": [
             [
               "experiments/evals/README.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/README.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/README.md"
             ],
             [
               "experiments/evals/results/eth3d_recon.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/results/eth3d_recon.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/results/eth3d_recon.md"
             ],
             [
               "experiments/evals/results/eth3d_visibility_sensitivity.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/7c5318d6610a06e657a98b0c8c7d1cc2acc53738/experiments/evals/results/eth3d_visibility_sensitivity.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/779d33918a4d4dd997364b5a9345392ac9cff45e/experiments/evals/results/eth3d_visibility_sensitivity.md"
             ]
           ]
         }
@@ -329,8 +335,8 @@
           "text": "pytest green",
           "ref": "origin/t3/server",
           "sha": "f2705dd5580ccd8c18ebd34a743b448bcb59ae03",
-          "status": "met",
-          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 222 passed, 1 warning in 11.01s",
+          "status": "not run",
+          "evidence": "slow; last run 2026-09-26 05:43 CDT: met, exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 222 passed, 1 warning in 11.01s",
           "links": []
         },
         {
@@ -415,8 +421,8 @@
           "text": "ruff clean",
           "ref": "origin/t3/server",
           "sha": "f2705dd5580ccd8c18ebd34a743b448bcb59ae03",
-          "status": "met",
-          "evidence": "exit 0: Installed 33 packages in 37ms / All checks passed! / 17 files already formatted",
+          "status": "not run",
+          "evidence": "slow; last run 2026-09-26 05:43 CDT: met, exit 0: Installed 33 packages in 37ms / All checks passed! / 17 files already formatted",
           "links": []
         },
         {
@@ -436,7 +442,7 @@
       "refs": [
         {
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352"
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b"
         }
       ],
       "metrics": [
@@ -444,9 +450,9 @@
           "id": "S3-1",
           "text": "CI build green",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
-          "status": "met",
-          "evidence": "iOS build: success at 525ea401",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
+          "status": "not run",
+          "evidence": "iOS build: pending at beede15f",
           "links": [
             [
               "#10",
@@ -458,13 +464,13 @@
           "id": "S3-2",
           "text": "Built as Swift 6 with strict concurrency",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "met",
           "evidence": "all 2 found",
           "links": [
             [
               "ios/project.yml",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/project.yml"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/project.yml"
             ]
           ]
         },
@@ -472,30 +478,30 @@
           "id": "S3-3",
           "text": "Zero build warnings",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
-          "status": "met",
-          "evidence": "build.warnings = length 0 (want 0): ~/house-scanning-data/reports/sim/20260926-052535-t3-ios-mvf-525ea401-replay/report.json",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
+          "status": "stale",
+          "evidence": "report for 525ea401, ref at beede15f: ~/house-scanning-data/reports/sim/20260926-052535-t3-ios-mvf-525ea401-replay/report.json",
           "links": []
         },
         {
           "id": "S3-4",
           "text": "Unit tests for coverage, auto-capture and guidance",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "partial",
           "evidence": "found coverage; missing auto-capture, guidance",
           "links": [
             [
               "ios/HouseScanKit/Tests/HouseScanKitTests/AutoCaptureTests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanKit/Tests/HouseScanKitTests/AutoCaptureTests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanKit/Tests/HouseScanKitTests/AutoCaptureTests.swift"
             ],
             [
               "ios/HouseScanKit/Tests/HouseScanKitTests/SceneExportTests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanKit/Tests/HouseScanKitTests/SceneExportTests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanKit/Tests/HouseScanKitTests/SceneExportTests.swift"
             ],
             [
               "ios/HouseScanKit/Tests/HouseScanKitTests/ServerGapTests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanKit/Tests/HouseScanKitTests/ServerGapTests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanKit/Tests/HouseScanKitTests/ServerGapTests.swift"
             ]
           ]
         },
@@ -503,17 +509,17 @@
           "id": "S3-5",
           "text": "UI tests run the whole flow from a real replay with no manual input, including one gap-instruction-recapture loop",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "partial",
           "evidence": "all 3 found (the tests exist; passing is S3-1)",
           "links": [
             [
               "ios/HouseScanUITests/FullFlowUITests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanUITests/FullFlowUITests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanUITests/FullFlowUITests.swift"
             ],
             [
               "ios/HouseScanUITests/ScreenStatesUITests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanUITests/ScreenStatesUITests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanUITests/ScreenStatesUITests.swift"
             ]
           ]
         },
@@ -521,17 +527,17 @@
           "id": "S3-6",
           "text": "Accessibility audit on every screen",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "partial",
           "evidence": "3 matches in 2 files (an audit exists; which screens it covers needs a read)",
           "links": [
             [
               "ios/HouseScanUITests/FullFlowUITests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanUITests/FullFlowUITests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanUITests/FullFlowUITests.swift"
             ],
             [
               "ios/HouseScanUITests/ScreenStatesUITests.swift",
-              "https://github.com/SamGu-NRX/house-scanning/blob/525ea401641553fad581925023ed1bb82c0f7352/ios/HouseScanUITests/ScreenStatesUITests.swift"
+              "https://github.com/SamGu-NRX/house-scanning/blob/beede15f568b3a4d694fb275caf9eaaa882c546b/ios/HouseScanUITests/ScreenStatesUITests.swift"
             ]
           ]
         },
@@ -539,16 +545,16 @@
           "id": "S3-6b",
           "text": "Independent accessibility audit (verification a11yaudit: Apple's audit on each screen the run reached, plus symbol-name button labels) finds no issues; S4-2 shows how many screens the app reached",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
-          "status": "gap",
-          "evidence": "issue_count = 32 (want 0): ~/house-scanning-data/reports/a11y/20260926-052756-t3-ios-mvf-525ea401-head-sample/report.json",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
+          "status": "stale",
+          "evidence": "report for 525ea401, ref at beede15f: ~/house-scanning-data/reports/a11y/20260926-052756-t3-ios-mvf-525ea401-head-sample/report.json",
           "links": []
         },
         {
           "id": "S3-7",
           "text": "Screenshots of each state in the PR",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "gap",
           "evidence": "0 of 9 matches in the PR body",
           "links": [
@@ -562,7 +568,7 @@
           "id": "S3-8",
           "text": "Exported scene.json validates against C1",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "met",
           "evidence": "app_export_scene_valid = true (want True): ~/house-scanning-data/reports/e2e/20260926-050517-26d28707/report.json",
           "links": []
@@ -571,7 +577,7 @@
           "id": "S3-9",
           "text": "Design self-review against frontend-design, emil-design-eng, holistic-ux, apple-design",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
           "status": "gap",
           "evidence": "not yet reviewed",
           "links": []
@@ -584,11 +590,11 @@
       "refs": [
         {
           "ref": "origin/t3/verification",
-          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39"
+          "sha": "4b4425b5cf899c1c43d78b75f2172a77aaa24c82"
         },
         {
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352"
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b"
         }
       ],
       "metrics": [
@@ -596,7 +602,7 @@
           "id": "S4-1",
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/verification",
-          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
+          "sha": "4b4425b5cf899c1c43d78b75f2172a77aaa24c82",
           "status": "met",
           "evidence": "app_export_passed = true (want True): ~/house-scanning-data/reports/e2e/20260926-050517-26d28707/report.json",
           "links": []
@@ -605,16 +611,16 @@
           "id": "S4-2",
           "text": "Screenshot report per app state",
           "ref": "origin/t3/ios-mvf",
-          "sha": "525ea401641553fad581925023ed1bb82c0f7352",
-          "status": "met",
-          "evidence": "states = length 10 (want at least 9): ~/house-scanning-data/reports/sim/20260926-052535-t3-ios-mvf-525ea401-replay/report.json",
+          "sha": "beede15f568b3a4d694fb275caf9eaaa882c546b",
+          "status": "stale",
+          "evidence": "report for 525ea401, ref at beede15f: ~/house-scanning-data/reports/sim/20260926-052535-t3-ios-mvf-525ea401-replay/report.json",
           "links": []
         },
         {
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
+          "sha": "4b4425b5cf899c1c43d78b75f2172a77aaa24c82",
           "status": "met",
           "evidence": "verification/product covers every screen of t3/ios-mvf at 525ea40, checked in the Simulator there with the real server's result (verification.md); bug-triage.md has 16 entries, 3 resolved; ux/review.md judges every state.",
           "links": []
@@ -623,13 +629,13 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
+          "sha": "4b4425b5cf899c1c43d78b75f2172a77aaa24c82",
           "status": "met",
-          "evidence": "present at 60fe0d32",
+          "evidence": "present at 4b4425b5",
           "links": [
             [
               "verification/SCOREBOARD.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/60fe0d327dfd0ac56b5570ffdc9daf24d8760a39/verification/SCOREBOARD.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4b4425b5cf899c1c43d78b75f2172a77aaa24c82/verification/SCOREBOARD.md"
             ]
           ]
         }
