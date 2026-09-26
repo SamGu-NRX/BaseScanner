@@ -28,6 +28,9 @@ final class ScanEngine {
     // Stored evidence
     private(set) var store: KeyframeStore
     private var keptSourceIDs: Set<String> = []
+    /// Debounces coaching that comes from the capture gate (see `gateCoaching`).
+    private var gateProblem: (coaching: Coaching, since: Double)?
+    private var gateClearSince: Double?
     private var closeUpPending = false
     /// Keyframe writes still in flight; the bundle waits for them.
     private var pendingSaves = 0
@@ -263,8 +266,45 @@ final class ScanEngine {
             keptSourceIDs.insert(frame.id)
             keep(frame)
         }
-        state.coaching = coaching(for: frame.tracking, skip: skip)
+        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, time: frame.timestamp)
         afterCoverageChange(camera: frame.camera, time: frame.timestamp)
+    }
+
+    /// Tracking problems show at once. A problem the capture gate reports (moving, blurry, too
+    /// dark) shows only once it has lasted `showAfter` seconds and clears after `clearAfter`
+    /// seconds of frames without it: the gate judges every frame, and one fast frame at 30 fps
+    /// would otherwise flash a prompt for a single frame. During the walk moving and blurry read
+    /// as "Slow down", never "Hold steady", which would tell a walking homeowner to stop. Both
+    /// durations are guesses to try on a phone, not measured.
+    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, time: Double) -> Coaching? {
+        let showAfter = 0.7
+        let clearAfter = 0.5
+        guard tracking == .normal else {
+            gateProblem = nil
+            gateClearSince = nil
+            return coaching(for: tracking, skip: nil)
+        }
+        let candidate: Coaching? = switch skip {
+        case .moving?, .blurry?: .slowDown
+        case .tooDark?: .tooDark
+        default: nil
+        }
+        if let problem = gateProblem, time < problem.since { gateProblem = nil }  // replay restarted
+        if let candidate {
+            gateClearSince = nil
+            if gateProblem?.coaching != candidate {
+                gateProblem = (candidate, time)
+            }
+        } else if let problem = gateProblem {
+            let clearSince = gateClearSince ?? time
+            gateClearSince = clearSince
+            if time - clearSince >= clearAfter || time - problem.since < showAfter {
+                gateProblem = nil
+                gateClearSince = nil
+            }
+        }
+        guard let problem = gateProblem, time - problem.since >= showAfter else { return nil }
+        return problem.coaching
     }
 
     private func afterCoverageChange(camera: CameraFrame?, time: Double) {
