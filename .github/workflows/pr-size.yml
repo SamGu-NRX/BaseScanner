@@ -1,0 +1,143 @@
+name: PR Size
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    name: Label PR size
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: write
+    concurrency:
+      group: pr-size-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      # This workflow runs with a write token. It reads the base branch and fetches
+      # the PR head only as Git data. Do not run PR scripts or install dependencies here.
+      - name: Checkout base repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Sync PR size label
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { execFileSync } = require("node:child_process");
+
+            const issueNumber = context.payload.pull_request.number;
+            const baseSha = context.payload.pull_request.base.sha;
+            const headSha = context.payload.pull_request.head.sha;
+            const headTrackingRef = `refs/remotes/pr-size/${issueNumber}`;
+            const manifest = require(`${process.env.GITHUB_WORKSPACE}/.github/labels.json`);
+            const managedLabelNames = new Set(
+              manifest.map((label) => label.name).filter((name) => name.startsWith("size:")),
+            );
+            // Test layouts here: Swift (Tests/, *Tests.swift), TypeScript (*.test.*), Python (tests/, test_*.py).
+            const testExcludePathspecs = [
+              ":(glob,exclude)**/Tests/**",
+              ":(glob,exclude)**/*Tests.swift",
+              ":(glob,exclude)**/__tests__/**",
+              ":(glob,exclude)**/test/**",
+              ":(glob,exclude)**/tests/**",
+              ":(glob,exclude)**/*.test.*",
+              ":(glob,exclude)**/*.spec.*",
+              ":(glob,exclude)**/test_*.py",
+              ":(glob,exclude)**/*_test.py",
+            ];
+
+            const sumNumstat = (text) =>
+              text
+                .split("\n")
+                .filter(Boolean)
+                .reduce((total, line) => {
+                  const [insertionsRaw = "0", deletionsRaw = "0"] = line.split("\t");
+                  const additions = insertionsRaw === "-" ? 0 : Number.parseInt(insertionsRaw, 10) || 0;
+                  const deletions = deletionsRaw === "-" ? 0 : Number.parseInt(deletionsRaw, 10) || 0;
+                  return total + additions + deletions;
+                }, 0);
+
+            const resolveSizeLabel = (totalChangedLines) => {
+              if (totalChangedLines < 10) return "size:XS";
+              if (totalChangedLines < 30) return "size:S";
+              if (totalChangedLines < 100) return "size:M";
+              if (totalChangedLines < 500) return "size:L";
+              if (totalChangedLines < 1000) return "size:XL";
+              return "size:XXL";
+            };
+
+            execFileSync("git", ["fetch", "--no-tags", "origin", baseSha], { stdio: "inherit" });
+            execFileSync(
+              "git",
+              ["fetch", "--no-tags", "origin", `+refs/pull/${issueNumber}/head:${headTrackingRef}`],
+              { stdio: "inherit" },
+            );
+
+            const resolvedHeadSha = execFileSync("git", ["rev-parse", headTrackingRef], {
+              encoding: "utf8",
+            }).trim();
+            if (resolvedHeadSha !== headSha) {
+              core.warning(`Fetched head SHA ${resolvedHeadSha} does not match pull request head SHA ${headSha}.`);
+            }
+
+            execFileSync("git", ["cat-file", "-e", `${baseSha}^{commit}`], { stdio: "inherit" });
+            const diffArgs = ["diff", "--numstat", "--ignore-all-space", "--ignore-blank-lines", `${baseSha}...${resolvedHeadSha}`];
+            const totalChangedLines = sumNumstat(execFileSync("git", diffArgs, { encoding: "utf8" }));
+            const nonTestChangedLines = sumNumstat(
+              execFileSync("git", [...diffArgs, "--", ".", ...testExcludePathspecs], { encoding: "utf8" }),
+            );
+            const testChangedLines = Math.max(0, totalChangedLines - nonTestChangedLines);
+            const changedLines = nonTestChangedLines === 0 ? testChangedLines : nonTestChangedLines;
+            const nextLabelName = resolveSizeLabel(changedLines);
+
+            const { data: currentLabels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+            const definedLabels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+            if (!definedLabels.some((label) => label.name === nextLabelName)) {
+              core.setFailed(`${nextLabelName} is not defined. Run the Labels workflow to sync .github/labels.json.`);
+              return;
+            }
+
+            for (const label of currentLabels) {
+              if (!managedLabelNames.has(label.name) || label.name === nextLabelName) continue;
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label.name,
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+            }
+            if (!currentLabels.some((label) => label.name === nextLabelName)) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [nextLabelName],
+              });
+            }
+
+            const classification =
+              nonTestChangedLines === 0
+                ? testChangedLines > 0 ? "test-only PR" : "no line changes"
+                : testChangedLines > 0 ? "test lines excluded" : "all non-test changes";
+            core.info(
+              `PR #${issueNumber}: ${nonTestChangedLines} non-test lines, ${testChangedLines} test lines, ${changedLines} effective lines -> ${nextLabelName} (${classification})`,
+            );

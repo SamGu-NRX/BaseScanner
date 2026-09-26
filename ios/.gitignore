@@ -1,0 +1,10 @@
+# Per-person signing overrides; see Config/Local.xcconfig.example.
+Config/Local.xcconfig
+
+# Per-user Xcode state inside the committed project.
+xcuserdata/
+*.xcuserstate
+
+# Build output when building with -derivedDataPath or into the source tree.
+DerivedData/
+build/

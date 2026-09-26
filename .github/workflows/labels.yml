@@ -1,0 +1,74 @@
+name: Labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.json
+      - .github/workflows/labels.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: labels
+
+jobs:
+  sync:
+    name: Sync label definitions
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Create or update every label in the manifest
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const manifest = require(`${process.env.GITHUB_WORKSPACE}/.github/labels.json`);
+            const { owner, repo } = context.repo;
+            const tooLong = manifest.filter((label) => (label.description ?? "").length > 100);
+            const badColor = manifest.filter((label) => !/^[0-9a-fA-F]{6}$/.test(label.color ?? ""));
+            const names = manifest.map((label) => label.name);
+            const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+            const nameSet = new Set(names);
+            const badRename = manifest.filter((label) => label.renamedFrom && nameSet.has(label.renamedFrom));
+            if (tooLong.length || badColor.length || duplicates.length || badRename.length) {
+              core.setFailed(
+                [
+                  tooLong.length ? `Description over 100 chars: ${tooLong.map((label) => label.name).join(", ")}` : "",
+                  badColor.length ? `Color is not 6 hex digits: ${badColor.map((label) => label.name).join(", ")}` : "",
+                  duplicates.length ? `Duplicate name: ${[...new Set(duplicates)].join(", ")}` : "",
+                  badRename.length ? `renamedFrom points at a live name: ${badRename.map((label) => label.name).join(", ")}` : "",
+                ].filter(Boolean).join("; "),
+              );
+              return;
+            }
+
+            const getLabel = async (name) => {
+              try {
+                return (await github.rest.issues.getLabel({ owner, repo, name })).data;
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                return null;
+              }
+            };
+
+            for (const label of manifest) {
+              const existing = await getLabel(label.name);
+              if (!existing && label.renamedFrom) {
+                const previous = await getLabel(label.renamedFrom);
+                if (previous) {
+                  await github.rest.issues.updateLabel({
+                    owner, repo, name: label.renamedFrom, new_name: label.name,
+                    color: label.color, description: label.description,
+                  });
+                  continue;
+                }
+              }
+              if (!existing) {
+                await github.rest.issues.createLabel({ owner, repo, name: label.name, color: label.color, description: label.description });
+              } else if (existing.color.toLowerCase() !== label.color.toLowerCase() || (existing.description ?? "") !== label.description) {
+                await github.rest.issues.updateLabel({ owner, repo, name: label.name, color: label.color, description: label.description });
+              }
+            }

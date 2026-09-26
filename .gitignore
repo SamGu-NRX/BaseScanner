@@ -20,3 +20,8 @@ xcuserdata/
 
 # Recognition prompts are loaded at runtime from private/, never committed
 server/prompts/
+
+# Experiment outputs, local-only notes and secrets
+data/
+.local/
+.env.*

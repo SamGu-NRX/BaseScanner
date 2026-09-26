@@ -1,0 +1,3 @@
+[submodule "sites/landing"]
+	path = sites/landing
+	url = https://github.com/SamGu-NRX/house-scanning-landing.git

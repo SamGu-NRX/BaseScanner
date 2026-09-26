@@ -1,0 +1,57 @@
+[
+  {
+    "name": "bug",
+    "color": "d73a4a",
+    "description": "Something is broken or behaving incorrectly."
+  },
+  {
+    "name": "enhancement",
+    "color": "a2eeef",
+    "description": "Requested improvement or new capability."
+  },
+  {
+    "name": "documentation",
+    "color": "0075ca",
+    "description": "Improvements or additions to documentation."
+  },
+  {
+    "name": "needs-info",
+    "color": "c5def5",
+    "description": "Waiting on the author for details needed to review."
+  },
+  {
+    "name": "DO NOT MERGE",
+    "color": "b60205",
+    "description": "Not ready to merge. State what must change before it is ready."
+  },
+  {
+    "name": "size:XS",
+    "color": "0e8a16",
+    "description": "0-9 effective changed lines."
+  },
+  {
+    "name": "size:S",
+    "color": "5ebd3e",
+    "description": "10-29 effective changed lines."
+  },
+  {
+    "name": "size:M",
+    "color": "fbca04",
+    "description": "30-99 effective changed lines."
+  },
+  {
+    "name": "size:L",
+    "color": "fe7d37",
+    "description": "100-499 effective changed lines."
+  },
+  {
+    "name": "size:XL",
+    "color": "d93f0b",
+    "description": "500-999 effective changed lines."
+  },
+  {
+    "name": "size:XXL",
+    "color": "b60205",
+    "description": "1,000+ effective changed lines."
+  }
+]
