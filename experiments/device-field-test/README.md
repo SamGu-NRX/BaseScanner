@@ -34,8 +34,9 @@ Run on 2026-09-26 with TestFlight build 1.1 (workflow run
 [`28cd898`](https://github.com/SamGu-NRX/house-scanning-master/commit/28cd8988187979800f74bde78ee1b1fc246d0ec3),
 capture code `t3/ios-mvf` at
 [`657ab28`](https://github.com/SamGu-NRX/house-scanning-master/tree/657ab283092f1a34cc2dff87d48a0871d284f9c4/ios)).
-The screen recording has not been reviewed yet, so the order of taps below is inferred from the scan
-and the code.
+The 1 min 54 s screen recording was reviewed frame by frame, and its narration was transcribed on the
+tester's laptop. It shows the same run as the scan: the share sheet reports `scan.zip` at 27.3 MB, and the
+result text is the same.
 
 **The first criterion fails.**
 - **What the phone captured.** It kept 44 photos and a meter close-up. It walked about 19 ft right of the
@@ -45,6 +46,27 @@ and the code.
   ground were observed.
 - **What the server answered.** `manual_review` with no spot, asking the homeowner to "keep walking past
   the left end of the scan (0 ft 4 in left of the meter)", and the same for the right.
+
+### What the recording shows
+
+"Can't get there" was tapped twice, and each tap set one end at the meter:
+
+- **00:22, left.** The card said "Walk slowly to your left". The tester stood about a metre from the meter
+  and hadn't walked or tilted down. The strip showed the wall row amber (seen once) either side of the
+  meter and the ground row grey. The walk switched to "Walk slowly to your right".
+- **00:28–00:44, tilt prompts.** "Tilt down to show the ground" asked for the strip 3 ft 3 in, 2 ft 9 in,
+  4 ft 6 in, 7 ft and 8 ft 9 in right of the meter. None of them asked for the ground in front of the meter.
+- **00:53, right.** The tester stood at the right corner, about 16 ft from the meter. Just before the tap,
+  the strip's wall row was green (covered) for the first stretch from the meter and amber after it. The
+  ground row was amber all the way from the meter, never green. Right after the tap the card said "That's
+  the whole wall", and the strip went blank for the rest of the run.
+
+After that, the tester marked the AC stand-in (listed at "About 16 ft right"), the window ("About 7 ft
+right", answered "It stays shut") and the gas meter ("Around your meter"). The upload took 2.9 s. The result
+was "An installer will take a look", with the two "Keep walking past the … end of the scan (0 ft 4 in …)"
+requests and no checks. The AR view is offered only with a spot, so it wasn't reached.
+
+The 20 ft "Is this the … end of the wall?" prompt never appeared.
 
 ### How the walk was lost
 
@@ -85,9 +107,10 @@ k00043     5.54       1.0 ft        5.5 ft
 ```
 
 At the meter, the wall rows were seen from the start. The ground 2 ft and 4 ft out was seen only by photos
-41–43, taken on the way back. So during nearly the whole walk, any "Can't get there" would have put that
-side's end at the meter. The runbook told the tester to use it at the left corner, only 17 in from the
-meter, and at the right corner if the end prompt never came.
+41–43, taken after both ends were set, while the window and gas meter were being marked. So during the
+walk, any "Can't get there" put that side's end at the meter. That matches the recording: the ground row by
+the meter was amber at the right-hand tap. The runbook told the tester to use it at the left corner, only
+17 in from the meter, and at the right corner if the end prompt never came.
 
 The replay also shows why the end prompt couldn't come:
 - the ground 4 ft out was never seen twice past 5.5 ft right of the meter;
@@ -113,7 +136,32 @@ nominal 1 ft width.
 
 ### Device-only claims
 
-Not yet scored. They need the screen recording.
+The tester read screen text aloud but didn't say test IDs or haptics, so haptic claims remain unverified.
+These were visible:
+
+| ID | Result | Evidence |
+|---|---|---|
+| O-1 | Not reached | The camera opened with no iOS prompt; permission was granted in an earlier run |
+| F-2 | Pass | "Step a little closer to the wall" after an early tap |
+| C-1 | Pass | The ring filled in under a second; the meter-number question followed |
+| W-1 | Pass | Left, right, "Tilt down…" and "Take a step back" all appeared; the fog cleared after about 3 s |
+| W-2 | Pass | The photo counter flashes |
+| W-5 | Fail, B-16 | "Tap the ac unit" |
+| W-7 | Not reached | The end prompt never appeared; see above |
+| W-12 | Fail | Reproduced without a double tap: two ordinary taps on "Can't get there" gave "That's the whole wall" |
+| U-1 | Measured | 2.9 s from "Looks complete" to the result |
+| U-2 | Fail, known | About 2.2 s on "Sending measurements, 99%"; "Check clearances" never became active |
+| R-1 to R-5 | Not reached | No spot, so no checks and no AR view |
+
+Not tried: W-4 (a refused mark), and runs 2 and 3.
+
+Other things the recording showed:
+- **Marks outside the ends still count.** The AC stand-in, 16 ft past the right end, is still listed and
+  exported.
+- **"Slow down" while standing still.** It appeared twice while the tester stood still to mark features.
+- **No way to mark a battery.** The site's installed battery couldn't be marked, because the mark sheet
+  has no battery kind.
+- **A tilt-prompt distance went backwards**, from 3 ft 3 in to 2 ft 9 in.
 
 ## What this changes
 
@@ -125,9 +173,10 @@ Not yet scored. They need the screen recording.
   - at least warn when an end lands within a foot of the meter.
 
   Separately, the walk shouldn't keep photos and marks it will drop without saying so.
-- **For guidance:** on this wall the ground 2–4 ft out in front of the meter was only captured on the way
-  back. Asking for that ground at the meter before "Walk slowly to your left" would unblock `reach` early.
+- **For guidance:** the tilt prompts asked for the ground from 2 ft 9 in right of the meter outward, never in
+  front of the meter. That's the stretch `reach` needs first. Asking for it before "Walk slowly to your left"
+  would unblock `reach` early. The strip could also show that an end will land at the meter before the tap.
 - **For the next runs:** the runbook now says to fill the strip next to the meter before any "Can't get
-  there". Runs 2 and 3 are still to do.
+  there". Testers should say test IDs and haptics aloud. Runs 2 and 3 are still to do.
 
 Raw material stays out of git: the recording, the scan and the tape readings.
