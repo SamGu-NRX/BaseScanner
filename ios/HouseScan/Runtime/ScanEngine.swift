@@ -57,6 +57,10 @@ final class ScanEngine {
     /// than the chest-height guess. The export widens position errors while it is a guess.
     private(set) var groundMeasured = false
     private var endKinds: [WallSide: EndKind] = [:]
+    /// The side whose end turns a corner the walk is to follow, while it waits for the next wall
+    /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
+    var nextWallSide: WallSide?
+    var nextWallRefusal: NextWallRefusal?
 
     // Gap loop
     private var gapPlan: GapPlan?
@@ -277,7 +281,7 @@ final class ScanEngine {
 
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
     /// points stay put.
-    private func reprojectFeatures() {
+    func reprojectFeatures() {
         guard let wall = coverage?.wall, !state.features.isEmpty else { return }
         var features = state.features
         for index in features.indices { Self.project(&features[index], onto: wall) }
@@ -496,6 +500,13 @@ final class ScanEngine {
     private func updateGuidance(camera: CameraFrame, time _: Double) {
         // A question is on screen: the next step waits for its answer.
         guard let map = coverage, state.endQuestion == nil, !state.overheadQuestion else { return }
+        if let side = nextWallSide {
+            state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
+            state.target = nil
+            state.path = []
+            logGuidance()
+            return
+        }
         if let span = tiltUpSpanIfDue(map) {
             state.guidance = .tiltUp(span: span)
             state.target = map.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: Self.tiltUpHeight(map))
@@ -514,7 +525,8 @@ final class ScanEngine {
     /// A frame shown for review (not captured) keeps the current task but re-aims its target and
     /// path from the camera now on screen; otherwise the arrow points from where the walk last was.
     private func refreshCues(camera: CameraFrame) {
-        guard state.phase == .wallWalk, state.endQuestion == nil, !state.overheadQuestion, let map = coverage, let task = planner.current else { return }
+        guard state.phase == .wallWalk, state.endQuestion == nil, !state.overheadQuestion, nextWallSide == nil,
+              let map = coverage, let task = planner.current else { return }
         if case .tiltUp = state.guidance { return }
         let output = planner.cues(for: task, coverage: map, camera: camera)
         state.target = output.target
@@ -784,6 +796,8 @@ final class ScanEngine {
         pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
+        nextWallSide = nil
+        nextWallRefusal = nil
         resetTiltUp()
         store.discardKeyframes()
         keptSourceIDs = []
@@ -802,6 +816,8 @@ final class ScanEngine {
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
+        nextWallSide = nil
+        nextWallRefusal = nil
         resetTiltUp()
         publishWall()
         publishCoverage()
@@ -813,7 +829,11 @@ final class ScanEngine {
         let wall = map.wall
         state.wall = WallGeometry(
             meter: wall.meter, along: wall.along, outward: wall.outward, groundY: wall.groundY,
-            leftEnd: map.leftEnd, rightEnd: map.rightEnd
+            leftEnd: map.leftEnd, rightEnd: map.rightEnd,
+            cornerSegments: wall.segments.indices.filter { $0 != wall.meterSegmentIndex }.map { index in
+                let piece = wall.segments[index]
+                return WallGeometry.Segment(span: piece.span, along: piece.along, outward: piece.outward, anchor: piece.anchor, anchorS: piece.anchorS)
+            }
         )
     }
 
@@ -1049,6 +1069,8 @@ final class ScanEngine {
         pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
+        nextWallSide = nil
+        nextWallRefusal = nil
         resetTiltUp()
         placement = nil
         state.wall = nil
@@ -1132,6 +1154,7 @@ extension ScanEngine {
         case .stepBack: "stepBack"
         case .walkComplete: "walkComplete"
         case .tiltUp: "tiltUp"
+        case .markNextWall(let side, _): "markNextWall.\(side.rawValue)"
         case .gap: "gap"
         }
     }

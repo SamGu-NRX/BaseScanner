@@ -131,9 +131,13 @@ struct CameraProjection: Equatable, Sendable {
 
 /// The wall line the scan measures, anchored on the meter. The engine refreshes `meter` from the
 /// meter's ARAnchor every frame, so overlays drawn from it follow ARKit's corrections.
+///
+/// Where the walk followed a corner the wall goes on as another straight piece
+/// (`cornerSegments`), and s runs on continuously round the corner.
 struct WallGeometry: Equatable, Sendable {
     var meter: SIMD3<Float>
-    /// Unit, horizontal. +s runs to the right of the meter for someone facing the wall.
+    /// Unit, horizontal. +s runs to the right of the meter for someone facing the wall. This and
+    /// `outward` are the meter's piece of wall.
     var along: SIMD3<Float>
     /// Unit, horizontal, from the wall toward the homeowner.
     var outward: SIMD3<Float>
@@ -142,9 +146,55 @@ struct WallGeometry: Equatable, Sendable {
     /// Marked wall ends in meters of s, once the homeowner has marked them.
     var leftEnd: Float?
     var rightEnd: Float?
+    /// The pieces of wall past each corner the walk followed; empty for a straight wall.
+    var cornerSegments: [Segment] = []
+
+    /// A straight piece of wall past a corner.
+    struct Segment: Equatable, Sendable {
+        /// The stretch of s it covers: infinite toward the open end, the corner's s toward the meter.
+        var span: ClosedRange<Float>
+        var along: SIMD3<Float>
+        var outward: SIMD3<Float>
+        /// Where its line has s = `anchorS` on the ground, as an offset from the meter's foot.
+        var anchor: SIMD3<Float>
+        var anchorS: Float
+    }
 
     func world(s: Float, height: Float, out: Float = 0) -> SIMD3<Float> {
-        SIMD3(meter.x, groundY, meter.z) + along * s + outward * out + SIMD3(0, height, 0)
+        let foot = SIMD3(meter.x, groundY, meter.z)
+        guard let piece = cornerSegments.first(where: { $0.span.contains(s) }) else {
+            return foot + along * s + outward * out + SIMD3(0, height, 0)
+        }
+        return foot + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out + SIMD3(0, height, 0)
+    }
+
+    /// The outward direction of the piece of wall at `s`.
+    func outward(atS s: Float) -> SIMD3<Float> {
+        cornerSegments.first { $0.span.contains(s) }?.outward ?? outward
+    }
+
+    /// The along direction of the piece of wall at `s`.
+    func along(atS s: Float) -> SIMD3<Float> {
+        cornerSegments.first { $0.span.contains(s) }?.along ?? along
+    }
+
+    /// The s of the wall point nearest a world point in plan.
+    func s(nearest world: SIMD3<Float>) -> Float {
+        let d = world - SIMD3(meter.x, groundY, meter.z)
+        func planDistance(_ offset: SIMD3<Float>) -> Float { simd_length(SIMD2(d.x - offset.x, d.z - offset.z)) }
+        let meterLow = cornerSegments.map(\.span.upperBound).filter { $0 <= 0 }.max() ?? -.infinity
+        let meterSpan = meterLow...(cornerSegments.map(\.span.lowerBound).filter { $0 >= 0 }.min() ?? .infinity)
+        var best = min(max(simd_dot(d, along), meterSpan.lowerBound), meterSpan.upperBound)
+        var bestDistance = planDistance(along * best)
+        for piece in cornerSegments {
+            let s = min(max(piece.anchorS + simd_dot(d - piece.anchor, piece.along), piece.span.lowerBound), piece.span.upperBound)
+            let distance = planDistance(piece.anchor + piece.along * (s - piece.anchorS))
+            if distance < bestDistance {
+                best = s
+                bestDistance = distance
+            }
+        }
+        return best
     }
 
     /// Height of the meter above the ground.
@@ -238,6 +288,9 @@ enum GuidanceStep: Equatable, Sendable {
     /// Point the phone up at the wall above this stretch (meters of s), to show what is overhead
     /// where the battery would stand.
     case tiltUp(span: ClosedRange<Float>)
+    /// The wall turns a corner on `side`: walk round it, aim at the next wall and mark it
+    /// (`ScanActions.markNextWall`). `refusal` is set when the last mark was refused.
+    case markNextWall(side: WallSide, refusal: NextWallRefusal?)
     /// Show a specific gap (see `ScanViewState.gap`).
     case gap
 }
@@ -353,6 +406,17 @@ struct MarkingState: Equatable, Sendable {
     var step: Int
     /// Set when the last tap was refused, for example no surface under it.
     var refusal: MarkRefusal?
+}
+
+/// Why a mark of the next wall round a corner was refused.
+enum NextWallRefusal: Equatable, Sendable {
+    /// No wall under the circle.
+    case noSurface
+    case trackingNotReady
+    /// The marked wall runs nearly the same way as this one: probably the same wall.
+    case sameWall
+    /// The marked wall doesn't meet this one anywhere near where it was marked as ending.
+    case notAtCorner
 }
 
 enum MarkRefusal: Equatable, Sendable {
@@ -565,9 +629,14 @@ protocol ScanActions: AnyObject {
     /// asks for a retake.
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
-    /// The answer to `ScanViewState.endQuestion`. A corner exports as an unexplored end, a
-    /// blocked wall as a limit; an end left unanswered stays unexplored.
+    /// The answer to `ScanViewState.endQuestion`. During the walk a corner asks for the next wall
+    /// (`GuidanceStep.markNextWall`); a corner the walk doesn't follow exports as an unexplored
+    /// end, a blocked wall as a limit, and an end left unanswered stays unexplored.
     func answerWallEnd(turnsCorner: Bool)
+    /// Marks the wall under `point` as the next wall round the corner, during
+    /// `GuidanceStep.markNextWall`. The walk then goes on along it; "I can't get there"
+    /// (`cannotAccessArea`) leaves the end as an unexplored corner instead.
+    func markNextWall(at point: CGPoint?, viewSize: CGSize)
     /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
     func answerOverhead(clear: Bool)
     func beginMarking(_ kind: FeatureKind)

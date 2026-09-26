@@ -102,10 +102,53 @@ extension ScanEngine: ScanActions {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
         if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
+        // During the walk a corner is followed: the next wall is marked, and the walk goes on
+        // along it. Until then the end stays marked, as an unexplored corner.
+        if turnsCorner, state.phase == .wallWalk, wallEndKinds[side] != nil {
+            nextWallSide = side
+            nextWallRefusal = nil
+        }
         if state.phase == .gapRequest, side == pastEndSide { settlePastEnd() }
         if state.phase == .wallWalk, let frame = currentFrame {
             resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
         }
+    }
+
+    /// The wall round the corner: a raycast on a vertical plane under `point`, the same one the
+    /// meter tap uses. Where its line meets the current wall's line on the ground is the corner;
+    /// the wall chain turns there, the end on that side opens again and the walk goes on.
+    func markNextWall(at point: CGPoint?, viewSize: CGSize) {
+        guard state.phase == .wallWalk, let side = nextWallSide, coverage != nil, let frame = currentFrame else { return }
+        func refuse(_ refusal: NextWallRefusal, _ reason: String) {
+            nextWallRefusal = refusal
+            state.guidance = .markNextWall(side: side, refusal: refusal)
+            RuntimeLog.engine.info("next wall refused: \(reason, privacy: .public)")
+        }
+        guard frame.tracking == .normal else { return refuse(.trackingNotReady, "tracking not normal") }
+        // A replay has no live surfaces to raycast, so it can't mark the next wall.
+        let viewPoint = point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
+        guard let hit = liveCapture?.raycastVerticalPlane(from: viewPoint) else { return refuse(.noSurface, "no vertical plane") }
+        var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
+        if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
+        var turned: Result<WallCorner, CornerRefusal> = .failure(.notAWall)
+        updateCoverage { map in
+            turned = Result { () throws(CornerRefusal) in try map.turnCorner(side == .left ? .left : .right, meeting: hit.position, outward: outward) }
+        }
+        let corner: WallCorner
+        switch turned {
+        case .success(let turn): corner = turn
+        case .failure(.nearlyParallel): return refuse(.sameWall, "nearly parallel to the current wall")
+        case .failure(.notAWall): return refuse(.noSurface, "not a wall")
+        case .failure(.implausible(let s)): return refuse(.notAtCorner, "the walls meet at s=\(s)")
+        }
+        // The end moves on with the walk; `clearEnd` also publishes the chain for the overlays.
+        clearEnd(side)
+        nextWallSide = nil
+        nextWallRefusal = nil
+        RuntimeLog.engine.info("corner followed on the \(side.rawValue, privacy: .public) at s=\(corner.s) (\(hit.source == .detectedPlane ? "detected" : "estimated", privacy: .public) plane)")
+        // Features tapped past the corner were placed on the old wall's line.
+        reprojectFeatures()
+        resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
     }
 
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
@@ -218,6 +261,8 @@ extension ScanEngine: ScanActions {
     func finishWalk() {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
         state.marking = nil
+        nextWallSide = nil
+        nextWallRefusal = nil
         // Leaving with the overhead question unanswered records nothing.
         if !tiltUpSettled { settleTiltUp(clear: false) }
         go(.markFeatures)
@@ -252,6 +297,10 @@ extension ScanEngine: ScanActions {
                 setEnd(side, at: s, kind: .unexplored)
             case .tiltUp:
                 settleTiltUp(clear: false)
+            case .markNextWall:
+                // Not following the corner: the end stays marked, as an unexplored corner.
+                nextWallSide = nil
+                nextWallRefusal = nil
             default:
                 return
             }

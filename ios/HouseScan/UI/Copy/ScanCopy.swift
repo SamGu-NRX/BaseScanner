@@ -46,6 +46,10 @@ enum ScanCopy {
                 title: "Tilt up to show above the area by your meter",
                 detail: "Aim at the wall \(Distance.stretchAroundMeter(span)) and whatever is above it."
             )
+        case .markNextWall(_, nil):
+            Instruction(title: "Walk round the corner, then aim at the next wall", detail: "Put the circle on it and tap Mark next wall.")
+        case .markNextWall(_, let refusal?):
+            nextWallRefusal(refusal)
         case .walkComplete:
             Instruction(title: "That's the whole wall", detail: "Tap Done when you're ready.")
         case .gap:
@@ -169,6 +173,16 @@ enum ScanCopy {
         case .wrongSide: "That spot is behind the wall. Tap something on this side."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
+        }
+    }
+
+    /// A refused mark of the next wall: what went wrong, then what to do.
+    static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {
+        switch refusal {
+        case .noSurface: Instruction(title: "No wall under the circle", detail: "Step closer and aim at the next wall.")
+        case .trackingNotReady: Instruction(title: "One moment, your phone is still finding its place", detail: "Then aim at the next wall.")
+        case .sameWall: Instruction(title: "That looks like the same wall", detail: "Aim at the wall round the corner.")
+        case .notAtCorner: Instruction(title: "That wall doesn't meet this one at the corner", detail: "Aim at the wall right round the corner.")
         }
     }
 

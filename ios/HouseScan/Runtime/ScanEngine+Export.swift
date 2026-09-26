@@ -13,7 +13,7 @@ extension ScanEngine {
         guard let map = coverage else { throw ExportError.noWall }
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
-        let sceneWall = SceneWall(meter: wall.meter - drop, outward: wall.outward, groundY: 0)
+        let sceneWall = SceneWall(meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
 
         let seen = map.seenExtent
         let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
@@ -108,7 +108,9 @@ extension ScanEngine {
     /// The server's result in the terms the screens use (meters, wall coordinates).
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
-        let sceneWall = coverage.map { SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY) }
+        let sceneWall = coverage.map {
+            SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY, leftCorners: $0.wall.leftCorners, rightCorners: $0.wall.rightCorners)
+        }
 
         var spot: BatterySpot?
         if let placed = result.spot {

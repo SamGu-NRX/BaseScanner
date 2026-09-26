@@ -124,17 +124,20 @@ struct BatteryOverlay: View, Animatable {
             var isFront: Bool
         }
         let up = SIMD3<Float>(0, 1, 0)
+        // The piece of wall the box stands against, which is round a corner when the walk followed one.
+        let middle = (s0 + s1) / 2
+        let outward = wall.outward(atS: middle), along = wall.along(atS: middle)
         let faces = [
             Face(corners: [corner(s0, 0, o1), corner(s1, 0, o1), corner(s1, height, o1), corner(s0, height, o1)],
-                 normal: wall.outward, shade: 1.0, isFront: true),
+                 normal: outward, shade: 1.0, isFront: true),
             Face(corners: [corner(s0, height, o0), corner(s1, height, o0), corner(s1, height, o1), corner(s0, height, o1)],
                  normal: up, shade: 0.93, isFront: false),
             Face(corners: [corner(s0, 0, o0), corner(s0, 0, o1), corner(s0, height, o1), corner(s0, height, o0)],
-                 normal: -wall.along, shade: 0.8, isFront: false),
+                 normal: -along, shade: 0.8, isFront: false),
             Face(corners: [corner(s1, 0, o0), corner(s1, 0, o1), corner(s1, height, o1), corner(s1, height, o0)],
-                 normal: wall.along, shade: 0.8, isFront: false),
+                 normal: along, shade: 0.8, isFront: false),
             Face(corners: [corner(s0, 0, o0), corner(s1, 0, o0), corner(s1, height, o0), corner(s0, height, o0)],
-                 normal: -wall.outward, shade: 0.7, isFront: false),
+                 normal: -outward, shade: 0.7, isFront: false),
         ]
         // The box is convex, so drawing only the faces that point at the camera needs no depth
         // sorting (sorting by face centers can paint a hidden face over a visible one).

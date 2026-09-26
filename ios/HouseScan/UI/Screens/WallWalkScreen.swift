@@ -25,7 +25,8 @@ struct WallWalkScreen: View {
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
             }
-            if state.marking != nil {
+            // The mark (a feature, or the next wall round a corner) lands under the circle.
+            if state.marking != nil || isMarkingNextWall {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -86,13 +87,14 @@ struct WallWalkScreen: View {
         if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching = state.coaching {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
+        if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
         return .normal
     }
 
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
-        case marking, endQuestion, overheadQuestion, tray, markEnd, finish, walking
+        case marking, endQuestion, overheadQuestion, tray, nextWall, markEnd, finish, walking
     }
 
     private var controlsKey: ControlsKey {
@@ -100,6 +102,7 @@ struct WallWalkScreen: View {
         if state.endQuestion != nil { return .endQuestion }
         if state.overheadQuestion { return .overheadQuestion }
         if trayOpen { return .tray }
+        if isMarkingNextWall { return .nextWall }
         if case .markEnd = state.guidance { return .markEnd }
         if bothEndsMarked { return .finish }
         return .walking
@@ -108,9 +111,14 @@ struct WallWalkScreen: View {
     /// True while the guidance points at a particular stretch the homeowner might not reach.
     private var asksForArea: Bool {
         switch state.guidance {
-        case .walk, .aimAtGround, .aimAtWall, .tiltUp: true
+        case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall: true
         default: false
         }
+    }
+
+    private var isMarkingNextWall: Bool {
+        if case .markNextWall = state.guidance { return true }
+        return false
     }
 
     private var bothEndsMarked: Bool {
@@ -167,13 +175,23 @@ struct WallWalkScreen: View {
                 onClose: { trayOpen = false }
             )
             .transition(.opacity.combined(with: .move(edge: .bottom)))
-        case .markEnd, .finish, .walking:
+        case .nextWall, .markEnd, .finish, .walking:
             // One row for all three, so "Mark something" stays the same view while the button
             // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the
             // accessibility audit reported as not following Dynamic Type.
             HStack(spacing: 10) {
                 markSomethingButton
                 switch controlsKey {
+                case .nextWall:
+                    Button {
+                        actions.markNextWall(at: nil, viewSize: cameraSize)
+                    } label: {
+                        Label("Mark next wall", systemImage: nextWallSymbol)
+                    }
+                    .buttonStyle(.primary)
+                    .accessibilityHint("Marks the wall under the circle in the middle of the screen as the wall round the corner")
+                    .accessibilityIdentifier("action.markNextWall")
+                    .transition(.opacity)
                 case .markEnd:
                     Button {
                         actions.markWallEnd(at: nil, viewSize: cameraSize)
@@ -209,6 +227,11 @@ struct WallWalkScreen: View {
             hint: "Skips this part of the wall. An installer will look at it instead.",
             perform: { actions.cannotAccessArea() }
         )
+    }
+
+    private var nextWallSymbol: String {
+        if case .markNextWall(.left, _) = state.guidance { return "arrow.turn.up.left" }
+        return "arrow.turn.up.right"
     }
 
     private var markSomethingButton: some View {

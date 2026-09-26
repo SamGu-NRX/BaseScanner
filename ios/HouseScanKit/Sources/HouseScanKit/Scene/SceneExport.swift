@@ -10,39 +10,62 @@ public enum SceneUnits {
     public static let feetPerMeter: Double = 1 / 0.3048
 }
 
-/// One wall face described around the electric meter.
+/// The wall chain described around the electric meter: the meter's wall, plus one more straight
+/// piece for each corner the walk followed (`WallFrame.segments`).
 ///
-/// `s` runs along the wall (positive to the right for someone outside facing the wall), `out` runs
-/// horizontally away from the wall toward that person, and `height` is measured up from `groundY`.
-/// world(s, height, out) = (meter.x, groundY, meter.z) + along * s + outward * out + (0, height, 0).
+/// `s` runs along the chain (positive to the right for someone outside facing the wall), `out`
+/// runs horizontally away from the piece at `s` toward that person, and `height` is measured up
+/// from `groundY`. On the meter's piece world(s, height, out) = (meter.x, groundY, meter.z) +
+/// along * s + outward * out + (0, height, 0).
 public struct SceneWall: Sendable, Equatable {
     /// A point on the wall face at the meter, world meters.
     public var meter: SIMD3<Float>
-    /// Unit horizontal vector from the wall toward the homeowner.
+    /// Unit horizontal vector from the meter's wall toward the homeowner.
     public var outward: SIMD3<Float>
     /// World y of the ground in front of the wall, meters.
     public var groundY: Float
+    /// Corners the walk followed, nearest the meter first (`WallFrame.leftCorners`).
+    public var leftCorners: [WallCorner]
+    public var rightCorners: [WallCorner]
 
-    public init(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float) {
+    public init(
+        meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float,
+        leftCorners: [WallCorner] = [], rightCorners: [WallCorner] = []
+    ) {
         self.meter = meter
         self.outward = outward
         self.groundY = groundY
+        self.leftCorners = leftCorners
+        self.rightCorners = rightCorners
     }
 
-    /// Unit vector toward +s: cross(-outward, up). For outward (0, 0, 1) this is (1, 0, 0), which is
-    /// the scene schema's rule that outward is the baseline direction turned 90 degrees clockwise
-    /// viewed from +y.
+    /// Unit vector toward +s on the meter's wall: cross(-outward, up). For outward (0, 0, 1) this
+    /// is (1, 0, 0), which is the scene schema's rule that outward is the baseline direction
+    /// turned 90 degrees clockwise viewed from +y.
     public var along: SIMD3<Float> {
         simd_normalize(simd_cross(-outward, SIMD3<Float>(0, 1, 0)))
     }
 
-    public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
-        SIMD3<Float>(meter.x, groundY, meter.z) + along * s + outward * out + SIMD3<Float>(0, height, 0)
+    /// The straight pieces, left to right, and the index of the meter's.
+    public var chain: (segments: [WallSegment], meter: Int) {
+        WallSegment.chain(outward: outward, left: leftCorners, right: rightCorners)
     }
 
+    public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
+        let segments = chain.segments
+        let piece = segments[WallSegment.index(in: segments, atS: s)]
+        return SIMD3<Float>(meter.x, groundY, meter.z) + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out
+            + SIMD3<Float>(0, height, 0)
+    }
+
+    /// Coordinates on the piece nearest the point in plan, s clamped to that piece (as
+    /// `WallFrame.wallPoint`).
     public func wallCoordinates(of point: SIMD3<Float>) -> (s: Float, height: Float, out: Float) {
         let d = point - meter
-        return (simd_dot(d, along), point.y - groundY, simd_dot(d, outward))
+        let segments = chain.segments
+        let piece = segments[WallSegment.nearest(in: segments, toOffset: d)]
+        let local = piece.coordinates(ofOffset: d)
+        return (min(max(local.s, piece.span.lowerBound), piece.span.upperBound), point.y - groundY, local.out)
     }
 
     /// Projects a scene plan point [x, z] in feet (for example a `route.polyline` vertex from the
@@ -156,8 +179,10 @@ public enum MeterPlaneSource: Sendable, Equatable {
 
 public struct SceneInput: Sendable {
     public var wall: SceneWall
+    /// Id of the meter's wall. A chain's other walls are named after it, with their side and
+    /// count from the meter: "<wallID>-left-1" is the first wall round the left corner.
     public var wallID: String
-    /// s meters of the baseline's left and right ends. Must contain 0, the meter.
+    /// s meters of the chain's left and right ends. Must contain 0, the meter.
     public var baselineS: ClosedRange<Float>
     public var wallHeight: Float?
     /// Meter position error, meters. Nil leaves the server's default for AR taps.
@@ -205,6 +230,8 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     case degenerateSegment(feature: String)
     case invalidKeyframe(id: String, reason: String)
     case nonFiniteNumber(String)
+    /// Left corners must run from the meter leftward (s falling below 0), right corners rightward.
+    case cornersOutOfOrder([Float])
 
     public var description: String {
         switch self {
@@ -219,6 +246,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .degenerateSegment(let f): "\(f) points coincide in plan"
         case .invalidKeyframe(let id, let r): "keyframe \(id): \(r)"
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
+        case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
         }
     }
 }
@@ -278,9 +306,17 @@ public enum SceneExport {
     private static func makeDocument(_ input: SceneInput) throws -> SceneDocument {
         let wall = input.wall
         guard !input.wallID.isEmpty else { throw SceneExportError.emptyWallID }
-        guard abs(wall.outward.y) < unitTolerance, abs(simd_length(wall.outward) - 1) < unitTolerance else {
-            throw SceneExportError.outwardNotUnitHorizontal(wall.outward)
+        for outward in [wall.outward] + (wall.leftCorners + wall.rightCorners).map(\.outward) {
+            guard abs(outward.y) < unitTolerance, abs(simd_length(outward) - 1) < unitTolerance else {
+                throw SceneExportError.outwardNotUnitHorizontal(outward)
+            }
         }
+        let rightCornerS = [0] + wall.rightCorners.map(\.s)
+        let leftCornerS = [0] + wall.leftCorners.map(\.s)
+        guard zip(rightCornerS, rightCornerS.dropFirst()).allSatisfy({ $0 < $1 }), zip(leftCornerS, leftCornerS.dropFirst()).allSatisfy({ $0 > $1 }) else {
+            throw SceneExportError.cornersOutOfOrder(wall.leftCorners.map(\.s).reversed() + wall.rightCorners.map(\.s))
+        }
+        let chain = wall.chain
         guard input.baselineS.lowerBound < input.baselineS.upperBound else {
             throw SceneExportError.degenerateBaseline(lower: input.baselineS.lowerBound, upper: input.baselineS.upperBound)
         }
@@ -297,6 +333,12 @@ public enum SceneExport {
         }
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
+        // One scene wall per piece of the chain: the meter's keeps `wallID`.
+        let wallIDs = chain.segments.indices.map { index in
+            index == chain.meter ? input.wallID
+                : "\(input.wallID)-\(index < chain.meter ? "left" : "right")-\(abs(index - chain.meter))"
+        }
+        let wallIDAt = { (s: Float) in wallIDs[WallSegment.index(in: chain.segments, atS: s)] }
 
         var objects: [SceneDocument.Object] = []
         var ground: [SceneDocument.Ground] = []
@@ -308,7 +350,7 @@ public enum SceneExport {
                 try requireNonNegative(bottom, "\(name).bottom")
                 guard top >= bottom else { throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top) }
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(span),
+                    type: kind.rawValue, wall_id: wallIDAt((span.lowerBound + span.upperBound) / 2), span_ft: spanFeet(span),
                     bottom_ft: feet(bottom), top_ft: feet(top),
                     attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil,
                     plus_minus_ft: objectError))
@@ -322,7 +364,7 @@ public enum SceneExport {
                 let left = s - pointObjectHalfWidth
                 let right = s + pointObjectHalfWidth
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(left...right),
+                    type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(left...right),
                     bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
                     footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)],
                     plus_minus_ft: objectError))
@@ -337,7 +379,7 @@ public enum SceneExport {
                 let depth = min(a.out, b.out)
                 try requireNonNegative(depth, "\(name) fence depth")
                 facing.append(.init(
-                    wall_id: input.wallID, span_ft: spanFeet(min(a.s, b.s)...max(a.s, b.s)), depth_ft: feet(depth)))
+                    wall_id: wallIDAt((a.s + b.s) / 2), span_ft: spanFeet(min(a.s, b.s)...max(a.s, b.s)), depth_ft: feet(depth)))
             case let .driveway(edge):
                 guard edge.count == 2 else {
                     throw SceneExportError.wrongPointCount(feature: "\(name) driveway", expected: 2, actual: edge.count)
@@ -365,10 +407,7 @@ public enum SceneExport {
         return SceneDocument(
             schema_version: "1.0",
             meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
-            walls: [.init(
-                id: input.wallID,
-                baseline: [plan(input.baselineS.lowerBound, 0), plan(input.baselineS.upperBound, 0)],
-                height_ft: input.wallHeight.map(feet))],
+            walls: walls(chain.segments, ids: wallIDs, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
             objects: objects, ground: ground, facing: facing,
             coverage: .init(
                 ends: .init(
@@ -377,6 +416,24 @@ public enum SceneExport {
                 observed: observed),
             keyframes: keyframes,
             stills: input.stills.isEmpty ? nil : input.stills)
+    }
+
+    /// The pieces of the chain within `baselineS`, left to right. Each wall starts at the point the
+    /// previous one ends (the same numbers, computed once), so the server reads the chain as
+    /// continuous and each corner as a corner.
+    private static func walls(
+        _ segments: [WallSegment], ids: [String], baselineS: ClosedRange<Float>, height: Float?,
+        plan: (Float, Float) -> [Double]
+    ) -> [SceneDocument.Wall] {
+        let pieces = segments.indices.compactMap { index -> (id: String, span: ClosedRange<Float>)? in
+            let low = max(segments[index].span.lowerBound, baselineS.lowerBound)
+            let high = min(segments[index].span.upperBound, baselineS.upperBound)
+            return low < high ? (ids[index], low...high) : nil
+        }
+        let points = ([pieces.first?.span.lowerBound] + pieces.map(\.span.upperBound)).compactMap { $0 }.map { plan($0, 0) }
+        return pieces.enumerated().map { index, piece in
+            SceneDocument.Wall(id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet))
+        }
     }
 
     /// A strip `drivewayStripFeet` wide on the far side of the tapped edge from the wall. The offset
@@ -393,7 +450,10 @@ public enum SceneExport {
         guard simd_length(d) > 1e-3 else { throw SceneExportError.degenerateSegment(feature: "\(name) driveway") }
         let unit = simd_normalize(d)
         var perp = SIMD2<Double>(-unit.y, unit.x)
-        let outwardPlan = SIMD2<Double>(Double(wall.outward.x), Double(wall.outward.z))
+        // The outward of the wall piece nearest the edge's middle.
+        let middle = wall.wallCoordinates(of: (p + q) / 2).s
+        let outward = wall.chain.segments[WallSegment.index(in: wall.chain.segments, atS: middle)].outward
+        let outwardPlan = SIMD2<Double>(Double(outward.x), Double(outward.z))
         if simd_dot(perp, outwardPlan) < 0 { perp = -perp }
         let offset = perp * drivewayStripFeet
         return [a, b, b + offset, a + offset].map { [round4($0.x), round4($0.y)] }
