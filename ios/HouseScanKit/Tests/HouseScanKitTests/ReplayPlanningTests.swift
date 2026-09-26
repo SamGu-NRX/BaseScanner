@@ -3,9 +3,10 @@ import simd
 import Testing
 
 @Suite struct ReplayPlanningTests {
-    /// Portrait camera 2.6 m in front of the wall z = 0 at height 1.4, pitched down 20 degrees.
+    /// Portrait camera 2.6 m in front of the wall z = 0 at height 1.4, pitched down 16 degrees: the
+    /// pitch at which one view holds every sample row of both bands (see CoverageMapTests).
     static func planned(x: Float, t: Double) -> PlannedFrame {
-        let camera = portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forwardFacingWall(pitchedDown: 20))
+        let camera = portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forwardFacingWall(pitchedDown: 16))
         return PlannedFrame(camera: camera, timestamp: t, trackingNormal: true)
     }
 

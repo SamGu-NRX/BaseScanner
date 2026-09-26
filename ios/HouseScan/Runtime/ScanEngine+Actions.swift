@@ -17,7 +17,7 @@ extension ScanEngine: ScanActions {
             // A replay has no live surfaces to raycast; its wall comes from the recording (or is
             // assumed from the trajectory, see ReplayPlayer.wallDescription).
             let wall = replay.wall
-            guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY) else { return }
+            guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, groundMeasured: replay.groundMeasured) else { return }
             go(.meterCloseUp)
             return
         }
@@ -36,8 +36,10 @@ extension ScanEngine: ScanActions {
         }
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
-        let groundY = groundBelow(hit.position, camera: frame.camera)
-        guard setWall(meter: hit.position, outward: outward, groundY: groundY) else {
+        // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at
+        // chest height, 1.4 m above it. `refineGround` replaces the guess as planes arrive.
+        let measured = groundBelow(hit.position)
+        guard setWall(meter: hit.position, outward: outward, groundY: measured ?? frame.camera.position.y - 1.4, groundMeasured: measured != nil) else {
             state.guidance = .aimAtWallForMeter
             return
         }
@@ -47,13 +49,13 @@ extension ScanEngine: ScanActions {
 
     /// The ground at the meter: the highest detected horizontal plane at least 0.3 m below it whose
     /// extent comes within 2 m of it (so a porch or a neighbour's lawn elsewhere doesn't count), or
-    /// the camera height minus 1.4 m (a phone held at chest height) until one appears.
-    private func groundBelow(_ meter: SIMD3<Float>, camera: CameraFrame) -> Float {
+    /// nil when no such plane has been detected.
+    func groundBelow(_ meter: SIMD3<Float>) -> Float? {
         let near = detectedGroundPlanes.filter { plane in
             let horizontal = simd_distance(SIMD2(plane.x, plane.z), SIMD2(meter.x, meter.z))
             return plane.y < meter.y - 0.3 && horizontal - plane.w <= 2
         }
-        return near.map(\.y).max() ?? camera.position.y - 1.4
+        return near.map(\.y).max()
     }
 
     func skipCloseUp() {
@@ -63,10 +65,14 @@ extension ScanEngine: ScanActions {
         go(.wallWalk)
     }
 
+    /// Marks a wall end during the walk, or, during a server past_end request, marks that
+    /// request's end again at wherever the wall is now seen to stop.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
-        guard state.phase == .wallWalk, let wall = coverage?.wall, let frame = currentFrame else { return }
+        guard state.phase == .wallWalk || (state.phase == .gapRequest && pastEndSide != nil),
+              let wall = coverage?.wall, let frame = currentFrame else { return }
         guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else { return }
         let side: WallSide = hit.s < 0 ? .left : .right
+        if state.phase == .gapRequest, side != pastEndSide { return }
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
@@ -77,6 +83,7 @@ extension ScanEngine: ScanActions {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
         if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
+        if state.phase == .gapRequest, side == pastEndSide { settlePastEnd() }
         if state.phase == .wallWalk, let frame = currentFrame {
             resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
         }
@@ -128,20 +135,32 @@ extension ScanEngine: ScanActions {
     }
 
     private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
-        let points = taps.map { wall.world($0) }
+        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps.map { wall.world($0) }, opens: nil)
+        Self.project(&marked, onto: wall)
+        return marked
+    }
+
+    /// Sets a feature's wall coordinates from its tapped world points. Run again whenever the
+    /// wall frame moves (meter anchor refined, ground measured), since only the world points
+    /// are what was tapped.
+    static func project(_ feature: inout MarkedFeature, onto wall: WallFrame) {
+        let taps = feature.points.map { wall.wallPoint($0) }
         let ss = taps.map(\.s)
         let span = (ss.min() ?? 0)...(ss.max() ?? 0)
-        switch kind {
+        switch feature.kind {
         case .door, .window:
             let heights = taps.map(\.height)
-            return MarkedFeature(id: UUID(), kind: kind, span: span, bottom: max(0, heights.min() ?? 0), top: heights.max(), out: nil, points: points, opens: nil)
+            feature.span = span
+            feature.bottom = max(0, heights.min() ?? 0)
+            feature.top = heights.max()
         case .gasMeter, .acUnit:
             // One tap marks the object's middle; 0.3 m is a nominal width, not a measurement.
             let s = ss.first ?? 0
-            return MarkedFeature(id: UUID(), kind: kind, span: (s - 0.15)...(s + 0.15), bottom: nil, top: nil, out: nil, points: points, opens: nil)
+            feature.span = (s - 0.15)...(s + 0.15)
         case .driveway, .fence:
-            let out = taps.map(\.out).reduce(0, +) / Float(max(1, taps.count))
-            return MarkedFeature(id: UUID(), kind: kind, span: span, bottom: nil, top: nil, out: out, points: points, opens: nil)
+            feature.span = span
+            // The nearer tap, as the export uses: the narrow end must not be overstated.
+            feature.out = taps.map(\.out).min() ?? 0
         }
     }
 
@@ -216,11 +235,15 @@ extension ScanEngine: ScanActions {
               missing.indices.contains(index) else { return }
         let item = missing[index]
         guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
+        var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
-            // The walk has to go past the end it stopped at; that end is no longer a limit.
+            // The walk has to go past the end it stopped at; that end is no longer a limit. It
+            // exports as unexplored unless the homeowner marks it again (markWallEnd).
+            pastEnd = side == .left ? .left : .right
             clearEnd(side == .left ? .left : .right)
         }
         beginGap(plan, origin: .server, reason: .server(detail: item.message))
+        pastEndSide = pastEnd
     }
 
     func showAR() {

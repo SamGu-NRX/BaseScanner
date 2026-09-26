@@ -129,6 +129,9 @@ public struct SceneInput: Sendable {
     public var wallHeight: Float?
     /// Meter position error, meters. Nil leaves the server's default for AR taps.
     public var meterPlusMinus: Float?
+    /// Position error of every object (openings, gas meter, AC), meters. Nil leaves the server's
+    /// default for the object's source.
+    public var objectPlusMinus: Float?
     public var features: [SceneFeature]
     public var coverage: SceneCoverage
     public var keyframes: [SceneKeyframe]
@@ -137,7 +140,7 @@ public struct SceneInput: Sendable {
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
-        meterPlusMinus: Float? = nil, features: [SceneFeature] = [], coverage: SceneCoverage,
+        meterPlusMinus: Float? = nil, objectPlusMinus: Float? = nil, features: [SceneFeature] = [], coverage: SceneCoverage,
         keyframes: [SceneKeyframe] = [], stills: [String: String] = [:]
     ) {
         self.wall = wall
@@ -145,6 +148,7 @@ public struct SceneInput: Sendable {
         self.baselineS = baselineS
         self.wallHeight = wallHeight
         self.meterPlusMinus = meterPlusMinus
+        self.objectPlusMinus = objectPlusMinus
         self.features = features
         self.coverage = coverage
         self.keyframes = keyframes
@@ -223,6 +227,8 @@ public enum SceneExport {
         }
         if let h = input.wallHeight, !(h > 0) { throw SceneExportError.nonPositiveWallHeight(h) }
         if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
+        if let pm = input.objectPlusMinus { try requireNonNegative(pm, "objectPlusMinus") }
+        let objectError = input.objectPlusMinus.map(feet)
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
 
@@ -238,7 +244,8 @@ public enum SceneExport {
                 objects.append(.init(
                     type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(span),
                     bottom_ft: feet(bottom), top_ft: feet(top),
-                    attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil))
+                    attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil,
+                    plus_minus_ft: objectError))
             case let .pointObject(kind, tap, bottom, top):
                 if let bottom { try requireNonNegative(bottom, "\(name).bottom") }
                 if let top { try requireNonNegative(top, "\(name).top") }
@@ -251,14 +258,17 @@ public enum SceneExport {
                 objects.append(.init(
                     type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(left...right),
                     bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
-                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)]))
+                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)],
+                    plus_minus_ft: objectError))
             case let .fence(foot):
                 guard foot.count == 2 else {
                     throw SceneExportError.wrongPointCount(feature: "\(name) fence", expected: 2, actual: foot.count)
                 }
                 let a = wall.wallCoordinates(of: foot[0])
                 let b = wall.wallCoordinates(of: foot[1])
-                let depth = (a.out + b.out) / 2
+                // The nearer tap: a fence that angles toward the wall must not read as farther out
+                // at its narrow end than it is. The mean overstated that end by half the difference.
+                let depth = min(a.out, b.out)
                 try requireNonNegative(depth, "\(name) fence depth")
                 facing.append(.init(
                     wall_id: input.wallID, span_ft: spanFeet(min(a.s, b.s)...max(a.s, b.s)), depth_ft: feet(depth)))
@@ -382,6 +392,7 @@ private struct SceneDocument: Encodable {
         var attrs: Attrs?
         var source: String
         var footprint: [[Double]]?
+        var plus_minus_ft: Double?
     }
     struct Ground: Encodable {
         var type: String

@@ -20,6 +20,8 @@ final class KeyframeStore {
     /// Purpose (scene.json `stills` key) to file name.
     private(set) var stills: [String: String] = [:]
     private var nextIndex = 1
+    /// Bumped by `discardKeyframes`, so a write that started before it doesn't land in the list.
+    private var epoch = 0
 
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -37,6 +39,7 @@ final class KeyframeStore {
     func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame) async -> (stored: Bool, thumbnail: CGImage?) {
         let id = String(format: "k%05d", index)
         let url = directory.appending(path: "\(id).jpg")
+        let startedIn = epoch
         let thumbnail = await Task.detached(priority: .utility) { () -> CGImage? in
             guard let data = Self.data(of: payload) else { return nil }
             do {
@@ -50,6 +53,8 @@ final class KeyframeStore {
             RuntimeLog.engine.error("keyframe \(id, privacy: .public) was not written")
             return (false, nil)
         }
+        // Taken in a world frame that was discarded while the file was being written.
+        guard startedIn == epoch else { return (false, nil) }
         keyframes.append(StoredKeyframe(id: id, camera: camera))
         keyframes.sort { $0.id < $1.id }
         return (true, thumbnail)
@@ -77,6 +82,7 @@ final class KeyframeStore {
     /// Forgets keyframes taken in a world frame that no longer exists (after a failed
     /// relocalization). Their files stay until the scan is discarded.
     func discardKeyframes() {
+        epoch += 1
         keyframes = []
     }
 

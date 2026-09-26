@@ -32,8 +32,10 @@ final class ScanEngine {
     private var gateProblem: (coaching: Coaching, since: Double)?
     private var gateClearSince: Double?
     private var closeUpPending = false
-    /// Keyframe writes still in flight; the bundle waits for them.
-    private var pendingSaves = 0
+    /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
+    /// for its own generation's. Keyed so a write finishing after a reset can't count against
+    /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
+    private var pendingSaves: [Int: Int] = [:]
     /// Bumped whenever the world frame or the whole scan is thrown away, so work that finishes
     /// afterwards (a keyframe write, an upload) can tell it belongs to a scan that no longer exists.
     private var generation = 0
@@ -43,6 +45,9 @@ final class ScanEngine {
     /// Detected horizontal planes as (center x, y, center z, radius), world meters.
     private var groundPlanes: [SIMD4<Float>] = []
     private var lastFrame: SourceFrame?
+    /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
+    /// than the chest-height guess. The export widens position errors while it is a guess.
+    private(set) var groundMeasured = false
     private var endKinds: [WallSide: EndKind] = [:]
 
     // Gap loop
@@ -51,6 +56,9 @@ final class ScanEngine {
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
     private var skippedGaps: [GapPlan] = []
+    /// The side of a server past_end request being captured: that end was cleared, and marking
+    /// it again settles the request (see `markWallEnd`).
+    var pastEndSide: WallSide?
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -128,6 +136,7 @@ final class ScanEngine {
             state.guidance = .holdOnMeter
             state.closeUp = .aiming(hold: 0, problem: nil)
             closeUpGate = CloseUpGate()
+            closeUpPending = false
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
             if let replay { replay.play(range: 0..<replay.frames.count, speed: replaySpeed) }
@@ -189,11 +198,17 @@ final class ScanEngine {
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
         if state.tracking != frame.tracking { state.tracking = frame.tracking }
-        if !frame.groundPlanes.isEmpty { groundPlanes = frame.groundPlanes }
+        if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
+            groundPlanes = frame.groundPlanes
+            refineGround()
+        }
         refreshMeterFromAnchor(frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
-        guard !frame.isReview else { return }
+        guard !frame.isReview else {
+            refreshCues(camera: frame.camera)
+            return
+        }
 
         switch state.phase {
         case .meterCloseUp:
@@ -207,6 +222,29 @@ final class ScanEngine {
         }
     }
 
+    /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
+    /// wall always replaces the guess, and a better plane replaces an earlier one.
+    private func refineGround() {
+        guard var wall = coverage?.wall, let y = groundBelow(wall.meter) else { return }
+        // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
+        guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
+        RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
+        wall.groundY = y
+        groundMeasured = true
+        coverage?.updateWall(wall)
+        publishWall()
+        reprojectFeatures()
+    }
+
+    /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
+    /// points stay put.
+    private func reprojectFeatures() {
+        guard let wall = coverage?.wall, !state.features.isEmpty else { return }
+        var features = state.features
+        for index in features.indices { Self.project(&features[index], onto: wall) }
+        if features != state.features { state.features = features }
+    }
+
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
         guard let anchor = frame.meterAnchor, var wall = coverage?.wall else { return }
         let meter = SIMD3(anchor.columns.3.x, anchor.columns.3.y, anchor.columns.3.z)
@@ -214,6 +252,8 @@ final class ScanEngine {
         wall.meter = meter
         coverage?.updateWall(wall)
         publishWall()
+        publishCoverage()
+        reprojectFeatures()
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -326,10 +366,11 @@ final class ScanEngine {
         let index = store.nextKeyframeIndex()
         let scan = generation
         let store = store
-        pendingSaves += 1
+        pendingSaves[scan, default: 0] += 1
         Task {
             let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
-            pendingSaves -= 1
+            let left = (pendingSaves[scan] ?? 1) - 1
+            pendingSaves[scan] = left > 0 ? left : nil
             guard scan == generation, saved.stored else { return }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
@@ -349,6 +390,15 @@ final class ScanEngine {
         state.target = output.target
         state.path = output.path
         logGuidance()
+    }
+
+    /// A frame shown for review (not captured) keeps the current task but re-aims its target and
+    /// path from the camera now on screen; otherwise the arrow points from where the walk last was.
+    private func refreshCues(camera: CameraFrame) {
+        guard state.phase == .wallWalk, state.endQuestion == nil, let map = coverage, let task = planner.current else { return }
+        let output = planner.cues(for: task, coverage: map, camera: camera)
+        state.target = output.target
+        state.path = output.path
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next
@@ -401,13 +451,22 @@ final class ScanEngine {
 
     private func trackRelocalization(_ frame: SourceFrame) {
         guard live != nil else { return }
-        if case .limited(.relocalizing) = frame.tracking {
-            let since = relocalizingSince ?? frame.timestamp
-            relocalizingSince = since
-            // After 20 s ARKit is unlikely to relocalize; the old world frame is gone
-            // (checklist R5). Start again from the meter.
-            if frame.timestamp - since > 20 { resetSpatialState(reason: "relocalization timed out") }
-        } else {
+        guard case .limited(.relocalizing) = frame.tracking else {
+            relocalizingSince = nil
+            return
+        }
+        let since = relocalizingSince ?? frame.timestamp
+        relocalizingSince = since
+        // After 20 s ARKit is unlikely to relocalize; the old world frame is gone (checklist R5).
+        guard frame.timestamp - since > 20 else { return }
+        switch state.phase {
+        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest:
+            // Capture still needs the world frame: start again from the meter.
+            resetSpatialState(reason: "relocalization timed out")
+        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+            // The bundle is already packed and the server's answer does not depend on the live
+            // world frame, so the scan and the result stay. The AR result hides its overlay while
+            // tracking is not normal and shows it again if ARKit does relocalize.
             relocalizingSince = nil
         }
     }
@@ -445,6 +504,7 @@ final class ScanEngine {
         state.features = []
         state.gap = nil
         gapPlan = nil
+        pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
         store.discardKeyframes()
@@ -458,9 +518,10 @@ final class ScanEngine {
     // MARK: Wall
 
     /// Sets the wall from a meter point and the wall's outward normal, and starts coverage.
-    func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float) -> Bool {
+    func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
+        self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
         publishWall()
@@ -548,8 +609,26 @@ final class ScanEngine {
     /// with the new evidence (the closed loop: gap, instruction, capture, updated result).
     private func afterGapResolved() {
         gapPlan = nil
+        pastEndSide = nil
         state.gap = nil
         startUpload()
+    }
+
+    /// The past_end request's end was marked again and its question answered: the request is
+    /// settled, so the scan goes to the upload like a closed gap.
+    func settlePastEnd() {
+        guard state.phase == .gapRequest, var request = state.gap, !request.isSatisfied else { return }
+        request.isSatisfied = true
+        request.progress = 1
+        state.gap = request
+        RuntimeLog.engine.info("gap \(request.id) settled by marking the end again")
+        let id = request.id
+        Task {
+            try? await Task.sleep(for: .seconds(autoAdvanceDelay))
+            await waitForGate(.gapRequest)
+            guard state.phase == .gapRequest, state.gap?.id == id else { return }
+            afterGapResolved()
+        }
     }
 
     func skipCurrentGap() {
@@ -573,7 +652,7 @@ final class ScanEngine {
         let scan = generation
         state.upload = .packaging
         // Keyframe writes still in flight belong in the bundle.
-        for _ in 0..<200 where pendingSaves > 0 {
+        for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
@@ -630,7 +709,6 @@ final class ScanEngine {
 
     func resetAll() {
         generation += 1
-        pendingSaves = 0
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
@@ -643,6 +721,7 @@ final class ScanEngine {
         closeUpGate = CloseUpGate()
         gapPlan = nil
         skippedGaps = []
+        pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
         placement = nil

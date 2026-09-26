@@ -10,9 +10,10 @@ public enum SurfaceBand: String, Sendable, CaseIterable {
 /// How well a cell has been seen. Only `.covered` counts as evidence.
 public enum CoverageLevel: UInt8, Sendable, Equatable {
     case unseen
-    /// Seen by at least one kept keyframe, not yet from two separate positions.
+    /// Some row seen by a kept keyframe, but not every row from two separate positions yet.
     case seen
-    /// Seen from two camera positions at least `CoverageConfig.coveringBaseline` apart.
+    /// Every sample row seen from two camera positions at least `CoverageConfig.coveringBaseline`
+    /// apart (the rows may be seen by different frames).
     case covered
     /// The homeowner said they cannot get there. Never evidence.
     case skipped
@@ -25,8 +26,12 @@ public struct CoverageConfig: Sendable, Equatable {
     /// (docs/research/t3-first-try-capture.md on t3/research): fine enough that one missed
     /// stride shows as a gap, coarse enough that the strip reads at a glance.
     public var cellWidth: Float = 0.1524
-    /// Wall band height. 2.4 m covers a battery unit plus the cable route above it.
-    public var wallBandHeight: Float = 2.4
+    /// Wall band height: 6.5 ft (1.9812 m). scene.schema.json defines an observed wall band as
+    /// the face "from the ground up to headroom height", and 6.5 ft is the NEC 110.26 and Austin
+    /// Energy §1.9.2 headroom (docs/04-prior-art-and-codes.md). It was 2.4 m, which a phone held
+    /// at chest height 2.6 m out never sees (the top of its view is about 2.0 m up), so the export
+    /// claimed band it had not seen. The server's own headroom value is not checked here.
+    public var wallBandHeight: Float = 1.9812
     /// Ground band depth out from the wall. 1.2 m covers a unit's footprint plus its front clearance.
     public var groundBandDepth: Float = 1.2
     /// Farther than this a phone camera resolves too little of a wall to measure against it.
@@ -35,8 +40,11 @@ public struct CoverageConfig: Sendable, Equatable {
     public var maxAngleFromNormal: Float = 65 * .pi / 180
     /// Samples within this fraction of the image edge don't count, since edges blur and distort most.
     public var imageMargin: Float = 0.03
-    /// Share of a cell's samples that must pass for the cell to count as seen ("most of it").
-    public var minSampleFraction: Float = 0.6
+    /// Sample rows across a band, bottom edge to top edge (wall) or wall foot to outer edge
+    /// (ground). A cell is covered only when every row is, so the first and last rows sit on the
+    /// band's edges: the band a covered cell claims is the band its rows saw. Three rows leave
+    /// 0.99 m between wall rows and 0.6 m between ground rows unsampled; a hypothesis, not tuned.
+    public var rowsPerBand = 3
     /// Two views count as separate positions only this far apart, so parallax exists between them.
     public var coveringBaseline: Float = 0.25
     /// Fog drawn ahead of what has been seen, so the homeowner sees where to go next.
@@ -59,16 +67,26 @@ public struct CoverageMap: Sendable {
     public private(set) var revision = 0
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
+    /// s shift from meter moves not yet applied to the cells, meters (see `updateWall`).
+    private var pendingShift: Float = 0
 
     private struct Cell: Sendable {
-        var positions: [SIMD3<Float>] = []
+        /// Per sample row, the camera positions that saw it, pairwise at least
+        /// `coveringBaseline` apart. Two are enough, so a row stops collecting at two.
+        var rows: [[SIMD3<Float>]]
         var skipped = false
         var covered = false
+
+        init(rowCount: Int) {
+            rows = Array(repeating: [], count: rowCount)
+        }
+
+        var isSeen: Bool { rows.contains { !$0.isEmpty } }
 
         var level: CoverageLevel {
             if covered { return .covered }
             if skipped { return .skipped }
-            return positions.isEmpty ? .unseen : .seen
+            return isSeen ? .seen : .unseen
         }
     }
 
@@ -127,12 +145,14 @@ public struct CoverageMap: Sendable {
         return record(visibleCells(from: camera), from: camera.position)
     }
 
-    /// Every cell a frame sees, before the marked ends clip anything that isn't allowed.
+    /// Every cell a frame sees at least one row of, before the marked ends clip anything that
+    /// isn't allowed.
     public func visibleCells(from camera: CameraFrame) -> [Sighting] {
         var seen: [Sighting] = []
         for band in SurfaceBand.allCases {
-            for index in candidateIndices(for: camera) where isVisible(band, index, from: camera) {
-                seen.append(Sighting(band: band, index: index))
+            for index in candidateIndices(for: camera) {
+                let rows = visibleRows(band, index, from: camera)
+                if !rows.isEmpty { seen.append(Sighting(band: band, index: index, rows: rows)) }
             }
         }
         return seen
@@ -141,6 +161,8 @@ public struct CoverageMap: Sendable {
     public struct Sighting: Sendable, Hashable {
         public var band: SurfaceBand
         public var index: Int
+        /// The sample rows of the cell the frame saw, 0 at the band's bottom (or the wall foot).
+        public var rows: Set<Int>
     }
 
     /// Records cells a kept keyframe with normal tracking saw from `position`: the part of
@@ -149,13 +171,20 @@ public struct CoverageMap: Sendable {
     public mutating func record(_ sightings: [Sighting], from position: SIMD3<Float>) -> Delta {
         var delta = Delta()
         for sighting in sightings where allows(sighting.index) {
-            var cell = cells[sighting.band]?[sighting.index] ?? Cell()
-            let wasSeen = !cell.positions.isEmpty
-            let isNewPosition = cell.positions.allSatisfy { simd_distance($0, position) >= config.coveringBaseline }
-            guard isNewPosition else { continue }
-            cell.positions.append(position)
+            var cell = cells[sighting.band]?[sighting.index] ?? Cell(rowCount: config.rowsPerBand)
+            let wasSeen = cell.isSeen
+            var added = false
+            for row in sighting.rows where cell.rows.indices.contains(row) {
+                let positions = cell.rows[row]
+                // A repeated or nearby frame adds no parallax, so it adds nothing.
+                guard positions.count < 2,
+                      positions.allSatisfy({ simd_distance($0, position) >= config.coveringBaseline }) else { continue }
+                cell.rows[row].append(position)
+                added = true
+            }
+            guard added else { continue }
             if !wasSeen { delta.newlySeen += 1 }
-            if cell.positions.count >= 2, !cell.covered {
+            if !cell.covered, cell.rows.allSatisfy({ $0.count >= 2 }) {
                 cell.covered = true
                 delta.newlyCovered += 1
             }
@@ -165,12 +194,17 @@ public struct CoverageMap: Sendable {
         return delta
     }
 
-    /// How many cells this frame would see for the first time, if kept.
+    /// How many cells this frame would show a row of for the first time, if kept. A cell whose
+    /// lower rows are seen still counts when the frame is the first to see its top row, or it
+    /// could never become covered.
     public func newlySeenCount(from camera: CameraFrame) -> Int {
         var count = 0
         for band in SurfaceBand.allCases {
-            for index in candidateIndices(for: camera) where (cells[band]?[index]?.positions.isEmpty ?? true) {
-                if isVisible(band, index, from: camera) { count += 1 }
+            for index in candidateIndices(for: camera) {
+                let cell = cells[band]?[index]
+                let unseenRows = (0..<config.rowsPerBand).filter { cell?.rows[$0].isEmpty ?? true }
+                guard !unseenRows.isEmpty else { continue }
+                if !visibleRows(band, index, from: camera, among: unseenRows).isEmpty { count += 1 }
             }
         }
         return count
@@ -181,36 +215,47 @@ public struct CoverageMap: Sendable {
         return indices(overlapping: (s - config.maxDistance)...(s + config.maxDistance)).filter(allows)
     }
 
-    /// Sample points of a cell: two positions along it times three heights (or depths).
-    private func samples(_ band: SurfaceBand, _ index: Int) -> [(point: SIMD3<Float>, normal: SIMD3<Float>)] {
+    /// Height (wall) or distance out (ground) of each sample row, evenly from edge to edge.
+    public func rowOffsets(_ band: SurfaceBand) -> [Float] {
+        let extent = band == .wall ? config.wallBandHeight : config.groundBandDepth
+        let count = max(2, config.rowsPerBand)
+        return (0..<count).map { extent * Float($0) / Float(count - 1) }
+    }
+
+    /// The rows of a cell a frame sees: a row counts when both of its samples, a quarter and
+    /// three quarters along the cell, are in view.
+    public func visibleRows(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame) -> Set<Int> {
+        visibleRows(band, index, from: camera, among: Array(0..<config.rowsPerBand))
+    }
+
+    private func visibleRows(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame, among rows: [Int]) -> Set<Int> {
+        // Behind the wall's plane the wall itself hides both bands. Occlusion is otherwise not
+        // modelled, and the ground row at the wall's foot would pass from there.
+        guard wall.wallPoint(camera.position).out > 0 else { return [] }
         let range = cellRange(index)
         let width = range.upperBound - range.lowerBound
         let alongs = [range.lowerBound + width * 0.25, range.lowerBound + width * 0.75]
-        let fractions: [Float] = [1.0 / 6, 0.5, 5.0 / 6]
-        var points: [(SIMD3<Float>, SIMD3<Float>)] = []
-        for s in alongs {
-            for f in fractions {
-                switch band {
-                case .wall: points.append((wall.world(s: s, height: f * config.wallBandHeight), wall.outward))
-                case .ground: points.append((wall.world(s: s, height: 0, out: f * config.groundBandDepth), WallFrame.up))
-                }
-            }
-        }
-        return points
-    }
-
-    public func isVisible(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame) -> Bool {
-        let all = samples(band, index)
+        let offsets = rowOffsets(band)
+        let normal = band == .wall ? wall.outward : WallFrame.up
         let cosLimit = cos(config.maxAngleFromNormal)
-        let passing = all.filter { sample in
-            let toCamera = camera.position - sample.point
+        func sees(_ point: SIMD3<Float>) -> Bool {
+            let toCamera = camera.position - point
             let distance = simd_length(toCamera)
             guard distance <= config.maxDistance, distance > 0 else { return false }
-            guard simd_dot(toCamera / distance, sample.normal) >= cosLimit else { return false }
-            guard let pixel = camera.pixel(of: sample.point) else { return false }
+            guard simd_dot(toCamera / distance, normal) >= cosLimit else { return false }
+            guard let pixel = camera.pixel(of: point) else { return false }
             return camera.contains(pixel: pixel, margin: config.imageMargin)
-        }.count
-        return Float(passing) >= config.minSampleFraction * Float(all.count)
+        }
+        return Set(rows.filter { row in
+            alongs.allSatisfy { s in
+                sees(band == .wall ? wall.world(s: s, height: offsets[row]) : wall.world(s: s, height: 0, out: offsets[row]))
+            }
+        })
+    }
+
+    /// Whether a frame sees any row of the cell.
+    public func isVisible(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame) -> Bool {
+        !visibleRows(band, index, from: camera).isEmpty
     }
 
     // MARK: Homeowner input
@@ -235,7 +280,7 @@ public struct CoverageMap: Sendable {
     /// Marks the not-yet-covered cells of `range` as skipped ("I can't get there").
     public mutating func markSkipped(_ band: SurfaceBand, _ range: ClosedRange<Float>) {
         for index in indices(overlapping: range) where allows(index) {
-            var cell = cells[band]?[index] ?? Cell()
+            var cell = cells[band]?[index] ?? Cell(rowCount: config.rowsPerBand)
             guard !cell.covered else { continue }
             cell.skipped = true
             cells[band, default: [:]][index] = cell
@@ -243,17 +288,33 @@ public struct CoverageMap: Sendable {
         revision += 1
     }
 
-    /// Moves the map to a new wall frame (after the meter anchor is refined). Cells keep their
-    /// s positions; camera positions keep their world positions.
+    /// Moves the map to a new wall frame (after the meter anchor is refined or the ground is
+    /// measured). s is measured from the meter, so moving the meter by d along the wall moves
+    /// every seen stretch by -d in s. Marked ends move exactly; cells move by whole cells, and
+    /// the remainder (under half a cell, 7.6 cm, below tap error) waits for later moves.
+    /// Camera positions are world points and stay. Assumes the wall's direction is unchanged.
     public mutating func updateWall(_ frame: WallFrame) {
+        let delta = simd_dot(wall.meter - frame.meter, frame.along)
         wall = frame
+        guard delta != 0 else { return }
+        leftEnd = leftEnd.map { $0 + delta }
+        rightEnd = rightEnd.map { $0 + delta }
+        pendingShift += delta
+        let whole = Int((pendingShift / config.cellWidth).rounded())
+        if whole != 0 {
+            for (band, bandCells) in cells {
+                cells[band] = Dictionary(uniqueKeysWithValues: bandCells.map { ($0.key + whole, $0.value) })
+            }
+            pendingShift -= Float(whole) * config.cellWidth
+        }
+        revision += 1
     }
 
     // MARK: Reading
 
     /// s extent of seen or covered cells, or nil when nothing has been seen.
     public var seenExtent: ClosedRange<Float>? {
-        let seen = cells.values.flatMap { $0.filter { !$0.value.positions.isEmpty }.keys }
+        let seen = cells.values.flatMap { $0.filter { $0.value.isSeen }.keys }
         guard let low = seen.min(), let high = seen.max() else { return nil }
         return cellRange(low).lowerBound...cellRange(high).upperBound
     }

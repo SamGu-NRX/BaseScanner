@@ -51,7 +51,7 @@ func standardWall() -> WallFrame {
 // can be worked out by hand. Image margin 3 % leaves u in [19.2, 620.8] and v in [14.4, 465.6].
 
 /// Level camera at (c, 1.2, 2.0) facing the wall. A wall sample (s, h, 0) is 2 m deep and lands on
-/// u = 320 + 250 (1.2 - h) = 520, 320, 120 for h = 0.4, 1.2, 2.0, and v = 240 - 250 (s - c), so it
+/// u = 320 + 250 (1.2 - h) = 620, 372, 125 for the rows h = 0, 0.99, 1.98, and v = 240 - 250 (s - c), so it
 /// sees every wall sample with |s - c| <= 225.6 / 250 = 0.9024. A ground sample (s, 0, o) has
 /// camera x = 1.2 at depth 2 - o <= 1.8, so u >= 320 + 500 * 1.2 / 1.8 = 653 > 620.8: never seen.
 /// A wall cell with lower edge L (samples at L + 0.0381 and L + 0.1143) is therefore seen exactly
@@ -61,10 +61,10 @@ func wallCamera(s c: Float) -> CameraFrame {
 }
 
 /// Camera at (c, 1.0, 0.6) looking straight down, image +y (camera y) along +x. A ground sample
-/// (s, 0, o) is 1 m deep and lands on u = 320 + 500 (o - 0.6) = 120, 320, 520 for o = 0.2, 0.6, 1.0
-/// and v = 240 - 500 (s - c), so it sees every ground sample with |s - c| <= 225.6 / 500 = 0.4512.
-/// The wall sample at h = 0.4 lands on u = 320 - 500 * 0.6 / 0.6 = -180 and higher ones are behind
-/// it: the wall is never seen. A ground cell with lower edge L is seen exactly when c is in
+/// (s, 0, o) is 1 m deep and lands on u = 320 + 500 (o - 0.6) = 20, 320, 620 for the rows o = 0, 0.6,
+/// 1.2 and v = 240 - 500 (s - c), so it sees every ground sample with |s - c| <= 225.6 / 500 = 0.4512.
+/// Of the wall it sees at most the row at the foot (u = 20); the rows above are off the image, so
+/// it never covers the wall. A ground cell with lower edge L is seen exactly when c is in
 /// [L - 0.3369, L + 0.4893].
 func groundCamera(s c: Float) -> CameraFrame {
     makeCamera(at: SIMD3(c, 1.0, 0.6), forward: SIMD3(0, -1, 0), right: SIMD3(1, 0, 0))

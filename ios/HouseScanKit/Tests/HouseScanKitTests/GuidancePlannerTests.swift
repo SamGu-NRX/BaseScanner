@@ -76,6 +76,29 @@ import Testing
         #expect(point.s < 0 && nearlyEqual(point.out, 0))
     }
 
+    /// Reach stops at the first hole, so a homeowner can be past it. The walk right must then aim
+    /// ahead of them: the target to their right on screen (camera +y is screen right in portrait)
+    /// and the path heading toward +s.
+    @Test func walkTargetLeadsAHomeownerAlreadyPastTheReach() throws {
+        var planner = GuidancePlanner()
+        var map = CoverageMap(wall: standardWall())
+        map.setEnd(.left, at: -3)
+        let camera = Self.homeowner(x: 3)
+        let output = planner.update(coverage: map, camera: camera, time: 0)
+        #expect(output.task == .walk(.right))
+        let target = try #require(output.target)
+        // Reach is 0 here; the old target was s = 1, 2 m behind the camera at s = 3.
+        #expect(nearlyEqual(target, SIMD3(4, 1, 0)))
+        #expect(camera.cameraSpace(target).y > 0)
+        let first = try #require(output.path.first)
+        let last = try #require(output.path.last)
+        #expect(standardWall().wallPoint(last).s > standardWall().wallPoint(first).s)
+
+        let left = planner.cues(for: .walk(.left), coverage: CoverageMap(wall: standardWall()), camera: Self.homeowner(x: -2))
+        #expect(nearlyEqual(left.target ?? .zero, SIMD3(-3, 1, 0)))
+        #expect(Self.homeowner(x: -2).cameraSpace(left.target ?? .zero).y < 0)
+    }
+
     @Test func pathRunsAlongTheStandOffLine() {
         var planner = GuidancePlanner()
         let wall = standardWall()

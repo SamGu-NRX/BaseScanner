@@ -88,6 +88,21 @@ import simd
         #expect(text.components(separatedBy: "plus_minus_ft").count == 2)
     }
 
+    /// An estimated ground (the engine's chest-height guess) exports as an error on every object,
+    /// and the result still matches the schema.
+    @Test func objectErrorGoesOnEveryObject() throws {
+        var input = Self.input()
+        input.objectPlusMinus = 0.3
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let objects = try #require(try Value.parse(data)["objects"]?.array)
+        #expect(objects.count == 4)
+        for object in objects {
+            // 0.3 m = 0.9843 ft.
+            expectClose(object["plus_minus_ft"].map { [$0.number ?? .nan] }, [0.9843])
+        }
+    }
+
     @Test func meterAndBaselineInFeet() throws {
         let (_, v) = try Self.exported()
         #expect(v["schema_version"] == .string("1.0"))
@@ -128,8 +143,8 @@ import simd
         let (_, v) = try Self.exported()
         let facing = try #require(v["facing"]?[0])
         expectClose(facing["span_ft"]?.numbers, [-3.2808, 6.5617])
-        // Mean of 2.0 m and 2.4 m out.
-        expectClose(facing["depth_ft"].map { [$0.number ?? .nan] }, [7.2178])
+        // Taps 2.0 and 2.4 m out: the facing depth is the nearer, 2.0 m = 6.5617 ft, not the mean.
+        expectClose(facing["depth_ft"].map { [$0.number ?? .nan] }, [6.5617])
 
         let drive = try #require(v["ground"]?[0])
         #expect(drive["type"] == .string("drive"))
