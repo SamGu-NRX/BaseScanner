@@ -3,7 +3,8 @@ import SwiftUI
 /// "Checking your wall": a calm wait. Three steps tick off in order; progress is shown
 /// separately from how complete the scan was (docs/05 section 2). A failure that sending again
 /// can fix (offline, a server error) offers "Try again". A refused scan can't be fixed by sending
-/// the same thing again, so it offers the review and a fresh start instead.
+/// the same thing again, so it offers the review and a fresh start instead. Both offer "Share
+/// scan" once the scan is packaged, so a scan the server never took can still reach the team.
 struct UploadingScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -32,15 +33,23 @@ struct UploadingScreen: View {
 
                 switch state.upload {
                 case .failed:
-                    Button("Try again") { actions.retryUpload() }
-                        .buttonStyle(.primary)
-                        .accessibilityIdentifier("action.retryUpload")
+                    VStack(spacing: 16) {
+                        Button("Try again") { actions.retryUpload() }
+                            .buttonStyle(.primary)
+                            .accessibilityIdentifier("action.retryUpload")
+                        if let scan = state.shareableScan {
+                            ShareScanButton(url: scan)
+                        }
+                    }
                 case .rejected:
-                    VStack(spacing: 12) {
+                    VStack(spacing: 16) {
                         Button("Back to review") { actions.backToReview() }
                             .buttonStyle(.primary)
                             .accessibilityHint("Your scan is kept. Check what you marked, then send it again.")
                             .accessibilityIdentifier("action.backToReview")
+                        if let scan = state.shareableScan {
+                            ShareScanButton(url: scan)
+                        }
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(.quiet)
                             .accessibilityHint("Deletes this scan and its photos.")

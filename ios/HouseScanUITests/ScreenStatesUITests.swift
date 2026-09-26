@@ -52,6 +52,9 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
     ]
 
+    /// States where the scan is packaged, so "Share scan" must show.
+    private static let shareStates: Set<String> = ["uploading-offline", "uploading-rejected", "result-review", "result-pass"]
+
     override func setUp() {
         continueAfterFailure = true
     }
@@ -158,6 +161,26 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
     }
 
+    /// "Share scan" opens the system share sheet with the scan file.
+    @MainActor
+    func testShareScanOpensTheShareSheet() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
+        app.launch()
+        tap(app, "action.shareScan")
+        let sheet = app.otherElements["ActivityListView"]
+        let found = sheet.waitForExistence(timeout: 10)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "shareSheet"
+        shot.lifetime = .keepAlways
+        add(shot)
+        if !found {
+            add(XCTAttachment(string: app.debugDescription))
+        }
+        XCTAssertTrue(found, "the share sheet never appeared")
+    }
+
     @MainActor
     private func check(_ name: String, arguments: [String], screen: String) throws {
         let app = XCUIApplication()
@@ -172,6 +195,9 @@ final class ScreenStatesUITests: XCTestCase {
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
+        if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
+            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+        }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
         // audit, after the banner's few seconds on screen, finds it again.

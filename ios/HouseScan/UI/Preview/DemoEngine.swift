@@ -109,6 +109,9 @@ final class DemoEngine: ScanActions {
         }
         // Frozen, the upload script never runs, so show where it would end.
         if freeze, state.phase == .uploading {
+            if rejectUpload || offline {
+                state.shareableScan = Self.demoScan
+            }
             if rejectUpload {
                 state.upload = .rejected(message: Self.rejection)
             } else if offline {
@@ -275,6 +278,7 @@ final class DemoEngine: ScanActions {
     }
 
     private func showResult() {
+        state.shareableScan = Self.demoScan
         state.upload = .done
         state.result = passResult ? Self.passSample : Self.reviewSample
         state.phase = .result
@@ -367,6 +371,7 @@ final class DemoEngine: ScanActions {
     private func uploadScript() async {
         state.upload = .packaging
         guard await pause(1.0) else { return }
+        state.shareableScan = Self.demoScan
         for step in 0...10 {
             state.upload = .uploading(fraction: Double(step) / 10)
             guard await pause(0.22) else { return }
@@ -678,6 +683,7 @@ final class DemoEngine: ScanActions {
         state.closeUpFailedAttempts = 0
         state.meterNumber = nil
         state.upload = .idle
+        state.shareableScan = nil
         state.marking = nil
         reachedLeft = 0.3
         reachedRight = 0.3
@@ -702,6 +708,20 @@ final class DemoEngine: ScanActions {
         MeterNumberCandidate(id: 1, text: "60417362", barcodeConfirmed: false),
         MeterNumberCandidate(id: 2, text: "80417862", barcodeConfirmed: false),
     ]
+
+    /// Stands in for the scan bundle so "Share scan" has a real file to hand the share sheet: a
+    /// few made-up lines in tmp, no photos or measurements. Nil if tmp can't be written, which
+    /// hides the button.
+    static let demoScan: URL? = {
+        let url = URL.temporaryDirectory.appending(path: "HouseScan-demo-scan.txt")
+        let text = "A made-up scan from the House Scan UI demo (-uiDemo). It holds no photos or measurements.\n"
+        do {
+            try Data(text.utf8).write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }()
 
     /// A refusal in the homeowner's words, as the engine sends it.
     static let rejection = "Some of the wall's measurements were missing. Check what you marked, then send it again."
