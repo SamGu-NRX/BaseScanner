@@ -21,6 +21,7 @@ at the target size and only normalises them. Input pixels the crop removed are i
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
@@ -67,8 +68,6 @@ def load(device):
     read, cast to bf16 if it belongs to `BF16_MODULES`. Those already computed in bf16 under
     autocast, so only their stored weights lose precision.
     """
-    import json
-
     import torch
     from huggingface_hub import hf_hub_download
     from mapanything.models import MapAnything
@@ -92,8 +91,8 @@ def load(device):
                 tensor = tensor.to(torch.bfloat16)
             weights[key] = tensor
             if str(device).startswith("mps") and i % 50 == 49:
-                # Copies to the GPU leave transfer buffers that are freed lazily; without this,
-                # loading peaks at 4.4 GB of GPU memory for 2.6 GB of weights.
+                # Release the GPU transfer buffers loading leaves behind as it goes; the 4.05 GB
+                # peak in models/README.md was measured with this in place.
                 torch.mps.synchronize()
                 torch.mps.empty_cache()
     # strict=False: the checkpoint stores each shared tensor once (safetensors drops aliases).

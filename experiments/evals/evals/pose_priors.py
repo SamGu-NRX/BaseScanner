@@ -43,7 +43,7 @@ from evals.recon import (
 )
 from evals.triangulate import view_scales
 
-GROUP_SIZES = ("2", "4", "8")  # triangulation needs at least two photos
+GROUP_SIZES = (2, 4, 8)  # triangulation needs at least two photos
 MODEL = "moge2"
 
 
@@ -54,7 +54,7 @@ def pose_file(scene: str, setting: str):
 def prepare(scene: str) -> None:
     views = {v.name: v for v in read_views(ETH3D_DIR / scene)}
     groups = json.loads((ETH3D_DIR / scene / "subsets.json").read_text())
-    groups = {n: g for n, g in groups.items() if n in GROUP_SIZES}
+    groups = {n: g for n, g in groups.items() if int(n) in GROUP_SIZES}
     for setting in SETTINGS:
         path = pose_file(scene, setting)
         path.parent.mkdir(exist_ok=True)
@@ -85,11 +85,12 @@ def pose_methods(scene: Scene) -> dict[str, Method]:
             T = {m: np.array(poses_by_group[gid]["poses"][m]) for m in members}
             scale = {m: 1.0 for m in members}
             if rescale:
+                preds = {m: depth_and_K(m) for m in members}
                 fits = view_scales(
                     {m: image(m) for m in members},
-                    {m: depth_and_K(m)[1] for m in members},
+                    {m: preds[m][1] for m in members},
                     T,
-                    {m: depth_and_K(m)[0] for m in members},
+                    {m: preds[m][0] for m in members},
                     max_reproj_px=SETTINGS[setting].reprojection_px,
                 )
                 scale = {m: fits[m].scale for m in members}
@@ -147,7 +148,7 @@ def main() -> None:
     results = {}
     for s in SCENES:
         scene = Scene(s)
-        results[s] = score_groups(scene, pose_methods(scene), sizes=(2, 4, 8))
+        results[s] = score_groups(scene, pose_methods(scene), sizes=GROUP_SIZES)
     out = Path(__file__).resolve().parents[1] / "results"
     (out / "pose_priors.json").write_text(json.dumps(results, indent=1))
     md = markdown(results)

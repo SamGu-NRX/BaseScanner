@@ -46,8 +46,8 @@ def main() -> None:
         "--mps-cap-gb",
         type=float,
         default=3.8,
-        help="hard cap on GPU memory (the Mac is shared): weights take 2.64 GB and an 8-view run "
-        "about 0.4 GB more; without a cap the allocator's cache took the process to 4.8 GB",
+        help="hard cap on GPU memory, so on the shared Mac a run that needs more fails instead of "
+        "growing: the weights take 2.64 GB, and 2- and 4-view groups at 392 px fit under 3.8",
     )
     args = ap.parse_args()
     set_cache_dirs()

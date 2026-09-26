@@ -256,7 +256,7 @@ def predict(
     return Points(gt=ev.gt, c=c, r=r)
 
 
-def _score(scene: Scene, ev: EvalSet, members, per_view, max_range, raws) -> None:
+def _evaluate_into(raws: dict, scene: Scene, ev: EvalSet, members, per_view, max_range) -> None:
     pts = predict(scene, ev, members, per_view, max_range)
     for cohort in COHORTS:
         if ev.pairs[cohort]:
@@ -276,7 +276,7 @@ def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) ->
                 for members in scene.groups.get(n, []):
                     per_view = factory(f"n{n}-{members[0]}", members)
                     if per_view is not None:
-                        _score(scene, sets[members[0]], members, per_view, max_range, raws)
+                        _evaluate_into(raws, scene, sets[members[0]], members, per_view, max_range)
                 if raws["surface interior"]:
                     res[n] = {c: pool(r) | {"groups": len(r)} for c, r in raws.items() if r}
             if res:
@@ -298,7 +298,7 @@ def score_single_photos(scene: Scene, model: str) -> dict:
         for name in scene.views:
             ev = EvalSet(scene, name, max_range)
             if len(ev.index) > 1:
-                _score(scene, ev, [name], per_view, max_range, raws)
+                _evaluate_into(raws, scene, ev, [name], per_view, max_range)
         out[range_name] = {c: pool(r) | {"photos": len(r)} for c, r in raws.items() if r}
     return out
 

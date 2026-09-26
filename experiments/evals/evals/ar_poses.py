@@ -69,7 +69,8 @@ def degrade(
 
 
 def group_poses(views: dict, groups: dict[str, list[list[str]]], setting: str) -> dict[str, dict]:
-    """{group id: {view name: 4x4 cam-to-world}} for every group, deterministic per setting."""
+    """{group id: {"scale": applied scale, "poses": {view: 4x4 cam-to-world}}} for every group,
+    deterministic per setting."""
     error = SETTINGS[setting]
     rng = np.random.default_rng(_seed(setting))
     out: dict[str, dict] = {}

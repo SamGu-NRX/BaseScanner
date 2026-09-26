@@ -24,6 +24,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from scipy.spatial import cKDTree
 
 from evals.geometry import quat_wxyz_to_matrix
 from evals.paths import ETH3D_DIR
@@ -296,8 +297,6 @@ def visible_scan_points(
 def point_normals(points: np.ndarray, k: int = 12, chunk: int = 200_000) -> np.ndarray:
     """Unit surface normal per point from the smallest principal axis of its k nearest neighbours
     (sign arbitrary). Chunked so memory stays near a few hundred MB for 1.5 M points."""
-    from scipy.spatial import cKDTree
-
     tree = cKDTree(points)
     normals = np.empty_like(points, dtype=np.float64)
     for start in range(0, len(points), chunk):

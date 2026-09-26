@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from evals.frames import normals_from_depth
 from evals.pairs import (
     INCH,
     Points,
@@ -13,6 +14,7 @@ from evals.pairs import (
     scale_for_known_distance,
     summarize,
 )
+from evals.triangulate import sample_depth
 
 
 def _line_points(xs, pred_scale=1.0, c=None):
@@ -89,12 +91,10 @@ def test_summarize_in_inches_and_scale_error():
 
 
 def test_bilinear_depth_sampling():
-    from evals.triangulate import sample_depth as _sample_depth
-
     # Rows are y, columns are x: d[y, x].
     d = np.array([[1.0, 2.0], [3.0, 4.0], [np.nan, 5.0]])
     uv = np.array([[0.5, 0.5], [0.0, 0.0], [0.25, 1.5], [1.5, 0.0], [0.25, 0.75]])
-    out = _sample_depth(d, uv)
+    out = sample_depth(d, uv)
     assert out[0] == pytest.approx(2.5)
     assert out[1] == pytest.approx(1.0)
     assert np.isnan(out[2])  # touches the NaN pixel
@@ -104,8 +104,6 @@ def test_bilinear_depth_sampling():
 
 
 def test_normals_from_depth_plane_cases():
-    from evals.frames import normals_from_depth
-
     K = np.array([[100.0, 0, 20], [0, 100.0, 15], [0, 0, 1]])
     # A wall 5 m straight ahead: normal points back at the camera, (0, 0, -1).
     flat = np.full((31, 41), 5.0)
