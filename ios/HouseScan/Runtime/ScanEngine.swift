@@ -63,6 +63,9 @@ final class ScanEngine {
     private var gapCounter = 0
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
+    /// Tilt-up views kept when the current gap request began: an overhead request is closed by a
+    /// new one (`recordOverheadClear`), which keeps no keyframe.
+    private var overheadViewsAtGapStart = 0
     private var skippedGaps: [GapPlan] = []
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
@@ -501,7 +504,12 @@ final class ScanEngine {
     private func updateGap(camera: CameraFrame?) {
         guard let map = coverage, let plan = gapPlan, var request = state.gap else { return }
         request.progress = gapPlanner.progress(of: plan, map)
-        let satisfied = gapPlanner.isSatisfied(plan, map) && store.keyframes.count > keyframesAtGapStart
+        let fresh = if case .overhead = plan.need {
+            map.overheadCameras.count > overheadViewsAtGapStart
+        } else {
+            store.keyframes.count > keyframesAtGapStart
+        }
+        let satisfied = gapPlanner.isSatisfied(plan, map) && fresh
         state.guidance = .gap
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
         let cue = gapCue(plan, map, center: center)
@@ -731,6 +739,7 @@ final class ScanEngine {
         gapCounter += 1
         gapPlan = plan
         keyframesAtGapStart = store.keyframes.count
+        overheadViewsAtGapStart = coverage?.overheadCameras.count ?? 0
         let progress = coverage.map { gapPlanner.progress(of: plan, $0) } ?? 0
         state.gap = GapRequest(id: gapCounter, origin: origin, reason: reason, band: plan.band == .ground ? .ground : .wall, span: plan.span, progress: progress, isSatisfied: false)
         state.guidance = .gap
