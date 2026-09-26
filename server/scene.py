@@ -252,8 +252,11 @@ class Scene:
         return merge_intervals([(a, b) for a, b, _ in self.observed.get(band, [])])
 
     def missing(self, band: str, s_lo: float, s_hi: float) -> list[tuple[float, float]]:
-        """Parts of [s_lo, s_hi] not observed in a 1D band."""
-        return subtract_intervals((s_lo, s_hi), self.observed_intervals(band))
+        """Parts of [s_lo, s_hi] not observed in a 1D band. A gap narrower than
+        COVERAGE_TOLERANCE_FT is rounding between the capture's spans and the unrolled walls (the
+        app reported a wall seen to 15 ft that unrolls to 15.00006 ft), not an unseen stretch."""
+        gaps = subtract_intervals((s_lo, s_hi), self.observed_intervals(band))
+        return [(a, b) for a, b in gaps if b - a >= COVERAGE_TOLERANCE_FT]
 
     def unobserved_ground(self) -> Geometry:
         if "ground" not in self._cache:
@@ -265,7 +268,9 @@ class Scene:
                     for a, b, out in self.observed.get("ground", [])
                 ]
             )
-            unseen = outdoor.difference(seen.buffer(1e-6))
+            # Growing what was seen by half the tolerance closes gaps between observed spans
+            # narrower than it, as missing() ignores them for the 1D bands.
+            unseen = outdoor.difference(seen.buffer(COVERAGE_TOLERANCE_FT / 2))
             self._cache["ground"] = unary_union([unseen, *self._unexplored_discs()])
         return self._cache["ground"]
 
@@ -286,7 +291,7 @@ class Scene:
                 self.band_polygon(max(a, self.s_min), min(b, self.s_max), out or 0.0)
                 for a, b, out in self.observed.get("ground", [])
             ]
-        ).buffer(1e-6)
+        ).buffer(COVERAGE_TOLERANCE_FT / 2)
         # Behind a scanned segment is the house itself, not ground a hazard could hide on.
         behind = unary_union([p.rect(p.s0, p.s1, -self.reach_ft, 0.0) for p in self.walls])
         known = unary_union([seen_in_front, behind])
@@ -339,7 +344,7 @@ class Scene:
         """Stretches of the chain's line nobody saw, the part a view of the wall settles."""
         if "wall-lines" not in self._cache:
             lo, hi = self.pieces[0].s0, self.pieces[-1].s1
-            gaps = subtract_intervals((lo, hi), self.observed_intervals("wall"))
+            gaps = self.missing("wall", lo, hi)
             self._cache["wall-lines"] = unary_union([self.wall_line(a, b) for a, b in gaps])
         return self._cache["wall-lines"]
 
@@ -500,6 +505,10 @@ def _geometry(points: list[Point2], path: str) -> Geometry:
 def _error(item: dict[str, Any], default: float) -> float:
     return float(item["plus_minus_ft"]) if "plus_minus_ft" in item else default
 
+
+# Coverage gaps narrower than this (1/8 in) are float noise between a capture's rounded spans and
+# the unrolled walls, 25 times smaller than the smallest default position error (tape, 0.05 ft).
+COVERAGE_TOLERANCE_FT = 0.01
 
 # Coordinates beyond this are not a house scan; they would only exhaust memory in the sweep.
 MAX_COORDINATE_FT = 1e5

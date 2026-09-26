@@ -21,7 +21,16 @@ from typing import Any
 from shapely import Geometry, LineString, Polygon, get_coordinates, unary_union
 
 from rules import LoadedRules, Rules, Value
-from scene import EPS, Measured, Piece, Scene, SceneObject, merge_intervals, subtract_intervals
+from scene import (
+    COVERAGE_TOLERANCE_FT,
+    EPS,
+    Measured,
+    Piece,
+    Scene,
+    SceneObject,
+    merge_intervals,
+    subtract_intervals,
+)
 from units import format_ft_in
 
 PASS, FAIL, UNSURE = "pass", "fail", "unsure"
@@ -389,7 +398,7 @@ class Solver:
             extents = [
                 e
                 for part in getattr(region, "geoms", [region])
-                if (e := self.scene.s_extent(part)) and e[1] - e[0] > _MEASURE_EPS
+                if (e := self.scene.s_extent(part)) and e[1] - e[0] >= COVERAGE_TOLERANCE_FT
             ]
             if extents:
                 a, b = min(a for a, _ in extents), max(b for _, b in extents)

@@ -9,6 +9,7 @@ import jsonschema
 from helpers import D, at_start, observed_band, parsed, shared_fixture
 from test_s4_round import PUBLIC, answer
 
+from scene import COVERAGE_TOLERANCE_FT
 from solver import PASS, UNSURE, evaluate_start
 
 RESULT_SCHEMA = json.loads(
@@ -198,7 +199,8 @@ def test_the_readme_coverage_settles_every_check() -> None:
 
 def test_less_than_the_readme_coverage_leaves_a_check_unseen() -> None:
     for band in EXACT:
-        assert unobserved_at_spot(readme_coverage(**{band: 0.01})) != [], band
+        # Twice the coverage tolerance: narrower gaps are float noise and count as seen.
+        assert unobserved_at_spot(readme_coverage(**{band: 2 * COVERAGE_TOLERANCE_FT})) != [], band
 
 
 def test_a_request_ending_at_the_meter_reads_naturally() -> None:
@@ -206,3 +208,25 @@ def test_a_request_ending_at_the_meter_reads_naturally() -> None:
     observed_band(raw, "wall", [(-40, 0), (3, 40)])  # the cable's first 3 ft unseen
     messages = [m["message"] for m in answer(raw)["missing_evidence"] if m.get("band") == "wall"]
     assert messages == ["Show the wall from the meter to 3 ft 0 in right of the meter."]
+
+
+# --- float noise at the end of the wall -----------------------------------------------------------
+
+
+def wall_seen_to_a_hair_short() -> dict:
+    """S4's replay upload: the unrolled wall ends at 11.00006 ft and the app reports it seen to
+    11 ft. The gap is floating point noise, far under any error, not an unseen stretch."""
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[-40, 0], [11.00006, 0]]
+    raw["overheads"][0]["span_ft"] = raw["facing"][0]["span_ft"] = [-40, 11.00006]
+    raw["coverage"]["ends"]["right"] = {"kind": "unexplored"}  # as the app sent it
+    observed_band(raw, "wall", [(-40, 11)])
+    return raw
+
+
+def test_a_hairline_gap_at_the_wall_end_asks_for_nothing() -> None:
+    # Before: "Show the wall from 11 ft 0 in right of the meter to 11 ft 0 in right of the meter".
+    result = answer(wall_seen_to_a_hair_short())
+    assert [m for m in result["missing_evidence"] if m.get("band") == "wall"] == []
+    opening = at_start(wall_seen_to_a_hair_short(), 6.0, "opening_clearance", PUBLIC)
+    assert [v for v in opening.all_missing() if v.band == "wall"] == []
