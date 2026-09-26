@@ -1,4 +1,4 @@
-from hsverify.a11yaudit import parse_output, symbol_name_labels
+from hsverify.a11yaudit import audit_problems, audited_screens, parse_output, symbol_name_labels
 
 
 def test_parse_output_reads_screens_and_issues_and_skips_noise():
@@ -31,4 +31,51 @@ def test_symbol_name_labels():
     assert symbol_name_labels(screens) == [
         {"screen": 1, "label": "gearshape"},
         {"screen": 1, "label": "arrow.left.circle.fill"},
+    ]
+
+
+def screen(index, **extra):
+    return {"index": index, "labels": ["text:x"], "issues": 0} | extra
+
+
+NINE = [screen(i) for i in range(1, 10)]
+
+
+def test_nine_clean_screens_are_valid():
+    assert audit_problems(NINE, harness_ran=True, min_screens=9) == []
+
+
+def test_zero_screens_is_not_evidence():
+    assert audit_problems([], harness_ran=True, min_screens=9) == ["no screen was audited"]
+
+
+def test_harness_that_did_not_run_is_not_evidence():
+    problems = audit_problems(NINE, harness_ran=False, min_screens=9)
+    assert problems == ["the audit harness did not run (no TEST SUCCEEDED or TEST FAILED line)"]
+
+
+def test_too_few_distinct_screens():
+    repeated = [screen(1), screen(1), screen(2)]
+    assert audit_problems(repeated, harness_ran=True, min_screens=9) == [
+        "2 screens audited, fewer than --min-screens 9"
+    ]
+
+
+def test_screen_error_fails_and_that_screen_is_not_counted():
+    # After a throw the harness prints an error entry and then a normal one for the same index.
+    screens = [*NINE, screen(9, error="audit threw"), {"index": 10, "error": "app not running"}]
+    assert audit_problems(screens, harness_ran=True, min_screens=9) == [
+        "screen 9: audit threw",
+        "screen 10: app not running",
+        "8 screens audited, fewer than --min-screens 9",
+    ]
+    assert audited_screens(screens) == set(range(1, 9))
+
+
+def test_error_lines_from_the_harness_are_parsed_as_screens():
+    text = 'A11Y_SCREEN={"error":"app not running","index":1}'
+    screens, _ = parse_output(text)
+    assert audit_problems(screens, harness_ran=True, min_screens=1) == [
+        "screen 1: app not running",
+        "no screen was audited",
     ]

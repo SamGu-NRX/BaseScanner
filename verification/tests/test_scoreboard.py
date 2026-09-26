@@ -378,7 +378,7 @@ def test_report_uses_newest_and_compares(tmp_path):
     write_report(tmp_path / "old" / "report.json", {"latency_ms": 2000}, 100)
     new = write_report(tmp_path / "new" / "report.json", {"latency_ms": 420}, 200)
     out = evaluate(report_metric(tmp_path, key="latency_ms", less_than=1000), SHA, ctx())
-    assert out == Outcome("met", f"latency_ms = 420 (want < 1000): {new}")
+    assert out == Outcome("met", f"latency_ms = 420 (want < 1000) at no sha: {new}")
 
 
 @pytest.mark.parametrize(
@@ -404,7 +404,7 @@ def test_report_missing_key_and_no_reports(tmp_path):
     m = report_metric(tmp_path, key="build.ok", equals=True)
     assert evaluate(m, SHA, ctx()).status == "no evidence yet"
     path = write_report(tmp_path / "r" / "report.json", {"build": {}}, 100)
-    assert evaluate(m, SHA, ctx()) == Outcome("no evidence yet", f"no build.ok in {path}")
+    assert evaluate(m, SHA, ctx()) == Outcome("no evidence yet", f"no build.ok in {path} (no sha)")
 
 
 def test_report_skips_newer_runs_that_did_not_set_the_key(tmp_path):
@@ -421,10 +421,75 @@ def test_report_requiring_current_sha_marks_stale_or_picks_matching(tmp_path):
     newest = write_report(tmp_path / "b" / "report.json", {"sha": OLD, "states": []}, 200)
     m = report_metric(tmp_path, key="states", length_at_least=1, require_current_sha=True)
     out = evaluate(m, SHA, ctx())
-    assert out == Outcome("met", f"states = length 1 (want at least 1): {older}")
+    assert out == Outcome("met", f"states = length 1 (want at least 1) at sha aaaaaaaa: {older}")
 
     out = evaluate(m, "c" * 40, ctx())
-    assert out == Outcome("stale", f"report for bbbbbbbb, ref at cccccccc: {newest}")
+    assert out == Outcome("stale", f"report for sha bbbbbbbb, ref at cccccccc: {newest}")
+
+
+def test_report_sha_key_compares_the_named_field_not_sha(tmp_path):
+    # An e2e report: `sha` is the server's, `app_sha` the app's the export came from.
+    path = write_report(
+        tmp_path / "r" / "report.json",
+        {"sha": OLD, "app_sha": SHA, "app_export_passed": True},
+        100,
+    )
+    m = report_metric(
+        tmp_path, key="app_export_passed", equals=True, require_current_sha=True, sha_key="app_sha"
+    )
+    assert evaluate(m, SHA, ctx()) == Outcome(
+        "met", f"app_export_passed = true (want True) at app_sha aaaaaaaa: {path}"
+    )
+    # The server SHA matching the ref is not enough.
+    assert evaluate(m, OLD, ctx()) == Outcome(
+        "stale", f"report for app_sha aaaaaaaa, ref at bbbbbbbb: {path}"
+    )
+
+
+def test_report_sha_key_missing_from_the_report_is_stale(tmp_path):
+    path = write_report(tmp_path / "r" / "report.json", {"sha": SHA, "passed": True}, 100)
+    m = report_metric(
+        tmp_path, key="passed", equals=True, require_current_sha=True, sha_key="app_sha"
+    )
+    assert evaluate(m, SHA, ctx()) == Outcome(
+        "stale", f"report for no app_sha, ref at aaaaaaaa: {path}"
+    )
+
+
+def test_report_sha_key_defaults_to_sha():
+    assert metric("report", glob="x", key="k", equals=1).probe["sha_key"] == "sha"
+
+
+def test_report_valid_key_ignores_runs_that_were_not_evidence(tmp_path):
+    m = report_metric(
+        tmp_path, key="issue_count", equals=0, require_current_sha=True, valid_key="ok"
+    )
+    good = write_report(
+        tmp_path / "a" / "report.json", {"sha": SHA, "ok": True, "issue_count": 0}, 100
+    )
+    # Newer, but zero screens audited: issue_count 0 must not count.
+    blind = write_report(
+        tmp_path / "b" / "report.json", {"sha": SHA, "ok": False, "issue_count": 0}, 200
+    )
+    assert evaluate(m, SHA, ctx()) == Outcome(
+        "met", f"issue_count = 0 (want 0) at sha aaaaaaaa: {good}"
+    )
+    good.unlink()
+    assert evaluate(m, SHA, ctx()) == Outcome(
+        "gap", f"ok is not true in the newest report (sha aaaaaaaa): {blind}"
+    )
+    # A report from before `ok` existed is not evidence either.
+    write_report(tmp_path / "b" / "report.json", {"sha": SHA, "issue_count": 0}, 300)
+    assert evaluate(m, SHA, ctx()).status == "gap"
+
+
+def test_real_app_metrics_compare_the_app_sha():
+    for mid in ("S3-8", "S4-1"):
+        m = real_metric(mid)
+        assert m.ref == "origin/t3/ios-mvf"
+        assert m.probe["require_current_sha"] is True
+        assert m.probe["sha_key"] == "app_sha"
+    assert real_metric("S3-6b").probe["valid_key"] == "ok"
 
 
 def test_report_path_shortens_home(monkeypatch, tmp_path):

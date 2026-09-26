@@ -2,10 +2,11 @@
 # A probe that only shows something exists is capped at partial with a cap_reason.
 # Where only a person can judge, the probe is `manual`; the lead edits status and evidence.
 #
-# e2e report keys (hsverify/e2e.py): `sha` is the server SHA; `latency_ms` is the slowest real
-# scene's round trip; `app_export_scene_valid` and `app_export_passed` cover scenes the iOS app
-# exported from a replay. A key is null when the run did not exercise it; the probe then uses
-# the newest report where it is set.
+# e2e report keys (hsverify/e2e.py): `sha` is the server SHA and `app_sha` the SHA of the app
+# build whose export was replayed; `latency_ms` is the slowest real scene's round trip;
+# `app_export_scene_valid` and `app_export_passed` cover scenes the iOS app exported from a
+# replay, so their metrics compare `app_sha` (sha_key) with the app branch. A key is null when
+# the run did not exercise it; the probe then uses the newest report where it is set.
 
 workstreams:
   S1: {title: Evals on real data}
@@ -149,9 +150,9 @@ metrics:
     workstream: S2
     ref: origin/t3/server
     text: >-
-      Black-box (verification e2e): every answer valid under C2, consistent with its decision
-      and the C5 margin rule, never passing unobserved ground or wall, deterministic, symmetric
-      when mirrored, and never passing without coverage
+      Black-box (verification e2e at this SHA): results valid under C2, consistent with the
+      decision and C5 margins, coverage to each check's required radius, missing evidence
+      complete, ordering properties, hostile inputs refused in time
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
       key: contract_problem_count
@@ -223,13 +224,14 @@ metrics:
     ref: origin/t3/ios-mvf
     text: >-
       Independent accessibility audit (verification a11yaudit: Apple's audit on each screen the
-      run reached, plus symbol-name button labels) finds no issues; S4-2 shows how many screens
-      the app reached
+      run reached, at least nine, plus symbol-name button labels) finds no issues
     report:
       glob: ~/house-scanning-data/reports/a11y/*t3-ios-mvf*/report.json
       key: issue_count
       equals: 0
       require_current_sha: true
+      # ok is false when the harness did not run, a screen errored or too few were audited.
+      valid_key: ok
 
   - id: S3-7
     workstream: S3
@@ -246,6 +248,8 @@ metrics:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
       key: app_export_scene_valid
       equals: true
+      require_current_sha: true
+      sha_key: app_sha
 
   - id: S3-9
     workstream: S3
@@ -256,12 +260,15 @@ metrics:
   # --- S4 --------------------------------------------------------------------------------------
   - id: S4-1
     workstream: S4
-    ref: origin/t3/verification
+    # The export comes from the app, so the report must be for the app branch's head.
+    ref: origin/t3/ios-mvf
     text: End to end from a real replay to a placement result passes
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
       key: app_export_passed
       equals: true
+      require_current_sha: true
+      sha_key: app_sha
 
   - id: S4-2
     workstream: S4

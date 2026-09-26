@@ -1,0 +1,160 @@
+{
+  "id": "d-reach-drift-right",
+  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
+  "description": "Straight wall with default (drifting) errors. The route to a start a right of the meter is a +/- (0.6 + 0.16a): pass below a = 12.414, fail above a = 24.524, unsure between.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1"
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -1,
+            0.0
+          ],
+          [
+            29,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -1,
+            0
+          ],
+          [
+            29,
+            0
+          ],
+          [
+            29,
+            10
+          ],
+          [
+            -1,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -1,
+          29
+        ],
+        "depth_ft": 20.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -16.0,
+            44.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -16.0,
+            44.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -16.0,
+            44.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -16.0,
+            44.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "route_length": 20.0
+  },
+  "expect": {
+    "start_outcomes": [
+      {
+        "wall_id": "w1",
+        "start_ft": 5.0,
+        "outcome": "pass",
+        "why": "route 5 + 1.4 = 6.4 < 15"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 12.2138,
+        "outcome": "pass",
+        "why": "just inside a + 0.6 + 0.16a < 15"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 12.6138,
+        "outcome": "unsure",
+        "why": "just past the 15 ft review line"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 18.0,
+        "outcome": "unsure",
+        "why": "18 + 3.48 > 15; 18 - 3.48 < 20"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 24.3238,
+        "outcome": "unsure",
+        "why": "just inside a - 0.6 - 0.16a <= 20"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 24.7238,
+        "outcome": "fail",
+        "why": "just past a - 0.6 - 0.16a > 20"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": 25.5,
+        "outcome": "fail",
+        "why": "25.5 - 4.68 = 20.82 > 20"
+      }
+    ],
+    "decision_not": [
+      "pass"
+    ]
+  }
+}

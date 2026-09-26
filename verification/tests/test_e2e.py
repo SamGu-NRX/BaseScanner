@@ -2,11 +2,30 @@ import hashlib
 import json
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from hsverify.e2e import Endpoint, SceneInput, discover_endpoint, judge, load_input
+from hsverify import e2e
+from hsverify.e2e import (
+    Endpoint,
+    SceneInput,
+    discover_endpoint,
+    hostile_inputs,
+    judge,
+    judge_hostile,
+    load_app_export,
+    load_input,
+)
+from hsverify.resultcheck import RuleSet
+
+RULES = RuleSet(
+    width_ft=31 / 12,
+    depth_ft=22 / 12,
+    radii={"ground_surface": ("ground", 0.0), "gas_clearance": ("ground", 1.0)},
+    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3},
+)
 
 SCENE = {
     "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"},
@@ -219,29 +238,92 @@ def item() -> SceneInput:
     [Endpoint("/place", "application/json"), Endpoint("/place", "multipart/form-data", "file")],
 )
 def test_consistent_server_passes(fake_url, endpoint):
-    record = judge(fake_url, endpoint, item(), SCHEMAS)
+    record = judge(fake_url, endpoint, item(), SCHEMAS, RULES)
     assert record["status"] == "pass", record["problems"]
     assert record["decision"] == "manual_review"
 
 
 def test_server_breaking_coverage_rule_fails(fake_url):
     FakeServer.decide_pass = True
-    record = judge(fake_url, Endpoint("/place", "application/json"), item(), SCHEMAS)
+    record = judge(fake_url, Endpoint("/place", "application/json"), item(), SCHEMAS, RULES)
     assert record["status"] == "fail"
     joined = "\n".join(record["problems"])
     assert "ruled out for this case" in joined
-    assert "without coverage still produced a pass" in joined
-    assert re.search(r"ground under .* was not observed", joined)
+    assert "no coverage: decision pass for a scene with no coverage at all" in joined
+    assert re.search(r"needs ground \[.*\], 2\.83 ft out observed", joined)
 
 
 def test_a_result_breaking_its_schema_counts_against_the_contract(fake_url):
     strict = {"scene": {}, "result": {"required": ["nothing_has_this"]}}
-    record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict)
+    record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict, RULES)
     assert record["status"] == "fail"
     assert record["contract_problems"] and record["contract_problems"] == record["problems"]
 
 
 def test_bad_input_is_not_blamed_on_the_server(fake_url):
     strict = {"scene": {"required": ["nothing_has_this"]}, "result": {}}
-    record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict)
+    record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict, RULES)
     assert record["status"] == "bad input"
+
+
+class RefusingServer(BaseHTTPRequestHandler):
+    """Refuses every request with 422 after `delay` seconds."""
+
+    delay = 0.0
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers["Content-Length"]))
+        time.sleep(self.delay)
+        self.send_response(422)
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"{}")
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def refusing_url():
+    server = HTTPServer(("127.0.0.1", 0), RefusingServer)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_port}"
+    server.shutdown()
+    RefusingServer.delay = 0.0
+
+
+def test_a_quick_refusal_of_a_hostile_input_passes(refusing_url):
+    hostile = hostile_inputs()[1]
+    record = judge_hostile(refusing_url, Endpoint("/p", "application/json"), hostile, SCHEMAS)
+    assert record["status"] == "pass" and record["http_status"] == 422
+
+
+def test_a_slow_refusal_or_a_hang_fails(refusing_url, monkeypatch):
+    monkeypatch.setattr(e2e, "HOSTILE_BUDGET_MS", 100.0)
+    RefusingServer.delay = 0.3
+    hostile = hostile_inputs()[1]
+    record = judge_hostile(refusing_url, Endpoint("/p", "application/json"), hostile, SCHEMAS)
+    assert record["status"] == "fail" and "budget 100" in record["problems"][0]
+    RefusingServer.delay = 6.0  # longer than budget + 5 s: the request times out
+    record = judge_hostile(refusing_url, Endpoint("/p", "application/json"), hostile, SCHEMAS)
+    assert record["status"] == "fail" and record["problems"][0].startswith("no answer within")
+
+
+def test_hostile_inputs_are_small_to_send():
+    items = hostile_inputs()
+    assert all(i.hostile for i in items)
+    assert max(len(i.raw) for i in items) < 5_000_000  # the harness stays light
+
+
+def test_a_sim_report_folder_is_an_app_export_with_its_sha(tmp_path):
+    (tmp_path / "scan.zip").write_bytes(b"")
+    import zipfile
+
+    with zipfile.ZipFile(tmp_path / "scan.zip", "w") as z:
+        z.writestr("scene.json", json.dumps(SCENE))
+    (tmp_path / "report.json").write_text(json.dumps({"sha": "abc123", "app_export": "scan.zip"}))
+    item = load_app_export(tmp_path)
+    assert (item.app_export, item.app_sha, item.real) == (True, "abc123", True)
+    (tmp_path / "report.json").write_text(json.dumps({"sha": "abc123"}))
+    with pytest.raises(SystemExit, match="never reached the upload"):
+        load_app_export(tmp_path)

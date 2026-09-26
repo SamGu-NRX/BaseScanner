@@ -21,17 +21,60 @@ from __future__ import annotations
 
 import copy
 import hashlib
+from dataclasses import dataclass
 from typing import Any
 
+import yaml
 from jsonschema import Draft202012Validator
 
 EPS = 1e-6
 NUMBER_TOL_FT = 1e-5
 # Spot centres and offsets are rounded by the server; a hundredth of a foot is 1/8 inch.
 OFFSET_TOL_FT = 0.01
-# Sweep start ranges are sampled; a pass run may reach one 2 in step past a covered edge.
-SWEEP_STEP_FT = 2 / 12
-DEFAULT_BATTERY_WIDTH_FT = 31 / 12
+# Check ids whose PASS depends on seeing an area around the footprint, the band that area lies
+# in, and the rules.yaml clearance that sets its radius. ground_surface needs only the ground
+# under the battery.
+CLEARANCE_CHECKS = {
+    "gas_clearance": ("ground", "gas_ft"),
+    "ac_clearance": ("ground", "ac_ft"),
+    "drive_clearance": ("ground", "drive_ft"),
+    "pool_clearance": ("ground", "pool_ft"),
+    "opening_clearance": ("wall", "opening_ft"),
+}
+
+
+@dataclass(frozen=True)
+class RuleSet:
+    """What the checks here need from the server's rules.yaml at the tested ref."""
+
+    width_ft: float
+    depth_ft: float
+    # check id -> (band, radius in feet around the battery footprint that must be observed)
+    radii: dict[str, tuple[str, float]]
+    # default error by object source, and for walls and the meter
+    errors: dict[str, float]
+
+    @classmethod
+    def from_yaml(cls, text: str) -> RuleSet:
+        data = yaml.safe_load(text)
+
+        def value(*path: str) -> float:
+            node: Any = data
+            for key in path:
+                if not isinstance(node, dict) or key not in node:
+                    raise ValueError(f"rules.yaml has no {'.'.join(path)}")
+                node = node[key]
+            return float(node["value"] if isinstance(node, dict) else node)
+
+        radii = {
+            check: (band, value("clearances", key))
+            for check, (band, key) in CLEARANCE_CHECKS.items()
+        }
+        radii["ground_surface"] = ("ground", 0.0)
+        errors = {
+            name: value("errors", f"{name}_ft") for name in ("tap", "vlm", "tape", "wall", "meter")
+        }
+        return cls(value("battery", "width_ft"), value("battery", "depth_ft"), radii, errors)
 
 
 def schema_errors(instance: Any, schema: dict) -> list[str]:
@@ -111,7 +154,9 @@ def margin_problem(check: dict) -> str | None:
     )
 
 
-def invariant_problems(scene: dict, result: dict, sent: bytes | None = None) -> list[str]:
+def invariant_problems(
+    scene: dict, result: dict, sent: bytes | None = None, rules: RuleSet | None = None
+) -> list[str]:
     problems: list[str] = []
     decision = result["decision"]
     spot = result.get("spot")
@@ -163,18 +208,41 @@ def invariant_problems(scene: dict, result: dict, sent: bytes | None = None) -> 
         if max(abs(want[0] - got[0]), abs(want[1] - got[1])) > OFFSET_TOL_FT:
             problems.append(f"spot.meter_offset_ft {got} != centre - meter {want}")
 
-    problems += coverage_problems(scene, result)
+    problems += missing_evidence_problems(result)
+    if rules is not None:
+        problems += coverage_problems(scene, result, rules)
     return problems
 
 
-def coverage_problems(scene: dict, result: dict) -> list[str]:
-    """Missing coverage is never a pass (C5); photo requests only for unobserved areas."""
+def required_span(lo: float, hi: float, radius: float) -> tuple[float, float]:
+    """Along-wall stretch within `radius` of a battery covering [lo, hi].
+
+    Along the wall chain, distance is never shorter than straight-line distance, so every point
+    in this stretch lies within the radius even where the chain bends: observing it is necessary
+    (not sufficient) for a PASS, and demanding it cannot wrongly flag a correct server.
+    """
+    return lo - radius, hi + radius
+
+
+def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    """Missing coverage is never a pass (C5), to the radius each check's rule looks out to.
+
+    A PASS for a check at a battery covering [lo, hi] along the wall needs that check's band
+    observed over [lo - R, hi + R], and for the ground band out to the battery depth plus R. A
+    sweep run that passes needs every check's area. The wall and cable route back to the meter
+    must be observed too. No slack: runs list exactly the starts that were evaluated.
+    """
     problems: list[str] = []
-    spot = result.get("spot")
-    width = spot["width_ft"] if spot else DEFAULT_BATTERY_WIDTH_FT
-    depth = spot["depth_ft"] if spot else 22 / 12
+    width, depth = rules.width_ft, rules.depth_ft
     wall = observed(scene, "wall")
-    ground = observed(scene, "ground", min_out_ft=depth)
+
+    def unobserved(band: str, radius: float, lo: float, hi: float) -> str | None:
+        a, b = required_span(lo, hi, radius)
+        seen = observed(scene, band, min_out_ft=depth + radius if band == "ground" else 0.0)
+        if covers(seen, a, b):
+            return None
+        out = f", {depth + radius:.2f} ft out" if band == "ground" else ""
+        return f"{band} [{a:.2f}, {b:.2f}]{out}"
 
     if "coverage" not in scene and result["decision"] == "pass":
         problems.append("decision pass for a scene with no coverage at all")
@@ -184,16 +252,28 @@ def coverage_problems(scene: dict, result: dict) -> list[str]:
             continue
         lo, hi = run["start_ft"][0], run["start_ft"][1] + width
         route_lo, route_hi = min(0.0, lo), max(0.0, hi)
-        if not covers(wall, route_lo, route_hi, slack=SWEEP_STEP_FT):
+        if not covers(wall, route_lo, route_hi):
             problems.append(
                 f"sweep pass for starts {run['start_ft']} but the wall and cable route "
                 f"[{route_lo:.2f}, {route_hi:.2f}] were not all observed"
             )
-        if not covers(ground, lo, hi, slack=SWEEP_STEP_FT):
-            problems.append(
-                f"sweep pass for starts {run['start_ft']} but the ground under "
-                f"[{lo:.2f}, {hi:.2f}] was not observed {depth:.2f} ft out"
-            )
+        for check, (band, radius) in sorted(rules.radii.items()):
+            gap = unobserved(band, radius, lo, hi)
+            if gap:
+                problems.append(
+                    f"sweep pass for starts {run['start_ft']} but {check} needs {gap} observed"
+                )
+
+    spot = result.get("spot")
+    if spot is not None:
+        lo, hi = spot["span_ft"]
+        for check in result.get("checks", []):
+            if check["outcome"] != "pass" or check["id"] not in rules.radii:
+                continue
+            band, radius = rules.radii[check["id"]]
+            gap = unobserved(band, radius, lo, hi)
+            if gap:
+                problems.append(f"check {check['id']} passes but needs {gap} observed")
 
     for request in result.get("missing_evidence", []):
         if request["kind"] != "band" or "span_ft" not in request or "band" not in request:
@@ -204,6 +284,24 @@ def coverage_problems(scene: dict, result: dict) -> list[str]:
                 f"missing_evidence asks for {request['band']} {request['span_ft']}, "
                 "which the scene lists as observed"
             )
+    return problems
+
+
+def missing_evidence_problems(result: dict) -> list[str]:
+    """Every check left unsure because an area was unobserved has a request naming it."""
+    listed = {
+        c for request in result.get("missing_evidence", []) for c in request.get("checks", [])
+    }
+    problems = [
+        f"check {c['id']} is unsure (unobserved) but no missing_evidence entry names it"
+        for c in result.get("checks", [])
+        if c["outcome"] == "unsure"
+        and c.get("unsure_cause") == "unobserved"
+        and c["id"] not in listed
+    ]
+    codes = {r["code"] for r in result.get("reasons", [])}
+    if "unobserved_area" in codes and not result.get("missing_evidence"):
+        problems.append("reason unobserved_area but missing_evidence is empty")
     return problems
 
 
@@ -293,6 +391,15 @@ def expectation_problems(expect: dict, result: dict) -> list[str]:
                 if field in rule and (got is None or abs(got - rule[field]) > NUMBER_TOL_FT):
                     problems.append(f"check {check['id']}: {field} {got}, expected {rule[field]}")
 
+    for rule in expect.get("start_outcomes", []):
+        got = outcome_at(result, rule["wall_id"], rule["start_ft"])
+        if got != rule["outcome"]:
+            why = f" ({rule['why']})" if "why" in rule else ""
+            problems.append(
+                f"start {rule['wall_id']} {rule['start_ft']} is {got or 'not evaluated'}, "
+                f"expected {rule['outcome']}{why}"
+            )
+
     if "missing_evidence_empty" in expect:
         empty = not result.get("missing_evidence")
         if empty != expect["missing_evidence_empty"]:
@@ -363,3 +470,136 @@ def comparable(result: dict) -> dict:
     r = copy.deepcopy(result)
     r["stats"].pop("elapsed_ms", None)
     return r
+
+
+# --- Ordering properties ---------------------------------------------------------------------
+#
+# Comparisons between the answers to a scene and to a changed copy of it. They need no expected
+# numbers: more measurement error or less coverage can only make the server less sure.
+
+
+def outcome_at(result: dict, wall_id: str, start_ft: float) -> str | None:
+    """Outcome of the sweep run containing this battery start, or None if none contains it."""
+    for run in result.get("sweep", []):
+        a, b = run["start_ft"]
+        if run["wall_id"] == wall_id and a - EPS <= start_ft <= b + EPS:
+            return run["outcome"]
+    return None
+
+
+def probe_starts(*results: dict) -> list[tuple[str, float]]:
+    """Every run's ends and middle, from all results: where the outcomes can be compared."""
+    points = set()
+    for result in results:
+        for run in result.get("sweep", []):
+            a, b = run["start_ft"]
+            points |= {(run["wall_id"], a), (run["wall_id"], b), (run["wall_id"], (a + b) / 2)}
+    return sorted(points)
+
+
+def more_error_problems(before: dict, after: dict, change: str) -> list[str]:
+    """With more error, a start may only move toward UNSURE: UNSURE stays, PASS and FAIL stay
+    or become UNSURE."""
+    problems = []
+    for wall_id, s in probe_starts(before, after):
+        a, b = outcome_at(before, wall_id, s), outcome_at(after, wall_id, s)
+        if a is None or b is None or a == b or b == "unsure":
+            continue
+        problems.append(f"{change}: start {wall_id} {s:.3f} went from {a} to {b}")
+    if before["decision"] != "pass" and after["decision"] == "pass":
+        problems.append(f"{change}: the decision became pass")
+    return problems
+
+
+def less_coverage_problems(before: dict, after: dict, change: str) -> list[str]:
+    """With less observed, no start may newly PASS."""
+    problems = [
+        f"{change}: start {wall_id} {s:.3f} went from {outcome_at(before, wall_id, s)} to pass"
+        for wall_id, s in probe_starts(before, after)
+        if outcome_at(after, wall_id, s) == "pass"
+        and outcome_at(before, wall_id, s) not in (None, "pass")
+    ]
+    if before["decision"] != "pass" and after["decision"] == "pass":
+        problems.append(f"{change}: the decision became pass")
+    return problems
+
+
+def with_more_error(scene: dict, rules: RuleSet, extra_ft: float = 0.5) -> dict:
+    """Every object, wall and the meter measured `extra_ft` less precisely than stated (or than
+    its source's default)."""
+    m = copy.deepcopy(scene)
+    for obj in m.get("objects", []):
+        base = obj.get("plus_minus_ft", rules.errors[obj["source"]])
+        obj["plus_minus_ft"] = base + extra_ft
+    for wall in m["walls"]:
+        wall["plus_minus_ft"] = wall.get("plus_minus_ft", rules.errors["wall"]) + extra_ft
+    meter = m["meter"]
+    meter["plus_minus_ft"] = meter.get("plus_minus_ft", rules.errors["meter"]) + extra_ft
+    return m
+
+
+def tape_to_tap(scene: dict) -> dict | None:
+    """Objects measured by tape (and not given their own error) re-measured by AR tap."""
+    m = copy.deepcopy(scene)
+    changed = False
+    for obj in m.get("objects", []):
+        if obj["source"] == "tape" and "plus_minus_ft" not in obj:
+            obj["source"] = "tap"
+            changed = True
+    return m if changed else None
+
+
+def with_less_coverage(scene: dict, trim_ft: float = 0.5) -> dict | None:
+    """Every observed span shortened by `trim_ft` at each end and the ground seen less far out."""
+    if not scene.get("coverage", {}).get("observed"):
+        return None
+    m = copy.deepcopy(scene)
+    kept = []
+    for entry in m["coverage"]["observed"]:
+        a, b = sorted(entry["span_ft"])
+        if b - a <= 2 * trim_ft:
+            continue
+        entry["span_ft"] = [a + trim_ft, b - trim_ft]
+        if "out_ft" in entry:
+            entry["out_ft"] = max(0.0, entry["out_ft"] - trim_ft)
+        kept.append(entry)
+    m["coverage"]["observed"] = kept
+    return m
+
+
+def with_ground_short_of(scene: dict, rules: RuleSet, margin_ft: float = 0.1) -> dict | None:
+    """Ground seen out to just short of the largest clearance radius, where any correct server
+    must stop passing the check that needs it."""
+    radius = max(r for band, r in rules.radii.values() if band == "ground")
+    reach = rules.depth_ft + radius - margin_ft
+    grounds = [e for e in scene.get("coverage", {}).get("observed", []) if e["band"] == "ground"]
+    if not any(e.get("out_ft", 0.0) > reach for e in grounds):
+        return None
+    m = copy.deepcopy(scene)
+    for entry in m["coverage"]["observed"]:
+        if entry["band"] == "ground":
+            entry["out_ft"] = min(entry["out_ft"], reach)
+    return m
+
+
+def with_requests_captured(scene: dict, result: dict, out_ft: float = 40.0) -> dict | None:
+    """The scene as if the homeowner had shown every band the result asked for."""
+    added = [
+        {"band": r["band"], "span_ft": sorted(r["span_ft"])}
+        | ({"out_ft": out_ft} if r["band"] == "ground" else {})
+        for r in result.get("missing_evidence", [])
+        if r["kind"] == "band" and "band" in r and "span_ft" in r
+    ]
+    if not added:
+        return None
+    m = copy.deepcopy(scene)
+    m.setdefault("coverage", {}).setdefault("observed", []).extend(added)
+    return m
+
+
+def unobserved_checks(result: dict) -> list[str]:
+    return [
+        c["id"]
+        for c in result.get("checks", [])
+        if c["outcome"] == "unsure" and c.get("unsure_cause") == "unobserved"
+    ]

@@ -5,14 +5,36 @@ import json
 import pytest
 
 from hsverify.resultcheck import (
+    RuleSet,
     assumption_mismatches,
     comparable,
     expectation_problems,
     invariant_problems,
+    less_coverage_problems,
     margin_problem,
     mirror_scene,
+    missing_evidence_problems,
+    more_error_problems,
     observed,
+    outcome_at,
     outcome_lengths,
+    tape_to_tap,
+    with_ground_short_of,
+    with_less_coverage,
+    with_more_error,
+    with_requests_captured,
+)
+
+# Small radii keep the geometry checkable by hand: a battery 31 x 22 in, gas and openings 1 ft.
+RULES = RuleSet(
+    width_ft=31 / 12,
+    depth_ft=22 / 12,
+    radii={
+        "ground_surface": ("ground", 0.0),
+        "gas_clearance": ("ground", 1.0),
+        "opening_clearance": ("wall", 1.0),
+    },
+    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3},
 )
 
 SCENE = {
@@ -31,8 +53,8 @@ SCENE = {
         "ends": {"left": {"kind": "limit"}, "right": {"kind": "unexplored"}},
         "observed": [
             {"band": "wall", "span_ft": [-12.0, 10.0]},
-            {"band": "ground", "span_ft": [-12.0, 4.0], "out_ft": 3.0},
-            {"band": "ground", "span_ft": [4.0, 10.0], "out_ft": 1.0},
+            {"band": "ground", "span_ft": [-12.0, 10.0], "out_ft": 3.0},
+            {"band": "ground", "span_ft": [10.0, 12.0], "out_ft": 1.0},
         ],
     },
 }
@@ -113,7 +135,7 @@ def result(decision="manual_review", spot=True, checks=None, sweep=None, sent=b"
 
 
 def test_consistent_result_has_no_problems():
-    assert invariant_problems(SCENE, result(), sent=b"{}") == []
+    assert invariant_problems(SCENE, result(), sent=b"{}", rules=RULES) == []
 
 
 @pytest.mark.parametrize(
@@ -197,29 +219,53 @@ def test_counts_hash_and_offset():
 
 def test_observed_merges_and_filters_ground_depth():
     assert observed(SCENE, "wall") == [(-12.0, 10.0)]
-    assert observed(SCENE, "ground", min_out_ft=22 / 12) == [(-12.0, 4.0)]
+    assert observed(SCENE, "ground", min_out_ft=2.0) == [(-12.0, 10.0)]
+    assert observed(SCENE, "ground", min_out_ft=0.5) == [(-12.0, 12.0)]
     assert observed({"meter": {}}, "wall") == []
 
 
-def test_pass_over_unobserved_ground_is_flagged():
-    # Starts [3, 3] put the battery over s = [3, 5.58]; ground past s = 4 was seen only 1 ft out.
-    sweep = [
-        {"wall_id": "w1", "start_ft": [3.0, 3.0], "outcome": "pass", "failing": [], "unsure": []}
-    ]
-    msgs = invariant_problems(SCENE, result(sweep=sweep))
-    assert any("ground under" in m for m in msgs)
+def with_ground(out_ft: float, span: list[float]) -> dict:
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"][1:] = [{"band": "ground", "span_ft": span, "out_ft": out_ft}]
+    return scene
+
+
+def test_a_pass_needs_ground_out_to_depth_plus_each_radius():
+    # Start 1 covers [1, 3.58]. Gas (radius 1) needs ground out to 1.83 + 1 = 2.83 ft.
+    msgs = invariant_problems(with_ground(2.5, [-12.0, 10.0]), result(), rules=RULES)
+    assert any("gas_clearance needs ground [0.00, 4.58], 2.83 ft out observed" in m for m in msgs)
+    assert invariant_problems(with_ground(2.84, [-12.0, 10.0]), result(), rules=RULES) == []
+
+
+def test_a_pass_needs_ground_along_the_wall_to_each_radius_without_slack():
+    # Ground from 0.1: the 1 ft gas radius around [1, 3.58] reaches back to 0.
+    msgs = invariant_problems(with_ground(3.0, [0.1, 10.0]), result(), rules=RULES)
+    assert any("gas_clearance needs ground [0.00, 4.58]" in m for m in msgs)
+
+
+def test_a_passing_opening_check_needs_the_wall_to_its_radius():
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"][0]["span_ft"] = [0.0, 4.0]  # radius needs [0, 4.58]
+    r = result(
+        checks=[
+            check(),
+            {**check(), "id": "opening_clearance", "measured_ft": None, "plus_minus_ft": None},
+        ]
+    )
+    msgs = invariant_problems(scene, r, rules=RULES)
+    assert any("check opening_clearance passes but needs wall [0.00, 4.58]" in m for m in msgs)
 
 
 def test_pass_whose_route_crosses_unobserved_wall_is_flagged():
     scene = copy.deepcopy(SCENE)
     scene["coverage"]["observed"][0]["span_ft"] = [0.5, 10.0]  # the wall at s = [0, 0.5] unseen
-    msgs = invariant_problems(scene, result())
+    msgs = invariant_problems(scene, result(), rules=RULES)
     assert any("wall and cable route" in m for m in msgs)
 
 
 def test_no_coverage_never_passes():
     scene = {k: v for k, v in SCENE.items() if k != "coverage"}
-    msgs = invariant_problems(scene, result("pass"))
+    msgs = invariant_problems(scene, result("pass"), rules=RULES)
     assert any("no coverage at all" in m for m in msgs)
 
 
@@ -228,7 +274,43 @@ def test_photo_request_for_an_observed_area_is_flagged():
     r["missing_evidence"] = [
         {"kind": "band", "band": "wall", "span_ft": [-3.0, -1.0], "message": ""}
     ]
-    assert any("lists as observed" in m for m in invariant_problems(SCENE, r))
+    assert any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))
+
+
+def test_every_unobserved_check_needs_a_request_naming_it():
+    unseen = check("unsure", None, cause="unobserved")
+    r = result(checks=[unseen])
+    r["reasons"] = [{"code": "unobserved_area", "message": ""}]
+    assert missing_evidence_problems(r) == [
+        "check gas_clearance is unsure (unobserved) but no missing_evidence entry names it",
+        "reason unobserved_area but missing_evidence is empty",
+    ]
+    r["missing_evidence"] = [
+        {
+            "kind": "band",
+            "band": "ground",
+            "span_ft": [11, 12],
+            "checks": ["gas_clearance"],
+            "message": "",
+        }
+    ]
+    assert missing_evidence_problems(r) == []
+
+
+def test_rules_come_from_rules_yaml_and_a_missing_one_is_loud():
+    text = """
+battery: {width_ft: {value: 2.5}, depth_ft: {value: 1.5}}
+errors: {tap_ft: {value: 0.3}, vlm_ft: {value: 1.5}, tape_ft: {value: 0.05},
+         wall_ft: {value: 0.3}, meter_ft: {value: 0.3}}
+clearances: {gas_ft: {value: 3}, ac_ft: {value: 3}, drive_ft: {value: 5},
+             pool_ft: {value: 10}, opening_ft: {value: 3}}
+"""
+    rules = RuleSet.from_yaml(text)
+    assert rules.radii["pool_clearance"] == ("ground", 10.0)
+    assert rules.radii["opening_clearance"] == ("wall", 3.0)
+    assert (rules.width_ft, rules.errors["tape"]) == (2.5, 0.05)
+    with pytest.raises(ValueError, match=r"rules\.yaml has no clearances\.pool_ft"):
+        RuleSet.from_yaml(text.replace("pool_ft: {value: 10}, ", ""))
 
 
 def test_expectations():
@@ -368,3 +450,82 @@ def test_outcome_lengths_and_comparable():
     other = copy.deepcopy(r)
     other["stats"]["elapsed_ms"] = 99.0
     assert comparable(r) == comparable(other)
+
+
+def run(a, b, outcome, wall="w1"):
+    return {"wall_id": wall, "start_ft": [a, b], "outcome": outcome, "failing": [], "unsure": []}
+
+
+def swept(*runs, decision="manual_review"):
+    r = result(decision=decision, sweep=list(runs))
+    return r
+
+
+def test_start_outcomes_expectation():
+    r = swept(run(0.0, 2.0, "fail"), run(2.1667, 5.0, "unsure"))
+    assert outcome_at(r, "w1", 1.0) == "fail" and outcome_at(r, "w1", 2.1) is None
+    ok = {"start_outcomes": [{"wall_id": "w1", "start_ft": 3.0, "outcome": "unsure"}]}
+    assert expectation_problems(ok, r) == []
+    bad = {
+        "start_outcomes": [
+            {"wall_id": "w1", "start_ft": 1.0, "outcome": "unsure", "why": "inside the error band"}
+        ]
+    }
+    assert expectation_problems(bad, r) == [
+        "start w1 1.0 is fail, expected unsure (inside the error band)"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "allowed"),
+    [
+        ("pass", "unsure", True),
+        ("fail", "unsure", True),
+        ("unsure", "unsure", True),
+        ("unsure", "fail", False),
+        ("unsure", "pass", False),
+        ("fail", "pass", False),
+        ("pass", "fail", False),
+    ],
+)
+def test_more_error_only_moves_toward_unsure(before, after, allowed):
+    msgs = more_error_problems(swept(run(0, 4, before)), swept(run(0, 4, after)), "more error")
+    assert (msgs == []) == allowed, msgs
+
+
+def test_less_coverage_never_creates_a_pass():
+    assert less_coverage_problems(swept(run(0, 4, "pass")), swept(run(0, 4, "unsure")), "x") == []
+    msgs = less_coverage_problems(swept(run(0, 4, "unsure")), swept(run(0, 4, "pass")), "x")
+    assert msgs and all("went from unsure to pass" in m for m in msgs)
+
+
+def test_transforms():
+    scene = copy.deepcopy(SCENE)
+    scene["objects"].append({"type": "ac", "wall_id": "w1", "span_ft": [5, 6], "source": "tape"})
+    more = with_more_error(scene, RULES)
+    assert [o["plus_minus_ft"] for o in more["objects"]] == [0.8, 0.55]
+    assert more["walls"][0]["plus_minus_ft"] == 0.8 and more["meter"]["plus_minus_ft"] == 0.8
+    assert [o["source"] for o in tape_to_tap(scene)["objects"]] == ["tap", "tap"]
+    assert tape_to_tap(SCENE) is None
+    less = with_less_coverage(scene)
+    assert less["coverage"]["observed"][0]["span_ft"] == [-11.5, 9.5]
+    assert less["coverage"]["observed"][1]["out_ft"] == 2.5
+    short = with_ground_short_of(scene, RULES)  # largest ground radius 1: out to 2.73
+    assert [e.get("out_ft") for e in short["coverage"]["observed"]] == [
+        None,
+        pytest.approx(22 / 12 + 1 - 0.1),
+        1.0,
+    ]
+    assert with_ground_short_of(short, RULES) is None  # nothing left beyond the radius
+    r = result()
+    r["missing_evidence"] = [
+        {"kind": "band", "band": "ground", "span_ft": [12, 11], "message": ""},
+        {"kind": "past_end", "side": "left", "message": ""},
+    ]
+    captured = with_requests_captured(scene, r)
+    assert captured["coverage"]["observed"][-1] == {
+        "band": "ground",
+        "span_ft": [11, 12],
+        "out_ft": 40.0,
+    }
+    assert with_requests_captured(scene, result()) is None

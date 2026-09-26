@@ -20,9 +20,13 @@ probe, which is evaluated against the ref's current SHA so the evidence is tied 
   met on exit 0. Slow probes run only with --slow; otherwise the last cached result for the
   same SHA is shown with status "not run".
 - report {glob, key, equals | less_than | length_equals | length_at_least,
-  require_current_sha}: judges the newest matching report.json (by mtime). With
-  require_current_sha only a report whose `sha` equals the ref's SHA counts; an older one
-  makes the metric "stale".
+  require_current_sha, sha_key, valid_key}: judges the newest matching report.json (by
+  mtime). `sha_key` (default "sha") names the report field holding the SHA the report was
+  measured at; an e2e report carries the server's as `sha` and the app's as `app_sha`. With
+  require_current_sha only a report whose SHA equals the ref's counts; an older one makes the
+  metric "stale". With `valid_key`, only a report whose value there is true counts, for
+  reports that record whether the run itself was evidence (a11yaudit's `ok`). The evidence
+  names the SHA the judged report was measured at.
 - pr_check {name}: the named CI check on the ref's open PR.
 - pr_body {pattern, min_matches}: the ref's open PR description.
 - manual {status, evidence}: a judgment the lead records by editing the YAML.
@@ -83,6 +87,8 @@ PROBE_KEYS: dict[str, dict[str, Any]] = {
         "key": None,
         **dict.fromkeys(COMPARATORS),
         "require_current_sha": False,
+        "sha_key": "sha",
+        "valid_key": None,
     },
     "pr_check": {"name": None},
     "pr_body": {"pattern": None, "min_matches": 1},
@@ -161,7 +167,7 @@ def parse_metric(raw: dict, workstreams: dict) -> Metric:
     if unknown:
         raise MetricsError(f"{mid}: {kind} does not take {', '.join(sorted(unknown))}")
     required = {k for k, v in PROBE_KEYS[kind].items() if v is None and k not in COMPARATORS}
-    required -= {"each"}
+    required -= {"each", "valid_key"}
     absent = required - given.keys()
     if absent:
         raise MetricsError(f"{mid}: {kind} needs {', '.join(sorted(absent))}")
@@ -472,15 +478,35 @@ def probe_report(probe: dict, sha: str | None) -> Outcome:
     if not paths:
         return Outcome("no evidence yet", f"no report matches {probe['glob']}")
     reports = [(p, _read_report(p)) for p in paths]
+    sha_key = probe["sha_key"]
+
+    def measured_at(data: dict | None) -> str:
+        value = _value_or_none(data or {}, sha_key)
+        return f"{sha_key} {str(value)[:8]}" if value else f"no {sha_key}"
+
     if probe["require_current_sha"]:
         if sha is None:
             raise ValueError("require_current_sha needs the ref's SHA")
-        current = [(p, d) for p, d in reports if d is not None and d.get("sha") == sha]
+        current = [
+            (p, d) for p, d in reports if d is not None and _value_or_none(d, sha_key) == sha
+        ]
         if not current:
             newest, data = reports[0]
-            got = str((data or {}).get("sha") or "no sha")[:8]
-            return Outcome("stale", f"report for {got}, ref at {sha[:8]}: {short_home(newest)}")
+            return Outcome(
+                "stale",
+                f"report for {measured_at(data)}, ref at {sha[:8]}: {short_home(newest)}",
+            )
         reports = current
+    if probe.get("valid_key"):
+        valid = [(p, d) for p, d in reports if d and _value_or_none(d, probe["valid_key"]) is True]
+        if not valid:
+            newest, data = reports[0]
+            return Outcome(
+                "gap",
+                f"{probe['valid_key']} is not true in the newest report ({measured_at(data)}): "
+                f"{short_home(newest)}",
+            )
+        reports = valid
     # A run that did not exercise this metric leaves its key null; use the newest that did.
     with_value = [
         (p, d) for p, d in reports if d is not None and _value_or_none(d, probe["key"]) is not None
@@ -489,11 +515,16 @@ def probe_report(probe: dict, sha: str | None) -> Outcome:
         path, data = reports[0]
         if data is None:
             return Outcome("gap", f"unreadable report {short_home(path)}")
-        return Outcome("no evidence yet", f"no {probe['key']} in {short_home(path)}")
+        return Outcome(
+            "no evidence yet", f"no {probe['key']} in {short_home(path)} ({measured_at(data)})"
+        )
     path, data = with_value[0]
     value = lookup(data, probe["key"])
     ok, described = compare(value, probe)
-    return Outcome("met" if ok else "gap", f"{probe['key']} = {described}: {short_home(path)}")
+    return Outcome(
+        "met" if ok else "gap",
+        f"{probe['key']} = {described} at {measured_at(data)}: {short_home(path)}",
+    )
 
 
 def _pr_for(ref: str, ctx: Context) -> tuple[dict | None, str]:

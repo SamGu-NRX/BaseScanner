@@ -8,8 +8,10 @@ The app is launched with the contract C4 arguments (`-replay <path>`, `-autopilo
 a screenshot once it has been on screen for `--settle` seconds; a state replaced sooner is
 captured immediately and flagged `transient`, because its image may already show the next
 state. The run ends at `--until`, after `--idle` seconds without a new state, or at
-`--timeout`. Reports go outside git (default ~/house-scanning-data/reports/sim/) because a
-replay can put dataset frames on screen.
+`--timeout`. A state named with `--require` that never appeared makes the run fail. If the app
+logged a scan bundle, it is copied into the report as scan.zip and named in report.json's
+`app_export`, so the report folder can be replayed as an app export. Reports go outside git
+(default ~/house-scanning-data/reports/sim/) because a replay can put dataset frames on screen.
 """
 
 from __future__ import annotations
@@ -24,17 +26,25 @@ import plistlib
 import queue
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import TextIO
 
 from hsverify import gitref, report
 from hsverify.e2e import server_from_ref
 from hsverify.memory import peak_rss_mb
-from hsverify.statelog import LOG_PREDICATE, RedactedStateError, parse_ndjson_line
+from hsverify.statelog import (
+    LOG_PREDICATE,
+    RedactedStateError,
+    parse_bundle_line,
+    parse_ndjson_line,
+)
 
 DEVICE_NAME = "HouseScan Verify"
 DEVICE_TYPE = "com.apple.CoreSimulator.SimDeviceType.iPhone-17"
@@ -70,6 +80,7 @@ class RunReport:
     final_screenshot: str | None = None
     server: dict | None = None
     peak_memory: dict | None = None
+    app_export: str | None = None  # the app's scan bundle, copied into the report folder
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -239,8 +250,8 @@ def static_c4_check(tree: Path) -> dict:
 # --- Run -------------------------------------------------------------------------------------
 
 
-def stream_states(udid: str, events: queue.Queue, stop: threading.Event, raw: Path) -> None:
-    cmd = [
+def log_stream_command(udid: str) -> list[str]:
+    return [
         "xcrun",
         "simctl",
         "spawn",
@@ -254,23 +265,65 @@ def stream_states(udid: str, events: queue.Queue, stop: threading.Event, raw: Pa
         "--predicate",
         LOG_PREDICATE,
     ]
-    with raw.open("w") as sink:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        events.put(("ready", None))
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            sink.write(line)
-            sink.flush()
-            try:
-                event = parse_ndjson_line(line)
-            except RedactedStateError as exc:
-                events.put(("redacted", str(exc)))
-                continue
-            if event is not None:
-                events.put(("state", event))
-            if stop.is_set():
-                break
-        proc.terminate()
+
+
+def pump_log(lines: Iterable[str], events: queue.Queue, sink: TextIO) -> None:
+    """Copy `log stream` output to `sink` and queue what the runner acts on.
+
+    The first line is the stream's "Filtering the log data" banner, printed once it is attached;
+    it is queued as ("ready", line) so the app is launched only after that, and no early STATE
+    is lost. Starting the process is not enough: it prints nothing until attached.
+    """
+    ready = False
+    for line in lines:
+        sink.write(line)
+        sink.flush()
+        if not ready:
+            events.put(("ready", line.strip()))
+            ready = True
+        try:
+            event = parse_ndjson_line(line)
+        except RedactedStateError as exc:
+            events.put(("redacted", str(exc)))
+            continue
+        if event is not None:
+            events.put(("state", event))
+
+
+def wait_for_log_stream(events: queue.Queue, timeout_s: float) -> str | None:
+    """None once the stream's first line arrived; otherwise the problem to report."""
+    try:
+        kind, _ = events.get(timeout=timeout_s)
+    except queue.Empty:
+        return f"log stream printed nothing within {timeout_s:.0f} s; the app was not launched"
+    if kind != "ready":
+        return f"log stream sent {kind!r} before its first line"
+    return None
+
+
+def missing_required(required: list[str], states: list[ShotRecord]) -> list[str]:
+    seen = {s.state for s in states}
+    return [f"required state {name} never appeared" for name in required if name not in seen]
+
+
+def copy_app_export(out: Path) -> tuple[str | None, list[str]]:
+    """Copy the scan bundle the app last logged into `out` as scan.zip.
+
+    Returns (file name or None, problems). A run whose app never logged a bundle has no export
+    and no problem; a logged bundle that cannot be copied is a problem.
+    """
+    log = out / "state.ndjson"
+    bundles = [b for line in log.open() if (b := parse_bundle_line(line))] if log.exists() else []
+    if not bundles:
+        return None, []
+    path, keyframes = bundles[-1]
+    try:
+        shutil.copyfile(path, out / "scan.zip")
+    except OSError as exc:
+        return None, [
+            f"the app logged bundle {path} with {keyframes} keyframes; copy failed: {exc}"
+        ]
+    return "scan.zip", []
 
 
 def app_running(udid: str, bundle_id: str) -> bool:
@@ -303,14 +356,32 @@ def slug(text: str) -> str:
 
 def follow(args, udid: str, bundle_id: str, out: Path, rep: RunReport) -> None:
     events: queue.Queue = queue.Queue()
-    stop = threading.Event()
-    reader = threading.Thread(
-        target=stream_states, args=(udid, events, stop, out / "state.ndjson"), daemon=True
+    proc = subprocess.Popen(
+        log_stream_command(udid), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
     )
-    reader.start()
-    events.get(timeout=30)  # log stream is attached before launch, so no early state is lost
-    time.sleep(1.0)
+    assert proc.stdout is not None
+    with (out / "state.ndjson").open("w") as sink:
+        reader = threading.Thread(target=pump_log, args=(proc.stdout, events, sink), daemon=True)
+        reader.start()
+        try:
+            problem = wait_for_log_stream(events, args.log_ready_timeout)
+            if problem:
+                rep.end_reason = "log stream did not start"
+                rep.problems.append(problem)
+                return
+            follow_launched(args, udid, bundle_id, out, rep, events)
+        finally:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            reader.join(timeout=10)
 
+
+def follow_launched(
+    args, udid: str, bundle_id: str, out: Path, rep: RunReport, events: queue.Queue
+) -> None:
     launch = [
         "xcrun",
         "simctl",
@@ -392,7 +463,6 @@ def follow(args, udid: str, bundle_id: str, out: Path, rep: RunReport) -> None:
 
     if pending is not None:
         shoot(pending[0], pending[1], transient=False)
-    stop.set()
     final = out / "final.png"
     screenshot(udid, final)
     rep.final_screenshot = final.name
@@ -428,6 +498,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--extra-arg", action="append", default=[], help="more launch args")
     parser.add_argument("--until", action="append", default=[], help="state that ends the run")
+    parser.add_argument(
+        "--require",
+        action="append",
+        default=[],
+        metavar="STATE",
+        help="a state the run must reach; one that never appears is a problem (exit 1)",
+    )
+    parser.add_argument(
+        "--log-ready-timeout",
+        type=float,
+        default=30.0,
+        help="seconds to wait for `log stream` to print its first line before launching",
+    )
     parser.add_argument("--settle", type=float, default=1.2, help="seconds before a screenshot")
     parser.add_argument("--idle", type=float, default=25.0, help="stop after this long quiet")
     parser.add_argument("--timeout", type=float, default=300.0)
@@ -512,6 +595,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             print("Running...", flush=True)
             follow(args, udid, bundle_id, out, rep)
+            rep.problems += missing_required(args.require, rep.states)
+            rep.app_export, export_problems = copy_app_export(out)
+            rep.problems += export_problems
         rep.crash_reports = collect_crashes(started, out)
         if rep.crash_reports:
             rep.problems.append(f"Crash reports: {', '.join(rep.crash_reports)}")

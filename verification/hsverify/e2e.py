@@ -44,13 +44,22 @@ from pathlib import Path
 from hsverify import gitref
 from hsverify.memory import peak_rss_mb
 from hsverify.resultcheck import (
+    RuleSet,
     assumption_mismatches,
     comparable,
     expectation_problems,
     invariant_problems,
+    less_coverage_problems,
     mirror_scene,
+    more_error_problems,
     outcome_lengths,
     schema_errors,
+    tape_to_tap,
+    unobserved_checks,
+    with_ground_short_of,
+    with_less_coverage,
+    with_more_error,
+    with_requests_captured,
 )
 
 HERE = Path(__file__).resolve().parents[1]
@@ -78,6 +87,24 @@ class SceneInput:
     source: str = ""
     skip_reason: str | None = None
     app_export: bool = False  # exported by the iOS app (from a replay), the S4 end-to-end path
+    app_sha: str | None = None  # the app commit that exported it, when known
+    hostile: bool = False  # judged by judge_hostile: refused or answered within a budget
+
+
+def load_app_export(path: Path) -> SceneInput:
+    """A scene the iOS app exported: a scan.zip, or a Simulator report folder holding one (whose
+    report.json names the app commit that produced it)."""
+    app_sha = None
+    if path.is_dir():
+        run = json.loads((path / "report.json").read_text())
+        if not run.get("app_export"):
+            raise SystemExit(f"{path} has no app export; the run never reached the upload")
+        app_sha = run["sha"]
+        path = path / run["app_export"]
+    item = load_input(path, real=True)
+    item.app_export, item.app_sha = True, app_sha
+    item.source = str(path)
+    return item
 
 
 def load_input(path: Path, real: bool = False) -> SceneInput:
@@ -258,7 +285,10 @@ def bundle_zip(item: SceneInput) -> bytes:
     return buf.getvalue()
 
 
-def post(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[int, bytes, float]:
+def post(
+    url: str, endpoint: Endpoint, item: SceneInput, timeout_s: float = 60
+) -> tuple[int | None, bytes, float]:
+    """Send one scene. A timeout or a dropped connection comes back as status None."""
     if endpoint.content_type == "application/json":
         body, ctype = item.raw, "application/json"
     else:
@@ -277,10 +307,12 @@ def post(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[int, bytes, fl
     )
     start = time.perf_counter()
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
+        with urllib.request.urlopen(request, timeout=timeout_s) as response:
             status, payload = response.status, response.read()
     except urllib.error.HTTPError as exc:
         status, payload = exc.code, exc.read()
+    except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+        status, payload = None, str(exc).encode()
     return status, payload, (time.perf_counter() - start) * 1000
 
 
@@ -295,15 +327,28 @@ def variant(item: SceneInput, name: str, scene: dict) -> SceneInput:
     )
 
 
-def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict:
+def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None, str | None]:
+    """The server's result for a scene, or why there is none."""
+    status, payload, _ = post(url, endpoint, item)
+    if status is None:
+        return None, f"no answer: {payload.decode(errors='replace')[:200]}"
+    if status != 200:
+        return None, f"HTTP {status}: {payload[:300]!r}"
+    return json.loads(payload), None
+
+
+def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict, rules: RuleSet) -> dict:
     record: dict = {
         "name": item.name,
         "source": item.source,
         "real": item.real,
         "app_export": item.app_export,
+        "app_sha": item.app_sha,
     }
     if item.skip_reason:
         return record | {"status": "skipped", "problems": [], "skip_reason": item.skip_reason}
+    if item.hostile:
+        return record | judge_hostile(url, endpoint, item, schemas)
     input_errors = schema_errors(item.scene, schemas["scene"])
     if input_errors:
         return record | {"status": "bad input", "problems": input_errors[:20]}
@@ -311,7 +356,11 @@ def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict
     status, payload, ms = post(url, endpoint, item)
     record |= {"http_status": status, "latency_ms": round(ms, 1)}
     if status != 200:
-        failure = [f"HTTP {status} for a scene that validates: {payload[:500]!r}"]
+        failure = [
+            f"HTTP {status} for a scene that validates: {payload[:500]!r}"
+            if status is not None
+            else f"no answer within 60 s: {payload[:200]!r}"
+        ]
         return record | {"status": "fail", "problems": failure, "contract_problems": failure}
     result = json.loads(payload)
     record["result"] = result
@@ -320,8 +369,8 @@ def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict
         return record | {"status": "fail", "problems": problems[:20], "contract_problems": problems}
 
     # Contract problems hold for any scene; expectation problems depend on one case's geometry.
-    contract = problems + invariant_problems(item.scene, result, sent=item.raw)
-    contract += property_problems(url, endpoint, item, result)
+    contract = invariant_problems(item.scene, result, sent=item.raw, rules=rules)
+    contract += property_problems(url, endpoint, item, result, schemas, rules)
     if item.real and ms > LATENCY_BUDGET_MS:
         contract.append(f"real-derived scene took {ms:.0f} ms, budget {LATENCY_BUDGET_MS:.0f}")
     mismatches = assumption_mismatches(item.rules_assumed, result)
@@ -339,43 +388,164 @@ def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict
     return record
 
 
-def property_problems(url: str, endpoint: Endpoint, item: SceneInput, result: dict) -> list[str]:
-    problems = []
+def property_problems(
+    url: str, endpoint: Endpoint, item: SceneInput, result: dict, schemas: dict, rules: RuleSet
+) -> list[str]:
+    """The same scene resent unchanged and transformed. Every answer to a transformed scene must
+    also satisfy the invariants, and the transforms that only lose information must not make
+    the server surer."""
+    problems: list[str] = []
+
+    def resend(name: str, scene: dict) -> dict | None:
+        other, failure = answer(url, endpoint, variant(item, name, scene))
+        if failure:
+            problems.append(f"{name}: {failure}")
+            return None
+        errors = schema_errors(other, schemas["result"])
+        if errors:
+            problems.append(f"{name}: result schema: {errors[0]}")
+            return None
+        problems.extend(f"{name}: {p}" for p in invariant_problems(scene, other, rules=rules))
+        return other
+
     # 1. Same input, same answer.
     status, payload, _ = post(url, endpoint, item)
     if status != 200 or comparable(json.loads(payload)) != comparable(result):
         problems.append("sending the same scene twice gave different results")
+
     # 2. Mirrored left to right: same decision, same amount of each outcome along the wall.
-    mirrored = variant(item, "mirror", mirror_scene(item.scene))
-    status, payload, _ = post(url, endpoint, mirrored)
-    if status != 200:
-        problems.append(f"mirrored scene: HTTP {status}")
-    else:
-        other = json.loads(payload)
-        if other["decision"] != result["decision"]:
+    mirrored = resend("mirrored", mirror_scene(item.scene))
+    if mirrored is not None:
+        if mirrored["decision"] != result["decision"]:
             problems.append(
-                f"mirrored scene decided {other['decision']}, original {result['decision']}"
+                f"mirrored: decided {mirrored['decision']}, original {result['decision']}"
             )
-        a, b = outcome_lengths(result), outcome_lengths(other)
+        a, b = outcome_lengths(result), outcome_lengths(mirrored)
         for outcome in a:
             if abs(a[outcome] - b[outcome]) > MIRROR_LENGTH_TOL_FT:
                 problems.append(
-                    f"mirrored scene: {outcome} starts cover {b[outcome]:.2f} ft, "
+                    f"mirrored: {outcome} starts cover {b[outcome]:.2f} ft, "
                     f"original {a[outcome]:.2f} ft"
                 )
-    # 3. Without coverage nothing was observed, so nothing may pass.
+
+    # 3. Less information never makes the server surer.
     if "coverage" in item.scene:
         bare = {k: v for k, v in item.scene.items() if k != "coverage"}
-        status, payload, _ = post(url, endpoint, variant(item, "no-coverage", bare))
-        if status != 200:
-            problems.append(f"scene without coverage: HTTP {status}")
-        else:
-            other = json.loads(payload)
-            if other["decision"] == "pass" or any(
-                r["outcome"] == "pass" for r in other.get("sweep", [])
-            ):
-                problems.append("scene without coverage still produced a pass")
+        if (other := resend("no coverage", bare)) is not None:
+            problems += less_coverage_problems(result, other, "no coverage")
+    for name, scene in (
+        ("less coverage", with_less_coverage(item.scene)),
+        ("ground short of the largest clearance", with_ground_short_of(item.scene, rules)),
+    ):
+        if scene is not None and (other := resend(name, scene)) is not None:
+            problems += less_coverage_problems(result, other, name)
+    for name, scene in (
+        ("more error", with_more_error(item.scene, rules)),
+        ("tape re-measured by tap", tape_to_tap(item.scene)),
+    ):
+        if scene is not None and (other := resend(name, scene)) is not None:
+            problems += more_error_problems(result, other, name)
+
+    # 4. Showing everything the result asked for settles every check that was unsure only
+    # because an area was unobserved (the chosen spot may move; three rounds at most).
+    scene, current = item.scene, result
+    for round_ in range(1, 4):
+        if not unobserved_checks(current):
+            break
+        scene = with_requests_captured(scene, current)
+        if scene is None:
+            break  # what remains needs a walk past an end, not another view
+        current = resend(f"requests captured ({round_})", scene)
+        if current is None:
+            break
+    else:
+        if unobserved_checks(current):
+            problems.append(
+                "after capturing every requested view three times, checks are still unsure "
+                f"for coverage: {unobserved_checks(current)}"
+            )
     return problems
+
+
+# --- Hostile inputs ---------------------------------------------------------------------------
+
+# A refusal or an answer must come within this; an input that keeps the server busy longer is a
+# denial-of-service risk. Generous for a laptop-hosted server; the real-scene budget is 1 s.
+HOSTILE_BUDGET_MS = 10_000.0
+
+
+def hostile_inputs() -> list[SceneInput]:
+    """Small requests that cost a careless server a lot: many objects, huge numbers, deep
+    nesting and a very long wall. Built here, not stored, so the repository carries no blobs."""
+    wall = {"id": "w1", "baseline": [[-15.0, 0.0], [15.0, 0.0]]}
+    base = {"meter": {"pos": [0.0, 4.5, 0.0], "wall_id": "w1"}, "walls": [wall]}
+    many = base | {
+        "objects": [
+            {
+                "type": "window",
+                "wall_id": "w1",
+                "span_ft": [i * 0.001, i * 0.001 + 0.5],
+                "source": "tap",
+            }
+            for i in range(20_000)
+        ]
+    }
+    huge = {
+        "meter": {"pos": [1e300, 4.5, 0.0], "wall_id": "w1"},
+        "walls": [{"id": "w1", "baseline": [[-1e300, 0.0], [1e300, 0.0]]}],
+    }
+    long_wall = {
+        "meter": {"pos": [0.0, 4.5, 0.0], "wall_id": "w1"},
+        "walls": [{"id": "w1", "baseline": [[-2500.0, 0.0], [2500.0, 0.0]]}],
+        "coverage": {
+            "observed": [
+                {"band": "wall", "span_ft": [-2500, 2500]},
+                {"band": "ground", "span_ft": [-2500, 2500], "out_ft": 20},
+            ]
+        },
+    }
+    depth = 20_000
+    nested = (
+        json.dumps(base)[:-1]
+        + ', "objects": [{"type": "door", "wall_id": "w1", "span_ft": [1, 2], "source": "tap", '
+        + '"attrs": {"note": '
+        + "[" * depth
+        + "]" * depth
+        + "}}]}"
+    ).encode()
+    items = [
+        SceneInput("hostile: 20 000 objects", many, json.dumps(many).encode()),
+        SceneInput("hostile: coordinates of 1e300 ft", huge, json.dumps(huge).encode()),
+        SceneInput("hostile: a 5000 ft wall", long_wall, json.dumps(long_wall).encode()),
+        SceneInput("hostile: attrs nested 20 000 deep", {}, nested),
+    ]
+    for item in items:
+        item.hostile = True
+    return items
+
+
+def judge_hostile(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict:
+    """A refusal (400, 413, 422) or a valid result, either within the budget. A crash, a hang or
+    a slow answer is a failure."""
+    status, payload, ms = post(url, endpoint, item, timeout_s=HOSTILE_BUDGET_MS / 1000 + 5)
+    record = {"http_status": status, "latency_ms": round(ms, 1)}
+    if status is None:
+        failure = f"no answer within {HOSTILE_BUDGET_MS / 1000 + 5:.0f} s"
+    elif ms > HOSTILE_BUDGET_MS:
+        failure = f"answered HTTP {status} after {ms:.0f} ms, budget {HOSTILE_BUDGET_MS:.0f}"
+    elif status in (400, 413, 422):
+        failure = None
+    elif status == 200:
+        errors = schema_errors(json.loads(payload), schemas["result"])
+        failure = f"result schema: {errors[0]}" if errors else None
+    else:
+        failure = f"HTTP {status}: {payload[:200]!r}"
+    problems = [failure] if failure else []
+    return record | {
+        "status": "fail" if problems else "pass",
+        "problems": problems,
+        "contract_problems": problems,
+    }
 
 
 # --- Report ----------------------------------------------------------------------------------
@@ -402,6 +572,12 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
         if exported
         else None,
         "app_export_passed": all(r["status"] == "pass" for r in exported) if exported else None,
+        # The app commit the export came from (the scoreboard ties app metrics to it); null when
+        # the run had none or several, or the export's origin is unknown.
+        "app_sha": app_shas.pop()
+        if len(app_shas := {r.get("app_sha") for r in exported}) == 1
+        else None,
+        "app_export_source": [r["source"] for r in exported],
         "records": records,
     }
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -453,7 +629,10 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         action="append",
         default=[],
-        help="scene.json or bundle the iOS app exported from a replay (real, latency budget)",
+        help="scan.zip the app exported, or a sim report folder with one (records the app SHA)",
+    )
+    parser.add_argument(
+        "--no-hostile", action="store_true", help="skip the hostile inputs (quicker local runs)"
     )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
@@ -468,6 +647,10 @@ def main(argv: list[str] | None = None) -> int:
         if text is None:
             raise SystemExit(f"{path} does not exist at {schema_ref}")
         schemas[key] = json.loads(text)
+    rules_text = gitref.show(schema_sha, "server/rules.yaml")
+    if rules_text is None:
+        raise SystemExit(f"server/rules.yaml does not exist at {schema_ref}")
+    rules = RuleSet.from_yaml(rules_text)
 
     items = (
         [load_input(p) for p in sorted(args.cases.glob("*.json"))] if args.cases.exists() else []
@@ -475,9 +658,9 @@ def main(argv: list[str] | None = None) -> int:
     items += [load_input(p) for p in args.scene]
     items += [load_input(p, real=True) for p in args.real]
     for path in args.app_export:
-        exported = load_input(path, real=True)
-        exported.app_export = True
-        items.append(exported)
+        items.append(load_app_export(path.expanduser()))
+    if not args.no_hostile:
+        items += hostile_inputs()
     if not items:
         raise SystemExit("No scenes: add case files to e2e/cases or pass --scene/--real.")
 
@@ -495,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Server {url}, endpoint POST {endpoint.path} ({endpoint.content_type})")
         records = []
         for item in items:
-            record = judge(url, endpoint, item, schemas)
+            record = judge(url, endpoint, item, schemas, rules)
             records.append(record)
             print(
                 f"  {record['status']:<20} {item.name}"

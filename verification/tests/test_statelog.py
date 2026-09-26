@@ -6,6 +6,7 @@ from hsverify.statelog import (
     CATEGORY,
     SUBSYSTEM,
     RedactedStateError,
+    parse_bundle_line,
     parse_ndjson_line,
     parse_plain_line,
 )
@@ -59,3 +60,24 @@ def test_redacted_marker_is_loud(message):
 def test_plain_line():
     assert parse_plain_line("2026 app[12] STATE=result_reveal") == "result_reveal"
     assert parse_plain_line("no marker here") is None
+
+
+BUNDLE_PATH = "/Users/x/Library/Developer/CoreSimulator/Devices/D/data/Caches/Scans/S/scan.zip"
+
+
+def test_reads_the_engine_bundle_line():
+    line = entry(f"bundle {BUNDLE_PATH} with 77 keyframes", category="engine")
+    assert parse_bundle_line(line) == (BUNDLE_PATH, 77)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        entry(f"bundle {BUNDLE_PATH} with 77 keyframes"),  # state category
+        entry(f"bundle {BUNDLE_PATH} with 77 keyframes", subsystem="other", category="engine"),
+        entry("bundle written", category="engine"),
+        "Filtering the log data using ...",
+    ],
+)
+def test_bundle_line_ignores_everything_else(line):
+    assert parse_bundle_line(line) is None

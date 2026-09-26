@@ -181,7 +181,7 @@ def straight_scene(x0, x1, z=0.0, meter_x=0.0, objects=(), ground=None, cov=None
 # g01: an unseen stretch behind a garage door needs no photo, since no cable can reach it.
 # The garage ends at s = -1, inside the meter's working space, so no battery can sit between
 # garage and meter; the unseen stretch starts at s = -9, more than pool_ft (10) left of the
-# first start right of the meter (1.25).
+# first start right of the meter (1.25; 2 once garage doors count as openings, f2705dd).
 case(
     "g01-unseen-beyond-garage",
     golden("01"),
@@ -862,6 +862,102 @@ reach_case(
     "the 1 ft run height: 11 + 2 x 2.5 = 16 ft routed, past the 15 ft confident reach.",
     objects=[ebox],
     extra_checks=[{"match": "route_path", "outcome": "pass"}],
+)
+
+# Drift cases. Walls, meter and objects carry no plus_minus_ft, so rules.yaml's defaults apply:
+# errors.meter_ft 0.3 (no drift), errors.wall_ft 0.3 and errors.tap_ft 0.3, each plus
+# errors.drift_per_ft 0.16 per foot walked along the walls from the meter. Ground and facing keep
+# explicit errors so that only the checks under test move. README.md ("Drift cases") has the
+# derivation; the model assumed is: a measured point's error is its default plus drift times its
+# walked distance, and a gap or route sums the errors of its two ends.
+TAP, WALL_E, METER_E, DRIFT = 0.3, 0.3, 0.3, 0.16
+PT = 0.2  # sample points sit 0.2 ft inside a boundary: more than one 2 in sweep step
+
+
+def drift_scene(x0, x1, objects=()):
+    return {
+        "schema_version": "1.0",
+        "meter": {"pos": [0.0, METER_Y, 0.0], "wall_id": "w1"},
+        "walls": [{"id": "w1", "baseline": [[x0, 0.0], [x1, 0.0]]}],
+        "objects": list(objects),
+        "ground": [concrete(rect(x0, x1, 0, 10))],
+        "facing": [facing("w1", (x0, x1), depth=20.0)],
+        "coverage": full_coverage((x0, x1)),
+    }
+
+
+def starts(points):
+    return [
+        {"wall_id": "w1", "start_ft": round(s, 4), "outcome": o, "why": why} for s, o, why in points
+    ]
+
+
+# Cable reach, right of the meter. Route = a (near edge), error = meter 0.3 + wall at a
+# (0.3 + 0.16a) = 0.6 + 0.16a. Pass: a + e < 15 (review line) -> a < 14.4/1.16. Fail: a - e > 20
+# -> a > 20.6/0.84.
+R_PASS = (CONFIDENT - METER_E - WALL_E) / (1 + DRIFT)
+R_FAIL = (MAX_ROUTE + METER_E + WALL_E) / (1 - DRIFT)
+reach_points = [
+    (5.0, "pass", "route 5 + 1.4 = 6.4 < 15"),
+    (R_PASS - PT, "pass", "just inside a + 0.6 + 0.16a < 15"),
+    (R_PASS + PT, "unsure", "just past the 15 ft review line"),
+    (18.0, "unsure", "18 + 3.48 > 15; 18 - 3.48 < 20"),
+    (R_FAIL - PT, "unsure", "just inside a - 0.6 - 0.16a <= 20"),
+    (R_FAIL + PT, "fail", "just past a - 0.6 - 0.16a > 20"),
+    (25.5, "fail", "25.5 - 4.68 = 20.82 > 20"),
+]
+case(
+    "d-reach-drift-right",
+    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
+    "Straight wall with default (drifting) errors. The route to a start a right of the meter is "
+    "a +/- (0.6 + 0.16a): pass below a = 12.414, fail above a = 24.524, unsure between.",
+    drift_scene(-1, 29),
+    {"start_outcomes": starts(reach_points), "decision_not": ["pass"]},
+    {"route_length": MAX_ROUTE},
+)
+# Mirror: left of the meter the near edge is the battery's right edge b = a + W, route = -b.
+case(
+    "d-reach-drift-left",
+    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
+    "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge "
+    "b = a + W, so the boundaries sit at a = -12.414 - W and a = -24.524 - W.",
+    drift_scene(-29, 1),
+    {
+        "start_outcomes": starts([(-s - W, o, why + " (b = a + W)") for s, o, why in reach_points]),
+        "decision_not": ["pass"],
+    },
+    {"route_length": MAX_ROUTE},
+)
+
+# Gas clearance. A tapped gas meter on the wall line at s = 4 (error 0.3 + 0.16 x 4 = 0.94). A
+# battery right of it has gap d = a - 4 and error 0.94 + (0.3 + 0.16a) = 1.24 + 0.16a.
+# Fail: d + e < 3 -> 1.16a < 5.76. Pass: d - e > 3 -> 0.84a > 8.24.
+G_AT = 4.0
+G_E = TAP + DRIFT * G_AT
+G_FAIL = (3.0 + G_AT - G_E - WALL_E) / (1 + DRIFT)
+G_PASS = (3.0 + G_AT + G_E + WALL_E) / (1 - DRIFT)
+tap_gas = {"type": "gas_meter", "wall_id": "w1", "span_ft": [G_AT, G_AT], "source": "tap"}
+case(
+    "d-gas-drift",
+    "rules.yaml errors.tap_ft, wall_ft, drift_per_ft and clearances.gas_ft at origin/t3/server "
+    "f2705dd; C5 margin rule",
+    "A tapped gas meter at s = 4 on a wall with default errors. For a start a right of it the gap "
+    "is (a - 4) +/- (1.24 + 0.16a): fail below a = 4.966, pass above a = 9.810, unsure between.",
+    drift_scene(-1, 20, objects=[tap_gas]),
+    {
+        "start_outcomes": starts(
+            [
+                (3.0, "fail", "battery [3, 5.58] covers the gas meter: gap 0 + 1.88 < 3"),
+                (G_FAIL - PT, "fail", "just inside (a - 4) + 1.24 + 0.16a < 3"),
+                (G_FAIL + PT, "unsure", "just past the fail line"),
+                (7.5, "unsure", "gap 3.5 +/- 2.44"),
+                (G_PASS - PT, "unsure", "just inside (a - 4) - 1.24 - 0.16a <= 3"),
+                (G_PASS + PT, "pass", "just past (a - 4) - 1.24 - 0.16a > 3"),
+                (11.0, "pass", "gap 7 - 3.0 = 4 > 3; route 11 + 2.36 < 15"),
+            ]
+        ),
+    },
+    {"gas": 3.0, "route_length": MAX_ROUTE},
 )
 
 

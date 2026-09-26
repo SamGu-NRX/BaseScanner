@@ -34,6 +34,8 @@ The keys follow the lead's case format. The cases use two additions and one conv
   gap the case built. With a different battery depth it measures a different gap, and these keys
   catch that before the outcome is compared.
 - `missing_evidence_empty: false` means the list must be non-empty.
+- `start_outcomes` (d cases): `{"wall_id", "start_ft", "outcome", "why"}`. The sweep run that
+  contains that battery start must have that outcome.
 - `rules_assumed` maps a check-id substring to the `threshold_ft` the case depends on: `gas` 3 ft
   (`clearances.gas_ft`), `opening` 3 ft (`clearances.opening_ft`), `headroom` 6.5 ft
   (`headroom.min_ft`) and `route_length` 20 ft (`route.max_ft`). `route.confident_reach_ft` (15)
@@ -42,7 +44,7 @@ The keys follow the lead's case format. The cases use two additions and one conv
 
 ## The rules these cases depend on
 
-From `rules.yaml` at 2c9348f:
+From `rules.yaml` at 2c9348f, rechecked at f2705dd:
 
 - Battery 31/12 × 11/6 ft (W ≈ 2.5833, D ≈ 1.8333), matching the review's table.
 - `meter_working_space` 2.5 ft wide, centred on the meter. A battery overlapping s = (−1.25, 1.25)
@@ -51,8 +53,9 @@ From `rules.yaml` at 2c9348f:
 - `pool_ft` 10 and `drive_ft` 5, both placeholders. With no pool or driveway in the scene these
   checks pass only if the ground was seen 10 ft around the footprint. Otherwise they are unsure
   and ask for a photo.
-- `openings.types` is `[door, window]`. A garage door is not an opening, so it has no 3 ft
-  clearance. It does fail the route (`route.crossing.garage_door: fail`).
+- `openings.types` is `[door, garage_door, window]` since f2705dd (it was `[door, window]` at
+  2c9348f). A garage door therefore has the 3 ft opening clearance, and it also fails the route
+  (`route.crossing.garage_door: fail`). g01 and g08a hold under either version.
 - `route.crossing.window: detour`, `gas_meter: detour` and `elec_box: detour`.
   `route.corner_allowance_ft` adds 0.5 ft per corner the cable turns. `route.height_ft` 1: the
   cable runs 1 ft above the ground. The route length has no vertical run from the meter down to
@@ -60,7 +63,8 @@ From `rules.yaml` at 2c9348f:
   2 × (top − 1): up to its top and back down. Going under is impossible when the object sits on
   the ground. A window whose bottom is above 1 ft is crossed with no extra (g12a: route 7.042 for
   start 7.042).
-- `route.confident_reach_ft` 15: a longer route is unsure. `route.max_ft` 20 (`route_length`,
+- `route.confident_reach_ft` 15: a longer route is unsure. Since f2705dd the `route_length`
+  check reports it as `review_threshold_ft`: pass needs length + error < 15. `route.max_ft` 20 (`route_length`,
   `at_most`): pass needs length + error < 20, fail needs length − error > 20. The route's error
   is the meter's and the wall's errors summed (at 2c9348f a wall at ±0.3 with an exact meter gives
   a route at ±0.3).
@@ -92,7 +96,7 @@ From `rules.yaml` at 2c9348f:
 
 | Case | Golden | Asserts | Arithmetic |
 | --- | --- | --- | --- |
-| g01-unseen-beyond-garage | 01 | `missing_evidence` empty; starts in (−19.9, −8.2) fail with `route` | Wall s = [−20, 10], garage [−5.5, −1], nothing observed left of s = −9. A battery with right edge b < −1 needs a cable across the garage (b ≤ −5.5 means a ≤ −8.083). A battery with b > −1 overlaps the working space. So every start left of the meter fails. The first start right of the meter that clears the working space is 1.25, and pool needs ground from 1.25 − 10 = −8.75 ≥ −9. |
+| g01-unseen-beyond-garage | 01 | `missing_evidence` empty; starts in (−19.9, −8.2) fail with `route` | Wall s = [−20, 10], garage [−5.5, −1], nothing observed left of s = −9. A battery with right edge b < −1 needs a cable across the garage (b ≤ −5.5 means a ≤ −8.083). A battery with b > −1 overlaps the working space. So every start left of the meter fails. Right of the meter a start must clear the working space (a ≥ 1.25) and, since f2705dd, the garage's 3 ft opening clearance (a ≥ −1 + 3 = 2). Pool then needs ground from 2 − 10 = −8 (−8.75 at 2c9348f), both ≥ −9. |
 | g03-negative-s-near-edge | 03 | spot on w1 within [−9, −6]; starts in (−8.4, 6.9) fail; no photo request | Pads are straight 3 ft segments at s = [−9, −6] and [7, 10]. Between them sit 7 segments of 13/7 ≈ 1.857 ft, each shorter than the battery, with corners at s = −4.143, −2.286, −0.429, 1.429, 3.286, 5.143. Headings run 32°, 24°, …, −24°, −32°, so every corner is an outside corner. Left route = 6 + 3 corners × 0.5 = 7.5; right = 7 + 3 × 0.5 = 8.5; left wins. Measuring to the far edge gives 103/12 + 1.5 ≈ 10.08 > 8.5 and would pick the right pad. Pad starts are (−9, −8.583] and [7, 7.417]; every other start crosses a corner. |
 | g05-inside-corner-gas | 05 | starts on w1 in (6, 7.4) fail with `gas`; never pass | w1 is z = 0 from x = −7 to 4 (w1 extended 1 ft left of the golden, so the meter at x = −6 sits inside the wall rather than on its end); s = x + 6. w2 is x = 4 going +z; gas point [4, 4] at s = 14. For start s the battery is x ∈ [s − 6, s − 6 + W], z ∈ [0, 11/6]. At s = 6 the nearest corner is (31/12, 11/6): √((17/12)² + (13/6)²) = √965/12 ≈ 2.589 < 3. Fail needs the right edge past 4 − √(9 − (13/6)²) = 4 − √155/6 ≈ 1.925, so s > 5.342. The last start on w1 is 89/12 ≈ 7.417 (2.167). Unrolled gap 14 − 103/12 = 65/12 ≈ 5.417 would wrongly pass. |
 | g06-regulator-footprint | 06 | starts in (3, 9) fail with `gas`; never pass | Gas footprint: body x ∈ [6.5, 7.5], z ∈ [9.5, 10.5], with a spike reaching [7, 23/6]. Battery front at z = 11/6, so the gap to the tip is 23/6 − 11/6 = 2 whenever the battery covers x = 7, i.e. starts in [7 − W, 7] ≈ [4.417, 7]. Outside that the gap is √(dx² + 4) < 3 while dx < √5 ≈ 2.236, so starts in (2.18, 9.24) fail. The body alone gives 10 − 11/6 ≈ 8.17 and would pass. Facing depth is 12 here so the body stands inside it. |
@@ -119,6 +123,88 @@ From `rules.yaml` at 2c9348f:
 | g09-reach-20p4-pm03 | 09 | spot null; the sweep at L fails with `route_length` | 20.4 − 0.3 = 20.1 > 20. |
 | g09-vertical-run | 09 | `route_length` unsure, measured 16, ±0; `route_path` pass; spot at [11, 11 + W] | Pad at 15 − 4 = 11. An `elec_box` at s = [4, 5], 0 to 3.5 ft tall, sits across the 1 ft cable run, and elec boxes detour. Over: 2 × (3.5 − 1) = 5. Routed 11 + 5 = 16 = 15 + 1, past the confident reach. Measuring along the wall alone (11) would pass. |
 | c5-no-coverage | C5, scene schema | decision manual_review; `missing_evidence` non-empty; starts in (−6, −3.9) and (1.3, 7.4) unsure, starts in (−3.8, 1.2) fail with `meter_working_space` | Clean wall s = [−6, 10] with ground and facing data but no `coverage`. "Absent means nothing is known to be observed" makes every start unsure except where the working space, which needs no observation, fails it. Absent ends default to unexplored, which rules out reject. |
+
+## Drift cases
+
+The cases above set every error explicitly, so they never exercise the error model's growth with
+distance. The `d-` cases leave `plus_minus_ft` off the walls, the meter and the objects, and give
+objects `source: "tap"`. Ground and facing keep explicit errors so only the checks under test
+move.
+
+### The error model, from rules.yaml and server/README.md at f2705dd
+
+- `errors.meter_ft` 0.3, `errors.wall_ft` 0.3, `errors.tap_ft` 0.3.
+- `errors.drift_per_ft` 0.16 is added per foot walked along the walls from the meter to the
+  default error of walls, tap and vlm objects and ground patches. It is not added to tape, the
+  meter itself or an explicit `plus_minus_ft`.
+- A battery position comes from the wall, so a point of the battery at walked distance x carries
+  0.3 + 0.16x.
+- A gap or a route sums the errors of its two ends (linear, as the C5 margin rule and g10's
+  derived row use).
+- A route's ends are the meter and the battery's near edge. A gas gap's ends are the gas meter
+  and the battery edge nearest it.
+
+### d-reach-drift-right: cable reach, `at_most` 20 with review line 15
+
+Wall s = [−1, 29], meter at 0. For a start a > 0 the route is a (straight wall, no corners) and its
+error is 0.3 (meter) + 0.3 + 0.16a (wall at the near edge) = 0.6 + 0.16a.
+
+| Line | Condition | Start |
+| --- | --- | --- |
+| pass / unsure | a + 0.6 + 0.16a < 15 | a < 14.4 / 1.16 = 12.4138 |
+| unsure / fail | a − 0.6 − 0.16a > 20 | a > 20.6 / 0.84 = 24.5238 |
+
+Asserted starts: pass at 5 and 12.2138. Unsure at 12.6138, 18 and 24.3238. Fail at 24.7238 and
+25.5. Each boundary is bracketed 0.2 ft inside on both sides, which is more than one 2 in sweep
+step, so each point falls inside a run rather than between two. Using the far edge (a + W) for the
+wall term would move both lines by 0.16W / 1.16 = 0.356 and 0.16W / 0.84 = 0.492, which the points
+0.2 ft inside catch. So would any cutoff that is off by 0.16W = 0.413.
+
+### d-reach-drift-left: the same, left of the meter
+
+Wall s = [−29, 1]. Left of the meter the near edge is the battery's right edge b = a + W, and
+the route is −b. The table above holds for −b, so each asserted start is a = −(right-case start) −
+W: pass at −7.5833 and −14.7971, unsure at −15.1971, −20.5833 and −26.9071, fail at −27.3071 and
+−28.0833. The lines sit at a = −12.4138 − W = −14.9971 and a = −24.5238 − W = −27.1071.
+
+### d-gas-drift: gas clearance, `at_least` 3
+
+Wall s = [−1, 20]. A tapped gas meter on the wall line at s = 4 (span [4, 4], no footprint)
+carries 0.3 + 0.16 × 4 = 0.94. For a start a > 4 the gap is d = a − 4 and its error is 0.94 +
+(0.3 + 0.16a) = 1.24 + 0.16a.
+
+| Line | Condition | Start |
+| --- | --- | --- |
+| fail / unsure | (a − 4) + 1.24 + 0.16a < 3 | a < 5.76 / 1.16 = 4.9655 |
+| unsure / pass | (a − 4) − 1.24 − 0.16a > 3 | a > 8.24 / 0.84 = 9.8095 |
+
+Asserted starts:
+
+- **Fail:** 3, where the battery [3, 5.583] covers the gas meter: gap 0, and 0 + 1.88 < 3. Also
+  4.7655.
+- **Unsure:** 5.1655, 7.5 and 9.6095.
+- **Pass:** 10.0095 and 11. Both routes also pass: 11 + 0.6 + 1.76 = 13.36 < 15.
+
+All starts sit right of the working space. The route to them crosses the gas meter, which
+detours; a gas meter with no heights added no extra length at 2c9348f.
+
+### What rules.yaml and the README leave open
+
+- **Which battery point carries the drift.** The model gives drift for "AR-placed positions".
+  The battery is placed from the wall, not tapped, and it spans W, over which drift changes by
+  0.16W = 0.413 ft. These cases take the point the measurement ends at: the near edge for the
+  route, the edge nearest the gas for a gas gap. The far edge or the centre is an equally literal
+  reading and moves every line (see the reach arithmetic above).
+- **Walked distance for an object with a span.** For a tapped object spanning [s0, s1], it could
+  be s0, s1 or the nearest end. d-gas-drift uses a zero-length span to avoid the question.
+- **Whether the meter's error enters the route.** The README says drift is not added to the
+  meter. Whether its 0.3 base enters the route error is inferred from 2c9348f, where both
+  defaults gave a route at ±0.6.
+- **How errors combine.** Linear sum is assumed, as elsewhere in this suite. Root-sum-square
+  would move every line.
+- **Whether drift enters checks with explicit inputs.** Facing gaps and the working space involve
+  the wall's drifting error. These cases give facing 20 ft (18.17 from the battery front, far
+  above 3 + any error here) and keep every asserted start well clear of the working space.
 
 ## Assumptions a failure should be checked against
 

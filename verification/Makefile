@@ -19,11 +19,12 @@ sim:
 	uv run python -m hsverify.simrun --ref $(REF) $(ARGS)
 
 # The app at REF on the real ADVIO replay (C3), driven by its autopilot, uploading to the server
-# started from SERVER_REF: a screenshot per STATE in ~/house-scanning-data/reports/sim/.
+# started from SERVER_REF: a screenshot per STATE in ~/house-scanning-data/reports/sim/. Fails
+# unless the run reaches the result state; the scan bundle is copied into the report as scan.zip.
 sim-app:
 	uv run python -m hsverify.simrun --ref $(REF) --replay $(REPLAY) --autopilot \
 		--server-ref $(SERVER_REF) --extra-arg=-autopilotHold --extra-arg=3 \
-		--idle 60 --timeout 900 --label replay $(ARGS)
+		--idle 60 --timeout 900 --require result --label replay $(ARGS)
 
 # Every case in e2e/cases/ plus the ETH3D facade scene through the server's API at SERVER_REF;
 # each result is validated against server/schemas/result.schema.json at the same ref.

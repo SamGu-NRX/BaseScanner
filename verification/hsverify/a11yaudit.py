@@ -15,7 +15,12 @@ VoiceOver then reads aloud ("gearshape"). Those labels are flagged here as well.
 Reports go to ~/house-scanning-data/reports/a11y/<run>/ with a screenshot per audited screen.
 The probe's middle screen carries a deliberately undersized, unlabelled button, so
 `--ref HEAD --project verification/fixtures/state-probe/StateProbe.xcodeproj --scheme
-StateProbe` must report at least one issue; a clean result there means the audit is blind.
+StateProbe --min-screens 1` must report at least one issue; a clean result there means the
+audit is blind.
+
+A run proves nothing when the harness did not run, the audit threw on a screen, or fewer than
+`--min-screens` screens were audited. The report then says `ok: false` with the reasons in
+`problems`, and the exit code is 1 whatever the issue count.
 """
 
 from __future__ import annotations
@@ -70,6 +75,31 @@ def symbol_name_labels(screens: list[dict]) -> list[dict]:
     return found
 
 
+def audited_screens(screens: list[dict]) -> set:
+    """Indexes of screens the audit completed on.
+
+    A screen entry carrying "error" means the audit threw on that screen or the app stopped.
+    After a throw the harness still prints a normal entry for the same index, so a screen
+    counts only if no entry for its index carries an error.
+    """
+    errored = {s.get("index") for s in screens if "error" in s}
+    return {s.get("index") for s in screens if "error" not in s} - errored
+
+
+def audit_problems(screens: list[dict], harness_ran: bool, min_screens: int) -> list[str]:
+    """Why this run is not evidence of an audit; empty when it is."""
+    problems = []
+    if not harness_ran:
+        problems.append("the audit harness did not run (no TEST SUCCEEDED or TEST FAILED line)")
+    problems += [f"screen {s.get('index')}: {s['error']}" for s in screens if "error" in s]
+    audited = audited_screens(screens)
+    if not audited:
+        problems.append("no screen was audited")
+    elif len(audited) < min_screens:
+        problems.append(f"{len(audited)} screens audited, fewer than --min-screens {min_screens}")
+    return problems
+
+
 def run_harness(
     udid: str, bundle_id: str, args: argparse.Namespace, launch: list[str], out: Path
 ) -> str:
@@ -103,6 +133,12 @@ def write_report(out: Path, data: dict) -> None:
     (out / "report.json").write_text(json.dumps(data, indent=2) + "\n")
     rows = []
     for screen in data["screens"]:
+        if "error" in screen:
+            rows.append(
+                f"<section><div><h2>Screen {screen['index']}: audit error</h2>"
+                f"<p>{html.escape(str(screen['error']))}</p></div></section>"
+            )
+            continue
         issues = [i for i in data["issues"] if i.get("screen") == screen["index"]]
         symbols = [s for s in data["symbol_name_labels"] if s["screen"] == screen["index"]]
         items = "".join(
@@ -120,6 +156,7 @@ def write_report(out: Path, data: dict) -> None:
             f"</h2><p>{html.escape(' · '.join(texts[:8]))}</p>"
             f"<ul>{items or '<li>No issues</li>'}</ul></div></section>"
         )
+    verdict = "".join(f"<p><b>Not valid:</b> {html.escape(p)}</p>" for p in data["problems"])
     page = (
         "<!doctype html><meta charset=utf-8><title>Accessibility audit</title><style>"
         "body{font:15px/1.45 -apple-system,sans-serif;max-width:1000px;margin:32px auto;"
@@ -127,7 +164,7 @@ def write_report(out: Path, data: dict) -> None:
         "img{border-radius:16px;border:1px solid #ccc}h2{font-size:17px;margin:0}"
         "small{color:#6e6e73}</style>"
         f"<h1>Accessibility audit: <code>{html.escape(data['ref'])}</code> at "
-        f"<code>{data['sha'][:12]}</code></h1><p>{len(data['screens'])} screens, "
+        f"<code>{data['sha'][:12]}</code></h1>{verdict}<p>{data['screens_audited']} screens, "
         f"{data['issue_count']} issues. Text size {html.escape(str(data['content_size']))}, "
         f"{html.escape(data['appearance'])}.</p>" + "".join(rows)
     )
@@ -149,6 +186,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--content-size")
     parser.add_argument("--label", default="")
     parser.add_argument("--build-wait", type=float, default=1200)
+    # Nine: the app's ten states less `unsupported`, which needs a device without LiDAR (the
+    # same count as metric S3-7). The state-probe fixture has fewer screens; pass a lower value.
+    parser.add_argument("--min-screens", type=int, default=9)
     args = parser.parse_args(argv)
 
     gitref.fetch()
@@ -199,7 +239,12 @@ def main(argv: list[str] | None = None) -> int:
 
     screens, issues = parse_output(output)
     symbols = symbol_name_labels(screens)
+    harness_ran = "** TEST SUCCEEDED **" in output or "** TEST FAILED **" in output
+    problems = audit_problems(screens, harness_ran, args.min_screens)
     data = {
+        # ok: the run is evidence of an audit. Issues found are counted separately below.
+        "ok": not problems,
+        "problems": problems,
         "ref": args.ref,
         "build": build,
         "sha": sha,
@@ -210,20 +255,24 @@ def main(argv: list[str] | None = None) -> int:
         "issues": issues,
         "symbol_name_labels": symbols,
         "issue_count": len(issues) + len(symbols),
-        "harness_ran": "** TEST SUCCEEDED **" in output or "** TEST FAILED **" in output,
+        "screens_audited": len(audited_screens(screens)),
+        "min_screens": args.min_screens,
+        "harness_ran": harness_ran,
     }
     write_report(out, data)
-    print(f"{len(screens)} screens, {data['issue_count']} issues. Open {out / 'index.html'}")
+    print(
+        f"{data['screens_audited']} screens, {data['issue_count']} issues. "
+        f"Open {out / 'index.html'}"
+    )
     for issue in issues[:20]:
         print(
             f"  screen {issue.get('screen')}: {issue.get('description')} {issue.get('element', '')}"
         )
     for s in symbols:
         print(f"  screen {s['screen']}: button label is a symbol name: {s['label']}")
-    if not data["harness_ran"]:
-        print(f"The audit harness did not run; see {out / 'xcodebuild-test.log'}")
-        return 1
-    return 0 if data["issue_count"] == 0 else 1
+    for problem in problems:
+        print(f"PROBLEM: {problem}; see {out / 'xcodebuild-test.log'}")
+    return 0 if not problems and data["issue_count"] == 0 else 1
 
 
 if __name__ == "__main__":

@@ -16,6 +16,11 @@ CATEGORY = "state"
 # happened); only `state` lines are parsed as screens.
 LOG_PREDICATE = f'subsystem == "{SUBSYSTEM}"'
 
+ENGINE_CATEGORY = "engine"
+# The engine logs `bundle <path> with <N> keyframes` once it has written a scan bundle; the path
+# is on the Mac's disk, inside the Simulator's app container.
+_BUNDLE_RE = re.compile(r"^bundle (.+) with (\d+) keyframes$")
+
 # A state name is an identifier-like token. Anything after it on the line is detail.
 _STATE_RE = re.compile(r"STATE=([A-Za-z0-9_.\-]+)")
 _REDACTED = "<private>"
@@ -35,6 +40,26 @@ class RedactedStateError(ValueError):
     """
 
 
+def _app_entry(line: str, category: str) -> dict | None:
+    line = line.strip()
+    if not line.startswith("{"):
+        return None
+    try:
+        entry = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    if entry.get("subsystem") != SUBSYSTEM or entry.get("category") != category:
+        return None
+    return entry
+
+
+def parse_bundle_line(line: str) -> tuple[str, int] | None:
+    """(zip path, keyframe count) from the engine's bundle line, or None for any other line."""
+    entry = _app_entry(line, ENGINE_CATEGORY)
+    match = _BUNDLE_RE.match((entry or {}).get("eventMessage") or "")
+    return (match.group(1), int(match.group(2))) if match else None
+
+
 def parse_ndjson_line(line: str) -> StateEvent | None:
     """Return the STATE event on one `log stream --style ndjson` line, or None.
 
@@ -43,14 +68,8 @@ def parse_ndjson_line(line: str) -> StateEvent | None:
     Raises RedactedStateError when the message is the redaction placeholder, because
     silently dropping it would make a working app look like it logs nothing.
     """
-    line = line.strip()
-    if not line.startswith("{"):
-        return None
-    try:
-        entry = json.loads(line)
-    except json.JSONDecodeError:
-        return None
-    if entry.get("subsystem") != SUBSYSTEM or entry.get("category") != CATEGORY:
+    entry = _app_entry(line, CATEGORY)
+    if entry is None:
         return None
     message = entry.get("eventMessage") or ""
     match = _STATE_RE.search(message)
