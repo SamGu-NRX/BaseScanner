@@ -242,8 +242,23 @@ extension GapPlanner {
         }
     }
 
+    /// Whether a band item's span reaches past a marked end where the coverage map records
+    /// nothing, so no capture can meet it (issue #35): past any end for the wall, facing and
+    /// overhead bands, and past an unexplored end for the ground. Ground past an end in
+    /// `limitEnds` is recorded (`CoverageMap.groundDepthSpans`), and the server asks for it there.
+    /// A span within the server's COVERAGE_TOLERANCE_FT (0.01 ft) of an end reaches it, not past.
+    public func reachesPastEnd(_ item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>) -> Bool {
+        guard item.kind == .band, let span = item.spanFt else { return false }
+        let tolerance = 0.01
+        let feet = { (meters: Float) in Double(meters) * SceneUnits.feetPerMeter }
+        var past: [WalkSide] = []
+        if let leftEnd, min(span.x, span.y) < feet(leftEnd) - tolerance { past.append(.left) }
+        if let rightEnd, max(span.x, span.y) > feet(rightEnd) + tolerance { past.append(.right) }
+        return past.contains { !(item.band == .ground && limitEnds.contains($0)) }
+    }
+
     /// The capture request for an item of the server's missing evidence, or nil when no capture
-    /// can settle it (including `isBeyondCapture`).
+    /// can settle it (including `isBeyondCapture` and `reachesPastEnd`).
     ///
     /// A band item asks for its own span, and for its `out_ft` when it has one: ground seen that
     /// far out, a walk past the span that far out (facing), a tilt-up view reaching that high
@@ -251,11 +266,14 @@ extension GapPlanner {
     /// which a walk can't give, so it has no request. A past-end item asks for the ground 2 m
     /// beyond that end: far enough to show whether the wall continues, near enough to stay one
     /// instruction. An item of a kind or band this app doesn't know has no request.
-    public func plan(for item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?) -> GapPlan? {
+    public func plan(
+        for item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide> = []
+    ) -> GapPlan? {
         let metersPerFoot: Float = 0.3048
         switch item.kind {
         case .band:
-            guard let span = item.spanFt, !isBeyondCapture(item) else { return nil }
+            guard let span = item.spanFt, !isBeyondCapture(item),
+                  !reachesPastEnd(item, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds) else { return nil }
             let out = item.outFt.map { Float($0) * metersPerFoot }
             let band: SurfaceBand
             let need: GapPlan.Need
@@ -286,5 +304,14 @@ extension GapPlanner {
         case .unknown:
             return nil
         }
+    }
+
+    /// Where the end a past_end request cleared goes once the request is met without the end
+    /// marked again: past the stretch the request showed, at its far edge (never back inside
+    /// `clearedAt`), so the wall runs on over ground that was seen and a next past_end request
+    /// asks for the 2 m after it. Left without an end, the next request would be planned from
+    /// the meter (issue #35).
+    public func endAfterPastEnd(_ plan: GapPlan, side: WalkSide, clearedAt old: Float) -> Float {
+        side == .left ? min(plan.span.lowerBound, old) : max(plan.span.upperBound, old)
     }
 }

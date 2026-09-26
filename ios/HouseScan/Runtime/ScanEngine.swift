@@ -79,6 +79,9 @@ final class ScanEngine {
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
     var pastEndSide: WallSide?
+    /// The end the past_end request cleared: where it was, its kind and when it was marked, put
+    /// back or moved on when the request ends without it marked again (`settleClearedEnd`).
+    private var clearedEnd: (s: Float, kind: EndKind, t: Double?)?
     /// Server requests raised without a tap since the review was confirmed (`nextAutomaticGap`),
     /// oldest first. Each is raised once; the result still offers it as a capture.
     private var automaticGaps: [GapPlan] = []
@@ -1083,6 +1086,7 @@ final class ScanEngine {
         state.gap = nil
         gapPlan = nil
         pastEndSide = nil
+        clearedEnd = nil
         // Skipped requests name spans along the old wall.
         skippedGaps = []
         automaticGaps = []
@@ -1240,6 +1244,7 @@ final class ScanEngine {
     /// with the new evidence (the closed loop: gap, instruction, capture, updated result). The
     /// answer then leads to the next capturable request or to the result (`upload`).
     private func afterGapResolved() {
+        settleClearedEnd()
         gapPlan = nil
         pastEndSide = nil
         pendingOverhead = nil
@@ -1398,7 +1403,7 @@ final class ScanEngine {
         guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
               let map = coverage else { return nil }
         for item in result.missingEvidence {
-            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
+            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
                   !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
             return (item, plan)
         }
@@ -1411,13 +1416,35 @@ final class ScanEngine {
         var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
             // The walk has to go past the end it stopped at; that end is no longer a limit. It
-            // exports as unexplored unless the homeowner marks it again (markWallEnd).
-            pastEnd = side == .left ? .left : .right
-            clearEnd(side == .left ? .left : .right)
+            // stays cleared until the homeowner marks it again (markWallEnd) or the request ends
+            // (settleClearedEnd).
+            let wallSide: WallSide = side == .left ? .left : .right
+            pastEnd = wallSide
+            let old = wallSide == .left ? coverage?.leftEnd : coverage?.rightEnd
+            clearedEnd = old.map { (s: $0, kind: endKinds[wallSide] ?? EndKind.unexplored, t: markTimes[MarkKey.end(wallSide)]) }
+            clearEnd(wallSide)
         }
         // Set first, so the guidance log records the request as a past-end one.
         pastEndSide = pastEnd
         beginGap(plan, origin: .server, reason: .server(detail: item.message))
+    }
+
+    /// A past_end request ending without its end marked again (the gap screen offers only "I
+    /// can't get there") must not leave that side without an end: the export would run the wall
+    /// out to whatever the fog saw, and the next past_end request would be planned from the
+    /// meter (issue #35). Met, the end moves on past the ground the request showed, still
+    /// unexplored (`GapPlanner.endAfterPastEnd`); skipped, the end it cleared comes back with its
+    /// kind and mark time.
+    private func settleClearedEnd() {
+        guard let side = pastEndSide, let old = clearedEnd, let plan = gapPlan else { return }
+        clearedEnd = nil
+        guard (side == .left ? coverage?.leftEnd : coverage?.rightEnd) == nil else { return }
+        if state.gap?.isSatisfied == true {
+            setEnd(side, at: gapPlanner.endAfterPastEnd(plan, side: side == .left ? .left : .right, clearedAt: old.s), kind: .unexplored)
+        } else {
+            setEnd(side, at: old.s, kind: old.kind)
+            markTimes[MarkKey.end(side)] = old.t
+        }
     }
 
     /// Writes the capture packet (`ScanEngine+Packet.swift`) with this scene.json inside, zipped
@@ -1483,6 +1510,7 @@ final class ScanEngine {
         gapPlan = nil
         skippedGaps = []
         pastEndSide = nil
+        clearedEnd = nil
         automaticGaps = []
         automaticGapsStopped = false
         seeBehindBands = []
