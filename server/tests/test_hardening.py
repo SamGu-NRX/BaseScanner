@@ -227,3 +227,24 @@ def test_schemas_are_served(client: TestClient, name: str) -> None:
 
 def test_battery_width_constant_matches_rules() -> None:
     assert pytest.approx(PUBLIC.rules.battery.width_ft.value) == W
+
+
+# --- validation messages don't echo the input ---------------------------------------------------
+
+
+def test_validation_message_is_capped() -> None:
+    # Before: jsonschema's message quoted the whole offending value, so a 10 MB scene with a
+    # type error at the top would send 10 MB back.
+    raw = shared_fixture()
+    raw["meter"] = "x" * 20_000
+    with pytest.raises(SceneError) as caught:
+        parse_scene(raw, PUBLIC.rules)
+    assert caught.value.path == "/meter"
+    assert len(caught.value.message) < 300
+
+
+def test_refusal_body_stays_small(client: TestClient) -> None:
+    body = json.dumps({**shared_fixture(), "meter": [[[[1] * 3000]]]})
+    resp = client.post("/v1/placements", content=body, headers={"content-type": "application/json"})
+    assert resp.status_code == 422
+    assert len(resp.content) < 600
