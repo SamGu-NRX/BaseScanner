@@ -2,6 +2,8 @@
 
 An experiment answers one question the team needs settled before building on an assumption. For example: can an iPhone without LiDAR measure the gap between a wall and a fence to within a few inches?
 
+The [research handoff packages](research-handoff/README.md) contain reusable capture/evidence prototypes and isolated native proposals from the September 26 investigation. Start with the [high-level report](../docs/06-research-handoff.md) for their results and limitations.
+
 - Give each experiment its own folder, `experiments/<short-name>/`.
 - Its README states the question, the method and the pass criteria before the run, then the result and what it changes after. Keep the result when it fails; a failure tells us which part to change next.
 - Keep dependencies inside the folder, in its own uv, pnpm or Xcode project. Don't add them to `server/`, `web/` or `ios/`.
