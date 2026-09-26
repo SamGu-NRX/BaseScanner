@@ -1,6 +1,6 @@
 import Foundation
 
-// Store-only ZIP writer for the upload bundle (scene.json plus JPEGs). JPEGs do not compress, so
+// Store-only ZIP writer for the scan bundle (scene.json plus JPEGs). JPEGs do not compress, so
 // method 0 (stored) costs almost nothing and keeps the writer free of a deflate dependency.
 // Layout per PKWARE APPNOTE 6.3.x: local header + data for each file, then the central directory,
 // then the end-of-central-directory record. No ZIP64: anything that would need it throws.
@@ -62,11 +62,41 @@ public enum ZipWriter {
     ///     the same inputs give byte-identical archives.
     ///   - timeZone: zone the DOS local time is expressed in.
     public static func archive(_ entries: [ZipEntry], modified: Date? = nil, timeZone: TimeZone = .gmt) throws -> Data {
+        var out = Data()
+        try build(entries.map { entry in (entry.name, { entry.data }) }, modified: modified, timeZone: timeZone) { out.append($0) }
+        return out
+    }
+
+    /// Writes the same archive as `archive` to `url`, loading one entry at a time, so memory holds
+    /// one file and the central directory instead of the whole bundle. Replaces any file at `url`;
+    /// on a throw the partial file is removed.
+    /// - Parameter entries: each entry's name and a loader called once, in order.
+    public static func write(
+        _ entries: [(name: String, load: () throws -> Data)], to url: URL, modified: Date? = nil, timeZone: TimeZone = .gmt
+    ) throws {
+        let fm = FileManager.default
+        try? fm.removeItem(at: url)
+        guard fm.createFile(atPath: url.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        do {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try build(entries, modified: modified, timeZone: timeZone) { try handle.write(contentsOf: $0) }
+        } catch {
+            try? fm.removeItem(at: url)
+            throw error
+        }
+    }
+
+    private static func build(
+        _ entries: [(name: String, load: () throws -> Data)], modified: Date?, timeZone: TimeZone, emit: (Data) throws -> Void
+    ) throws {
         guard entries.count <= 0xFFFF else { throw ZipWriterError.tooManyEntries(entries.count) }
         let (dosTime, dosDate) = try dosTimestamp(modified, timeZone: timeZone)
 
         var seen = Set<String>()
-        var out = Data()
+        var written = 0
         var central = Data()
         for entry in entries {
             let name = Data(entry.name.utf8)
@@ -76,28 +106,32 @@ public enum ZipWriter {
                 throw ZipWriterError.invalidName(entry.name, reason: "must be relative with forward slashes")
             }
             guard seen.insert(entry.name).inserted else { throw ZipWriterError.duplicateName(entry.name) }
-            guard entry.data.count <= 0xFFFF_FFFF else {
-                throw ZipWriterError.entryTooLarge(name: entry.name, bytes: entry.data.count)
+            let data = try entry.load()
+            guard data.count <= 0xFFFF_FFFF else {
+                throw ZipWriterError.entryTooLarge(name: entry.name, bytes: data.count)
             }
-            guard out.count <= 0xFFFF_FFFF else { throw ZipWriterError.archiveTooLarge }
+            guard written <= 0xFFFF_FFFF else { throw ZipWriterError.archiveTooLarge }
 
-            let offset = UInt32(out.count)
-            let crc = ZipCRC32.checksum(entry.data)
-            let size = UInt32(entry.data.count)
+            let offset = UInt32(written)
+            let crc = ZipCRC32.checksum(data)
+            let size = UInt32(data.count)
 
-            out.appendLE(UInt32(0x0403_4B50))  // local file header signature
-            out.appendLE(versionNeeded)
-            out.appendLE(flagUTF8)
-            out.appendLE(UInt16(0))  // method: stored
-            out.appendLE(dosTime)
-            out.appendLE(dosDate)
-            out.appendLE(crc)
-            out.appendLE(size)  // compressed size
-            out.appendLE(size)  // uncompressed size
-            out.appendLE(UInt16(name.count))
-            out.appendLE(UInt16(0))  // extra field length
-            out.append(name)
-            out.append(entry.data)
+            var local = Data()
+            local.appendLE(UInt32(0x0403_4B50))  // local file header signature
+            local.appendLE(versionNeeded)
+            local.appendLE(flagUTF8)
+            local.appendLE(UInt16(0))  // method: stored
+            local.appendLE(dosTime)
+            local.appendLE(dosDate)
+            local.appendLE(crc)
+            local.appendLE(size)  // compressed size
+            local.appendLE(size)  // uncompressed size
+            local.appendLE(UInt16(name.count))
+            local.appendLE(UInt16(0))  // extra field length
+            local.append(name)
+            try emit(local)
+            try emit(data)
+            written += local.count + data.count
 
             central.appendLE(UInt32(0x0201_4B50))  // central directory header signature
             central.appendLE(versionMadeBy)
@@ -119,20 +153,18 @@ public enum ZipWriter {
             central.append(name)
         }
 
-        guard out.count <= 0xFFFF_FFFF, central.count <= 0xFFFF_FFFF,
-              out.count + central.count <= 0xFFFF_FFFF else { throw ZipWriterError.archiveTooLarge }
-        let centralOffset = UInt32(out.count)
-        let centralSize = UInt32(central.count)
-        out.append(central)
-        out.appendLE(UInt32(0x0605_4B50))  // end of central directory signature
-        out.appendLE(UInt16(0))  // this disk
-        out.appendLE(UInt16(0))  // disk with the central directory
-        out.appendLE(UInt16(entries.count))
-        out.appendLE(UInt16(entries.count))
-        out.appendLE(centralSize)
-        out.appendLE(centralOffset)
-        out.appendLE(UInt16(0))  // comment length
-        return out
+        guard written <= 0xFFFF_FFFF, central.count <= 0xFFFF_FFFF,
+              written + central.count <= 0xFFFF_FFFF else { throw ZipWriterError.archiveTooLarge }
+        var tail = central
+        tail.appendLE(UInt32(0x0605_4B50))  // end of central directory signature
+        tail.appendLE(UInt16(0))  // this disk
+        tail.appendLE(UInt16(0))  // disk with the central directory
+        tail.appendLE(UInt16(entries.count))
+        tail.appendLE(UInt16(entries.count))
+        tail.appendLE(UInt32(central.count))
+        tail.appendLE(UInt32(written))
+        tail.appendLE(UInt16(0))  // comment length
+        try emit(tail)
     }
 
     /// 2.0: the lowest version that defines the UTF-8 name flag readers check against.

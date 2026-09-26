@@ -121,6 +121,24 @@ public struct SceneKeyframe: Sendable {
     }
 }
 
+/// What the meter tap's raycast hit.
+public enum MeterPlaneSource: Sendable, Equatable {
+    /// The extent of a plane ARKit detected.
+    case detectedPlane
+    /// A plane ARKit estimated from feature points around the tap, with no detected plane there.
+    case estimatedPlane
+
+    /// Added to the meter's position error when the tap hit an estimated plane, meters. 0.15 m
+    /// (about 6 in) is a guess: no measurement of estimated-plane depth error exists for this app.
+    /// It is there so the server treats a meter placed on a guessed surface as less certain than
+    /// one on a detected wall.
+    public static let estimatedPlaneExtraError: Float = 0.15
+    /// The server's meter error when scene.json leaves it out: 0.3 ft (rules.yaml errors.meter_ft
+    /// on origin/t3/server at 739fb6f). Mirrored here so the extra error adds to it; if the rules
+    /// change, this goes stale.
+    public static let serverDefaultMeterError: Float = 0.3 * 0.3048
+}
+
 public struct SceneInput: Sendable {
     public var wall: SceneWall
     public var wallID: String
@@ -129,6 +147,9 @@ public struct SceneInput: Sendable {
     public var wallHeight: Float?
     /// Meter position error, meters. Nil leaves the server's default for AR taps.
     public var meterPlusMinus: Float?
+    /// How the meter tap found the wall. An estimated plane widens the exported meter error by
+    /// `MeterPlaneSource.estimatedPlaneExtraError`.
+    public var meterPlane: MeterPlaneSource
     /// Position error of every object (openings, gas meter, AC), meters. Nil leaves the server's
     /// default for the object's source.
     public var objectPlusMinus: Float?
@@ -140,14 +161,15 @@ public struct SceneInput: Sendable {
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
-        meterPlusMinus: Float? = nil, objectPlusMinus: Float? = nil, features: [SceneFeature] = [], coverage: SceneCoverage,
-        keyframes: [SceneKeyframe] = [], stills: [String: String] = [:]
+        meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
+        features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:]
     ) {
         self.wall = wall
         self.wallID = wallID
         self.baselineS = baselineS
         self.wallHeight = wallHeight
         self.meterPlusMinus = meterPlusMinus
+        self.meterPlane = meterPlane
         self.objectPlusMinus = objectPlusMinus
         self.features = features
         self.coverage = coverage
@@ -229,6 +251,10 @@ public enum SceneExport {
         if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
         if let pm = input.objectPlusMinus { try requireNonNegative(pm, "objectPlusMinus") }
         let objectError = input.objectPlusMinus.map(feet)
+        let meterError: Float? = switch input.meterPlane {
+        case .detectedPlane: input.meterPlusMinus
+        case .estimatedPlane: (input.meterPlusMinus ?? MeterPlaneSource.serverDefaultMeterError) + MeterPlaneSource.estimatedPlaneExtraError
+        }
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
 
@@ -291,7 +317,7 @@ public enum SceneExport {
 
         return SceneDocument(
             schema_version: "1.0",
-            meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: input.meterPlusMinus.map(feet)),
+            meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
             walls: [.init(
                 id: input.wallID,
                 baseline: [plan(input.baselineS.lowerBound, 0), plan(input.baselineS.upperBound, 0)],
