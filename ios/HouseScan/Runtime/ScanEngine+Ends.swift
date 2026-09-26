@@ -46,7 +46,7 @@ extension ScanEngine {
             // `markWallEnd` with no point: the middle of the view, which is the sensor image's
             // middle whatever the view's size.
             guard frame.tracking == .normal,
-                  let hit = map.wall.intersectWall(frame.camera.ray(throughPixel: frame.camera.imageSize / 2)) else { return nil }
+                  let hit = nearbyWallHit(frame.camera.ray(throughPixel: frame.camera.imageSize / 2), camera: frame.camera, wall: map.wall) else { return nil }
             side = hit.s < 0 ? .left : .right
             s = hit.s
         } else {

@@ -421,6 +421,16 @@ extension ScanEngine: ScanActions {
     /// Where a tap lands on the wall plane, in wall coordinates.
     func wallHit(_ point: CGPoint?, viewSize: CGSize, frame: SourceFrame, wall: WallFrame) -> WallPoint? {
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
-        return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
+        return nearbyWallHit(frame.camera.ray(throughPixel: pixel), camera: frame.camera, wall: wall)
+    }
+
+    /// Where `ray` meets the wall, or nil when that is farther along the wall from the camera than
+    /// the coverage map lets a camera see (`maxDistance`). A ray nearly parallel to the wall meets
+    /// its line hundreds of meters away; an end placed there, or drawn on the strip, would be
+    /// nothing the homeowner pointed at.
+    func nearbyWallHit(_ ray: Ray, camera: CameraFrame, wall: WallFrame) -> WallPoint? {
+        guard let hit = wall.intersectWall(ray) else { return nil }
+        let reach = coverage?.config.maxDistance ?? CoverageConfig().maxDistance
+        return abs(hit.s - wall.wallPoint(camera.position).s) <= reach ? hit : nil
     }
 }
