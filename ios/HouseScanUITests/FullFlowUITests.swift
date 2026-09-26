@@ -42,19 +42,41 @@ final class FullFlowUITests: XCTestCase {
         try runFlow(replay: replay)
     }
 
+    /// Audits the screen twice, a second apart, and fails on the issues found both times.
+    ///
+    /// The walk keeps taking photos while it is audited, so the photo count's number is often
+    /// mid-roll, and the result's text is still fading in when the screen appears. A single audit
+    /// reports those passing frames as contrast failures; a real contrast or clipping problem is
+    /// still there a second later. Every screen state is also audited frozen, in one pass, by
+    /// ScreenStatesUITests.
     @MainActor
     private func audit(_ app: XCUIApplication, screen: String) throws {
-        guard Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" else {
-            try app.performAccessibilityAudit()
-            return
+        func pass() throws -> [String: String] {
+            var found: [String: String] = [:]
+            try app.performAccessibilityAudit { issue in
+                let element = issue.element
+                let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
+                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
+                return true
+            }
+            return found
         }
-        try app.performAccessibilityAudit { issue in
-            let note = XCTAttachment(string: "screen.\(screen): \(issue.compactDescription) - \(issue.detailedDescription) [\(issue.element?.identifier ?? "")] \(issue.element?.label ?? "")")
-            note.name = "audit-\(screen)"
-            note.lifetime = .keepAlways
-            self.add(note)
-            print("AUDIT screen.\(screen): \(issue.compactDescription) | \(issue.element?.label ?? "")")
-            return true
+        let first = try pass()
+        guard !first.isEmpty else { return }
+        Thread.sleep(forTimeInterval: 1.0)
+        let second = try pass()
+        let persistent = first.keys.filter { second[$0] != nil }.sorted()
+        for key in persistent {
+            let text = "screen.\(screen): \(second[key] ?? key)"
+            if Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
+                let note = XCTAttachment(string: text)
+                note.name = "audit-\(screen)"
+                note.lifetime = .keepAlways
+                add(note)
+                print("AUDIT \(text)")
+            } else {
+                XCTFail(text)
+            }
         }
     }
 
@@ -80,6 +102,8 @@ final class FullFlowUITests: XCTestCase {
             // The walk replays the whole recording; everything else takes seconds.
             let timeout: TimeInterval = phase == "markFeatures" || phase == "result" ? 150 : 60
             XCTAssertTrue(screen.waitForExistence(timeout: timeout), "screen.\(phase) never appeared")
+            // Let the entrance animation finish so the screenshot and audit see the settled screen.
+            Thread.sleep(forTimeInterval: 1.0)
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.name = phase
             shot.lifetime = .keepAlways
