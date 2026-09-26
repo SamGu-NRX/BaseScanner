@@ -21,9 +21,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		0C4096780A5627C9A53A29B2 /* HouseScan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HouseScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HouseScanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		E5448723EC7099F74C7CCBEC /* HouseScanKit */ = {isa = PBXFileReference; lastKnownFileType = folder; path = HouseScanKit; sourceTree = SOURCE_ROOT; };
+		0C4096780A5627C9A53A29B2 /* HouseScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HouseScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HouseScanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5448723EC7099F74C7CCBEC /* HouseScanKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HouseScanKit; path = HouseScanKit; sourceTree = SOURCE_ROOT; };
 		EEAA26E1BB7E90A7AD7923C7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F30ACBC67A4159A449077AF5 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -31,11 +31,19 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		050A16F154C46B951098B8C8 /* HouseScan */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
 			path = HouseScan;
 			sourceTree = "<group>";
 		};
 		AA23F1E57E4893FBA0800AFF /* HouseScanUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
 			path = HouseScanUITests;
 			sourceTree = "<group>";
 		};
