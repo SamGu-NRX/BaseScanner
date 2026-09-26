@@ -364,6 +364,7 @@ def test_route_length_cites_both_lines() -> None:
     )
     reach = check(run(shared_fixture(), rules), "route_length")
     assert reach["threshold_ft"] == 20
+    assert reach["review_threshold_ft"] == 15
     assert "reach test" in reach["rule"]["source"]
     assert reach["rule"]["placeholder"] is True
 

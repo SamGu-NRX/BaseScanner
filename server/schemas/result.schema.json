@@ -145,6 +145,7 @@
         "measured_ft": {"type": ["number", "null"], "description": "The deciding measurement, for example the gap to the nearest gas meter. Null when nothing relevant was found or it was not observed."},
         "plus_minus_ft": {"type": ["number", "null"]},
         "threshold_ft": {"type": ["number", "null"]},
+        "review_threshold_ft": {"type": "number", "description": "Present on checks with a review band (route_length): a value that doesn't clear this line (at_most: measured + error < review_threshold_ft) is at best unsure, even when it clears threshold_ft. Same convention as the scoring harness's review_threshold."},
         "comparison": {"enum": ["at_least", "at_most", null], "description": "at_least: pass needs measured - error > threshold. at_most: pass needs measured + error < threshold."},
         "subject": {"type": ["string", "null"], "description": "What the measurement is to, for example \"objects[2] gas_meter\"."},
         "rule": {

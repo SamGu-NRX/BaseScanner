@@ -44,6 +44,7 @@ class Check:
     measured: float | None = None
     plus_minus: float | None = None
     threshold: float | None = None
+    review_threshold: float | None = None
     comparison: str | None = None
     subject: str | None = None
     unsure_cause: str | None = None
@@ -71,6 +72,8 @@ class Check:
                 "placeholder": self.rule.placeholder if self.rule else self.rule_placeholder,
             },
         }
+        if self.review_threshold is not None:
+            out["review_threshold_ft"] = _round(self.review_threshold)
         if self.outcome == UNSURE:
             out["unsure_cause"] = self.unsure_cause or "margin"
         return out
@@ -633,6 +636,7 @@ class Solver:
             measured=length,
             plus_minus=e,
             threshold=r.max_ft.value,
+            review_threshold=cr.value,
             comparison="at_most",
         )
         run = f"{ft(length)} (± {ft(e)})"
