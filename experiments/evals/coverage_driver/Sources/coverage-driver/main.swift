@@ -1,6 +1,7 @@
 // Reads one wall and a list of keyframes (JSON on stdin), feeds every keyframe to the app's
 // CoverageMap in order, and writes what the app would export as observed (JSON on stdout), plus
 // each keyframe's sightings so the caller can attribute errors to the frames the app credited.
+// Without a wall it writes only the config.
 import Foundation
 import HouseScanKit
 import simd
@@ -21,10 +22,10 @@ struct Input: Decodable {
         let size: [Float]
     }
 
-    let wall: Wall
-    let leftEnd: Float
-    let rightEnd: Float
-    let keyframes: [Keyframe]
+    let wall: Wall?
+    let leftEnd: Float?
+    let rightEnd: Float?
+    let keyframes: [Keyframe]?
 }
 
 struct Output: Encodable {
@@ -36,8 +37,8 @@ struct Output: Encodable {
     }
 
     let config: [String: Float]
-    let covered: [String: [[Float]]]
-    let sightings: [Sighting]
+    let covered: [String: [[Float]]]?
+    let sightings: [Sighting]?
 }
 
 func fail(_ message: String) -> Never {
@@ -56,26 +57,46 @@ do {
 } catch {
     fail("bad input: \(error)")
 }
-guard let wall = WallFrame(
-    meter: vector(input.wall.meter, "wall.meter"),
-    outward: vector(input.wall.outward, "wall.outward"),
-    groundY: input.wall.groundY
-) else { fail("wall.outward has no horizontal component") }
-
 let config = CoverageConfig()
+let configValues: [String: Float] = [
+    "cellWidth": config.cellWidth,
+    "wallBandHeight": config.wallBandHeight,
+    "groundBandDepth": config.groundBandDepth,
+    "maxDistance": config.maxDistance,
+    "maxAngleFromNormal": config.maxAngleFromNormal,
+    "imageMargin": config.imageMargin,
+    "rowsPerBand": Float(config.rowsPerBand),
+    "coveringBaseline": config.coveringBaseline,
+]
+let encoder = JSONEncoder()
+encoder.outputFormatting = [.sortedKeys]
+
+guard let wallInput = input.wall else {
+    FileHandle.standardOutput.write(try encoder.encode(Output(config: configValues, covered: nil, sightings: nil)))
+    exit(0)
+}
+guard let wall = WallFrame(
+    meter: vector(wallInput.meter, "wall.meter"),
+    outward: vector(wallInput.outward, "wall.outward"),
+    groundY: wallInput.groundY
+) else { fail("wall.outward has no horizontal component") }
+guard let leftEnd = input.leftEnd, let rightEnd = input.rightEnd, leftEnd < rightEnd else {
+    fail("leftEnd and rightEnd are required, left of right")
+}
+
 var map = CoverageMap(wall: wall, config: config)
-map.setEnd(.left, at: input.leftEnd)
-map.setEnd(.right, at: input.rightEnd)
+map.setEnd(.left, at: leftEnd)
+map.setEnd(.right, at: rightEnd)
 
 var sightings: [Output.Sighting] = []
-for keyframe in input.keyframes {
+for keyframe in input.keyframes ?? [] {
     guard keyframe.intrinsics.count == 4, keyframe.size.count == 2 else { fail("\(keyframe.id): intrinsics or size malformed") }
     guard let camera = CameraFrame(
         columnMajorPose: keyframe.pose,
         intrinsics: SIMD4(keyframe.intrinsics[0], keyframe.intrinsics[1], keyframe.intrinsics[2], keyframe.intrinsics[3]),
         imageSize: SIMD2(keyframe.size[0], keyframe.size[1])
     ) else { fail("\(keyframe.id): pose is not 16 finite numbers") }
-    // visibleCells does not clip to the marked ends; record (inside observe) does.
+    // Sightings before observing: visibleCells does not depend on what was seen before.
     for s in map.visibleCells(from: camera) {
         sightings.append(.init(keyframe: keyframe.id, band: s.band.rawValue, index: s.index, rows: s.rows.sorted()))
     }
@@ -83,21 +104,10 @@ for keyframe in input.keyframes {
 }
 
 let output = Output(
-    config: [
-        "cellWidth": config.cellWidth,
-        "wallBandHeight": config.wallBandHeight,
-        "groundBandDepth": config.groundBandDepth,
-        "maxDistance": config.maxDistance,
-        "maxAngleFromNormal": config.maxAngleFromNormal,
-        "imageMargin": config.imageMargin,
-        "rowsPerBand": Float(config.rowsPerBand),
-        "coveringBaseline": config.coveringBaseline,
-    ],
+    config: configValues,
     covered: Dictionary(uniqueKeysWithValues: SurfaceBand.allCases.map { band in
         (band.rawValue, map.coveredIntervals(band).map { [$0.lowerBound, $0.upperBound] })
     }),
     sightings: sightings
 )
-let encoder = JSONEncoder()
-encoder.outputFormatting = [.sortedKeys]
 FileHandle.standardOutput.write(try encoder.encode(output))

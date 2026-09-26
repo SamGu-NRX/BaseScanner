@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage
 
 test:
 	uv run ruff check .
@@ -84,3 +84,9 @@ field:
 # A current iPhone's ARKit scale on MARViN's outdoor walks (pose and GPS text files only, ~3 MB).
 modern-arkit:
 	uv run python -m evals.modern_arkit
+
+# After recon-data. HouseScanKit (ios/, owned by the app lane) is checked out read-only at the
+# commit pinned in evals/coverage.py, outside the repo, and never edited.
+coverage:
+	uv run python -m evals.coverage prepare
+	uv run python -m evals.coverage

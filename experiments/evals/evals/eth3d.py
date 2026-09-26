@@ -204,8 +204,10 @@ def occluder_points(scene: str, voxel: float = 0.02) -> np.ndarray:
     return pts.astype(np.float32)
 
 
-def excluded_pixels(view: View, width: int, height: int, dilate: int = 13) -> np.ndarray:
-    """Pixels ETH3D masks out, in the undistorted image resized to width x height.
+def excluded_pixels(
+    view: View, width: int, height: int, dilate: int = 13, labels: tuple[int, ...] = (1, 2)
+) -> np.ndarray:
+    """Pixels ETH3D masks out with one of `labels`, in the undistorted image resized to width x height.
 
     ETH3D's masks (`masks_for_images/dslr_images/*.png`, value 1 for glass, 2 for objects missing
     from the scan such as trees, trams and people) are drawn on the original distorted images, whose
@@ -221,7 +223,9 @@ def excluded_pixels(view: View, width: int, height: int, dilate: int = 13) -> np
     mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if mask is None:
         raise ValueError(f"{path}: unreadable mask")
-    out = cv2.resize((mask > 0).astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST)
+    out = cv2.resize(
+        np.isin(mask, labels).astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST
+    )
     if dilate:
         out = cv2.dilate(out, np.ones((2 * dilate + 1, 2 * dilate + 1), np.uint8))
     return out.astype(bool)

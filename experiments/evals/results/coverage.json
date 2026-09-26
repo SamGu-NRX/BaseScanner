@@ -1,0 +1,75 @@
+[
+ {
+  "scene": "electro",
+  "photos": 45,
+  "photos_with_a_sighting": 17,
+  "wall_length_ft": 19.311015888810974,
+  "wall_fit_rms_cm": 1.8475893162210864,
+  "pilaster_ft": 3.805774278215223,
+  "ground_fit_rms_cm": 0.49495511252058655,
+  "meter_levelled_m": [
+   2.213,
+   -3.426,
+   -6.126
+  ],
+  "outward": [
+   0.485,
+   -0.0,
+   0.8745
+  ],
+  "wall": "picked",
+  "sightings": 337,
+  "replica_mismatches": 0,
+  "bands": {
+   "wall": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "false_observed_share": 0.05782312925170068,
+    "false_observed_by_cause_ft": {
+     "occlusion": 1.1154855643044619,
+     "frame edge": 0.0,
+     "range": 0.0
+    },
+    "false_two_view_ft": 1.3123359580052494,
+    "false_two_view_share": 0.06802721088435375,
+    "seen_two_view_ft": 17.979002624671917,
+    "missed_ft": 0.0,
+    "missed_by_cause_ft": {
+     "frame edge": 0.0,
+     "grazing angle": 0.0,
+     "range": 0.0,
+     "one position": 0.0
+    },
+    "claimed_samples_seen_only_where_scan_is_empty": 0.0,
+    "passes": false
+   },
+   "ground": {
+    "claimed_ft": 0.0,
+    "false_observed_ft": 0.0,
+    "false_observed_share": 0.0,
+    "false_observed_by_cause_ft": {
+     "occlusion": 0.0,
+     "frame edge": 0.0,
+     "range": 0.0
+    },
+    "false_two_view_ft": 0.0,
+    "false_two_view_share": 0.0,
+    "seen_two_view_ft": 18.11023622047244,
+    "missed_ft": 18.11023622047244,
+    "missed_by_cause_ft": {
+     "frame edge": 0.0,
+     "grazing angle": 18.11023622047244,
+     "range": 0.0,
+     "one position": 0.0
+    },
+    "claimed_samples_seen_only_where_scan_is_empty": 0.0,
+    "passes": true
+   }
+  }
+ },
+ {
+  "scene": "facade",
+  "photos": 76,
+  "wall": null
+ }
+]

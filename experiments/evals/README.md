@@ -32,6 +32,8 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
 7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
 8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2% is plausible for this phone, though even that setting leaves walls at a p90 of 5.0 in [3.8, 6.8]. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. Its position error p90 over trusted walks is 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft (50.0 in at 30 ft counting the three doubtful walks), inside the server's 0.16 ft per ft allowance. The field tape test stays decisive (section 6).
 
+9. **Does the app's coverage map claim surface no photo saw? Yes, on the one wall tested: 1.1 ft of 19.3 ft claimed (6%), against a bar of 0.5 ft.** All of it sits behind equipment standing in front of the wall (a scaffold's footings and cables), because the coverage code checks range, angle and image bounds but not occlusion (`CoverageMap.swift` lines 241 to 248 at beede15). The ground band and facade could not be tested: ETH3D's photographers stood too far from the walls for the app to credit any ground, or any of facade (section 7).
+
 ## Reproduce
 
 From a clean checkout (macOS with Apple silicon, or Linux for everything but the models):
@@ -303,7 +305,28 @@ The tape test on the team's phone is still the number to trust.
 - **Missed length**: band every sample of which two photos 0.25 m apart saw, which the app did not credit. No pass bar, since it costs the homeowner extra photos, not a wrong answer. It is split by why the app turned those photos down: frame edge (including its 3% margin and the band's top or bottom out of view), range, grazing angle, or only one position.
 - **Validity checks**: my replica of the app's view gates (used only to name causes) must reproduce the app's own sightings, and the wall plane must fit the scan within a few centimetres.
 
-**Results.** Not run yet.
+**Results.** Lengths in feet along the wall.
+
+| Scene | Band | Claimed | False-observed (share) | Pass | False-observed, 2-position truth | Missed |
+| --- | --- | --- | --- | --- | --- | --- |
+| electro | wall | 19.3 | 1.1 (6%), all occlusion | no | 1.3 (7%) | 0.0 |
+| electro | ground | 0.0 | 0.0 | untested | 0.0 | 18.1, all grazing angle |
+| facade | both | nothing: no wall within 6 m of any photo | | untested | | |
+
+- **Where the 1.1 ft is.** 1.05 ft is the bottom 20 cm of the wall at the stretch's left end, behind a scaffold's wooden footings and a cable bundle standing in front of the wall. The app credits it because the photos that frame it are within range and angle; no photo sees behind the footings. The other 0.07 ft is one 2 cm column at a pilaster's edge, within the scan's resolution.
+- **Ground: untested.** The app claimed no ground on electro. The ETH3D photographers stood 2.0 to 7.6 m from the wall (median 4.9 m). A camera 1.5 m up must be within 3.2 m for the ground at the wall's foot to be inside the app's 65°, so every ground view was turned down: 18.1 ft seen from two positions and not credited. At the app's intended 2.6 m standoff the ground would be claimed, so these photos cannot say whether that claim would be right.
+- **Facade: untested.** The building stands beyond the app's 6 m from every photo: 99% of its wall-height scan points are 6.5 m or more from the nearest photo, with a median of 11.6 m. Within range are only stair flanks, sculptures and tree trunks, none a straight wall that a photo sees 1 m of. The app claims nothing there.
+- **Validity.** The replica of the app's view gates reproduces all 337 of its sightings exactly. The flat parts of the wall fit the plane to 1.8 cm RMS. Two pilasters stand 0.36 m proud of it (3.8 ft of the 19.3), so the truth samples their front faces; with the plane alone they read as 2.8 ft of false occlusion. No claimed sample was credited only where the scan is empty. Peak memory 1.3 GB.
+
+**Verdict.**
+- **Does coverage claim unseen wall? Yes: 1.1 ft of 19.3 on electro (6%), where "about zero" allowed 0.5 ft. It fails.** All of it is occlusion, and that is the rule, not bad luck. At commit beede15, `CoverageMap.swift` lines 241 to 248 (`sees`, inside `visibleRows`) accept a sample on range, angle and image bounds alone; nothing checks whether something stands between camera and wall. The type's own comment (lines 57 to 59) says so, and adds that "the server re-checks what matters from the images". The server's contract says the opposite: it passes a check over whatever the app reports as observed. The loss is small here only because 17 photos from many angles see around most of the scaffold. A bush, a bin or an AC unit in front of a wall is claimed as observed whenever the phone stands in front of it.
+- **What would fix it (for S3):**
+  - Give `CameraFrame` an optional per-frame depth map: ARKit's `sceneDepth` on LiDAR phones, or depth rendered from ARKit's mesh.
+  - In `sees`, reject a sample when that depth at its pixel is nearer than the sample by more than max(10 cm, 4%), the tolerance used here.
+  - Sample more rows, or check depth along each row-to-row segment. With `rowsPerBand = 3` (lines 43 to 47) the rows are 0.99 m apart, so something mounted between them passes even a depth check at the rows.
+  - Phones without depth can't make this check on the device. Until one side changes, either the server re-checks occlusion from the images, as the comment assumes, or the export must not be read as "seen and clear".
+- **Missed wall: none.** Everything two photos saw, the app credited.
+- **Limits.** One scene, one 19 ft wall, 17 contributing DSLR photos, not a walking phone capture. The truth ignores anything within max(10 cm, 4% of depth) of the wall (downspouts, conduit), which can only have hidden more false-observed length, not less.
 
 ## Replay session from a real walk
 
