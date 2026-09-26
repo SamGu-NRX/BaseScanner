@@ -91,10 +91,28 @@ enum ScanCopy {
         case .meterNotCentered: "Center the meter in the circle"
         case .tooFar: "Move closer to the meter"
         case .tracking: "Move slowly"
-        case .numberTooSmall: "Move closer so the numbers are bigger"
-        case .noNumber: "We couldn't read the numbers. Try again."
+        case .numberTooSmall: "Move closer so the number looks bigger"
+        case .noNumber: "Couldn't read the number. Hold still for another photo."
         }
     }
+
+    /// The instruction while the meter number is read and confirmed; nil once it's settled or
+    /// skipped, when the close-up's own instruction applies.
+    static func meterNumber(_ state: MeterNumberState?) -> Instruction? {
+        switch state {
+        case .reading:
+            Instruction(title: "Reading your meter number", detail: "One moment.")
+        case .choose:
+            Instruction(title: "Which number is on your meter?", detail: "Check it against the meter, then tap it.")
+        case .confirmed(let number):
+            Instruction(title: "Meter number saved", detail: number)
+        case .skipped, nil:
+            nil
+        }
+    }
+
+    static let barcodeMatch = "Matches the barcode"
+    static let noneOfThese = "None of these"
 
     // MARK: Features
 
@@ -176,7 +194,7 @@ enum ScanCopy {
         if sample {
             switch upload {
             case .idle, .packaging, .uploading, .analyzing:
-                return Instruction(title: "Making a sample result", detail: "No server is connected, so your photos stay on this phone. The result you'll see is an example, not a check of your wall.")
+                return Instruction(title: "Making a sample result", detail: "No server is connected, so nothing leaves this phone. The result you'll see is an example, not a check of your wall.")
             case .failed, .rejected, .done:
                 break
             }
@@ -186,19 +204,20 @@ enum ScanCopy {
 
     static func upload(_ upload: UploadState) -> Instruction {
         switch upload {
+        // The upload carries the wall's measurements; the photos stay on the phone.
         case .idle, .packaging:
-            Instruction(title: "Getting your photos ready", detail: nil)
+            Instruction(title: "Getting your measurements ready", detail: nil)
         case .uploading:
-            Instruction(title: "Sending your photos", detail: "Keep the app open. It takes about a minute.")
+            Instruction(title: "Sending your measurements", detail: "Keep the app open until this finishes.")
         case .analyzing:
             Instruction(title: "Checking your wall", detail: "Measuring clearances around your meter.")
         case .failed(let message, let offline):
             offline
                 ? Instruction(title: "You're offline", detail: "Your scan is saved on this phone. Try again when you have signal.")
                 : Instruction(title: "That didn't go through", detail: message)
+        // The engine's message is already in the homeowner's words and says why.
         case .rejected(let message):
-            // Placeholder wording until the UI lane's pass on the rejected state.
-            Instruction(title: "The scan couldn't be checked", detail: message)
+            Instruction(title: "We couldn't check this scan", detail: message)
         case .done:
             Instruction(title: "Done", detail: nil)
         }
@@ -261,10 +280,12 @@ enum ScanCopy {
             Instruction(title: "House Scan needs your camera", detail: "It uses the camera to measure the wall around your meter. Turn on Camera for House Scan in Settings.")
         case .arUnsupported:
             Instruction(title: "This phone can't measure walls", detail: "House Scan needs an iPhone that supports motion tracking with the camera. Try another iPhone from the last few years.")
-        case .sessionFailed(let message):
-            Instruction(title: "The camera stopped", detail: message)
-        case .replayUnreadable(let message):
-            Instruction(title: "This recording can't be opened", detail: message)
+        // The engine's messages for these two are system error text (ARKit's, or the replay
+        // loader's), not the homeowner's words, so they aren't shown.
+        case .sessionFailed:
+            Instruction(title: "The camera stopped", detail: "Something interrupted the camera partway through. Start over to try again.")
+        case .replayUnreadable:
+            Instruction(title: "This recording can't be opened", detail: "Some of its files are missing or damaged, so it can't be played back.")
         }
     }
 }

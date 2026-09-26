@@ -15,6 +15,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("onboarding", [], "onboarding"),
         ("findMeter", ["-uiDemoPhase", "findMeter"], "findMeter"),
         ("meterCloseUp-cantGetClearShot", ["-uiDemoPhase", "meterCloseUp", "-uiDemoCloseUpFailed"], "meterCloseUp"),
+        ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
         ("wallWalk", ["-uiDemoPhase", "wallWalk"], "wallWalk"),
         ("wallWalk-slowDown", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "slowDown"], "wallWalk"),
         ("wallWalk-needsTexture", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "needsTexture"], "wallWalk"),
@@ -26,17 +27,20 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading", ["-uiDemoPhase", "uploading"], "uploading"),
         ("uploading-offline", ["-uiDemoPhase", "uploading", "-uiDemoOffline"], "uploading"),
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
+        ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
+        ("sessionFailed", ["-uiDemoFailure", "sessionFailed"], "unsupported"),
+        ("replayUnreadable", ["-uiDemoFailure", "replayUnreadable"], "unsupported"),
     ]
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "meterCloseUp-cantGetClearShot", "markFeatures", "gapRequest",
-        "uploading-offline", "result-review", "cameraDenied",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
     ]
 
     override func setUp() {
@@ -68,6 +72,8 @@ final class ScreenStatesUITests: XCTestCase {
         // A tap on the camera marks the meter, like the button.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 10))
+        // Nothing is filled in: the homeowner picks the reading that matches the meter.
+        tap(app, "meter.candidate.0", timeout: 15)
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         // A window takes two taps on the camera: bottom-left corner, then top-right.
         tap(app, "action.markSomething")
@@ -96,6 +102,23 @@ final class ScreenStatesUITests: XCTestCase {
         app.swipeUp()
         startOver.tap()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 10))
+    }
+
+    /// A refused upload offers the review, not "Try again"; from the review the scan is sent
+    /// again and reaches the result.
+    @MainActor
+    func testRejectedUploadGoesBackToReview() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "gapRequest", "-uiDemoRejected"]
+        app.launch()
+        XCTAssertTrue(element(app, "action.backToReview").waitForExistence(timeout: 30))
+        XCTAssertFalse(element(app, "action.retryUpload").exists, "a refused scan must not offer Try again")
+        XCTAssertTrue(element(app, "action.startOver").exists)
+        tap(app, "action.backToReview")
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
     }
 
     @MainActor

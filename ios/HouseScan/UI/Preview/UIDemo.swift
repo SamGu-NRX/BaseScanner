@@ -9,8 +9,11 @@ import SwiftUI
 /// - `-uiDemoRefusal`: the marking shows a refusal.
 /// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
+/// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
 /// - `-uiDemoOffline`: uploads fail offline.
-/// - `-uiDemoFailure <cameraDenied|arUnsupported>`: open on the unsupported screen.
+/// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
+/// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
+///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.

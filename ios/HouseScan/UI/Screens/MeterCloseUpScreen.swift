@@ -4,6 +4,10 @@ import SwiftUI
 /// the phone takes the photo itself, the screen flashes and the photo shrinks into the counter.
 /// Problems show one short fix under the ring. After two failed attempts, "Can't get a clear
 /// shot" appears so the homeowner is never stuck here.
+///
+/// After the photo, the phone reads the meter number and asks which reading is right. Nothing
+/// is filled in: the homeowner taps the number that matches the meter, or "None of these" for
+/// another photo.
 struct MeterCloseUpScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -30,13 +34,25 @@ struct MeterCloseUpScreen: View {
                     opacity > 0 ? .easeOut(duration: 0.06) : .easeOut(duration: 0.3)
                 }
             CameraChrome(
-                instruction: ScanCopy.guidance(.holdOnMeter),
+                instruction: ScanCopy.meterNumber(state.meterNumber) ?? ScanCopy.guidance(.holdOnMeter),
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
                 isAutopilot: state.isAutopilot
             ) {
                 VStack(spacing: 12) {
+                    if case .choose(let candidates) = state.meterNumber {
+                        MeterNumberPicker(candidates: candidates, choose: actions.chooseMeterNumber)
+                            .transition(.opacity.combined(with: .offset(y: 12)))
+                    } else if state.meterNumber == .reading {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(Palette.chalk)
+                            .frame(width: 64, height: 64)
+                            .background(ScrimShape.capsule)
+                            .accessibilityHidden(true)
+                            .transition(.opacity)
+                    }
                     if let problem {
                         Label(ScanCopy.closeUpProblem(problem), systemImage: "exclamationmark.circle.fill")
                             .font(Typeface.hint.weight(.semibold))
@@ -58,6 +74,7 @@ struct MeterCloseUpScreen: View {
                 }
                 .animation(Motion.text, value: problem)
                 .animation(Motion.screen, value: offerSkip)
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen, value: state.meterNumber)
             }
             if let flyingThumbnail {
                 GeometryReader { proxy in
@@ -118,8 +135,10 @@ struct MeterCloseUpScreen: View {
         }
         .frame(width: 250, height: 250)
         .scaleEffect(lockedOn ? 1 : 1.25)
-        .opacity(lockedOn ? 1 : 0)
+        // The ring steps back while the answers are up, so it never sits behind them.
+        .opacity(lockedOn && !isChoosing ? 1 : 0)
         .animation(Motion.pin, value: done)
+        .animation(Motion.screen, value: isChoosing)
         .accessibilityElement()
         .accessibilityLabel("Photo of your meter")
         .accessibilityValue(done ? "Taken" : "\(Int(hold * 100)) percent ready")
@@ -139,9 +158,16 @@ struct MeterCloseUpScreen: View {
     }
 
     /// The way out appears from the second failed attempt on (contract
-    /// `closeUpFailedAttempts`), never on the first try.
+    /// `closeUpFailedAttempts`), never on the first try, and not while the number is being read
+    /// or asked about, so the screen holds one question.
     private var offerSkip: Bool {
-        state.closeUpFailedAttempts >= 2 || state.closeUp == .skipped
+        guard state.meterNumber != .reading, !isChoosing else { return false }
+        return state.closeUpFailedAttempts >= 2 || state.closeUp == .skipped
+    }
+
+    private var isChoosing: Bool {
+        if case .choose = state.meterNumber { return true }
+        return false
     }
 
     private var isCaptured: Bool {
@@ -161,5 +187,49 @@ struct MeterCloseUpScreen: View {
         guard let thumbnail = image ?? state.lastCapture?.thumbnail else { return }
         thumbnailLanded = false
         flyingThumbnail = thumbnail
+    }
+}
+
+/// "Which number is on your meter?": up to three readings as full-width answers, then "None of
+/// these". The numbers are set in a monospaced face so similar readings line up character by
+/// character (8 against B, 0 against O) and the homeowner can compare them with the meter.
+private struct MeterNumberPicker: View {
+    var candidates: [MeterNumberCandidate]
+    var choose: (MeterNumberCandidate?) -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(Array(candidates.prefix(3).enumerated()), id: \.element.id) { index, candidate in
+                Button {
+                    choose(candidate)
+                } label: {
+                    VStack(spacing: 2) {
+                        Text(candidate.text)
+                            .font(.system(.title3, design: .monospaced, weight: .semibold))
+                            .speechSpellsOutCharacters()
+                            .fixedSize(horizontal: false, vertical: true)
+                        if candidate.barcodeConfirmed {
+                            Label(ScanCopy.barcodeMatch, systemImage: "barcode")
+                                .font(Typeface.caption)
+                                .foregroundStyle(Palette.chalk.opacity(0.85))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("meter.candidate.\(index)")
+            }
+            Button {
+                choose(nil)
+            } label: {
+                Text(ScanCopy.noneOfThese)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.secondary)
+            .accessibilityHint("Takes another photo of the meter.")
+            .accessibilityIdentifier("action.noneOfThese")
+        }
     }
 }
