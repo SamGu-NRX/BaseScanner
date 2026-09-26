@@ -205,3 +205,18 @@ def test_a_scene_that_would_overrun_is_refused_early(monkeypatch: pytest.MonkeyP
     with pytest.raises(solver.SceneTooComplex, match="would take about"):
         solver.solve(scene, PUBLIC, budget_s=budget)
     assert next(readings) < solver.PROJECT_AFTER + 10
+
+
+def test_unseen_ground_under_an_exact_footprint_is_not_clear() -> None:
+    # The coverage test at radius 0 (a wall with no error) must still see unseen ground under
+    # the footprint itself; a distance of 0 there is overlap, not touching.
+    raw = shared_fixture()
+    observed_band(raw, "ground", [(-40, 5), (10, 40)])
+    ground = at_start(raw, 6.0, "ground_surface", PUBLIC)
+    assert (ground.outcome, ground.unsure_cause) == (UNSURE, "unobserved")
+
+
+def test_ground_seen_right_up_to_the_footprint_is_clear() -> None:
+    raw = shared_fixture()
+    observed_band(raw, "ground", [(-40, 6), (6, 40)])
+    assert at_start(raw, 6.0, "ground_surface", PUBLIC).outcome == PASS

@@ -245,7 +245,19 @@ class Solver:
         area that only touches that distance (an exact shared edge) does not count. An exact
         distance, rather than intersecting a buffered footprint, is both cheaper (this is most
         of the solve time) and free of the buffer's polygonal approximation of a circle."""
-        return unobserved.is_empty or fp.distance(unobserved) >= radius - _MEASURE_EPS
+        if unobserved.is_empty:
+            return True
+        if radius > _MEASURE_EPS:
+            return fp.distance(unobserved) >= radius - _MEASURE_EPS
+        # At radius 0 (a wall with no error) a distance of 0 is either overlap or touching; only
+        # overlap, by area or by length along a line, leaves part of the footprint unseen.
+        overlap = unobserved.intersection(fp)
+        for part in getattr(overlap, "geoms", [overlap]):
+            if part.geom_type.endswith("Polygon") and part.area > _MEASURE_EPS:
+                return False
+            if part.geom_type.endswith("LineString") and part.length > _MEASURE_EPS:
+                return False
+        return True
 
     # --- checks --------------------------------------------------------------------------------
 
