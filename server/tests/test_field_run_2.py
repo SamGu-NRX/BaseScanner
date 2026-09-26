@@ -7,7 +7,10 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from test_s4_round import PUBLIC, answer
 
-from solver import SOLVE_BUDGET_S, UNSURE, Solver, estimate_fails
+from rules import deep_merge, public_rules_dict, rules_from_dict
+from solver import SOLVE_BUDGET_S, UNSURE, Solver, estimate_fails, evaluate_start
+
+S1_PAD = 6 + 31 / 12  # far edge of the shared fixture's first spot
 
 # --- #44: a spot whose best estimate overlaps the meter's working space ----------------------
 
@@ -120,7 +123,18 @@ def test_past_a_limit_end_the_wall_line_still_holds_it() -> None:
 
 
 def test_a_mark_with_its_own_footprint_is_measured_where_it_is() -> None:
-    assert len(parsed(window_past_the_end("unexplored", footprint=True), PUBLIC).objects) == 1
+    raw = window_past_the_end("unexplored", footprint=True)
+    assert len(parsed(raw, PUBLIC).objects) == 1
+    opening = next(c for c in answer(raw)["checks"] if c["id"] == "opening_clearance")
+    assert opening["subject"] == "objects[0] window"  # the nearest opening the check measured
+
+
+def test_a_mark_starting_exactly_at_the_end_is_set_aside() -> None:
+    # Before: [12, 20] against an end at 12 clipped to the single point 12 and stayed measured.
+    raw = window_past_the_end("unexplored")
+    raw["objects"][0]["span_ft"] = [12, 20]
+    assert parsed(raw, PUBLIC).objects == []
+    assert [o["object"] for o in answer(raw)["objects_not_used"]] == ["objects[0] window"]
 
 
 def test_a_mark_across_the_end_keeps_the_part_on_the_wall() -> None:
@@ -129,3 +143,27 @@ def test_a_mark_across_the_end_keeps_the_part_on_the_wall() -> None:
     (window,) = parsed(copy.deepcopy(raw), PUBLIC).objects
     xs = [x for x, _ in window.geom.coords]
     assert min(xs) == 10 and max(xs) <= 12 + 1e-6
+
+
+def test_an_unknown_attribute_is_not_an_estimate_past_the_rule() -> None:
+    # A window of unknown operability 1 ft away, with fixed windows exempt: the rule may not apply
+    # at all, so its distance isn't evidence of a violation the way a known overlap is.
+    raw = shared_fixture()
+    raw["objects"] = [
+        {
+            "type": "window",
+            "wall_id": "w1",
+            "span_ft": [S1_PAD + 1, S1_PAD + 3],
+            "bottom_ft": 3,
+            "top_ft": 6,
+            "source": "tape",
+            "plus_minus_ft": 0,
+        }
+    ]
+    rules = rules_from_dict(
+        deep_merge(public_rules_dict(), {"openings": {"exempt_fixed_windows": True}})
+    )
+    candidate = evaluate_start(parsed(raw, rules), rules, 6.0)
+    opening = next(c for c in candidate.checks if c.id == "opening_clearance")
+    assert (opening.outcome, opening.unsure_cause) == (UNSURE, "unknown_attribute")
+    assert not estimate_fails(candidate)

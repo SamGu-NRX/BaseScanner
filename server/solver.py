@@ -1191,9 +1191,12 @@ def _rank_pass(c: Candidate) -> tuple:
 def estimate_fails(c: Candidate) -> bool:
     """Whether a check's best estimate is past its rule although the error leaves it UNSURE:
     the measured value on the fail side (an overlap with the meter's working space, a clearance
-    under its minimum, a run over its maximum)."""
+    under its minimum, a run over its maximum). Only a check unsure by its margin counts: one
+    unsure for an unknown attribute (a window that may not open) may not be subject to the rule."""
     for check in c.checks:
-        if check.outcome != UNSURE or check.measured is None or check.threshold is None:
+        if check.outcome != UNSURE or check.unsure_cause != "margin":
+            continue
+        if check.measured is None or check.threshold is None:
             continue
         if check.comparison == "at_least" and check.measured < check.threshold - EPS:
             return True

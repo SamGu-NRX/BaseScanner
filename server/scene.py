@@ -787,7 +787,9 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                 lo = max(lo, scene.s_min)
             if scene.end_kinds["right"] == "unexplored":
                 hi = min(hi, scene.s_max)
-            if hi < lo - EPS:
+            # Set aside when nothing of a mark with length remains on the scanned wall (its span
+            # can start exactly at the end, leaving a single point); a point mark stays.
+            if hi < lo - EPS or (span[1] - span[0] > EPS and hi - lo <= EPS):
                 side = "right" if span[0] > scene.s_max else "left"
                 scene.set_aside.append((i, obj["type"], side, (span[0] + span[1]) / 2))
                 continue
