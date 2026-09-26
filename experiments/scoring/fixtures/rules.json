@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "name": "Synthetic scoring fixture. Not a real placement policy.",
+  "thresholds": {
+    "gas_clearance_ft": {
+      "value_ft": 3,
+      "pass_when": "at_least",
+      "source": "Public: Base help page, 3 ft from a gas meter or regulator"
+    },
+    "facing_gap_ft": {
+      "value_ft": 3,
+      "pass_when": "at_least",
+      "source": "Synthetic placeholder; the public passage width is TBD in docs/01-feature-map.md"
+    },
+    "max_route_ft": {
+      "value_ft": 20,
+      "pass_when": "at_most",
+      "source": "Public: Base help page, within 20 ft of the meter"
+    },
+    "pool_clearance_ft": {
+      "value_ft": 5,
+      "pass_when": "at_least",
+      "source": "Synthetic placeholder; no public value, TBD in docs/01-feature-map.md"
+    }
+  }
+}

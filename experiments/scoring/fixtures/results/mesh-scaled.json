@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "mesh-scaled",
+  "capture": "synthetic-01-walk-1",
+  "rules_sha256": "b046319784113b08f7d390f45824d0c1ac5ab922a26ff8506f7ffc3776464862",
+  "scale_source": "scale_reference",
+  "measurements": [
+    {"id": "scale", "value_ft": 5.000, "plus_minus_ft": null},
+    {"id": "wall-length", "value_ft": 32.600, "plus_minus_ft": null},
+    {"id": "c1-gas", "value_ft": null, "missing": "absent"},
+    {"id": "c1-facing", "value_ft": 5.100, "plus_minus_ft": 0.5},
+    {"id": "c1-route", "value_ft": 11.500, "plus_minus_ft": 0.5},
+    {"id": "c1-pool", "value_ft": null, "missing": "absent"},
+    {"id": "c2-gas", "value_ft": 3.000, "plus_minus_ft": 0.5},
+    {"id": "c2-facing", "value_ft": 2.600, "plus_minus_ft": 0.5},
+    {"id": "c2-route", "value_ft": null, "missing": "failed"},
+    {"id": "c2-pool", "value_ft": null, "missing": "absent"}
+  ],
+  "outcomes": null,
+  "timing": {"capture_s": 420, "processing_s": null}
+}

@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "ar-taps",
+  "capture": "synthetic-01-walk-1",
+  "rules_sha256": "b046319784113b08f7d390f45824d0c1ac5ab922a26ff8506f7ffc3776464862",
+  "scale_source": "ar_poses",
+  "measurements": [
+    {"id": "scale", "value_ft": 6.000, "plus_minus_ft": 0.3},
+    {"id": "wall-length", "value_ft": 32.300, "plus_minus_ft": 0.3},
+    {"id": "c1-gas", "value_ft": 4.700, "plus_minus_ft": 0.3},
+    {"id": "c1-facing", "value_ft": 4.600, "plus_minus_ft": 0.3},
+    {"id": "c1-route", "value_ft": 12.250, "plus_minus_ft": 0.3},
+    {"id": "c1-pool", "value_ft": null, "missing": "absent"},
+    {"id": "c2-gas", "value_ft": 3.350, "plus_minus_ft": 0.3},
+    {"id": "c2-facing", "value_ft": null, "missing": "failed"},
+    {"id": "c2-route", "value_ft": 19.500, "plus_minus_ft": 0.3},
+    {"id": "c2-pool", "value_ft": null, "missing": "failed"}
+  ],
+  "outcomes": [
+    {"candidate": "c1", "check": "gas", "outcome": "pass"},
+    {"candidate": "c1", "check": "facing_gap", "outcome": "pass"},
+    {"candidate": "c1", "check": "route", "outcome": "pass"},
+    {"candidate": "c1", "check": "pool", "outcome": "pass"},
+    {"candidate": "c2", "check": "gas", "outcome": "pass"},
+    {"candidate": "c2", "check": "facing_gap", "outcome": "unsure"},
+    {"candidate": "c2", "check": "route", "outcome": "pass"},
+    {"candidate": "c2", "check": "pool", "outcome": "unsure"}
+  ],
+  "timing": {"capture_s": 420, "processing_s": 12.5}
+}
