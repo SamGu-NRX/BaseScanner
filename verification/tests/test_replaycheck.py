@@ -68,16 +68,24 @@ def session_with(tmp_path, positions, spacing=0.5):
         write_jpeg_header(tmp_path / "keyframes" / f"k{i}.jpg", 640, 480)
         keyframes.append(
             {
-                "id": f"k{i}", "img": f"keyframes/k{i}.jpg", "w": 640, "h": 480,
-                "intrinsics": [500, 500, 320, 240], "pose": flat(pose(yaw(0), p)),
-                "timestamp": float(i), "tracking": "normal", "reason": "motion",
+                "id": f"k{i}",
+                "img": f"keyframes/k{i}.jpg",
+                "w": 640,
+                "h": 480,
+                "intrinsics": [500, 500, 320, 240],
+                "pose": flat(pose(yaw(0), p)),
+                "timestamp": float(i),
+                "tracking": "normal",
+                "reason": "motion",
             }
-        )  # fmt: skip
+        )
     return {
-        "format": "measure-lab-session", "formatVersion": 2, "session": {},
+        "format": "measure-lab-session",
+        "formatVersion": 2,
+        "session": {},
         "gates": {"keyframeSpacingMeters": spacing, "keyframeSpacingDegrees": 15.0},
         "keyframes": keyframes,
-    }  # fmt: skip
+    }
 
 
 def test_valid_session_has_no_format_errors(tmp_path):
