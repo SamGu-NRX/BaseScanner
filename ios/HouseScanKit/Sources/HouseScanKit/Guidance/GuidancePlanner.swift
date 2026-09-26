@@ -5,9 +5,11 @@ import simd
 public enum GuidanceTask: Sendable, Equatable {
     /// Walk along the wall toward a side.
     case walk(WalkSide)
-    /// Coverage on this side reached the planner's reach; ask the homeowner to mark where the wall ends.
+    /// The walk has gone `GuidanceConfig.reach` along this side; ask the homeowner to mark where
+    /// the wall ends.
     case markEnd(WalkSide)
-    /// The ground band lags around `s`: tilt down.
+    /// The ground around `s` is missing: tilt down. The first request of the walk is this at
+    /// s = 0, the ground in front of the meter.
     case aimAtGround(s: Float)
     /// The wall band lags around `s`: tilt up or step back.
     case aimAtWall(s: Float)
@@ -25,9 +27,12 @@ public struct GuidanceConfig: Sendable, Equatable {
     /// within 3 s except when a task was completed, which checklist item I6 allows (for example
     /// step back, done, walk on).
     public var minDwell: Double = 3
-    /// Ask for the end once coverage reaches this far from the meter on a side: about 20 ft, past
+    /// Ask for the end once the walk has gone this far from the meter on a side: about 20 ft, past
     /// which Base's public 20 ft cable limit (docs/04, Public rule values) rules out for a
-    /// placement anyway.
+    /// placement anyway. It is the walked distance (`CoverageMap.walkedFarthest`), not unbroken
+    /// coverage: a hole near the meter held the prompt back for the whole walk on device run 1,
+    /// and holes are the aim tasks' and the gap loop's job. "Wall ends here" is on offer before
+    /// this for a shorter wall.
     public var reach: Float = 6.1
     /// Closer to the wall than this, a portrait phone camera sees less than about 1.4 m of it.
     public var tooClose: Float = 1.2
@@ -72,12 +77,13 @@ public struct GuidancePlanner: Sendable {
     }
 
     /// The task for this moment. Switches away from the current task only when it is satisfied or
-    /// has been held for `minDwell` seconds and the preferred task differs.
+    /// has been held for `minDwell` seconds and the preferred task differs. An unsatisfied aim
+    /// task is kept while the preferred one asks for the same stretch (`sameStretch`).
     public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double) -> GuidanceOutput {
         let preferred = preferredTask(coverage: coverage, camera: camera)
         if let current, current != preferred {
             let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
-            if satisfied || time - since >= config.minDwell {
+            if satisfied || (time - since >= config.minDwell && !Self.sameStretch(current, preferred)) {
                 self.current = preferred
                 since = time
             }
@@ -98,7 +104,8 @@ public struct GuidancePlanner: Sendable {
     // MARK: Choosing
 
     /// How far from the meter coverage runs unbroken on a side, over both bands (skipped cells
-    /// count as done).
+    /// count as done). Where the walk heads and where it stalls behind something hidden; the end
+    /// prompt and a walked end go by the walked path instead (`walkedFarthest`, `WalkedEnd`).
     public func reach(_ side: WalkSide, coverage: CoverageMap) -> Float {
         let width = coverage.config.cellWidth
         var index = side == .right ? 0 : -1
@@ -124,18 +131,56 @@ public struct GuidancePlanner: Sendable {
         if let camera, let blocked = hiddenNearCamera(coverage: coverage, camera: camera) {
             return blocked
         }
+        if !groundByMeterDone(coverage) {
+            return .aimAtGround(s: 0)
+        }
         if let camera, let lag = laggingBand(coverage: coverage, camera: camera) {
             return lag
         }
         for side in [WalkSide.left, .right] {
             let end = side == .left ? coverage.leftEnd : coverage.rightEnd
             guard end == nil else { continue }
-            return reach(side, coverage: coverage) >= config.reach ? .markEnd(side) : .walk(side)
+            return coverage.walkedFarthest(side) >= config.reach ? .markEnd(side) : .walk(side)
         }
         if let hole = firstHole(coverage: coverage) {
             return hole
         }
         return .complete
+    }
+
+    /// Half the stretch an aim task asks for, meters either side of its s: what `isSatisfied`
+    /// checks and what the guidance log records.
+    public static let aimHalfWidth: Float = 0.3
+    /// An aim task is satisfied once this share of its stretch's cells is covered.
+    public static let aimSatisfied = 0.8
+
+    /// Whether the ground in front of the meter is done: the stretch an aim task at s = 0 asks
+    /// for, with skipped cells counting, so "Can't get there" on it moves the walk on. Every check
+    /// the server runs starts beside the meter, and on device run 1 nothing asked for this stretch:
+    /// the tilt prompts all asked for ground from 2 ft 9 in right of the meter outward. So it is
+    /// the walk's first request, before either side. Done when no cell of it is between the ends.
+    func groundByMeterDone(_ coverage: CoverageMap) -> Bool {
+        let window = -Self.aimHalfWidth...Self.aimHalfWidth
+        let cells = coverage.indices(overlapping: window).filter(coverage.isWithinEnds)
+        guard !cells.isEmpty else { return true }
+        let done = cells.filter { index in
+            let level = coverage.level(.ground, index)
+            return level == .covered || level == .skipped
+        }
+        return Double(done.count) >= Self.aimSatisfied * Double(cells.count)
+    }
+
+    /// Two aim tasks for the same band whose stretches overlap by more than half: the lag window
+    /// slides with the camera, so its middle drifts by a cell or two between updates. Switching on
+    /// that drift made the card go from "3 ft 3 in" to "2 ft 9 in right of your meter" on device
+    /// run 1 while it still asked for the same ground.
+    static func sameStretch(_ a: GuidanceTask, _ b: GuidanceTask) -> Bool {
+        switch (a, b) {
+        case (.aimAtGround(let x), .aimAtGround(let y)), (.aimAtWall(let x), .aimAtWall(let y)):
+            abs(x - y) < aimHalfWidth
+        default:
+            false
+        }
     }
 
     /// A band that lags the other around the camera: the other band is covered there but this one
@@ -197,9 +242,9 @@ public struct GuidancePlanner: Sendable {
         case .walk(let side), .markEnd(let side):
             return (side == .left ? coverage.leftEnd : coverage.rightEnd) != nil
         case .aimAtGround(let s):
-            return coverage.coveredFraction(.ground, in: (s - 0.3)...(s + 0.3)) >= 0.8
+            return coverage.coveredFraction(.ground, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
         case .aimAtWall(let s):
-            return coverage.coveredFraction(.wall, in: (s - 0.3)...(s + 0.3)) >= 0.8
+            return coverage.coveredFraction(.wall, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
         case .stepBack:
             guard let camera else { return false }
             return coverage.wall.wallPoint(camera.position).out >= config.tooClose + 0.2
@@ -229,8 +274,6 @@ public struct GuidancePlanner: Sendable {
         switch task {
         case .walk(let side):
             return wall.world(s: walkGoal(side, coverage: coverage, camera: camera), height: 1)
-        case .markEnd(let side):
-            return wall.world(s: side.sign * reach(side, coverage: coverage), height: 0.5)
         case .aimAtGround(let s):
             return wall.world(s: s, height: 0, out: coverage.config.groundBandDepth / 2)
         case .aimAtWall(let s):
@@ -238,7 +281,9 @@ public struct GuidancePlanner: Sendable {
         case .seeBehind(let s):
             // The wall's foot, where the two bands meet: either may be the hidden one.
             return wall.world(s: s, height: 0)
-        case .stepBack, .complete:
+        // "Wall ends here" lands where the reticle meets the wall, so the reticle is the only aim;
+        // the ring sat at the covered reach, which can be at the meter however far the walk went.
+        case .markEnd, .stepBack, .complete:
             return nil
         }
     }
