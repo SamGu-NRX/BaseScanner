@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage coverage-options
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage coverage-options field-dryrun
 
 test:
 	uv run ruff check .
@@ -67,19 +67,32 @@ pose-priors:
 # the learned-depth results files, imports the rig's own row with the scoring harness at SCORING
 # (experiments/scoring, PR #4) and scores every row in one table.
 FIELD_OUT ?= $(DATA)/evals/field/results/$(basename $(notdir $(SESSION)))
-SCORING ?= ../scoring
+RULES ?= field/rules.json
+# PR #4's harness, checked out read-only at a pinned commit outside the repo.
+SCORING_COMMIT := 77ce830
+SCORING ?= $(DATA)/evals/scoring-$(SCORING_COMMIT)/experiments/scoring
+STAMPED_MAP = $(FIELD_OUT)/inputs/map.json
 field:
+	test -d "$(SCORING)" || git -C ../.. worktree add --detach "$(abspath $(SCORING)/../..)" $(SCORING_COMMIT)
 	uv sync --project models
-	W=$$(uv run python -m evals.field prepare $(SESSION)) && \
-	$(MODELS) models.run --model moge2 --images $$W/images.txt --intrinsics $$W/intrinsics.json \
-	  --out $$W/moge2 && \
-	uv run python -m evals.field score $(SESSION) --out-dir $(FIELD_OUT) \
-	  $(if $(TRUTH),--truth $(TRUTH) --map $(MAP) --rules $(RULES))
-	$(if $(TRUTH),cd $(SCORING) && \
-	  uv run score import-measure-lab $(abspath $(SESSION)) --map $(abspath $(MAP)) \
-	    --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) --out $(abspath $(FIELD_OUT))/measure-lab.json && \
-	  uv run score --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) \
-	    --results $(abspath $(FIELD_OUT))/*.json --out $(abspath $(FIELD_OUT))/scored)
+	$(if $(TRUTH),uv run python -m evals.field stamp "$(SESSION)" --truth "$(TRUTH)" --map "$(MAP)" --out-dir "$(FIELD_OUT)" &&) \
+	W=$$(uv run python -m evals.field prepare "$(SESSION)") && \
+	$(MODELS) models.run --model moge2 --images "$$W/images.txt" --intrinsics "$$W/intrinsics.json" \
+	  --out "$$W/moge2" && \
+	uv run python -m evals.field score "$(SESSION)" --out-dir "$(FIELD_OUT)" \
+	  $(if $(TRUTH),--truth "$(TRUTH)" --map "$(STAMPED_MAP)" --rules "$(RULES)")
+	$(if $(TRUTH),cd "$(SCORING)" && \
+	  uv run score import-measure-lab "$(abspath $(SESSION))" --map "$(abspath $(STAMPED_MAP))" \
+	    --rules "$(abspath $(RULES))" --truth "$(abspath $(TRUTH))" --out "$(abspath $(FIELD_OUT))/measure-lab.json" && \
+	  uv run score --rules "$(abspath $(RULES))" --truth "$(abspath $(TRUTH))" \
+	    --results "$(abspath $(FIELD_OUT))"/*.json --out "$(abspath $(FIELD_OUT))/scored")
+
+# The field kit proven end to end: synthetic readings in field/'s templates, a synthetic session
+# in FIELD_SHEET.md's tap order, then the same `make field` the team runs.
+DRY := $(DATA)/evals/field/dryrun
+field-dryrun:
+	uv run python -m evals.field_dryrun $(DRY)
+	$(MAKE) field SESSION=$(DRY)/dryrun-session.zip TRUTH=$(DRY)/survey.json MAP=$(DRY)/map.json
 
 # A current iPhone's ARKit scale on MARViN's outdoor walks (pose and GPS text files only, ~3 MB).
 modern-arkit:

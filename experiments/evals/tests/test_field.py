@@ -271,3 +271,37 @@ def test_upright_turns_for_a_portrait_phone():
     assert upright_turns(T) == 1
     T[:3, :3] = roll.T @ np.diag([1.0, -1.0, -1.0])
     assert upright_turns(T) == 3
+
+
+@pytest.mark.parametrize(
+    ("text", "feet"),
+    [("30 0 1/8", 30.010417), ("4 11", 4.916667), ("12", 12.0), ("0", 0.0), ("2 3/4", 2.0625)],
+)
+def test_parse_tape_reads_feet_inches_fraction(text, feet):
+    # "2 3/4" is 2 ft and 3/4 in.
+    assert field.parse_tape(text) == pytest.approx(feet, abs=1e-6)
+
+
+@pytest.mark.parametrize("text", ["30 12", "FILL ft in", "", "3 4 1/2 x"])
+def test_parse_tape_refuses_what_it_cannot_read(text):
+    with pytest.raises(ValueError):
+        field.parse_tape(text)
+
+
+def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
+    archive, paths, capture, out = case
+    survey = json.loads(paths["truth"].read_text())
+    survey["captures"] = []
+    survey["measurements"][1]["value_ft"] = "32 9 3/4"
+    paths["truth"].write_text(json.dumps(survey))
+    mapping = json.loads(paths["map"].read_text())
+    mapping["session"] = "placeholder"
+    paths["map"].write_text(json.dumps(mapping))
+    stamped = field.stamp(archive, paths["truth"], paths["map"], out)
+    survey = json.loads(paths["truth"].read_text())
+    assert survey["captures"] == [capture]
+    assert survey["measurements"][1]["value_ft"] == pytest.approx(32 + 9.75 / 12, abs=1e-6)
+    assert json.loads(stamped.read_text())["session"] == "synthetic-field"
+    # Idempotent: a second stamp adds nothing.
+    field.stamp(archive, paths["truth"], paths["map"], out)
+    assert json.loads(paths["truth"].read_text())["captures"] == [capture]

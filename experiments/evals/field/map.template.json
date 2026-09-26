@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "measure-lab",
+  "session": "filled in by make field",
+  "notes": "M numbers follow FIELD_SHEET.md's order. plus_minus_ft_by_key is docs/02's untested +-0.3 ft for AR taps, not a measured error bar.",
+  "plus_minus_ft_by_key": {
+    "straight": 0.3,
+    "alongWall": 0.3,
+    "gapToWall": 0.3,
+    "heightAboveGround": 0.3
+  },
+  "measurements": {
+    "span-30-ab": {
+      "session_measurement": "M1",
+      "key": "alongWall"
+    },
+    "scale-ref": {
+      "session_measurement": "M2",
+      "key": "straight"
+    },
+    "opening-width": {
+      "session_measurement": "M3",
+      "key": "alongWall"
+    },
+    "sill-height": {
+      "session_measurement": "M4",
+      "key": "heightAboveGround"
+    },
+    "meter-height": {
+      "session_measurement": "M5",
+      "key": "heightAboveGround"
+    },
+    "facing-gap": {
+      "session_measurement": "M6",
+      "key": "gapToWall"
+    },
+    "overhead-height": {
+      "session_measurement": "M7",
+      "key": "heightAboveGround"
+    },
+    "return-gap": {
+      "session_measurement": "M8",
+      "key": "straight"
+    },
+    "span-30-ba": {
+      "session_measurement": "M9",
+      "key": "straight"
+    },
+    "span-20": {
+      "session_measurement": "M10",
+      "key": "straight"
+    }
+  }
+}

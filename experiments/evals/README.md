@@ -224,14 +224,7 @@ MapAnything is left out. In section 3, given poses, it was worse than (b) everyw
 
 **On the real ADVIO replay** ([results/field-replay/field_report.md](results/field-replay/field_report.md)), the pipeline runs through MoGe-2 and triangulation. All 79 keyframes get a scale, and MoGe-2 needs a median ×0.774 (0.66 to 1.03) to agree with the iPhone 6s's ARKit poses; ARKit itself read about 16% short on this walk. Nothing more comes out, because the replay has no taps, measurements, survey or map.
 
-**Field checklist**, on top of the one-hour protocol, so every row has inputs:
-
-- **Three long spans for the AR scale error.** Measure the 30 ft span twice in the rig, walking each way, and one more straight span of at least 20 ft, for example along the facing fence. Tape and map all three. With 2 in of tapping error per span, one 30 ft span bounds the scale to ±1.1% (95%); these three bound it to ±0.7%, enough to tell 1% from 2%.
-- **A scale reference for the tape row.** Mark two painter's-tape crosses 1 to 3 m apart on the wall and tape the distance. Tap both crosses with On wall, measure them (straight), and name that measurement the survey's `scale_reference` in the map.
-- **Every surveyed endpoint as a rig tap.** The learned rows only recompute measurements the rig made. Tap the window edges, the meter's bottom edge, the fence foot and the overhead, on frozen frames and on the near surface (the frame, not the glass).
-- **Neighbours for triangulation.** At each tapped feature, walk about 2 m sideways, slowly, 2 to 6 m from the wall, keeping the feature and some textured surface in view. That gives at least 8 keyframes of it, facing within 60° of the same way. Don't point at the sky.
-- **The fence and the wall together.** Take the fence-foot tap from where the wall's base is also in view.
-- **Share the zip as Measure Lab makes it.** Put its sha256 in the survey's `captures`, and write down the phone model and iOS version.
+**In the field:** [field/FIELD_SHEET.md](field/FIELD_SHEET.md) lists what to bring, mark, tape and tap, in order, with the Measure Lab numbers the map expects. `field/survey.template.json` and `field/map.template.json` name every item, so the team fills in only tape readings, typed as the tape shows them (`30 0 1/8`). `make field` converts them to feet and fills in the zip's sha256 and session id. `make field-dryrun` builds a synthetic session in the sheet's order, fills the templates, and runs `make field` with them. It recovers the planted 1.5% AR scale error (−1.50% ± 0.68%) and gets all four rows through PR #4's `score`.
 
 ## 6. A current iPhone's ARKit scale (MARViN)
 

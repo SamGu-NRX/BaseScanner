@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import time
 import zipfile
 from dataclasses import dataclass
@@ -397,10 +398,9 @@ def ar_scale_report(session: dict, truth: dict, mapping: dict, tap_error_in: flo
         sigma = float(np.hypot(tap_error_in / 12, tape[sid]["plus_minus_ft"]))
         use = entry["key"] in SCALE_KEYS and t >= SCALE_SPAN_MIN_FT
         reason = "yes" if use else f"no: not a straight span of {SCALE_SPAN_MIN_FT:g} ft or more"
-        lines.append(
-            f"| {sid} | {entry['key']} | {t:.3f} | {a:.3f} | {a / t:.4f} | "
-            f"±{1.96 * sigma / t:.4f} | {reason} |"
-        )
+        # A zero tape value (the return-to-reference gap) has no ratio.
+        ratio = f"{a / t:.4f} | ±{1.96 * sigma / t:.4f}" if t > 0 else " | "
+        lines.append(f"| {sid} | {entry['key']} | {t:.3f} | {a:.3f} | {ratio} | {reason} |")
         if use:
             ar.append(a)
             tp.append(t)
@@ -420,6 +420,62 @@ def ar_scale_report(session: dict, truth: dict, mapping: dict, tap_error_in: flo
         f"{est.longest_ft:.1f} ft, weighted by length; tapping error assumed {tap_error_in:g} in "
         f"per span). Within 2%: {within(err, bound, 2.0)}.",
     ]
+
+
+# --- Stamping the team's survey and map for one session ------------------------------------
+
+
+def parse_tape(text: str) -> float:
+    """A tape reading as written on the sheet, feet then inches then a fraction ("30 2 1/4",
+    "4 11", "12"), in feet rounded to a millionth."""
+    parts = text.split()
+    if not parts or len(parts) > 3:
+        raise ValueError(f"tape reading {text!r}: write feet, inches, fraction, e.g. '30 2 1/4'")
+    try:
+        feet = float(parts[0])
+        inches = float(parts[1]) if len(parts) > 1 and "/" not in parts[1] else 0.0
+        frac = parts[-1] if "/" in parts[-1] else None
+        if frac is not None:
+            num, den = frac.split("/")
+            inches += float(num) / float(den)
+    except ValueError:
+        raise ValueError(
+            f"tape reading {text!r}: write feet, inches, fraction, e.g. '30 2 1/4'"
+        ) from None
+    if feet < 0 or inches < 0 or inches >= 12:
+        raise ValueError(f"tape reading {text!r}: feet >= 0 and inches from 0 to under 12")
+    return round(feet + inches / 12, 6)
+
+
+def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -> Path:
+    """Makes the team's files match this session: tape readings typed as text become feet and the
+    zip's sha256 joins the survey's captures (both in place), and a copy of the map naming this
+    session goes to out_dir/inputs/map.json, which is returned."""
+    folder, capture = unpack(session_path)
+    if capture is None:
+        raise ValueError(
+            f"{session_path}: pass the zip Measure Lab shared; its sha256 is the capture id"
+        )
+    session_id = load_session(folder)["session"]["id"]
+    survey = json.loads(truth_path.read_text())
+    for m in survey["measurements"]:
+        if m["status"] == "measured" and isinstance(m.get("value_ft"), str):
+            if "FILL" in m["value_ft"]:
+                raise ValueError(
+                    f"{truth_path}: {m['id']} still says {m['value_ft']!r}; type the tape reading"
+                )
+            m["value_ft"] = parse_tape(m["value_ft"])
+            print(f"{m['id']}: {m['value_ft']} ft", file=sys.stderr)
+    if capture not in survey["captures"]:
+        survey["captures"].append(capture)
+        print(f"survey captures += {capture}", file=sys.stderr)
+    truth_path.write_text(json.dumps(survey, indent=2) + "\n")
+    mapping = json.loads(map_path.read_text())
+    mapping["session"] = session_id
+    stamped = out_dir / "inputs" / "map.json"
+    stamped.parent.mkdir(parents=True, exist_ok=True)
+    stamped.write_text(json.dumps(mapping, indent=2) + "\n")
+    return stamped
 
 
 # --- Command ----------------------------------------------------------------------------------
@@ -538,7 +594,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("step", choices=["prepare", "score"])
+    ap.add_argument("step", choices=["stamp", "prepare", "score"])
     ap.add_argument("session", type=Path, help="session zip shared from Measure Lab, or its folder")
     ap.add_argument("--truth", type=Path)
     ap.add_argument("--map", type=Path)
@@ -546,10 +602,13 @@ def main() -> None:
     ap.add_argument("--out-dir", type=Path, help="default: a folder per session under the data dir")
     ap.add_argument("--tap-error-in", type=float, default=TAP_ERROR_IN)
     args = ap.parse_args()
+    out_dir = args.out_dir or FIELD_DIR / "results" / args.session.stem
+    if args.step == "stamp":
+        print(stamp(args.session, args.truth, args.map, out_dir))
+        return
     if args.step == "prepare":
         print(prepare(unpack(args.session)[0]))
         return
-    out_dir = args.out_dir or FIELD_DIR / "results" / args.session.stem
     report = score(args.session, args.truth, args.map, args.rules, out_dir, args.tap_error_in)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "field_report.md").write_text(report)
