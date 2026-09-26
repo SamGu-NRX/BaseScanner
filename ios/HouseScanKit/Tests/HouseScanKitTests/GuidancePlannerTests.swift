@@ -152,4 +152,39 @@ import Testing
             }
         }
     }
+
+    /// LiDAR saw a box in front of the wall (CoverageDepthTests' box, s in [-0.5, 0.5], 0.5 to
+    /// 1 m out): from `wallCamera` at s = 0 and 0.3, row 0 of every wall cell they see from -6
+    /// to 5 ([-0.9144, 0.9144]) is hidden in both views, so all twelve are hidden, more than the
+    /// three `lagRun` needs, and their middle is s = 0. (The ground cells there are hidden too:
+    /// their row at the wall's foot is the wall's row 0, which these views see at u = 620, just
+    /// inside the image margin.) Seeing behind comes before aiming.
+    /// Walking off to s = 5 prefers `walk(.left)`, which waits out the 3 s dwell; once the cells
+    /// are no longer hidden the task is satisfied and switches at once.
+    @Test func hiddenCellsNearTheCameraAskToSeeBehind() {
+        var map = CoverageMap(wall: standardWall())
+        let scene = CoverageDepthTests.boxScene
+        for s: Float in [0, 0.3] {
+            map.observe(wallCamera(s: s), trackingNormal: true, depth: renderDepth(scene, from: wallCamera(s: s)))
+        }
+        var planner = GuidancePlanner()
+        let output = planner.update(coverage: map, camera: Self.homeowner(), time: 0)
+        guard case .seeBehind(let s) = output.task else {
+            Issue.record("expected seeBehind, got \(output.task)")
+            return
+        }
+        #expect(nearlyEqual(s, 0))
+        #expect(nearlyEqual(output.target ?? SIMD3(repeating: 9), SIMD3(0, 0, 0)))
+        #expect(output.path.isEmpty)
+
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 5), time: 2.9).task == .seeBehind(s: s))
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 5), time: 3).task == .walk(.left))
+
+        // Satisfied: nothing within 0.3 m of s is hidden once the homeowner marks it skipped.
+        var planner2 = GuidancePlanner()
+        #expect(planner2.update(coverage: map, camera: Self.homeowner(), time: 0).task == .seeBehind(s: s))
+        map.markSkipped(.wall, -1...1)
+        map.markSkipped(.ground, -1...1)
+        #expect(planner2.update(coverage: map, camera: Self.homeowner(), time: 0.5).task != .seeBehind(s: s))
+    }
 }

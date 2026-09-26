@@ -32,12 +32,18 @@ struct VerticalPlaneHit {
 }
 
 /// The live ARKit source: RealityKit's ARView running world tracking with `.gravity` alignment and
-/// horizontal and vertical plane detection, without scene reconstruction or depth, so it runs on
-/// iPhones without LiDAR.
+/// horizontal and vertical plane detection. On an iPhone with LiDAR it also turns on per-frame
+/// scene depth, which coverage uses to tell a wall from a bush in front of it, and the scene
+/// mesh, which the scan bundle carries; without LiDAR it runs without either.
 @MainActor
 final class LiveCapture {
     let arView: ARView
     private let delegate: LiveSessionDelegate
+
+    /// True when this phone gives per-frame LiDAR depth.
+    static var supportsDepth: Bool { ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) }
+    /// True when this phone builds a LiDAR mesh of the scene.
+    static var supportsMesh: Bool { ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh) }
 
     init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -47,25 +53,66 @@ final class LiveCapture {
         arView.renderOptions.insert(.disableMotionBlur)
     }
 
-    func start() {
+    private static func configuration() -> ARWorldTrackingConfiguration {
         let configuration = ARWorldTrackingConfiguration()
         // .gravity, not .gravityAndHeading: compass heading drifts near a house's metal and wiring.
         configuration.worldAlignment = .gravity
         configuration.planeDetection = [.horizontal, .vertical]
-        arView.session.run(configuration)
+        if supportsMesh { configuration.sceneReconstruction = .mesh }
+        if supportsDepth { configuration.frameSemantics.insert(.sceneDepth) }
+        return configuration
+    }
+
+    func start() {
+        RuntimeLog.engine.info("LiDAR: scene depth \(Self.supportsDepth ? "on" : "not available", privacy: .public), mesh \(Self.supportsMesh ? "on" : "not available", privacy: .public)")
+        arView.session.run(Self.configuration())
     }
 
     func pause() {
         arView.session.pause()
     }
 
-    /// Starts world tracking over with a fresh map, after relocalization failed.
+    /// Starts world tracking over with a fresh map, after relocalization failed. The old mesh goes
+    /// with the old anchors.
     func restart() {
-        let configuration = ARWorldTrackingConfiguration()
-        configuration.worldAlignment = .gravity
-        configuration.planeDetection = [.horizontal, .vertical]
-        arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        arView.session.run(Self.configuration(), options: [.resetTracking, .removeExistingAnchors])
         delegate.shared.withLock { $0.meterAnchorID = nil }
+    }
+
+    /// The LiDAR mesh ARKit has built so far, in world meters, or nil when there is none (no
+    /// LiDAR, or nothing reconstructed yet). Each anchor's vertices are read out of its Metal
+    /// buffer, never written, and moved into world coordinates by the anchor's transform.
+    func meshSnapshot() -> TriangleMesh? {
+        guard let anchors = arView.session.currentFrame?.anchors.compactMap({ $0 as? ARMeshAnchor }), !anchors.isEmpty else { return nil }
+        var vertices: [SIMD3<Float>] = []
+        var indices: [UInt32] = []
+        for anchor in anchors {
+            let source = anchor.geometry.vertices
+            let faces = anchor.geometry.faces
+            guard source.format == .float3, faces.indexCountPerPrimitive == 3, faces.bytesPerIndex == 4 || faces.bytesPerIndex == 2 else {
+                RuntimeLog.engine.error("mesh anchor skipped: vertex format \(source.format.rawValue), \(faces.indexCountPerPrimitive) indices per face, \(faces.bytesPerIndex) bytes per index")
+                continue
+            }
+            let first = UInt32(vertices.count)
+            let points = UnsafeRawPointer(source.buffer.contents()).advanced(by: source.offset)
+            for i in 0..<source.count {
+                let p = points.advanced(by: i * source.stride)
+                let local = SIMD4<Float>(
+                    p.loadUnaligned(as: Float.self), p.loadUnaligned(fromByteOffset: 4, as: Float.self),
+                    p.loadUnaligned(fromByteOffset: 8, as: Float.self), 1
+                )
+                let world = anchor.transform * local
+                vertices.append(SIMD3(world.x, world.y, world.z))
+            }
+            let raw = UnsafeRawPointer(faces.buffer.contents())
+            for i in 0..<(faces.count * 3) {
+                let index = faces.bytesPerIndex == 4
+                    ? raw.loadUnaligned(fromByteOffset: i * 4, as: UInt32.self)
+                    : UInt32(raw.loadUnaligned(fromByteOffset: i * 2, as: UInt16.self))
+                indices.append(first + index)
+            }
+        }
+        return vertices.isEmpty ? nil : TriangleMesh(vertices: vertices, indices: indices)
     }
 
     func setMode(_ mode: LiveMode) {
@@ -155,6 +202,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     private static let encodeMove: Float = 0.15
     private static let encodeTurn: Float = 5 * .pi / 180
     private static let encodeInterval = 0.3
+    /// A walk JPEG is also encoded after this long without one, moved or not. The overhead
+    /// question is only asked on a frame with a photo (the answer stores it), and a phone held
+    /// still while tilted up would otherwise never get one. A guess: one encode a second while
+    /// standing still costs little; not measured on a phone.
+    private static let encodeStill = 1.0
 
     init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
         self.onFrame = onFrame
@@ -193,13 +245,18 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 let radius = simd_length(SIMD2(plane.planeExtent.width, plane.planeExtent.height)) / 2
                 return SIMD4(center.x, center.y, center.z, radius)
             }
-        let snapshot = SourceFrame(
+        var snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
             quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
         )
         let image = tracking == .normal && shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera)
             ? PixelBufferBox(buffer: frame.capturedImage) : nil
-        encodeQueue.async { [self] in
+        // Depth goes with the photo: a frame without one can't be kept. Copied here, so the
+        // ARFrame is not held past this callback.
+        if image != nil, let depth = frame.sceneDepth {
+            snapshot.depth = Self.depthImage(depth, cameraIntrinsics: camera.intrinsics, imageSize: camera.imageSize)
+        }
+        encodeQueue.async { [self, snapshot] in
             var delivered = snapshot
             if let image {
                 if let data = encode(image.buffer) { delivered.jpeg = .data(data) }
@@ -223,7 +280,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 if let last = state.lastEncode {
                     let moved = simd_distance(camera.position, last.camera.position) >= Self.encodeMove
                         || camera.rotationAngle(to: last.camera) >= Self.encodeTurn
-                    decision = moved && time - last.time >= Self.encodeInterval
+                    decision = (moved && time - last.time >= Self.encodeInterval) || time - last.time >= Self.encodeStill
                 } else {
                     decision = true
                 }
@@ -256,6 +313,46 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         guard width >= 8, height >= 8 else { return nil }
         let raw = UnsafeRawBufferPointer(start: base, count: bytesPerRow * height)
         return FrameQuality(LumaImage(sampling: raw, width: width, height: height, bytesPerRow: bytesPerRow, step: 8))
+    }
+
+    /// The LiDAR depth map (Float32 meters, 256 x 192 on current iPhones) with its confidence,
+    /// converted by `DepthImage(meters:...)`. The depth map covers the same view as the camera
+    /// image at a lower resolution, so its intrinsics are the camera's scaled by the size ratio on
+    /// each axis (`DepthImage.intrinsics(scaling:...)`).
+    private static func depthImage(_ data: ARDepthData, cameraIntrinsics k: SIMD4<Float>, imageSize: SIMD2<Float>) -> DepthImage? {
+        let map = data.depthMap
+        CVPixelBufferLockBaseAddress(map, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(map, .readOnly) }
+        guard CVPixelBufferGetPixelFormatType(map) == kCVPixelFormatType_DepthFloat32, let base = CVPixelBufferGetBaseAddress(map) else { return nil }
+        let width = CVPixelBufferGetWidth(map)
+        let height = CVPixelBufferGetHeight(map)
+        let rowBytes = CVPixelBufferGetBytesPerRow(map)
+        guard width > 0, height > 0 else { return nil }
+        var meters = [Float](repeating: 0, count: width * height)
+        for y in 0..<height {
+            let row = UnsafeRawPointer(base).advanced(by: y * rowBytes)
+            for x in 0..<width { meters[y * width + x] = row.loadUnaligned(fromByteOffset: x * 4, as: Float32.self) }
+        }
+        var confidence: [UInt8]?
+        if let levels = data.confidenceMap {
+            CVPixelBufferLockBaseAddress(levels, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(levels, .readOnly) }
+            if CVPixelBufferGetPixelFormatType(levels) == kCVPixelFormatType_OneComponent8,
+               CVPixelBufferGetWidth(levels) == width, CVPixelBufferGetHeight(levels) == height,
+               let levelBase = CVPixelBufferGetBaseAddress(levels) {
+                let levelRowBytes = CVPixelBufferGetBytesPerRow(levels)
+                var values = [UInt8](repeating: 0, count: width * height)
+                for y in 0..<height {
+                    let row = UnsafeRawPointer(levelBase).advanced(by: y * levelRowBytes)
+                    for x in 0..<width { values[y * width + x] = row.load(fromByteOffset: x, as: UInt8.self) }
+                }
+                confidence = values
+            }
+        }
+        return DepthImage(
+            meters: meters, width: width, height: height, confidence: confidence,
+            intrinsics: DepthImage.intrinsics(scaling: k, from: imageSize, toWidth: width, height: height)
+        )
     }
 
     private static func tracking(_ state: ARCamera.TrackingState) -> TrackingQuality {

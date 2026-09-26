@@ -84,7 +84,7 @@ import Testing
         // Wall, and facing with it: a level walk 2 m out, a view every 0.3 m from -1.5 to 1.5.
         // Each wall cell within 0.9 m of two of them is covered; the walk leaves 2 m less the
         // position error clear, 5.78 ft at the facing span's far edge (0.914 m out along the wall).
-        for step in 0...10 { map.observe(wallCamera(s: -1.5 + 0.3 * Float(step)), trackingNormal: true) }
+        for step in 0...10 { map.observe(wallCamera(s: -1.5 + 0.3 * Float(step)), trackingNormal: true, time: Double(step)) }
         let walked = try Self.export(map)
         #expect(try scene.validate(walked) == [])
         #expect(planner.isSatisfied(plans[0], map))

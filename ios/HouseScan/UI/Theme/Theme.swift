@@ -22,6 +22,10 @@ enum Palette {
     static let covered = Color("CoverageCovered")
     /// "I can't get there": neither fog nor evidence, so it gets its own slate and a hatch.
     static let skipped = Color("CoverageSkipped")
+    /// Depth saw something in front of the wall: violet, a hue no other state uses, drawn as a
+    /// dashed outline over a dark veil. The outline, not the hue, is what tells it apart in
+    /// grayscale, where this violet sits close to the covered green.
+    static let hidden = Color("CoverageHidden")
     static let caution = Color("Caution")
     static let danger = Color("Danger")
     /// Secondary text on the light screens. The system's secondary gray falls just under 4.5:1
@@ -38,8 +42,12 @@ enum Palette {
         case .seen: seen
         case .covered: covered
         case .skipped: skipped
+        case .hidden: hidden
         }
     }
+
+    /// The dash of a hidden stretch's outline, on the camera and on the wall map alike.
+    static let hiddenDash: [CGFloat] = [5, 4]
 
     /// Darker outcome colors for text and icons on the light result screen, where the bright
     /// coverage colors fall below 4.5:1.

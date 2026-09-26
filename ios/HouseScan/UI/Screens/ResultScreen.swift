@@ -62,10 +62,16 @@ struct ResultScreen: View {
                     if !result.missing.isEmpty {
                         MissingList(missing: result.missing, actions: actions)
                     }
-                    Button("Start over") { actions.startOver() }
-                        .buttonStyle(.quiet)
-                        .accessibilityIdentifier("action.startOver")
-                        .padding(.top, 8)
+                    VStack(spacing: 16) {
+                        if let scan = state.shareableScan {
+                            ShareScanButton(url: scan)
+                        }
+                        // Last, so the one action that throws the scan away is the farthest.
+                        Button("Start over") { actions.startOver() }
+                            .buttonStyle(.quiet)
+                            .accessibilityIdentifier("action.startOver")
+                    }
+                    .padding(.top, 8)
                 }
                 .padding(20)
             }

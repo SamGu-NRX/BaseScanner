@@ -7,7 +7,9 @@ import simd
 /// Plays a recorded measure-lab-session v2 folder (contract C3) as if it were the camera.
 ///
 /// Frames are delivered at their recorded timing divided by `speed`, each with its own pose and
-/// intrinsics, through the same engine path as live frames. JPEGs are decoded off the main actor.
+/// intrinsics, and its LiDAR depth when the session recorded some (`keyframes[].depth`, read by
+/// `ReplaySession.loadDepth`), through the same engine path as live frames. JPEGs and depth are
+/// decoded off the main actor.
 @MainActor
 final class ReplayPlayer {
     let folder: URL
@@ -58,6 +60,17 @@ final class ReplayPlayer {
         return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description, groundMeasured: false)
     }
 
+    /// One frame's depth, read off the main actor; nil when the session recorded none for it. A
+    /// frame whose depth files are missing or the wrong size plays without depth, logged.
+    nonisolated private static func loadDepth(_ frame: ReplayFrame, folder: URL) -> DepthImage? {
+        do {
+            return try ReplaySession.loadDepth(for: frame, folder: folder)
+        } catch {
+            RuntimeLog.engine.error("replay depth for \(frame.id, privacy: .public) unreadable: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
     init(folder: URL, loaded: Loaded, onFrame: @escaping @MainActor (SourceFrame) -> Void) {
         self.folder = folder
         self.onFrame = onFrame
@@ -96,14 +109,16 @@ final class ReplayPlayer {
                 let frame = frames[index]
                 let url = folder.appending(path: frame.imagePath)
                 let started = ContinuousClock.now
-                let decoded = await Task.detached(priority: .userInitiated) { ImageWork.decode(url) }.value
+                let (decoded, frameDepth) = await Task.detached(priority: .userInitiated) {
+                    (ImageWork.decode(url), Self.loadDepth(frame, folder: folder))
+                }.value
                 if let previous {
                     let wait = Duration.seconds(max(0, (frame.timestamp - previous) / speed)) - (ContinuousClock.now - started)
                     if wait > .zero { try? await Task.sleep(for: wait) }
                 }
                 previous = frame.timestamp
                 guard !Task.isCancelled, let self else { return }
-                self.deliver(index: index, decoded: decoded, isReview: false)
+                self.deliver(index: index, decoded: decoded, depth: frameDepth, isReview: false)
             }
             self?.isPlaying = false
         }
@@ -117,7 +132,7 @@ final class ReplayPlayer {
         task = Task { [weak self] in
             let decoded = await Task.detached(priority: .userInitiated) { ImageWork.decode(url) }.value
             guard !Task.isCancelled else { return }
-            self?.deliver(index: index, decoded: decoded, isReview: true)
+            self?.deliver(index: index, decoded: decoded, depth: nil, isReview: true)
         }
     }
 
@@ -134,7 +149,8 @@ final class ReplayPlayer {
         isPlaying = false
     }
 
-    private func deliver(index: Int, decoded: (CGImage, FrameQuality)?, isReview: Bool) {
+    /// A frame shown for review is never kept, so it goes without depth.
+    private func deliver(index: Int, decoded: (CGImage, FrameQuality)?, depth: DepthImage?, isReview: Bool) {
         let frame = frames[index]
         shownIndex = index
         onFrame(SourceFrame(
@@ -146,6 +162,7 @@ final class ReplayPlayer {
             jpeg: .file(folder.appending(path: frame.imagePath)),
             still: decoded?.0,
             meterAnchor: nil,
+            depth: depth,
             isReview: isReview
         ))
     }

@@ -218,6 +218,9 @@ enum CellState: UInt8, Equatable, Sendable {
     /// The homeowner said they can't get there. Recorded for installer review; never evidence,
     /// and drawn distinctly from both fog and covered.
     case skipped
+    /// LiDAR phones only: the camera looked here, but depth showed something nearer in the way
+    /// (a bush, a bin), so the wall or ground behind it is unseen. Not evidence; drawn distinctly.
+    case hidden
 }
 
 /// Coverage of the unrolled wall, in fixed-width cells along s.
@@ -293,6 +296,9 @@ enum GuidanceStep: Equatable, Sendable {
     case markNextWall(side: WallSide, refusal: NextWallRefusal?)
     /// Show a specific gap (see `ScanViewState.gap`).
     case gap
+    /// Something stands in front of the wall or ground around `s` (LiDAR saw it): look at that
+    /// part from another angle or step around the obstruction.
+    case seeBehind(s: Float)
 }
 
 /// A problem that overrides guidance until it clears. UI/ owns the words.
@@ -605,6 +611,8 @@ final class ScanViewState {
     /// True when no server is configured and the result will be the bundled sample: nothing is
     /// sent, and every screen that talks about the upload or shows the spot must say so.
     var usesSampleResult = false
+    /// True when the phone has LiDAR and coverage counts only what depth confirms.
+    var depthAvailable = false
     /// The scan's bundle (scene.json, keyframe photos and their poses) once it is packaged, for
     /// "Share scan". Photos leave the phone only if the homeowner shares this.
     var shareableScan: URL?

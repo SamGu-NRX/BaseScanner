@@ -57,4 +57,7 @@ enum RuntimeLog {
     static let guidance = Logger(subsystem: "dev.housescanning.housescan", category: "guidance")
     static let engine = Logger(subsystem: "dev.housescanning.housescan", category: "engine")
     static let autopilot = Logger(subsystem: "dev.housescanning.housescan", category: "autopilot")
+    /// Tracking, relocalization and every capture-gate decision, for reading a real session back.
+    /// Only enum-valued reasons, frame ids and counts are public; never meter numbers or images.
+    static let capture = Logger(subsystem: "dev.housescanning.housescan", category: "capture")
 }

@@ -61,7 +61,7 @@ public enum ReplayPlanning {
             let onLine = middle - outward * simd_dot(middle - planePoint, outward)
             guard let wall = WallFrame(meter: SIMD3(onLine.x, groundY + 1.5, onLine.z), outward: outward, groundY: groundY) else { continue }
             var map = CoverageMap(wall: wall, config: config)
-            for frame in frames { map.observe(frame.camera, trackingNormal: frame.trackingNormal) }
+            for frame in frames { map.observe(frame.camera, trackingNormal: frame.trackingNormal, time: frame.timestamp) }
             guard let (shift, count) = bestMeterShift(map, reach: reach), count > (best?.coveredCells ?? -1) else { continue }
             // A whole number of cells, so the shifted wall's cells are the ones counted here.
             let meter = wall.meter + wall.along * (Float(shift) * config.cellWidth)
@@ -118,7 +118,7 @@ public enum ReplayPlanning {
             let decision = capture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
             if decision.isKeep {
                 capture.didKeep(sample)
-                map.observe(frame.camera, trackingNormal: frame.trackingNormal)
+                map.observe(frame.camera, trackingNormal: frame.trackingNormal, time: frame.timestamp)
             }
         }
         return map
@@ -181,7 +181,7 @@ public enum ReplayPlanning {
             let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.trackingNormal ? .normal : .limited, quality: nil)
             if capture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera)).isKeep {
                 capture.didKeep(sample)
-                map.observe(frame.camera, trackingNormal: frame.trackingNormal)
+                map.observe(frame.camera, trackingNormal: frame.trackingNormal, time: frame.timestamp)
                 kept.append(index)
             }
         }
@@ -219,7 +219,7 @@ public enum ReplayPlanning {
             let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.trackingNormal ? .normal : .limited, quality: nil)
             if capture.evaluate(sample, newlySeenCells: restored.newlySeenCount(from: frame.camera)).isKeep {
                 capture.didKeep(sample)
-                restored.observe(frame.camera, trackingNormal: frame.trackingNormal)
+                restored.observe(frame.camera, trackingNormal: frame.trackingNormal, time: frame.timestamp)
             }
         }
         return planner.isSatisfied(gap, restored)

@@ -12,8 +12,8 @@ protocol ResultClient: AnyObject {
 /// Posts scene.json to the placement server: `POST {serverURL}/v1/placements` with the JSON as
 /// the body and `Content-Type: application/json`. Only the JSON goes: the server's solver reads no
 /// photos and skips the image check for a bare scene.json, so the keyframes stay on the phone
-/// (and in the scan folder's `scan.zip` for replay and debugging). The response body is the
-/// result JSON.
+/// (and in the scan folder's `scan.zip`, which leaves only if the homeowner shares it). The
+/// response body is the result JSON.
 @MainActor
 final class HTTPResultClient: ResultClient {
     let serverURL: URL
@@ -84,10 +84,18 @@ enum UploadFailure {
         }
     }
 
-    /// The scan couldn't be turned into scene.json.
-    static let packaging = UploadState.rejected(
-        message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over."
-    )
+    /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
+    /// again says which, so the homeowner knows what to fix in the review.
+    static func packaging(_ error: any Error) -> UploadState {
+        switch error as? ScanEngine.ExportError {
+        case .markCollapsed(.driveway)?:
+            .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
+        case .markCollapsed(.fence)?:
+            .rejected(message: "Mark the fence again: its two points came out on top of each other.")
+        default:
+            .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
+        }
+    }
 }
 
 final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {

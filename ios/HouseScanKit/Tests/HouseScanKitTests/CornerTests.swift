@@ -43,7 +43,9 @@ func rightCornerWall() throws -> WallFrame {
         var wall = try rightCornerWall()
         wall.turn(.left, at: try wall.corner(on: .left, meeting: SIMD3(-2, 1, 1.5), outward: SIMD3(1, 0, 0)))
         #expect(wall.segments.count == 3 && wall.meterSegmentIndex == 1)
-        #expect(wall.segments.map(\.span.lowerBound) == [-.infinity, -2, 3])
+        // Typed first: in one #expect this took about 130 ms to type-check, over CI's limit.
+        let starts: [Float] = wall.segments.map(\.span.lowerBound)
+        #expect(starts == [-Float.infinity, -2, 3])
 
         // (s, height, out) -> world, by hand from the layout above.
         let cases: [(WallPoint, SIMD3<Float>)] = [

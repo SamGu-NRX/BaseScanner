@@ -72,21 +72,14 @@ final class Autopilot {
                 log("skipping the gap: no held-back frames to show it")
                 await engine.waitForGate(.gapRequest)
                 engine.skipGap()
-            } else if await !waitFor(.uploading, timeout: 150) {
-                log("gap not satisfied by the held-back frames; skipping it")
-                engine.skipGap()
+            } else {
+                // The held-back frames were chosen on geometry alone; on a LiDAR replay depth can
+                // find part of the gap hidden in them, and then they don't settle it.
+                await playGapFrames(replay)
             }
         }
         guard await waitFor(.uploading, timeout: 150) else { return fail("upload did not start") }
-        if await !waitFor(.result, timeout: 240) {
-            if case .failed = engine.state.upload {
-                log("upload failed; retrying once")
-                engine.retryUpload()
-                guard await waitFor(.result, timeout: 90) else { return fail("no result after retry") }
-            } else {
-                return fail("no result")
-            }
-        }
+        guard await driveToResult(replay) else { return }
         await pause(hold)
         await engine.waitForGate(.result)
         engine.showAR()
@@ -237,7 +230,7 @@ final class Autopilot {
             return
         }
         await pause(hold)
-        engine.answerOverhead(clear: true)
+        await answerOpenSky()
         log("answered the overhead question: open sky; \(overheadSummary)")
     }
 
@@ -254,8 +247,84 @@ final class Autopilot {
             return
         }
         await pause(hold)
-        engine.answerOverhead(clear: true)
+        await answerOpenSky()
         log("answered the overhead request: open sky; \(overheadSummary)")
+    }
+
+    /// After an upload the engine raises the answer's capturable requests one at a time, uploading
+    /// after each, before it shows the result. Drives each request, retries a failed upload once,
+    /// and returns true once the result is up. Bounded by the engine's own bound on requests.
+    private func driveToResult(_ replay: ReplayPlayer) async -> Bool {
+        var retried = false
+        for _ in 0..<(ScanEngine.maxAutomaticGaps + 2) {
+            let settled = await waitUntil(timeout: 240) {
+                self.engine.state.phase == .result || self.engine.state.phase == .gapRequest || self.uploadFailed
+            }
+            guard settled else {
+                fail("no result")
+                return false
+            }
+            switch engine.state.phase {
+            case .result:
+                return true
+            case .gapRequest:
+                await driveServerRequest(replay)
+            default:
+                guard !retried else {
+                    fail("no result after retry")
+                    return false
+                }
+                retried = true
+                log("upload failed; retrying once")
+                engine.retryUpload()
+            }
+        }
+        fail("still no result after \(ScanEngine.maxAutomaticGaps) requests")
+        return false
+    }
+
+    private var uploadFailed: Bool {
+        if case .failed = engine.state.upload { return engine.state.phase == .uploading }
+        return false
+    }
+
+    /// A request the engine raised from the server's answer. The engine plays the replay's frames
+    /// for it; a replay shows only what it recorded, so when they don't settle the request the
+    /// autopilot says "I can't get there", as a homeowner would. An overhead request is answered
+    /// like the one before the upload.
+    private func driveServerRequest(_ replay: ReplayPlayer) async {
+        guard let request = engine.state.gap else { return }
+        log("server request \(request.id) over \(format(request.span))")
+        if request.reason == .overhead {
+            await answerOverheadGap()
+        } else {
+            await playGapFrames(replay)
+        }
+        // A settled request stays on screen for a moment before the next upload.
+        _ = await waitUntil(timeout: 10) { self.engine.state.phase != .gapRequest || self.engine.state.gap?.id != request.id }
+    }
+
+    /// Waits while the engine plays the replay's frames for the current request. A replay shows
+    /// only what it recorded, so when they don't settle the request the autopilot says "I can't
+    /// get there", as a homeowner would.
+    private func playGapFrames(_ replay: ReplayPlayer) async {
+        guard let request = engine.state.gap else { return }
+        _ = await waitUntil(timeout: 60) { !replay.isPlaying || self.engine.state.gap?.id != request.id }
+        // Time for the last frame's keyframe to be stored and counted.
+        await pause(hold)
+        if engine.state.phase == .gapRequest, let gap = engine.state.gap, gap.id == request.id, !gap.isSatisfied {
+            log("the replay does not settle request \(request.id) (\(Int(gap.progress * 100))% of it seen); skipping it")
+            await engine.waitForGate(.gapRequest)
+            engine.skipGap()
+        }
+    }
+
+    /// "Open sky or nothing overhead", then a wait for the view to be stored: it counts as an
+    /// overhead view only once its photo is on disk.
+    private func answerOpenSky() async {
+        let before = engine.coverage?.overheadCameras.count ?? 0
+        engine.answerOverhead(clear: true)
+        _ = await waitUntil(timeout: 5) { (self.engine.coverage?.overheadCameras.count ?? 0) > before }
     }
 
     /// The overhead views kept and the stretches they show clear, as the export will send them.

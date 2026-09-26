@@ -26,6 +26,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
+        ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
+        ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
@@ -33,10 +35,12 @@ final class ScreenStatesUITests: XCTestCase {
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
         ("gapRequest-overhead", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead"], "gapRequest"),
         ("gapRequest-overheadQuestion", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead", "-uiDemoOverheadQuestion"], "gapRequest"),
+        ("gapRequest-followUp", ["-uiDemoPhase", "gapRequest", "-uiDemoFollowUp"], "gapRequest"),
         ("uploading", ["-uiDemoPhase", "uploading"], "uploading"),
         ("uploading-offline", ["-uiDemoPhase", "uploading", "-uiDemoOffline"], "uploading"),
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
+        ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
@@ -50,7 +54,20 @@ final class ScreenStatesUITests: XCTestCase {
     private static let largestTextStates: Set<String> = [
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
+        "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
     ]
+
+    /// Words a state must show: in the named element's label or value, or with no identifier,
+    /// in any text on screen.
+    private static let expectations: [String: (identifier: String?, text: String)] = [
+        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
+        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
+        "gapRequest-followUp": ("instruction", "One more view to finish"),
+        "uploading-followUp": (nil, "One more view to finish"),
+    ]
+
+    /// States where the scan is packaged, so "Share scan" must show.
+    private static let shareStates: Set<String> = ["uploading-offline", "uploading-rejected", "result-review", "result-pass"]
 
     override func setUp() {
         continueAfterFailure = true
@@ -105,7 +122,12 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10))
         XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 20))
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
+        // The answer lists a view the camera can take: the scan goes back to the camera for it
+        // on its own, and the result follows that view.
+        let followUp = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
+        XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
         tap(app, "action.showAR")
@@ -158,6 +180,26 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
     }
 
+    /// "Share scan" opens the system share sheet with the scan file.
+    @MainActor
+    func testShareScanOpensTheShareSheet() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
+        app.launch()
+        tap(app, "action.shareScan")
+        let sheet = app.otherElements["ActivityListView"]
+        let found = sheet.waitForExistence(timeout: 10)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "shareSheet"
+        shot.lifetime = .keepAlways
+        add(shot)
+        if !found {
+            add(XCTAttachment(string: app.debugDescription))
+        }
+        XCTAssertTrue(found, "the share sheet never appeared")
+    }
+
     @MainActor
     private func check(_ name: String, arguments: [String], screen: String) throws {
         let app = XCUIApplication()
@@ -172,28 +214,47 @@ final class ScreenStatesUITests: XCTestCase {
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
+        if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
+            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+        }
+        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+            let found: Bool
+            if let identifier = expected.identifier {
+                let target = element(app, identifier)
+                found = target.label.contains(expected.text) || (target.value as? String)?.contains(expected.text) == true
+            } else {
+                found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
+            }
+            XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
+        }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
         // audit, after the banner's few seconds on screen, finds it again.
         let first = try audit(app)
         guard !first.isEmpty else { return }
         Thread.sleep(forTimeInterval: 6)
+        revealCutOff(first.values.compactMap(\.frame), in: app)
         let second = try audit(app)
         for key in first.keys.sorted() where second[key] != nil {
-            XCTFail("\(name): \(second[key] ?? key)")
+            XCTFail("\(name): \(second[key]?.message ?? key)")
         }
+    }
+
+    private struct Issue {
+        var message: String
+        var frame: CGRect?
     }
 
     /// Issues keyed by type, identifier and label. A failed snapshot (the tree changed while the
     /// audit read it) is retried once; a second failure throws.
     @MainActor
-    private func audit(_ app: XCUIApplication) throws -> [String: String] {
-        func run() throws -> [String: String] {
-            var found: [String: String] = [:]
+    private func audit(_ app: XCUIApplication) throws -> [String: Issue] {
+        func run() throws -> [String: Issue] {
+            var found: [String: Issue] = [:]
             try app.performAccessibilityAudit { issue in
                 let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
                 let key = "\(issue.auditType.rawValue)|\(issue.element?.identifier ?? "")|\(issue.element?.label ?? "")"
-                found[key] = "\(issue.compactDescription) (\(element))"
+                found[key] = Issue(message: "\(issue.compactDescription) (\(element))", frame: issue.element?.frame)
                 return true
             }
             return found
@@ -204,6 +265,22 @@ final class ScreenStatesUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 1)
             return try run()
         }
+    }
+
+    /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge
+    /// is audited on the sliver that shows, which fails contrast however it is drawn (a few
+    /// points of a button's top edge over the camera). A homeowner would scroll to it, so before
+    /// the second audit the screen scrolls until every flagged element that crosses the bottom
+    /// edge is in full view; one that still fails there fails the test.
+    @MainActor
+    private func revealCutOff(_ frames: [CGRect], in app: XCUIApplication) {
+        let screen = app.windows.firstMatch.frame
+        guard let lowest = frames.filter({ $0.minY < screen.maxY && $0.maxY > screen.maxY }).map(\.maxY).max() else { return }
+        let distance = min(lowest - screen.maxY + 60, screen.height * 0.5)
+        // A slow drag from mid-screen: it scrolls by about the distance dragged, without the
+        // momentum a swipe adds.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 0.5)
     }
 
     @MainActor
