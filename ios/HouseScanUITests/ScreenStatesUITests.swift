@@ -23,6 +23,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
+        ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("uploading", ["-uiDemoPhase", "uploading"], "uploading"),
         ("uploading-offline", ["-uiDemoPhase", "uploading", "-uiDemoOffline"], "uploading"),
@@ -102,6 +103,28 @@ final class ScreenStatesUITests: XCTestCase {
         app.swipeUp()
         startOver.tap()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 10))
+    }
+
+    /// B-09: "Add something" on the review opens the camera with the marking prompt, and the
+    /// review comes back with the new item once it is marked, or unchanged after Cancel.
+    @MainActor
+    func testAddSomethingFromTheReviewMarksOnTheCamera() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "markFeatures"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
+        tap(app, "feature.ac")
+        XCTAssertTrue(element(app, "action.markPoint").waitForExistence(timeout: 5), "the marking view must appear")
+        XCTAssertTrue(element(app, "screen.markFeatures").exists, "marking from the review stays in the review phase")
+        tap(app, "action.cancelMarking")
+        XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore)
+        tap(app, "feature.ac")
+        tap(app, "action.markPoint", timeout: 5)
+        XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
+        XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
     }
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent

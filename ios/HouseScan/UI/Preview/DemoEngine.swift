@@ -18,7 +18,6 @@ final class DemoEngine: ScanActions {
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
     private var skippedSpan: ClosedRange<Float>?
-    private var returnToReview = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -452,11 +451,10 @@ final class DemoEngine: ScanActions {
         refreshGuidance()
     }
 
+    /// Like the real engine: marking from the review stays in `.markFeatures`, and the review
+    /// screen shows the marking view while `marking` is set.
     func beginMarking(_ kind: FeatureKind) {
-        if state.phase == .markFeatures {
-            returnToReview = true
-            state.phase = .wallWalk
-        }
+        guard state.phase == .wallWalk || state.phase == .markFeatures else { return }
         state.marking = MarkingState(kind: kind, step: 0, refusal: nil)
     }
 
@@ -470,18 +468,10 @@ final class DemoEngine: ScanActions {
         }
         state.features.append(Self.demoFeature(marking.kind))
         state.marking = nil
-        if returnToReview {
-            returnToReview = false
-            state.phase = .markFeatures
-        }
     }
 
     func cancelMarking() {
         state.marking = nil
-        if returnToReview {
-            returnToReview = false
-            state.phase = .markFeatures
-        }
     }
 
     func deleteFeature(_ id: UUID) {
