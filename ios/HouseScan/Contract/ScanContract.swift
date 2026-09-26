@@ -484,6 +484,10 @@ final class ScanViewState {
     var marking: MarkingState?
 
     var gap: GapRequest?
+    /// A wall end was just marked on this side and the engine needs to know what is there:
+    /// the wall turns a corner (it continues, unexplored) or something blocks it (a fence, gate
+    /// or property line: a real limit). Nil when nothing is being asked.
+    var endQuestion: WallSide?
     var upload: UploadState = .idle
     var result: ResultPresentation?
 
@@ -512,6 +516,9 @@ protocol ScanActions: AnyObject {
     func markMeter(at point: CGPoint?, viewSize: CGSize)
     func skipCloseUp()
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
+    /// The answer to `ScanViewState.endQuestion`. A corner exports as an unexplored end, a
+    /// blocked wall as a limit; an end left unanswered stays unexplored.
+    func answerWallEnd(turnsCorner: Bool)
     func beginMarking(_ kind: FeatureKind)
     func markFeaturePoint(at point: CGPoint?, viewSize: CGSize)
     func cancelMarking()
