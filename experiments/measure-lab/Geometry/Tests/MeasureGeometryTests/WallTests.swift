@@ -92,6 +92,49 @@ struct WallTests {
         #expect(!wall.containsAlong(-0.01))
     }
 
+    // A wall that is translated, rotated and on sloped ground, so dropping the ground line's
+    // intercept or the plane's offset from the origin changes every answer below.
+    // Contacts (1, 0.3, 2) and (4, 0.9, 6): horizontal run (3, 0, 4), length 5, u = (0.6, 0, 0.8),
+    // n = u × g = (−0.8, 0, 0.6), ground rising 0.6 m over the wall. The camera stands 3 m out
+    // along n and 1.5 m up from the first contact.
+    let offsetWallStart = SIMD3<Double>(1, 0.3, 2)
+    let offsetCamera = SIMD3<Double>(1, 0.3, 2) + SIMD3(-0.8, 0, 0.6) * 3 + SIMD3(0, 1.5, 0)
+    var offsetWall: Wall {
+        get throws { try Wall(contact1: offsetWallStart, contact2: SIMD3(4, 0.9, 6), cameraPosition: offsetCamera) }
+    }
+
+    @Test func `sloped ground line off the origin`() throws {
+        let wall = try offsetWall
+        #expect(isClose(wall.normal, SIMD3(-0.8, 0, 0.6)))
+        #expect(isClose(wall.length, 5))
+        // Halfway along, the ground is 0.3 + 0.6 · 2.5 / 5 = 0.6.
+        #expect(isClose(wall.groundHeight(atAlong: 2.5), 0.6))
+        #expect(isClose(wall.groundHeight(atAlong: 0), 0.3))
+        #expect(isClose(wall.groundHeight(atAlong: 5), 0.9))
+        // A point on the wall 2.5 m along at y = 1.9 is 1.3 m above the ground there.
+        let point = offsetWallStart + SIMD3(0.6, 0, 0.8) * 2.5 + SIMD3(0, 1.6, 0)
+        #expect(isClose(wall.along(point), 2.5))
+        #expect(isClose(wall.offset(of: point), 0))
+        #expect(isClose(wall.heightAboveGround(point), 1.3))
+        #expect(isClose(wall.offset(of: offsetCamera), 3))
+    }
+
+    @Test func `ray meets a translated, rotated wall plane`() throws {
+        let wall = try offsetWall
+        // Aim at (2.5, 1.5, 4), which is 2.5 m along the wall: n·((2.5, 1.5, 4) − (1, 0.3, 2)) = 0.
+        // From the camera at (−1.4, 1.8, 3.8) the direction is (3.9, −0.3, 0.2), with n·d = −3.
+        let target = SIMD3<Double>(2.5, 1.5, 4)
+        #expect(isClose(offsetCamera, SIMD3(-1.4, 1.8, 3.8)))
+        let hit = try wall.intersect(try Ray(origin: offsetCamera, direction: SIMD3(3.9, -0.3, 0.2)))
+        #expect(isClose(hit.point, target))
+        #expect(isClose(hit.range, 15.34.squareRoot()))
+        #expect(isClose(hit.angleFromNormal, acos(3 / 15.34.squareRoot()) * 180 / .pi))
+        #expect(isClose(hit.along, 2.5))
+        // Ground at 2.5 m along is 0.6, so the target is 0.9 m up.
+        #expect(isClose(hit.heightAboveGround, 0.9))
+        #expect(hit.withinContacts)
+    }
+
     @Test func `third contact validates the plane within two inches`() throws {
         let wall = try wall
         let close = wall.validate(contact: SIMD3(3, 0, 0.04))

@@ -73,9 +73,9 @@ final class CaptureController {
     /// the new session. The restart is queued behind any delegate callback already in flight.
     func startNewSession(sceneDepth: Bool) {
         let lastOldFrame = arView?.session.currentFrame?.timestamp ?? 0
-        session.recorder.stop()
+        let closing = session.recorder.stop()
         frozen = nil
-        let destination = session.startNewSession(sceneDepth: sceneDepth)
+        let destination = session.startNewSession(sceneDepth: sceneDepth, closingReserved: closing?.reserved ?? 0)
         session.arSessionRestarted()
         clearMarkers()
         run(reset: true)
@@ -96,9 +96,9 @@ final class CaptureController {
         guard let frame = arView?.session.currentFrame else { return }
         do {
             let result = try session.recorder.save(frame, reason: .freeze, displayImage: true)
-            session.keyframeSaved(result.saved)
-            guard let cgImage = result.image else { return }
-            let snapshot = result.saved.snapshot
+            session.keyframeDelivered(result.delivery)
+            guard case .success(let saved) = result.delivery.result, let cgImage = result.image else { return }
+            let snapshot = saved.snapshot
             frozen = FrozenFrame(
                 snapshot: snapshot,
                 // .right rotates the landscape sensor image 90° clockwise for an upright phone,
@@ -171,14 +171,15 @@ final class CaptureController {
             session.refuseUnresolvedTap(reason: "noFrame", message: "The camera hasn't delivered a frame yet.")
             return nil
         }
-        let saved: KeyframeRecorder.Saved
+        let delivery: KeyframeRecorder.Delivery
         do {
-            saved = try session.recorder.save(frame, reason: .tap).saved
+            delivery = try session.recorder.save(frame, reason: .tap).delivery
         } catch {
             session.recorderFailed(error)
             return nil
         }
-        session.keyframeSaved(saved)
+        session.keyframeDelivered(delivery)
+        guard case .success(let saved) = delivery.result else { return nil }
         let snapshot = saved.snapshot
         // displayTransform maps normalized image coordinates to normalized view coordinates for
         // this orientation and viewport, the same mapping ARView uses to draw the camera feed.
@@ -232,7 +233,7 @@ final class CaptureController {
         for point in points.dropFirst(drawnPoints) {
             let dot = ModelEntity(
                 mesh: .generateSphere(radius: 0.015),
-                materials: [UnlitMaterial(color: point.flags.isEmpty ? Theme.accentUIColor : .systemOrange)]
+                materials: [UnlitMaterial(color: session.evidence(for: point).warnings.isEmpty ? Theme.accentUIColor : .systemOrange)]
             )
             dot.position = SIMD3<Float>(point.position)
             root.addChild(dot)

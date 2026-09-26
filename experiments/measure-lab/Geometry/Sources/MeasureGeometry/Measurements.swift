@@ -27,7 +27,7 @@ public enum MeasuredQuantity: String, Sendable, CaseIterable, Codable {
     case alongWall
     /// Perpendicular horizontal distance from a point to the wall line (facing gap).
     case gapToWall
-    /// Height of a point above the wall's ground line.
+    /// Height of a point above the wall's ground line. Signed: negative below the line.
     case heightAboveGround
 }
 
@@ -59,11 +59,12 @@ public enum MeasurementTarget: Sendable {
     case wall(Wall)
 }
 
-/// Every quantity that applies to a pair, in meters and non-negative.
+/// Every quantity that applies to a pair, in meters.
 ///
 /// Point to point gives straight, horizontal and vertical distance, plus along-wall distance when
-/// a reference wall is given. Point to wall gives the facing gap and the point's height above the
-/// wall's ground line.
+/// a reference wall is given; all are non-negative. Point to wall gives the facing gap and the
+/// point's signed height above the wall's ground line, which is negative for a point below it
+/// (see `measurementWarnings`).
 public func measuredValues(
     from point: SIMD3<Double>,
     to target: MeasurementTarget,
@@ -84,7 +85,7 @@ public func measuredValues(
     case .wall(let wall):
         return [
             .gapToWall: wall.gap(to: point),
-            .heightAboveGround: abs(wall.heightAboveGround(point)),
+            .heightAboveGround: wall.heightAboveGround(point),
         ]
     }
 }

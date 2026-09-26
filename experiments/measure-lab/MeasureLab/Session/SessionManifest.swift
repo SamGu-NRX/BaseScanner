@@ -1,4 +1,5 @@
 import Foundation
+import MeasureGeometry
 
 /// The contents of session.json. The README's "Session format" section documents every field;
 /// change both together and bump `formatVersion` when a field changes meaning.
@@ -6,7 +7,7 @@ import Foundation
 /// Lengths are ARKit meters in the gravity-aligned world frame (y up). Vectors are [x, y, z].
 struct SessionManifest: Codable, Sendable {
     var format = "measure-lab-session"
-    var formatVersion = 1
+    var formatVersion = 2
     var units = Units()
     var conventions = Conventions()
     var session: SessionInfo
@@ -169,9 +170,12 @@ struct PointRecord: Codable, Sendable, Identifiable {
     let onWall: OnWall?
     let twoView: TwoView?
     let wallCoordinates: WallCoordinates?
-    /// Warnings that did not block the point: "estimatedPlane", "extendedPlane",
+    /// Warnings about this point's own observation: "estimatedPlane", "extendedPlane",
     /// "shallowLookDown", "outsideWallContacts".
-    let flags: [String]
+    let flags: [MeasurementWarning]
+    /// For a point on a wall: that wall's warnings when the point was made. The wall's final
+    /// state is in `walls[].warnings`.
+    let wallWarnings: [MeasurementWarning]
 }
 
 struct WallRecord: Codable, Sendable, Identifiable {
@@ -191,6 +195,8 @@ struct WallRecord: Codable, Sendable, Identifiable {
     let length: Double
     let cameraPosition: SIMD3<Double>
     var validations: [Validation]
+    /// "wallContactWarning", "wallNotValidated", "wallValidationFailed"; updated after each check.
+    var warnings: [MeasurementWarning]
 }
 
 struct MeasurementRecord: Codable, Sendable, Identifiable {
@@ -208,7 +214,7 @@ struct MeasurementRecord: Codable, Sendable, Identifiable {
     /// The wall used for along-wall distance, if any.
     let referenceWall: String?
     /// Every quantity that applies, keyed by name ("straight", "horizontal", "vertical",
-    /// "alongWall", "gapToWall", "heightAboveGround").
+    /// "alongWall", "gapToWall", "heightAboveGround"). Height above ground is signed.
     let values: [String: Double]
     /// The quantity compared with the tape.
     let compared: String
@@ -216,6 +222,11 @@ struct MeasurementRecord: Codable, Sendable, Identifiable {
     /// App minus tape, meters and inches.
     let errorMeters: Double?
     let errorInches: Double?
+    /// Every warning inherited from the points and walls this value depends on, plus
+    /// "belowGround" for a negative height.
+    let warnings: [MeasurementWarning]
+    /// True only with no warnings. Scoring counts any other measurement as an abstention.
+    let accepted: Bool
 }
 
 struct RefusalRecord: Codable, Sendable {

@@ -16,13 +16,8 @@ final class SessionDelegate: NSObject, ARSessionDelegate {
     }
 
     func session(_ arSession: ARSession, didUpdate frame: ARFrame) {
-        guard let result = recorder.offerMotionFrame(frame) else { return }
-        Task { @MainActor [session] in
-            switch result {
-            case .success(let saved): session.keyframeSaved(saved)
-            case .failure(let error): session.recorderFailed(error)
-            }
-        }
+        guard let delivery = recorder.offerMotionFrame(frame) else { return }
+        Task { @MainActor [session] in session.keyframeDelivered(delivery) }
     }
 
     func session(_ arSession: ARSession, cameraDidChangeTrackingState camera: ARCamera) {

@@ -16,7 +16,7 @@ A tap counts only after tracking has been normal for 1 s. Tapping the camera ima
 | --- | --- | --- |
 | Ground | ARKit raycast to a horizontal plane: a found plane, else its extension, else ARKit's estimate. The last two are flagged, and so is a ray looking down less than 30°. | ARKit finds no ground along the ray |
 | Wall | First and second taps are ground contacts at the wall's base. Direction `u` is the horizontal part of `p2 − p1`; normal `n = u × g`, flipped to face the camera. Later taps are optional validation contacts, reported as distance from the plane. | Contacts under 2 m apart horizontally; camera within 0.1 m of the wall's plane |
-| On wall | `t = n·(p1 − o) / (n·d)`, point `= o + t·d`. Reports along-wall distance from the first contact and height above the ground line through both contacts. Hits beyond the contacts are flagged. | `t ≤ 0`; ray more than 60° from the normal (`|n·d| < 0.5`) |
+| On wall | `t = n·(p1 − o) / (n·d)`, point `= o + t·d`. Reports along-wall distance from the first contact and signed height above the ground line through both contacts. Hits beyond the contacts are flagged, and every point inherits its wall's warnings: a flagged contact, no check contact yet, or a failed check. | `t ≤ 0`; ray more than 60° from the normal (`|n·d| < 0.5`) |
 | Two-view | Tap a feature, step sideways, tap it again in a new frame. The point is the midpoint of the rays' closest approach. Frozen second views show the first ray as a dashed line. | Ray angle under 15°; closest approach behind a camera; rays more than 2 in apart; both taps on one frame |
 | Measure | Point to point: straight, horizontal, height difference, and along-wall distance against a chosen wall. Point to wall: facing gap (perpendicular distance to the wall line from above) and height above the wall's ground line. Takes a tape reading in feet and inches (`6`, `3 1/4`) and shows app minus tape. | |
 
@@ -30,7 +30,7 @@ Set before the run, from the research note. The method passes when all of these 
 
 - Wall, opening and rigid-ground distances are within 4 in of the tape. Facing gap and overhead height are within 6 in.
 - The 30 ft span is within 8 in. The return-to-reference gap is within 4 in.
-- Every accepted measurement's interval contains the taped value, using the bounds above as the interval (app value ± bound). A measurement from a flagged point counts as an abstention, not an acceptance, but its error is still recorded, to show whether the flag was needed.
+- Every accepted measurement's interval contains the taped value, using the bounds above as the interval (app value ± bound). A measurement with `accepted: false` counts as an abstention. It inherits every warning of the points and walls it depends on: a flagged ground hit, a wall whose contact was flagged, a wall with no check or a failed one, and a negative height above ground. Its error is still recorded, to show whether each warning was needed.
 - The hidden-contact, low-parallax, mismatched-tap and wrong-plane cases abstain: a refusal, a flag, or a failed wall check.
 - On both sides of a threshold, the decision rule never gives a false PASS. Use the public 3 ft fence clearance from Base's help page as `T`: PASS when `distance − bound ≥ T`, FAIL when `distance + bound < T`, UNSURE otherwise.
 - The uncoached operator finishes one capture in 8 minutes, with at most one corrective prompt per measurement.
@@ -106,7 +106,7 @@ Units and frames, also written into `units` and `conventions` in every session.j
 - Pixels: `[u, v]`, with (0, 0) the top-left corner of the JPEG and v growing down. The ray through a pixel has camera-space direction `((u − cx)/fx, −(v − cy)/fy, −1)`, the same as `pixel_ray` in docs/02.
 - Vectors are `[x, y, z]` arrays.
 
-Top-level fields of session.json (`format` is `"measure-lab-session"`, `formatVersion` is 1):
+Top-level fields of session.json (`format` is `"measure-lab-session"`, `formatVersion` is 2):
 
 | Field | Contents |
 | --- | --- |
@@ -114,9 +114,9 @@ Top-level fields of session.json (`format` is `"measure-lab-session"`, `formatVe
 | `gates` | Every threshold the session ran with, so a replay can apply the same ones |
 | `keyframes` | `id`, `img` (path), `w`, `h`, `intrinsics`, `pose`, `timestamp`, `tracking` (`normal`, `limited.excessiveMotion`, ...), `reason` (`motion`, `tap` or `freeze`), `depth` (`file`, `confidenceFile`, `w`, `h`) or null. The field names match the `keyframes` entries in docs/01's `scene.json`. |
 | `taps` | `id`, `time`, `tool`, `step` (`firstContact`, `secondView`, ...), `keyframe`, `frozen`, `pixel`, `rayOrigin`, `rayDirection`, `displayMappingCheck`, and the `point` and/or `refusal` it produced |
-| `points` | `id`, `kind` (`ground`, `wall`, `twoView`), `position`, `taps`, then per kind `ground` (`surface`, `planeAnchor`, `lookDown`), `onWall` (`wall`, `range`, `angleFromNormal`) or `twoView` (`firstTap`, `secondTap`, `rayAngle`, `gap`, `baseline`, `t1`, `t2`); `wallCoordinates` against the newest wall at the time (`along`, `heightAboveGround`, `offset`, `withinContacts`); `flags` (`estimatedPlane`, `extendedPlane`, `shallowLookDown`, `outsideWallContacts`) |
-| `walls` | `id`, `contacts` (point ids), `start`, `end`, `direction`, `normal`, `length`, `cameraPosition`, `validations` (`point`, `residual`, `tolerance`, `passes`) |
-| `measurements` | `id`, `time`, `from`, `to` (point or wall id), `referenceWall`, `values` (every quantity that applies, keyed `straight`, `horizontal`, `vertical`, `alongWall`, `gapToWall`, `heightAboveGround`), `compared`, `tape` (`feet`, `inches`, `meters`) or null, `errorMeters` and `errorInches` (app minus tape) |
+| `points` | `id`, `kind` (`ground`, `wall`, `twoView`), `position`, `taps`, then per kind `ground` (`surface`, `planeAnchor`, `lookDown`), `onWall` (`wall`, `range`, `angleFromNormal`) or `twoView` (`firstTap`, `secondTap`, `rayAngle`, `gap`, `baseline`, `t1`, `t2`); `wallCoordinates` against the newest wall at the time (`along`, `heightAboveGround`, `offset`, `withinContacts`); `flags`, the point's own warnings (`estimatedPlane`, `extendedPlane`, `shallowLookDown`, `outsideWallContacts`); `wallWarnings`, for a point on a wall, that wall's warnings when the point was made |
+| `walls` | `id`, `contacts` (point ids), `start`, `end`, `direction`, `normal`, `length`, `cameraPosition`, `validations` (`point`, `residual`, `tolerance`, `passes`), `warnings` as of the last check (`wallContactWarning`, `wallNotValidated`, `wallValidationFailed`) |
+| `measurements` | `id`, `time`, `from`, `to` (point or wall id), `referenceWall`, `values` (every quantity that applies, keyed `straight`, `horizontal`, `vertical`, `alongWall`, `gapToWall`, `heightAboveGround`), `compared`, `tape` (`feet`, `inches`, `meters`) or null, `errorMeters` and `errorInches` (app minus tape), `warnings` (inherited as above, plus `belowGround`), and `accepted`, true only with no warnings. `heightAboveGround` is signed; the other values are non-negative. |
 | `refusals` | `id`, `time`, `tool`, `tap` (null when no frame was resolved), `reason` (for example `grazingRay`, `rayAngleTooSmall`, `noGround`, `trackingNotReady`), `message` as shown, `values` behind it |
 | `tracking` | `time`, `state`, one entry per tracking change |
 

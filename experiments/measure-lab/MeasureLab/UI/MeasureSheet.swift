@@ -75,6 +75,11 @@ struct MeasureSheet: View {
                         }
                     } header: {
                         Text("Compare with the tape")
+                    } footer: {
+                        if !selectedWarnings.isEmpty {
+                            Text("Saved as an abstention: \(selectedWarnings.map(\.message).joined(separator: "; ")).")
+                                .foregroundStyle(Theme.warning)
+                        }
                     }
                     Section {
                         HStack {
@@ -121,6 +126,11 @@ struct MeasureSheet: View {
     private var selectedQuantity: MeasuredQuantity? {
         if let compared, values[compared] != nil { return compared }
         return orderedQuantities.first
+    }
+
+    private var selectedWarnings: [MeasurementWarning] {
+        guard let target, let quantity = selectedQuantity, let value = values[quantity] else { return [] }
+        return session.warnings(from: fromID, to: target, referenceWall: referenceWall, compared: quantity, value: value)
     }
 
     private var tapeIsEmpty: Bool {
@@ -171,6 +181,6 @@ struct MeasureSheet: View {
         case .wall: "on wall"
         case .twoView: "two-view"
         }
-        return point.flags.isEmpty ? "\(point.id) · \(kind)" : "\(point.id) · \(kind) · flagged"
+        return session.evidence(for: point).warnings.isEmpty ? "\(point.id) · \(kind)" : "\(point.id) · \(kind) · flagged"
     }
 }

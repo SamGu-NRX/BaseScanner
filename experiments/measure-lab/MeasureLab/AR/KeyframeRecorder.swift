@@ -20,17 +20,24 @@ final class KeyframeRecorder: @unchecked Sendable {
         var acceptsFramesAfter: Double = 0
     }
 
-    /// A saved keyframe, tagged with its session so one that finishes after a session switch is
-    /// filed under the session it was reserved for.
+    /// A saved keyframe and the frame data a tap on it needs.
     struct Saved: Sendable {
-        let sessionID: String
         let record: KeyframeRecord
         let snapshot: FrameSnapshot
+    }
+
+    /// The outcome of one reserved write, tagged with the session that reserved it. Every
+    /// reservation produces exactly one delivery, success or failure, so `KeyframeRouter` can tell
+    /// when a closed session has nothing left in flight.
+    struct Delivery: Sendable {
+        let sessionID: String
+        let result: Result<Saved, RecorderError>
     }
 
     private struct State {
         var destination: Destination?
         var selector = KeyframeSelector()
+        /// Reservations made for the current destination.
         var count = 0
     }
 
@@ -45,43 +52,52 @@ final class KeyframeRecorder: @unchecked Sendable {
     /// Starts writing into `folder`, which must already contain a `keyframes` directory.
     func start(_ destination: Destination) {
         state.withLock { state in
-            state = State(destination: destination)
+            state.destination = destination
+            // reset() keeps reservation ids increasing, so a write from the previous session that
+            // finishes now can't commit into this session's spacing.
+            state.selector.reset()
+            state.count = 0
         }
     }
 
-    /// Stops accepting frames until the next `start`.
-    func stop() {
+    /// Stops accepting frames until the next `start`. Returns the stopped session and how many
+    /// writes it reserved in total, for `KeyframeRouter.closeCurrent(reserved:)`.
+    @discardableResult
+    func stop() -> (sessionID: String, reserved: Int)? {
         state.withLock { state in
-            state = State()
+            defer {
+                state.destination = nil
+                state.selector.reset()
+                state.count = 0
+            }
+            return state.destination.map { ($0.sessionID, state.count) }
         }
     }
 
     /// Delegate queue. Saves a keyframe when the camera moved or turned past the spacing since the
     /// last saved one. Returns nil when no keyframe was due.
-    func offerMotionFrame(_ frame: ARFrame) -> Result<Saved, RecorderError>? {
+    func offerMotionFrame(_ frame: ARFrame) -> Delivery? {
         if case .notAvailable = frame.camera.trackingState { return nil }
         let pose = CameraPose(frame.camera.transform)
         guard let reservation = reserve(pose: pose, timestamp: frame.timestamp, onlyIfDue: true) else { return nil }
-        do {
-            return .success(try write(frame, reason: .motion, reservation: reservation).saved)
-        } catch {
-            return .failure(error)
-        }
+        return write(frame, reason: .motion, reservation: reservation).delivery
     }
 
     /// Saves `frame` regardless of spacing. With `displayImage`, also returns the frame as a
-    /// CGImage in sensor orientation for the frozen-frame view.
-    func save(_ frame: ARFrame, reason: KeyframeRecord.Reason, displayImage: Bool = false) throws(RecorderError) -> (saved: Saved, image: CGImage?) {
+    /// CGImage in sensor orientation for the frozen-frame view. Throws only when nothing was
+    /// reserved; a failed write comes back as a failed delivery.
+    func save(_ frame: ARFrame, reason: KeyframeRecord.Reason, displayImage: Bool = false) throws(RecorderError) -> (delivery: Delivery, image: CGImage?) {
         let pose = CameraPose(frame.camera.transform)
         guard let reservation = reserve(pose: pose, timestamp: frame.timestamp, onlyIfDue: false) else {
             throw isRecording ? .frameFromPreviousMap : .notRecording
         }
-        return try write(frame, reason: reason, reservation: reservation, displayImage: displayImage)
+        return write(frame, reason: reason, reservation: reservation, displayImage: displayImage)
     }
 
     private struct Reservation {
         let destination: Destination
         let id: String
+        let spacing: KeyframeSelector.Reservation
     }
 
     private var isRecording: Bool {
@@ -92,17 +108,49 @@ final class KeyframeRecorder: @unchecked Sendable {
         state.withLock { state in
             guard let destination = state.destination, timestamp > destination.acceptsFramesAfter else { return nil }
             if onlyIfDue, !state.selector.wantsKeyframe(at: pose) { return nil }
-            state.selector.didSave(at: pose)
             state.count += 1
-            return Reservation(destination: destination, id: String(format: "k%05d", state.count))
+            return Reservation(
+                destination: destination,
+                id: String(format: "k%05d", state.count),
+                spacing: state.selector.reserve(at: pose)
+            )
         }
     }
 
+    /// Writes the frame, then commits the spacing checkpoint on success or releases it on
+    /// failure, so a failed write doesn't hold off the next keyframes.
     private func write(
         _ frame: ARFrame,
         reason: KeyframeRecord.Reason,
         reservation: Reservation,
         displayImage: Bool = false
+    ) -> (delivery: Delivery, image: CGImage?) {
+        let result: Result<(saved: Saved, image: CGImage?), RecorderError>
+        do {
+            result = .success(try encodeAndWrite(frame, reason: reason, reservation: reservation, displayImage: displayImage))
+        } catch {
+            result = .failure(error)
+        }
+        state.withLock { state in
+            switch result {
+            case .success: state.selector.commit(reservation.spacing)
+            case .failure: state.selector.cancel(reservation.spacing)
+            }
+        }
+        let sessionID = reservation.destination.sessionID
+        switch result {
+        case .success(let written):
+            return (Delivery(sessionID: sessionID, result: .success(written.saved)), written.image)
+        case .failure(let error):
+            return (Delivery(sessionID: sessionID, result: .failure(error)), nil)
+        }
+    }
+
+    private func encodeAndWrite(
+        _ frame: ARFrame,
+        reason: KeyframeRecord.Reason,
+        reservation: Reservation,
+        displayImage: Bool
     ) throws(RecorderError) -> (saved: Saved, image: CGImage?) {
         let buffer = frame.capturedImage
         let width = CVPixelBufferGetWidth(buffer)
@@ -148,7 +196,7 @@ final class KeyframeRecorder: @unchecked Sendable {
             tracking: tracking
         )
         let cgImage = displayImage ? context.createCGImage(image, from: image.extent) : nil
-        return (Saved(sessionID: reservation.destination.sessionID, record: record, snapshot: snapshot), cgImage)
+        return (Saved(record: record, snapshot: snapshot), cgImage)
     }
 
     /// Writes LiDAR depth and confidence when the session asked for scene depth.

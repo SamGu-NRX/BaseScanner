@@ -45,9 +45,11 @@ final class LabSession {
     private var horizontalPlanes: Set<UUID> = []
     private var verticalPlanes: Set<UUID> = []
     private var walls: [String: Wall] = [:]
-    /// The session closed by `startNewSession`, kept so a keyframe that was mid-write at the
-    /// switch still lands in its own session.json.
-    private var closedSession: (manifest: SessionManifest, folder: URL)?
+    /// Sends each finished keyframe write to the session that reserved it.
+    private var router = KeyframeRouter<String>()
+    /// Closed sessions with keyframe writes still in flight, by session id. Each is dropped once
+    /// its last write reports back, however many sessions opened since.
+    private var closedSessions: [String: (manifest: SessionManifest, folder: URL)] = [:]
     private var stabilityTask: Task<Void, Never>?
     private var keyframesSinceSave = 0
     private var eventCount = 0
@@ -89,10 +91,13 @@ final class LabSession {
     }
 
     /// Saves and closes the current session and opens an empty one in a new folder. The caller
-    /// stops the recorder first and starts it on the returned destination once the AR map resets.
-    func startNewSession(sceneDepth: Bool) -> KeyframeRecorder.Destination? {
+    /// stops the recorder first, passes how many writes the closing session reserved, and starts
+    /// the recorder on the returned destination once the AR map resets.
+    func startNewSession(sceneDepth: Bool, closingReserved: Int) -> KeyframeRecorder.Destination? {
         save()
-        if let folder { closedSession = (manifest, folder) }
+        if router.closeCurrent(reserved: closingReserved), let folder {
+            closedSessions[manifest.session.id] = (manifest, folder)
+        }
         manifest = Self.makeManifest(sceneDepth: sceneDepth && lidarAvailable, recorder: recorder)
         walls = [:]
         wallStep = .firstContact
@@ -145,6 +150,7 @@ final class LabSession {
             self.folder = folder
             storageError = nil
             let destination = KeyframeRecorder.Destination(sessionID: manifest.session.id, folder: folder)
+            router.open(manifest.session.id)
             if startRecorder { recorder.start(destination) }
             save()
             return destination
@@ -235,20 +241,32 @@ final class LabSession {
         verticalPlaneCount = 0
     }
 
-    func keyframeSaved(_ saved: KeyframeRecorder.Saved) {
-        if saved.sessionID != manifest.session.id, var closed = closedSession, saved.sessionID == closed.manifest.session.id {
-            closed.manifest.keyframes.append(saved.record)
-            closedSession = closed
-            try? SessionStore.write(closed.manifest, to: closed.folder)
-            return
+    /// Files one finished keyframe write under the session that reserved it.
+    func keyframeDelivered(_ delivery: KeyframeRecorder.Delivery) {
+        let (route, drained) = router.report(for: delivery.sessionID)
+        switch (route, delivery.result) {
+        case (.current, .success(let saved)):
+            manifest.keyframes.append(saved.record)
+            keyframesSinceSave += 1
+            // Keep session.json close to the images on disk without re-encoding it every frame.
+            if keyframesSinceSave >= 20 { save() }
+        case (.current, .failure(let error)):
+            storageError = error.message
+        case (.closed, .success(let saved)):
+            if var closed = closedSessions[delivery.sessionID] {
+                closed.manifest.keyframes.append(saved.record)
+                closedSessions[delivery.sessionID] = closed
+                try? SessionStore.write(closed.manifest, to: closed.folder)
+            }
+        case (.closed, .failure), (.unknown, _):
+            break
         }
-        guard saved.sessionID == manifest.session.id else { return }
-        manifest.keyframes.append(saved.record)
-        keyframesSinceSave += 1
-        // Keep session.json close to the images on disk without re-encoding it every frame.
-        if keyframesSinceSave >= 20 { save() }
+        if drained {
+            closedSessions[delivery.sessionID] = nil
+        }
     }
 
+    /// A save that reserved nothing, so no delivery will follow.
     func recorderFailed(_ error: RecorderError) {
         if error == .frameFromPreviousMap {
             refuseUnresolvedTap(reason: "frameFromPreviousMap", message: error.message)
@@ -405,10 +423,16 @@ final class LabSession {
                 normal: wall.normal,
                 length: wall.length,
                 cameraPosition: input.ray.origin,
-                validations: []
+                validations: [],
+                warnings: []
             ))
+            refreshWarnings(ofWall: id)
             wallStep = .validate(wallID: id)
-            announce(.accepted, "\(id) set", ["\(Format.length(wall.length)) between \(firstID) and \(point.id)"])
+            let contactFlagged = wallStatus(id: id)?.warnings.contains(.wallContactWarning) ?? false
+            var lines = ["\(Format.length(wall.length)) between \(firstID) and \(point.id)"]
+            if contactFlagged { lines.append("A contact has a warning, so everything on \(id) is flagged") }
+            lines.append("Mark a third point on its base to check it")
+            announce(contactFlagged ? .warning : .accepted, "\(id) set", lines)
 
         case .validate(let wallID):
             guard let wall = walls[wallID], let index = manifest.walls.firstIndex(where: { $0.id == wallID }) else { return }
@@ -417,6 +441,7 @@ final class LabSession {
             manifest.walls[index].validations.append(WallRecord.Validation(
                 point: point.id, residual: check.residual, tolerance: check.tolerance, passes: check.passes
             ))
+            refreshWarnings(ofWall: wallID)
             let summary = "\(point.id) is \(Format.inches(check.residual)) off \(wallID) (limit \(Format.inches(check.tolerance)))"
             announce(check.passes ? .accepted : .warning, check.passes ? "\(wallID) checks out" : "\(wallID) failed its check", [summary])
         }
@@ -443,10 +468,11 @@ final class LabSession {
             position: hit.point,
             taps: [tap.id],
             onWall: PointRecord.OnWall(wall: wallID, range: hit.range, angleFromNormal: hit.angleFromNormal),
-            flags: hit.withinContacts ? [] : ["outsideWallContacts"]
+            flags: hit.withinContacts ? [] : [.outsideWallContacts],
+            wallWarnings: wallStatus(id: wallID)?.warnings ?? []
         )
         tap.point = point.id
-        announce(point.flags.isEmpty ? .accepted : .warning, "\(point.id) on \(wallID)", describe(point))
+        announce(evidence(for: point).warnings.isEmpty ? .accepted : .warning, "\(point.id) on \(wallID)", describe(point))
     }
 
     private func handleTwoView(_ input: TapInput, tap: inout TapRecord) {
@@ -501,13 +527,13 @@ final class LabSession {
             return nil
         }
         let lookDown = input.ray.lookDownDegrees
-        var flags: [String] = []
+        var flags: [MeasurementWarning] = []
         switch hit.surface {
         case .detectedPlane: break
-        case .extendedPlane: flags.append("extendedPlane")
-        case .estimatedPlane: flags.append("estimatedPlane")
+        case .extendedPlane: flags.append(.extendedPlane)
+        case .estimatedPlane: flags.append(.estimatedPlane)
         }
-        if lookDown < Self.minimumGroundLookDown { flags.append("shallowLookDown") }
+        if lookDown < Self.minimumGroundLookDown { flags.append(.shallowLookDown) }
         let point = addPoint(
             kind: .ground,
             position: hit.point,
@@ -526,7 +552,8 @@ final class LabSession {
         ground: PointRecord.Ground? = nil,
         onWall: PointRecord.OnWall? = nil,
         twoView: PointRecord.TwoView? = nil,
-        flags: [String]
+        flags: [MeasurementWarning],
+        wallWarnings: [MeasurementWarning] = []
     ) -> PointRecord {
         let coordinates = activeWall.map { active in
             PointRecord.WallCoordinates(
@@ -546,7 +573,8 @@ final class LabSession {
             onWall: onWall,
             twoView: twoView,
             wallCoordinates: coordinates,
-            flags: flags
+            flags: flags,
+            wallWarnings: wallWarnings
         )
         manifest.points.append(point)
         return point
@@ -594,6 +622,7 @@ final class LabSession {
     ) {
         let values = values(from: pointID, to: target, referenceWall: referenceWall)
         guard let measured = values[quantity] else { return }
+        let warnings = warnings(from: pointID, to: target, referenceWall: referenceWall, compared: quantity, value: measured)
         let comparison = tape.map { TapeComparison(measured: measured, tape: $0.meters) }
         let id = "M\(manifest.measurements.count + 1)"
         manifest.measurements.append(MeasurementRecord(
@@ -606,14 +635,68 @@ final class LabSession {
             compared: quantity.rawValue,
             tape: tape.map { MeasurementRecord.Tape(feet: $0.feet, inches: $0.inches, meters: $0.meters) },
             errorMeters: comparison?.error,
-            errorInches: comparison?.errorInches
+            errorInches: comparison?.errorInches,
+            warnings: warnings,
+            accepted: warnings.isEmpty
         ))
         save()
         var lines = ["\(quantity.title): \(Format.length(measured))"]
         if let comparison {
             lines.append("Tape \(Format.length(comparison.tape)) · error \(Format.signedInches(comparison.error))")
         }
-        announce(.accepted, "\(id) saved", lines)
+        lines += warnings.map(\.message)
+        announce(warnings.isEmpty ? .accepted : .warning, warnings.isEmpty ? "\(id) saved" : "\(id) saved as an abstention", lines)
+    }
+
+    // MARK: - Warnings
+
+    /// The wall's qualification from its contacts' own warnings and its validation checks.
+    func wallStatus(id: String) -> WallStatus? {
+        guard let record = manifest.walls.first(where: { $0.id == id }) else { return nil }
+        return WallStatus(
+            contactWarnings: record.contacts.map { point(id: $0)?.flags ?? [] },
+            validations: record.validations.map(\.passes)
+        )
+    }
+
+    private func refreshWarnings(ofWall id: String) {
+        guard let index = manifest.walls.firstIndex(where: { $0.id == id }), let status = wallStatus(id: id) else { return }
+        manifest.walls[index].warnings = status.warnings
+    }
+
+    /// A point's own warnings plus, for a point on a wall, that wall's current status.
+    func evidence(for point: PointRecord) -> PointEvidence {
+        PointEvidence(own: point.flags, wall: point.onWall.flatMap { wallStatus(id: $0.wall) })
+    }
+
+    /// Everything that makes this measurement an abstention, from the current state of the points
+    /// and walls it depends on.
+    func warnings(
+        from pointID: String,
+        to target: MeasureTarget,
+        referenceWall: String?,
+        compared quantity: MeasuredQuantity,
+        value: Double
+    ) -> [MeasurementWarning] {
+        guard let from = point(id: pointID) else { return [] }
+        let to: PointEvidence?
+        let targetWall: WallStatus?
+        switch target {
+        case .point(let id):
+            to = point(id: id).map(evidence(for:))
+            targetWall = nil
+        case .wall(let id):
+            to = nil
+            targetWall = wallStatus(id: id)
+        }
+        return measurementWarnings(
+            from: evidence(for: from),
+            to: to,
+            targetWall: targetWall,
+            referenceWall: referenceWall.flatMap(wallStatus(id:)),
+            compared: quantity,
+            value: value
+        )
     }
 
     // MARK: - Log helpers
@@ -651,19 +734,8 @@ final class LabSession {
         if let coordinates = point.wallCoordinates {
             lines.append("\(Format.length(coordinates.along)) along \(coordinates.wall) · \(Format.length(coordinates.heightAboveGround)) up · \(Format.length(coordinates.offset)) out")
         }
-        let warnings = point.flags.compactMap(Self.flagWarning)
-        lines.append(contentsOf: warnings)
+        lines += evidence(for: point).warnings.map(\.message)
         return lines
-    }
-
-    private static func flagWarning(_ flag: String) -> String? {
-        switch flag {
-        case "estimatedPlane": "Estimated surface, not a found plane"
-        case "extendedPlane": "Past the edge of the found plane"
-        case "shallowLookDown": "Looking down less than 30°; tap from closer"
-        case "outsideWallContacts": "Beyond the wall's two contacts"
-        default: nil
-        }
     }
 
     private static func explain(_ error: WallError) -> (String, String, [String: Double]) {
@@ -722,6 +794,21 @@ struct LabEvent: Identifiable, Equatable {
     let tone: Tone
     let title: String
     let lines: [String]
+}
+
+extension MeasurementWarning {
+    var message: String {
+        switch self {
+        case .estimatedPlane: "Estimated surface, not a found plane"
+        case .extendedPlane: "Past the edge of the found plane"
+        case .shallowLookDown: "Looking down less than 30°; tap from closer"
+        case .outsideWallContacts: "Beyond the wall's two contacts"
+        case .wallContactWarning: "One of the wall's contacts has a warning"
+        case .wallNotValidated: "The wall has no check contact yet"
+        case .wallValidationFailed: "The wall failed its check"
+        case .belowGround: "Below the wall's ground line"
+        }
+    }
 }
 
 extension GroundHit.Surface {
