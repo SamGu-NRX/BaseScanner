@@ -12,9 +12,7 @@ import SwiftUI
 /// - `-uiDemoOffline`: uploads fail offline.
 /// - `-uiDemoFailure <cameraDenied|arUnsupported>`: open on the unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
-/// - `-uiDemoNoFeed`: no camera picture. XCUIApplication's contrast audit samples the photo
-///   around chrome on camera screens and flags text that reads fine; without the picture it
-///   checks the chrome alone.
+/// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 enum UIDemo {
     @MainActor
     static func makeRoot() -> some View {

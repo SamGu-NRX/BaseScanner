@@ -1,24 +1,18 @@
 import SwiftUI
 
-/// The dark frosted surface every piece of chrome over the camera sits on.
+/// The surface every piece of chrome over the camera sits on: solid Ink with a faint edge.
 ///
-/// A plain material thins out to near-white over a bright wall in sun, so an 86% Ink layer sits
-/// on top of the blur: chalk text keeps well over 4.5:1 even over a white wall (the
-/// accessibility audit failed at 66%). With Reduce Transparency
-/// the blur drops and the Ink layer goes nearly opaque.
+/// Solid on purpose. Over a sunlit wall any translucency lets the photo wash out the chrome, and
+/// XCUIApplication's accessibility audit flagged chalk text on camera screens even with 94% Ink
+/// over the photo; with 100% it passes on every screen. Camera apps keep their controls on solid
+/// bars for the same reason.
 struct ScrimShape<S: InsettableShape>: View {
     var shape: S
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
-        ZStack {
-            if !reduceTransparency {
-                shape.fill(.ultraThinMaterial)
-            }
-            shape.fill(Palette.ink.opacity(reduceTransparency ? 0.94 : 0.86))
-            shape.strokeBorder(.white.opacity(0.1), lineWidth: 1)
-        }
-        .environment(\.colorScheme, .dark)
+        shape
+            .fill(Palette.ink)
+            .overlay(shape.strokeBorder(.white.opacity(0.1), lineWidth: 1))
     }
 }
 
