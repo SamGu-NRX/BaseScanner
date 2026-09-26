@@ -143,6 +143,26 @@ def test_unsure_for_another_cause_may_sit_on_passing_numbers_but_not_failing_one
     assert margin_problem(check("unsure", 5.9, 0.6, 3.0, cause="margin")) is not None
 
 
+def route(outcome, measured, error=0.0, cause=None):
+    c = check(outcome, measured, error, 20.0, "at_most", cause)
+    c["review_threshold_ft"] = 15.0
+    return c
+
+
+def test_review_band_blocks_a_pass_and_is_not_a_margin():
+    assert margin_problem(route("pass", 14.0)) is None
+    assert "should be unsure" in margin_problem(route("pass", 16.0))
+    assert margin_problem(route("unsure", 16.0, cause="rule_requires_review")) is None
+    assert "not within its error of any line" in margin_problem(
+        route("unsure", 16.0, cause="margin")
+    )
+    # Within error of either line, margin is the right cause.
+    assert margin_problem(route("unsure", 15.2, 0.3, cause="margin")) is None
+    assert margin_problem(route("unsure", 19.9, 0.3, cause="margin")) is None
+    assert margin_problem(route("unsure", 15.0, cause="margin")) is None  # on the line
+    assert margin_problem(route("fail", 20.4, 0.3)) is None
+
+
 def test_margin_rule_skips_checks_without_numbers():
     assert margin_problem(check("unsure", measured=None, cause="unobserved")) is None
 

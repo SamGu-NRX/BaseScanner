@@ -72,28 +72,41 @@ def covers(intervals: list[tuple[float, float]], a: float, b: float, slack: floa
 def margin_problem(check: dict) -> str | None:
     """The C5 rule for one check, when its numbers are all present.
 
-    PASS needs a clear pass and FAIL a clear fail. UNSURE from the margin needs neither. UNSURE
-    for another cause (an unobserved area, an unknown attribute, a review rule) may sit on
-    numbers that would pass, but not on numbers that clearly fail: a measured object inside
-    the clearance by more than the error fails whatever else went unseen.
+    PASS needs a clear pass and FAIL a clear fail. A check with a review band
+    (`review_threshold_ft`) passes only when it also clears that line. UNSURE for another cause
+    (unobserved area, unknown attribute, review rule) may sit on numbers that would pass, never
+    on numbers that clearly fail. UNSURE labelled `margin` must lie within its error of a line:
+    C2 defines that cause as "measured inside the error band".
     """
     m, e, t, cmp = (
         check.get(k) for k in ("measured_ft", "plus_minus_ft", "threshold_ft", "comparison")
     )
     if m is None or e is None or t is None or cmp is None:
         return None
+    review = check.get("review_threshold_ft")
+    lines = [t] if review is None else [t, review]
     if cmp == "at_least":
-        clear_pass, clear_fail = m - e > t + EPS, m + e < t - EPS
+        clear_pass = all(m - e > x + EPS for x in lines)
+        clear_fail = m + e < t - EPS
     else:
-        clear_pass, clear_fail = m + e < t - EPS, m - e > t + EPS
+        clear_pass = all(m + e < x - EPS for x in lines)
+        clear_fail = m - e > t + EPS
     expected = "pass" if clear_pass else "fail" if clear_fail else "unsure"
     outcome, cause = check["outcome"], check.get("unsure_cause")
+    band = f" ({cmp} {t}" + (f", review {review})" if review is not None else ")")
+    if outcome == "unsure" and cause == "margin" and expected == "unsure":
+        if not any(abs(m - x) <= e + EPS for x in lines):
+            return (
+                f"check {check['id']}: unsure_cause margin, but {m} ± {e} is not within its "
+                f"error of any line{band}; a review band is rule_requires_review"
+            )
+        return None
     other_cause = outcome == "unsure" and cause not in (None, "margin")
     if outcome == expected or (other_cause and not clear_fail):
         return None
     because = f" ({cause})" if cause else ""
     return (
-        f"check {check['id']}: measured {m} ± {e} {cmp} {t} should be {expected}, "
+        f"check {check['id']}: measured {m} ± {e}{band} should be {expected}, "
         f"server says {outcome}{because}"
     )
 
