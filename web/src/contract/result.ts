@@ -108,12 +108,16 @@ export interface BatteryPlacementResult {
    */
   nearest_considered?: null | Spot;
   /**
-   * Views that would settle an UNSURE result. Only areas nobody observed appear here; an UNSURE caused by a measurement inside its error band needs a person, not more photos. Empty for pass and reject.
+   * Views that would settle an UNSURE result. Only areas nobody observed appear here; an UNSURE caused by a measurement inside its error band needs a person, not more photos. Empty for pass and reject. Supplying exactly what a band request names settles it: a coverage.observed entry with the same band and span_ft, and out_ft at least the request's out_ft.
    */
   missing_evidence: {
     kind: "band" | "past_end";
     band?: "wall" | "ground" | "overhead" | "facing";
     span_ft?: Span1;
+    /**
+     * For ground, facing and overhead requests: how far the view must reach, out from the wall (ground, facing) or up from the ground (overhead). Report it as the observed entry's out_ft; seeing further also settles it.
+     */
+    out_ft?: number;
     side?: "left" | "right";
     checks?: string[];
     message: string;

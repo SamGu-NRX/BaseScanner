@@ -325,7 +325,7 @@
       "segment": 0,
       "start_ft": [
         -20.0,
-        -19.929167
+        -19.845833
       ],
       "outcome": "unsure",
       "failing": [],
@@ -343,7 +343,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -19.9,
+        -19.791667,
         -19.383333
       ],
       "outcome": "unsure",

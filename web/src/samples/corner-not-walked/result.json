@@ -317,14 +317,15 @@
       "kind": "band",
       "band": "ground",
       "span_ft": [
-        -3.933333,
-        14.141667
+        -3.933334,
+        -3.0
       ],
       "checks": [
         "drive_clearance",
         "pool_clearance"
       ],
-      "message": "Show the ground in front of the wall from 3 ft 11 in left of the meter to 14 ft 2 in right of the meter."
+      "out_ft": 4.806396,
+      "message": "Show the ground in front of the wall from 3 ft 11 in left of the meter to 3 ft 0 in left of the meter, at least 4 ft 10 in out from the wall. Part of it is past the left end: point the camera there from the end."
     },
     {
       "kind": "past_end",
@@ -362,7 +363,7 @@
       "segment": 0,
       "start_ft": [
         -3.0,
-        -2.929167
+        -2.845833
       ],
       "outcome": "fail",
       "failing": [
@@ -381,7 +382,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -2.9,
+        -2.791667,
         0.070833
       ],
       "outcome": "fail",
