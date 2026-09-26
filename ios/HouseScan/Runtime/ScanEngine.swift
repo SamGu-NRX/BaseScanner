@@ -203,6 +203,7 @@ final class ScanEngine {
         if state.phase == .wallWalk || state.phase == .gapRequest {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
+        if state.phase == .resultAR { hideResultInCamera() }
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         switch phase {
@@ -249,6 +250,7 @@ final class ScanEngine {
         case .resultAR:
             live?.setMode(.idle)
             if let replay, let index = bestFrameForResult() { replay.show(index: index) }
+            showResultInCamera(rising: true)
         case .onboarding, .unsupported:
             break
         }
@@ -330,6 +332,7 @@ final class ScanEngine {
             RuntimeLog.capture.info("tracking \(Self.name(self.state.tracking), privacy: .public) -> \(Self.name(frame.tracking), privacy: .public)")
             if state.tracking == .normal { breakWalkedPath(because: "tracking left normal") }
             state.tracking = frame.tracking
+            live?.setResultVisible(frame.tracking == .normal)
         }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
@@ -1141,6 +1144,24 @@ final class ScanEngine {
                 return WallGeometry.Segment(span: piece.span, along: piece.along, outward: piece.outward, anchor: piece.anchor, anchorS: piece.anchorS)
             }
         )
+        if state.phase == .resultAR { showResultInCamera(rising: false) }
+    }
+
+    /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
+    /// anchor, where people and objects in front of it hide it. A replay, or a meter without an
+    /// anchor, leaves it to the screen's overlay.
+    private func showResultInCamera(rising: Bool) {
+        guard let live, let wall = state.wall, let result = state.result else { return }
+        let model = ResultARModel.build(wall: wall, result: result)
+        state.resultInCamera = live.showResult(model)
+        guard state.resultInCamera else { return }
+        live.setResultVisible(state.tracking == .normal)
+        if rising { ResultARModel.rise(model) }
+    }
+
+    private func hideResultInCamera() {
+        live?.hideResult()
+        state.resultInCamera = false
     }
 
     func publishCoverage() {

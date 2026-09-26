@@ -660,6 +660,9 @@ final class ScanViewState {
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
+    /// True while the AR result is drawn into the live camera, where people and objects in front
+    /// of it hide it. The AR screen then draws no overlay of its own.
+    var resultInCamera = false
 
     /// True when frames come from a recorded session instead of the camera.
     var isReplay = false
