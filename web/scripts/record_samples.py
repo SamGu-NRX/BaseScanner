@@ -6,9 +6,9 @@ the result schema changes:
 
     cd server && PYTHONPATH=. uv run python ../web/scripts/record_samples.py
 
-The answers use the public rules alone, as the hosted server does, so a saved answer says what the
-live server says. Those rules are not approved for automatic decisions, so every sample is
-recorded as manual review; the reasons and checks still differ.
+The answers use the public rules under their demo policy, as the hosted server does, so a saved
+answer says what the live server says: a pass, a manual review and a reject, each labelled as
+demo rules.
 """
 
 import json

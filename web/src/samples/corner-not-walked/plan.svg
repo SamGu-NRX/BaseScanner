@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 641" width="960" height="641" role="img" aria-labelledby="t d">
 <title id="t">Battery site plan: manual_review</title>
-<desc id="d">More views are needed around the best spot, 2 ft 9 in right of the meter: 2 checks depend on areas the scan did not see.</desc>
+<desc id="d">More views are needed around the best spot, 2 ft 9 in right of the meter: 2 checks depend on areas the scan did not see. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base&#x27;s.</desc>
 <style>
 .paper{fill:#F2F4F3}
 .ink{stroke:#1D262B;fill:none}

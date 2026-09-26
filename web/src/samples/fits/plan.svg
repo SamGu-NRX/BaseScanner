@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 343" width="960" height="343" role="img" aria-labelledby="t d">
-<title id="t">Battery site plan: manual_review</title>
-<desc id="d">The battery fits 2 ft 9 in right of the meter with a 1 ft 6 in cable run; a person must confirm under these rules.</desc>
+<title id="t">Battery site plan: pass</title>
+<desc id="d">The battery fits 2 ft 9 in right of the meter with a 1 ft 6 in cable run: every check passes. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base&#x27;s.</desc>
 <style>
 .paper{fill:#F2F4F3}
 .ink{stroke:#1D262B;fill:none}
@@ -86,5 +86,5 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <text class="small" x="515.9142857142858" y="309.30951842857144">Gas</text>
 <rect class="fog" x="545.5142857142857" y="298.30951842857144" width="18" height="14"/>
 <text class="small" x="569.5142857142857" y="309.30951842857144">Not seen</text>
-<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">Needs review</text>
+<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">Fits</text>
 </svg>

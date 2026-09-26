@@ -79,7 +79,7 @@ export interface BatteryPlacementResult {
     id: string | null;
     version: string | null;
     /**
-     * Whether the rules allow automatic decisions: false when no policy is selected or the rules file sets auto_approve false (the public rules.yaml does, because it holds placeholder values). When false, every would-be pass or reject becomes manual_review. Each check's rule.placeholder says which values decided it.
+     * Whether the rules allow automatic decisions: false when no policy is selected or the rules set auto_approve false (the public strict policy does, because some values are placeholders; the public demo policy decides anyway and says so in notice). When false, every would-be pass or reject becomes manual_review. Each check's rule.placeholder says which values decided it.
      */
     auto_approve: boolean;
     /**
@@ -90,6 +90,10 @@ export interface BatteryPlacementResult {
      * Hash of the merged rules the decision used.
      */
     rules_sha256: string;
+    /**
+     * Whose rules these are, to show with the answer, for example that the public demo policy is not Base's. Null for rules that need no such label.
+     */
+    notice?: string | null;
   };
   /**
    * The chosen battery position: the best passing spot, or for manual_review the best spot with no failing check. Null when no such spot exists, including every reject.

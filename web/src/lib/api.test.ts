@@ -39,7 +39,7 @@ describe("requestPlacement", () => {
   it("sends the scene once and returns the result", async () => {
     stubFetch(() => new Response(fitsResult));
     const result = await requestPlacement("/api", input, new AbortController().signal);
-    expect(result.decision).toBe("manual_review");
+    expect(result.decision).toBe("pass");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 

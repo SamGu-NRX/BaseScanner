@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "decision": "manual_review",
-  "summary": "No spot on the scanned walls works; a person must confirm before rejecting.",
+  "decision": "reject",
+  "summary": "No spot within reach works: every spot fails opening clearance, gas clearance, route path. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
   "reasons": [
     {
       "code": "all_spots_fail",
@@ -13,20 +13,17 @@
         "route_length"
       ],
       "message": "Every spot on the walls scanned fails at least one check by a clear margin."
-    },
-    {
-      "code": "policy_not_approved",
-      "message": "The rules in use are not approved for automatic decisions (no policy selected, or placeholder values), so a person must confirm."
     }
   ],
   "policy": {
-    "id": "public-demo",
+    "id": "demo",
     "version": "2026-09-26",
-    "auto_approve": false,
+    "auto_approve": true,
     "sources": [
       "public"
     ],
-    "rules_sha256": "e1120bf1ed615e0bbd65516883792c65a507378584a4128df916343dc47eaab3"
+    "rules_sha256": "68693248e605d4252cd14dd74afd2e4e042408b9632612a0a4ac6dc5a708da2b",
+    "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
   },
   "spot": null,
   "route": null,

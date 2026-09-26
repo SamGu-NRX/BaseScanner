@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "decision": "manual_review",
-  "summary": "More views are needed around the best spot, 2 ft 9 in right of the meter: 2 checks depend on areas the scan did not see.",
+  "summary": "More views are needed around the best spot, 2 ft 9 in right of the meter: 2 checks depend on areas the scan did not see. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
   "reasons": [
     {
       "code": "unsure_checks",
@@ -25,13 +25,14 @@
     }
   ],
   "policy": {
-    "id": "public-demo",
+    "id": "demo",
     "version": "2026-09-26",
-    "auto_approve": false,
+    "auto_approve": true,
     "sources": [
       "public"
     ],
-    "rules_sha256": "e1120bf1ed615e0bbd65516883792c65a507378584a4128df916343dc47eaab3"
+    "rules_sha256": "68693248e605d4252cd14dd74afd2e4e042408b9632612a0a4ac6dc5a708da2b",
+    "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
   },
   "spot": {
     "outcome": "unsure",
