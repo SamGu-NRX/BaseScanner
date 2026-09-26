@@ -7,6 +7,7 @@
 3. Can the phone's AR poses fix the learned models' scale, well enough for about 4 in at p90 on 1 to 3 m spans, the error that decides a 3 ft clearance?
 4. Which photos are worth keeping?
 5. On a real field session with a tape survey, how do the phone's AR taps and the learned-depth methods compare, and what is the phone's AR scale error?
+6. How large is a current iPhone's ARKit scale error, from public data?
 
 Every number comes from real data. Synthetic data appears only in the unit tests of the metric code.
 
@@ -28,6 +29,7 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
    **Verdict:** neither way reaches about 4 in at p90 with the pose error measured on the one phone we have. Triangulation-rescaled depth reaches it on walls only if a current phone's AR scale error is about 2% or less. That is an assumption, and the Measure Lab tape protocol can check it on a real phone in an hour.
 6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.5 to 6.8 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
 7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
+8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2%, the setting under which walls came out at 3.9 in p90, is plausible for this phone. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. The field tape test stays decisive (section 6).
 
 ## Reproduce
 
@@ -44,6 +46,7 @@ make sensitivity   # after recon -> results/eth3d_visibility_sensitivity.md
 make pose-priors   # after recon -> results/pose_priors.md
 make frames        # after recon -> results/frames.md
 make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a field session, section 5
+make modern-arkit  # MARViN pose files (about 3 MB) -> results/modern_arkit.md, section 6
 ```
 
 Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -65,6 +68,8 @@ Every process stays near or under 4 GB, because the machine is shared. MapAnythi
 | | electro_dslr_undistorted.7z | https://www.eth3d.net/data/electro_dslr_undistorted.7z | 514345623 | 0d2bc31fec0032b8fb20703abba8e45ef7a395c13d2d3476adc1f4dd4ffd7d8b |
 | | electro_dslr_scan_eval.7z | https://www.eth3d.net/data/electro_dslr_scan_eval.7z | 250703286 | 5ca10a73e7da0e3c511e255bba5656cca4c372dc00c1417c97b75228a5bb3bac |
 | | electro_dslr_occlusion.7z | https://www.eth3d.net/data/electro_dslr_occlusion.7z | 47214879 | cc25a22de9fc27251a5178454c24785671a2b2c199756a0d03297413290830b3 |
+
+MARViN (iPhone 14 Pro Max; https://github.com/XRIM-Lab/MarViN) states no data license, so it is used only to measure accuracy and never redistributed. Only its pose and GPS text files are fetched, from its public Google Drive folder, and each file's sha256 is listed in [results/modern_arkit.md](results/modern_arkit.md).
 
 Model checkpoints (MIT and Apache-2.0) are pinned by revision and checked against Hugging Face's sha256 (`models/README.md`).
 
@@ -209,6 +214,48 @@ MapAnything is left out. In section 3, given poses, it was worse than (b) everyw
 - **Neighbours for triangulation.** At each tapped feature, walk about 2 m sideways, slowly, 2 to 6 m from the wall, keeping the feature and some textured surface in view. That gives at least 8 keyframes of it, facing within 60° of the same way. Don't point at the sky.
 - **The fence and the wall together.** Take the fence-foot tap from where the wall's base is also in view.
 - **Share the zip as Measure Lab makes it.** Put its sha256 in the survey's `captures`, and write down the phone model and iOS version.
+
+## 6. A current iPhone's ARKit scale (MARViN)
+
+[results/modern_arkit.md](results/modern_arkit.md), `make modern-arkit`.
+
+**Which data, and why.** The only public data I found with a 2020-or-newer iPhone's own ARKit poses and a separate reference trajectory, downloadable today, is MARViN (Liu et al., IEEE VRW 2024). It has an iPhone 14 Pro Max (ARKit 6) walking outdoors around three sites, 45 to 255 m per walk, one image per second, with a COLMAP reconstruction of each site as the reference. Checked and not used:
+- **LaMAR** (ETH and Microsoft) needs an access request.
+- **ScanNet++** needs an application.
+- **ARKitScenes** (iPad Pro, indoor) ships ARKit's trajectory but not its laser-registered camera poses.
+- **ADVIO**'s phone is from 2016.
+
+**Method.** The same windows as section 1: from every image, the walk continues until the reference has covered 3, 10, 20 or 30 ft. ARKit's straight-line displacement is compared with the reference's. A walk's scale is the median ratio over windows of 10 ft or more. Distances need no axis alignment, which matters because ARKit's poses here are in Unity's axes.
+
+**The reference's limits.** COLMAP from one moving camera has no scale of its own, and the dataset does not say how its reconstructions were put into meters. They could have been scaled to ARKit itself, which would hide any ARKit scale error. The phone's GPS is the only independent check shipped. Over these walks GPS is 1 to 9 m off, and it puts the reference's scale between 0.92 and 1.07 even on its 11 cleanest walks, so it cannot confirm or refute 2%. The reference's own accuracy is not published.
+
+**Results.** Scale error of ARKit against the reference, per walk:
+
+| Site | Walks | Median walk | Range |
+| --- | --- | --- | --- |
+| atrium | 10 | +0.3% | −50.7% to +1.0% |
+| bar | 13 | +1.2% | −0.4% to +2.1% |
+| church | 12 | −1.7% | −2.2% to −1.0% |
+
+Thirty of 35 walks are within 2%. Three atrium walks read 18% to 51% short; on them, ARKit and the reference disagree about whether the phone moved at all between images, so the reference is in doubt there. Distance errors pooled over all walks, median / p90 inches:
+
+| Walked | As tracked | Without the three doubtful walks |
+| --- | --- | --- |
+| 10 ft | 2.7 / 16.4 | 2.4 / 7.1 |
+| 20 ft | 4.5 / 34.8 | 4.2 / 11.9 |
+| 30 ft | 5.9 / 45.8 | 5.5 / 16.2 |
+
+The 3 ft row in the results file is below what this reference resolves (images 0.2 to 1.4 m apart, and reference jitter up to 0.4 m), so it is not repeated here.
+
+**Verdict.**
+- **Within 2%?** Probably, for this phone; not proven. Against the only reference available, this 2022 iPhone's ARKit holds its scale within 2% on 30 of 35 outdoor walks, and each site's walks agree with each other to within about 1 to 2.5%.
+- **Is section 3's "walls within about 4 in" supported?** It needed a pose scale error of about 2% or less, and this is the first evidence from a current phone that it is. The 2018 phone's 5% to 17% does not describe current hardware.
+- **What stops it being settled:**
+  - the reference's scale cannot be checked independently to 2%;
+  - one site sits at a steady −1.7%, which is the phone's error or the reference's;
+  - the phone has LiDAR, which ARKit may use.
+
+The tape test on the team's phone is still the number to trust.
 
 ## Replay session from a real walk
 

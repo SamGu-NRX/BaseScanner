@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit
 
 test:
 	uv run ruff check .
@@ -80,3 +80,7 @@ field:
 	    --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) --out $(abspath $(FIELD_OUT))/measure-lab.json && \
 	  uv run score --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) \
 	    --results $(abspath $(FIELD_OUT))/*.json --out $(abspath $(FIELD_OUT))/scored)
+
+# A current iPhone's ARKit scale on MARViN's outdoor walks (pose and GPS text files only, ~3 MB).
+modern-arkit:
+	uv run python -m evals.modern_arkit
