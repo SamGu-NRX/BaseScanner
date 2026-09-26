@@ -104,24 +104,17 @@ Numeric limits marked *(reviewer threshold)* are review conventions. No user tes
 
 ## Per-state table
 
-The state names below are placeholders. Match them to the app's real `STATE=` names once C4 logging lands. As of 2026-09-26 the local `t3/ios-mvf` worktree has none and isn't pushed. Its tracking cases (`normal`, `limited` with `excessiveMotion`, `insufficientFeatures`, `initializing` or `relocalizing`, `notAvailable`, `cameraAccessDenied`) should map onto the rows below.
+State names are the raw values of `ScanPhase` in `ios/HouseScan/Contract/ScanContract.swift` on `t3/ios-mvf` (at `6885b7b`), which the app logs as `STATE=<name>`. Several screens the first-try note describes are conditions inside a phase rather than phases of their own; the second column says where to look for them.
 
-| State (placeholder) | Must show | Key items |
-|---|---|---|
-| onboarding | What the scan does and roughly how long it takes, in one or two sentences, and one start button | I1, I3, A1, A4, V2 |
-| camera_permission / denied | Why the camera is needed. When denied, "Open Settings" | R9, I3, A1 |
-| ar_unavailable | A plain explanation and what to do instead | R10, I3 |
-| go_to_meter | "Go to your electric meter" and **I'm here** | I1, V8, A4 |
-| meter_closeup | A reticle, no shutter, a named fix on failure, "Can't get a clear shot" after two tries | I5, T5, T6, R11, A8 |
-| tap_meter_anchor | "Tap the meter". With no plane, "step closer" | I8, I2, A6 |
-| step_back | A standing cue distinct from the aiming cue | I2, I1 |
-| wall_walk (strip, fog) | One instruction, the strip with non-colour cell marks, upload status kept separate, "I can't access this area" | R1, R2, R3, R7, I6, I7, T4, A2, A9, V1, V4 |
-| tracking_lost | A cause-specific prompt, no modal, coverage and arrows frozen | T1, T2, T3, R3, A3 |
-| relocalizing | The saved meter view and "Point at the meter like this.", with a fallback to tapping the meter again | T7, R4, R5 |
-| gap_recapture | One line with the reason and target, a skip option | I10, T4, R1 |
-| panel | Safety wording and Skip, auto-capture with no shutter | I9, I5, T5 |
-| feature_marking | The saved frame with one instruction for marking a missed object and one confirm button | I1, A1, A6, H1 |
-| homeowner_question | One question and two large answer buttons | I4, A4, A6 |
-| upload_processing | Upload count and pending state, no approval wording | R6, R7, H3 |
-| result_reveal | The box on the meter anchor, numbers with error on tap, unsure checks as installer review | H1 to H7, A7 |
-| offline_error | Saved on the phone and not sent, local guidance still running, retry | R6, R8, I3 |
+| State | Also covers | Must show | Key items |
+|---|---|---|---|
+| `onboarding` | camera permission, denied permission | What the scan does and roughly how long it takes, in one or two sentences, and one start button. When camera access is denied, why it is needed and "Open Settings" | I1, I3, A1, A4, V2, R9 |
+| `unsupported` | | A plain explanation and what to do instead | R10, I3 |
+| `findMeter` | tap the meter, step back | "Go to your electric meter" and **I'm here**; then "Tap the meter", with "step closer" when there is no wall plane; then a standing cue distinct from the aiming cue | I1, I2, I8, V8, A4, A6 |
+| `meterCloseUp` | panel close-ups | A reticle, no shutter, a named fix on failure, "Can't get a clear shot" after two tries. Panel shots add the safety wording and Skip | I5, I9, T5, T6, R11, A8 |
+| `wallWalk` | tracking lost, relocalizing | One instruction, the strip with non-colour cell marks, upload status kept separate, "I can't access this area". When tracking is limited: a cause-specific prompt, no modal, coverage and arrows frozen. After an interruption: the saved meter view | R1, R2, R3, R4, R5, R7, I6, I7, T1, T2, T3, T4, T7, A2, A3, A9, V1, V4 |
+| `gapRequest` | | One line with the reason and target, and a skip option | I10, T4, R1 |
+| `markFeatures` | homeowner questions | The saved frame with one instruction for marking a missed object and one confirm button. Questions: one at a time, two large answer buttons | I1, I4, A1, A4, A6, H1 |
+| `uploading` | offline | Upload count and pending state, no approval wording. Offline: saved on the phone and not sent, retry | R6, R7, R8, H3 |
+| `result` | | Decision in plain words, numbers with error on tap, unsure checks as installer review, the unseen side disclosed | H1, H2, H3, H5, H6, H7 |
+| `resultAR` | | The box on the meter anchor and the cable line, hidden with an explanation when tracking is not normal | H4, A7, T3 |

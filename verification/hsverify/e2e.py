@@ -76,6 +76,7 @@ class SceneInput:
     real: bool = False
     source: str = ""
     skip_reason: str | None = None
+    app_export: bool = False  # exported by the iOS app (from a replay), the S4 end-to-end path
 
 
 def load_input(path: Path, real: bool = False) -> SceneInput:
@@ -266,7 +267,12 @@ def variant(item: SceneInput, name: str, scene: dict) -> SceneInput:
 
 
 def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict:
-    record: dict = {"name": item.name, "source": item.source, "real": item.real}
+    record: dict = {
+        "name": item.name,
+        "source": item.source,
+        "real": item.real,
+        "app_export": item.app_export,
+    }
     if item.skip_reason:
         return record | {"status": "skipped", "problems": [], "skip_reason": item.skip_reason}
     input_errors = schema_errors(item.scene, schemas["scene"])
@@ -347,11 +353,17 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     for r in records:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
     real = [r["latency_ms"] for r in records if r.get("real") and "latency_ms" in r]
+    exported = [r for r in records if r.get("app_export")]
     report = meta | {
         "counts": counts,
         "all_passed": all(r["status"] in ("pass", "skipped") for r in records) and bool(records),
         "latency_ms": max(real) if real else None,
         "real_scene_passed": any(r.get("real") and r["status"] == "pass" for r in records),
+        # Null when the run had no app export, so the scoreboard looks for an older run.
+        "app_export_scene_valid": all(r["status"] != "bad input" for r in exported)
+        if exported
+        else None,
+        "app_export_passed": all(r["status"] == "pass" for r in exported) if exported else None,
         "records": records,
     }
     (out / "report.json").write_text(json.dumps(report, indent=2) + "\n")
@@ -403,6 +415,13 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="scene derived from real data; held to the latency budget",
     )
+    parser.add_argument(
+        "--app-export",
+        type=Path,
+        action="append",
+        default=[],
+        help="scene.json or bundle the iOS app exported from a replay (real, latency budget)",
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
 
@@ -421,6 +440,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     items += [load_input(p) for p in args.scene]
     items += [load_input(p, real=True) for p in args.real]
+    for path in args.app_export:
+        exported = load_input(path, real=True)
+        exported.app_export = True
+        items.append(exported)
     if not items:
         raise SystemExit("No scenes: add case files to e2e/cases or pass --scene/--real.")
 

@@ -1,0 +1,274 @@
+# Overnight-plan metrics for `make scoreboard`. hsverify/scoreboard.py documents each probe kind.
+# A probe that only shows something exists is capped at partial with a cap_reason.
+# Where only a person can judge, the probe is `manual`; the lead edits status and evidence.
+#
+# e2e report keys (hsverify/e2e.py): `sha` is the server SHA; `latency_ms` is the slowest real
+# scene's round trip; `app_export_scene_valid` and `app_export_passed` cover scenes the iOS app
+# exported from a replay. A key is null when the run did not exercise it; the probe then uses
+# the newest report where it is set.
+
+workstreams:
+  S1: {title: Evals on real data}
+  S2: {title: Server and solver}
+  S3: {title: iOS capture app}
+  S4: {title: Verification}
+  M: {title: Maintenance}
+
+metrics:
+  # --- S1 --------------------------------------------------------------------------------------
+  - id: S1-1
+    workstream: S1
+    ref: origin/t3/evals
+    text: One command regenerates every number from a clean checkout
+    manual: {status: gap, evidence: not yet reviewed}
+
+  - id: S1-2
+    workstream: S1
+    ref: origin/t3/evals
+    text: Dataset URLs and sha256 recorded
+    # A README table row naming the dataset, with a URL and a 64-hex digest on the same row.
+    grep_at_ref:
+      paths: [experiments/evals/README.md]
+      pattern: '(?im)^\|[^\n]*{each}[^\n]*https?://[^\n]*\b[0-9a-f]{64}\b'
+      each: {ADVIO: ADVIO, ETH3D: ETH3D}
+
+  - id: S1-3
+    workstream: S1
+    ref: origin/t3/evals
+    text: Metric code tested on hand-computed cases
+    command:
+      run: uv run pytest -q
+      cwd: experiments/evals
+      timeout_s: 600
+      slow: true
+      max_status: partial
+      cap_reason: tests pass; whether the cases are hand-computed needs a read
+
+  - id: S1-4
+    workstream: S1
+    ref: origin/t3/evals
+    text: ADVIO drift report, median and p90 inches after 3, 10, 20 and 30 ft
+    # A Markdown table under experiments/evals with a row per distance and a p90 column.
+    grep_at_ref:
+      paths: ['experiments/evals/*.md']
+      pattern: '(?im)^\|[^\n]*(?<![\d.]){each}'
+      each: ['3 ft', '10 ft', '20 ft', '30 ft', p90]
+
+  - id: S1-5
+    workstream: S1
+    ref: origin/t3/evals
+    text: >-
+      ETH3D errors per model (median and p90 inches for 1-3 m and 3-10 m pairs, scale error %)
+      with a verdict per question
+    grep_at_ref:
+      paths: ['experiments/evals/*.md']
+      pattern: '(?im)^\|[^\n]*(?:{each})'
+      each:
+        1-3 m row: '1\s*(?:-|–|to)\s*3\s*m'
+        3-10 m row: '3\s*(?:-|–|to)\s*10\s*m'
+        scale error: 'scale error'
+        verdict: 'verdict'
+      max_status: partial
+      cap_reason: the table exists; per-model numbers and verdicts need a read
+
+  # --- S2 --------------------------------------------------------------------------------------
+  - id: S2-1
+    workstream: S2
+    ref: origin/t3/server
+    text: pytest green
+    command: {run: uv run pytest -q, cwd: server, timeout_s: 600, slow: true}
+
+  - id: S2-2
+    workstream: S2
+    ref: origin/t3/server
+    text: Every public golden test 01-14 of docs/research/t3-lane-c-review.md present
+    # Test names such as test_01_..., test_golden_01_... or an id like "golden 07".
+    grep_at_ref:
+      paths: ['server/tests/*.py']
+      pattern: '(?i)def test_(?:golden_?)?{each}(?!\d)|golden[^0-9\n]{0,12}{each}(?!\d)'
+      each: ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13', '14']
+
+  - id: S2-3
+    workstream: S2
+    ref: origin/t3/server
+    text: >-
+      Property tests: missing coverage never passes, equality is unsure, left/right mirror,
+      larger clearance never turns pass into fail
+    # A Hypothesis test: @given(...) (two levels of nested parentheses), any further
+    # decorators, then a test whose name says which property it checks.
+    grep_at_ref:
+      paths: ['server/tests/*.py']
+      pattern: '@given\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)\s*(?:@[^\n]*\n\s*)*def test_\w*(?i:{each})'
+      each:
+        missing coverage: 'coverage|unobserved|unseen'
+        equality unsure: 'equal'
+        mirror: 'mirror|symmetr'
+        larger clearance: 'monoton|larger_clearance|clearance'
+
+  - id: S2-4
+    workstream: S2
+    ref: origin/t3/server
+    text: Schemas published
+    file_at_ref: {paths: [server/schemas/scene.schema.json, server/schemas/result.schema.json]}
+
+  - id: S2-5
+    workstream: S2
+    ref: origin/t3/server
+    text: Schemas validated in tests
+    grep_at_ref:
+      paths: ['server/tests/*.py']
+      pattern: '{each}'
+      each: {scene schema: 'scene\.schema\.json', result schema: 'result\.schema\.json'}
+
+  - id: S2-6
+    workstream: S2
+    ref: origin/t3/server
+    text: A real-derived scene returns a result in under 1 s
+    report:
+      glob: ~/house-scanning-data/reports/e2e/*/report.json
+      key: latency_ms
+      less_than: 1000
+      require_current_sha: true
+
+  - id: S2-7
+    workstream: S2
+    ref: origin/t3/server
+    text: ruff clean
+    command:
+      run: uv run ruff check . && uv run ruff format --check .
+      cwd: server
+      timeout_s: 300
+      slow: true
+
+  # --- S3 --------------------------------------------------------------------------------------
+  - id: S3-1
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: CI build green
+    pr_check: {name: iOS build}
+
+  - id: S3-2
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Built as Swift 6 with strict concurrency
+    grep_at_ref:
+      paths: [ios/project.yml]
+      pattern: '{each}'
+      each:
+        Swift 6: 'SWIFT_VERSION:\s*"?6'
+        strict concurrency: 'SWIFT_STRICT_CONCURRENCY:\s*complete'
+
+  - id: S3-3
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Zero build warnings
+    report:
+      glob: ~/house-scanning-data/reports/sim/*/report.json
+      key: build.warnings
+      length_equals: 0
+      require_current_sha: true
+
+  - id: S3-4
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Unit tests for coverage, auto-capture and guidance
+    grep_at_ref:
+      paths: ['ios/HouseScanKit/Tests/*.swift', 'ios/HouseScanTests/*.swift']
+      pattern: '(?i)(?:func test|@Test)[^\n]*(?:{each})'
+      each: {coverage: coverage, auto-capture: 'auto_?capture', guidance: guidance}
+
+  - id: S3-5
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: >-
+      UI tests run the whole flow from a real replay with no manual input, including one
+      gap-instruction-recapture loop
+    grep_at_ref:
+      paths: ['ios/HouseScanUITests/*.swift']
+      pattern: '{each}'
+      each: {replay argument: '"-replay"', autopilot argument: '"-autopilot"', gap loop: gapRequest}
+      max_status: partial
+      cap_reason: the tests exist; passing is S3-1
+
+  - id: S3-6
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Accessibility audit on every screen
+    grep_at_ref:
+      paths: ['ios/HouseScanUITests/*.swift']
+      pattern: 'performAccessibilityAudit'
+      max_status: partial
+      cap_reason: an audit exists; which screens it covers needs a read
+
+  - id: S3-7
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Screenshots of each state in the PR
+    # Nine states: ScanContract.swift lists ten, and `unsupported` needs a device without LiDAR.
+    pr_body: {pattern: '!\[[^\]]*\]\([^)]+\)|<img\s', min_matches: 9}
+
+  - id: S3-8
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Exported scene.json validates against C1
+    report:
+      glob: ~/house-scanning-data/reports/e2e/*/report.json
+      key: app_export_scene_valid
+      equals: true
+
+  - id: S3-9
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: Design self-review against frontend-design, emil-design-eng, holistic-ux, apple-design
+    manual: {status: gap, evidence: not yet reviewed}
+
+  # --- S4 --------------------------------------------------------------------------------------
+  - id: S4-1
+    workstream: S4
+    ref: origin/t3/verification
+    text: End to end from a real replay to a placement result passes
+    report:
+      glob: ~/house-scanning-data/reports/e2e/*/report.json
+      key: app_export_passed
+      equals: true
+
+  - id: S4-2
+    workstream: S4
+    # The screenshots are of the app, so the report must be for the app branch's head.
+    ref: origin/t3/ios-mvf
+    text: Screenshot report per app state
+    report:
+      glob: ~/house-scanning-data/reports/sim/*/report.json
+      key: states
+      length_at_least: 9
+      require_current_sha: true
+
+  - id: S4-3
+    workstream: S4
+    ref: origin/t3/verification
+    text: Product description written from the code and checked against screenshots
+    manual: {status: gap, evidence: not yet reviewed}
+
+  - id: S4-4
+    workstream: S4
+    ref: origin/t3/verification
+    text: Scoreboard of every PR
+    file_at_ref: {path: verification/SCOREBOARD.md}
+
+  # --- M ---------------------------------------------------------------------------------------
+  - id: M-1
+    workstream: M
+    ref: origin/t3/docs-cleanup
+    text: AGENTS.md shorter than on main
+    command:
+      run: >-
+        a=$(wc -l < AGENTS.md | tr -d ' '); b=$(git show origin/main:AGENTS.md | wc -l | tr -d ' ');
+        echo "AGENTS.md $a lines, main $b"; test "$a" -lt "$b"
+      timeout_s: 60
+      slow: false
+
+  - id: M-2
+    workstream: M
+    ref: origin/t3/docs-cleanup
+    text: AGENTS.md accurate, every path and command real
+    manual: {status: gap, evidence: not yet reviewed}

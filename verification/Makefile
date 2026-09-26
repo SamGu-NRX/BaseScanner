@@ -20,3 +20,9 @@ sim:
 sim-probe:
 	uv run python -m hsverify.simrun --ref HEAD --project verification/fixtures/state-probe/StateProbe.xcodeproj \
 		--scheme StateProbe --until probe_done --extra-arg=-probeArg --label probe
+
+# Every open PR with its CI, and every overnight-plan metric with its evidence or gap. Writes
+# SCOREBOARD.md and scoreboard/scoreboard.json. ARGS=--slow also runs the slow test probes;
+# ARGS="--slow S2-1" runs only that one.
+scoreboard:
+	uv run python -m hsverify.scoreboard $(ARGS)
