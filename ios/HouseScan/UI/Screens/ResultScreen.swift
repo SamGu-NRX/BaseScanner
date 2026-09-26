@@ -102,14 +102,11 @@ struct ResultScreen: View {
     private func headline(_ result: ResultPresentation) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
-                Text(decisionWord(result.decision))
+                Text(ScanCopy.headline(result))
             } icon: {
                 Image(systemName: decisionSymbol(result.decision))
+                    .foregroundStyle(decisionColor(result.decision))
             }
-            .font(Typeface.caption)
-            .textCase(.uppercase)
-            .foregroundStyle(decisionColor(result.decision))
-            Text(ScanCopy.headline(result))
                 .font(Typeface.screenTitle)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
@@ -132,14 +129,6 @@ struct ResultScreen: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-
-    private func decisionWord(_ decision: ResultPresentation.Decision) -> String {
-        switch decision {
-        case .pass: "Spot found"
-        case .manualReview: "Needs a second look"
-        case .reject: "No spot on this wall"
-        }
     }
 
     private func decisionSymbol(_ decision: ResultPresentation.Decision) -> String {

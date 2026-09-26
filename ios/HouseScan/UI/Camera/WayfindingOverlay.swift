@@ -65,8 +65,9 @@ struct WayfindingOverlay: View {
     // MARK: Target
 
     private func placement(for target: SIMD3<Float>, in size: CGSize) -> TargetMarker.Placement {
-        let margin: CGFloat = 56
-        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: margin, dy: margin + 70)
+        // The ring shows while its center is comfortably on screen; the chevron takes over
+        // near the edges, where a half-visible ring would be ambiguous.
+        let bounds = CGRect(x: 36, y: 150, width: size.width - 72, height: size.height - 330)
         if let point = projection.viewPoint(for: target, in: size), bounds.contains(point) {
             let scale = wall.flatMap { WallProjection(projection: projection, wall: $0, size: size).pointsPerMeter(at: target) }
             let radius = min(64, max(30, (scale ?? 90) * 0.28))

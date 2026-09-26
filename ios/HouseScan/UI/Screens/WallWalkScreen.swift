@@ -32,6 +32,7 @@ struct WallWalkScreen: View {
             CameraChrome(
                 instruction: instruction,
                 tone: tone,
+                reply: reply,
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
@@ -156,18 +157,22 @@ struct WallWalkScreen: View {
             }
             .transition(.opacity)
         case .walking:
-            HStack(spacing: 10) {
+            HStack {
                 markSomethingButton
-                if asksForArea {
-                    Button("Can't get there") { actions.cannotAccessArea() }
-                        .buttonStyle(.secondaryProminent)
-                        .accessibilityHint("Skips this part of the wall. An installer will look at it instead.")
-                        .accessibilityIdentifier("action.cannotAccess")
-                }
                 Spacer(minLength: 0)
             }
             .transition(.opacity)
         }
+    }
+
+    private var reply: InstructionCard.Reply? {
+        guard asksForArea, state.marking == nil, state.coaching == nil, !trayOpen else { return nil }
+        return InstructionCard.Reply(
+            title: "Can't get there",
+            identifier: "action.cannotAccess",
+            hint: "Skips this part of the wall. An installer will look at it instead.",
+            perform: { actions.cannotAccessArea() }
+        )
     }
 
     private var markSomethingButton: some View {
@@ -176,6 +181,7 @@ struct WallWalkScreen: View {
         } label: {
             Label("Mark something", systemImage: "mappin.and.ellipse")
                 .labelStyle(.titleAndIcon)
+                .fixedSize()
         }
         .buttonStyle(.secondaryProminent)
         .accessibilityHint("Pin a gas meter, door, window, AC unit, driveway or fence")

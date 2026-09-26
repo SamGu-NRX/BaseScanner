@@ -21,20 +21,36 @@ enum DemoScene {
 
     static let imageSize = SIMD2<Float>(1920, 1440)
 
-    /// A phone held upright 3.4 m from the wall, a little right of the meter, tilted 14° down.
+    /// A phone held upright 5 m from the wall, a little right of the meter, tilted 18° down.
     /// Camera space: +x is down in the world (sensor image rotated for portrait), +y is right.
     static let projection: CameraProjection = {
-        let pitch = Float(14) * .pi / 180
+        let pitch = Float(18) * .pi / 180
         let x = SIMD4<Float>(0, -cos(pitch), sin(pitch), 0)
         let y = SIMD4<Float>(1, 0, 0, 0)
         let z = SIMD4<Float>(0, sin(pitch), cos(pitch), 0)
-        let position = SIMD4<Float>(0.55, 1.45, 3.4, 1)
+        let position = SIMD4<Float>(0.6, 1.5, 5.0, 1)
         return CameraProjection(
             cameraToWorld: simd_float4x4(columns: (x, y, z, position)),
-            intrinsics: SIMD4(1250, 1250, 960, 720),
+            intrinsics: SIMD4(1100, 1100, 960, 720),
             imageSize: imageSize
         )
     }()
+
+    /// Where the homeowner stands, on the ground.
+    static let standingPoint = SIMD3<Float>(0.6, 0, 5.0)
+
+    /// A walking path on the ground from in front of the homeowner to a spot `out` meters from
+    /// the wall at `s`, bending gently like a person would walk it.
+    static func path(toward s: Float, out: Float = 1.3) -> [SIMD3<Float>] {
+        let start = SIMD3<Float>(standingPoint.x, 0, standingPoint.z - 0.9)
+        let end = SIMD3<Float>(s, 0, out)
+        let bend = SIMD3<Float>(start.x + (end.x - start.x) * 0.25, 0, start.z + (end.z - start.z) * 0.6)
+        return stride(from: Float(0), through: 1, by: 0.125).map { t in
+            let a = start + (bend - start) * t
+            let b = bend + (end - bend) * t
+            return a + (b - a) * t
+        }
+    }
 
     // Layout of the made-up wall, in meters of s along the wall.
     static let gasMeterSpan: ClosedRange<Float> = -1.55 ... -1.25
@@ -71,10 +87,10 @@ enum DemoScene {
             y += 0.19
         }
         painter.quad(s: -6...7, y: 0...0.28, z: 0.004, color: rgb(0.62, 0.61, 0.58))
-        painter.polygon([SIMD3(-6, 3.3, 0), SIMD3(7, 3.3, 0), SIMD3(7, 3.55, 0.45), SIMD3(-6, 3.55, 0.45)], color: rgb(0.30, 0.29, 0.30))
+        painter.polygon([SIMD3(-6, 3.3, 0), SIMD3(7, 3.3, 0), SIMD3(7, 3.55, 0.45), SIMD3(-6, 3.55, 0.45)], color: rgb(0.46, 0.43, 0.40))
 
         // Ground: lawn, then a gravel bed along the wall.
-        painter.polygon([SIMD3(-9, 0, 0), SIMD3(10, 0, 0), SIMD3(10, 0, 3.3), SIMD3(-9, 0, 3.3)], color: rgb(0.42, 0.53, 0.33))
+        painter.polygon([SIMD3(-9, 0, 0), SIMD3(10, 0, 0), SIMD3(10, 0, 4.85), SIMD3(-9, 0, 4.85)], color: rgb(0.42, 0.53, 0.33))
         painter.polygon([SIMD3(-9, 0.001, 0), SIMD3(10, 0.001, 0), SIMD3(10, 0.001, 0.5), SIMD3(-9, 0.001, 0.5)], color: rgb(0.66, 0.62, 0.55))
         for i in 0..<220 {
             // Pebbles: a fixed pseudo-random scatter so the frame is identical on every run.

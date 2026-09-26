@@ -5,6 +5,7 @@ import SwiftUI
 struct CameraChrome<Bottom: View>: View {
     var instruction: Instruction
     var tone: InstructionCard.Tone = .normal
+    var reply: InstructionCard.Reply?
     var photoCount: Int?
     var lastCaptureID: Int?
     var isReplay: Bool
@@ -21,7 +22,7 @@ struct CameraChrome<Bottom: View>: View {
                 }
             }
             .frame(minHeight: 36)
-            InstructionCard(instruction: instruction, tone: tone)
+            InstructionCard(instruction: instruction, tone: tone, reply: reply)
             Spacer(minLength: 0)
             bottom
         }

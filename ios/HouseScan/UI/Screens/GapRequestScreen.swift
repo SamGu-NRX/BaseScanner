@@ -22,6 +22,12 @@ struct GapRequestScreen: View {
             CameraChrome(
                 instruction: instruction,
                 tone: state.coaching.map { .coaching(symbol: ScanCopy.coachingSymbol($0)) } ?? .normal,
+                reply: state.gap?.isSatisfied == true ? nil : InstructionCard.Reply(
+                    title: "I can't get there",
+                    identifier: "action.skipGap",
+                    hint: "Skips this view. An installer will look at this part instead.",
+                    perform: { actions.skipGap() }
+                ),
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
@@ -31,11 +37,6 @@ struct GapRequestScreen: View {
                     if let gap = state.gap {
                         GapProgress(gap: gap)
                     }
-                    Button("I can't get there") { actions.skipGap() }
-                        .buttonStyle(.secondaryProminent)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityHint("Skips this view. An installer will look at this part instead.")
-                        .accessibilityIdentifier("action.skipGap")
                     if let wall = state.wall {
                         WallTape(
                             coverage: state.coverage,

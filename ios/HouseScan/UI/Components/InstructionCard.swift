@@ -13,12 +13,49 @@ struct InstructionCard: View {
         case refusal
     }
 
+    /// A reply to the instruction itself, such as "Can't get there". Lives in the card so it
+    /// reads as an answer to what the card asks, not as a competing primary action.
+    struct Reply {
+        var title: String
+        var identifier: String
+        var hint: String
+        var perform: () -> Void
+    }
+
     var instruction: Instruction
     var tone: Tone = .normal
+    var reply: Reply?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            message
+                .id(instruction)
+                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+            if let reply {
+                Button(reply.title, action: reply.perform)
+                    .font(Typeface.caption)
+                    .foregroundStyle(Palette.chalk)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: Metrics.minTarget)
+                    .background(.white.opacity(0.16), in: .capsule)
+                    .contentShape(.capsule)
+                    .buttonStyle(PressableStyle())
+                    .accessibilityHint(reply.hint)
+                    .accessibilityIdentifier(reply.identifier)
+                    .padding([.horizontal, .bottom], 12)
+                    .padding(.top, -4)
+                    .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(ScrimShape.rounded())
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.text, value: instruction)
+        .animation(Motion.text, value: reply == nil)
+    }
+
+    private var message: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             if let symbol = iconName {
                 Image(systemName: symbol)
@@ -42,11 +79,6 @@ struct InstructionCard: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
-        .id(instruction)
-        .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ScrimShape.rounded())
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.text, value: instruction)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilityIdentifier("instruction")

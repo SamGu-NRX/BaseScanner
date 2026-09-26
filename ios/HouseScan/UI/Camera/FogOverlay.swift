@@ -16,13 +16,32 @@ struct FogOverlay: View {
     var highlight: GapRequest?
 
     @State private var memory = FogMemory()
+
     @State private var liftDeadline = Date.distantPast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion || liftDeadline < .now)) { timeline in
-            Canvas(rendersAsynchronously: false) { context, size in
-                draw(in: &context, size: size, now: timeline.date)
+            let frame = FogFrame(
+                coverage: coverage, wall: wall, projection: projection, highlight: highlight,
+                lifts: memory.lifts, now: timeline.date
+            )
+            ZStack {
+                // The frost itself: a material blurs whatever the camera shows, so the haze
+                // reads on a white wall in sun as well as on dark brick. The canvas only
+                // decides where, and how thick.
+                Rectangle()
+                    .fill(.regularMaterial)
+                    .environment(\.colorScheme, .light)
+                    .mask {
+                        Canvas(rendersAsynchronously: false) { context, size in
+                            frame.drawHaze(in: &context, size: size, color: .black)
+                        }
+                    }
+                Canvas(rendersAsynchronously: false) { context, size in
+                    frame.drawHaze(in: &context, size: size, color: Color(white: 0.98).opacity(0.5))
+                    frame.drawMarks(in: &context, size: size)
+                }
             }
         }
         .allowsHitTesting(false)
@@ -49,28 +68,38 @@ struct FogOverlay: View {
     /// Haze strength per state. Hypothesis, picked by eye on the demo wall: unseen must read
     /// as "not done" over a bright wall; seen must be visibly lighter than unseen but still
     /// clearly not clear. Tune on device in sun.
-    static func haze(_ state: CellState) -> Double {
+    nonisolated static func haze(_ state: CellState) -> Double {
         switch state {
         case .unseen: 1
-        case .seen: 0.42
+        case .seen: 0.45
         case .covered, .skipped: 0
         }
     }
 
-    private func draw(in context: inout GraphicsContext, size: CGSize, now: Date) {
+}
+
+/// One frame of fog: which cells are hazy, lifting, skipped or requested, at a moment in time.
+private struct FogFrame {
+    var coverage: CoverageStrip
+    var wall: WallGeometry
+    var projection: CameraProjection
+    var highlight: GapRequest?
+    var lifts: [FogMemory.Key: FogMemory.Lift]
+    var now: Date
+
+    private struct Cell {
+        var quad: Path
+        var level: Double
+        var lift: CGFloat
+    }
+
+    private func cells(size: CGSize) -> (haze: [Cell], skipped: [Path], amber: [Path]) {
         let geometry = WallProjection(projection: projection, wall: wall, size: size)
         let visible = coverage.visibleRange
-        guard visible.upperBound > visible.lowerBound else { return }
-        let fogColor = Color(white: 0.97)
-        let gapCells = highlight.map { gap in
-            (band: gap.band, span: gap.span)
-        }
-
-        var steady: [(Path, Double)] = []
-        var lifting: [(Path, Double, CGFloat)] = []
-        var amber: [Path] = []
+        guard visible.upperBound > visible.lowerBound else { return ([], [], []) }
+        var haze: [Cell] = []
         var skipped: [Path] = []
-
+        var amber: [Path] = []
         for band in CoverageBand.allCases {
             let states = coverage.cells(band)
             for index in states.indices {
@@ -79,45 +108,44 @@ struct FogOverlay: View {
                 let clipped = max(range.lowerBound, visible.lowerBound)...min(range.upperBound, visible.upperBound)
                 guard let quad = quad(band, clipped, geometry) else { continue }
                 let state = states[index]
-
-                if let gapCells, gapCells.band == band, gapCells.span.overlaps(range), state != .covered {
+                if let gap = highlight, gap.band == band, gap.span.overlaps(range), state != .covered {
                     amber.append(quad)
                     continue
                 }
-                if state == .skipped {
-                    skipped.append(quad)
-                }
+                if state == .skipped { skipped.append(quad) }
+                let target = FogOverlay.haze(state)
                 let key = FogMemory.Key(band: band, index: index)
-                let target = Self.haze(state)
-                if let lift = memory.lifts[key], let progress = lift.progress(at: now), progress < 1 {
+                if let lift = lifts[key], let progress = lift.progress(at: now), progress < 1 {
                     let eased = 1 - pow(1 - progress, 3)
-                    let level = lift.from + (target - lift.from) * eased
-                    lifting.append((quad, level, CGFloat(eased)))
+                    haze.append(Cell(quad: quad, level: lift.from + (target - lift.from) * eased, lift: CGFloat(eased)))
                 } else if target > 0 {
-                    steady.append((quad, target))
+                    haze.append(Cell(quad: quad, level: target, lift: 0))
                 }
             }
         }
+        return (haze, skipped, amber)
+    }
 
-        // Soft, merged haze: one blurred layer so neighbouring cells read as one bank of fog.
+    /// Haze cells in one blurred layer, so neighbours merge into one bank of fog; lifting cells
+    /// rise a few points as they thin out.
+    func drawHaze(in context: inout GraphicsContext, size: CGSize, color: Color) {
+        let haze = cells(size: size).haze
         context.drawLayer { layer in
-            layer.addFilter(.blur(radius: 10))
-            for (quad, level) in steady {
-                layer.fill(quad, with: .color(fogColor.opacity(0.55 * level)))
-            }
-        }
-        // Lifting cells rise a few points as they thin out.
-        context.drawLayer { layer in
-            layer.addFilter(.blur(radius: 12))
-            for (quad, level, eased) in lifting {
+            layer.addFilter(.blur(radius: 9))
+            for cell in haze {
                 var shifted = layer
-                shifted.translateBy(x: 0, y: -10 * eased)
-                shifted.fill(quad, with: .color(fogColor.opacity(0.55 * level)))
+                shifted.translateBy(x: 0, y: -10 * cell.lift)
+                shifted.fill(cell.quad, with: .color(color.opacity(cell.level)))
             }
         }
-        // Skipped cells: a slate hatch, so "can't get there" never reads as clear or as fog.
+    }
+
+    /// Skipped cells get a slate hatch, so "can't get there" never reads as clear or as fog;
+    /// requested cells glow amber.
+    func drawMarks(in context: inout GraphicsContext, size: CGSize) {
+        let (_, skipped, amber) = cells(size: size)
         for quad in skipped {
-            context.fill(quad, with: .color(Palette.skipped.opacity(0.28)))
+            context.fill(quad, with: .color(Palette.skipped.opacity(0.3)))
             var hatched = context
             hatched.clip(to: quad)
             let bounds = quad.boundingRect

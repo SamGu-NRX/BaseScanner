@@ -67,8 +67,8 @@ final class DemoEngine: ScanActions {
             enterCloseUp()
         case .wallWalk:
             placeMeter()
-            reachedLeft = 0.9
-            reachedRight = 1.5
+            reachedLeft = 0.6
+            reachedRight = 0.9
             enterWalk()
         case .markFeatures:
             placeMeter()
@@ -152,7 +152,7 @@ final class DemoEngine: ScanActions {
         setGround(span, to: .seen)
         state.gap = GapRequest(id: 1, origin: .phone, reason: .groundNearCandidate, band: .ground, span: span, progress: 0, isSatisfied: false)
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
-        state.path = [SIMD3(0.55, 0, 2.9), SIMD3(0.95, 0, 2.3), SIMD3(1.35, 0, 1.85), SIMD3(1.7, 0, 1.55)]
+        state.path = DemoScene.path(toward: 1.7)
         run { engine in await engine.gapScript(span: span) }
     }
 
@@ -321,7 +321,7 @@ final class DemoEngine: ScanActions {
             } else {
                 state.guidance = .walk(side: .right, remaining: Self.rightEnd - reachedRight)
                 state.target = DemoScene.wall.world(s: min(reachedRight + 0.9, Self.rightEnd), height: 0.2, out: 0.3)
-                state.path = [SIMD3(0.55, 0, 2.9), SIMD3(1.0, 0, 2.35), SIMD3(1.5, 0, 1.95), SIMD3(2.1, 0, 1.7)]
+                state.path = DemoScene.path(toward: min(reachedRight + 1.2, Self.rightEnd))
             }
         } else if wall.leftEnd == nil {
             if reachedLeft >= -Self.leftEnd - 0.01 {
@@ -331,7 +331,7 @@ final class DemoEngine: ScanActions {
             } else {
                 state.guidance = .walk(side: .left, remaining: -Self.leftEnd - reachedLeft)
                 state.target = DemoScene.wall.world(s: max(-reachedLeft - 0.9, Self.leftEnd), height: 0.2, out: 0.3)
-                state.path = [SIMD3(0.55, 0, 2.9), SIMD3(0.1, 0, 2.4), SIMD3(-0.5, 0, 2.0), SIMD3(-1.2, 0, 1.8)]
+                state.path = DemoScene.path(toward: max(-reachedLeft - 1.2, Self.leftEnd))
             }
         } else {
             state.guidance = .walkComplete
