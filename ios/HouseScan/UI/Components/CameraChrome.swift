@@ -23,6 +23,7 @@ struct CameraChrome<Bottom: View>: View {
         GeometryReader { proxy in
             ScrollView {
                 stack
+                    .frame(width: proxy.size.width)
                     .frame(minHeight: proxy.size.height)
                     .background {
                         if let onCameraTap {

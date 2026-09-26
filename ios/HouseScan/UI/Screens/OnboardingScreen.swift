@@ -101,28 +101,21 @@ private struct OnboardingPageView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Group {
-                    switch page.art {
-                    case .walk: WalkArt(isActive: isActive)
-                    case .fog: FogArt(isActive: isActive)
-                    case .safety: SafetyArt()
+                if page.art == .safety {
+                    text
+                    SafetyArt()
+                } else {
+                    Group {
+                        if page.art == .walk {
+                            WalkArt(isActive: isActive)
+                        } else {
+                            FogArt(isActive: isActive)
+                        }
                     }
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: page.art == .safety ? nil : 260)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(page.title)
-                        .font(Typeface.screenTitle)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    if let body = page.body {
-                        Text(body)
-                            .font(.system(.title3, design: .rounded, weight: .regular))
-                            .foregroundStyle(Palette.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 260)
+                    .accessibilityHidden(true)
+                    text
                 }
             }
             .padding(.horizontal, 24)
@@ -131,6 +124,21 @@ private struct OnboardingPageView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(page.title)
+                .font(Typeface.screenTitle)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let body = page.body {
+                Text(body)
+                    .font(.system(.title3, design: .rounded, weight: .regular))
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }
 
@@ -285,6 +293,5 @@ private struct SafetyArt: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .accessibilityHidden(false)
     }
 }

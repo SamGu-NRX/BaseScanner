@@ -14,6 +14,7 @@ struct WallWalkScreen: View {
     @State private var trayOpen = false
     @State private var taps: [TapRipple.Ripple] = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
@@ -181,7 +182,7 @@ struct WallWalkScreen: View {
         } label: {
             Label("Mark something", systemImage: "mappin.and.ellipse")
                 .labelStyle(.titleAndIcon)
-                .fixedSize()
+                .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
         }
         .buttonStyle(.secondaryProminent)
         .accessibilityHint("Pin a gas meter, door, window, AC unit, driveway or fence")

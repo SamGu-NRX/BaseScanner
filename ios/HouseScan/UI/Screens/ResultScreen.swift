@@ -60,6 +60,13 @@ struct ResultScreen: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .background(Palette.canvas.ignoresSafeArea())
+        .overlay(alignment: .top) {
+            // Keeps scrolled text from running under the status bar.
+            Palette.canvas
+                .ignoresSafeArea(edges: .top)
+                .frame(height: 0)
+                .accessibilityHidden(true)
+        }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : Motion.settle.delay(0.35)) { revealed = true }
         }
