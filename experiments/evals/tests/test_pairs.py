@@ -6,7 +6,9 @@ import pytest
 from evals.pairs import (
     INCH,
     Points,
+    evaluate_fixed,
     length_errors,
+    pool,
     sample_pairs,
     scale_for_known_distance,
     summarize,
@@ -77,10 +79,17 @@ def test_summarize_in_inches_and_scale_error():
     assert s["median_in"] == pytest.approx(3.0)
     assert s["p90_in"] == pytest.approx(4.6)  # numpy linear percentile of [1,2,3,4,5]
     assert s["scale_error_pct"] == pytest.approx(4.0)
+    assert s["failed_pct"] == 0.0
+    # With 2 of 5 pairs failed the p90 is a failure (infinite), not NaN.
+    e2 = np.array([1, 2, 3, np.inf, np.inf]) * INCH
+    s2 = summarize(e2)
+    assert s2["median_in"] == pytest.approx(3.0)
+    assert s2["p90_in"] == float("inf")
+    assert s2["failed_pct"] == pytest.approx(40.0)
 
 
 def test_bilinear_depth_sampling():
-    from evals.recon import _sample_depth
+    from evals.triangulate import sample_depth as _sample_depth
 
     # Rows are y, columns are x: d[y, x].
     d = np.array([[1.0, 2.0], [3.0, 4.0], [np.nan, 5.0]])
@@ -109,3 +118,39 @@ def test_normals_from_depth_plane_cases():
     n = normals_from_depth(tilted, K)
     np.testing.assert_allclose(n[15, 20], np.array([1.0, 0, -1]) / np.sqrt(2), atol=1e-6)
     assert np.isnan(n[0, 0]).all()  # border pixels have no neighbours on both sides
+
+
+def test_failures_count_against_the_metric():
+    # Four points on a line, predicted 10% long; point 3 has no prediction.
+    gt = np.array([[0.0, 0, 0], [2.0, 0, 0], [4.0, 0, 0], [6.0, 0, 0]])
+    r = gt * 1.1
+    r[3] = np.nan
+    pts = Points(gt=gt, c=np.zeros_like(gt), r=r)
+    pairs = {"1-3m": np.array([[0, 1], [1, 2], [2, 3]])}
+    refs = np.array([[0, 1], [2, 3]])  # the second reference touches the missing point
+    res = evaluate_fixed(pts, pairs, refs)
+    assert res["refs"] == 2 and res["ref_failures"] == 1
+    e_none = res["none"]["1-3m"][0]
+    np.testing.assert_allclose(e_none[:2], [0.2, 0.2])
+    assert np.isinf(e_none[2])
+    # Taped: the good reference rescales by 1/1.1 (errors 0, 0, missing); the failed one fails all.
+    e_tape = res["one_known_distance"]["1-3m"][0]
+    np.testing.assert_allclose(e_tape[:2], [0.0, 0.0], atol=1e-12)
+    assert np.isinf(e_tape[2:]).all()
+    summary = pool([res])
+    assert summary["tape_calibration_success_pct"] == 50.0
+    assert summary["one_known_distance"]["1-3m"]["failed_pct"] == pytest.approx(
+        100 * 4 / 6, abs=0.01
+    )
+
+
+def test_reference_with_no_positive_scale_fails():
+    # Camera centres 5 m apart across the pair's direction: the predicted pair is (2s, 5, 0) apart,
+    # at least 5 m for any scale s, so a 2 m tape cannot be matched.
+    gt = np.array([[0.0, 0, 0], [2.0, 0, 0]])
+    c = np.array([[0.0, 0, 0], [0.0, 5, 0]])
+    pts = Points(gt=gt, c=c, r=np.array([[0.0, 0, 0], [2.0, 0, 0]]))
+    with pytest.raises(ValueError):
+        scale_for_known_distance(pts, np.array([0, 1]))
+    res = evaluate_fixed(pts, {"1-3m": np.array([[0, 1]])}, np.array([[0, 1]]))
+    assert res["ref_failures"] == 1

@@ -1,2219 +1,6211 @@
 {
  "facade": {
-  "all points": {
-   "oracle": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.23,
-       "p90_in": 1.58,
-       "scale_error_pct": -0.21
+  "groups": {
+   "all points": {
+    "oracle": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.23,
+         "p90_in": 1.57,
+         "scale_error_pct": -0.21
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.63,
+         "p90_in": 2.9,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.29,
+         "p90_in": 2.69,
+         "scale_error_pct": 0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.73,
+         "p90_in": 6.15,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 0.62,
-       "p90_in": 2.82,
-       "scale_error_pct": -0.2
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.2,
+         "p90_in": 0.92,
+         "scale_error_pct": -0.21
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.56,
+         "p90_in": 1.98,
+         "scale_error_pct": -0.19
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.21,
+         "p90_in": 2.16,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 5.6,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.49,
+         "p90_in": 3.38,
+         "scale_error_pct": -0.26
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.01,
+         "p90_in": 5.4,
+         "scale_error_pct": -0.23
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.64,
+         "p90_in": 4.15,
+         "scale_error_pct": -0.0
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.42,
+         "p90_in": 7.74,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.27,
-       "p90_in": 2.99,
-       "scale_error_pct": -0.01
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.24,
+         "p90_in": 1.65,
+         "scale_error_pct": -0.22
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.64,
+         "p90_in": 3.01,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 2.8,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.74,
+         "p90_in": 6.19,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 0.65,
-       "p90_in": 7.09,
-       "scale_error_pct": -0.0
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.21,
+         "p90_in": 0.99,
+         "scale_error_pct": -0.22
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.57,
+         "p90_in": 2.05,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.22,
+         "p90_in": 2.29,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 5.69,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.5,
+         "p90_in": 3.64,
+         "scale_error_pct": -0.26
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.0,
+         "p90_in": 5.65,
+         "scale_error_pct": -0.24
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.65,
+         "p90_in": 4.34,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.42,
+         "p90_in": 7.77,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.23,
+         "p90_in": 1.6,
+         "scale_error_pct": -0.22
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.62,
+         "p90_in": 2.84,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 0.31,
+         "p90_in": 2.89,
+         "scale_error_pct": 0.03
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 0.74,
+         "p90_in": 6.59,
+         "scale_error_pct": 0.03
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.2,
+         "p90_in": 0.96,
+         "scale_error_pct": -0.21
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.56,
+         "p90_in": 1.87,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 0.22,
+         "p90_in": 2.51,
+         "scale_error_pct": 0.03
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 0.54,
+         "p90_in": 6.06,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.47,
+         "p90_in": 3.51,
+         "scale_error_pct": -0.25
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.96,
+         "p90_in": 5.32,
+         "scale_error_pct": -0.23
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 0.63,
+         "p90_in": 4.21,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 1.35,
+         "p90_in": 7.92,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.24,
+         "p90_in": 1.6,
+         "scale_error_pct": -0.23
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.65,
+         "p90_in": 2.82,
+         "scale_error_pct": -0.22
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.31,
+         "p90_in": 2.94,
+         "scale_error_pct": 0.03
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.75,
+         "p90_in": 6.68,
+         "scale_error_pct": 0.04
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.21,
+         "p90_in": 0.98,
+         "scale_error_pct": -0.23
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.59,
+         "p90_in": 1.86,
+         "scale_error_pct": -0.22
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.23,
+         "p90_in": 2.62,
+         "scale_error_pct": 0.03
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.55,
+         "p90_in": 6.14,
+         "scale_error_pct": 0.03
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.49,
+         "p90_in": 3.53,
+         "scale_error_pct": -0.28
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.99,
+         "p90_in": 5.32,
+         "scale_error_pct": -0.25
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 4.34,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.37,
+         "p90_in": 8.24,
+         "scale_error_pct": 0.01
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       }
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.24,
-       "p90_in": 1.86,
-       "scale_error_pct": -0.22
+    "fused/moge2": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.22,
+         "median_in": 5.64,
+         "p90_in": 11.56,
+         "scale_error_pct": -5.59
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.31,
+         "median_in": 20.22,
+         "p90_in": 47.4,
+         "scale_error_pct": -6.99
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.72,
+         "median_in": 3.02,
+         "p90_in": 12.12,
+         "scale_error_pct": -0.17
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.81,
+         "median_in": 10.32,
+         "p90_in": 44.78,
+         "scale_error_pct": -1.23
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 0.66,
-       "p90_in": 3.35,
-       "scale_error_pct": -0.2
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 5.55,
+         "p90_in": 10.92,
+         "scale_error_pct": -5.92
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 19.25,
+         "p90_in": 46.3,
+         "scale_error_pct": -7.09
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.51,
+         "median_in": 2.77,
+         "p90_in": 10.95,
+         "scale_error_pct": -0.42
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.51,
+         "median_in": 9.68,
+         "p90_in": 43.91,
+         "scale_error_pct": -1.26
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 5.31,
+         "p90_in": 25.22,
+         "scale_error_pct": -1.8
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.1,
+         "median_in": 15.13,
+         "p90_in": 51.1,
+         "scale_error_pct": -3.26
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.52,
+         "median_in": 4.94,
+         "p90_in": 28.17,
+         "scale_error_pct": 3.58
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.6,
+         "median_in": 14.01,
+         "p90_in": 55.46,
+         "scale_error_pct": 2.23
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.41,
-       "p90_in": 3.41,
-       "scale_error_pct": 0.02
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.19,
+         "median_in": 5.94,
+         "p90_in": 11.93,
+         "scale_error_pct": -6.18
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.22,
+         "median_in": 20.47,
+         "p90_in": 47.65,
+         "scale_error_pct": -7.34
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.68,
+         "median_in": 3.05,
+         "p90_in": 12.67,
+         "scale_error_pct": -0.18
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.72,
+         "median_in": 9.84,
+         "p90_in": 43.83,
+         "scale_error_pct": -1.23
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.06,
-       "p90_in": 7.9,
-       "scale_error_pct": 0.03
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.91,
+         "p90_in": 11.23,
+         "scale_error_pct": -6.48
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 19.59,
+         "p90_in": 46.9,
+         "scale_error_pct": -7.41
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 2.79,
+         "p90_in": 11.31,
+         "scale_error_pct": -0.44
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.51,
+         "median_in": 9.23,
+         "p90_in": 42.83,
+         "scale_error_pct": -1.24
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.51,
+         "p90_in": 26.09,
+         "scale_error_pct": -2.23
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.03,
+         "median_in": 16.08,
+         "p90_in": 48.5,
+         "scale_error_pct": -4.0
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.5,
+         "median_in": 5.04,
+         "p90_in": 30.52,
+         "scale_error_pct": 3.93
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.53,
+         "median_in": 13.79,
+         "p90_in": 55.87,
+         "scale_error_pct": 2.17
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.15,
+         "median_in": 5.72,
+         "p90_in": 11.66,
+         "scale_error_pct": -5.89
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.18,
+         "median_in": 19.18,
+         "p90_in": 46.77,
+         "scale_error_pct": -6.99
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.15,
+         "median_in": 3.37,
+         "p90_in": 12.7,
+         "scale_error_pct": -0.33
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.18,
+         "median_in": 10.9,
+         "p90_in": 43.37,
+         "scale_error_pct": -1.63
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.62,
+         "p90_in": 10.94,
+         "scale_error_pct": -6.18
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 18.3,
+         "p90_in": 46.47,
+         "scale_error_pct": -7.02
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.0,
+         "median_in": 3.11,
+         "p90_in": 11.41,
+         "scale_error_pct": -0.64
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.01,
+         "median_in": 10.4,
+         "p90_in": 42.28,
+         "scale_error_pct": -1.67
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.09,
+         "p90_in": 24.57,
+         "scale_error_pct": -2.3
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 14.83,
+         "p90_in": 45.61,
+         "scale_error_pct": -3.88
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.0,
+         "median_in": 5.19,
+         "p90_in": 29.3,
+         "scale_error_pct": 3.98
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.02,
+         "median_in": 13.77,
+         "p90_in": 53.98,
+         "scale_error_pct": 1.97
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.13,
+         "median_in": 5.94,
+         "p90_in": 11.84,
+         "scale_error_pct": -6.02
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.15,
+         "median_in": 19.94,
+         "p90_in": 46.22,
+         "scale_error_pct": -7.26
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.13,
+         "median_in": 3.51,
+         "p90_in": 14.52,
+         "scale_error_pct": -0.0
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.15,
+         "median_in": 11.12,
+         "p90_in": 49.23,
+         "scale_error_pct": -1.36
+        }
+       },
+       "tape_calibration_success_pct": 98.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.88,
+         "p90_in": 11.27,
+         "scale_error_pct": -6.35
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 19.09,
+         "p90_in": 46.59,
+         "scale_error_pct": -7.32
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.0,
+         "median_in": 3.23,
+         "p90_in": 13.1,
+         "scale_error_pct": -0.32
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.01,
+         "median_in": 10.67,
+         "p90_in": 48.71,
+         "scale_error_pct": -1.41
+        }
+       },
+       "tape_calibration_success_pct": 98.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 5.28,
+         "p90_in": 28.24,
+         "scale_error_pct": -2.41
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 15.39,
+         "p90_in": 53.27,
+         "scale_error_pct": -4.04
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.0,
+         "median_in": 5.7,
+         "p90_in": 36.05,
+         "scale_error_pct": 4.56
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.02,
+         "median_in": 14.69,
+         "p90_in": 65.57,
+         "scale_error_pct": 2.24
+        }
+       },
+       "tape_calibration_success_pct": 98.0,
+       "groups": 8
       }
      }
     },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.24,
-       "p90_in": 2.03,
-       "scale_error_pct": -0.21
+    "fused/da3metric": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 1.2,
+         "median_in": 11.44,
+         "p90_in": 20.87,
+         "scale_error_pct": -14.79
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.56,
+         "median_in": 39.18,
+         "p90_in": 81.47,
+         "scale_error_pct": -16.28
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.68,
+         "median_in": 3.64,
+         "p90_in": 13.91,
+         "scale_error_pct": -0.19
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.03,
+         "median_in": 12.09,
+         "p90_in": 54.69,
+         "scale_error_pct": -1.24
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 0.62,
-       "p90_in": 3.24,
-       "scale_error_pct": -0.19
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.17,
+         "median_in": 11.68,
+         "p90_in": 20.69,
+         "scale_error_pct": -15.35
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.12,
+         "median_in": 39.24,
+         "p90_in": 79.31,
+         "scale_error_pct": -17.0
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.67,
+         "median_in": 3.44,
+         "p90_in": 12.46,
+         "scale_error_pct": -0.47
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.62,
+         "median_in": 11.25,
+         "p90_in": 51.19,
+         "scale_error_pct": -1.49
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.72,
+         "median_in": 9.8,
+         "p90_in": 29.18,
+         "scale_error_pct": -8.51
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.06,
+         "median_in": 30.43,
+         "p90_in": 71.89,
+         "scale_error_pct": -11.64
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.22,
+         "median_in": 6.82,
+         "p90_in": 42.7,
+         "scale_error_pct": 6.07
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.55,
+         "median_in": 19.53,
+         "p90_in": 81.99,
+         "scale_error_pct": 3.33
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.42,
-       "p90_in": 3.53,
-       "scale_error_pct": 0.0
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.9,
+         "median_in": 11.28,
+         "p90_in": 21.23,
+         "scale_error_pct": -14.28
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.24,
+         "median_in": 38.13,
+         "p90_in": 82.67,
+         "scale_error_pct": -15.91
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.38,
+         "median_in": 4.01,
+         "p90_in": 16.92,
+         "scale_error_pct": 0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.71,
+         "median_in": 13.29,
+         "p90_in": 59.17,
+         "scale_error_pct": -1.15
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.01,
-       "p90_in": 7.96,
-       "scale_error_pct": 0.02
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.3,
-       "p90_in": 2.27,
-       "scale_error_pct": -0.25
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.09,
+         "median_in": 11.56,
+         "p90_in": 21.06,
+         "scale_error_pct": -14.87
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.05,
+         "median_in": 38.41,
+         "p90_in": 81.04,
+         "scale_error_pct": -16.61
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.59,
+         "median_in": 3.74,
+         "p90_in": 15.35,
+         "scale_error_pct": -0.3
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.55,
+         "median_in": 12.49,
+         "p90_in": 56.15,
+         "scale_error_pct": -1.46
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 0.74,
-       "p90_in": 3.75,
-       "scale_error_pct": -0.21
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.41,
+         "median_in": 9.19,
+         "p90_in": 29.08,
+         "scale_error_pct": -8.07
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.77,
+         "median_in": 29.42,
+         "p90_in": 70.76,
+         "scale_error_pct": -10.78
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.9,
+         "median_in": 7.96,
+         "p90_in": 45.48,
+         "scale_error_pct": 7.93
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.26,
+         "median_in": 21.85,
+         "p90_in": 87.67,
+         "scale_error_pct": 4.64
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.68,
-       "p90_in": 4.09,
-       "scale_error_pct": -0.01
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.59,
+         "median_in": 10.99,
+         "p90_in": 20.64,
+         "scale_error_pct": -13.98
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.82,
+         "median_in": 36.57,
+         "p90_in": 77.73,
+         "scale_error_pct": -15.4
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.05,
+         "median_in": 4.11,
+         "p90_in": 15.78,
+         "scale_error_pct": -0.15
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.28,
+         "median_in": 13.46,
+         "p90_in": 55.47,
+         "scale_error_pct": -1.34
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.7,
-       "p90_in": 9.8,
-       "scale_error_pct": 0.03
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.04,
+         "median_in": 11.19,
+         "p90_in": 20.44,
+         "scale_error_pct": -14.6
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 37.09,
+         "p90_in": 77.66,
+         "scale_error_pct": -16.18
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.53,
+         "median_in": 3.87,
+         "p90_in": 14.38,
+         "scale_error_pct": -0.47
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.52,
+         "median_in": 12.88,
+         "p90_in": 53.94,
+         "scale_error_pct": -1.77
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.22,
+         "median_in": 8.99,
+         "p90_in": 26.5,
+         "scale_error_pct": -7.86
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.44,
+         "median_in": 27.77,
+         "p90_in": 67.2,
+         "scale_error_pct": -10.26
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.71,
+         "median_in": 7.59,
+         "p90_in": 44.5,
+         "scale_error_pct": 7.08
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.91,
+         "median_in": 20.62,
+         "p90_in": 83.56,
+         "scale_error_pct": 4.37
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.45,
+         "median_in": 10.65,
+         "p90_in": 19.94,
+         "scale_error_pct": -13.2
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.66,
+         "median_in": 36.04,
+         "p90_in": 76.97,
+         "scale_error_pct": -15.05
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.93,
+         "median_in": 4.22,
+         "p90_in": 15.45,
+         "scale_error_pct": -0.14
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 2.14,
+         "median_in": 13.68,
+         "p90_in": 55.96,
+         "scale_error_pct": -1.34
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.04,
+         "median_in": 10.75,
+         "p90_in": 19.68,
+         "scale_error_pct": -13.78
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 36.22,
+         "p90_in": 77.06,
+         "scale_error_pct": -15.58
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.54,
+         "median_in": 4.03,
+         "p90_in": 14.25,
+         "scale_error_pct": -0.43
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.52,
+         "median_in": 13.12,
+         "p90_in": 54.83,
+         "scale_error_pct": -1.75
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.18,
+         "median_in": 9.3,
+         "p90_in": 28.56,
+         "scale_error_pct": -8.4
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.36,
+         "median_in": 28.17,
+         "p90_in": 69.57,
+         "scale_error_pct": -10.31
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.68,
+         "median_in": 7.4,
+         "p90_in": 43.7,
+         "scale_error_pct": 6.24
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.84,
+         "median_in": 19.71,
+         "p90_in": 78.52,
+         "scale_error_pct": 3.57
+        }
+       },
+       "tape_calibration_success_pct": 98.5,
+       "groups": 8
       }
      }
     }
    },
-   "fused/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 11.32,
-       "p90_in": 20.43,
-       "scale_error_pct": -14.9
+   "within 6 m": {
+    "oracle": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 0.81,
+         "p90_in": 1.42,
+         "scale_error_pct": -1.28
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 1.6,
+         "p90_in": 2.12,
+         "scale_error_pct": -1.15
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.25,
+         "p90_in": 1.61,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.46,
+         "p90_in": 2.48,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 38.72,
-       "p90_in": 78.94,
-       "scale_error_pct": -16.34
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.04,
+         "p90_in": 0.37,
+         "scale_error_pct": -0.04
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.08,
+         "p90_in": 0.56,
+         "scale_error_pct": -0.05
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 2.05,
+         "scale_error_pct": 0.42
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.97,
+         "p90_in": 3.95,
+         "scale_error_pct": 0.4
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.56,
+         "p90_in": 1.38,
+         "scale_error_pct": -0.48
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.41,
+         "p90_in": 3.17,
+         "scale_error_pct": -0.69
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 1.8,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 1.64,
+         "p90_in": 4.54,
+         "scale_error_pct": -0.28
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.32,
-       "p90_in": 12.58,
-       "scale_error_pct": 0.17
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 0.82,
+         "p90_in": 1.44,
+         "scale_error_pct": -1.28
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 1.61,
+         "p90_in": 2.13,
+         "scale_error_pct": -1.16
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.26,
+         "p90_in": 1.71,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.48,
+         "p90_in": 2.59,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 10.66,
-       "p90_in": 49.96,
-       "scale_error_pct": -0.67
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.04,
+         "p90_in": 0.38,
+         "scale_error_pct": -0.04
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.08,
+         "p90_in": 0.57,
+         "scale_error_pct": -0.06
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.54,
+         "p90_in": 2.13,
+         "scale_error_pct": 0.4
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.99,
+         "p90_in": 3.98,
+         "scale_error_pct": 0.38
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.57,
+         "p90_in": 1.45,
+         "scale_error_pct": -0.44
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.42,
+         "p90_in": 3.21,
+         "scale_error_pct": -0.7
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.68,
+         "p90_in": 1.91,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 1.7,
+         "p90_in": 4.72,
+         "scale_error_pct": -0.28
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 0.82,
+         "p90_in": 1.43,
+         "scale_error_pct": -1.28
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 1.59,
+         "p90_in": 2.1,
+         "scale_error_pct": -1.13
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.25,
+         "p90_in": 1.7,
+         "scale_error_pct": 0.03
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.47,
+         "p90_in": 2.57,
+         "scale_error_pct": 0.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.05,
+         "p90_in": 0.34,
+         "scale_error_pct": -0.06
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.1,
+         "p90_in": 0.61,
+         "scale_error_pct": -0.07
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 2.16,
+         "scale_error_pct": 0.31
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 1.04,
+         "p90_in": 4.06,
+         "scale_error_pct": 0.29
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.55,
+         "p90_in": 1.38,
+         "scale_error_pct": -0.45
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.55,
+         "p90_in": 3.27,
+         "scale_error_pct": -0.78
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 1.87,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 1.78,
+         "p90_in": 4.69,
+         "scale_error_pct": -0.32
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 0.81,
+         "p90_in": 1.43,
+         "scale_error_pct": -1.28
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 1.57,
+         "p90_in": 2.08,
+         "scale_error_pct": -1.1
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.24,
+         "p90_in": 1.75,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.46,
+         "p90_in": 2.77,
+         "scale_error_pct": 0.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.05,
+         "p90_in": 0.31,
+         "scale_error_pct": -0.06
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.11,
+         "p90_in": 0.6,
+         "scale_error_pct": -0.08
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.44,
+         "p90_in": 2.07,
+         "scale_error_pct": 0.2
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.94,
+         "p90_in": 4.11,
+         "scale_error_pct": 0.22
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 0.51,
+         "p90_in": 1.33,
+         "scale_error_pct": -0.41
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.62,
+         "p90_in": 3.33,
+         "scale_error_pct": -0.83
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 0.65,
+         "p90_in": 1.83,
+         "scale_error_pct": -0.05
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 1.93,
+         "p90_in": 5.33,
+         "scale_error_pct": -0.38
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 11.14,
-       "p90_in": 20.13,
-       "scale_error_pct": -14.28
+    "fused/moge2": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 8.43,
+         "p90_in": 20.21,
+         "scale_error_pct": 9.98
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 15.94,
+         "p90_in": 30.4,
+         "scale_error_pct": 9.73
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 6.28,
+         "scale_error_pct": 0.01
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.33,
+         "p90_in": 10.13,
+         "scale_error_pct": 0.15
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 38.41,
-       "p90_in": 77.73,
-       "scale_error_pct": -15.37
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 16.31,
+         "p90_in": 25.74,
+         "scale_error_pct": 21.43
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 26.68,
+         "p90_in": 33.05,
+         "scale_error_pct": 18.0
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.34,
+         "p90_in": 8.76,
+         "scale_error_pct": 2.51
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 4.76,
+         "p90_in": 11.21,
+         "scale_error_pct": -0.52
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 10.45,
+         "p90_in": 19.29,
+         "scale_error_pct": 17.79
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 30.82,
+         "p90_in": 37.61,
+         "scale_error_pct": 16.24
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.35,
+         "p90_in": 6.74,
+         "scale_error_pct": 0.41
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.52,
+         "p90_in": 14.48,
+         "scale_error_pct": -1.32
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.7,
-       "p90_in": 16.15,
-       "scale_error_pct": 0.1
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 8.46,
+         "p90_in": 19.45,
+         "scale_error_pct": 9.97
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 15.94,
+         "p90_in": 29.88,
+         "scale_error_pct": 9.71
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 6.32,
+         "scale_error_pct": -0.0
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.33,
+         "p90_in": 10.7,
+         "scale_error_pct": 0.15
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 14.89,
-       "p90_in": 56.17,
-       "scale_error_pct": -1.13
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 15.83,
+         "p90_in": 24.18,
+         "scale_error_pct": 20.76
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 26.13,
+         "p90_in": 32.45,
+         "scale_error_pct": 17.7
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.36,
+         "p90_in": 8.68,
+         "scale_error_pct": 2.22
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 4.9,
+         "p90_in": 12.06,
+         "scale_error_pct": -0.57
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 10.29,
+         "p90_in": 18.57,
+         "scale_error_pct": 17.33
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 30.9,
+         "p90_in": 38.24,
+         "scale_error_pct": 16.34
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.36,
+         "p90_in": 6.76,
+         "scale_error_pct": 0.43
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.77,
+         "p90_in": 15.84,
+         "scale_error_pct": -1.35
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 8.3,
+         "p90_in": 19.43,
+         "scale_error_pct": 9.73
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 15.59,
+         "p90_in": 28.5,
+         "scale_error_pct": 9.54
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.66,
+         "p90_in": 6.65,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.33,
+         "p90_in": 11.19,
+         "scale_error_pct": 0.14
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 15.82,
+         "p90_in": 23.31,
+         "scale_error_pct": 20.51
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 25.45,
+         "p90_in": 31.14,
+         "scale_error_pct": 17.31
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.41,
+         "p90_in": 8.73,
+         "scale_error_pct": 2.05
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.03,
+         "p90_in": 13.08,
+         "scale_error_pct": -0.72
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 9.53,
+         "p90_in": 18.52,
+         "scale_error_pct": 16.86
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 30.26,
+         "p90_in": 37.8,
+         "scale_error_pct": 16.15
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.37,
+         "p90_in": 7.16,
+         "scale_error_pct": 0.48
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.97,
+         "p90_in": 17.88,
+         "scale_error_pct": -1.39
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 8.22,
+         "p90_in": 19.1,
+         "scale_error_pct": 9.43
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 15.12,
+         "p90_in": 28.48,
+         "scale_error_pct": 9.37
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 0.72,
+         "p90_in": 9.95,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.41,
+         "p90_in": 17.02,
+         "scale_error_pct": 0.16
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 15.35,
+         "p90_in": 22.59,
+         "scale_error_pct": 20.32
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 25.31,
+         "p90_in": 30.97,
+         "scale_error_pct": 17.28
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.05,
+         "p90_in": 13.44,
+         "scale_error_pct": 2.76
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 6.64,
+         "p90_in": 28.33,
+         "scale_error_pct": -0.8
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 8.96,
+         "p90_in": 17.39,
+         "scale_error_pct": 16.16
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 30.61,
+         "p90_in": 37.62,
+         "scale_error_pct": 16.52
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.86,
+         "p90_in": 9.37,
+         "scale_error_pct": 0.29
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 7.37,
+         "p90_in": 41.64,
+         "scale_error_pct": -1.59
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      }
     },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 10.65,
-       "p90_in": 20.42,
-       "scale_error_pct": -13.29
+    "fused/da3metric": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 4.56,
+         "p90_in": 9.98,
+         "scale_error_pct": -6.68
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 11.96,
+         "p90_in": 15.99,
+         "scale_error_pct": -9.24
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.03,
+         "p90_in": 6.25,
+         "scale_error_pct": -0.05
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.54,
+         "p90_in": 11.59,
+         "scale_error_pct": -0.17
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 36.73,
-       "p90_in": 74.75,
-       "scale_error_pct": -14.75
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.48,
+         "p90_in": 4.51,
+         "scale_error_pct": 0.29
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.79,
+         "p90_in": 4.6,
+         "scale_error_pct": -0.93
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.78,
+         "p90_in": 8.1,
+         "scale_error_pct": -0.57
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 4.88,
+         "p90_in": 14.6,
+         "scale_error_pct": -1.66
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.11,
+         "p90_in": 70.25,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.79,
+         "p90_in": 4.62,
+         "scale_error_pct": -0.73
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 2.74,
+         "p90_in": 66.26,
+         "scale_error_pct": -0.25
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 6.78,
+         "p90_in": 26.48,
+         "scale_error_pct": -1.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 792000,
-       "median_in": 4.96,
-       "p90_in": 18.11,
-       "scale_error_pct": -0.03
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 5.14,
+         "p90_in": 10.15,
+         "scale_error_pct": -7.55
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 12.15,
+         "p90_in": 16.0,
+         "scale_error_pct": -9.51
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.17,
+         "p90_in": 8.67,
+         "scale_error_pct": 0.04
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.7,
+         "p90_in": 16.28,
+         "scale_error_pct": -0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 792000,
-       "median_in": 15.39,
-       "p90_in": 59.9,
-       "scale_error_pct": -1.13
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 10.13,
-       "p90_in": 20.66,
-       "scale_error_pct": -12.03
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.25,
+         "p90_in": 6.69,
+         "scale_error_pct": 1.09
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.53,
+         "p90_in": 7.34,
+         "scale_error_pct": -1.27
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 4.07,
+         "p90_in": 11.09,
+         "scale_error_pct": 0.48
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 6.34,
+         "p90_in": 20.33,
+         "scale_error_pct": -1.73
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 36.0,
-       "p90_in": 77.32,
-       "scale_error_pct": -14.01
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 780000,
-       "median_in": 6.09,
-       "p90_in": 21.48,
-       "scale_error_pct": -0.67
-      },
-      "3-10m": {
-       "pairs": 780000,
-       "median_in": 18.9,
-       "p90_in": 71.57,
-       "scale_error_pct": -2.11
-      }
-     }
-    }
-   },
-   "single/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 114000,
-       "median_in": 10.67,
-       "p90_in": 19.85,
-       "scale_error_pct": -13.78
-      },
-      "3-10m": {
-       "pairs": 114000,
-       "median_in": 36.31,
-       "p90_in": 76.23,
-       "scale_error_pct": -15.14
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 2850000,
-       "median_in": 3.68,
-       "p90_in": 13.63,
-       "scale_error_pct": 0.01
-      },
-      "3-10m": {
-       "pairs": 2850000,
-       "median_in": 11.54,
-       "p90_in": 51.3,
-       "scale_error_pct": -0.77
-      }
-     }
-    }
-   },
-   "fused/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.63,
-       "p90_in": 11.5,
-       "scale_error_pct": -5.59
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 19.97,
-       "p90_in": 47.32,
-       "scale_error_pct": -7.0
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.63,
-       "p90_in": 12.14,
-       "scale_error_pct": 0.15
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 8.96,
-       "p90_in": 46.95,
-       "scale_error_pct": -0.71
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.09,
-       "p90_in": 12.59,
-       "scale_error_pct": -6.68
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 21.38,
-       "p90_in": 47.07,
-       "scale_error_pct": -7.65
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.51,
+         "p90_in": 66.03,
+         "scale_error_pct": -0.14
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 3.36,
+         "p90_in": 6.71,
+         "scale_error_pct": -1.7
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.48,
+         "p90_in": 61.61,
+         "scale_error_pct": 0.71
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 7.98,
+         "p90_in": 30.77,
+         "scale_error_pct": -1.41
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.96,
-       "p90_in": 18.07,
-       "scale_error_pct": 0.45
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 5.24,
+         "p90_in": 10.18,
+         "scale_error_pct": -7.41
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 12.14,
+         "p90_in": 15.99,
+         "scale_error_pct": -9.51
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.16,
+         "p90_in": 9.15,
+         "scale_error_pct": 0.06
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.67,
+         "p90_in": 16.83,
+         "scale_error_pct": -0.04
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 12.55,
-       "p90_in": 58.57,
-       "scale_error_pct": -0.71
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.73,
-       "p90_in": 13.07,
-       "scale_error_pct": -5.84
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.47,
+         "p90_in": 7.0,
+         "scale_error_pct": 1.61
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.41,
+         "p90_in": 6.96,
+         "scale_error_pct": -0.79
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 4.31,
+         "p90_in": 11.76,
+         "scale_error_pct": 0.83
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 6.63,
+         "p90_in": 21.34,
+         "scale_error_pct": -1.4
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 19.06,
-       "p90_in": 49.44,
-       "scale_error_pct": -6.7
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 792000,
-       "median_in": 4.04,
-       "p90_in": 16.56,
-       "scale_error_pct": 0.89
-      },
-      "3-10m": {
-       "pairs": 792000,
-       "median_in": 11.93,
-       "p90_in": 52.11,
-       "scale_error_pct": -0.19
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.26,
-       "p90_in": 14.97,
-       "scale_error_pct": -5.97
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 20.17,
-       "p90_in": 54.07,
-       "scale_error_pct": -7.1
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 772000,
-       "median_in": 5.06,
-       "p90_in": 20.96,
-       "scale_error_pct": 0.8
-      },
-      "3-10m": {
-       "pairs": 772000,
-       "median_in": 14.73,
-       "p90_in": 64.77,
-       "scale_error_pct": -0.54
-      }
-     }
-    }
-   },
-   "single/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 114000,
-       "median_in": 6.27,
-       "p90_in": 13.22,
-       "scale_error_pct": -6.61
-      },
-      "3-10m": {
-       "pairs": 114000,
-       "median_in": 21.79,
-       "p90_in": 52.05,
-       "scale_error_pct": -7.92
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 2850000,
-       "median_in": 2.96,
-       "p90_in": 11.87,
-       "scale_error_pct": -0.11
-      },
-      "3-10m": {
-       "pairs": 2850000,
-       "median_in": 9.31,
-       "p90_in": 44.41,
-       "scale_error_pct": -0.92
-      }
-     }
-    }
-   },
-   "mapanything": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 26.93,
-       "p90_in": 38.21,
-       "scale_error_pct": -32.35
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 88.27,
-       "p90_in": 135.43,
-       "scale_error_pct": -32.83
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.33,
+         "p90_in": 68.87,
+         "scale_error_pct": 0.89
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.98,
+         "p90_in": 8.14,
+         "scale_error_pct": -1.31
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.53,
+         "p90_in": 66.12,
+         "scale_error_pct": 1.5
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 9.11,
+         "p90_in": 33.62,
+         "scale_error_pct": -0.86
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.02,
-       "p90_in": 11.58,
-       "scale_error_pct": -0.21
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 5.02,
+         "p90_in": 9.96,
+         "scale_error_pct": -7.85
+        },
+        "3-10m": {
+         "pairs": 6000,
+         "failed_pct": 0.0,
+         "median_in": 11.96,
+         "p90_in": 16.0,
+         "scale_error_pct": -9.51
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.1,
+         "p90_in": 8.7,
+         "scale_error_pct": 0.13
+        },
+        "3-10m": {
+         "pairs": 150000,
+         "failed_pct": 0.0,
+         "median_in": 1.54,
+         "p90_in": 17.33,
+         "scale_error_pct": 0.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 2
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 10.31,
-       "p90_in": 45.55,
-       "scale_error_pct": -0.89
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 24.65,
-       "p90_in": 36.13,
-       "scale_error_pct": -29.92
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 2.44,
+         "p90_in": 5.66,
+         "scale_error_pct": -0.64
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 4.0,
+         "p90_in": 7.93,
+         "scale_error_pct": -2.58
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.74,
+         "p90_in": 11.19,
+         "scale_error_pct": 1.02
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 5.33,
+         "p90_in": 24.33,
+         "scale_error_pct": -0.54
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 83.84,
-       "p90_in": 128.14,
-       "scale_error_pct": -30.73
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.79,
-       "p90_in": 14.5,
-       "scale_error_pct": 0.0
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 12.23,
-       "p90_in": 51.13,
-       "scale_error_pct": -0.87
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 25.4,
-       "p90_in": 37.39,
-       "scale_error_pct": -30.59
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 85.88,
-       "p90_in": 131.12,
-       "scale_error_pct": -31.37
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.31,
-       "p90_in": 15.54,
-       "scale_error_pct": 0.3
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 13.32,
-       "p90_in": 51.98,
-       "scale_error_pct": -0.77
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 24.96,
-       "p90_in": 36.51,
-       "scale_error_pct": -29.98
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 85.25,
-       "p90_in": 127.9,
-       "scale_error_pct": -31.14
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.67,
-       "p90_in": 15.6,
-       "scale_error_pct": 0.22
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 14.63,
-       "p90_in": 52.85,
-       "scale_error_pct": -0.96
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 1.57,
+         "p90_in": 53.33,
+         "scale_error_pct": 0.4
+        },
+        "3-10m": {
+         "pairs": 3000,
+         "failed_pct": 0.0,
+         "median_in": 5.06,
+         "p90_in": 8.66,
+         "scale_error_pct": -2.57
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 3.23,
+         "p90_in": 53.75,
+         "scale_error_pct": 2.48
+        },
+        "3-10m": {
+         "pairs": 75000,
+         "failed_pct": 0.0,
+         "median_in": 8.59,
+         "p90_in": 37.61,
+         "scale_error_pct": 0.43
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 1
       }
      }
     }
    }
   },
-  "within 6 m of a camera": {
-   "oracle": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 8000,
-       "median_in": 0.8,
-       "p90_in": 1.41,
-       "scale_error_pct": -1.28
+  "single": {
+   "moge2": {
+    "all points": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 0.15,
+        "median_in": 6.3,
+        "p90_in": 13.26,
+        "scale_error_pct": -6.62
+       },
+       "3-10m": {
+        "pairs": 228000,
+        "failed_pct": 0.25,
+        "median_in": 21.92,
+        "p90_in": 52.6,
+        "scale_error_pct": -7.92
+       }
       },
-      "3-10m": {
-       "pairs": 8000,
-       "median_in": 1.59,
-       "p90_in": 2.11,
-       "scale_error_pct": -1.14
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 0.46,
+        "median_in": 2.93,
+        "p90_in": 12.34,
+        "scale_error_pct": 0.03
+       },
+       "3-10m": {
+        "pairs": 5700000,
+        "failed_pct": 0.57,
+        "median_in": 9.22,
+        "p90_in": 45.32,
+        "scale_error_pct": -0.75
+       }
+      },
+      "tape_calibration_success_pct": 99.7,
+      "photos": 76
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 200000,
-       "median_in": 0.19,
-       "p90_in": 1.54,
-       "scale_error_pct": -0.02
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 0.0,
+        "median_in": 6.33,
+        "p90_in": 12.9,
+        "scale_error_pct": -7.01
+       },
+       "3-10m": {
+        "pairs": 228000,
+        "failed_pct": 0.01,
+        "median_in": 21.59,
+        "p90_in": 54.02,
+        "scale_error_pct": -8.16
+       }
       },
-      "3-10m": {
-       "pairs": 200000,
-       "median_in": 0.42,
-       "p90_in": 2.48,
-       "scale_error_pct": 0.02
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 0.32,
+        "median_in": 2.75,
+        "p90_in": 11.3,
+        "scale_error_pct": -0.19
+       },
+       "3-10m": {
+        "pairs": 5700000,
+        "failed_pct": 0.32,
+        "median_in": 8.94,
+        "p90_in": 46.07,
+        "scale_error_pct": -0.87
+       }
+      },
+      "tape_calibration_success_pct": 99.7,
+      "photos": 76
+     },
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 0.04,
+        "median_in": 5.65,
+        "p90_in": 20.83,
+        "scale_error_pct": -2.87
+       },
+       "3-10m": {
+        "pairs": 225783,
+        "failed_pct": 0.08,
+        "median_in": 15.85,
+        "p90_in": 48.41,
+        "scale_error_pct": -4.67
+       }
+      },
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 0.35,
+        "median_in": 4.44,
+        "p90_in": 23.78,
+        "scale_error_pct": 3.31
+       },
+       "3-10m": {
+        "pairs": 5644575,
+        "failed_pct": 0.4,
+        "median_in": 11.66,
+        "p90_in": 50.73,
+        "scale_error_pct": 1.82
+       }
+      },
+      "tape_calibration_success_pct": 99.7,
+      "photos": 76
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 20000,
-       "median_in": 0.8,
-       "p90_in": 1.52,
-       "scale_error_pct": -1.3
+    "within 6 m": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 84000,
+        "failed_pct": 0.0,
+        "median_in": 7.72,
+        "p90_in": 20.0,
+        "scale_error_pct": 10.34
+       },
+       "3-10m": {
+        "pairs": 75000,
+        "failed_pct": 0.0,
+        "median_in": 16.89,
+        "p90_in": 31.58,
+        "scale_error_pct": 11.73
+       }
       },
-      "3-10m": {
-       "pairs": 16000,
-       "median_in": 1.65,
-       "p90_in": 2.61,
-       "scale_error_pct": -1.22
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2100000,
+        "failed_pct": 0.0,
+        "median_in": 0.94,
+        "p90_in": 6.49,
+        "scale_error_pct": 0.05
+       },
+       "3-10m": {
+        "pairs": 1875000,
+        "failed_pct": 0.0,
+        "median_in": 2.2,
+        "p90_in": 12.11,
+        "scale_error_pct": -0.08
+       }
+      },
+      "tape_calibration_success_pct": 100.0,
+      "photos": 28
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 500000,
-       "median_in": 0.24,
-       "p90_in": 1.19,
-       "scale_error_pct": -0.03
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 36000,
+        "failed_pct": 0.0,
+        "median_in": 14.89,
+        "p90_in": 25.37,
+        "scale_error_pct": 20.9
+       },
+       "3-10m": {
+        "pairs": 33000,
+        "failed_pct": 0.0,
+        "median_in": 26.08,
+        "p90_in": 37.02,
+        "scale_error_pct": 17.45
+       }
       },
-      "3-10m": {
-       "pairs": 400000,
-       "median_in": 0.52,
-       "p90_in": 2.45,
-       "scale_error_pct": 0.08
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.99,
-       "p90_in": 1.92,
-       "scale_error_pct": -1.38
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 900000,
+        "failed_pct": 0.0,
+        "median_in": 2.69,
+        "p90_in": 8.23,
+        "scale_error_pct": 1.64
+       },
+       "3-10m": {
+        "pairs": 825000,
+        "failed_pct": 0.0,
+        "median_in": 4.74,
+        "p90_in": 13.02,
+        "scale_error_pct": -1.2
+       }
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 2.06,
-       "p90_in": 3.52,
-       "scale_error_pct": -1.36
-      }
+      "tape_calibration_success_pct": 100.0,
+      "photos": 12
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.34,
-       "p90_in": 1.78,
-       "scale_error_pct": 0.03
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 36000,
+        "failed_pct": 0.0,
+        "median_in": 11.2,
+        "p90_in": 24.31,
+        "scale_error_pct": 19.44
+       },
+       "3-10m": {
+        "pairs": 33000,
+        "failed_pct": 0.0,
+        "median_in": 30.18,
+        "p90_in": 43.65,
+        "scale_error_pct": 16.66
+       }
       },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 0.56,
-       "p90_in": 3.57,
-       "scale_error_pct": 0.11
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 1.23,
-       "p90_in": 2.64,
-       "scale_error_pct": -1.49
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 900000,
+        "failed_pct": 0.0,
+        "median_in": 2.95,
+        "p90_in": 9.27,
+        "scale_error_pct": 0.59
+       },
+       "3-10m": {
+        "pairs": 825000,
+        "failed_pct": 0.0,
+        "median_in": 5.76,
+        "p90_in": 17.56,
+        "scale_error_pct": -1.33
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 2.44,
-       "p90_in": 4.37,
-       "scale_error_pct": -1.4
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 796000,
-       "median_in": 0.74,
-       "p90_in": 2.98,
-       "scale_error_pct": 0.03
-      },
-      "3-10m": {
-       "pairs": 796000,
-       "median_in": 1.33,
-       "p90_in": 5.22,
-       "scale_error_pct": 0.13
-      }
+      "tape_calibration_success_pct": 100.0,
+      "photos": 12
      }
     }
    },
-   "fused/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 8000,
-       "median_in": 4.57,
-       "p90_in": 9.97,
-       "scale_error_pct": -6.54
+   "da3metric": {
+    "all points": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 0.61,
+        "median_in": 10.69,
+        "p90_in": 20.04,
+        "scale_error_pct": -13.77
+       },
+       "3-10m": {
+        "pairs": 228000,
+        "failed_pct": 0.96,
+        "median_in": 36.58,
+        "p90_in": 78.02,
+        "scale_error_pct": -15.14
+       }
       },
-      "3-10m": {
-       "pairs": 8000,
-       "median_in": 11.89,
-       "p90_in": 15.94,
-       "scale_error_pct": -8.33
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 1.13,
+        "median_in": 3.79,
+        "p90_in": 14.76,
+        "scale_error_pct": 0.03
+       },
+       "3-10m": {
+        "pairs": 5700000,
+        "failed_pct": 1.48,
+        "median_in": 12.02,
+        "p90_in": 56.52,
+        "scale_error_pct": -0.7
+       }
+      },
+      "tape_calibration_success_pct": 99.5,
+      "photos": 76
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 200000,
-       "median_in": 1.2,
-       "p90_in": 5.53,
-       "scale_error_pct": -0.08
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 0.09,
+        "median_in": 10.83,
+        "p90_in": 19.86,
+        "scale_error_pct": -14.1
+       },
+       "3-10m": {
+        "pairs": 228000,
+        "failed_pct": 0.1,
+        "median_in": 37.0,
+        "p90_in": 78.09,
+        "scale_error_pct": -15.51
+       }
       },
-      "3-10m": {
-       "pairs": 200000,
-       "median_in": 2.02,
-       "p90_in": 9.44,
-       "scale_error_pct": -0.24
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 0.62,
+        "median_in": 3.58,
+        "p90_in": 13.66,
+        "scale_error_pct": -0.16
+       },
+       "3-10m": {
+        "pairs": 5700000,
+        "failed_pct": 0.62,
+        "median_in": 11.51,
+        "p90_in": 56.8,
+        "scale_error_pct": -0.91
+       }
+      },
+      "tape_calibration_success_pct": 99.5,
+      "photos": 76
+     },
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 228000,
+        "failed_pct": 1.03,
+        "median_in": 9.53,
+        "p90_in": 27.72,
+        "scale_error_pct": -8.89
+       },
+       "3-10m": {
+        "pairs": 225783,
+        "failed_pct": 1.26,
+        "median_in": 26.34,
+        "p90_in": 68.81,
+        "scale_error_pct": -10.38
+       }
+      },
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 5700000,
+        "failed_pct": 1.55,
+        "median_in": 6.9,
+        "p90_in": 41.46,
+        "scale_error_pct": 5.68
+       },
+       "3-10m": {
+        "pairs": 5644575,
+        "failed_pct": 1.79,
+        "median_in": 17.47,
+        "p90_in": 77.24,
+        "scale_error_pct": 3.9
+       }
+      },
+      "tape_calibration_success_pct": 99.5,
+      "photos": 76
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 20000,
-       "median_in": 6.89,
-       "p90_in": 17.35,
-       "scale_error_pct": -10.61
+    "within 6 m": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 84000,
+        "failed_pct": 0.0,
+        "median_in": 6.53,
+        "p90_in": 18.15,
+        "scale_error_pct": -8.19
+       },
+       "3-10m": {
+        "pairs": 75000,
+        "failed_pct": 0.0,
+        "median_in": 16.38,
+        "p90_in": 36.52,
+        "scale_error_pct": -10.91
+       }
       },
-      "3-10m": {
-       "pairs": 16000,
-       "median_in": 19.75,
-       "p90_in": 34.96,
-       "scale_error_pct": -11.55
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2100000,
+        "failed_pct": 0.0,
+        "median_in": 2.13,
+        "p90_in": 10.88,
+        "scale_error_pct": 0.06
+       },
+       "3-10m": {
+        "pairs": 1875000,
+        "failed_pct": 0.0,
+        "median_in": 4.53,
+        "p90_in": 19.68,
+        "scale_error_pct": -1.52
+       }
+      },
+      "tape_calibration_success_pct": 100.0,
+      "photos": 28
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 500000,
-       "median_in": 1.1,
-       "p90_in": 6.42,
-       "scale_error_pct": -0.0
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 36000,
+        "failed_pct": 0.0,
+        "median_in": 3.46,
+        "p90_in": 9.31,
+        "scale_error_pct": 0.2
+       },
+       "3-10m": {
+        "pairs": 33000,
+        "failed_pct": 0.0,
+        "median_in": 4.82,
+        "p90_in": 12.97,
+        "scale_error_pct": -2.47
+       }
       },
-      "3-10m": {
-       "pairs": 400000,
-       "median_in": 3.37,
-       "p90_in": 12.1,
-       "scale_error_pct": -1.23
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.55,
-       "p90_in": 16.94,
-       "scale_error_pct": -10.23
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 900000,
+        "failed_pct": 0.0,
+        "median_in": 4.11,
+        "p90_in": 11.85,
+        "scale_error_pct": 2.02
+       },
+       "3-10m": {
+        "pairs": 825000,
+        "failed_pct": 0.0,
+        "median_in": 6.62,
+        "p90_in": 18.66,
+        "scale_error_pct": -1.9
+       }
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 17.11,
-       "p90_in": 36.49,
-       "scale_error_pct": -9.88
-      }
+      "tape_calibration_success_pct": 100.0,
+      "photos": 12
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 784000,
-       "median_in": 2.73,
-       "p90_in": 12.24,
-       "scale_error_pct": 0.4
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 36000,
+        "failed_pct": 0.0,
+        "median_in": 3.82,
+        "p90_in": 39.43,
+        "scale_error_pct": 1.22
+       },
+       "3-10m": {
+        "pairs": 33000,
+        "failed_pct": 0.0,
+        "median_in": 7.96,
+        "p90_in": 19.69,
+        "scale_error_pct": -2.91
+       }
       },
-      "3-10m": {
-       "pairs": 684000,
-       "median_in": 5.68,
-       "p90_in": 24.48,
-       "scale_error_pct": -1.46
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.04,
-       "p90_in": 18.29,
-       "scale_error_pct": -7.55
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 900000,
+        "failed_pct": 0.0,
+        "median_in": 4.57,
+        "p90_in": 38.42,
+        "scale_error_pct": 3.13
+       },
+       "3-10m": {
+        "pairs": 825000,
+        "failed_pct": 0.0,
+        "median_in": 8.8,
+        "p90_in": 29.06,
+        "scale_error_pct": -1.24
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 18.44,
-       "p90_in": 39.84,
-       "scale_error_pct": -9.43
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 788000,
-       "median_in": 5.5,
-       "p90_in": 20.12,
-       "scale_error_pct": -0.44
-      },
-      "3-10m": {
-       "pairs": 788000,
-       "median_in": 10.09,
-       "p90_in": 39.57,
-       "scale_error_pct": -2.15
-      }
-     }
-    }
-   },
-   "single/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 42000,
-       "median_in": 6.54,
-       "p90_in": 18.13,
-       "scale_error_pct": -8.19
-      },
-      "3-10m": {
-       "pairs": 37500,
-       "median_in": 16.35,
-       "p90_in": 36.35,
-       "scale_error_pct": -10.87
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1050000,
-       "median_in": 2.13,
-       "p90_in": 10.78,
-       "scale_error_pct": 0.02
-      },
-      "3-10m": {
-       "pairs": 937500,
-       "median_in": 4.77,
-       "p90_in": 19.77,
-       "scale_error_pct": -1.7
-      }
-     }
-    }
-   },
-   "fused/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 8000,
-       "median_in": 8.37,
-       "p90_in": 20.08,
-       "scale_error_pct": 10.07
-      },
-      "3-10m": {
-       "pairs": 8000,
-       "median_in": 16.06,
-       "p90_in": 30.26,
-       "scale_error_pct": 9.67
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 200000,
-       "median_in": 0.83,
-       "p90_in": 6.0,
-       "scale_error_pct": -0.01
-      },
-      "3-10m": {
-       "pairs": 200000,
-       "median_in": 1.52,
-       "p90_in": 10.16,
-       "scale_error_pct": 0.03
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 20000,
-       "median_in": 2.98,
-       "p90_in": 13.77,
-       "scale_error_pct": 5.96
-      },
-      "3-10m": {
-       "pairs": 16000,
-       "median_in": 7.3,
-       "p90_in": 26.26,
-       "scale_error_pct": 5.79
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 500000,
-       "median_in": 0.52,
-       "p90_in": 3.7,
-       "scale_error_pct": 0.01
-      },
-      "3-10m": {
-       "pairs": 400000,
-       "median_in": 1.09,
-       "p90_in": 6.95,
-       "scale_error_pct": -0.13
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 4.1,
-       "p90_in": 15.05,
-       "scale_error_pct": 6.1
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 13.79,
-       "p90_in": 30.76,
-       "scale_error_pct": 5.65
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 796000,
-       "median_in": 1.2,
-       "p90_in": 12.14,
-       "scale_error_pct": 0.11
-      },
-      "3-10m": {
-       "pairs": 696000,
-       "median_in": 2.49,
-       "p90_in": 33.77,
-       "scale_error_pct": 0.08
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.46,
-       "p90_in": 17.63,
-       "scale_error_pct": 3.47
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 10.91,
-       "p90_in": 33.57,
-       "scale_error_pct": 3.72
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 784000,
-       "median_in": 4.3,
-       "p90_in": 20.84,
-       "scale_error_pct": 0.33
-      },
-      "3-10m": {
-       "pairs": 784000,
-       "median_in": 8.62,
-       "p90_in": 44.24,
-       "scale_error_pct": 0.7
-      }
-     }
-    }
-   },
-   "single/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 42000,
-       "median_in": 7.75,
-       "p90_in": 19.67,
-       "scale_error_pct": 10.36
-      },
-      "3-10m": {
-       "pairs": 37500,
-       "median_in": 16.88,
-       "p90_in": 31.45,
-       "scale_error_pct": 11.72
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1050000,
-       "median_in": 0.96,
-       "p90_in": 6.41,
-       "scale_error_pct": -0.06
-      },
-      "3-10m": {
-       "pairs": 937500,
-       "median_in": 2.31,
-       "p90_in": 12.78,
-       "scale_error_pct": -0.28
-      }
-     }
-    }
-   },
-   "mapanything": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 8000,
-       "median_in": 13.28,
-       "p90_in": 22.38,
-       "scale_error_pct": -22.92
-      },
-      "3-10m": {
-       "pairs": 8000,
-       "median_in": 30.7,
-       "p90_in": 36.95,
-       "scale_error_pct": -24.3
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 200000,
-       "median_in": 1.07,
-       "p90_in": 7.1,
-       "scale_error_pct": -0.22
-      },
-      "3-10m": {
-       "pairs": 200000,
-       "median_in": 2.18,
-       "p90_in": 14.2,
-       "scale_error_pct": -1.02
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 16000,
-       "median_in": 13.48,
-       "p90_in": 23.27,
-       "scale_error_pct": -25.46
-      },
-      "3-10m": {
-       "pairs": 12000,
-       "median_in": 29.88,
-       "p90_in": 47.36,
-       "scale_error_pct": -21.6
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 400000,
-       "median_in": 0.46,
-       "p90_in": 4.48,
-       "scale_error_pct": -0.02
-      },
-      "3-10m": {
-       "pairs": 300000,
-       "median_in": 1.69,
-       "p90_in": 12.67,
-       "scale_error_pct": -0.57
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 15.74,
-       "p90_in": 25.44,
-       "scale_error_pct": -22.74
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 33.47,
-       "p90_in": 52.88,
-       "scale_error_pct": -22.74
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 700000,
-       "median_in": 1.74,
-       "p90_in": 8.23,
-       "scale_error_pct": -0.05
-      },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 3.63,
-       "p90_in": 14.74,
-       "scale_error_pct": -0.35
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 16.69,
-       "p90_in": 29.43,
-       "scale_error_pct": -21.58
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 37.83,
-       "p90_in": 68.44,
-       "scale_error_pct": -21.57
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.45,
-       "p90_in": 9.32,
-       "scale_error_pct": -0.01
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 5.07,
-       "p90_in": 19.19,
-       "scale_error_pct": -0.45
-      }
+      "tape_calibration_success_pct": 100.0,
+      "photos": 12
      }
     }
    }
   }
  },
  "electro": {
-  "all points": {
-   "oracle": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.66,
-       "p90_in": 2.35,
-       "scale_error_pct": -0.59
+  "groups": {
+   "all points": {
+    "oracle": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.67,
+         "p90_in": 2.35,
+         "scale_error_pct": -0.61
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.4,
+         "p90_in": 5.24,
+         "scale_error_pct": -0.58
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.74,
+         "p90_in": 2.82,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.63,
+         "p90_in": 6.59,
+         "scale_error_pct": -0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.42,
-       "p90_in": 5.31,
-       "scale_error_pct": -0.6
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.28,
+         "p90_in": 1.44,
+         "scale_error_pct": -0.31
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.8,
+         "p90_in": 4.54,
+         "scale_error_pct": -0.37
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 2.46,
+         "scale_error_pct": 0.11
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.33,
+         "p90_in": 6.19,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.39,
+         "p90_in": 1.54,
+         "scale_error_pct": -0.45
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.0,
+         "median_in": 0.94,
+         "p90_in": 4.21,
+         "scale_error_pct": -0.58
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.67,
+         "p90_in": 2.6,
+         "scale_error_pct": 0.06
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 0.0,
+         "median_in": 1.5,
+         "p90_in": 5.56,
+         "scale_error_pct": -0.01
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.7,
-       "p90_in": 2.62,
-       "scale_error_pct": 0.02
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.68,
+         "p90_in": 2.28,
+         "scale_error_pct": -0.61
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.45,
+         "p90_in": 4.95,
+         "scale_error_pct": -0.58
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.74,
+         "p90_in": 2.89,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.61,
+         "p90_in": 6.64,
+         "scale_error_pct": -0.01
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.53,
-       "p90_in": 6.11,
-       "scale_error_pct": 0.01
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 1.23,
+         "scale_error_pct": -0.35
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.94,
+         "p90_in": 4.18,
+         "scale_error_pct": -0.44
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.56,
+         "p90_in": 2.48,
+         "scale_error_pct": 0.14
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.43,
+         "p90_in": 6.27,
+         "scale_error_pct": 0.11
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.43,
+         "p90_in": 1.85,
+         "scale_error_pct": -0.5
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.0,
+         "median_in": 1.04,
+         "p90_in": 3.88,
+         "scale_error_pct": -0.62
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.72,
+         "p90_in": 2.73,
+         "scale_error_pct": 0.07
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 0.0,
+         "median_in": 1.56,
+         "p90_in": 5.91,
+         "scale_error_pct": -0.0
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.67,
+         "p90_in": 2.18,
+         "scale_error_pct": -0.59
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.45,
+         "p90_in": 4.9,
+         "scale_error_pct": -0.59
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.74,
+         "p90_in": 2.82,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.59,
+         "p90_in": 6.67,
+         "scale_error_pct": -0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 1.29,
+         "scale_error_pct": -0.35
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.86,
+         "p90_in": 4.44,
+         "scale_error_pct": -0.44
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.61,
+         "p90_in": 2.41,
+         "scale_error_pct": 0.11
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 1.63,
+         "p90_in": 6.22,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.41,
+         "p90_in": 1.83,
+         "scale_error_pct": -0.5
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.0,
+         "median_in": 1.01,
+         "p90_in": 3.79,
+         "scale_error_pct": -0.61
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.76,
+         "p90_in": 2.62,
+         "scale_error_pct": 0.06
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 0.0,
+         "median_in": 1.69,
+         "p90_in": 5.82,
+         "scale_error_pct": -0.04
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.65,
+         "p90_in": 1.92,
+         "scale_error_pct": -0.59
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 1.4,
+         "p90_in": 4.09,
+         "scale_error_pct": -0.62
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.71,
+         "p90_in": 2.36,
+         "scale_error_pct": 0.01
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 1.42,
+         "p90_in": 5.07,
+         "scale_error_pct": -0.03
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 1.03,
+         "scale_error_pct": -0.35
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.85,
+         "p90_in": 3.09,
+         "scale_error_pct": -0.43
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.59,
+         "p90_in": 2.09,
+         "scale_error_pct": 0.2
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 1.51,
+         "p90_in": 5.21,
+         "scale_error_pct": 0.15
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.48,
+         "p90_in": 1.94,
+         "scale_error_pct": -0.56
+        },
+        "3-10m": {
+         "pairs": 20816,
+         "failed_pct": 0.0,
+         "median_in": 1.1,
+         "p90_in": 3.31,
+         "scale_error_pct": -0.65
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.76,
+         "p90_in": 2.55,
+         "scale_error_pct": 0.09
+        },
+        "3-10m": {
+         "pairs": 520400,
+         "failed_pct": 0.0,
+         "median_in": 1.52,
+         "p90_in": 4.67,
+         "scale_error_pct": 0.01
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       }
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.69,
-       "p90_in": 2.33,
-       "scale_error_pct": -0.66
+    "fused/moge2": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.07,
+         "median_in": 7.64,
+         "p90_in": 17.93,
+         "scale_error_pct": 4.07
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.12,
+         "median_in": 21.9,
+         "p90_in": 49.18,
+         "scale_error_pct": 5.03
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.07,
+         "median_in": 2.86,
+         "p90_in": 13.25,
+         "scale_error_pct": -0.11
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.12,
+         "median_in": 6.81,
+         "p90_in": 37.38,
+         "scale_error_pct": -0.09
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.43,
-       "p90_in": 4.75,
-       "scale_error_pct": -0.53
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.1,
+         "median_in": 7.3,
+         "p90_in": 17.88,
+         "scale_error_pct": 4.28
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.2,
+         "median_in": 22.73,
+         "p90_in": 56.09,
+         "scale_error_pct": 7.14
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.1,
+         "median_in": 2.53,
+         "p90_in": 12.39,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.2,
+         "median_in": 7.03,
+         "p90_in": 38.17,
+         "scale_error_pct": 0.33
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.31,
+         "median_in": 8.81,
+         "p90_in": 33.04,
+         "scale_error_pct": 6.59
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.17,
+         "median_in": 19.03,
+         "p90_in": 54.82,
+         "scale_error_pct": 5.92
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.31,
+         "median_in": 4.08,
+         "p90_in": 36.96,
+         "scale_error_pct": 0.3
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 0.17,
+         "median_in": 6.95,
+         "p90_in": 45.48,
+         "scale_error_pct": -0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.71,
-       "p90_in": 2.88,
-       "scale_error_pct": -0.01
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.06,
+         "median_in": 6.26,
+         "p90_in": 16.62,
+         "scale_error_pct": 2.16
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.11,
+         "median_in": 17.38,
+         "p90_in": 42.13,
+         "scale_error_pct": 3.34
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.06,
+         "median_in": 3.15,
+         "p90_in": 14.02,
+         "scale_error_pct": -0.16
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.11,
+         "median_in": 6.95,
+         "p90_in": 37.44,
+         "scale_error_pct": -0.28
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.73,
-       "p90_in": 7.14,
-       "scale_error_pct": 0.06
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.08,
+         "median_in": 6.09,
+         "p90_in": 16.29,
+         "scale_error_pct": 1.72
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.16,
+         "median_in": 17.53,
+         "p90_in": 45.45,
+         "scale_error_pct": 4.62
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.08,
+         "median_in": 2.79,
+         "p90_in": 13.47,
+         "scale_error_pct": -0.3
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.16,
+         "median_in": 6.91,
+         "p90_in": 38.62,
+         "scale_error_pct": -0.03
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.31,
+         "median_in": 7.68,
+         "p90_in": 30.56,
+         "scale_error_pct": 5.64
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.17,
+         "median_in": 15.42,
+         "p90_in": 44.52,
+         "scale_error_pct": 4.29
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.31,
+         "median_in": 4.31,
+         "p90_in": 32.63,
+         "scale_error_pct": 0.66
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 0.17,
+         "median_in": 7.0,
+         "p90_in": 46.46,
+         "scale_error_pct": -0.06
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.01,
+         "median_in": 5.93,
+         "p90_in": 16.85,
+         "scale_error_pct": 2.54
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.03,
+         "median_in": 16.45,
+         "p90_in": 49.89,
+         "scale_error_pct": 3.62
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.01,
+         "median_in": 3.16,
+         "p90_in": 15.14,
+         "scale_error_pct": -0.21
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.03,
+         "median_in": 6.85,
+         "p90_in": 39.36,
+         "scale_error_pct": -0.03
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.02,
+         "median_in": 5.59,
+         "p90_in": 16.2,
+         "scale_error_pct": 1.25
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.05,
+         "median_in": 16.49,
+         "p90_in": 52.58,
+         "scale_error_pct": 4.1
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.02,
+         "median_in": 2.82,
+         "p90_in": 14.72,
+         "scale_error_pct": -0.32
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.05,
+         "median_in": 6.93,
+         "p90_in": 41.1,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.11,
+         "median_in": 6.44,
+         "p90_in": 21.34,
+         "scale_error_pct": 4.83
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.06,
+         "median_in": 13.35,
+         "p90_in": 37.56,
+         "scale_error_pct": 4.71
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.11,
+         "median_in": 4.64,
+         "p90_in": 27.15,
+         "scale_error_pct": 0.66
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 1.07,
+         "median_in": 7.62,
+         "p90_in": 48.02,
+         "scale_error_pct": 0.83
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 5.04,
+         "p90_in": 12.76,
+         "scale_error_pct": 1.09
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.01,
+         "median_in": 13.61,
+         "p90_in": 25.7,
+         "scale_error_pct": 1.92
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.57,
+         "median_in": 3.54,
+         "p90_in": 13.21,
+         "scale_error_pct": -0.33
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.59,
+         "median_in": 7.11,
+         "p90_in": 29.87,
+         "scale_error_pct": -0.15
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 4.83,
+         "p90_in": 12.21,
+         "scale_error_pct": -0.55
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 13.25,
+         "p90_in": 24.26,
+         "scale_error_pct": 2.93
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.57,
+         "median_in": 3.29,
+         "p90_in": 13.47,
+         "scale_error_pct": -1.06
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.57,
+         "median_in": 7.85,
+         "p90_in": 30.16,
+         "scale_error_pct": -0.24
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 6.48,
+         "p90_in": 15.62,
+         "scale_error_pct": 3.74
+        },
+        "3-10m": {
+         "pairs": 20816,
+         "failed_pct": 0.01,
+         "median_in": 11.1,
+         "p90_in": 24.09,
+         "scale_error_pct": 3.79
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.57,
+         "median_in": 4.78,
+         "p90_in": 16.3,
+         "scale_error_pct": 0.14
+        },
+        "3-10m": {
+         "pairs": 520400,
+         "failed_pct": 0.59,
+         "median_in": 7.35,
+         "p90_in": 27.97,
+         "scale_error_pct": 0.82
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
       }
      }
     },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.75,
-       "p90_in": 2.15,
-       "scale_error_pct": -0.73
+    "fused/da3metric": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.36,
+         "median_in": 7.6,
+         "p90_in": 18.99,
+         "scale_error_pct": -7.89
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.64,
+         "median_in": 22.0,
+         "p90_in": 50.6,
+         "scale_error_pct": -8.35
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.35,
+         "median_in": 3.73,
+         "p90_in": 20.55,
+         "scale_error_pct": 0.04
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.63,
+         "median_in": 9.72,
+         "p90_in": 48.65,
+         "scale_error_pct": -0.73
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.74,
-       "p90_in": 4.89,
-       "scale_error_pct": -0.69
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.62,
+         "median_in": 7.32,
+         "p90_in": 19.16,
+         "scale_error_pct": -9.69
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.97,
+         "median_in": 26.24,
+         "p90_in": 59.43,
+         "scale_error_pct": -11.52
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.61,
+         "median_in": 3.38,
+         "p90_in": 19.19,
+         "scale_error_pct": -0.87
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.94,
+         "median_in": 11.38,
+         "p90_in": 53.88,
+         "scale_error_pct": -2.48
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 1.71,
+         "median_in": 9.48,
+         "p90_in": 37.52,
+         "scale_error_pct": -0.93
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.94,
+         "median_in": 22.94,
+         "p90_in": 113.45,
+         "scale_error_pct": -2.1
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.7,
+         "median_in": 7.56,
+         "p90_in": 57.88,
+         "scale_error_pct": 5.43
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 1.94,
+         "median_in": 15.37,
+         "p90_in": 148.02,
+         "scale_error_pct": 3.41
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.82,
-       "p90_in": 2.69,
-       "scale_error_pct": 0.04
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.25,
+         "median_in": 7.65,
+         "p90_in": 19.63,
+         "scale_error_pct": -8.04
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.56,
+         "median_in": 21.61,
+         "p90_in": 55.89,
+         "scale_error_pct": -8.48
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.75,
+         "median_in": 3.95,
+         "p90_in": 18.26,
+         "scale_error_pct": 0.16
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.05,
+         "median_in": 9.56,
+         "p90_in": 41.28,
+         "scale_error_pct": -0.32
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 2.01,
-       "p90_in": 6.59,
-       "scale_error_pct": 0.04
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 0.8,
-       "p90_in": 2.15,
-       "scale_error_pct": -0.81
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.38,
+         "median_in": 7.27,
+         "p90_in": 20.26,
+         "scale_error_pct": -10.11
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.82,
+         "median_in": 28.02,
+         "p90_in": 65.28,
+         "scale_error_pct": -13.29
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.88,
+         "median_in": 3.56,
+         "p90_in": 17.34,
+         "scale_error_pct": -0.95
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.3,
+         "median_in": 11.32,
+         "p90_in": 51.12,
+         "scale_error_pct": -2.27
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 1.92,
-       "p90_in": 4.65,
-       "scale_error_pct": -0.76
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 1.34,
+         "median_in": 9.51,
+         "p90_in": 43.14,
+         "scale_error_pct": -0.73
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.57,
+         "median_in": 24.27,
+         "p90_in": 96.74,
+         "scale_error_pct": -1.28
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.84,
+         "median_in": 8.12,
+         "p90_in": 62.5,
+         "scale_error_pct": 6.44
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 1.07,
+         "median_in": 16.73,
+         "p90_in": 128.58,
+         "scale_error_pct": 4.35
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 696000,
-       "median_in": 0.81,
-       "p90_in": 2.7,
-       "scale_error_pct": -0.02
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.1,
+         "median_in": 7.17,
+         "p90_in": 20.5,
+         "scale_error_pct": -7.53
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.28,
+         "median_in": 20.95,
+         "p90_in": 59.25,
+         "scale_error_pct": -8.46
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.1,
+         "median_in": 4.28,
+         "p90_in": 21.81,
+         "scale_error_pct": 0.06
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.28,
+         "median_in": 9.95,
+         "p90_in": 51.42,
+         "scale_error_pct": -0.36
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 696000,
-       "median_in": 2.04,
-       "p90_in": 6.45,
-       "scale_error_pct": 0.03
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.15,
+         "median_in": 7.02,
+         "p90_in": 20.48,
+         "scale_error_pct": -9.57
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.4,
+         "median_in": 26.57,
+         "p90_in": 69.4,
+         "scale_error_pct": -13.49
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.15,
+         "median_in": 3.73,
+         "p90_in": 20.88,
+         "scale_error_pct": -1.13
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.4,
+         "median_in": 11.0,
+         "p90_in": 62.69,
+         "scale_error_pct": -2.34
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.63,
+         "median_in": 7.99,
+         "p90_in": 32.24,
+         "scale_error_pct": -0.99
+        },
+        "3-10m": {
+         "pairs": 23816,
+         "failed_pct": 0.28,
+         "median_in": 20.47,
+         "p90_in": 78.26,
+         "scale_error_pct": -2.04
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.63,
+         "median_in": 7.64,
+         "p90_in": 51.99,
+         "scale_error_pct": 5.6
+        },
+        "3-10m": {
+         "pairs": 595400,
+         "failed_pct": 1.29,
+         "median_in": 16.24,
+         "p90_in": 112.98,
+         "scale_error_pct": 3.41
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.04,
+         "median_in": 6.66,
+         "p90_in": 17.91,
+         "scale_error_pct": -7.01
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.09,
+         "median_in": 19.8,
+         "p90_in": 50.93,
+         "scale_error_pct": -7.99
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.61,
+         "median_in": 3.9,
+         "p90_in": 19.02,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.66,
+         "median_in": 8.78,
+         "p90_in": 45.6,
+         "scale_error_pct": -0.26
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.01,
+         "median_in": 7.26,
+         "p90_in": 18.65,
+         "scale_error_pct": -9.39
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.04,
+         "median_in": 25.45,
+         "p90_in": 59.67,
+         "scale_error_pct": -12.81
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.59,
+         "median_in": 3.72,
+         "p90_in": 20.42,
+         "scale_error_pct": -1.64
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.61,
+         "median_in": 11.27,
+         "p90_in": 54.94,
+         "scale_error_pct": -3.08
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.15,
+         "median_in": 7.27,
+         "p90_in": 28.64,
+         "scale_error_pct": -2.88
+        },
+        "3-10m": {
+         "pairs": 20816,
+         "failed_pct": 0.11,
+         "median_in": 17.99,
+         "p90_in": 58.53,
+         "scale_error_pct": -2.39
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.72,
+         "median_in": 6.17,
+         "p90_in": 41.49,
+         "scale_error_pct": 3.86
+        },
+        "3-10m": {
+         "pairs": 520400,
+         "failed_pct": 0.68,
+         "median_in": 13.84,
+         "p90_in": 65.4,
+         "scale_error_pct": 3.25
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
       }
      }
     }
    },
-   "fused/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.58,
-       "p90_in": 19.01,
-       "scale_error_pct": -7.77
+   "within 6 m": {
+    "oracle": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.71,
+         "p90_in": 1.61,
+         "scale_error_pct": -0.93
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.31,
+         "p90_in": 2.38,
+         "scale_error_pct": -0.8
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.54,
+         "p90_in": 1.57,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.93,
+         "p90_in": 2.76,
+         "scale_error_pct": -0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 21.71,
-       "p90_in": 49.41,
-       "scale_error_pct": -8.48
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.13,
+         "p90_in": 0.95,
+         "scale_error_pct": -0.17
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 1.95,
+         "scale_error_pct": -0.2
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.39,
+         "p90_in": 1.51,
+         "scale_error_pct": 0.15
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.76,
+         "p90_in": 2.77,
+         "scale_error_pct": 0.11
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.3,
+         "p90_in": 1.1,
+         "scale_error_pct": -0.36
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.0,
+         "median_in": 0.49,
+         "p90_in": 1.66,
+         "scale_error_pct": -0.35
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.52,
+         "p90_in": 1.68,
+         "scale_error_pct": 0.12
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.0,
+         "median_in": 1.03,
+         "p90_in": 2.83,
+         "scale_error_pct": 0.11
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.7,
-       "p90_in": 20.38,
-       "scale_error_pct": -0.15
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.65,
+         "p90_in": 1.51,
+         "scale_error_pct": -0.81
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.28,
+         "p90_in": 2.34,
+         "scale_error_pct": -0.77
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.49,
+         "p90_in": 1.57,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.92,
+         "p90_in": 2.82,
+         "scale_error_pct": -0.04
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 9.79,
-       "p90_in": 42.29,
-       "scale_error_pct": -0.99
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.15,
+         "p90_in": 0.85,
+         "scale_error_pct": -0.18
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.32,
+         "p90_in": 1.82,
+         "scale_error_pct": -0.21
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.41,
+         "p90_in": 1.52,
+         "scale_error_pct": 0.14
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.81,
+         "p90_in": 2.79,
+         "scale_error_pct": 0.09
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.31,
+         "p90_in": 1.1,
+         "scale_error_pct": -0.38
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.0,
+         "median_in": 0.48,
+         "p90_in": 1.62,
+         "scale_error_pct": -0.34
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.51,
+         "p90_in": 1.71,
+         "scale_error_pct": 0.12
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.0,
+         "median_in": 1.01,
+         "p90_in": 2.81,
+         "scale_error_pct": 0.12
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 0.57,
+         "p90_in": 1.29,
+         "scale_error_pct": -0.68
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 0.0,
+         "median_in": 1.13,
+         "p90_in": 2.23,
+         "scale_error_pct": -0.67
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.43,
+         "p90_in": 1.62,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 0.0,
+         "median_in": 0.8,
+         "p90_in": 3.12,
+         "scale_error_pct": -0.05
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.17,
+         "p90_in": 0.77,
+         "scale_error_pct": -0.21
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.36,
+         "p90_in": 1.64,
+         "scale_error_pct": -0.25
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.4,
+         "p90_in": 1.62,
+         "scale_error_pct": 0.09
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.81,
+         "p90_in": 2.99,
+         "scale_error_pct": 0.06
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.31,
+         "p90_in": 1.05,
+         "scale_error_pct": -0.4
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.0,
+         "median_in": 0.56,
+         "p90_in": 1.63,
+         "scale_error_pct": -0.41
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.49,
+         "p90_in": 1.77,
+         "scale_error_pct": 0.1
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.0,
+         "median_in": 0.96,
+         "p90_in": 3.01,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 1.21,
+         "scale_error_pct": -0.56
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 1.03,
+         "p90_in": 2.02,
+         "scale_error_pct": -0.6
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.45,
+         "p90_in": 1.74,
+         "scale_error_pct": -0.06
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.0,
+         "median_in": 0.79,
+         "p90_in": 3.62,
+         "scale_error_pct": -0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 0.0,
+         "median_in": 0.15,
+         "p90_in": 0.53,
+         "scale_error_pct": -0.18
+        },
+        "3-10m": {
+         "pairs": 18000,
+         "failed_pct": 0.0,
+         "median_in": 0.28,
+         "p90_in": 0.86,
+         "scale_error_pct": -0.18
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 0.0,
+         "median_in": 0.4,
+         "p90_in": 1.66,
+         "scale_error_pct": 0.07
+        },
+        "3-10m": {
+         "pairs": 450000,
+         "failed_pct": 0.0,
+         "median_in": 0.85,
+         "p90_in": 3.2,
+         "scale_error_pct": 0.08
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 6
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 0.0,
+         "median_in": 0.29,
+         "p90_in": 1.02,
+         "scale_error_pct": -0.37
+        },
+        "3-10m": {
+         "pairs": 17786,
+         "failed_pct": 0.0,
+         "median_in": 0.53,
+         "p90_in": 1.55,
+         "scale_error_pct": -0.39
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 0.0,
+         "median_in": 0.51,
+         "p90_in": 1.89,
+         "scale_error_pct": 0.01
+        },
+        "3-10m": {
+         "pairs": 444650,
+         "failed_pct": 0.0,
+         "median_in": 1.01,
+         "p90_in": 3.22,
+         "scale_error_pct": 0.01
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 6
       }
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.9,
-       "p90_in": 21.61,
-       "scale_error_pct": -8.45
+    "fused/moge2": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.7,
+         "median_in": 6.88,
+         "p90_in": 14.91,
+         "scale_error_pct": 4.36
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.83,
+         "median_in": 15.49,
+         "p90_in": 30.36,
+         "scale_error_pct": 4.81
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.7,
+         "median_in": 1.78,
+         "p90_in": 8.63,
+         "scale_error_pct": -0.15
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.83,
+         "median_in": 3.52,
+         "p90_in": 17.49,
+         "scale_error_pct": -0.23
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 23.94,
-       "p90_in": 66.63,
-       "scale_error_pct": -10.15
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 1.07,
+         "median_in": 5.4,
+         "p90_in": 14.85,
+         "scale_error_pct": 3.5
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 2.72,
+         "median_in": 13.57,
+         "p90_in": 33.39,
+         "scale_error_pct": 4.5
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 1.07,
+         "median_in": 1.82,
+         "p90_in": 9.87,
+         "scale_error_pct": -0.27
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 2.72,
+         "median_in": 4.02,
+         "p90_in": 29.11,
+         "scale_error_pct": 0.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 1.01,
+         "median_in": 7.8,
+         "p90_in": 35.54,
+         "scale_error_pct": 3.52
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.58,
+         "median_in": 15.11,
+         "p90_in": 68.54,
+         "scale_error_pct": 4.68
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 1.01,
+         "median_in": 2.79,
+         "p90_in": 26.12,
+         "scale_error_pct": 0.02
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.58,
+         "median_in": 4.44,
+         "p90_in": 52.34,
+         "scale_error_pct": -0.06
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.79,
-       "p90_in": 20.59,
-       "scale_error_pct": -0.35
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.49,
+         "median_in": 6.8,
+         "p90_in": 15.03,
+         "scale_error_pct": 2.4
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.68,
+         "median_in": 14.91,
+         "p90_in": 28.66,
+         "scale_error_pct": 3.75
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.49,
+         "median_in": 2.3,
+         "p90_in": 11.37,
+         "scale_error_pct": -0.02
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.68,
+         "median_in": 3.95,
+         "p90_in": 21.15,
+         "scale_error_pct": 0.03
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 12.35,
-       "p90_in": 53.36,
-       "scale_error_pct": -0.85
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.99,
+         "median_in": 5.22,
+         "p90_in": 15.35,
+         "scale_error_pct": -0.01
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 2.6,
+         "median_in": 13.31,
+         "p90_in": 31.61,
+         "scale_error_pct": 2.5
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.99,
+         "median_in": 2.4,
+         "p90_in": 12.78,
+         "scale_error_pct": -0.28
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 2.6,
+         "median_in": 5.08,
+         "p90_in": 32.24,
+         "scale_error_pct": 0.17
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 1.0,
+         "median_in": 8.47,
+         "p90_in": 33.81,
+         "scale_error_pct": 1.1
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.58,
+         "median_in": 15.17,
+         "p90_in": 49.71,
+         "scale_error_pct": 2.35
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 1.0,
+         "median_in": 3.85,
+         "p90_in": 27.31,
+         "scale_error_pct": 0.7
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.58,
+         "median_in": 5.53,
+         "p90_in": 38.02,
+         "scale_error_pct": 0.1
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      }
+     },
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.22,
+         "median_in": 6.18,
+         "p90_in": 14.43,
+         "scale_error_pct": 2.54
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 1.16,
+         "median_in": 13.89,
+         "p90_in": 25.95,
+         "scale_error_pct": 4.39
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 0.72,
+         "median_in": 2.45,
+         "p90_in": 15.71,
+         "scale_error_pct": 0.19
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 1.66,
+         "median_in": 4.32,
+         "p90_in": 33.21,
+         "scale_error_pct": 0.55
+        }
+       },
+       "tape_calibration_success_pct": 99.5,
+       "groups": 8
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.45,
+         "median_in": 5.59,
+         "p90_in": 15.0,
+         "scale_error_pct": -0.16
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 2.03,
+         "median_in": 13.69,
+         "p90_in": 30.42,
+         "scale_error_pct": 4.3
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 1.02,
+         "median_in": 2.37,
+         "p90_in": 19.81,
+         "scale_error_pct": -0.05
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 2.6,
+         "median_in": 5.28,
+         "p90_in": 52.68,
+         "scale_error_pct": 1.09
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.44,
+         "median_in": 7.47,
+         "p90_in": 20.54,
+         "scale_error_pct": 2.76
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 0.3,
+         "median_in": 13.36,
+         "p90_in": 34.46,
+         "scale_error_pct": 3.22
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 1.01,
+         "median_in": 4.15,
+         "p90_in": 26.46,
+         "scale_error_pct": 0.76
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 0.88,
+         "median_in": 6.44,
+         "p90_in": 50.06,
+         "scale_error_pct": 1.0
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      }
+     },
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.0,
+         "median_in": 5.42,
+         "p90_in": 12.54,
+         "scale_error_pct": 0.73
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.01,
+         "median_in": 12.44,
+         "p90_in": 22.61,
+         "scale_error_pct": 3.02
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 0.57,
+         "median_in": 2.78,
+         "p90_in": 10.82,
+         "scale_error_pct": 0.1
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 0.59,
+         "median_in": 4.26,
+         "p90_in": 21.27,
+         "scale_error_pct": 0.12
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
+      },
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 0.11,
+         "median_in": 4.88,
+         "p90_in": 12.5,
+         "scale_error_pct": -1.24
+        },
+        "3-10m": {
+         "pairs": 18000,
+         "failed_pct": 0.23,
+         "median_in": 11.54,
+         "p90_in": 25.88,
+         "scale_error_pct": 2.79
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 0.77,
+         "median_in": 2.76,
+         "p90_in": 10.07,
+         "scale_error_pct": 0.14
+        },
+        "3-10m": {
+         "pairs": 450000,
+         "failed_pct": 0.9,
+         "median_in": 5.48,
+         "p90_in": 25.78,
+         "scale_error_pct": 1.38
+        }
+       },
+       "tape_calibration_success_pct": 99.3,
+       "groups": 6
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 0.08,
+         "median_in": 6.37,
+         "p90_in": 14.58,
+         "scale_error_pct": 1.25
+        },
+        "3-10m": {
+         "pairs": 17786,
+         "failed_pct": 0.16,
+         "median_in": 7.82,
+         "p90_in": 18.6,
+         "scale_error_pct": -0.28
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 0.74,
+         "median_in": 4.0,
+         "p90_in": 15.24,
+         "scale_error_pct": 1.77
+        },
+        "3-10m": {
+         "pairs": 444650,
+         "failed_pct": 0.84,
+         "median_in": 6.1,
+         "p90_in": 25.36,
+         "scale_error_pct": 0.42
+        }
+       },
+       "tape_calibration_success_pct": 99.3,
+       "groups": 6
       }
      }
     },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.23,
-       "p90_in": 27.31,
-       "scale_error_pct": -7.92
+    "fused/da3metric": {
+     "1": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 2.36,
+         "median_in": 6.52,
+         "p90_in": 19.28,
+         "scale_error_pct": -5.89
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 4.59,
+         "median_in": 14.92,
+         "p90_in": 42.72,
+         "scale_error_pct": -7.6
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 2.36,
+         "median_in": 3.34,
+         "p90_in": 24.76,
+         "scale_error_pct": -0.16
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 4.59,
+         "median_in": 7.4,
+         "p90_in": 52.22,
+         "scale_error_pct": -1.07
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 22.28,
-       "p90_in": 85.92,
-       "scale_error_pct": -8.96
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 4.99,
+         "median_in": 6.38,
+         "p90_in": 27.82,
+         "scale_error_pct": -6.78
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 6.39,
+         "median_in": 15.41,
+         "p90_in": 52.93,
+         "scale_error_pct": -7.44
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 4.99,
+         "median_in": 2.51,
+         "p90_in": 34.67,
+         "scale_error_pct": -0.05
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 6.39,
+         "median_in": 6.83,
+         "p90_in": 118.04,
+         "scale_error_pct": 0.02
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
+      },
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 3.9,
+         "median_in": 9.16,
+         "p90_in": 40.86,
+         "scale_error_pct": -1.42
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 2.46,
+         "median_in": 19.8,
+         "p90_in": 142.77,
+         "scale_error_pct": -1.65
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 3.9,
+         "median_in": 5.71,
+         "p90_in": 66.86,
+         "scale_error_pct": 3.98
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 2.46,
+         "median_in": 10.78,
+         "p90_in": 171.61,
+         "scale_error_pct": 3.68
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 788000,
-       "median_in": 5.54,
-       "p90_in": 26.96,
-       "scale_error_pct": 0.12
+     "2": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 1.28,
+         "median_in": 5.71,
+         "p90_in": 17.72,
+         "scale_error_pct": -5.58
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 3.58,
+         "median_in": 13.55,
+         "p90_in": 38.16,
+         "scale_error_pct": -7.37
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.28,
+         "median_in": 3.61,
+         "p90_in": 21.63,
+         "scale_error_pct": 0.07
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 3.58,
+         "median_in": 7.14,
+         "p90_in": 44.42,
+         "scale_error_pct": -0.39
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 788000,
-       "median_in": 14.08,
-       "p90_in": 81.66,
-       "scale_error_pct": -0.34
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 7.21,
-       "p90_in": 21.9,
-       "scale_error_pct": -7.96
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 3.43,
+         "median_in": 5.84,
+         "p90_in": 20.74,
+         "scale_error_pct": -6.87
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 4.98,
+         "median_in": 13.8,
+         "p90_in": 41.84,
+         "scale_error_pct": -7.34
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 3.43,
+         "median_in": 2.84,
+         "p90_in": 27.74,
+         "scale_error_pct": -0.24
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 4.98,
+         "median_in": 7.66,
+         "p90_in": 76.96,
+         "scale_error_pct": 0.25
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 23.69,
-       "p90_in": 69.46,
-       "scale_error_pct": -9.6
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 688000,
-       "median_in": 5.84,
-       "p90_in": 23.93,
-       "scale_error_pct": -0.33
-      },
-      "3-10m": {
-       "pairs": 688000,
-       "median_in": 15.3,
-       "p90_in": 67.8,
-       "scale_error_pct": -1.42
-      }
-     }
-    }
-   },
-   "single/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 67500,
-       "median_in": 7.47,
-       "p90_in": 24.28,
-       "scale_error_pct": -8.61
-      },
-      "3-10m": {
-       "pairs": 67500,
-       "median_in": 21.15,
-       "p90_in": 69.46,
-       "scale_error_pct": -9.6
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1687500,
-       "median_in": 3.59,
-       "p90_in": 15.16,
-       "scale_error_pct": -0.05
-      },
-      "3-10m": {
-       "pairs": 1687500,
-       "median_in": 9.05,
-       "p90_in": 36.81,
-       "scale_error_pct": -0.72
-      }
-     }
-    }
-   },
-   "fused/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 7.61,
-       "p90_in": 18.25,
-       "scale_error_pct": 4.11
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 21.91,
-       "p90_in": 49.26,
-       "scale_error_pct": 5.14
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.61,
-       "p90_in": 11.93,
-       "scale_error_pct": 0.25
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 6.06,
-       "p90_in": 31.24,
-       "scale_error_pct": 0.38
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.76,
-       "p90_in": 14.64,
-       "scale_error_pct": 1.46
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 15.74,
-       "p90_in": 39.68,
-       "scale_error_pct": 1.85
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 3.84,
+         "median_in": 8.33,
+         "p90_in": 37.07,
+         "scale_error_pct": -1.85
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 2.46,
+         "median_in": 18.81,
+         "p90_in": 103.11,
+         "scale_error_pct": -1.69
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 3.84,
+         "median_in": 6.2,
+         "p90_in": 55.15,
+         "scale_error_pct": 4.59
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 2.46,
+         "median_in": 11.27,
+         "p90_in": 132.09,
+         "scale_error_pct": 3.93
+        }
+       },
+       "tape_calibration_success_pct": 100.0,
+       "groups": 7
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.02,
-       "p90_in": 18.5,
-       "scale_error_pct": 0.08
+     "4": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 24000,
+         "failed_pct": 0.78,
+         "median_in": 5.6,
+         "p90_in": 18.11,
+         "scale_error_pct": -5.65
+        },
+        "3-10m": {
+         "pairs": 24000,
+         "failed_pct": 2.98,
+         "median_in": 13.14,
+         "p90_in": 36.05,
+         "scale_error_pct": -7.01
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 600000,
+         "failed_pct": 1.77,
+         "median_in": 3.99,
+         "p90_in": 25.19,
+         "scale_error_pct": 0.24
+        },
+        "3-10m": {
+         "pairs": 600000,
+         "failed_pct": 3.98,
+         "median_in": 7.76,
+         "p90_in": 51.37,
+         "scale_error_pct": -0.17
+        }
+       },
+       "tape_calibration_success_pct": 99.0,
+       "groups": 8
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 9.36,
-       "p90_in": 52.03,
-       "scale_error_pct": -0.24
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.86,
-       "p90_in": 21.56,
-       "scale_error_pct": 1.85
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 2.41,
+         "median_in": 5.64,
+         "p90_in": 20.81,
+         "scale_error_pct": -6.48
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 4.04,
+         "median_in": 12.69,
+         "p90_in": 38.36,
+         "scale_error_pct": -6.5
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 2.98,
+         "median_in": 3.27,
+         "p90_in": 30.93,
+         "scale_error_pct": 0.06
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 4.6,
+         "median_in": 8.17,
+         "p90_in": 76.77,
+         "scale_error_pct": 0.42
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 15.25,
-       "p90_in": 55.73,
-       "scale_error_pct": 2.39
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 4.71,
-       "p90_in": 24.46,
-       "scale_error_pct": 0.21
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 11.81,
-       "p90_in": 65.23,
-       "scale_error_pct": 0.34
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 5.95,
-       "p90_in": 18.9,
-       "scale_error_pct": 2.09
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 15.4,
-       "p90_in": 51.08,
-       "scale_error_pct": 2.51
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 700000,
-       "median_in": 5.76,
-       "p90_in": 25.71,
-       "scale_error_pct": -0.04
-      },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 14.16,
-       "p90_in": 70.31,
-       "scale_error_pct": -0.6
-      }
-     }
-    }
-   },
-   "single/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 67500,
-       "median_in": 6.79,
-       "p90_in": 19.06,
-       "scale_error_pct": 0.89
-      },
-      "3-10m": {
-       "pairs": 67500,
-       "median_in": 18.47,
-       "p90_in": 51.82,
-       "scale_error_pct": 0.49
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1687500,
-       "median_in": 2.49,
-       "p90_in": 9.52,
-       "scale_error_pct": -0.03
-      },
-      "3-10m": {
-       "pairs": 1687500,
-       "median_in": 6.1,
-       "p90_in": 24.59,
-       "scale_error_pct": -0.17
-      }
-     }
-    }
-   },
-   "mapanything": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 18.64,
-       "p90_in": 36.1,
-       "scale_error_pct": -26.69
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 49.16,
-       "p90_in": 102.39,
-       "scale_error_pct": -26.73
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 1.96,
+         "median_in": 7.32,
+         "p90_in": 23.66,
+         "scale_error_pct": -1.72
+        },
+        "3-10m": {
+         "pairs": 20786,
+         "failed_pct": 1.59,
+         "median_in": 14.85,
+         "p90_in": 74.4,
+         "scale_error_pct": -2.02
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 2.51,
+         "median_in": 6.01,
+         "p90_in": 44.59,
+         "scale_error_pct": 4.3
+        },
+        "3-10m": {
+         "pairs": 519650,
+         "failed_pct": 2.17,
+         "median_in": 10.7,
+         "p90_in": 109.43,
+         "scale_error_pct": 3.45
+        }
+       },
+       "tape_calibration_success_pct": 99.4,
+       "groups": 7
       }
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.08,
-       "p90_in": 15.07,
-       "scale_error_pct": 0.04
+     "8": {
+      "surface interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 21000,
+         "failed_pct": 0.06,
+         "median_in": 5.06,
+         "p90_in": 14.67,
+         "scale_error_pct": -5.63
+        },
+        "3-10m": {
+         "pairs": 21000,
+         "failed_pct": 0.24,
+         "median_in": 11.89,
+         "p90_in": 33.12,
+         "scale_error_pct": -6.85
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 525000,
+         "failed_pct": 4.63,
+         "median_in": 3.57,
+         "p90_in": 20.15,
+         "scale_error_pct": 0.52
+        },
+        "3-10m": {
+         "pairs": 525000,
+         "failed_pct": 4.8,
+         "median_in": 6.46,
+         "p90_in": 38.85,
+         "scale_error_pct": 0.05
+        }
+       },
+       "tape_calibration_success_pct": 95.4,
+       "groups": 7
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 8.44,
-       "p90_in": 32.41,
-       "scale_error_pct": -0.34
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 10.99,
-       "p90_in": 24.24,
-       "scale_error_pct": -9.81
+      "vertical interior": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 0.44,
+         "median_in": 4.85,
+         "p90_in": 17.73,
+         "scale_error_pct": -5.78
+        },
+        "3-10m": {
+         "pairs": 18000,
+         "failed_pct": 0.66,
+         "median_in": 10.35,
+         "p90_in": 36.45,
+         "scale_error_pct": -5.75
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 3.1,
+         "median_in": 2.96,
+         "p90_in": 20.58,
+         "scale_error_pct": 0.18
+        },
+        "3-10m": {
+         "pairs": 450000,
+         "failed_pct": 3.32,
+         "median_in": 6.82,
+         "p90_in": 38.05,
+         "scale_error_pct": 0.38
+        }
+       },
+       "tape_calibration_success_pct": 97.3,
+       "groups": 6
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 27.0,
-       "p90_in": 70.44,
-       "scale_error_pct": -10.26
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.32,
-       "p90_in": 13.76,
-       "scale_error_pct": -0.25
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 8.71,
-       "p90_in": 39.37,
-       "scale_error_pct": -0.89
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 9.45,
-       "p90_in": 24.22,
-       "scale_error_pct": -10.81
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 27.06,
-       "p90_in": 72.81,
-       "scale_error_pct": -10.94
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.54,
-       "p90_in": 12.64,
-       "scale_error_pct": 0.73
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 8.81,
-       "p90_in": 33.56,
-       "scale_error_pct": 0.51
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 10.0,
-       "p90_in": 25.64,
-       "scale_error_pct": -12.25
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 29.67,
-       "p90_in": 76.99,
-       "scale_error_pct": -12.16
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 700000,
-       "median_in": 4.07,
-       "p90_in": 13.79,
-       "scale_error_pct": 0.46
-      },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 10.32,
-       "p90_in": 36.91,
-       "scale_error_pct": 0.1
+      "edges": {
+       "none": {
+        "1-3m": {
+         "pairs": 18000,
+         "failed_pct": 1.08,
+         "median_in": 6.08,
+         "p90_in": 18.96,
+         "scale_error_pct": -2.93
+        },
+        "3-10m": {
+         "pairs": 17786,
+         "failed_pct": 1.07,
+         "median_in": 8.43,
+         "p90_in": 33.22,
+         "scale_error_pct": -3.35
+        }
+       },
+       "one_known_distance": {
+        "1-3m": {
+         "pairs": 450000,
+         "failed_pct": 3.73,
+         "median_in": 5.0,
+         "p90_in": 26.84,
+         "scale_error_pct": 3.56
+        },
+        "3-10m": {
+         "pairs": 444650,
+         "failed_pct": 3.76,
+         "median_in": 8.43,
+         "p90_in": 47.0,
+         "scale_error_pct": 2.49
+        }
+       },
+       "tape_calibration_success_pct": 97.3,
+       "groups": 6
       }
      }
     }
    }
   },
-  "within 6 m of a camera": {
-   "oracle": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.69,
-       "p90_in": 1.59,
-       "scale_error_pct": -0.91
+  "single": {
+   "moge2": {
+    "all points": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 0.11,
+        "median_in": 6.83,
+        "p90_in": 19.13,
+        "scale_error_pct": 0.92
+       },
+       "3-10m": {
+        "pairs": 135000,
+        "failed_pct": 0.17,
+        "median_in": 18.43,
+        "p90_in": 52.66,
+        "scale_error_pct": 0.49
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.32,
-       "p90_in": 2.4,
-       "scale_error_pct": -0.8
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 0.29,
+        "median_in": 2.47,
+        "p90_in": 9.76,
+        "scale_error_pct": -0.05
+       },
+       "3-10m": {
+        "pairs": 3375000,
+        "failed_pct": 0.35,
+        "median_in": 5.86,
+        "p90_in": 25.44,
+        "scale_error_pct": -0.19
+       }
+      },
+      "tape_calibration_success_pct": 99.8,
+      "photos": 45
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.52,
-       "p90_in": 1.51,
-       "scale_error_pct": -0.02
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 0.18,
+        "median_in": 6.57,
+        "p90_in": 19.23,
+        "scale_error_pct": 0.28
+       },
+       "3-10m": {
+        "pairs": 133158,
+        "failed_pct": 0.33,
+        "median_in": 17.85,
+        "p90_in": 56.14,
+        "scale_error_pct": -0.18
+       }
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 0.99,
-       "p90_in": 2.52,
-       "scale_error_pct": 0.0
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 0.36,
+        "median_in": 2.48,
+        "p90_in": 9.71,
+        "scale_error_pct": -0.01
+       },
+       "3-10m": {
+        "pairs": 3328950,
+        "failed_pct": 0.51,
+        "median_in": 5.83,
+        "p90_in": 25.42,
+        "scale_error_pct": -0.05
+       }
+      },
+      "tape_calibration_success_pct": 99.8,
+      "photos": 45
+     },
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 0.64,
+        "median_in": 8.05,
+        "p90_in": 24.9,
+        "scale_error_pct": 4.29
+       },
+       "3-10m": {
+        "pairs": 132648,
+        "failed_pct": 0.3,
+        "median_in": 17.17,
+        "p90_in": 63.46,
+        "scale_error_pct": 2.68
+       }
+      },
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 0.81,
+        "median_in": 4.43,
+        "p90_in": 25.06,
+        "scale_error_pct": 1.12
+       },
+       "3-10m": {
+        "pairs": 3316200,
+        "failed_pct": 0.48,
+        "median_in": 7.22,
+        "p90_in": 37.41,
+        "scale_error_pct": 0.54
+       }
+      },
+      "tape_calibration_success_pct": 99.8,
+      "photos": 45
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.69,
-       "p90_in": 1.73,
-       "scale_error_pct": -0.87
+    "within 6 m": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 1.47,
+        "median_in": 6.79,
+        "p90_in": 19.48,
+        "scale_error_pct": 3.43
+       },
+       "3-10m": {
+        "pairs": 135000,
+        "failed_pct": 2.27,
+        "median_in": 15.08,
+        "p90_in": 41.89,
+        "scale_error_pct": 4.3
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.41,
-       "p90_in": 2.78,
-       "scale_error_pct": -0.8
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 3.28,
+        "median_in": 1.58,
+        "p90_in": 9.59,
+        "scale_error_pct": -0.03
+       },
+       "3-10m": {
+        "pairs": 3375000,
+        "failed_pct": 4.01,
+        "median_in": 3.0,
+        "p90_in": 17.82,
+        "scale_error_pct": -0.01
+       }
+      },
+      "tape_calibration_success_pct": 97.9,
+      "photos": 45
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 0.52,
-       "p90_in": 1.75,
-       "scale_error_pct": -0.05
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 102000,
+        "failed_pct": 3.4,
+        "median_in": 7.13,
+        "p90_in": 24.78,
+        "scale_error_pct": 0.97
+       },
+       "3-10m": {
+        "pairs": 99955,
+        "failed_pct": 7.75,
+        "median_in": 15.67,
+        "p90_in": 64.35,
+        "scale_error_pct": 1.51
+       }
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 1.0,
-       "p90_in": 3.28,
-       "scale_error_pct": -0.01
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 0.66,
-       "p90_in": 1.81,
-       "scale_error_pct": -0.72
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2550000,
+        "failed_pct": 5.38,
+        "median_in": 1.79,
+        "p90_in": 15.12,
+        "scale_error_pct": -0.02
+       },
+       "3-10m": {
+        "pairs": 2498875,
+        "failed_pct": 9.09,
+        "median_in": 3.61,
+        "p90_in": 58.19,
+        "scale_error_pct": 0.25
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 1.34,
-       "p90_in": 3.51,
-       "scale_error_pct": -0.67
-      }
+      "tape_calibration_success_pct": 97.2,
+      "photos": 34
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 796000,
-       "median_in": 0.57,
-       "p90_in": 2.2,
-       "scale_error_pct": 0.04
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 102000,
+        "failed_pct": 0.97,
+        "median_in": 8.34,
+        "p90_in": 31.81,
+        "scale_error_pct": 3.55
+       },
+       "3-10m": {
+        "pairs": 99802,
+        "failed_pct": 0.71,
+        "median_in": 15.0,
+        "p90_in": 53.03,
+        "scale_error_pct": 4.13
+       }
       },
-      "3-10m": {
-       "pairs": 796000,
-       "median_in": 1.3,
-       "p90_in": 4.68,
-       "scale_error_pct": 0.08
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 0.72,
-       "p90_in": 1.95,
-       "scale_error_pct": -0.75
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2550000,
+        "failed_pct": 3.74,
+        "median_in": 3.65,
+        "p90_in": 26.9,
+        "scale_error_pct": 0.58
+       },
+       "3-10m": {
+        "pairs": 2495050,
+        "failed_pct": 3.58,
+        "median_in": 5.78,
+        "p90_in": 36.85,
+        "scale_error_pct": 0.83
+       }
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 1.62,
-       "p90_in": 3.83,
-       "scale_error_pct": -0.72
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 700000,
-       "median_in": 0.67,
-       "p90_in": 2.24,
-       "scale_error_pct": -0.05
-      },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 1.38,
-       "p90_in": 4.75,
-       "scale_error_pct": -0.02
-      }
+      "tape_calibration_success_pct": 97.2,
+      "photos": 34
      }
     }
    },
-   "fused/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.38,
-       "p90_in": 18.58,
-       "scale_error_pct": -6.09
+   "da3metric": {
+    "all points": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 0.48,
+        "median_in": 7.55,
+        "p90_in": 24.88,
+        "scale_error_pct": -8.62
+       },
+       "3-10m": {
+        "pairs": 135000,
+        "failed_pct": 0.81,
+        "median_in": 21.5,
+        "p90_in": 72.6,
+        "scale_error_pct": -9.66
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 14.35,
-       "p90_in": 38.49,
-       "scale_error_pct": -7.57
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 1.09,
+        "median_in": 3.44,
+        "p90_in": 15.3,
+        "scale_error_pct": -0.07
+       },
+       "3-10m": {
+        "pairs": 3375000,
+        "failed_pct": 1.41,
+        "median_in": 8.63,
+        "p90_in": 38.0,
+        "scale_error_pct": -0.69
+       }
+      },
+      "tape_calibration_success_pct": 99.4,
+      "photos": 45
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.88,
-       "p90_in": 20.32,
-       "scale_error_pct": -0.26
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 0.83,
+        "median_in": 8.08,
+        "p90_in": 26.71,
+        "scale_error_pct": -10.0
+       },
+       "3-10m": {
+        "pairs": 133158,
+        "failed_pct": 1.45,
+        "median_in": 22.6,
+        "p90_in": 78.44,
+        "scale_error_pct": -11.46
+       }
       },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 5.56,
-       "p90_in": 34.45,
-       "scale_error_pct": -1.04
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 1.44,
+        "median_in": 3.47,
+        "p90_in": 15.34,
+        "scale_error_pct": -0.68
+       },
+       "3-10m": {
+        "pairs": 3328950,
+        "failed_pct": 2.05,
+        "median_in": 8.88,
+        "p90_in": 41.35,
+        "scale_error_pct": -1.07
+       }
+      },
+      "tape_calibration_success_pct": 99.4,
+      "photos": 45
+     },
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 2.69,
+        "median_in": 7.31,
+        "p90_in": 39.35,
+        "scale_error_pct": -2.22
+       },
+       "3-10m": {
+        "pairs": 132648,
+        "failed_pct": 1.54,
+        "median_in": 16.94,
+        "p90_in": 93.01,
+        "scale_error_pct": -4.39
+       }
+      },
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 3.23,
+        "median_in": 8.74,
+        "p90_in": 61.86,
+        "scale_error_pct": 6.66
+       },
+       "3-10m": {
+        "pairs": 3316200,
+        "failed_pct": 2.13,
+        "median_in": 13.65,
+        "p90_in": 95.38,
+        "scale_error_pct": 3.6
+       }
+      },
+      "tape_calibration_success_pct": 99.4,
+      "photos": 45
      }
     },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.39,
-       "p90_in": 17.49,
-       "scale_error_pct": -6.26
+    "within 6 m": {
+     "surface interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 135000,
+        "failed_pct": 3.72,
+        "median_in": 6.03,
+        "p90_in": 20.2,
+        "scale_error_pct": -6.63
+       },
+       "3-10m": {
+        "pairs": 135000,
+        "failed_pct": 5.07,
+        "median_in": 13.94,
+        "p90_in": 43.43,
+        "scale_error_pct": -7.37
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 15.1,
-       "p90_in": 37.84,
-       "scale_error_pct": -7.28
-      }
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 3375000,
+        "failed_pct": 5.89,
+        "median_in": 2.91,
+        "p90_in": 25.31,
+        "scale_error_pct": -0.12
+       },
+       "3-10m": {
+        "pairs": 3375000,
+        "failed_pct": 7.29,
+        "median_in": 6.09,
+        "p90_in": 62.64,
+        "scale_error_pct": -0.72
+       }
+      },
+      "tape_calibration_success_pct": 96.6,
+      "photos": 45
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 796000,
-       "median_in": 4.06,
-       "p90_in": 21.74,
-       "scale_error_pct": -0.01
+     "vertical interior": {
+      "none": {
+       "1-3m": {
+        "pairs": 102000,
+        "failed_pct": 7.74,
+        "median_in": 6.23,
+        "p90_in": 35.3,
+        "scale_error_pct": -7.17
+       },
+       "3-10m": {
+        "pairs": 99955,
+        "failed_pct": 12.84,
+        "median_in": 14.58,
+        "p90_in": Infinity,
+        "scale_error_pct": -7.31
+       }
       },
-      "3-10m": {
-       "pairs": 796000,
-       "median_in": 8.24,
-       "p90_in": 44.87,
-       "scale_error_pct": -0.42
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.28,
-       "p90_in": 19.16,
-       "scale_error_pct": -6.93
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2550000,
+        "failed_pct": 9.84,
+        "median_in": 2.93,
+        "p90_in": 171.29,
+        "scale_error_pct": 0.06
+       },
+       "3-10m": {
+        "pairs": 2498875,
+        "failed_pct": 14.35,
+        "median_in": 6.65,
+        "p90_in": Infinity,
+        "scale_error_pct": 0.22
+       }
       },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 16.84,
-       "p90_in": 40.32,
-       "scale_error_pct": -7.87
-      }
+      "tape_calibration_success_pct": 95.5,
+      "photos": 34
      },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 788000,
-       "median_in": 4.46,
-       "p90_in": 16.67,
-       "scale_error_pct": 0.05
+     "edges": {
+      "none": {
+       "1-3m": {
+        "pairs": 102000,
+        "failed_pct": 4.27,
+        "median_in": 6.25,
+        "p90_in": 34.96,
+        "scale_error_pct": -1.23
+       },
+       "3-10m": {
+        "pairs": 99802,
+        "failed_pct": 3.11,
+        "median_in": 9.51,
+        "p90_in": 73.13,
+        "scale_error_pct": -0.15
+       }
       },
-      "3-10m": {
-       "pairs": 788000,
-       "median_in": 9.53,
-       "p90_in": 37.03,
-       "scale_error_pct": 0.06
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 5.4,
-       "p90_in": 14.47,
-       "scale_error_pct": -5.84
+      "one_known_distance": {
+       "1-3m": {
+        "pairs": 2550000,
+        "failed_pct": 8.24,
+        "median_in": 7.1,
+        "p90_in": 117.42,
+        "scale_error_pct": 5.52
+       },
+       "3-10m": {
+        "pairs": 2495050,
+        "failed_pct": 7.46,
+        "median_in": 12.41,
+        "p90_in": 185.21,
+        "scale_error_pct": 5.94
+       }
       },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 15.51,
-       "p90_in": 34.93,
-       "scale_error_pct": -6.85
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 684000,
-       "median_in": 4.08,
-       "p90_in": 15.77,
-       "scale_error_pct": 0.17
-      },
-      "3-10m": {
-       "pairs": 684000,
-       "median_in": 8.9,
-       "p90_in": 36.07,
-       "scale_error_pct": -0.4
-      }
-     }
-    }
-   },
-   "single/da3metric": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 67500,
-       "median_in": 5.92,
-       "p90_in": 17.2,
-       "scale_error_pct": -6.61
-      },
-      "3-10m": {
-       "pairs": 67500,
-       "median_in": 13.5,
-       "p90_in": 36.46,
-       "scale_error_pct": -7.22
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1687500,
-       "median_in": 2.73,
-       "p90_in": 16.52,
-       "scale_error_pct": -0.16
-      },
-      "3-10m": {
-       "pairs": 1687500,
-       "median_in": 5.72,
-       "p90_in": 31.57,
-       "scale_error_pct": -0.66
-      }
-     }
-    }
-   },
-   "fused/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 6.86,
-       "p90_in": 14.68,
-       "scale_error_pct": 4.45
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 15.38,
-       "p90_in": 29.13,
-       "scale_error_pct": 4.88
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 1.68,
-       "p90_in": 8.28,
-       "scale_error_pct": 0.06
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 3.17,
-       "p90_in": 15.34,
-       "scale_error_pct": -0.06
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.41,
-       "p90_in": 15.21,
-       "scale_error_pct": 1.81
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 12.57,
-       "p90_in": 30.56,
-       "scale_error_pct": 2.43
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 796000,
-       "median_in": 2.94,
-       "p90_in": 13.8,
-       "scale_error_pct": -0.36
-      },
-      "3-10m": {
-       "pairs": 796000,
-       "median_in": 5.45,
-       "p90_in": 23.3,
-       "scale_error_pct": -0.19
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 5.32,
-       "p90_in": 17.25,
-       "scale_error_pct": 1.67
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 12.33,
-       "p90_in": 35.96,
-       "scale_error_pct": 2.32
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 3.46,
-       "p90_in": 18.14,
-       "scale_error_pct": 0.09
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 7.42,
-       "p90_in": 39.7,
-       "scale_error_pct": 0.6
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 5.22,
-       "p90_in": 12.76,
-       "scale_error_pct": 2.36
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 12.31,
-       "p90_in": 26.3,
-       "scale_error_pct": 2.96
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 692000,
-       "median_in": 4.61,
-       "p90_in": 18.13,
-       "scale_error_pct": 0.26
-      },
-      "3-10m": {
-       "pairs": 692000,
-       "median_in": 9.84,
-       "p90_in": 41.92,
-       "scale_error_pct": 0.46
-      }
-     }
-    }
-   },
-   "single/moge2": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 67500,
-       "median_in": 6.75,
-       "p90_in": 18.73,
-       "scale_error_pct": 3.55
-      },
-      "3-10m": {
-       "pairs": 67500,
-       "median_in": 14.95,
-       "p90_in": 39.49,
-       "scale_error_pct": 4.42
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 1687500,
-       "median_in": 1.56,
-       "p90_in": 8.3,
-       "scale_error_pct": 0.05
-      },
-      "3-10m": {
-       "pairs": 1687500,
-       "median_in": 2.98,
-       "p90_in": 14.6,
-       "scale_error_pct": 0.09
-      }
-     }
-    }
-   },
-   "mapanything": {
-    "1": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 19.99,
-       "p90_in": 40.36,
-       "scale_error_pct": -25.45
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 42.13,
-       "p90_in": 76.99,
-       "scale_error_pct": -21.41
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.05,
-       "p90_in": 15.15,
-       "scale_error_pct": -0.04
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 4.2,
-       "p90_in": 25.29,
-       "scale_error_pct": 0.38
-      }
-     }
-    },
-    "2": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 10.26,
-       "p90_in": 31.95,
-       "scale_error_pct": -8.4
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 21.41,
-       "p90_in": 68.41,
-       "scale_error_pct": -8.53
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.06,
-       "p90_in": 11.96,
-       "scale_error_pct": 0.17
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 4.57,
-       "p90_in": 22.8,
-       "scale_error_pct": 0.46
-      }
-     }
-    },
-    "4": {
-     "none": {
-      "1-3m": {
-       "pairs": 32000,
-       "median_in": 8.77,
-       "p90_in": 22.66,
-       "scale_error_pct": -10.07
-      },
-      "3-10m": {
-       "pairs": 32000,
-       "median_in": 20.19,
-       "p90_in": 57.01,
-       "scale_error_pct": -9.48
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 800000,
-       "median_in": 2.41,
-       "p90_in": 8.13,
-       "scale_error_pct": 0.24
-      },
-      "3-10m": {
-       "pairs": 800000,
-       "median_in": 5.53,
-       "p90_in": 18.61,
-       "scale_error_pct": 0.89
-      }
-     }
-    },
-    "8": {
-     "none": {
-      "1-3m": {
-       "pairs": 28000,
-       "median_in": 8.78,
-       "p90_in": 22.21,
-       "scale_error_pct": -11.24
-      },
-      "3-10m": {
-       "pairs": 28000,
-       "median_in": 21.58,
-       "p90_in": 60.47,
-       "scale_error_pct": -10.62
-      }
-     },
-     "one_known_distance": {
-      "1-3m": {
-       "pairs": 700000,
-       "median_in": 2.92,
-       "p90_in": 9.52,
-       "scale_error_pct": -0.18
-      },
-      "3-10m": {
-       "pairs": 700000,
-       "median_in": 6.85,
-       "p90_in": 22.04,
-       "scale_error_pct": 0.14
-      }
+      "tape_calibration_success_pct": 95.5,
+      "photos": 34
      }
     }
    }

@@ -1,31 +1,29 @@
 """Score reconstructions of ETH3D's facade and electro scenes against their laser scans.
 
-    uv run python -m evals.recon prepare            # images at eval size, visibility, view subsets
+    uv run python -m evals.recon prepare            # images at eval size, visibility, normals, groups
     uv run python -m evals.recon score              # every method with predictions on disk
+    uv run python -m evals.recon sensitivity        # key rows at other visibility tolerances
 
 `prepare` writes, under ~/house-scanning-data/evals/eth3d/<scene>/:
 - `images_1024/<view>.jpg`: the undistorted images at 1024 px wide, the input to every model;
-- `model_inputs/images.txt` and `intrinsics.json`: the list and the matching [fx, fy, cx, cy]
-  (OpenCV, pixels of the 1024-wide image), the arguments the model runners take;
-- `visibility_1024/<view>.npz`: which evaluation points each view sees (`evals.eth3d`);
-- `subsets.json`: the multi-view groups: 8 seed views spread through the capture, each with its
-  1, 3 and 7 nearest cameras that look the same way (centre distance, viewing directions within
-  60 degrees), giving groups of 1, 2, 4 and 8 views.
+- `model_inputs/images.txt` and `intrinsics.json`: the arguments the model runners take;
+- `visibility_1024_tol<N>/<view>.npz`: the evaluation points each view sees, with edge flags;
+- `normals.npy`: a surface normal per evaluation point, to find vertical surfaces;
+- `subsets.json`: 8 seed views spread through the capture, each with its 1, 3 and 7 nearest cameras
+  that look the same way, giving groups of 1, 2, 4 and 8 views.
 
-Methods scored (each reads model outputs from ~/house-scanning-data/evals/predictions/):
-- `single/<model>`: each image alone; its points in its own camera frame. Every view is used.
-- `fused/<model>`: per-frame depth placed with the ground-truth camera poses (standing in for AR
-  poses), each scan point averaged over the views of the group that see it. By group size.
-- `mapanything`: one MapAnything run per group, its points in its own shared frame, averaged the
-  same way. By group size.
-- `oracle`: depth rendered from the scan points themselves, fused like `fused`. Its error is the
-  evaluation's own floor (visibility test, interpolation), not a result.
+Evaluation sets are fixed per seed view, so adding views or changing method never changes what is
+scored: the points the seed sees (within 6 m of the seed camera for the near slice), split into
+cohorts (surface interior, vertical-surface interior, depth edges), with test pairs and taped
+reference pairs drawn once. Other views of a group only add predictions for those points, and in
+the near slice a view contributes a point only if that view's own camera is within 6 m of it.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import cv2
@@ -36,19 +34,36 @@ from evals.eth3d import (
     View,
     excluded_pixels,
     occluder_points,
+    point_normals,
     read_views,
     resized_image,
     scan_points,
+    up_direction,
     visible_scan_points,
 )
-from evals.pairs import Points, evaluate_raw, pool
+from evals.pairs import BINS_M, Points, bin_key, evaluate_fixed, pool, sample_pairs
 from evals.paths import ETH3D_DIR, EVALS_DIR
+from evals.triangulate import sample_depth
 
 WIDTH = 1024
 EVAL_POINTS = 1_500_000
 GROUP_SIZES = (1, 2, 4, 8)
 SEEDS_PER_SCENE = 8
+NEAR_M = 6.0
+RANGES = {"all points": None, "within 6 m": NEAR_M}
+COHORTS = ("surface interior", "vertical interior", "edges")
+VERTICAL_MAX_UP = 0.3  # |normal . up| below this: a vertical surface (within 17 degrees)
+PAIRS_PER_BIN = 3000
+TAPE_REFS = 25
+TOLERANCE = 0.04
 PREDICTIONS = EVALS_DIR / "predictions"
+
+# per_view(view name) -> (depth HxW, K 3x3, cam-to-world 4x4, centred). `centred` True: the pose is
+# metric (true or AR-like), so scaling depth moves points along rays from the camera centre;
+# False: the pose is in a model's own frame and the whole reconstruction scales about its origin.
+PerView = Callable[[str], tuple[np.ndarray, np.ndarray, np.ndarray, bool]]
+# method(group id, members) -> PerView, or None when that method has no output for the group.
+Method = Callable[[str, list[str]], PerView | None]
 
 
 def _height(view: View) -> int:
@@ -64,8 +79,6 @@ def eval_candidates(scene: str) -> np.ndarray:
 
 
 def view_groups(views: list[View]) -> dict[str, list[list[str]]]:
-    """Seed views evenly spaced through the capture; each group is the seed plus its nearest
-    cameras whose viewing direction is within 60 degrees of the seed's."""
     seeds = [views[i] for i in np.linspace(0, len(views) - 1, SEEDS_PER_SCENE).round().astype(int)]
     groups: dict[str, list[list[str]]] = {}
     for n in GROUP_SIZES:
@@ -79,12 +92,16 @@ def view_groups(views: list[View]) -> dict[str, list[list[str]]]:
     return groups
 
 
-def prepare(scene: str) -> None:
+def visibility_dir(scene: str, tolerance: float) -> Path:
+    return ETH3D_DIR / scene / f"visibility_{WIDTH}_tol{round(tolerance * 100)}"
+
+
+def prepare(scene: str, tolerance: float = TOLERANCE) -> None:
     scene_dir = ETH3D_DIR / scene
     views = read_views(scene_dir)
     cands = eval_candidates(scene)
     blockers = np.concatenate([scan_points(scene), occluder_points(scene)])
-    vis_dir = scene_dir / f"visibility_{WIDTH}"
+    vis_dir = visibility_dir(scene, tolerance)
     vis_dir.mkdir(exist_ok=True)
     inputs = scene_dir / "model_inputs"
     inputs.mkdir(exist_ok=True)
@@ -97,60 +114,51 @@ def prepare(scene: str) -> None:
         intr[str(path)] = [K[0, 0], K[1, 1], K[0, 2], K[1, 2]]
         out = vis_dir / f"{v.name}.npz"
         if not out.exists():
-            vis = visible_scan_points(blockers, cands, v, w, h, excluded_pixels(v, w, h))
-            np.savez_compressed(out, index=vis.index, uv=vis.uv.astype(np.float32))
+            vis = visible_scan_points(
+                blockers, cands, v, w, h, excluded_pixels(v, w, h), tolerance=tolerance
+            )
+            np.savez_compressed(out, index=vis.index, uv=vis.uv.astype(np.float32), edge=vis.edge)
     (inputs / "images.txt").write_text("\n".join(listing) + "\n")
     (inputs / "intrinsics.json").write_text(json.dumps(intr, indent=1))
     (scene_dir / "subsets.json").write_text(json.dumps(view_groups(views), indent=1))
-    print(f"{scene}: {len(views)} views prepared, {len(cands)} evaluation points")
+    normals = scene_dir / "normals.npy"
+    if not normals.exists():
+        np.save(normals, point_normals(cands).astype(np.float32))
+    print(f"{scene}: {len(views)} views, {len(cands)} evaluation points, tolerance {tolerance}")
 
 
-def _sample_depth(depth: np.ndarray, uv: np.ndarray) -> np.ndarray:
-    """Bilinear depth at float pixel positions (OpenCV integer-centred); NaN where any of the four
-    neighbours is invalid or outside the image."""
-    d = np.where(np.isfinite(depth) & (depth > 0), depth, np.nan).astype(np.float64)
-    h, w = d.shape
-    x, y = uv[:, 0], uv[:, 1]
-    x0, y0 = np.floor(x).astype(np.int64), np.floor(y).astype(np.int64)
-    fx, fy = x - x0, y - y0
-    out = np.full(len(uv), np.nan)
-    ok = (x0 >= 0) & (y0 >= 0) & (x0 + 1 < w) & (y0 + 1 < h)
-    x0, y0, fx, fy = x0[ok], y0[ok], fx[ok], fy[ok]
-    out[ok] = (
-        d[y0, x0] * (1 - fx) * (1 - fy)
-        + d[y0, x0 + 1] * fx * (1 - fy)
-        + d[y0 + 1, x0] * (1 - fx) * fy
-        + d[y0 + 1, x0 + 1] * fx * fy
-    )
-    return out
-
-
-def _camera_points(depth: np.ndarray, K: np.ndarray, uv: np.ndarray) -> np.ndarray:
-    z = _sample_depth(depth, uv)
+def camera_points(depth: np.ndarray, K: np.ndarray, uv: np.ndarray) -> np.ndarray:
+    z = sample_depth(depth, uv)
     x = (uv[:, 0] - K[0, 2]) / K[0, 0] * z
     y = (uv[:, 1] - K[1, 2]) / K[1, 1] * z
     return np.c_[x, y, z]
 
 
-def _K(intr) -> np.ndarray:
-    fx, fy, cx, cy = map(float, intr)
-    return np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]])
+def load_prediction(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    z = np.load(path)
+    depth = np.where(z["valid"], z["depth"], np.nan) if "valid" in z else z["depth"]
+    fx, fy, cx, cy = map(float, z["intrinsics"])
+    K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]])
+    return depth, K, z.get("cam_to_world", None)
 
 
 class Scene:
-    def __init__(self, name: str):
+    def __init__(self, name: str, tolerance: float = TOLERANCE):
         self.name = name
         self.dir = ETH3D_DIR / name
         self.views = {v.name: v for v in read_views(self.dir)}
         self.cands = eval_candidates(name)
         self.groups = json.loads((self.dir / "subsets.json").read_text())
-        self._vis: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        up = up_direction(list(self.views.values()))
+        self.vertical = np.abs(np.load(self.dir / "normals.npy") @ up) < VERTICAL_MAX_UP
+        self.vis_dir = visibility_dir(name, tolerance)
+        self._vis: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         self._oracle: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
-    def visible(self, view: str) -> tuple[np.ndarray, np.ndarray]:
+    def visible(self, view: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if view not in self._vis:
-            z = np.load(self.dir / f"visibility_{WIDTH}" / f"{view}.npz")
-            self._vis[view] = (z["index"], z["uv"].astype(np.float64))
+            z = np.load(self.vis_dir / f"{view}.npz")
+            self._vis[view] = (z["index"], z["uv"].astype(np.float64), z["edge"])
         return self._vis[view]
 
     def oracle_depth(self, view: str) -> tuple[np.ndarray, np.ndarray]:
@@ -176,178 +184,282 @@ class Scene:
         return buf, K
 
 
-def _fused_points(
-    scene: Scene, members: list[str], per_view, max_range: float | None = None
-) -> Points | None:
-    """Average each evaluation point over the views of a group that see it.
+class EvalSet:
+    """What one seed view's evaluation scores: its points, cohorts, test pairs and tape pairs."""
 
-    per_view(view) -> (depth map, K used for back-projection, 4x4 cam-to-world or None). With None
-    the ground-truth pose places the points and `c` is the camera centre; with a model's own pose
-    the points stay in the model's frame and `c` is zero. With `max_range`, only points within
-    that distance (meters) of the nearest camera of the group are kept.
-    """
-    idx_all, c_all, r_all = [], [], []
+    def __init__(self, scene: Scene, seed: str, max_range: float | None):
+        index, _, edge = scene.visible(seed)
+        keep = np.ones(len(index), bool)
+        if max_range is not None:
+            centre = scene.views[seed].center
+            keep = np.linalg.norm(scene.cands[index] - centre, axis=1) <= max_range
+        self.index = index[keep]
+        self.gt = scene.cands[self.index].astype(np.float64)
+        edge = edge[keep]
+        members = {
+            "surface interior": ~edge,
+            "vertical interior": ~edge & scene.vertical[self.index],
+            "edges": edge,
+        }
+        # One generator per seed and range: the same draw for every method and view count.
+        rng = np.random.default_rng(sum(ord(c) for c in f"{scene.name}{seed}{max_range}"))
+        self.pairs: dict[str, dict[str, np.ndarray]] = {}
+        for cohort, mask in members.items():
+            where = np.flatnonzero(mask)
+            self.pairs[cohort] = {}
+            if len(where) < 2:
+                continue
+            for b in BINS_M:
+                pr = sample_pairs(self.gt[where], *b, PAIRS_PER_BIN, rng)
+                if len(pr):
+                    self.pairs[cohort][bin_key(b)] = where[pr]
+        interior = np.flatnonzero(members["surface interior"])
+        refs = np.empty((0, 2), int)
+        if len(interior) > 1:
+            refs = sample_pairs(self.gt[interior], 1.0, 3.0, TAPE_REFS, rng)
+        self.refs = interior[refs] if len(refs) else np.empty((0, 2), int)
+
+
+def predict(
+    scene: Scene, ev: EvalSet, members: list[str], per_view: PerView, max_range: float | None
+) -> Points:
+    """Each evaluation point averaged over the views of the group that see it (and, with
+    `max_range`, whose own camera is that close to it). NaN where no view predicts it."""
+    lookup = np.full(len(scene.cands), -1)
+    lookup[ev.index] = np.arange(len(ev.index))
+    c_sum = np.zeros((len(ev.index), 3))
+    r_sum = np.zeros((len(ev.index), 3))
+    count = np.zeros(len(ev.index))
     for name in members:
-        index, uv = scene.visible(name)
-        if len(index) == 0:
+        index, uv, _ = scene.visible(name)
+        pos = lookup[index]
+        sel = pos >= 0
+        if max_range is not None:
+            dist = np.linalg.norm(scene.cands[index] - scene.views[name].center, axis=1)
+            sel &= dist <= max_range
+        if not sel.any():
             continue
-        depth, K, T = per_view(name)
-        pc = _camera_points(depth, K, uv)
+        depth, K, T, centred = per_view(name)
+        pc = camera_points(depth, K, uv[sel])
         good = np.isfinite(pc).all(axis=1)
-        if T is None:
-            v = scene.views[name]
-            r = pc[good] @ v.R_wc  # camera to world rotation is R_wc^T: row-vector form
-            c = np.broadcast_to(v.center, r.shape)
+        pos = pos[sel][good]
+        world = pc[good] @ T[:3, :3].T
+        if centred:
+            np.add.at(c_sum, pos, np.broadcast_to(T[:3, 3], world.shape))
+            np.add.at(r_sum, pos, world)
         else:
-            r = pc[good] @ T[:3, :3].T + T[:3, 3]
-            c = np.zeros_like(r)
-        idx_all.append(index[good])
-        c_all.append(c)
-        r_all.append(r)
-    if not idx_all:
-        return None
-    idx = np.concatenate(idx_all)
-    c = np.concatenate(c_all)
-    r = np.concatenate(r_all)
-    uniq, inv, counts = np.unique(idx, return_inverse=True, return_counts=True)
-    cs = np.zeros((len(uniq), 3))
-    rs = np.zeros((len(uniq), 3))
-    np.add.at(cs, inv, c)
-    np.add.at(rs, inv, r)
-    pts = Points(
-        gt=scene.cands[uniq].astype(np.float64), c=cs / counts[:, None], r=rs / counts[:, None]
-    )
-    if max_range is None:
-        return pts
-    centres = np.array([scene.views[m].center for m in members])
-    near = np.min(np.linalg.norm(pts.gt[:, None, :] - centres[None], axis=2), axis=1) <= max_range
-    if near.sum() < 2:
-        return None
-    return Points(gt=pts.gt[near], c=pts.c[near], r=pts.r[near])
+            np.add.at(r_sum, pos, world + T[:3, 3])
+        np.add.at(count, pos, 1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        c = c_sum / count[:, None]
+        r = r_sum / count[:, None]
+    return Points(gt=ev.gt, c=c, r=r)
 
 
-def _load_pred(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-    z = np.load(path)
-    depth = np.where(z["valid"], z["depth"], np.nan) if "valid" in z else z["depth"]
-    T = z.get("cam_to_world", None)
-    return depth, _K(z["intrinsics"]), T
+def _score(scene: Scene, ev: EvalSet, members, per_view, max_range, raws) -> None:
+    pts = predict(scene, ev, members, per_view, max_range)
+    for cohort in COHORTS:
+        if ev.pairs[cohort]:
+            raws[cohort].append(evaluate_fixed(pts, ev.pairs[cohort], ev.refs))
 
 
-RANGES = {"all points": None, "within 6 m of a camera": 6.0}
-MIN_PAIRS = 300  # fewer pairs than this in a cell are reported as n/a
-
-
-def score_scene(scene: Scene, rng: np.random.Generator) -> dict:
-    """{range: {method: {views: pooled summary}}} for every method with predictions on disk."""
-    pred_root = PREDICTIONS / scene.name
-    per_frame_models = (
-        sorted(p.name for p in pred_root.glob("*") if p.is_dir() and p.name != "mapanything")
-        if pred_root.exists()
-        else []
-    )
-
-    def oracle(name):
-        d, K = scene.oracle_depth(name)
-        return d, K, None
-
-    methods = {"oracle": oracle}
-    for model in per_frame_models:
-
-        def per_frame(name, model=model):
-            d, K, _ = _load_pred(pred_root / model / f"{name}.npz")
-            return d, K, None
-
-        methods[f"fused/{model}"] = per_frame
-
-    ma_root = pred_root / "mapanything"
+def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) -> dict:
+    """{range: {method: {views: {cohort: pooled summary}}}} on the fixed per-seed evaluation sets."""
     out: dict = {}
     for range_name, max_range in RANGES.items():
-        results: dict = {}
-        for method, fn in methods.items():
-            results[method] = {}
-            for n, groups in scene.groups.items():
-                raws = []
-                for members in groups:
-                    pts = _fused_points(scene, members, fn, max_range)
-                    if pts is not None:
-                        raws.append(evaluate_raw(pts, rng))
-                results[method][n] = pool(raws)
-            if method.startswith("fused/"):
-                raws = []
-                for name in scene.views:
-                    pts = _fused_points(scene, [name], fn, max_range)
-                    if pts is not None:
-                        raws.append(evaluate_raw(pts, rng, pairs_per_bin=1500))
-                results["single/" + method.split("/", 1)[1]] = {"1": pool(raws)}
-        if ma_root.exists():
-            results["mapanything"] = {}
-            for n, groups in scene.groups.items():
-                raws = []
-                for members in groups:
-                    run = ma_root / f"n{n}-{members[0]}"
-                    if not (run / "run.json").exists():
-                        continue
-
-                    def ma(name, run=run):
-                        return _load_pred(run / f"{name}.npz")
-
-                    pts = _fused_points(scene, members, ma, max_range)
-                    if pts is not None:
-                        raws.append(evaluate_raw(pts, rng))
-                if raws:
-                    results["mapanything"][n] = pool(raws)
-        out[range_name] = results
+        sets = {m[0]: EvalSet(scene, m[0], max_range) for m in scene.groups["1"]}
+        out[range_name] = {}
+        for method, factory in methods.items():
+            res: dict = {}
+            for n in map(str, sizes):
+                raws: dict[str, list] = {c: [] for c in COHORTS}
+                for members in scene.groups.get(n, []):
+                    per_view = factory(f"n{n}-{members[0]}", members)
+                    if per_view is not None:
+                        _score(scene, sets[members[0]], members, per_view, max_range, raws)
+                if raws["surface interior"]:
+                    res[n] = {c: pool(r) | {"groups": len(r)} for c, r in raws.items() if r}
+            if res:
+                out[range_name][method] = res
     return out
+
+
+def score_single_photos(scene: Scene, model: str) -> dict:
+    """Every photo alone (not only the seeds), each on its own fixed evaluation set."""
+    root = PREDICTIONS / scene.name / model
+
+    def per_view(name):
+        d, K, _ = load_prediction(root / f"{name}.npz")
+        return d, K, scene.views[name].cam_to_world, True
+
+    out: dict = {}
+    for range_name, max_range in RANGES.items():
+        raws: dict[str, list] = {c: [] for c in COHORTS}
+        for name in scene.views:
+            ev = EvalSet(scene, name, max_range)
+            if len(ev.index) > 1:
+                _score(scene, ev, [name], per_view, max_range, raws)
+        out[range_name] = {c: pool(r) | {"photos": len(r)} for c, r in raws.items() if r}
+    return out
+
+
+def true_pose_methods(scene: Scene) -> dict[str, Method]:
+    """The oracle and per-photo depth placed with the true poses."""
+    pred_root = PREDICTIONS / scene.name
+
+    def oracle(gid, members):
+        def pv(name):
+            d, K = scene.oracle_depth(name)
+            return d, K, scene.views[name].cam_to_world, True
+
+        return pv
+
+    methods: dict[str, Method] = {"oracle": oracle}
+    for model in ("moge2", "da3metric"):
+        if not (pred_root / model).exists():
+            continue
+
+        def fused(gid, members, model=model):
+            def pv(name):
+                d, K, _ = load_prediction(pred_root / model / f"{name}.npz")
+                return d, K, scene.views[name].cam_to_world, True
+
+            return pv
+
+        methods[f"fused/{model}"] = fused
+    return methods
+
+
+def model_frame_method(root: Path) -> Method:
+    """A multi-view model's own output per group, in the frame and scale it chose."""
+
+    def method(gid, members):
+        run = root / gid
+        if not (run / "run.json").exists():
+            return None
+
+        def pv(name):
+            d, K, T = load_prediction(run / f"{name}.npz")
+            return d, K, T, False
+
+        return pv
+
+    return method
 
 
 LABELS = {
     "oracle": "scan rendered as depth (evaluation floor)",
-    "single/moge2": "MoGe-2, one image",
-    "single/da3metric": "Depth Anything 3 metric, one image",
-    "fused/moge2": "MoGe-2 per frame + true poses",
-    "fused/da3metric": "Depth Anything 3 metric per frame + true poses",
-    "mapanything": "MapAnything, images + intrinsics",
+    "fused/moge2": "MoGe-2 per photo + true poses",
+    "fused/da3metric": "Depth Anything 3 metric per photo + true poses",
+}
+SINGLE_LABELS = {
+    "moge2": "MoGe-2, one photo (every photo)",
+    "da3metric": "Depth Anything 3 metric, one photo (every photo)",
 }
 
 
-def _cell(x: dict) -> str:
-    if x.get("pairs", 0) < MIN_PAIRS:
+def cell(x: dict | None) -> str:
+    if not x or x.get("pairs", 0) == 0:
         return "n/a"
+    if not np.isfinite(x["p90_in"]):
+        return f"{x['median_in']:.1f} / fails ({x['failed_pct']:.0f}% failed)"
     return f"{x['median_in']:.1f} / {x['p90_in']:.1f}"
 
 
-def markdown(results: dict) -> str:
+def _scale(x: dict | None) -> str:
+    v = (x or {}).get("scale_error_pct")
+    return "n/a" if v is None else f"{v:+.1f}%"
+
+
+def table(rows: list[tuple[str, str, dict]], cohort: str) -> list[str]:
+    """Rows of (label, views, {cohort: pooled}) as one markdown table."""
     lines = [
-        "# ETH3D reconstruction accuracy (generated by `uv run python -m evals.recon score`)",
-        "",
+        "| Method | Views | Model scale: 1-3 m | 3-10 m | Scale error | One taped distance: 1-3 m "
+        "| 3-10 m | Tape calibrated |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
-    lines.append(
-        "|error in the distance between two wall points|, inches, median / p90, against the laser "
-        "scan. Scale error is the median of predicted / true length, minus 1."
-    )
-    for scene, ranges in results.items():
-        for range_name, methods in ranges.items():
-            lines += ["", f"## {scene}, {range_name}", ""]
-            for source, title in (
-                ("none", "Scale from the model (nothing measured by hand)"),
-                ("one_known_distance", "Scale from one taped distance (1 to 3 m)"),
-            ):
-                lines += [f"### {title}", ""]
-                lines.append("| Method | Views | 1-3 m | 3-10 m | Scale error, 3-10 m pairs |")
-                lines.append("| --- | --- | --- | --- | --- |")
-                order = [m for m in LABELS if m in methods]
-                order += [m for m in methods if m not in LABELS]
-                for m in order:
-                    for n, res in methods[m].items():
-                        b1, b2 = res[source]["1-3m"], res[source]["3-10m"]
-                        scale = (
-                            b2.get("scale_error_pct") if b2.get("pairs", 0) >= MIN_PAIRS else None
-                        )
-                        scale_txt = "n/a" if scale is None else f"{scale:+.1f}%"
-                        lines.append(
-                            f"| {LABELS.get(m, m)} | {n} | {_cell(b1)} | {_cell(b2)} | {scale_txt} |"
-                        )
-                lines.append("")
+    for label, n, res in rows:
+        r = res.get(cohort)
+        if not r:
+            continue
+        a, b = r["none"].get("1-3m"), r["none"].get("3-10m")
+        ta, tb = r["one_known_distance"].get("1-3m"), r["one_known_distance"].get("3-10m")
+        ok = r.get("tape_calibration_success_pct")
+        lines.append(
+            f"| {label} | {n} | {cell(a)} | {cell(b)} | {_scale(b or a)} | {cell(ta)} | {cell(tb)} "
+            f"| {'n/a' if ok is None else f'{ok:.0f}%'} |"
+        )
+    return lines
+
+
+HEADER = (
+    "|Error in the distance between two scanned surface points|, inches, median / p90, against the "
+    "laser scan. Scale error: median of predicted / true length, minus 1 (3-10 m pairs). Failed "
+    "pairs (no prediction, or a taped reference no scale could match) count as infinite error; "
+    "'fails' means more than 10% failed. Cohorts: surface interior (any scanned surface away from "
+    "depth edges), vertical interior (walls, fences and other vertical surfaces), edges (the near "
+    "side of depth edges: window frames, equipment and fence edges)."
+)
+
+
+def markdown(results: dict) -> str:
+    lines = ["# ETH3D reconstruction accuracy (generated by `uv run python -m evals.recon score`)"]
+    lines += ["", HEADER]
+    for scene, res in results.items():
+        for range_name in RANGES:
+            rows = [
+                (SINGLE_LABELS[m], "1", per_range[range_name])
+                for m, per_range in res["single"].items()
+            ]
+            for m, per_n in res["groups"][range_name].items():
+                rows += [(LABELS.get(m, m), n, r) for n, r in per_n.items()]
+            for cohort in COHORTS:
+                lines += ["", f"## {scene}, {range_name}, {cohort}", ""]
+                lines += table(rows, cohort)
+    return "\n".join(lines) + "\n"
+
+
+def score(tolerance: float = TOLERANCE) -> dict:
+    results = {}
+    for s in SCENES:
+        scene = Scene(s, tolerance)
+        results[s] = {
+            "groups": score_groups(scene, true_pose_methods(scene)),
+            "single": {
+                m: score_single_photos(scene, m)
+                for m in ("moge2", "da3metric")
+                if (PREDICTIONS / s / m).exists()
+            },
+        }
+    return results
+
+
+def sensitivity() -> str:
+    """Key rows at visibility tolerances of 2, 4 and 8% (each prepared on first use)."""
+    lines = [
+        "# Sensitivity to the visibility tolerance (generated by `uv run python -m evals.recon "
+        "sensitivity`)",
+        "",
+        "Surface interior, within 6 m. One taped distance, median / p90 inches, and the model-scale "
+        "error. A point counts as visible when it lies within the tolerance of the nearest scanned "
+        "depth along its pixel.",
+        "",
+        "| Scene | Method | Views | Tolerance | Taped 1-3 m | Taped 3-10 m | Model scale error |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for s in SCENES:
+        for tol in (0.02, 0.04, 0.08):
+            prepare(s, tol)
+            scene = Scene(s, tol)
+            res = score_groups(scene, true_pose_methods(scene), sizes=(1, 2))["within 6 m"]
+            for m, per_n in res.items():
+                for n, r in per_n.items():
+                    t = r["surface interior"]["one_known_distance"]
+                    lines.append(
+                        f"| {s} | {LABELS[m]} | {n} | {tol:.0%} | {cell(t.get('1-3m'))} | "
+                        f"{cell(t.get('3-10m'))} | "
+                        f"{_scale(r['surface interior']['none'].get('3-10m'))} |"
+                    )
     return "\n".join(lines) + "\n"
 
 
@@ -355,21 +467,23 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("step", choices=["prepare", "score"])
-    ap.add_argument("--scenes", nargs="+", default=list(SCENES))
+    ap.add_argument("step", choices=["prepare", "score", "sensitivity"])
     ap.add_argument("--out", type=Path, default=Path(__file__).resolve().parents[1] / "results")
     args = ap.parse_args()
-    if args.step == "prepare":
-        for s in args.scenes:
-            prepare(s)
-        return
-    rng = np.random.default_rng(7)
-    results = {s: score_scene(Scene(s), rng) for s in args.scenes}
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "eth3d_recon.json").write_text(json.dumps(results, indent=1))
-    md = markdown(results)
-    (args.out / "eth3d_recon.md").write_text(md)
-    print(md)
+    if args.step == "prepare":
+        for s in SCENES:
+            prepare(s)
+    elif args.step == "score":
+        results = score()
+        (args.out / "eth3d_recon.json").write_text(json.dumps(results, indent=1))
+        md = markdown(results)
+        (args.out / "eth3d_recon.md").write_text(md)
+        print(md)
+    else:
+        md = sensitivity()
+        (args.out / "eth3d_visibility_sensitivity.md").write_text(md)
+        print(md)
 
 
 if __name__ == "__main__":

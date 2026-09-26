@@ -17,11 +17,13 @@ Three references are scored:
 - `truth`: the ground truth as published;
 - `truth_gps`: the ground truth rescaled by the factor that best fits the phone's GPS track
   (`reference_scale_check`), because GPS and ARCore both say the map was mis-scaled in 20 and 21;
-- `arcore`: the Pixel's ARCore track, an independent tracker with its own camera and IMU.
+- `arcore`: the Pixel's ARCore track. ARKit minus ARCore is an inter-tracker disagreement, not a
+  bound on ARKit's error: two trackers on one rig see the same motion and scene, so part of their
+  errors can be shared and cancel in the difference.
 
-`three_cornered_hat` splits the variance of the pairwise differences into each tracker's own
-variance, assuming their random errors are independent. That is how the report tells ARKit's error apart
-from the reference's.
+`three_cornered_hat` splits the variances of the pairwise differences into per-tracker variances.
+That split holds only if the three trackers' errors are independent; a negative variance shows the
+assumption failing for that row, so the split is reported as conditional and never as a bound.
 
 A sequence whose ARKit track moves faster than a person walks (over 4 m/s between 10 Hz samples)
 is reported as a tracking failure, with the time it failed, instead of producing drift numbers.
@@ -114,9 +116,9 @@ def position_errors(
 
 def three_cornered_hat(var_ab: float, var_ac: float, var_bc: float) -> tuple[float, float, float]:
     """Each tracker's own variance from the variances of three pairwise differences, assuming
-    independent errors: var_ab = a + b, var_ac = a + c, var_bc = b + c. A negative result means that
-    tracker's error is below what the other two can resolve. The inputs must be plain variances:
-    only those add for independent errors (a median-based spread does not)."""
+    independent errors: var_ab = a + b, var_ac = a + c, var_bc = b + c. A negative result means the
+    independence assumption does not hold for these data. The inputs must be plain variances: only
+    those add for independent errors (a median-based spread does not)."""
     a = (var_ab + var_ac - var_bc) / 2
     b = var_ab - a
     c = var_ac - a
@@ -324,7 +326,7 @@ def _markdown(results: list[dict], pooled: dict) -> str:
     )
     lines.append("")
     lines.append(
-        "| Walked | vs truth as published: median / p90 | vs truth rescaled to GPS | vs ARCore | signed median vs ARCore |"
+        "| Walked | vs truth as published: median / p90 | vs truth rescaled to GPS | ARKit - ARCore disagreement | signed median, ARKit - ARCore |"
     )
     lines.append("| --- | --- | --- | --- | --- |")
     for ft in DISTANCES_FT:
@@ -336,7 +338,7 @@ def _markdown(results: list[dict], pooled: dict) -> str:
         )
     lines += ["", "## Per sequence", ""]
     lines.append(
-        "| Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | vs ARCore: median / p90 (signed) | own spread (1 sigma, in): ARKit / truth / ARCore |"
+        "| Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | ARKit - ARCore disagreement: median / p90 (signed) | split if errors were independent (1 sigma, in): ARKit / truth / ARCore |"
     )
     lines.append("| --- | --- | --- | --- | --- |")
     for r in results:
@@ -353,7 +355,8 @@ def _markdown(results: list[dict], pooled: dict) -> str:
             )
     lines.append("")
     lines.append(
-        "A negative spread means that tracker's random error is smaller than the other two can resolve."
+        "The split assumes the three trackers' errors are independent; a negative value shows that "
+        "assumption failing for the row, so treat every split value as conditional."
     )
     return "\n".join(lines) + "\n"
 

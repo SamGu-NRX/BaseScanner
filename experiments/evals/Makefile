@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors
 
 test:
 	uv run ruff check .
@@ -37,7 +37,6 @@ recon-models:
 	    $(MODELS) models.run --model $$m --images $(ETH3D)/$$s/model_inputs/images.txt \
 	      --intrinsics $(ETH3D)/$$s/model_inputs/intrinsics.json --out $(PRED)/$$s/$$m || exit 1; \
 	  done; \
-	  $(MODELS) models.run_groups --scene-dir $(ETH3D)/$$s --out $(PRED)/$$s/mapanything || exit 1; \
 	done
 
 recon-score:
@@ -45,3 +44,20 @@ recon-score:
 
 frames:
 	uv run python -m evals.frames
+
+sensitivity:
+	uv run python -m evals.recon sensitivity
+
+# After recon: AR-like poses, MapAnything with and without them (392 px, 2 and 4 views: the most
+# that fits the shared machine's per-process memory), then triangulation and scoring.
+pose-priors:
+	uv run python -m evals.pose_priors prepare
+	for s in $(SCENES); do \
+	  $(MODELS) models.run_groups --scene-dir $(ETH3D)/$$s --sizes 2 4 --max-side 392 \
+	    --out $(PRED)/$$s/ma392_images || exit 1; \
+	  for p in exact advio_2018 modern_assumed; do \
+	    $(MODELS) models.run_groups --scene-dir $(ETH3D)/$$s --sizes 2 4 --max-side 392 \
+	      --poses-file $(ETH3D)/$$s/ar_poses/$$p.json --out $(PRED)/$$s/ma392_$$p || exit 1; \
+	  done; \
+	done
+	uv run python -m evals.pose_priors score

@@ -3,39 +3,49 @@
 ## Questions
 
 1. How far is ARKit's tracking off after walking 3, 10, 20 and 30 ft outdoors? `docs/02` assumes plus or minus 0.3 ft (3.6 in).
-2. How accurately can phone photos reconstruct a real building wall? Scored on ETH3D's facade and electro scenes against their laser scans, for single-image metric depth (MoGe-2, Depth Anything 3 metric), multi-view reconstruction (MapAnything, Apache checkpoint) and per-frame depth placed with known camera poses, by number of views and scale source.
+2. How accurately can phone photos reconstruct a real building wall, with the model's own scale or with one taped distance, from one photo or several?
+3. Can the phone's AR poses fix the learned models' scale, well enough for about 4 in at p90 on 1 to 3 m spans, the error that decides a 3 ft clearance?
+4. Which photos are worth keeping?
 
-Every reported number comes from real data. Synthetic data appears only in the unit tests of the metric code.
+Every number comes from real data. Synthetic data appears only in the unit tests of the metric code.
 
 ## Answers
 
-Plain answers first; the evidence and limits follow in sections 1 to 3.
+What the ETH3D numbers measure: the error in the distance between two scanned surface points, against a laser scan, reported separately for surface interiors, vertical surfaces (walls, fences) and depth edges (window frames, equipment, fence edges). Clearance endpoints are often edges, and edges score worst. Every "p90" below counts failures (no prediction, or a taped reference that no scale could match) as infinitely wrong.
 
-1. **ARKit drift: much worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, a distance walked comes out a median 2.8 in off after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3), and 25.7 in after 30 ft (p90 60.1). It is mostly one steady error: ARKit read distances about 7% short against ARCore (5% to 17% short against GPS). The 0.3 ft guess holds in the median only for spans of about 3 ft, and never at p90. One of the four walks lost tracking entirely. ADVIO's own ground truth could not score this: its scale is 20% off in two walks and its random error is larger than ARKit's, so ARKit is scored against ARCore on the same rig, with GPS confirming the scale.
-2. **Photos alone: no.** Without anything measured by hand, every model's scale is off. At phone range (points within 6 m of a camera), MoGe-2 reads +4% to +12% long, Depth Anything 3 metric −7% to −11% short, and MapAnything −9% to −24% short, giving median errors of 6 to 20 in on 1 to 3 m spans and 14 to 42 in on 3 to 10 m spans.
-3. **Photos plus one taped distance: good in the median, loose in the tail.** Scaling by one taped 1 to 3 m distance, a single photo through MoGe-2 is off a median 1.6 in on 1 to 3 m spans and 3.0 in on 3 to 10 m spans (electro, within 6 m). But one span in ten is off by more than 8 in and 15 in. Under the strict decision rule (PASS only when the margin beats the error), the usable bound is about ±8 in for 1 to 3 m and ±15 in for 3 to 10 m: enough for clear-cut placements, not for anything near a threshold.
-4. **More photos, or depth per photo placed with AR poses ("the phone imitates LiDAR"): no gain.** Per-photo depth placed with the true camera poses is no better than one photo, and with a taped distance it gets worse as views are added (MoGe-2 median 1.6 to 4.6 in on 1 to 3 m spans, 1 to 8 views): each photo has its own scale error, and one scale factor cannot fix all of them. MapAnything's joint reconstruction corrects part of its scale error with more views (−21% alone, about −10% with 2 to 8), but not enough to skip the tape.
+1. **ARKit drift: far worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, ARKit and ARCore on the same rig disagree about a walked distance by a median 2.8 in after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3) and 25.7 in after 30 ft (p90 60.1). That is a disagreement between two trackers, not a bound on ARKit's error, but most of it is one steady offset that GPS attributes to ARKit: it reads distances 5% to 17% short. One of four walks lost tracking entirely.
+2. **Photos alone: no.** Each model's own metric scale is off. Within 6 m of the camera, MoGe-2 reads 4% to 12% long and Depth Anything 3 metric 7% to 11% short: median errors of 6 to 8 in on 1 to 3 m spans, p90 about 20 in.
+3. **One photo plus one taped distance: good median, loose tail, worst on walls and edges.** A single MoGe-2 photo scaled by a taped 1 to 3 m distance is off a median 1.6 in on 1 to 3 m spans (electro, within 6 m). The p90 is 9.6 in on surfaces overall, 15.1 in on vertical surfaces and 26.9 in at edges. That settles only clear-cut placements.
+4. **More photos with true poses and no rescale: no gain.** On a fixed set of points and pairs, per-photo depth averaged over 1, 2, 4 and 8 photos with the true poses gives, with one tape, medians of 1.8, 2.3, 2.5 and 2.8 in and p90s of 8.6, 11.4, 15.7 and 10.8 in on 1 to 3 m spans. Each photo carries its own scale error, and averaging mixes them.
+5. **AR poses fixing scale: only if the phone's own scale error is about 2% or less, with eight photos, and only on walls.** Rescaling each photo's MoGe-2 depth to points triangulated with the poses, then fusing 8 photos, gives these p90s on 1 to 3 m spans (electro, within 6 m, no tape):
+   - with exact poses, 4.1 in overall and 2.9 in on walls;
+   - with an assumed modern phone (2% scale error, 1 cm and 0.1° of noise), 5.1 in and 3.9 in;
+   - with the errors measured on the 2018 phone, 12.8 in and 11.1 in.
 
-5. **Which photos to keep: the close ones.** Scored one photo at a time (MoGe-2, one taped distance), keeping only photos with the wall within 6 m cut the error from 2.7 / 11.2 in (median / p90) to 1.9 / 6.8 in on 1 to 3 m spans, and from 7.6 / 38.5 in to 4.3 / 14.4 in on 3 to 10 m spans. Viewing angle made little difference across these photos (26 to 75 degrees off head-on).
+   The pose's scale error passes straight into every length. On facade, whose photos were taken from 10 to 25 m, the p90 with exact poses is 8.2 in over all points. Edges stay at 8 in or worse in every setting. MapAnything given the poses as priors fixes most of its scale on electro (+17% becomes −3% to +4%) but not on facade (still 12% to 16% short). It also leaves 10% to 20% of the pairs without a prediction, so its p90 fails.
 
-What it means for the capture: without LiDAR, ask for one taped reference distance (or a known-size object) and use single-photo depth scaled by it, with an error bound set from the p90, not the median. Walking long distances with AR tracking to measure a span adds its own 7% bias on the phone measured here; a current phone must be checked with the Measure Lab tape protocol before that number is trusted.
+   **Verdict:** neither way reaches about 4 in at p90 with the pose error measured on the one phone we have. Triangulation-rescaled depth reaches it on walls only if a current phone's AR scale error is about 2% or less. That is an assumption, and the Measure Lab tape protocol can check it on a real phone in an hour.
+6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.5 to 6.8 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
 
 ## Reproduce
 
-From a clean checkout, on macOS with Apple silicon or Linux:
+From a clean checkout (macOS with Apple silicon, or Linux for everything but the models):
 
 ```sh
 cd experiments/evals
 uv sync
-uv run pytest -q                                  # metric code against hand-computed cases
-
-make drift        # ADVIO download (about 800 MB) and the drift tables -> results/advio_drift.md
-make replay       # the replay session -> ~/house-scanning-data/replays/
-make recon        # ETH3D download (about 2.4 GB), model runs, scoring -> results/eth3d_recon.md
-make frames       # after make recon: which photos to keep -> results/frames.md
+make test          # metric code against hand-computed cases, lint, format
+make drift         # ADVIO download (about 800 MB) -> results/advio_drift.md
+make replay        # the replay session -> ~/house-scanning-data/replays/
+make recon         # ETH3D download (about 2.4 GB), MoGe-2 and Depth Anything 3 runs -> results/eth3d_recon.md
+make sensitivity   # after recon -> results/eth3d_visibility_sensitivity.md
+make pose-priors   # after recon -> results/pose_priors.md
+make frames        # after recon -> results/frames.md
 ```
 
-Data lives outside the repo, in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks every archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
+Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
+
+Every process stays near or under 4 GB, because the machine is shared. MapAnything's 1.2 B parameters are loaded with their transformer weights in bf16 (`models/map_anything.py`), and even then only 2 and 4 views at 392 px fit (peak 4.05 GB). An earlier run at its native 518 px, with fp32 weights, read 10% to 33% short, where the 392 px run reads 17% long on electro's near walls and 14% short on facade. So its metric scale depends on input resolution, and neither run is a stable baseline.
 
 ## Datasets
 
@@ -53,103 +63,122 @@ Data lives outside the repo, in `~/house-scanning-data/` (override with `HOUSE_S
 | | electro_dslr_scan_eval.7z | https://www.eth3d.net/data/electro_dslr_scan_eval.7z | 250703286 | 5ca10a73e7da0e3c511e255bba5656cca4c372dc00c1417c97b75228a5bb3bac |
 | | electro_dslr_occlusion.7z | https://www.eth3d.net/data/electro_dslr_occlusion.7z | 47214879 | cc25a22de9fc27251a5178454c24785671a2b2c199756a0d03297413290830b3 |
 
-Model checkpoints, all licensed for commercial use, are pinned by revision and checked against Hugging Face's sha256 in `models/` (see `models/README.md`).
+Model checkpoints (MIT and Apache-2.0) are pinned by revision and checked against Hugging Face's sha256 (`models/README.md`).
 
 ## 1. ARKit drift outdoors (ADVIO)
 
-`uv run python -m evals.drift` writes [results/advio_drift.md](results/advio_drift.md).
+[results/advio_drift.md](results/advio_drift.md), `make drift`.
 
-**Data.** ADVIO's four outdoor walks (sequences 20 to 23, 3 to 6 minutes and 380 to 510 m each) were recorded in 2018 on a rig carrying an iPhone 6s (ARKit 1.0, video, GPS) and a Google Pixel running ARCore. The dataset's ground truth is an inertial track pinned to fix points that were marked on a map.
+**Data.** ADVIO's four outdoor walks (sequences 20 to 23, 3 to 6 minutes and 380 to 510 m each), recorded in 2018 on a rig carrying an iPhone 6s (ARKit 1.0, video, GPS) and a Google Pixel running ARCore. The ground truth is an inertial track pinned to fix points marked on a map.
 
-**Method.** From every half second of each walk, the walk continues until 3, 10, 20 or 30 ft of path has been covered. The error is ARKit's straight-line displacement minus the reference's. This distance error needs no heading alignment, and it is what a span measured by walking it (a 30 ft wall, the gap to a fence) would be off by.
+**Method.** From every half second of a walk, the walk continues until exactly 3, 10, 20 or 30 ft of path has been covered. The error is ARKit's straight-line displacement minus the reference's. It needs no heading alignment, and it is what a span measured by walking it would be off by.
 
-**The ground truth is not good enough on its own, for two reasons.**
+**Why ARKit is not scored against ADVIO's ground truth alone.** Its scale is wrong in walks 20 and 21. ARKit covers only 0.70 and 0.75 of the truth's distance there, which is why ARKit's path totals 345 m against the truth's 474 m in walk 20. GPS scales the truth by 0.835 and 0.799 (95% intervals 0.81 to 0.86 and 0.78 to 0.82), and ARCore agrees (0.80 and 0.82). In walks 22 and 23 both agree with the truth's scale. The fix points explain it: walks 20 and 21 were pinned on one map at 0.0422 m per map pixel, and 22 and 23 on another at 0.2256 m per pixel. So most of the path-length gap is the reference's error; the rest is ARKit reading 5% to 17% short (ARKit over GPS: 0.83, 0.94, 0.95 in walks 20 to 22).
 
-- Its scale is wrong in sequences 20 and 21. ARKit covers only 0.70 and 0.75 of the ground truth's distance there, which is why ARKit's path totals 345 m against the truth's 474 m in sequence 20. The phone's GPS says the truth is too long: the best GPS fit scales it by 0.835 and 0.799 (95% intervals 0.81 to 0.86 and 0.78 to 0.82). The Pixel's ARCore, an independent tracker, agrees (0.80 and 0.82). In sequences 22 and 23, which were recorded in a different place, GPS and ARCore agree with the truth's scale (1.03 and 1.03 in 22). The fix points show why: sequences 20 and 21 were pinned on one map, converted at 0.0422 m per map pixel, and 22 and 23 on another at 0.2256 m per pixel (`ground-truth/fixpoints.csv`). A first map scaled about 20% too large explains all of this. So most of the path-length gap is the reference's error; the rest, about 5% to 16%, is ARKit reading short (ARKit over GPS: 0.83, 0.94, 0.95 in sequences 20 to 22).
-- Its random error is larger than ARKit's. The variances of the pairwise differences between ARKit, ARCore and the truth split into each tracker's own variance, if their errors are independent (the three-cornered hat, `three_cornered_hat`). At every distance in every sequence the truth's own spread is the largest: at 30 ft it is 35 to 73 in (1 sigma) against ARKit's 13 to 24 in, and in sequence 22 ARKit's is below what the method resolves. The inertial track wanders between fix points. Plain variances are used because only they add; they are sensitive to outliers, so treat these spreads as rough.
+The truth also wanders between fix points. The results file splits the variance of each pairwise difference into per-tracker parts, but that split assumes the three trackers' errors are independent. Walk 22 violates it: it gives negative variances, and at 3 ft it puts ARCore's spread (16.3 in) above the truth's (8.1 in). Read the split as conditional, not as a resolution limit or a bound.
 
-So the report scores ARKit against three references: the truth as published, the truth rescaled to GPS, and ARCore. ARCore is the tightest, and its errors add to ARKit's, so the "vs ARCore" column overstates ARKit's random error rather than hiding it. The bias columns carry the scale disagreement, which GPS attributes mostly to ARKit.
+**Results, pooled over walks 20 to 22** (walk 23: ARKit jumped at 826 m/s 5.5 s in and never recovered). |ARKit − reference|, inches, median / p90:
 
-**Results, pooled over sequences 20 to 22** (sequence 23: ARKit lost tracking 5.5 s in, jumping at 826 m/s, and never recovered; it counts as a failure, not a number). |ARKit − reference|, inches:
-
-| Walked | vs truth as published, median / p90 | vs truth rescaled to GPS | vs ARCore | ARKit short by (median, vs ARCore) |
+| Walked | vs truth as published | vs truth rescaled to GPS | ARKit − ARCore disagreement | Signed median, ARKit − ARCore |
 | --- | --- | --- | --- | --- |
-| 3 ft | 9.7 / 17.8 | 4.7 / 13.1 | 2.8 / 8.2 | 2.4 |
-| 10 ft | 31.6 / 55.8 | 15.4 / 40.5 | 8.6 / 22.3 | 8.1 |
-| 20 ft | 60.4 / 106.0 | 30.9 / 70.1 | 16.9 / 41.5 | 15.9 |
-| 30 ft | 88.2 / 156.8 | 44.5 / 92.9 | 25.7 / 60.1 | 24.8 |
+| 3 ft | 9.7 / 17.8 | 4.7 / 13.1 | 2.8 / 8.2 | −2.4 |
+| 10 ft | 31.6 / 55.8 | 15.4 / 40.5 | 8.6 / 22.3 | −8.1 |
+| 20 ft | 60.4 / 106.0 | 30.9 / 70.1 | 16.9 / 41.5 | −15.9 |
+| 30 ft | 88.2 / 156.8 | 44.5 / 92.9 | 25.7 / 60.1 | −24.8 |
 
-Per sequence against ARCore, the 30 ft median is 42.2 in (sequence 20), 23.1 in (21) and 17.3 in (22). Per-sequence tables and the noise split are in the results file.
+The ARCore column is the tightest comparison, but it is not a conservative estimate of ARKit's error: two trackers on one rig can share errors that cancel in their difference.
 
-**Limits.** This is a 2018 phone with ARKit 1.0, walking briskly with the camera pointed along the path rather than at a wall. Current iPhones and ARKit versions may track better; this eval has no data on them. The Measure Lab outdoor protocol (on `t3/measure-lab`) measures it on a current phone with a tape.
+**Limits.** A 2018 phone with ARKit 1.0, walking briskly with the camera pointed along the path. Current phones may track better; there is no data on them here.
 
 ## 2. Reconstruction accuracy on building walls (ETH3D)
 
-`make recon` (or `uv run python -m evals.recon prepare` then `score` once the model outputs exist) writes [results/eth3d_recon.md](results/eth3d_recon.md), every method at 1, 2, 4 and 8 views for both scenes, both scale sources, and two ranges.
+[results/eth3d_recon.md](results/eth3d_recon.md), `make recon`; [results/eth3d_visibility_sensitivity.md](results/eth3d_visibility_sensitivity.md), `make sensitivity`.
 
-**Data.** ETH3D's facade (76 photos) and electro (45 photos) scenes: building walls photographed with a 24 MP DSLR, camera poses registered to terrestrial laser scans of the same walls. The photos are resized to 1024 px wide and fed to each model with their known intrinsics (a phone knows its own).
+**Data.** ETH3D's facade (76 photos) and electro (45 photos) scenes: building walls photographed with a 24 MP DSLR, camera poses registered to terrestrial laser scans. Photos are resized to 1024 px wide and fed to each model with their known intrinsics.
 
-**What is scored.** The error in the distance between two points on the wall, against the laser scan's distance between the same two points, for pairs 1 to 3 m and 3 to 10 m apart. Distances do not change under rotation or translation, so no alignment step can hide error: only scale and shape count. Scale error is the median of predicted over true length, minus one.
+**What is scored.** The error in the distance between two scanned points, for pairs 1 to 3 m and 3 to 10 m apart. Distances do not change under rotation or translation, so no alignment step can hide error. Scale error is the median of predicted over true length, minus one.
 
-**How ground truth is matched to pixels** (`evals/eth3d.py`). ETH3D's rendered depth maps belong to the original distorted photos, whose camera model is not published with the undistorted set, so the laser scan points are projected into each undistorted view directly. A point counts as visible when it is within 4% of the nearest depth in a z-buffer built from all scan points plus ETH3D's occlusion splats. Points on depth edges and in ETH3D's masked regions (glass, and objects missing from the scan such as trees and a tram; mapped from the distorted frame and dilated 13 px) are dropped. The scan's depth agrees with ETH3D's own sparse 3-D points to a median 0.2 to 0.4% where both exist. Scoring the scan's own rendered depth through the same pipeline gives 0.2 to 0.8 in median error on 1 to 3 m spans (p90 under 3 in): the evaluation's floor, far below every model's error.
+**How points are chosen** (`evals/eth3d.py`, `evals/recon.py`):
+- **Visibility.** Scan points are projected into each view. A point is visible when it is within 4% of the nearest scanned depth along its pixel, in a z-buffer that also holds ETH3D's occlusion splats. Points in ETH3D's masked regions are dropped: glass, and objects missing from the scan such as trees. The masks are drawn on the distorted originals, so they are stretched to the undistorted frame and dilated 13 px.
+- **Cohorts.** Points where the depth jumps by more than 10% within 5 pixels are depth edges; the rest are surface interior, and interior points whose scan normal is within 17° of horizontal form the vertical cohort.
+- **Fixed evaluation sets.** Each of 8 seed photos per scene fixes a set of points (those it sees; within 6 m of it for the near slice), test pairs and 25 taped reference pairs. The same set scores every method and every group size (the seed plus its 1, 3 or 7 nearest cameras facing the same way). Other photos only add predictions for those points, and in the near slice a photo contributes a point only if its own camera is within 6 m of it.
+- **Failures.** A pair with no prediction, or a taped reference no scale can match, counts as infinitely wrong. The tables report the calibration success rate.
+
+**Checks.** Scan depths agree with ETH3D's own sparse 3-D points to a median 0.2% to 0.4%. Depth rendered from the scan itself, scored through the same pipeline, is off 0.2 to 0.8 in median on 1 to 3 m spans (p90 under 2.5 in): the evaluation's floor. Changing the visibility tolerance to 2% or 8% moves model scale errors by about 1 point and medians by about 0.5 in, but p90s by up to 20% (MoGe-2) and more for Depth Anything 3. Treat p90s as carrying roughly that much evaluation uncertainty.
+
+**Results at phone range: electro, within 6 m** (facade's photos were taken from 10 to 25 m). |length error|, inches, median / p90; "all photos" rows score every photo on its own evaluation set:
+
+| Method | Photos | Cohort | Model scale: 1-3 m | Scale error | One taped distance: 1-3 m | 3-10 m |
+| --- | --- | --- | --- | --- | --- | --- |
+| MoGe-2, one photo | all | surface interior | 6.8 / 19.5 | +4.3% | 1.6 / 9.6 | 3.0 / 17.8 |
+| | | vertical interior | 7.1 / 24.8 | +1.5% | 1.8 / 15.1 | 3.6 / 58.2 |
+| | | edges | 8.3 / 31.8 | +4.1% | 3.6 / 26.9 | 5.8 / 36.9 |
+| Depth Anything 3 metric, one photo | all | surface interior | 6.0 / 20.2 | −7.4% | 2.9 / 25.3 | 6.1 / 62.6 |
+| MoGe-2 per photo + true poses | 1 | surface interior | 6.9 / 14.9 | +4.8% | 1.8 / 8.6 | 3.5 / 17.5 |
+| | 2 | | 6.8 / 15.0 | +3.8% | 2.3 / 11.4 | 4.0 / 21.1 |
+| | 4 | | 6.2 / 14.4 | +4.4% | 2.5 / 15.7 | 4.3 / 33.2 |
+| | 8 | | 5.4 / 12.5 | +3.0% | 2.8 / 10.8 | 4.3 / 21.3 |
+| Scan rendered as depth (floor) | 1 | surface interior | 0.7 / 1.6 | −0.8% | 0.5 / 1.6 | 0.9 / 2.8 |
+
+Over all points (4 to 23 m away), MoGe-2 reads 8% short on facade and 0.5% long on electro, and Depth Anything 3 metric 10% to 15% short. With a tape, one MoGe-2 photo is off a median 2.5 to 2.9 in on 1 to 3 m spans.
+
+**Limits.** Two institutional buildings, not houses, photographed with a DSLR that is sharper than a phone camera. The taped distance is simulated as exact. Facade's near slice holds only 2 of its 8 groups, too few to conclude from.
+
+## 3. Pose priors: can AR poses fix the scale? (ETH3D)
+
+[results/pose_priors.md](results/pose_priors.md), `make pose-priors`.
+
+**Poses.** ETH3D's true poses, degraded per group of photos (`evals/ar_poses.py`). Each setting is an assumption:
+- **exact:** the true poses.
+- **advio_2018:** each group takes one ADVIO walk's measured scale against ARCore (0.88, 0.94 or 0.96), plus 5 cm and 0.2° of noise per camera, from ARKit's own 3 in spread over 3 ft and the 0.22° image-vs-pose disagreement on the replay.
+- **modern_assumed:** 2% short, 1 cm and 0.1°, a guess for a current iPhone with no data behind it.
 
 **Methods.**
+- **(a) MapAnything** given the poses and intrinsics as priors, at 392 px with 2 and 4 photos (the memory limit); the same runs without poses are its baseline.
+- **(b) Triangulation rescale.** MoGe-2 depth for each photo is rescaled to the points triangulated from SIFT matches across the group with those poses (`evals/triangulate.py`: one factor per photo, the median ratio over at least 20 points that reproject within 2 px plus the pose noise), then placed with the same poses and fused.
+- **Control:** MoGe-2 placed with the same poses without the rescale.
 
-- One photo: MoGe-2 and Depth Anything 3 metric, each photo alone.
-- Per-photo depth placed with the true camera poses, standing in for AR poses: each scan point's position averaged over the photos of a group that see it. Groups are 8 seed photos spread through each capture, each with its 1, 3 or 7 nearest cameras that face the same way.
-- MapAnything, Apache checkpoint: one joint reconstruction per group, in its own frame and scale.
-- Scale source: the model's own metric output, or one taped distance, simulated by rescaling so one random 1 to 3 m pair has its true length (25 different pairs per group, pooled, so an unlucky reference counts).
+**Results: electro, within 6 m, 1 to 3 m spans, no tape.** Median / p90 inches:
 
-**Results at phone range: electro, points within 6 m of a camera** (41% of electro's points; facade's scored points lie 10 to 23 m from its cameras, and its few near points agree). |length error|, inches, median / p90:
-
-| Method | Views | Model scale: 1-3 m | 3-10 m | Scale error | One taped distance: 1-3 m | 3-10 m |
+| Method | Photos | Poses | Surface interior | Vertical interior | Edges | Scale error |
 | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo | 1 | 6.8 / 18.7 | 14.9 / 39.5 | +4.4% | 1.6 / 8.3 | 3.0 / 14.6 |
-| Depth Anything 3 metric, one photo | 1 | 5.9 / 17.2 | 13.5 / 36.5 | −7.2% | 2.7 / 16.5 | 5.7 / 31.6 |
-| MoGe-2 per photo + true poses | 2 | 5.4 / 15.2 | 12.6 / 30.6 | +2.4% | 2.9 / 13.8 | 5.5 / 23.3 |
-| MoGe-2 per photo + true poses | 8 | 5.2 / 12.8 | 12.3 / 26.3 | +3.0% | 4.6 / 18.1 | 9.8 / 41.9 |
-| Depth Anything 3 metric per photo + true poses | 8 | 5.4 / 14.5 | 15.5 / 34.9 | −6.8% | 4.1 / 15.8 | 8.9 / 36.1 |
-| MapAnything | 1 | 20.0 / 40.4 | 42.1 / 77.0 | −21.4% | 2.0 / 15.2 | 4.2 / 25.3 |
-| MapAnything | 2 | 10.3 / 31.9 | 21.4 / 68.4 | −8.5% | 2.1 / 12.0 | 4.6 / 22.8 |
-| MapAnything | 8 | 8.8 / 22.2 | 21.6 / 60.5 | −10.6% | 2.9 / 9.5 | 6.8 / 22.0 |
-| Scan rendered as depth (evaluation floor) | 1 | 0.7 / 1.6 | 1.3 / 2.4 | −0.8% | 0.5 / 1.5 | 1.0 / 2.5 |
+| MoGe-2 placed with poses (control) | 8 | exact | 5.4 / 12.5 | 4.9 / 12.5 | 6.4 / 14.6 | +3.0% |
+| (b) MoGe-2 rescaled by triangulation | 8 | exact | 1.3 / 4.1 | 1.1 / 2.9 | 1.5 / 8.4 | −0.4% |
+| | 8 | modern_assumed | 2.1 / 5.1 | 1.8 / 3.9 | 2.6 / 8.1 | −2.6% |
+| | 8 | advio_2018 | 5.3 / 12.8 | 3.7 / 11.1 | 3.9 / 13.1 | −5.1% |
+| | 4 | exact | 1.6 / 8.9 | 1.6 / 10.9 | 2.1 / 25.0 | 0.0% |
+| (a) MapAnything, 392 px, no poses | 4 | none | 15.7 / 69.6 | 16.8 / fails | fails | +16.8% |
+| (a) MapAnything, 392 px, with poses | 4 | exact | 4.1 / fails | | | +3.5% |
+| | 4 | modern_assumed | 3.4 / fails | | | +1.9% |
+| | 4 | advio_2018 | 5.0 / fails | | | −3.1% |
 
-Over all points (4 to 23 m from the cameras) errors are larger and the model scale errors wider: MoGe-2 −8% on facade and +0.5% on electro, Depth Anything 3 metric −10% to −15%, MapAnything −10% to −33%. With a taped distance, one MoGe-2 photo is off a median 2.5 to 3.0 in on 1 to 3 m spans and 6 to 9 in on 3 to 10 m spans at that range.
+"fails" means more than 10% of pairs had no prediction. MapAnything masks low-confidence and edge pixels, so 10% to 20% of the interior pairs and 70% to 80% of the edge pairs get no prediction from it.
 
-**Limits.** Two scenes, both institutional buildings rather than houses, photographed with a DSLR that is sharper and lower-noise than a phone camera; phone photos should score the same or worse. The true poses are exact; real AR poses add the drift measured in section 1. The taped distance is simulated as exact. MapAnything was given intrinsics but not poses; giving it AR poses is untested here.
+On facade over all points, (b) with 8 photos gives 1.9 / 8.2 in with exact poses and 2.2 / 8.3 in with modern_assumed poses. MapAnything with any poses still reads 12% to 16% short there.
 
-## 3. Which photos to keep (ETH3D)
+**What decides it.** Triangulation fixes each photo's own scale error, which is why 8 rescaled photos beat 8 unscaled ones by a factor of three. But the triangulated points take their scale from the poses, so the pose's scale error passes straight into every length: 2% short in, about 2.5% short out. Fewer photos give fewer and noisier triangulated points; at 4 photos the p90 more than doubles. A taped distance on top makes it worse, not better (p90 7.7 in with exact poses): the reference pair carries its own reconstruction error, a median 1.3 in, which outweighs the scale error that is left.
 
-`uv run python -m evals.frames` writes [results/frames.md](results/frames.md). Each ETH3D photo is scored alone (MoGe-2, scaled by one taped 1 to 3 m distance) and described by what an app can measure while capturing: the median distance to the wall points in view, and the median angle between the viewing ray and the wall's surface (from the laser scan's normals). Both scenes pooled, |length error| in inches, median / p90:
+## 4. Which photos to keep (ETH3D)
+
+[results/frames.md](results/frames.md), `make frames`. Each photo is scored alone (MoGe-2, one taped distance, surface interior) and described by what an app can measure while capturing: the median distance to the wall points in view, and the median angle between the viewing ray and the scanned surface. Both scenes pooled, median / p90 inches:
 
 | Keep | Photos kept | 1-3 m spans | 3-10 m spans |
 | --- | --- | --- | --- |
-| every photo | 121 of 121 | 2.7 / 11.2 | 7.6 / 38.5 |
-| wall within 6 m | 15 of 121 | 1.9 / 6.8 | 4.3 / 14.4 |
-| wall within 8 m | 27 of 121 | 2.1 / 7.2 | 4.8 / 16.1 |
-| wall within 12 m | 42 of 121 | 2.2 / 8.0 | 5.3 / 19.4 |
-| wall seen within 40 degrees of head-on | 53 of 121 | 2.4 / 9.5 | 7.5 / 36.1 |
-| wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.6 | 7.1 / 32.0 |
+| every photo | 121 of 121 | 2.7 / 11.5 | 7.6 / 39.0 |
+| wall within 6 m | 15 of 121 | 1.9 / 6.8 | 4.2 / 14.8 |
+| wall within 8 m | 27 of 121 | 2.1 / 7.4 | 4.8 / 17.1 |
+| wall within 12 m | 42 of 121 | 2.3 / 8.1 | 5.4 / 20.5 |
+| wall seen within 40 degrees of head-on | 52 of 121 | 2.3 / 9.3 | 7.1 / 35.2 |
+| wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.7 | 7.1 / 32.9 |
 
-Distance is what matters: the p90 on 3 to 10 m spans falls from 38.5 to 14.4 in when only photos within 6 m are kept. Viewing angle barely changes anything, but no photo here is closer to head-on than 26 degrees, so a head-on shot is untested. Only 15 photos are within 6 m, all of them from electro, so the near-range numbers rest on one building.
+No photo here is closer to head-on than 26 degrees, so a head-on shot is untested, and all 15 photos within 6 m are from electro.
 
 ## Replay session from a real walk
 
-`~/house-scanning-data/replays/advio-20-0040-0075.zip` is 35 s of ADVIO sequence 20 (seconds 40 to 75, a path past a brick building) in Measure Lab session format v2, for the app's replay mode and the verification thread. `make replay` rebuilds it and checks it:
+`~/house-scanning-data/replays/advio-20-0040-0075.zip` holds 35 s of ADVIO walk 20 (seconds 40 to 75, a path past a brick building) in Measure Lab session format v2, for the app's replay mode. It has 79 keyframes chosen by Measure Lab's rule (0.5 m or 15° since the last), plus `ground_truth.json` with ADVIO's pose for each keyframe. `make replay` rebuilds and checks it.
 
-```sh
-uv run python -m evals.replay --sequence 20 --start 40 --end 75
-uv run python -m evals.check_replay ~/house-scanning-data/replays/advio-20-0040-0075
-```
-
-It holds 79 keyframes chosen by Measure Lab's own rule (0.5 m or 15° since the last keyframe) from the ARKit poses. Beside `session.json` is `ground_truth.json`, ADVIO's ground-truth pose for each keyframe, which the app ignores. The zip's hash changes on every rebuild because zip entries carry timestamps.
-
-How each part was made:
-
-- **Images.** ADVIO's `frames.mov` stores 1280 × 720 landscape frames with a display tag that rotates them to portrait. The coded frames are the unrotated sensor images Measure Lab expects: sky on the left, ground on the right for a phone held upright. Frames are decoded sequentially by index; seeking by time in this file lands several frames off. Each is undistorted with ADVIO's calibration so a plain pinhole model is exact.
-- **Intrinsics.** ADVIO calibrated the portrait frames with OpenCV's convention. Rotated to landscape and shifted by half a pixel to continuous coordinates this gives `[1082.1, 1081.1, 641.29, 359.91]` (`evals/camera.py`, `landscape_intrinsics_from_portrait`).
-- **Poses.** `arkit.csv` holds ARKit's world position and an orientation in the portrait device frame (+x right and +y up on the portrait screen). The Measure Lab camera is that frame turned a quarter turn about the viewing axis: image right is screen down, image up is screen right (`DEVICE_TO_LANDSCAPE_CAMERA`). Before building the converter, rotations between frame pairs were estimated from the images alone (ORB matches, essential matrix) and compared with the poses: median disagreement 0.22° for this reading, 4.5° to 6.5° for the alternatives.
-- **Check.** `check_replay` reads only session.json and the JPEGs and measures how far matched features between keyframes two apart lie from the epipolar lines the poses predict. On this session: median 3.1 px over 77 pairs, p90 5.1 px, world up pointing to image left (−x) as for a portrait phone. With the camera axes deliberately turned 90° the same check gives 61 px.
-- **What ADVIO lacks.** It records no ARKit tracking state, so tracking is written as `normal` from the first frame ARKit reports a position (it reports exactly zero until it initialises). There are no taps, points, walls or measurements. The capture time is unpublished, so `startedAt` is the dataset's publication date; timestamps are ADVIO's own seconds.
-
-What it is not: the camera points along the path, not at a wall, and the building is off to one side. It exercises replay plumbing, keyframe handling and real outdoor tracking, not a guided wall scan.
+- **Images.** `frames.mov` stores unrotated 1280 × 720 sensor frames behind a portrait display tag. They are decoded by index, since seeking by time lands frames off, and undistorted with ADVIO's calibration.
+- **Intrinsics.** `[1082.1, 1081.1, 641.29, 359.91]`, from the portrait OpenCV calibration rotated to landscape and shifted half a pixel (`evals/camera.py`).
+- **Poses.** `arkit.csv` orientations are in the portrait device frame. The converter turns them a quarter turn about the viewing axis. Image-derived rotations agree with this reading to a median 0.22° (alternatives: 4.5° to 6.5°).
+- **Check.** `check_replay` reads only the session files and measures matched features' distance from the epipolar lines the poses predict: median 3.1 px, against 61 px with the axes deliberately wrong.
+- **Missing from ADVIO.** No tracking state (written as `normal` once ARKit reports a position), no capture time (`startedAt` is the publication date), no taps or measurements. The camera points along the path, not at a wall.

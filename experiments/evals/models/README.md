@@ -98,6 +98,10 @@ MapAnything camera baseline, k00020 to k00024, against ARKit's 2.019 m (consecut
 
 With poses given, the output poses reproduce the input ones to within 2.3 cm and 0.11°, which confirms the frame conversion; that row is not an independent measurement.
 
+## Memory
+
+The Mac these run on is shared, so each process should stay near 4 GB. MoGe-2's and Depth Anything 3's peaks were not measured; their checkpoints are 1.3 GB each. MapAnything's `from_pretrained` builds the 1.2 B-parameter model in fp32 (4.9 GB) and then reads the 4.9 GB fp32 checkpoint into it. `map_anything.load` instead builds the model on the meta device and streams each tensor straight to the GPU, casting the two transformer stacks (92% of the weights) to bf16: 2.64 GB of weights. `run_groups.py` caps GPU memory at 3.8 GB (`--mps-cap-gb`). Measured peak footprint: 4.05 GB for 2- and 4-view groups at 392 px. Its native 518 px, or 8 views, runs out of memory under that cap.
+
 ## Known issues
 
 - MoGe's current `main` (MoGe-3, `74fbce0`) limits its uv environments to Linux and Windows, so the pin is the last MoGe-2 commit.

@@ -13,7 +13,7 @@
 
 Sequences 20, 21, 22. |ARKit - reference| in inches.
 
-| Walked | vs truth as published: median / p90 | vs truth rescaled to GPS | vs ARCore | signed median vs ARCore |
+| Walked | vs truth as published: median / p90 | vs truth rescaled to GPS | ARKit - ARCore disagreement | signed median, ARKit - ARCore |
 | --- | --- | --- | --- | --- |
 | 3 ft | 9.7 / 17.8 | 4.7 / 13.1 | 2.8 / 8.2 | -2.4 |
 | 10 ft | 31.6 / 55.8 | 15.4 / 40.5 | 8.6 / 22.3 | -8.1 |
@@ -22,7 +22,7 @@ Sequences 20, 21, 22. |ARKit - reference| in inches.
 
 ## Per sequence
 
-| Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | vs ARCore: median / p90 (signed) | own spread (1 sigma, in): ARKit / truth / ARCore |
+| Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | ARKit - ARCore disagreement: median / p90 (signed) | split if errors were independent (1 sigma, in): ARKit / truth / ARCore |
 | --- | --- | --- | --- | --- |
 | 20 | 3 ft | 6.5 / 13.8 (-5.4) | 4.5 / 10.2 (-4.4) | 1.3 / 10.5 / 4.6 |
 | 20 | 10 ft | 21.3 / 42.7 (-19.2) | 14.7 / 27.2 (-14.7) | 2.4 / 26.6 / 10.1 |
@@ -37,4 +37,4 @@ Sequences 20, 21, 22. |ARKit - reference| in inches.
 | 22 | 20 ft | 33.0 / 61.3 (-12.6) | 11.4 / 29.9 (-9.8) | -10.5 / 50.4 / 36.1 |
 | 22 | 30 ft | 46.7 / 87.2 (-18.1) | 17.3 / 41.1 (-15.3) | -17.2 / 73.1 / 49.4 |
 
-A negative spread means that tracker's random error is smaller than the other two can resolve.
+The split assumes the three trackers' errors are independent; a negative value shows that assumption failing for the row, so treat every split value as conditional.

@@ -86,53 +86,29 @@ def length_errors(points: Points, pairs: np.ndarray, s: float = 1.0) -> np.ndarr
 
 
 def summarize(errors_m: np.ndarray, ratios: np.ndarray | None = None) -> dict[str, float]:
-    """Median and p90 of |error| in inches, and the median length ratio as a percent scale error."""
+    """Median and p90 of |error| in inches, and the median length ratio as a percent scale error.
+
+    Failures (a pair with no prediction, or scaled by a taped reference that could not be matched)
+    are infinite errors: they count against the median and p90 instead of being dropped.
+    """
     a = np.abs(errors_m) / INCH
+    finite = np.isfinite(a)
+    # Percentiles interpolate, and inf - inf is NaN, so failures become a finite sentinel first.
+    sentinel = 1e12
+    q = np.where(finite, a, sentinel)
+
+    def pct(p: float) -> float:
+        v = float(np.percentile(q, p))
+        return float("inf") if v >= sentinel / 2 else round(v, 2)
+
     out = {
         "pairs": len(a),
-        "median_in": round(float(np.median(a)), 2) if len(a) else float("nan"),
-        "p90_in": round(float(np.percentile(a, 90)), 2) if len(a) else float("nan"),
+        "failed_pct": round(float(100 * (1 - finite.mean())), 2) if len(a) else 0.0,
+        "median_in": pct(50) if len(a) else float("nan"),
+        "p90_in": pct(90) if len(a) else float("nan"),
     }
-    if ratios is not None and len(ratios):
-        out["scale_error_pct"] = round(float((np.median(ratios) - 1) * 100), 2)
-    return out
-
-
-def evaluate_raw(
-    points: Points,
-    rng: np.random.Generator,
-    pairs_per_bin: int = 4000,
-    known_distance_trials: int = 25,
-    known_distance_bin: tuple[float, float] = (1.0, 3.0),
-) -> dict[str, dict[str, tuple[np.ndarray, np.ndarray]]]:
-    """Signed length errors and length ratios per scale source and distance bin, for pooling.
-
-    - `none`: the model's metric output as is (s = 1).
-    - `one_known_distance`: s set so one random pair from `known_distance_bin` has its true length,
-      as if the homeowner taped one distance; repeated for `known_distance_trials` random pairs and
-      pooled, so an unlucky reference pair counts against the method.
-    """
-    out: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {
-        "none": {},
-        "one_known_distance": {},
-    }
-    refs = sample_pairs(points.gt, *known_distance_bin, known_distance_trials, rng)
-    scales = []
-    for ref in refs:
-        try:
-            scales.append(scale_for_known_distance(points, ref))
-        except ValueError:
-            continue
-    for b in BINS_M:
-        key = bin_key(b)
-        pr = sample_pairs(points.gt, *b, pairs_per_bin, rng)
-        gt_d = pair_distances(points.gt, pr)
-        e = length_errors(points, pr)
-        out["none"][key] = (e, (e + gt_d) / gt_d)
-        pooled = [length_errors(points, pr, s) for s in scales]
-        e1 = np.concatenate(pooled) if pooled else np.empty(0)
-        gt_rep = np.tile(gt_d, len(pooled))
-        out["one_known_distance"][key] = (e1, (e1 + gt_rep) / gt_rep)
+    if ratios is not None and np.isfinite(ratios).any():
+        out["scale_error_pct"] = round(float((np.median(ratios[np.isfinite(ratios)]) - 1) * 100), 2)
     return out
 
 
@@ -140,15 +116,57 @@ def bin_key(b: tuple[float, float]) -> str:
     return f"{b[0]:g}-{b[1]:g}m"
 
 
-def pool(raws: list[dict[str, dict[str, tuple[np.ndarray, np.ndarray]]]]) -> dict[str, dict]:
-    """Concatenate raw errors from several evaluations and summarize each scale source and bin."""
+def evaluate_fixed(points: Points, pairs: dict[str, np.ndarray], refs: np.ndarray) -> dict:
+    """Length errors on a fixed evaluation set, so every method and view count sees the same pairs.
+
+    `points` rows with NaN predictions have no prediction. `pairs` maps a bin key to index pairs;
+    `refs` are the taped reference pairs. Returns {"none" | "one_known_distance": {bin: (errors,
+    ratios)}, "refs": count, "ref_failures": count}. A reference fails when either end has no
+    prediction or no positive scale matches it; all pairs scaled by a failed reference fail.
+    """
+    scales: list[float | None] = []
+    for ref in refs:
+        if not np.isfinite(points.r[ref]).all():
+            scales.append(None)
+            continue
+        try:
+            scales.append(scale_for_known_distance(points, ref))
+        except ValueError:
+            scales.append(None)
+    out: dict = {"none": {}, "one_known_distance": {}}
+    for key, pr in pairs.items():
+        gt_d = pair_distances(points.gt, pr)
+        e = length_errors(points, pr)
+        e = np.where(np.isnan(e), np.inf, e)
+        out["none"][key] = (e, (e + gt_d) / gt_d)
+        per_ref = []
+        for sc in scales:
+            if sc is None:
+                per_ref.append(np.full(len(pr), np.inf))
+            else:
+                es = length_errors(points, pr, sc)
+                per_ref.append(np.where(np.isnan(es), np.inf, es))
+        e1 = np.concatenate(per_ref) if per_ref else np.empty(0)
+        gt_rep = np.tile(gt_d, len(per_ref))
+        out["one_known_distance"][key] = (e1, (e1 + gt_rep) / gt_rep)
+    out["refs"] = len(scales)
+    out["ref_failures"] = sum(sc is None for sc in scales)
+    return out
+
+
+def pool(raws: list[dict]) -> dict[str, dict]:
+    """Concatenate `evaluate_fixed` results from several evaluation sets and summarize them."""
     out: dict[str, dict] = {}
+    keys = sorted({k for r in raws for k in r["none"]})
     for source in ("none", "one_known_distance"):
         out[source] = {}
-        for b in BINS_M:
-            key = bin_key(b)
+        for key in keys:
             parts = [r[source][key] for r in raws if key in r[source]]
             e = np.concatenate([p[0] for p in parts]) if parts else np.empty(0)
             ratios = np.concatenate([p[1] for p in parts]) if parts else np.empty(0)
             out[source][key] = summarize(e, ratios)
+    refs = sum(r["refs"] for r in raws)
+    out["tape_calibration_success_pct"] = (
+        round(100 * (1 - sum(r["ref_failures"] for r in raws) / refs), 1) if refs else None
+    )
     return out

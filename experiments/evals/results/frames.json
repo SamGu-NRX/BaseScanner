@@ -4,757 +4,835 @@
    "kept": 121,
    "of": 121,
    "1-3m": {
-    "pairs": 4537500,
-    "median_in": 2.73,
-    "p90_in": 11.21,
-    "scale_error_pct": -0.05
+    "pairs": 9075000,
+    "failed_pct": 0.4,
+    "median_in": 2.74,
+    "p90_in": 11.47,
+    "scale_error_pct": -0.0
    },
    "3-10m": {
-    "pairs": 4537500,
-    "median_in": 7.6,
-    "p90_in": 38.49,
-    "scale_error_pct": -0.57
+    "pairs": 9075000,
+    "failed_pct": 0.49,
+    "median_in": 7.64,
+    "p90_in": 38.98,
+    "scale_error_pct": -0.51
    }
   },
   "wall within 6 m": {
    "kept": 15,
    "of": 121,
    "1-3m": {
-    "pairs": 562500,
-    "median_in": 1.91,
-    "p90_in": 6.78,
-    "scale_error_pct": -0.27
+    "pairs": 1125000,
+    "failed_pct": 0.39,
+    "median_in": 1.93,
+    "p90_in": 6.84,
+    "scale_error_pct": -0.09
    },
    "3-10m": {
-    "pairs": 562500,
-    "median_in": 4.29,
-    "p90_in": 14.39,
-    "scale_error_pct": -0.23
+    "pairs": 1125000,
+    "failed_pct": 0.5,
+    "median_in": 4.25,
+    "p90_in": 14.78,
+    "scale_error_pct": -0.03
    }
   },
   "wall within 8 m": {
    "kept": 27,
    "of": 121,
    "1-3m": {
-    "pairs": 1012500,
-    "median_in": 2.07,
-    "p90_in": 7.18,
-    "scale_error_pct": -0.11
+    "pairs": 2025000,
+    "failed_pct": 0.22,
+    "median_in": 2.1,
+    "p90_in": 7.39,
+    "scale_error_pct": -0.14
    },
    "3-10m": {
-    "pairs": 1012500,
-    "median_in": 4.77,
-    "p90_in": 16.05,
-    "scale_error_pct": -0.18
+    "pairs": 2025000,
+    "failed_pct": 0.28,
+    "median_in": 4.79,
+    "p90_in": 17.11,
+    "scale_error_pct": -0.23
    }
   },
   "wall within 12 m": {
    "kept": 42,
    "of": 121,
    "1-3m": {
-    "pairs": 1575000,
-    "median_in": 2.24,
-    "p90_in": 7.95,
-    "scale_error_pct": -0.06
+    "pairs": 3150000,
+    "failed_pct": 0.19,
+    "median_in": 2.29,
+    "p90_in": 8.12,
+    "scale_error_pct": -0.1
    },
    "3-10m": {
-    "pairs": 1575000,
-    "median_in": 5.33,
-    "p90_in": 19.37,
-    "scale_error_pct": -0.13
+    "pairs": 3150000,
+    "failed_pct": 0.25,
+    "median_in": 5.41,
+    "p90_in": 20.5,
+    "scale_error_pct": -0.19
    }
   },
   "wall seen within 40 degrees of head-on": {
-   "kept": 53,
+   "kept": 52,
    "of": 121,
    "1-3m": {
-    "pairs": 1987500,
-    "median_in": 2.4,
-    "p90_in": 9.5,
-    "scale_error_pct": -0.08
+    "pairs": 3900000,
+    "failed_pct": 0.28,
+    "median_in": 2.31,
+    "p90_in": 9.31,
+    "scale_error_pct": 0.06
    },
    "3-10m": {
-    "pairs": 1987500,
-    "median_in": 7.45,
-    "p90_in": 36.09,
-    "scale_error_pct": -0.78
+    "pairs": 3900000,
+    "failed_pct": 0.36,
+    "median_in": 7.09,
+    "p90_in": 35.2,
+    "scale_error_pct": -0.64
    }
   },
   "wall seen more than 50 degrees off head-on": {
    "kept": 40,
    "of": 121,
    "1-3m": {
-    "pairs": 1500000,
-    "median_in": 2.82,
-    "p90_in": 11.56,
-    "scale_error_pct": -0.09
+    "pairs": 3000000,
+    "failed_pct": 0.54,
+    "median_in": 2.84,
+    "p90_in": 11.71,
+    "scale_error_pct": -0.08
    },
    "3-10m": {
-    "pairs": 1500000,
-    "median_in": 7.09,
-    "p90_in": 32.04,
-    "scale_error_pct": -0.22
+    "pairs": 3000000,
+    "failed_pct": 0.64,
+    "median_in": 7.14,
+    "p90_in": 32.89,
+    "scale_error_pct": -0.25
    }
   }
  },
  "photos": [
   {
    "view": "DSC_0324",
-   "distance_m": 17.16,
+   "distance_m": 17.13,
    "incidence_deg": 31.58,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.26,
-     "p90_in": 5.16,
-     "scale_error_pct": 0.15
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 1.39,
+     "p90_in": 5.25,
+     "scale_error_pct": -0.08
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.16,
-     "p90_in": 20.55,
-     "scale_error_pct": -0.3
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 4.55,
+     "p90_in": 24.77,
+     "scale_error_pct": -0.7
     }
    }
   },
   {
    "view": "DSC_0325",
-   "distance_m": 16.6,
-   "incidence_deg": 31.59,
+   "distance_m": 16.58,
+   "incidence_deg": 31.64,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.37,
-     "p90_in": 4.58,
-     "scale_error_pct": 0.45
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.32,
+     "p90_in": 5.55,
+     "scale_error_pct": 0.22
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.16,
-     "p90_in": 19.03,
-     "scale_error_pct": 0.02
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 4.28,
+     "p90_in": 24.82,
+     "scale_error_pct": -0.16
     }
    }
   },
   {
    "view": "DSC_0326",
    "distance_m": 16.59,
-   "incidence_deg": 32.06,
+   "incidence_deg": 32.05,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.0,
-     "p90_in": 5.73,
-     "scale_error_pct": 0.12
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 1.79,
+     "p90_in": 5.06,
+     "scale_error_pct": 0.41
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.84,
-     "p90_in": 16.93,
-     "scale_error_pct": -0.1
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 5.06,
+     "p90_in": 14.19,
+     "scale_error_pct": 0.15
     }
    }
   },
   {
    "view": "DSC_0327",
    "distance_m": 16.13,
-   "incidence_deg": 34.99,
+   "incidence_deg": 34.98,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.64,
-     "p90_in": 5.0,
-     "scale_error_pct": -0.17
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.53,
+     "p90_in": 4.35,
+     "scale_error_pct": 0.07
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.42,
-     "p90_in": 13.22,
-     "scale_error_pct": -0.13
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 4.11,
+     "p90_in": 11.57,
+     "scale_error_pct": 0.0
     }
    }
   },
   {
    "view": "DSC_0328",
-   "distance_m": 14.43,
-   "incidence_deg": 39.61,
+   "distance_m": 14.45,
+   "incidence_deg": 39.58,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.03,
-     "p90_in": 5.43,
-     "scale_error_pct": -0.91
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.33,
+     "p90_in": 3.92,
+     "scale_error_pct": 0.05
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.5,
-     "p90_in": 14.56,
-     "scale_error_pct": -0.95
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.52,
+     "p90_in": 9.32,
+     "scale_error_pct": 0.26
     }
    }
   },
   {
    "view": "DSC_0329",
-   "distance_m": 13.31,
-   "incidence_deg": 40.1,
+   "distance_m": 13.3,
+   "incidence_deg": 40.13,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.41,
-     "p90_in": 6.74,
-     "scale_error_pct": -0.47
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.44,
+     "p90_in": 6.47,
+     "scale_error_pct": -0.87
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.11,
-     "p90_in": 17.67,
-     "scale_error_pct": -1.56
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.94,
+     "p90_in": 18.31,
+     "scale_error_pct": -1.6
     }
    }
   },
   {
    "view": "DSC_0330",
    "distance_m": 14.55,
-   "incidence_deg": 38.1,
+   "incidence_deg": 38.12,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.24,
-     "p90_in": 6.46,
-     "scale_error_pct": -1.0
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.33,
+     "p90_in": 6.52,
+     "scale_error_pct": -0.1
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.83,
-     "p90_in": 18.87,
-     "scale_error_pct": -1.96
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 7.07,
+     "p90_in": 18.89,
+     "scale_error_pct": -1.21
     }
    }
   },
   {
    "view": "DSC_0331",
    "distance_m": 16.22,
-   "incidence_deg": 36.63,
+   "incidence_deg": 36.64,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.85,
-     "p90_in": 5.51,
-     "scale_error_pct": 0.13
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.48,
+     "p90_in": 4.26,
+     "scale_error_pct": 0.42
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.34,
-     "p90_in": 16.0,
-     "scale_error_pct": -0.24
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 4.14,
+     "p90_in": 11.96,
+     "scale_error_pct": 0.26
     }
    }
   },
   {
    "view": "DSC_0332",
    "distance_m": 18.67,
-   "incidence_deg": 35.84,
+   "incidence_deg": 35.86,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.25,
-     "p90_in": 3.39,
-     "scale_error_pct": -0.19
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.35,
+     "p90_in": 3.73,
+     "scale_error_pct": 0.62
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.72,
-     "p90_in": 10.1,
-     "scale_error_pct": -0.61
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 3.61,
+     "p90_in": 9.83,
+     "scale_error_pct": 0.25
     }
    }
   },
   {
    "view": "DSC_0333",
-   "distance_m": 19.49,
-   "incidence_deg": 36.53,
+   "distance_m": 19.43,
+   "incidence_deg": 36.41,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.08,
-     "p90_in": 5.88,
-     "scale_error_pct": -0.28
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.94,
+     "p90_in": 5.39,
+     "scale_error_pct": -0.55
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.96,
-     "p90_in": 20.36,
-     "scale_error_pct": -0.97
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 6.35,
+     "p90_in": 19.33,
+     "scale_error_pct": -1.33
     }
    }
   },
   {
    "view": "DSC_0334",
-   "distance_m": 20.52,
-   "incidence_deg": 37.77,
+   "distance_m": 20.46,
+   "incidence_deg": 37.68,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.37,
-     "p90_in": 7.41,
-     "scale_error_pct": -0.61
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.49,
+     "p90_in": 7.01,
+     "scale_error_pct": -0.25
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.59,
-     "p90_in": 23.07,
-     "scale_error_pct": -0.92
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 8.21,
+     "p90_in": 22.78,
+     "scale_error_pct": -0.57
     }
    }
   },
   {
    "view": "DSC_0335",
-   "distance_m": 21.18,
-   "incidence_deg": 37.04,
+   "distance_m": 21.12,
+   "incidence_deg": 36.95,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.08,
-     "p90_in": 11.24,
-     "scale_error_pct": -0.32
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 3.0,
+     "p90_in": 8.95,
+     "scale_error_pct": -0.39
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.34,
-     "p90_in": 34.49,
-     "scale_error_pct": -0.98
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 10.09,
+     "p90_in": 29.85,
+     "scale_error_pct": -1.19
     }
    }
   },
   {
    "view": "DSC_0336",
-   "distance_m": 21.54,
-   "incidence_deg": 36.66,
+   "distance_m": 21.48,
+   "incidence_deg": 36.61,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.48,
-     "p90_in": 11.16,
-     "scale_error_pct": -1.64
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 3.11,
+     "p90_in": 8.68,
+     "scale_error_pct": -0.09
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.15,
-     "p90_in": 40.78,
-     "scale_error_pct": -2.68
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 11.13,
+     "p90_in": 33.92,
+     "scale_error_pct": -0.59
     }
    }
   },
   {
    "view": "DSC_0337",
-   "distance_m": 21.57,
-   "incidence_deg": 37.1,
+   "distance_m": 21.5,
+   "incidence_deg": 37.0,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.1,
-     "p90_in": 7.76,
-     "scale_error_pct": 0.44
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 2.7,
+     "p90_in": 7.17,
+     "scale_error_pct": 0.42
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.95,
-     "p90_in": 31.42,
-     "scale_error_pct": -0.16
+     "pairs": 75000,
+     "failed_pct": 0.43,
+     "median_in": 9.63,
+     "p90_in": 29.99,
+     "scale_error_pct": -0.35
     }
    }
   },
   {
    "view": "DSC_0338",
-   "distance_m": 21.47,
-   "incidence_deg": 36.68,
+   "distance_m": 21.36,
+   "incidence_deg": 36.59,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.6,
-     "p90_in": 9.92,
-     "scale_error_pct": 0.2
+     "pairs": 75000,
+     "failed_pct": 4.26,
+     "median_in": 3.23,
+     "p90_in": 9.7,
+     "scale_error_pct": -0.02
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.36,
-     "p90_in": 38.64,
-     "scale_error_pct": -0.7
+     "pairs": 75000,
+     "failed_pct": 4.38,
+     "median_in": 11.23,
+     "p90_in": 42.7,
+     "scale_error_pct": -1.54
     }
    }
   },
   {
    "view": "DSC_0339",
-   "distance_m": 22.08,
-   "incidence_deg": 38.07,
+   "distance_m": 21.95,
+   "incidence_deg": 37.93,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.66,
-     "p90_in": 19.39,
-     "scale_error_pct": -2.25
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 5.27,
+     "p90_in": 19.87,
+     "scale_error_pct": -1.47
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 18.25,
-     "p90_in": 71.98,
-     "scale_error_pct": -5.72
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 20.66,
+     "p90_in": 75.28,
+     "scale_error_pct": -6.09
     }
    }
   },
   {
    "view": "DSC_0340",
-   "distance_m": 21.9,
-   "incidence_deg": 37.91,
+   "distance_m": 21.76,
+   "incidence_deg": 37.82,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.04,
-     "p90_in": 8.56,
-     "scale_error_pct": 0.61
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.3,
+     "p90_in": 10.52,
+     "scale_error_pct": 0.03
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.77,
-     "p90_in": 44.41,
-     "scale_error_pct": -0.21
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 11.04,
+     "p90_in": 50.85,
+     "scale_error_pct": -0.86
     }
    }
   },
   {
    "view": "DSC_0341",
-   "distance_m": 21.29,
-   "incidence_deg": 38.53,
+   "distance_m": 21.15,
+   "incidence_deg": 38.46,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.11,
-     "p90_in": 14.87,
-     "scale_error_pct": -0.3
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 5.1,
+     "p90_in": 18.3,
+     "scale_error_pct": 0.36
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.46,
-     "p90_in": 68.51,
-     "scale_error_pct": -0.89
+     "pairs": 75000,
+     "failed_pct": 0.7,
+     "median_in": 19.62,
+     "p90_in": 71.7,
+     "scale_error_pct": -0.39
     }
    }
   },
   {
    "view": "DSC_0342",
-   "distance_m": 21.1,
-   "incidence_deg": 37.74,
+   "distance_m": 20.95,
+   "incidence_deg": 37.65,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.25,
-     "p90_in": 10.17,
-     "scale_error_pct": 0.13
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.39,
+     "p90_in": 15.15,
+     "scale_error_pct": 0.51
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 11.93,
-     "p90_in": 45.6,
-     "scale_error_pct": -0.88
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 12.15,
+     "p90_in": 51.19,
+     "scale_error_pct": -1.09
     }
    }
   },
   {
    "view": "DSC_0343",
-   "distance_m": 22.09,
-   "incidence_deg": 38.19,
+   "distance_m": 21.98,
+   "incidence_deg": 38.14,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.75,
-     "p90_in": 8.86,
-     "scale_error_pct": -0.65
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.09,
+     "p90_in": 12.39,
+     "scale_error_pct": 0.87
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.25,
-     "p90_in": 40.92,
-     "scale_error_pct": -1.59
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 10.26,
+     "p90_in": 41.24,
+     "scale_error_pct": -0.36
     }
    }
   },
   {
    "view": "DSC_0344",
-   "distance_m": 21.85,
-   "incidence_deg": 38.23,
+   "distance_m": 21.73,
+   "incidence_deg": 38.17,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.0,
-     "p90_in": 8.26,
-     "scale_error_pct": 1.12
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 2.58,
+     "p90_in": 8.15,
+     "scale_error_pct": -0.55
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.05,
-     "p90_in": 32.37,
-     "scale_error_pct": -0.17
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 8.69,
+     "p90_in": 39.5,
+     "scale_error_pct": -1.59
     }
    }
   },
   {
    "view": "DSC_0345",
-   "distance_m": 21.45,
-   "incidence_deg": 38.07,
+   "distance_m": 21.33,
+   "incidence_deg": 37.98,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.11,
-     "p90_in": 9.08,
-     "scale_error_pct": 1.17
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 3.49,
+     "p90_in": 10.15,
+     "scale_error_pct": 1.1
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.55,
-     "p90_in": 36.25,
-     "scale_error_pct": -0.06
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 11.84,
+     "p90_in": 40.41,
+     "scale_error_pct": -0.53
     }
    }
   },
   {
    "view": "DSC_0346",
-   "distance_m": 21.26,
-   "incidence_deg": 38.0,
+   "distance_m": 21.14,
+   "incidence_deg": 37.9,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.08,
-     "p90_in": 10.58,
-     "scale_error_pct": -0.66
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 2.94,
+     "p90_in": 9.43,
+     "scale_error_pct": -1.37
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.98,
-     "p90_in": 44.99,
-     "scale_error_pct": -2.04
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 10.92,
+     "p90_in": 42.47,
+     "scale_error_pct": -3.02
     }
    }
   },
   {
    "view": "DSC_0347",
-   "distance_m": 21.36,
-   "incidence_deg": 39.32,
+   "distance_m": 21.27,
+   "incidence_deg": 39.26,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.9,
-     "p90_in": 13.8,
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.85,
+     "p90_in": 15.19,
      "scale_error_pct": -1.12
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 14.18,
-     "p90_in": 55.34,
-     "scale_error_pct": -2.04
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 13.89,
+     "p90_in": 58.93,
+     "scale_error_pct": -2.62
     }
    }
   },
   {
    "view": "DSC_0348",
-   "distance_m": 21.05,
-   "incidence_deg": 41.68,
+   "distance_m": 20.97,
+   "incidence_deg": 41.58,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.25,
-     "p90_in": 11.72,
-     "scale_error_pct": 1.15
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 4.56,
+     "p90_in": 13.1,
+     "scale_error_pct": 0.96
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 14.01,
-     "p90_in": 39.34,
-     "scale_error_pct": -0.13
-    }
-   }
-  },
-  {
-   "view": "DSC_0349",
-   "distance_m": 20.32,
-   "incidence_deg": 40.66,
-   "scene": "facade",
-   "one_known_distance": {
-    "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.36,
-     "p90_in": 12.44,
-     "scale_error_pct": -0.99
-    },
-    "3-10m": {
-     "pairs": 37500,
-     "median_in": 14.34,
-     "p90_in": 46.48,
-     "scale_error_pct": -1.56
-    }
-   }
-  },
-  {
-   "view": "DSC_0350",
-   "distance_m": 19.94,
-   "incidence_deg": 43.06,
-   "scene": "facade",
-   "one_known_distance": {
-    "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.6,
-     "p90_in": 12.02,
-     "scale_error_pct": -0.82
-    },
-    "3-10m": {
-     "pairs": 37500,
-     "median_in": 15.56,
-     "p90_in": 49.74,
-     "scale_error_pct": -1.89
-    }
-   }
-  },
-  {
-   "view": "DSC_0351",
-   "distance_m": 19.77,
-   "incidence_deg": 45.52,
-   "scene": "facade",
-   "one_known_distance": {
-    "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.59,
-     "p90_in": 15.74,
-     "scale_error_pct": -1.27
-    },
-    "3-10m": {
-     "pairs": 37500,
-     "median_in": 17.98,
-     "p90_in": 53.96,
-     "scale_error_pct": -2.26
-    }
-   }
-  },
-  {
-   "view": "DSC_0352",
-   "distance_m": 20.03,
-   "incidence_deg": 48.06,
-   "scene": "facade",
-   "one_known_distance": {
-    "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.68,
-     "p90_in": 15.78,
-     "scale_error_pct": -0.66
-    },
-    "3-10m": {
-     "pairs": 37500,
-     "median_in": 19.01,
-     "p90_in": 54.43,
-     "scale_error_pct": -2.09
-    }
-   }
-  },
-  {
-   "view": "DSC_0353",
-   "distance_m": 17.8,
-   "incidence_deg": 41.92,
-   "scene": "facade",
-   "one_known_distance": {
-    "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.74,
-     "p90_in": 13.46,
-     "scale_error_pct": 1.03
-    },
-    "3-10m": {
-     "pairs": 37500,
-     "median_in": 17.16,
-     "p90_in": 50.88,
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 14.75,
+     "p90_in": 44.34,
      "scale_error_pct": -0.47
     }
    }
   },
   {
-   "view": "DSC_0354",
-   "distance_m": 17.5,
-   "incidence_deg": 39.05,
+   "view": "DSC_0349",
+   "distance_m": 20.25,
+   "incidence_deg": 40.51,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.33,
-     "p90_in": 11.18,
-     "scale_error_pct": -1.74
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 4.4,
+     "p90_in": 12.83,
+     "scale_error_pct": 0.8
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 14.49,
-     "p90_in": 37.63,
-     "scale_error_pct": -3.11
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 14.69,
+     "p90_in": 46.73,
+     "scale_error_pct": -0.23
+    }
+   }
+  },
+  {
+   "view": "DSC_0350",
+   "distance_m": 19.9,
+   "incidence_deg": 42.89,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 5.25,
+     "p90_in": 13.61,
+     "scale_error_pct": 1.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 18.21,
+     "p90_in": 50.58,
+     "scale_error_pct": -0.14
+    }
+   }
+  },
+  {
+   "view": "DSC_0351",
+   "distance_m": 19.73,
+   "incidence_deg": 45.31,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 6.75,
+     "p90_in": 17.46,
+     "scale_error_pct": 1.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 21.31,
+     "p90_in": 57.94,
+     "scale_error_pct": 0.22
+    }
+   }
+  },
+  {
+   "view": "DSC_0352",
+   "distance_m": 20.01,
+   "incidence_deg": 47.95,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 6.03,
+     "p90_in": 15.41,
+     "scale_error_pct": -0.76
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 20.4,
+     "p90_in": 52.97,
+     "scale_error_pct": -1.86
+    }
+   }
+  },
+  {
+   "view": "DSC_0353",
+   "distance_m": 17.77,
+   "incidence_deg": 42.15,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.89,
+     "p90_in": 13.54,
+     "scale_error_pct": 1.86
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 16.64,
+     "p90_in": 47.76,
+     "scale_error_pct": 0.61
+    }
+   }
+  },
+  {
+   "view": "DSC_0354",
+   "distance_m": 17.47,
+   "incidence_deg": 39.3,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 4.32,
+     "p90_in": 12.4,
+     "scale_error_pct": 0.56
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 13.85,
+     "p90_in": 38.26,
+     "scale_error_pct": -0.2
     }
    }
   },
   {
    "view": "DSC_0355",
-   "distance_m": 17.45,
-   "incidence_deg": 40.42,
+   "distance_m": 17.41,
+   "incidence_deg": 40.77,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.08,
-     "p90_in": 14.41,
-     "scale_error_pct": 2.36
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 3.59,
+     "p90_in": 9.89,
+     "scale_error_pct": -1.04
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.55,
-     "p90_in": 39.9,
-     "scale_error_pct": 1.23
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 11.81,
+     "p90_in": 30.11,
+     "scale_error_pct": -1.87
     }
    }
   },
   {
    "view": "DSC_0356",
-   "distance_m": 17.15,
-   "incidence_deg": 41.12,
+   "distance_m": 17.16,
+   "incidence_deg": 41.42,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.19,
-     "p90_in": 9.65,
-     "scale_error_pct": 0.39
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 3.6,
+     "p90_in": 9.98,
+     "scale_error_pct": -2.06
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.7,
-     "p90_in": 25.81,
-     "scale_error_pct": -0.23
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 11.63,
+     "p90_in": 30.74,
+     "scale_error_pct": -2.94
     }
    }
   },
@@ -765,336 +843,370 @@
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.3,
-     "p90_in": 11.91,
-     "scale_error_pct": -2.21
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.67,
+     "p90_in": 10.56,
+     "scale_error_pct": -0.91
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 13.23,
-     "p90_in": 35.53,
-     "scale_error_pct": -3.27
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 10.48,
+     "p90_in": 31.15,
+     "scale_error_pct": -1.34
     }
    }
   },
   {
    "view": "DSC_0358",
-   "distance_m": 16.71,
-   "incidence_deg": 38.1,
+   "distance_m": 16.72,
+   "incidence_deg": 38.08,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.34,
-     "p90_in": 9.53,
-     "scale_error_pct": 0.18
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 2.18,
+     "p90_in": 8.22,
+     "scale_error_pct": 0.37
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.87,
-     "p90_in": 23.68,
-     "scale_error_pct": 0.16
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 5.72,
+     "p90_in": 18.25,
+     "scale_error_pct": 0.31
     }
    }
   },
   {
    "view": "DSC_0359",
-   "distance_m": 17.08,
-   "incidence_deg": 35.47,
+   "distance_m": 17.09,
+   "incidence_deg": 35.46,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.43,
-     "p90_in": 6.85,
-     "scale_error_pct": 0.79
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.33,
+     "p90_in": 6.75,
+     "scale_error_pct": 0.45
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.69,
-     "p90_in": 18.45,
-     "scale_error_pct": 0.51
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 6.18,
+     "p90_in": 18.01,
+     "scale_error_pct": 0.4
     }
    }
   },
   {
    "view": "DSC_0360",
-   "distance_m": 16.17,
-   "incidence_deg": 32.92,
+   "distance_m": 16.18,
+   "incidence_deg": 32.93,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.45,
-     "p90_in": 4.12,
-     "scale_error_pct": 0.01
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.66,
+     "p90_in": 4.6,
+     "scale_error_pct": -0.05
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.15,
-     "p90_in": 10.4,
-     "scale_error_pct": 0.37
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 4.87,
+     "p90_in": 11.91,
+     "scale_error_pct": 0.18
     }
    }
   },
   {
    "view": "DSC_0361",
-   "distance_m": 14.75,
-   "incidence_deg": 32.38,
+   "distance_m": 14.73,
+   "incidence_deg": 32.48,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.0,
-     "p90_in": 3.36,
-     "scale_error_pct": 0.48
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.28,
+     "p90_in": 4.66,
+     "scale_error_pct": -0.16
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.21,
-     "p90_in": 11.59,
-     "scale_error_pct": 0.3
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.95,
+     "p90_in": 17.37,
+     "scale_error_pct": -0.63
     }
    }
   },
   {
    "view": "DSC_0362",
-   "distance_m": 14.65,
-   "incidence_deg": 32.65,
+   "distance_m": 14.63,
+   "incidence_deg": 32.72,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.36,
-     "p90_in": 4.07,
-     "scale_error_pct": 0.12
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 1.3,
+     "p90_in": 3.8,
+     "scale_error_pct": -0.18
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.57,
-     "p90_in": 18.27,
-     "scale_error_pct": -0.73
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.42,
+     "p90_in": 17.87,
+     "scale_error_pct": -1.02
     }
    }
   },
   {
    "view": "DSC_0363",
-   "distance_m": 13.62,
-   "incidence_deg": 31.44,
+   "distance_m": 13.59,
+   "incidence_deg": 31.5,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
+     "pairs": 75000,
+     "failed_pct": 0.03,
      "median_in": 1.32,
-     "p90_in": 4.4,
-     "scale_error_pct": 0.08
+     "p90_in": 3.83,
+     "scale_error_pct": -0.03
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.01,
-     "p90_in": 18.8,
-     "scale_error_pct": -1.3
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.67,
+     "p90_in": 17.07,
+     "scale_error_pct": -1.31
     }
    }
   },
   {
    "view": "DSC_0364",
-   "distance_m": 15.66,
-   "incidence_deg": 38.11,
+   "distance_m": 15.65,
+   "incidence_deg": 38.08,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.05,
-     "p90_in": 8.63,
-     "scale_error_pct": 0.12
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 2.63,
+     "p90_in": 7.48,
+     "scale_error_pct": 0.36
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.83,
-     "p90_in": 29.06,
-     "scale_error_pct": -2.19
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 8.67,
+     "p90_in": 25.69,
+     "scale_error_pct": -1.77
     }
    }
   },
   {
    "view": "DSC_0365",
-   "distance_m": 17.74,
-   "incidence_deg": 46.58,
+   "distance_m": 17.75,
+   "incidence_deg": 46.38,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.68,
-     "p90_in": 15.86,
-     "scale_error_pct": 0.25
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 6.02,
+     "p90_in": 16.37,
+     "scale_error_pct": -0.54
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 18.8,
-     "p90_in": 60.64,
-     "scale_error_pct": -2.08
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.58,
+     "p90_in": 68.02,
+     "scale_error_pct": -2.12
     }
    }
   },
   {
    "view": "DSC_0366",
-   "distance_m": 10.11,
-   "incidence_deg": 72.28,
+   "distance_m": 10.65,
+   "incidence_deg": 70.81,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.37,
-     "p90_in": 15.72,
-     "scale_error_pct": 0.45
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.79,
+     "p90_in": 18.8,
+     "scale_error_pct": -2.24
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 18.37,
-     "p90_in": 68.35,
-     "scale_error_pct": -0.3
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 19.11,
+     "p90_in": 100.47,
+     "scale_error_pct": -2.66
     }
    }
   },
   {
    "view": "DSC_0386",
-   "distance_m": 19.62,
-   "incidence_deg": 34.1,
+   "distance_m": 19.53,
+   "incidence_deg": 33.94,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.39,
-     "p90_in": 13.2,
-     "scale_error_pct": 0.24
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 2.58,
+     "p90_in": 14.63,
+     "scale_error_pct": -0.82
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.55,
-     "p90_in": 41.47,
-     "scale_error_pct": -0.95
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 9.18,
+     "p90_in": 48.13,
+     "scale_error_pct": -2.16
     }
    }
   },
   {
    "view": "DSC_0387",
-   "distance_m": 17.29,
-   "incidence_deg": 25.96,
+   "distance_m": 17.23,
+   "incidence_deg": 25.92,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.84,
-     "p90_in": 7.0,
-     "scale_error_pct": -0.43
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 1.99,
+     "p90_in": 6.14,
+     "scale_error_pct": -1.09
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.31,
-     "p90_in": 28.13,
-     "scale_error_pct": -2.26
+     "pairs": 75000,
+     "failed_pct": 0.6,
+     "median_in": 9.3,
+     "p90_in": 27.19,
+     "scale_error_pct": -3.04
     }
    }
   },
   {
    "view": "DSC_0388",
-   "distance_m": 18.11,
-   "incidence_deg": 35.09,
+   "distance_m": 18.06,
+   "incidence_deg": 34.96,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.23,
-     "p90_in": 10.0,
-     "scale_error_pct": 0.36
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 3.1,
+     "p90_in": 11.45,
+     "scale_error_pct": 1.61
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.79,
-     "p90_in": 28.03,
-     "scale_error_pct": -0.25
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 7.9,
+     "p90_in": 32.56,
+     "scale_error_pct": 0.67
     }
    }
   },
   {
    "view": "DSC_0389",
-   "distance_m": 17.55,
-   "incidence_deg": 35.96,
+   "distance_m": 17.54,
+   "incidence_deg": 35.93,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.39,
-     "p90_in": 6.53,
-     "scale_error_pct": -0.4
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 2.12,
+     "p90_in": 5.92,
+     "scale_error_pct": -0.03
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.75,
-     "p90_in": 20.01,
-     "scale_error_pct": -0.96
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 5.83,
+     "p90_in": 16.91,
+     "scale_error_pct": -0.37
     }
    }
   },
   {
    "view": "DSC_0390",
-   "distance_m": 15.24,
+   "distance_m": 15.25,
    "incidence_deg": 33.32,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.2,
-     "p90_in": 6.03,
-     "scale_error_pct": 0.63
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.9,
+     "p90_in": 5.69,
+     "scale_error_pct": 0.43
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.69,
-     "p90_in": 16.26,
-     "scale_error_pct": 0.35
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.7,
+     "p90_in": 14.21,
+     "scale_error_pct": 0.2
     }
    }
   },
   {
    "view": "DSC_0391",
    "distance_m": 17.39,
-   "incidence_deg": 33.39,
+   "incidence_deg": 33.38,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.26,
-     "p90_in": 6.19,
-     "scale_error_pct": -0.34
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.13,
+     "p90_in": 5.81,
+     "scale_error_pct": 0.65
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.01,
-     "p90_in": 17.15,
-     "scale_error_pct": -0.78
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 5.64,
+     "p90_in": 15.8,
+     "scale_error_pct": 0.16
     }
    }
   },
   {
    "view": "DSC_0392",
-   "distance_m": 15.34,
+   "distance_m": 15.35,
    "incidence_deg": 34.46,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.52,
-     "p90_in": 7.17,
-     "scale_error_pct": 0.1
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.8,
+     "p90_in": 5.53,
+     "scale_error_pct": -0.19
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.87,
-     "p90_in": 19.78,
-     "scale_error_pct": 0.05
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.93,
+     "p90_in": 11.48,
+     "scale_error_pct": -0.6
     }
    }
   },
@@ -1105,596 +1217,656 @@
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.26,
-     "p90_in": 8.61,
-     "scale_error_pct": -0.14
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.43,
+     "p90_in": 7.49,
+     "scale_error_pct": 0.26
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.01,
-     "p90_in": 22.92,
-     "scale_error_pct": -0.34
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.29,
+     "p90_in": 18.55,
+     "scale_error_pct": 0.18
     }
    }
   },
   {
    "view": "DSC_0394",
-   "distance_m": 22.3,
-   "incidence_deg": 45.89,
+   "distance_m": 22.31,
+   "incidence_deg": 46.21,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.71,
-     "p90_in": 13.33,
-     "scale_error_pct": 0.22
+     "pairs": 75000,
+     "failed_pct": 0.73,
+     "median_in": 5.15,
+     "p90_in": 13.94,
+     "scale_error_pct": -0.1
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.95,
-     "p90_in": 41.03,
-     "scale_error_pct": 0.16
+     "pairs": 75000,
+     "failed_pct": 0.7,
+     "median_in": 14.69,
+     "p90_in": 41.76,
+     "scale_error_pct": -0.19
     }
    }
   },
   {
    "view": "DSC_0395",
-   "distance_m": 19.96,
-   "incidence_deg": 46.92,
+   "distance_m": 19.73,
+   "incidence_deg": 47.2,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.68,
-     "p90_in": 20.28,
-     "scale_error_pct": -1.12
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 7.18,
+     "p90_in": 21.87,
+     "scale_error_pct": 0.34
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.98,
-     "p90_in": 66.32,
-     "scale_error_pct": -1.06
+     "pairs": 75000,
+     "failed_pct": 0.53,
+     "median_in": 19.44,
+     "p90_in": 70.71,
+     "scale_error_pct": 0.17
     }
    }
   },
   {
    "view": "DSC_0396",
-   "distance_m": 17.78,
-   "incidence_deg": 50.23,
+   "distance_m": 17.55,
+   "incidence_deg": 50.04,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 7.38,
-     "p90_in": 21.75,
-     "scale_error_pct": -0.02
+     "pairs": 75000,
+     "failed_pct": 4.13,
+     "median_in": 6.6,
+     "p90_in": 23.2,
+     "scale_error_pct": -1.1
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 23.63,
-     "p90_in": 75.79,
-     "scale_error_pct": -0.67
+     "pairs": 75000,
+     "failed_pct": 4.29,
+     "median_in": 21.14,
+     "p90_in": 84.21,
+     "scale_error_pct": -1.87
     }
    }
   },
   {
    "view": "DSC_0397",
-   "distance_m": 13.34,
-   "incidence_deg": 37.59,
+   "distance_m": 13.32,
+   "incidence_deg": 37.66,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.79,
-     "p90_in": 14.31,
-     "scale_error_pct": 0.72
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.97,
+     "p90_in": 12.39,
+     "scale_error_pct": 0.48
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.19,
-     "p90_in": 84.51,
-     "scale_error_pct": -0.55
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.82,
+     "p90_in": 85.57,
+     "scale_error_pct": -0.6
     }
    }
   },
   {
    "view": "DSC_0398",
-   "distance_m": 14.89,
-   "incidence_deg": 39.81,
+   "distance_m": 14.85,
+   "incidence_deg": 39.76,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.14,
-     "p90_in": 14.77,
-     "scale_error_pct": 0.23
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.66,
+     "p90_in": 15.77,
+     "scale_error_pct": -0.42
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 18.57,
-     "p90_in": 89.95,
-     "scale_error_pct": -1.44
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.47,
+     "p90_in": 91.9,
+     "scale_error_pct": -1.99
     }
    }
   },
   {
    "view": "DSC_0399",
-   "distance_m": 14.85,
-   "incidence_deg": 38.83,
+   "distance_m": 14.79,
+   "incidence_deg": 38.81,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.92,
-     "p90_in": 13.6,
-     "scale_error_pct": 0.32
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.18,
+     "p90_in": 16.7,
+     "scale_error_pct": 0.31
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 16.21,
-     "p90_in": 77.11,
-     "scale_error_pct": -1.16
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.63,
+     "p90_in": 79.89,
+     "scale_error_pct": -1.07
     }
    }
   },
   {
    "view": "DSC_0400",
-   "distance_m": 14.8,
-   "incidence_deg": 39.31,
+   "distance_m": 14.73,
+   "incidence_deg": 39.28,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.75,
-     "p90_in": 15.76,
-     "scale_error_pct": -1.35
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.87,
+     "p90_in": 18.13,
+     "scale_error_pct": 0.08
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 12.54,
-     "p90_in": 104.3,
-     "scale_error_pct": -2.3
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 24.06,
+     "p90_in": 102.15,
+     "scale_error_pct": -1.34
     }
    }
   },
   {
    "view": "DSC_0401",
-   "distance_m": 15.51,
-   "incidence_deg": 39.21,
+   "distance_m": 15.42,
+   "incidence_deg": 39.13,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.41,
-     "p90_in": 11.35,
-     "scale_error_pct": -2.32
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.19,
+     "p90_in": 10.93,
+     "scale_error_pct": 0.58
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 15.52,
-     "p90_in": 51.86,
-     "scale_error_pct": -4.75
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 15.66,
+     "p90_in": 44.65,
+     "scale_error_pct": -1.39
     }
    }
   },
   {
    "view": "DSC_0402",
-   "distance_m": 14.11,
-   "incidence_deg": 41.25,
+   "distance_m": 13.99,
+   "incidence_deg": 41.22,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 6.34,
-     "p90_in": 18.74,
-     "scale_error_pct": 0.18
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.43,
+     "p90_in": 19.55,
+     "scale_error_pct": -1.58
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 20.52,
-     "p90_in": 100.12,
-     "scale_error_pct": -1.26
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.4,
+     "p90_in": 107.47,
+     "scale_error_pct": -3.31
     }
    }
   },
   {
    "view": "DSC_0404",
-   "distance_m": 14.1,
-   "incidence_deg": 42.53,
+   "distance_m": 14.04,
+   "incidence_deg": 42.47,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.23,
-     "p90_in": 13.83,
-     "scale_error_pct": -0.01
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.04,
+     "p90_in": 15.65,
+     "scale_error_pct": 0.98
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.64,
-     "p90_in": 108.93,
-     "scale_error_pct": -0.85
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 9.59,
+     "p90_in": 105.15,
+     "scale_error_pct": 0.15
     }
    }
   },
   {
    "view": "DSC_0405",
-   "distance_m": 12.59,
-   "incidence_deg": 44.72,
+   "distance_m": 12.51,
+   "incidence_deg": 44.78,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.13,
-     "p90_in": 14.53,
-     "scale_error_pct": -0.17
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.85,
+     "p90_in": 11.64,
+     "scale_error_pct": -0.01
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.51,
-     "p90_in": 107.54,
-     "scale_error_pct": -1.24
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.59,
+     "p90_in": 91.58,
+     "scale_error_pct": -1.03
     }
    }
   },
   {
    "view": "DSC_0406",
-   "distance_m": 15.61,
-   "incidence_deg": 42.12,
+   "distance_m": 15.52,
+   "incidence_deg": 42.06,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.86,
-     "p90_in": 15.89,
-     "scale_error_pct": 2.38
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.04,
+     "p90_in": 17.92,
+     "scale_error_pct": 0.68
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 22.47,
-     "p90_in": 83.71,
-     "scale_error_pct": 0.92
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 17.7,
+     "p90_in": 89.95,
+     "scale_error_pct": -0.18
     }
    }
   },
   {
    "view": "DSC_0407",
-   "distance_m": 17.38,
-   "incidence_deg": 41.58,
+   "distance_m": 17.29,
+   "incidence_deg": 41.52,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.77,
-     "p90_in": 13.5,
-     "scale_error_pct": 1.18
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.16,
+     "p90_in": 13.71,
+     "scale_error_pct": -0.35
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 17.42,
-     "p90_in": 67.05,
-     "scale_error_pct": 0.03
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 19.11,
+     "p90_in": 72.63,
+     "scale_error_pct": -1.68
     }
    }
   },
   {
    "view": "DSC_0408",
-   "distance_m": 20.32,
-   "incidence_deg": 40.1,
+   "distance_m": 20.2,
+   "incidence_deg": 40.05,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.63,
-     "p90_in": 12.61,
-     "scale_error_pct": -0.78
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 4.65,
+     "p90_in": 12.75,
+     "scale_error_pct": 0.68
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 17.05,
-     "p90_in": 57.25,
-     "scale_error_pct": -2.17
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 16.15,
+     "p90_in": 52.94,
+     "scale_error_pct": -1.64
     }
    }
   },
   {
    "view": "DSC_0409",
-   "distance_m": 21.89,
-   "incidence_deg": 38.95,
+   "distance_m": 21.69,
+   "incidence_deg": 38.87,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.59,
-     "p90_in": 14.29,
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.47,
+     "p90_in": 10.31,
      "scale_error_pct": -0.46
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 16.35,
-     "p90_in": 52.32,
-     "scale_error_pct": -2.67
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 11.91,
+     "p90_in": 46.73,
+     "scale_error_pct": -2.11
     }
    }
   },
   {
    "view": "DSC_0410",
-   "distance_m": 22.9,
-   "incidence_deg": 37.46,
+   "distance_m": 22.72,
+   "incidence_deg": 37.37,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.46,
-     "p90_in": 12.09,
-     "scale_error_pct": 0.04
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 2.85,
+     "p90_in": 9.25,
+     "scale_error_pct": 0.26
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 11.82,
-     "p90_in": 45.58,
-     "scale_error_pct": -1.13
+     "pairs": 75000,
+     "failed_pct": 0.67,
+     "median_in": 9.86,
+     "p90_in": 41.42,
+     "scale_error_pct": -1.08
     }
    }
   },
   {
    "view": "DSC_0411",
-   "distance_m": 22.58,
-   "incidence_deg": 34.29,
+   "distance_m": 22.49,
+   "incidence_deg": 34.17,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.55,
-     "p90_in": 16.43,
-     "scale_error_pct": -0.38
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.26,
+     "p90_in": 12.92,
+     "scale_error_pct": 0.75
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 16.33,
-     "p90_in": 54.19,
-     "scale_error_pct": -1.97
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 11.36,
+     "p90_in": 43.22,
+     "scale_error_pct": -0.33
     }
    }
   },
   {
    "view": "DSC_0412",
-   "distance_m": 23.37,
-   "incidence_deg": 32.25,
+   "distance_m": 23.29,
+   "incidence_deg": 32.16,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.96,
-     "p90_in": 20.3,
-     "scale_error_pct": -1.49
+     "pairs": 75000,
+     "failed_pct": 4.13,
+     "median_in": 5.17,
+     "p90_in": 23.05,
+     "scale_error_pct": 1.68
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 21.83,
-     "p90_in": 67.1,
-     "scale_error_pct": -3.42
+     "pairs": 75000,
+     "failed_pct": 4.35,
+     "median_in": 17.34,
+     "p90_in": 69.36,
+     "scale_error_pct": 0.03
     }
    }
   },
   {
    "view": "DSC_0413",
-   "distance_m": 29.27,
-   "incidence_deg": 49.33,
+   "distance_m": 29.07,
+   "incidence_deg": 49.12,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.9,
-     "p90_in": 17.27,
-     "scale_error_pct": 0.68
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 6.6,
+     "p90_in": 18.1,
+     "scale_error_pct": -0.23
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 18.43,
-     "p90_in": 56.89,
-     "scale_error_pct": -1.26
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 21.0,
+     "p90_in": 61.79,
+     "scale_error_pct": -2.08
     }
    }
   },
   {
    "view": "DSC_0414",
-   "distance_m": 25.45,
-   "incidence_deg": 45.18,
+   "distance_m": 25.02,
+   "incidence_deg": 44.94,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 7.01,
-     "p90_in": 18.01,
-     "scale_error_pct": 1.64
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 6.85,
+     "p90_in": 17.51,
+     "scale_error_pct": 0.2
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 23.7,
-     "p90_in": 54.92,
-     "scale_error_pct": 1.63
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 20.6,
+     "p90_in": 56.48,
+     "scale_error_pct": -0.06
     }
    }
   },
   {
    "view": "DSC_0415",
-   "distance_m": 23.24,
-   "incidence_deg": 46.1,
+   "distance_m": 23.5,
+   "incidence_deg": 46.37,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.13,
-     "p90_in": 13.22,
-     "scale_error_pct": -0.86
+     "pairs": 75000,
+     "failed_pct": 4.22,
+     "median_in": 6.53,
+     "p90_in": 16.83,
+     "scale_error_pct": 0.59
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 13.88,
-     "p90_in": 42.39,
-     "scale_error_pct": -2.02
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 20.15,
+     "p90_in": 47.94,
+     "scale_error_pct": -0.34
     }
    }
   },
   {
    "view": "DSC_0419",
-   "distance_m": 13.91,
-   "incidence_deg": 31.93,
+   "distance_m": 13.89,
+   "incidence_deg": 32.03,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.18,
-     "p90_in": 4.18,
-     "scale_error_pct": 0.25
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.36,
+     "p90_in": 4.65,
+     "scale_error_pct": 0.11
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.61,
-     "p90_in": 14.9,
-     "scale_error_pct": -0.09
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 4.04,
+     "p90_in": 17.29,
+     "scale_error_pct": -0.31
     }
    }
   },
   {
    "view": "DSC_0420",
-   "distance_m": 13.42,
-   "incidence_deg": 31.55,
+   "distance_m": 13.39,
+   "incidence_deg": 31.66,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.45,
-     "p90_in": 4.94,
-     "scale_error_pct": 0.15
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.24,
+     "p90_in": 4.4,
+     "scale_error_pct": 0.03
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.15,
-     "p90_in": 20.67,
-     "scale_error_pct": -0.77
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.42,
+     "p90_in": 20.26,
+     "scale_error_pct": -0.79
     }
    }
   },
   {
    "view": "DSC_0421",
-   "distance_m": 39.34,
-   "incidence_deg": 58.94,
+   "distance_m": 38.9,
+   "incidence_deg": 58.92,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 5.25,
-     "p90_in": 16.34,
-     "scale_error_pct": -0.23
+     "pairs": 75000,
+     "failed_pct": 4.58,
+     "median_in": 4.87,
+     "p90_in": 18.37,
+     "scale_error_pct": -1.03
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 16.38,
-     "p90_in": 55.23,
-     "scale_error_pct": -1.75
+     "pairs": 75000,
+     "failed_pct": 5.44,
+     "median_in": 15.72,
+     "p90_in": 66.7,
+     "scale_error_pct": -2.28
     }
    }
   },
   {
    "view": "DSC_0422",
-   "distance_m": 40.67,
-   "incidence_deg": 37.28,
+   "distance_m": 40.26,
+   "incidence_deg": 40.19,
    "scene": "facade",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.53,
-     "p90_in": 17.77,
-     "scale_error_pct": 0.7
+     "pairs": 75000,
+     "failed_pct": 4.67,
+     "median_in": 4.22,
+     "p90_in": 22.88,
+     "scale_error_pct": -0.19
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.73,
-     "p90_in": 51.43,
-     "scale_error_pct": 0.16
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 14.85,
+     "p90_in": 64.76,
+     "scale_error_pct": -1.05
     }
    }
   },
   {
    "view": "DSC_9257",
-   "distance_m": 7.17,
-   "incidence_deg": 61.11,
+   "distance_m": 7.12,
+   "incidence_deg": 60.78,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.05,
-     "p90_in": 6.6,
-     "scale_error_pct": 0.03
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.79,
+     "p90_in": 9.43,
+     "scale_error_pct": -0.81
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.88,
-     "p90_in": 13.97,
-     "scale_error_pct": 0.86
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.55,
+     "p90_in": 23.19,
+     "scale_error_pct": -0.04
     }
    }
   },
   {
    "view": "DSC_9258",
-   "distance_m": 9.26,
-   "incidence_deg": 66.25,
+   "distance_m": 9.09,
+   "incidence_deg": 65.82,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.14,
-     "p90_in": 9.12,
-     "scale_error_pct": -1.42
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.16,
+     "p90_in": 9.37,
+     "scale_error_pct": -1.55
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.34,
-     "p90_in": 23.29,
-     "scale_error_pct": -2.13
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.66,
+     "p90_in": 24.56,
+     "scale_error_pct": -2.37
     }
    }
   },
   {
    "view": "DSC_9259",
-   "distance_m": 8.83,
-   "incidence_deg": 67.21,
+   "distance_m": 8.74,
+   "incidence_deg": 66.94,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.5,
-     "p90_in": 9.16,
-     "scale_error_pct": 0.19
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.2,
+     "p90_in": 8.53,
+     "scale_error_pct": 0.05
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.53,
-     "p90_in": 17.84,
-     "scale_error_pct": -0.25
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.6,
+     "p90_in": 15.36,
+     "scale_error_pct": -0.39
     }
    }
   },
   {
    "view": "DSC_9260",
-   "distance_m": 8.4,
-   "incidence_deg": 65.82,
+   "distance_m": 8.35,
+   "incidence_deg": 65.56,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.41,
-     "p90_in": 7.87,
-     "scale_error_pct": -0.7
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.44,
+     "p90_in": 7.04,
+     "scale_error_pct": 0.83
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.08,
-     "p90_in": 17.92,
-     "scale_error_pct": -1.1
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.69,
+     "p90_in": 14.76,
+     "scale_error_pct": 0.29
     }
    }
   },
@@ -1705,816 +1877,898 @@
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.8,
-     "p90_in": 4.82,
-     "scale_error_pct": 0.51
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.96,
+     "p90_in": 4.97,
+     "scale_error_pct": -0.57
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.35,
-     "p90_in": 11.75,
-     "scale_error_pct": 0.42
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.26,
+     "p90_in": 12.27,
+     "scale_error_pct": -0.84
     }
    }
   },
   {
    "view": "DSC_9262",
    "distance_m": 8.71,
-   "incidence_deg": 62.68,
+   "incidence_deg": 62.67,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.42,
-     "p90_in": 5.0,
-     "scale_error_pct": 0.37
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.46,
+     "p90_in": 5.54,
+     "scale_error_pct": -0.25
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.55,
-     "p90_in": 11.35,
-     "scale_error_pct": 0.44
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.56,
+     "p90_in": 12.87,
+     "scale_error_pct": -0.19
     }
    }
   },
   {
    "view": "DSC_9263",
    "distance_m": 9.88,
-   "incidence_deg": 65.49,
+   "incidence_deg": 65.33,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.33,
-     "p90_in": 8.95,
-     "scale_error_pct": -0.91
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 3.05,
+     "p90_in": 10.0,
+     "scale_error_pct": 1.26
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.68,
-     "p90_in": 24.0,
-     "scale_error_pct": -0.76
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 8.9,
+     "p90_in": 29.47,
+     "scale_error_pct": 1.6
     }
    }
   },
   {
    "view": "DSC_9264",
-   "distance_m": 10.48,
-   "incidence_deg": 66.26,
+   "distance_m": 10.47,
+   "incidence_deg": 66.11,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.73,
-     "p90_in": 11.82,
-     "scale_error_pct": 1.46
+     "pairs": 75000,
+     "failed_pct": 0.73,
+     "median_in": 4.02,
+     "p90_in": 13.49,
+     "scale_error_pct": -0.65
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.11,
-     "p90_in": 32.89,
-     "scale_error_pct": 0.74
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 11.03,
+     "p90_in": 38.45,
+     "scale_error_pct": -0.87
     }
    }
   },
   {
    "view": "DSC_9265",
-   "distance_m": 5.13,
-   "incidence_deg": 60.5,
+   "distance_m": 5.12,
+   "incidence_deg": 59.52,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.79,
-     "p90_in": 5.89,
-     "scale_error_pct": -0.08
+     "pairs": 75000,
+     "failed_pct": 0.97,
+     "median_in": 2.13,
+     "p90_in": 7.21,
+     "scale_error_pct": -0.3
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.07,
-     "p90_in": 13.35,
-     "scale_error_pct": -0.22
+     "pairs": 75000,
+     "failed_pct": 1.93,
+     "median_in": 5.93,
+     "p90_in": 16.73,
+     "scale_error_pct": -0.42
     }
    }
   },
   {
    "view": "DSC_9266",
-   "distance_m": 4.74,
-   "incidence_deg": 63.81,
+   "distance_m": 4.73,
+   "incidence_deg": 63.46,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.49,
-     "p90_in": 6.7,
-     "scale_error_pct": -0.98
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 2.3,
+     "p90_in": 6.64,
+     "scale_error_pct": -0.72
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.01,
-     "p90_in": 12.56,
-     "scale_error_pct": -0.99
+     "pairs": 75000,
+     "failed_pct": 5.09,
+     "median_in": 4.24,
+     "p90_in": 11.71,
+     "scale_error_pct": -0.94
     }
    }
   },
   {
    "view": "DSC_9267",
-   "distance_m": 4.83,
-   "incidence_deg": 71.28,
+   "distance_m": 4.77,
+   "incidence_deg": 71.07,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.6,
-     "p90_in": 8.82,
-     "scale_error_pct": -0.31
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.77,
+     "p90_in": 7.01,
+     "scale_error_pct": -1.1
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.7,
-     "p90_in": 16.76,
-     "scale_error_pct": 0.35
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.16,
+     "p90_in": 11.82,
+     "scale_error_pct": -0.68
     }
    }
   },
   {
    "view": "DSC_9268",
-   "distance_m": 7.32,
-   "incidence_deg": 69.13,
+   "distance_m": 7.37,
+   "incidence_deg": 69.04,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.97,
-     "p90_in": 6.08,
-     "scale_error_pct": -0.09
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.37,
+     "p90_in": 10.17,
+     "scale_error_pct": 0.7
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.18,
-     "p90_in": 15.41,
-     "scale_error_pct": -2.37
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 7.13,
+     "p90_in": 22.84,
+     "scale_error_pct": -1.37
     }
    }
   },
   {
    "view": "DSC_9269",
    "distance_m": 7.6,
-   "incidence_deg": 43.89,
+   "incidence_deg": 43.81,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.3,
-     "p90_in": 7.41,
-     "scale_error_pct": 0.33
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.04,
+     "p90_in": 6.64,
+     "scale_error_pct": 0.13
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.91,
-     "p90_in": 15.27,
-     "scale_error_pct": 0.06
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.11,
+     "p90_in": 11.67,
+     "scale_error_pct": -0.06
     }
    }
   },
   {
    "view": "DSC_9270",
    "distance_m": 7.35,
-   "incidence_deg": 41.59,
+   "incidence_deg": 41.51,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
+     "pairs": 75000,
+     "failed_pct": 0.0,
      "median_in": 2.16,
-     "p90_in": 7.65,
-     "scale_error_pct": 0.08
+     "p90_in": 8.33,
+     "scale_error_pct": -0.44
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.21,
-     "p90_in": 13.25,
-     "scale_error_pct": 0.17
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.23,
+     "p90_in": 15.05,
+     "scale_error_pct": -0.69
     }
    }
   },
   {
    "view": "DSC_9271",
-   "distance_m": 6.78,
-   "incidence_deg": 60.25,
+   "distance_m": 6.77,
+   "incidence_deg": 59.67,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.79,
-     "p90_in": 6.07,
-     "scale_error_pct": 0.23
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.04,
+     "p90_in": 6.23,
+     "scale_error_pct": -0.39
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.01,
-     "p90_in": 12.62,
-     "scale_error_pct": 0.75
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.84,
+     "p90_in": 12.33,
+     "scale_error_pct": 0.08
     }
    }
   },
   {
    "view": "DSC_9272",
    "distance_m": 6.31,
-   "incidence_deg": 42.54,
+   "incidence_deg": 42.38,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.51,
-     "p90_in": 6.94,
-     "scale_error_pct": 0.05
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.39,
+     "p90_in": 5.37,
+     "scale_error_pct": -0.23
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.2,
-     "p90_in": 14.69,
-     "scale_error_pct": 0.18
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.83,
+     "p90_in": 11.56,
+     "scale_error_pct": -0.15
     }
    }
   },
   {
    "view": "DSC_9273",
-   "distance_m": 9.24,
-   "incidence_deg": 66.72,
+   "distance_m": 9.06,
+   "incidence_deg": 66.36,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.26,
-     "p90_in": 8.29,
-     "scale_error_pct": -0.27
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.03,
+     "p90_in": 7.42,
+     "scale_error_pct": 0.53
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.26,
-     "p90_in": 18.26,
-     "scale_error_pct": 0.61
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.47,
+     "p90_in": 17.19,
+     "scale_error_pct": 1.16
     }
    }
   },
   {
    "view": "DSC_9274",
    "distance_m": 5.41,
-   "incidence_deg": 41.01,
+   "incidence_deg": 40.9,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.13,
-     "p90_in": 4.62,
-     "scale_error_pct": -0.44
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.06,
+     "p90_in": 4.04,
+     "scale_error_pct": 0.13
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 1.89,
-     "p90_in": 7.45,
-     "scale_error_pct": -0.05
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.75,
+     "p90_in": 7.52,
+     "scale_error_pct": 0.46
     }
    }
   },
   {
    "view": "DSC_9275",
    "distance_m": 6.48,
-   "incidence_deg": 74.89,
+   "incidence_deg": 74.88,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.47,
-     "p90_in": 7.3,
-     "scale_error_pct": -0.85
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.23,
+     "p90_in": 6.83,
+     "scale_error_pct": -0.22
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.03,
-     "p90_in": 22.28,
-     "scale_error_pct": -1.03
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 6.65,
+     "p90_in": 21.26,
+     "scale_error_pct": -0.6
     }
    }
   },
   {
    "view": "DSC_9276",
-   "distance_m": 5.08,
-   "incidence_deg": 64.46,
+   "distance_m": 5.05,
+   "incidence_deg": 62.49,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.74,
-     "p90_in": 12.47,
-     "scale_error_pct": -0.96
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.13,
+     "p90_in": 12.31,
+     "scale_error_pct": -0.11
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 10.53,
-     "p90_in": 32.82,
-     "scale_error_pct": -1.57
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 8.72,
+     "p90_in": 32.88,
+     "scale_error_pct": -0.81
     }
    }
   },
   {
    "view": "DSC_9277",
-   "distance_m": 10.76,
-   "incidence_deg": 57.49,
+   "distance_m": 10.74,
+   "incidence_deg": 57.2,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.3,
-     "p90_in": 3.93,
-     "scale_error_pct": 0.1
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.62,
+     "p90_in": 5.04,
+     "scale_error_pct": 0.13
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.3,
-     "p90_in": 9.15,
-     "scale_error_pct": -0.01
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.91,
+     "p90_in": 12.72,
+     "scale_error_pct": 0.14
     }
    }
   },
   {
    "view": "DSC_9278",
-   "distance_m": 8.41,
-   "incidence_deg": 58.26,
+   "distance_m": 8.4,
+   "incidence_deg": 58.22,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.36,
-     "p90_in": 4.18,
-     "scale_error_pct": 0.17
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.6,
+     "p90_in": 5.4,
+     "scale_error_pct": 0.27
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.02,
-     "p90_in": 8.2,
-     "scale_error_pct": 0.29
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.48,
+     "p90_in": 12.89,
+     "scale_error_pct": 0.15
     }
    }
   },
   {
    "view": "DSC_9279",
-   "distance_m": 5.53,
-   "incidence_deg": 42.89,
+   "distance_m": 5.48,
+   "incidence_deg": 42.46,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.62,
-     "p90_in": 4.78,
-     "scale_error_pct": -0.13
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.66,
+     "p90_in": 5.36,
+     "scale_error_pct": -0.02
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 2.71,
-     "p90_in": 8.34,
-     "scale_error_pct": 0.23
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.69,
+     "p90_in": 9.82,
+     "scale_error_pct": 0.3
     }
    }
   },
   {
    "view": "DSC_9280",
-   "distance_m": 11.92,
-   "incidence_deg": 54.1,
+   "distance_m": 11.87,
+   "incidence_deg": 53.69,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.31,
-     "p90_in": 10.5,
-     "scale_error_pct": -0.1
+     "pairs": 75000,
+     "failed_pct": 0.67,
+     "median_in": 3.59,
+     "p90_in": 10.03,
+     "scale_error_pct": 0.41
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 11.83,
-     "p90_in": 37.96,
-     "scale_error_pct": 2.45
+     "pairs": 75000,
+     "failed_pct": 0.9,
+     "median_in": 12.17,
+     "p90_in": 34.77,
+     "scale_error_pct": 2.65
     }
    }
   },
   {
    "view": "DSC_9281",
-   "distance_m": 6.78,
-   "incidence_deg": 72.64,
+   "distance_m": 6.79,
+   "incidence_deg": 72.57,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.78,
-     "p90_in": 12.94,
-     "scale_error_pct": 2.17
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.14,
+     "p90_in": 12.64,
+     "scale_error_pct": -1.56
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.86,
-     "p90_in": 28.38,
-     "scale_error_pct": -0.67
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 12.57,
+     "p90_in": 32.9,
+     "scale_error_pct": -3.91
     }
    }
   },
   {
    "view": "DSC_9282",
-   "distance_m": 6.02,
-   "incidence_deg": 55.45,
+   "distance_m": 6.01,
+   "incidence_deg": 55.42,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.69,
-     "p90_in": 5.62,
-     "scale_error_pct": 0.51
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.89,
+     "p90_in": 5.51,
+     "scale_error_pct": -0.08
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.81,
-     "p90_in": 12.28,
-     "scale_error_pct": 0.87
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.75,
+     "p90_in": 12.99,
+     "scale_error_pct": 0.33
     }
    }
   },
   {
    "view": "DSC_9283",
-   "distance_m": 5.3,
-   "incidence_deg": 39.82,
+   "distance_m": 5.26,
+   "incidence_deg": 39.52,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
+     "pairs": 75000,
+     "failed_pct": 0.0,
      "median_in": 0.75,
-     "p90_in": 2.11,
-     "scale_error_pct": -0.14
+     "p90_in": 2.28,
+     "scale_error_pct": -0.07
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 1.43,
-     "p90_in": 4.17,
-     "scale_error_pct": -0.38
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.47,
+     "p90_in": 4.34,
+     "scale_error_pct": -0.27
     }
    }
   },
   {
    "view": "DSC_9284",
-   "distance_m": 7.35,
-   "incidence_deg": 67.25,
+   "distance_m": 7.36,
+   "incidence_deg": 66.97,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.09,
-     "p90_in": 10.44,
-     "scale_error_pct": -0.43
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.59,
+     "p90_in": 8.34,
+     "scale_error_pct": -0.46
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 7.07,
-     "p90_in": 26.15,
-     "scale_error_pct": -1.41
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.36,
+     "p90_in": 18.8,
+     "scale_error_pct": -1.8
     }
    }
   },
   {
    "view": "DSC_9285",
-   "distance_m": 10.39,
-   "incidence_deg": 65.34,
+   "distance_m": 10.36,
+   "incidence_deg": 65.16,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 4.5,
-     "p90_in": 15.39,
-     "scale_error_pct": 1.41
+     "pairs": 75000,
+     "failed_pct": 0.6,
+     "median_in": 3.91,
+     "p90_in": 11.17,
+     "scale_error_pct": 0.27
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 13.85,
-     "p90_in": 45.17,
-     "scale_error_pct": 1.16
+     "pairs": 75000,
+     "failed_pct": 0.8,
+     "median_in": 11.42,
+     "p90_in": 34.23,
+     "scale_error_pct": -0.56
     }
    }
   },
   {
    "view": "DSC_9287",
-   "distance_m": 6.7,
-   "incidence_deg": 73.19,
+   "distance_m": 6.72,
+   "incidence_deg": 73.13,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.38,
-     "p90_in": 8.99,
-     "scale_error_pct": -0.71
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.58,
+     "p90_in": 9.38,
+     "scale_error_pct": -0.22
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.72,
-     "p90_in": 22.95,
-     "scale_error_pct": -2.35
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 9.59,
+     "p90_in": 24.28,
+     "scale_error_pct": -1.59
     }
    }
   },
   {
    "view": "DSC_9289",
    "distance_m": 16.22,
-   "incidence_deg": 67.89,
+   "incidence_deg": 67.64,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 9.73,
-     "p90_in": 26.48,
-     "scale_error_pct": -0.77
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 10.74,
+     "p90_in": 53.37,
+     "scale_error_pct": 8.57
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 34.36,
-     "p90_in": 84.94,
-     "scale_error_pct": -9.47
+     "pairs": 75000,
+     "failed_pct": 0.53,
+     "median_in": 33.41,
+     "p90_in": 117.74,
+     "scale_error_pct": -0.89
     }
    }
   },
   {
    "view": "DSC_9290",
-   "distance_m": 17.41,
-   "incidence_deg": 63.32,
+   "distance_m": 17.26,
+   "incidence_deg": 62.95,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 17.04,
-     "p90_in": 56.15,
-     "scale_error_pct": -0.54
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 15.54,
+     "p90_in": 63.37,
+     "scale_error_pct": -0.12
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 47.11,
-     "p90_in": 127.54,
-     "scale_error_pct": -8.52
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 44.83,
+     "p90_in": 140.79,
+     "scale_error_pct": -7.06
     }
    }
   },
   {
    "view": "DSC_9291",
-   "distance_m": 17.38,
-   "incidence_deg": 64.5,
+   "distance_m": 17.4,
+   "incidence_deg": 64.38,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 12.36,
-     "p90_in": 31.28,
-     "scale_error_pct": -3.01
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 10.85,
+     "p90_in": 28.95,
+     "scale_error_pct": -0.77
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 33.4,
-     "p90_in": 86.16,
-     "scale_error_pct": -5.61
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 29.84,
+     "p90_in": 78.59,
+     "scale_error_pct": -2.89
     }
    }
   },
   {
    "view": "DSC_9292",
-   "distance_m": 15.6,
-   "incidence_deg": 62.37,
+   "distance_m": 15.5,
+   "incidence_deg": 62.24,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 6.27,
-     "p90_in": 23.47,
-     "scale_error_pct": -2.71
+     "pairs": 75000,
+     "failed_pct": 4.45,
+     "median_in": 5.49,
+     "p90_in": 51.03,
+     "scale_error_pct": 0.11
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 14.97,
-     "p90_in": 46.07,
-     "scale_error_pct": -1.51
+     "pairs": 75000,
+     "failed_pct": 4.32,
+     "median_in": 14.31,
+     "p90_in": 55.05,
+     "scale_error_pct": 2.13
     }
    }
   },
   {
    "view": "DSC_9293",
-   "distance_m": 10.55,
-   "incidence_deg": 66.55,
+   "distance_m": 10.5,
+   "incidence_deg": 66.27,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.97,
-     "p90_in": 12.49,
-     "scale_error_pct": 0.86
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.27,
+     "p90_in": 9.5,
+     "scale_error_pct": 0.66
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 9.52,
-     "p90_in": 31.27,
-     "scale_error_pct": -0.24
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.12,
+     "p90_in": 22.51,
+     "scale_error_pct": -0.63
     }
    }
   },
   {
    "view": "DSC_9294",
-   "distance_m": 6.5,
-   "incidence_deg": 55.31,
+   "distance_m": 6.42,
+   "incidence_deg": 54.85,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.13,
-     "p90_in": 5.76,
-     "scale_error_pct": 0.33
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.95,
+     "p90_in": 5.83,
+     "scale_error_pct": 0.15
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.98,
-     "p90_in": 12.79,
-     "scale_error_pct": 0.37
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.4,
+     "p90_in": 13.82,
+     "scale_error_pct": 0.23
     }
    }
   },
   {
    "view": "DSC_9295",
-   "distance_m": 5.1,
-   "incidence_deg": 43.81,
+   "distance_m": 5.0,
+   "incidence_deg": 43.32,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.59,
-     "p90_in": 5.95,
-     "scale_error_pct": -0.03
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.0,
+     "p90_in": 7.22,
+     "scale_error_pct": -0.33
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.09,
-     "p90_in": 9.09,
-     "scale_error_pct": -1.56
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.69,
+     "p90_in": 12.29,
+     "scale_error_pct": -1.63
     }
    }
   },
   {
    "view": "DSC_9296",
-   "distance_m": 5.34,
-   "incidence_deg": 52.54,
+   "distance_m": 5.27,
+   "incidence_deg": 51.77,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.52,
-     "p90_in": 5.38,
-     "scale_error_pct": 0.45
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.44,
+     "p90_in": 4.89,
+     "scale_error_pct": -0.25
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.06,
-     "p90_in": 11.02,
-     "scale_error_pct": -1.2
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.42,
+     "p90_in": 11.24,
+     "scale_error_pct": -1.91
     }
    }
   },
   {
    "view": "DSC_9297",
-   "distance_m": 4.08,
-   "incidence_deg": 45.29,
+   "distance_m": 3.99,
+   "incidence_deg": 44.51,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.17,
-     "p90_in": 6.11,
-     "scale_error_pct": -0.63
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.3,
+     "p90_in": 6.44,
+     "scale_error_pct": -0.39
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 4.68,
-     "p90_in": 9.08,
-     "scale_error_pct": -1.88
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.62,
+     "p90_in": 10.42,
+     "scale_error_pct": -1.59
     }
    }
   },
   {
    "view": "DSC_9298",
-   "distance_m": 11.6,
-   "incidence_deg": 67.03,
+   "distance_m": 11.63,
+   "incidence_deg": 66.89,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 3.35,
-     "p90_in": 8.91,
-     "scale_error_pct": -1.1
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.05,
+     "p90_in": 10.64,
+     "scale_error_pct": -1.24
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 8.38,
-     "p90_in": 21.28,
-     "scale_error_pct": -1.81
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 10.96,
+     "p90_in": 27.17,
+     "scale_error_pct": -2.06
     }
    }
   },
   {
    "view": "DSC_9299",
-   "distance_m": 5.9,
-   "incidence_deg": 64.21,
+   "distance_m": 5.87,
+   "incidence_deg": 63.81,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.7,
-     "p90_in": 7.74,
-     "scale_error_pct": -0.84
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.5,
+     "p90_in": 7.67,
+     "scale_error_pct": 0.65
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.74,
-     "p90_in": 15.88,
-     "scale_error_pct": 0.22
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.91,
+     "p90_in": 16.93,
+     "scale_error_pct": 1.59
     }
    }
   },
   {
    "view": "DSC_9300",
-   "distance_m": 5.95,
-   "incidence_deg": 68.51,
+   "distance_m": 5.93,
+   "incidence_deg": 68.35,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.97,
-     "p90_in": 5.72,
-     "scale_error_pct": 0.11
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.9,
+     "p90_in": 8.56,
+     "scale_error_pct": 0.52
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.06,
-     "p90_in": 14.38,
-     "scale_error_pct": 1.01
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 7.01,
+     "p90_in": 20.62,
+     "scale_error_pct": 1.47
     }
    }
   },
   {
    "view": "DSC_9301",
    "distance_m": 5.9,
-   "incidence_deg": 69.67,
+   "incidence_deg": 69.5,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.15,
-     "p90_in": 6.21,
-     "scale_error_pct": -0.38
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.09,
+     "p90_in": 5.87,
+     "scale_error_pct": 0.07
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 5.1,
-     "p90_in": 14.7,
-     "scale_error_pct": 0.8
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 5.18,
+     "p90_in": 13.69,
+     "scale_error_pct": 1.16
     }
    }
   },
   {
    "view": "DSC_9302",
-   "distance_m": 5.77,
-   "incidence_deg": 70.37,
+   "distance_m": 5.72,
+   "incidence_deg": 69.95,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 1.98,
-     "p90_in": 6.11,
-     "scale_error_pct": -0.99
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.55,
+     "p90_in": 4.54,
+     "scale_error_pct": 0.2
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 3.9,
-     "p90_in": 12.65,
-     "scale_error_pct": -0.25
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 3.62,
+     "p90_in": 10.85,
+     "scale_error_pct": 1.11
     }
    }
   },
   {
    "view": "DSC_9303",
    "distance_m": 5.37,
-   "incidence_deg": 70.98,
+   "incidence_deg": 70.85,
    "scene": "electro",
    "one_known_distance": {
     "1-3m": {
-     "pairs": 37500,
-     "median_in": 2.45,
-     "p90_in": 9.3,
-     "scale_error_pct": 0.72
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.73,
+     "p90_in": 10.61,
+     "scale_error_pct": 0.16
     },
     "3-10m": {
-     "pairs": 37500,
-     "median_in": 6.05,
-     "p90_in": 29.51,
-     "scale_error_pct": 2.57
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 6.67,
+     "p90_in": 30.74,
+     "scale_error_pct": 2.2
     }
    }
   }

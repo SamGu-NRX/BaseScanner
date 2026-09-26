@@ -22,6 +22,7 @@ at the target size and only normalises them. Input pixels the crop removed are i
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -52,10 +53,57 @@ RESOLUTION_SET = 518
 PATCH = 14
 
 
-def load(device):
-    from mapanything.models import MapAnything
+# The two transformer stacks hold 92% of the 1.23 B parameters and run under bf16 autocast. The
+# small encoders and heads stay fp32: parts of them run outside autocast and reject bf16 weights.
+BF16_MODULES = ("encoder.", "info_sharing.")
 
-    return MapAnything.from_pretrained(REPO, revision=REVISION).to(device).eval()
+
+def load(device):
+    """The model with its transformer weights in bf16, about 2.6 GB instead of 4.9.
+
+    `from_pretrained` builds the 1.2 B-parameter model in fp32 (4.9 GB) and then reads the 4.9 GB
+    fp32 checkpoint into it, more than one process may use on the shared machine. Here the model is
+    built on the meta device (no memory) and each checkpoint tensor is moved to the device as it is
+    read, cast to bf16 if it belongs to `BF16_MODULES`. Those already computed in bf16 under
+    autocast, so only their stored weights lose precision.
+    """
+    import json
+
+    import torch
+    from huggingface_hub import hf_hub_download
+    from mapanything.models import MapAnything
+    from safetensors import safe_open
+
+    config = json.loads(Path(hf_hub_download(REPO, "config.json", revision=REVISION)).read_text())
+    # As MapAnything.from_pretrained does: skip DINOv2's own hub weights (4.5 GB of fp32 read and
+    # thrown away), since the checkpoint replaces them.
+    config["encoder_config"] = {**config["encoder_config"], "torch_hub_pretrained": False}
+    with torch.device("meta"):
+        model = MapAnything(**config)
+    weights = {}
+    # Read straight onto the device: CPU copies of fp32 tensors, once freed, stay counted against
+    # the process by macOS's allocator.
+    with safe_open(
+        hf_hub_download(REPO, FILENAME, revision=REVISION), "pt", device=str(device)
+    ) as f:
+        for i, key in enumerate(f.keys()):
+            tensor = f.get_tensor(key)
+            if key.startswith(BF16_MODULES):
+                tensor = tensor.to(torch.bfloat16)
+            weights[key] = tensor
+            if str(device).startswith("mps") and i % 50 == 49:
+                # Copies to the GPU leave transfer buffers that are freed lazily; without this,
+                # loading peaks at 4.4 GB of GPU memory for 2.6 GB of weights.
+                torch.mps.synchronize()
+                torch.mps.empty_cache()
+    # strict=False: the checkpoint stores each shared tensor once (safetensors drops aliases).
+    model.load_state_dict(weights, strict=False, assign=True)
+    unset = [n for n, t in [*model.named_parameters(), *model.named_buffers()] if t.is_meta]
+    if unset:
+        raise RuntimeError(
+            f"{len(unset)} MapAnything tensors missing from the checkpoint: {unset[:5]}"
+        )
+    return model.eval()
 
 
 def network_size(sizes: list[tuple[int, int]], max_side: int | None) -> tuple[int, int]:

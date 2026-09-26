@@ -230,6 +230,7 @@ def excluded_pixels(view: View, width: int, height: int, dilate: int = 13) -> np
 class VisiblePoints:
     index: np.ndarray  # (N,) indices into the evaluation subset of scan points
     uv: np.ndarray  # (N, 2) pixel coordinates in the resized image, OpenCV integer-centred
+    edge: np.ndarray  # (N,) True on the near side of a depth edge (window, equipment, fence edges)
 
 
 def visible_scan_points(
@@ -250,9 +251,10 @@ def visible_scan_points(
     `zbuffer_scale` of the resized image, keeping the nearest depth per cell; holes are closed with
     a `window` x `window` minimum filter; a candidate is kept when its depth is within `tolerance`
     (relative) of the filtered buffer, so points behind a wall seen through a gap in the splat fail.
-    Candidates where the buffer's depth varies by more than `edge_range` (relative) inside the
-    window sit on a depth edge, where one pixel mixes two surfaces, and are dropped: this scores
-    surfaces, not silhouettes. Candidates on `excluded` pixels are dropped too.
+    Kept candidates where the buffer's depth varies by more than `edge_range` (relative) inside the
+    window are flagged `edge`: they sit on the near side of a depth edge, where a clearance is
+    usually measured from, and where one pixel can mix two surfaces. Candidates on `excluded`
+    pixels are dropped.
     """
     K = view.scaled_K(width, height)
     zw, zh = max(1, round(width * zbuffer_scale)), max(1, round(height * zbuffer_scale))
@@ -282,10 +284,38 @@ def visible_scan_points(
     cu = np.clip(((u + 0.5) * zbuffer_scale).astype(np.int64), 0, zw - 1)
     cv_ = np.clip(((v + 0.5) * zbuffer_scale).astype(np.int64), 0, zh - 1)
     near = zmin[cv_, cu]
-    keep = (z <= near * (1 + tolerance)) & ((zmax[cv_, cu] - near) <= edge_range * near)
+    keep = z <= near * (1 + tolerance)
     if excluded is not None:
         keep &= ~excluded[np.round(v).astype(int), np.round(u).astype(int)]
-    return VisiblePoints(index=idx[keep].astype(np.int64), uv=np.c_[u[keep], v[keep]])
+    edge = (zmax[cv_, cu] - near) > edge_range * near
+    return VisiblePoints(
+        index=idx[keep].astype(np.int64), uv=np.c_[u[keep], v[keep]], edge=edge[keep]
+    )
+
+
+def point_normals(points: np.ndarray, k: int = 12, chunk: int = 200_000) -> np.ndarray:
+    """Unit surface normal per point from the smallest principal axis of its k nearest neighbours
+    (sign arbitrary). Chunked so memory stays near a few hundred MB for 1.5 M points."""
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(points)
+    normals = np.empty_like(points, dtype=np.float64)
+    for start in range(0, len(points), chunk):
+        block = points[start : start + chunk].astype(np.float64)
+        _, nn = tree.query(block, k=k)
+        nbrs = points[nn].astype(np.float64)
+        centred = nbrs - nbrs.mean(axis=1, keepdims=True)
+        cov = np.einsum("nki,nkj->nij", centred, centred)
+        _, vecs = np.linalg.eigh(cov)
+        normals[start : start + chunk] = vecs[:, :, 0]
+    return normals
+
+
+def up_direction(views: list[View]) -> np.ndarray:
+    """World up, as the mean of the cameras' up axes: DSLR photos are taken held level."""
+    ups = np.array([v.R_wc.T @ np.array([0.0, -1.0, 0.0]) for v in views])
+    up = ups.mean(axis=0)
+    return up / np.linalg.norm(up)
 
 
 def resized_image(view: View, width: int) -> tuple[np.ndarray, int, int]:
