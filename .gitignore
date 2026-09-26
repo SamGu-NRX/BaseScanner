@@ -1,0 +1,22 @@
+# Materials Base gave the team. Not ours to publish; this repo is public.
+private/
+
+# Python / tooling
+__pycache__/
+*.pyc
+.venv/
+.env
+*.egg-info/
+
+# Captures can be large and show real homes: keep them out of git
+fixtures/real/
+captures/
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.DS_Store
+
+# Recognition prompts are loaded at runtime from private/, never committed
+server/prompts/
