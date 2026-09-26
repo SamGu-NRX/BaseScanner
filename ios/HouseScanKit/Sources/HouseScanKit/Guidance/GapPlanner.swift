@@ -99,3 +99,37 @@ public struct GapPlanner: Sendable {
         run.contains(0) ? 0 : min(abs(run.lowerBound), abs(run.upperBound))
     }
 }
+
+extension GapPlanner {
+    /// The capture request for an item of the server's missing evidence, or nil when no walk can
+    /// settle it (overhead and facing bands need a person with a tape).
+    ///
+    /// A band item asks for its own span. A past-end item asks for the ground 2 m beyond that
+    /// end: far enough to show whether the wall continues, near enough to stay one instruction.
+    public func plan(for item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?) -> GapPlan? {
+        let metersPerFoot: Float = 0.3048
+        switch item.kind {
+        case .band:
+            guard let span = item.spanFt else { return nil }
+            let band: SurfaceBand
+            switch item.band {
+            case .wall?: band = .wall
+            case .ground?: band = .ground
+            case .overhead?, .facing?, nil: return nil
+            }
+            let low = Float(min(span.x, span.y)) * metersPerFoot
+            let high = Float(max(span.x, span.y)) * metersPerFoot
+            return GapPlan(band: band, span: low...high, reason: .server)
+        case .pastEnd:
+            guard let side = item.side else { return nil }
+            switch side {
+            case .left:
+                let end = leftEnd ?? 0
+                return GapPlan(band: .ground, span: (end - 2)...end, reason: .server)
+            case .right:
+                let end = rightEnd ?? 0
+                return GapPlan(band: .ground, span: end...(end + 2), reason: .server)
+            }
+        }
+    }
+}

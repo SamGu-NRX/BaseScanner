@@ -420,6 +420,12 @@ final class ScanEngine {
         }
     }
 
+    func clearEnd(_ side: WallSide) {
+        updateCoverage { $0.clearEnd(side == .left ? .left : .right) }
+        endKinds[side] = nil
+        publishWall()
+    }
+
     var bothEndsMarked: Bool { coverage?.leftEnd != nil && coverage?.rightEnd != nil }
 
     // MARK: Gap loop

@@ -197,20 +197,12 @@ extension ScanEngine: ScanActions {
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }
         let item = missing[index]
-        let feetToMeters = Float(0.3048)
-        switch item.kind {
-        case .band:
-            guard let span = item.spanFt else { return }
-            let band: SurfaceBand = item.band == .ground ? .ground : .wall
-            let plan = GapPlan(band: band, span: Float(span.x) * feetToMeters...Float(span.y) * feetToMeters, reason: .server)
-            beginGap(plan, origin: .server, reason: .server(detail: item.message))
-        case .pastEnd:
-            guard let side = item.side, let map = coverage else { return }
-            let end = side == .left ? (map.leftEnd ?? 0) : (map.rightEnd ?? 0)
-            let beyond: ClosedRange<Float> = side == .left ? (end - 2)...end : end...(end + 2)
-            let plan = GapPlan(band: .ground, span: beyond, reason: .server)
-            beginGap(plan, origin: .server, reason: .server(detail: item.message))
+        guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
+        if item.kind == .pastEnd, let side = item.side {
+            // The walk has to go past the end it stopped at; that end is no longer a limit.
+            clearEnd(side == .left ? .left : .right)
         }
+        beginGap(plan, origin: .server, reason: .server(detail: item.message))
     }
 
     func showAR() {

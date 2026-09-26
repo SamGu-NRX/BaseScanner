@@ -223,6 +223,15 @@ public struct CoverageMap: Sendable {
         revision += 1
     }
 
+    /// Forgets a marked end, for example to walk past it when the server asks what lies beyond.
+    public mutating func clearEnd(_ side: WalkSide) {
+        switch side {
+        case .left: leftEnd = nil
+        case .right: rightEnd = nil
+        }
+        revision += 1
+    }
+
     /// Marks the not-yet-covered cells of `range` as skipped ("I can't get there").
     public mutating func markSkipped(_ band: SurfaceBand, _ range: ClosedRange<Float>) {
         for index in indices(overlapping: range) where allows(index) {
