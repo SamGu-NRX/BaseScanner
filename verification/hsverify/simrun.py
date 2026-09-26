@@ -265,6 +265,19 @@ def screenshot(udid: str, path: Path) -> None:
     simctl("io", udid, "screenshot", "--type=png", str(path))
 
 
+def seconds_since(launch_wall: float, log_timestamp: str, fallback: float) -> float:
+    """Seconds from launch to the log entry, by the log's own clock.
+
+    Arrival time at the runner lags behind while a screenshot is being taken, so the log
+    timestamp is preferred; the arrival time is used only if the timestamp does not parse.
+    """
+    try:
+        logged = dt.datetime.strptime(log_timestamp, "%Y-%m-%d %H:%M:%S.%f%z").timestamp()
+    except ValueError:
+        return round(fallback, 2)
+    return round(logged - launch_wall, 2)
+
+
 def slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", text).strip("-")[:60]
 
@@ -292,6 +305,7 @@ def follow(args, udid: str, bundle_id: str, out: Path, rep: RunReport) -> None:
     ]
     run(launch)
     launched = time.monotonic()
+    launched_wall = time.time()
     last_event = launched
     pending = None  # (StateEvent, arrival time) waiting for its settled screenshot
     redaction_noted = False
@@ -303,7 +317,12 @@ def follow(args, udid: str, bundle_id: str, out: Path, rep: RunReport) -> None:
         screenshot(udid, out / name)
         rep.states.append(
             ShotRecord(
-                index, event.name, round(arrived - launched, 2), name, transient, event.message
+                index,
+                event.name,
+                seconds_since(launched_wall, event.timestamp, arrived - launched),
+                name,
+                transient,
+                event.message,
             )
         )
 

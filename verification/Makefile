@@ -19,4 +19,4 @@ sim:
 # Self-test of the runner against a fixture app that logs a known STATE sequence.
 sim-probe:
 	uv run python -m hsverify.simrun --ref HEAD --project verification/fixtures/state-probe/StateProbe.xcodeproj \
-		--scheme StateProbe --until probe_done --extra-arg -probeArg --label probe
+		--scheme StateProbe --until probe_done --extra-arg=-probeArg --label probe
