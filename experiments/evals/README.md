@@ -51,6 +51,7 @@ make frames        # after recon -> results/frames.md
 make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a field session, section 5
 make modern-arkit  # MARViN pose files (about 3 MB) -> results/modern_arkit.md, section 6
 make coverage      # after recon-data; the app's coverage code at a pinned commit -> results/coverage.md, section 7
+make coverage-options  # after coverage -> results/coverage_options.md, section 7b
 ```
 
 Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -327,6 +328,20 @@ The tape test on the team's phone is still the number to trust.
   - Phones without depth can't make this check on the device. Until one side changes, either the server re-checks occlusion from the images, as the comment assumes, or the export must not be read as "seen and clear".
 - **Missed wall: none.** Everything two photos saw, the app credited.
 - **Limits.** One scene, one 19 ft wall, 17 contributing DSLR photos, not a walking phone capture. The truth ignores anything within max(10 cm, 4% of depth) of the wall (downspouts, conduit), which can only have hidden more false-observed length, not less.
+
+### 7b. Options for occlusion (ETH3D electro)
+
+[results/coverage_options.md](results/coverage_options.md), `make coverage-options`.
+
+**Question.** Which rule change stops coverage from claiming unseen wall, and at what cost in extra photos? The same harness, wall and truth as section 7. Each option is modelled in `coverage_driver/`, around the app's code at beede15, which stays unedited:
+- **Position baseline b**: `CoverageConfig.coveringBaseline` (`CoverageMap.swift` line 49, used at line 181), swept at 0.25 (today), 0.5, 1 and 2 m. No LiDAR needed.
+- **Angle diversity θ**: the predicate in `record` (lines 180 and 181) also requires the two views' directions to the row's centre to differ by at least θ, swept at 0°, 15°, 30° and 45°. It is crossed with b. No LiDAR needed. At θ = 0 and b = 0.25 the driver's copy of `record` must reproduce the app's own answer exactly.
+- **Depth test (LiDAR)**: `sees` (lines 241 to 248) also rejects a row sample that the laser scan, standing in for LiDAR depth, shows hidden. The same test and tolerance as the truth, and ETH3D's masks count, because LiDAR sees people and trees too. Three settings:
+  - true depth out to the app's 6 m, 3 rows (the ceiling);
+  - the same with 9 rows (`rowsPerBand`, lines 43 to 47);
+  - 9 rows with no depth beyond 5 m, the iPhone LiDAR's stated range.
+
+**Pre-registered, before any run.** An option passes when false-observed length on electro's wall is at most 0.5 ft, as in section 7. Missed length is measured against the same truth for every option: band seen from two positions at least 0.25 m apart. The recommendation is the passing option with the least missed length, preferring one that needs no LiDAR when two are within 1 ft of each other.
 
 ## Replay session from a real walk
 
