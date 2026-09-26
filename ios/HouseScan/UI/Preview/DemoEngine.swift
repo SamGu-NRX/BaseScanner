@@ -49,6 +49,13 @@ final class DemoEngine: ScanActions {
         }
         if let raw = value("-uiDemoCoaching") {
             state.coaching = Self.coaching(raw)
+            // The real engine reports these two only while the phone has lost its place, which
+            // also hides the overlays drawn from its position.
+            switch state.coaching {
+            case .relocalizing: state.tracking = .limited(.relocalizing)
+            case .trackingLost: state.tracking = .notAvailable
+            default: break
+            }
         }
         if arguments.contains("-uiDemoNoFeed") {
             state.feed = .none

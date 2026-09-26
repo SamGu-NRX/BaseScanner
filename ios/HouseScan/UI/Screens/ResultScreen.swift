@@ -51,6 +51,9 @@ struct ResultScreen: View {
                         Notice(symbol: "arrow.left.and.right", text: "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side.")
                             .accessibilityIdentifier("result.unseenSide")
                     }
+                    // The server's result covers where the battery goes, not the panel itself.
+                    Notice(symbol: "bolt.badge.checkmark", text: "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go.")
+                        .accessibilityIdentifier("result.panelReview")
                     if !result.checks.isEmpty {
                         ChecksList(checks: result.checks)
                     }

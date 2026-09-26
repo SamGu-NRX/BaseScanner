@@ -125,10 +125,11 @@ private struct FeatureRow: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Does this window open?")
                         .font(.subheadline.weight(.semibold))
-                    HStack(spacing: 8) {
-                        answer("Yes", selected: feature.opens == true) { actions.setWindowOpens(feature.id, opens: true) }
+                    // Stacked, so both answers stay full width at every text size (checklist I4).
+                    VStack(spacing: 8) {
+                        answer("It opens", selected: feature.opens == true) { actions.setWindowOpens(feature.id, opens: true) }
                             .accessibilityIdentifier("window.opens.yes")
-                        answer("No", selected: feature.opens == false) { actions.setWindowOpens(feature.id, opens: false) }
+                        answer("It stays shut", selected: feature.opens == false) { actions.setWindowOpens(feature.id, opens: false) }
                             .accessibilityIdentifier("window.opens.no")
                     }
                 }

@@ -20,6 +20,11 @@ struct WallWalkScreen: View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
             CameraOverlays(state: state, highlight: nil)
+            if state.coaching == .relocalizing, let meterPhoto {
+                // "Point at the meter like this.": the saved close-up shows what to aim at.
+                SavedMeterPhoto(image: meterPhoto)
+                    .transition(.opacity)
+            }
             if state.marking != nil {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -54,6 +59,7 @@ struct WallWalkScreen: View {
                 .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: controlsKey)
             }
         }
+        .animation(.easeOut(duration: 0.2), value: state.coaching == .relocalizing)
         .onChange(of: state.marking == nil) { _, notMarking in
             if !notMarking { trayOpen = false }
         }
@@ -187,6 +193,11 @@ struct WallWalkScreen: View {
         .buttonStyle(.secondaryProminent)
         .accessibilityHint("Pin a gas meter, door, window, AC unit, driveway or fence")
         .accessibilityIdentifier("action.markSomething")
+    }
+
+    private var meterPhoto: CGImage? {
+        if case .captured(let image) = state.closeUp { return image }
+        return nil
     }
 
     private var cameraS: Float? {

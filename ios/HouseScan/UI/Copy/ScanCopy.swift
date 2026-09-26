@@ -55,15 +55,15 @@ enum ScanCopy {
         case .initializing:
             Instruction(title: "Move your phone slowly", detail: "It's getting its bearings.")
         case .slowDown:
-            Instruction(title: "Slow down a little", detail: nil)
+            Instruction(title: "Slow down", detail: "Walk a little slower so the photos stay sharp.")
         case .needsTexture:
-            Instruction(title: "Aim at something with more detail", detail: "A corner, a window or the meter works well.")
+            Instruction(title: "Aim at a corner or somewhere with more texture", detail: "A plain wall or the sky gives your phone nothing to follow.")
         case .tooDark:
             Instruction(title: "It's too dark to see the wall", detail: "Turn on a porch light, or try again in daylight.")
         case .holdSteady:
             Instruction(title: "Hold steady", detail: nil)
         case .relocalizing:
-            Instruction(title: "Point at your meter again", detail: "Your phone is finding its place.")
+            Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
             Instruction(title: "Your phone lost its place", detail: "Aim back at your meter and move slowly.")
         }

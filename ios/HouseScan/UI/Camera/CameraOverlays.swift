@@ -6,7 +6,17 @@ struct CameraOverlays: View {
     var highlight: GapRequest?
 
     var body: some View {
-        if let projection = state.projection, let wall = state.wall {
+        ZStack {
+            overlays
+        }
+        .animation(.easeOut(duration: 0.2), value: state.tracking == .normal)
+    }
+
+    @ViewBuilder
+    private var overlays: some View {
+        // Hidden while tracking isn't normal: drawn from a pose the phone doesn't trust, the haze,
+        // path and pins would sit in the wrong place (checklist T3). They fade back on recovery.
+        if state.tracking == .normal, let projection = state.projection, let wall = state.wall {
             ZStack {
                 FogOverlay(coverage: state.coverage, wall: wall, projection: projection, highlight: highlight)
                     .ignoresSafeArea()

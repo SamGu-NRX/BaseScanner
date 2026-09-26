@@ -13,7 +13,7 @@ struct ResultARScreen: View {
 
     var body: some View {
         ZStack {
-            if let projection = state.projection, let wall = state.wall, let result = state.result {
+            if state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
                 BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
@@ -34,6 +34,9 @@ struct ResultARScreen: View {
     }
 
     private var instruction: Instruction {
+        if state.tracking != .normal {
+            return Instruction(title: "Point at your meter", detail: "The battery comes back once your phone finds its place.")
+        }
         guard let result = state.result, result.spot != nil else {
             return Instruction(title: "Point at your meter", detail: nil)
         }
