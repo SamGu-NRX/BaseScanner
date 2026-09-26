@@ -11,6 +11,8 @@ final class DemoEngine: ScanActions {
     private let noFeed: Bool
     private let offline: Bool
     private let passResult: Bool
+    /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
+    private let overlapResult: Bool
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -55,6 +57,7 @@ final class DemoEngine: ScanActions {
         noFeed = arguments.contains("-uiDemoNoFeed")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
+        overlapResult = arguments.contains("-uiDemoOverlap")
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -463,6 +466,7 @@ final class DemoEngine: ScanActions {
     /// The check's answer, before or after its follow-up view.
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
+        if overlapResult { return Self.overlapSample }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
     }
@@ -947,6 +951,19 @@ final class DemoEngine: ScanActions {
         ],
         isSample: true
     )
+
+    /// Field test run 2's working-space line: the spot overlaps the meter's working space by
+    /// 1 ft 3 in (measured_ft -1.25), within the measurement's 1 ft 6 in error (#40).
+    static let overlapSample: ResultPresentation = {
+        var sample = reviewSample
+        sample.checks.insert(
+            CheckRow(id: "meter_working_space", title: "Clear of the meter's working space", outcome: .unsure,
+                     reason: "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
+                     needsPerson: true, measured: -0.381, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
+            at: 0
+        )
+        return sample
+    }()
 
     static let passSample: ResultPresentation = {
         var sample = reviewSample

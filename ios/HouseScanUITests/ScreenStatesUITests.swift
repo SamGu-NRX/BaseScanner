@@ -48,6 +48,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
+        ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -73,6 +74,8 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+        // #40: an overlap reads as one, not as clearance.
+        "result-overlap": ("check.meter_working_space", "Overlaps by 1 ft 3 in. The rule is no overlap"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.

@@ -18,6 +18,7 @@ import SwiftUI
 /// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
+/// - `-uiDemoOverlap`: the sample result's spot overlaps the meter's working space.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall

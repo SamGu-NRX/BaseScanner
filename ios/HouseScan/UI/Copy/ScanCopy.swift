@@ -370,7 +370,7 @@ enum ScanCopy {
     /// like a minimum under "Measured 3 ft".
     static func measurement(_ row: CheckRow) -> String? {
         guard let measured = row.measured else { return nil }
-        var parts = ["Measured \(Distance.feetAndInches(measured))."]
+        var parts = [measuredLine(measured)]
         if let threshold = row.threshold {
             let limit = ruleLimit(threshold, row.comparison)
             if let plusMinus = row.plusMinus, plusMinus > 0 {
@@ -382,12 +382,24 @@ enum ScanCopy {
         return parts.joined(separator: " ")
     }
 
+    /// "Measured 3 ft 2 in.", or "Overlaps by 1 ft 3 in." below zero. A clearance the server
+    /// measures to an area (the meter's working space, a box on the wall above) goes negative
+    /// once the battery is inside it, and the bare magnitude read as clearance (#40). Less than
+    /// half an inch of overlap stays "Measured 0 in.", not "Overlaps by 0 in.".
+    static func measuredLine(_ measured: Float) -> String {
+        if measured <= -Distance.metersPerInch / 2 {
+            return "Overlaps by \(Distance.feetAndInches(measured))."
+        }
+        return "Measured \(Distance.feetAndInches(measured))."
+    }
+
     /// "at least 3 ft", "at most 20 ft", or the bare distance when the server didn't say which.
+    /// A minimum of 0 reads "no overlap": "at least 0 in" says the same thing less plainly.
     static func ruleLimit(_ threshold: Float, _ comparison: RuleComparison?) -> String {
         let distance = Distance.feetAndInches(threshold)
         guard let comparison else { return distance }
         switch comparison {
-        case .atLeast: return "at least \(distance)"
+        case .atLeast: return threshold < Distance.metersPerInch / 2 ? "no overlap" : "at least \(distance)"
         case .atMost: return "at most \(distance)"
         }
     }
