@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score
+.PHONY: test drift replay recon recon-data recon-models recon-score frames
 
 test:
 	uv run ruff check .
@@ -42,3 +42,6 @@ recon-models:
 
 recon-score:
 	uv run python -m evals.recon score
+
+frames:
+	uv run python -m evals.frames

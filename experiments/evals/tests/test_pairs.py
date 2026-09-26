@@ -92,3 +92,20 @@ def test_bilinear_depth_sampling():
     assert np.isnan(out[3])  # outside the image
     # x = 0.25 along a row adds 0.25, y = 0.75 down a column adds 1.5: 1 + 0.25 + 1.5.
     assert out[4] == pytest.approx(2.75)
+
+
+def test_normals_from_depth_plane_cases():
+    from evals.frames import normals_from_depth
+
+    K = np.array([[100.0, 0, 20], [0, 100.0, 15], [0, 0, 1]])
+    # A wall 5 m straight ahead: normal points back at the camera, (0, 0, -1).
+    flat = np.full((31, 41), 5.0)
+    n = normals_from_depth(flat, K)
+    np.testing.assert_allclose(n[15, 20], [0, 0, -1], atol=1e-9)
+    # A wall turned 45 degrees about the vertical axis: z = 5 + x, so the normal is (1, 0, -1)/sqrt2
+    # (oriented to the camera). Depth along each pixel ray: z = 5 / (1 - (u - cx) / fx).
+    u = np.arange(41, dtype=float)[None, :].repeat(31, axis=0)
+    tilted = 5.0 / (1 - (u - 20) / 100.0)
+    n = normals_from_depth(tilted, K)
+    np.testing.assert_allclose(n[15, 20], np.array([1.0, 0, -1]) / np.sqrt(2), atol=1e-6)
+    assert np.isnan(n[0, 0]).all()  # border pixels have no neighbours on both sides

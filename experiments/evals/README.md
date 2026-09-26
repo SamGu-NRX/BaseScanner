@@ -12,9 +12,11 @@ Every reported number comes from real data. Synthetic data appears only in the u
 Plain answers first; the evidence and limits follow in sections 1 and 2.
 
 1. **ARKit drift: much worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, a distance walked comes out a median 2.8 in off after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3), and 25.7 in after 30 ft (p90 60.1). It is mostly one steady error: ARKit read distances about 7% short against ARCore (5% to 17% short against GPS). The 0.3 ft guess holds in the median only for spans of about 3 ft, and never at p90. One of the four walks lost tracking entirely. ADVIO's own ground truth could not score this: its scale is 20% off in two walks and its random error is larger than ARKit's, so ARKit is scored against ARCore on the same rig, with GPS confirming the scale.
-2. **Photos alone: no.** Without anything measured by hand, every model's scale is off. At phone range (points within 6 m of a camera), MoGe-2 reads +4% to +12% long, Depth Anything 3 metric −7% to −11% short, and MapAnything −9% to −24% short, giving median errors of 5 to 20 in on 1 to 3 m spans and 12 to 42 in on 3 to 10 m spans.
+2. **Photos alone: no.** Without anything measured by hand, every model's scale is off. At phone range (points within 6 m of a camera), MoGe-2 reads +4% to +12% long, Depth Anything 3 metric −7% to −11% short, and MapAnything −9% to −24% short, giving median errors of 6 to 20 in on 1 to 3 m spans and 14 to 42 in on 3 to 10 m spans.
 3. **Photos plus one taped distance: good in the median, loose in the tail.** Scaling by one taped 1 to 3 m distance, a single photo through MoGe-2 is off a median 1.6 in on 1 to 3 m spans and 3.0 in on 3 to 10 m spans (electro, within 6 m). But one span in ten is off by more than 8 in and 15 in. Under the strict decision rule (PASS only when the margin beats the error), the usable bound is about ±8 in for 1 to 3 m and ±15 in for 3 to 10 m: enough for clear-cut placements, not for anything near a threshold.
 4. **More photos, or depth per photo placed with AR poses ("the phone imitates LiDAR"): no gain.** Per-photo depth placed with the true camera poses is no better than one photo, and with a taped distance it gets worse as views are added (MoGe-2 median 1.6 to 4.6 in on 1 to 3 m spans, 1 to 8 views): each photo has its own scale error, and one scale factor cannot fix all of them. MapAnything's joint reconstruction corrects part of its scale error with more views (−21% alone, about −10% with 2 to 8), but not enough to skip the tape.
+
+5. **Which photos to keep: the close ones.** Scored one photo at a time (MoGe-2, one taped distance), keeping only photos with the wall within 6 m cut the error from 2.7 / 11.2 in (median / p90) to 1.9 / 6.8 in on 1 to 3 m spans, and from 7.6 / 38.5 in to 4.3 / 14.4 in on 3 to 10 m spans. Viewing angle made little difference across these photos (26 to 75 degrees off head-on).
 
 What it means for the capture: without LiDAR, ask for one taped reference distance (or a known-size object) and use single-photo depth scaled by it, with an error bound set from the p90, not the median. Walking long distances with AR tracking to measure a span adds its own 7% bias on the phone measured here; a current phone must be checked with the Measure Lab tape protocol before that number is trusted.
 
@@ -30,6 +32,7 @@ uv run pytest -q                                  # metric code against hand-com
 make drift        # ADVIO download (about 800 MB) and the drift tables -> results/advio_drift.md
 make replay       # the replay session -> ~/house-scanning-data/replays/
 make recon        # ETH3D download (about 2.4 GB), model runs, scoring -> results/eth3d_recon.md
+make frames       # after make recon: which photos to keep -> results/frames.md
 ```
 
 Data lives outside the repo, in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks every archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -114,6 +117,21 @@ Per sequence against ARCore, the 30 ft median is 42.2 in (sequence 20), 23.1 in 
 Over all points (4 to 23 m from the cameras) errors are larger and the model scale errors wider: MoGe-2 −8% on facade and +0.5% on electro, Depth Anything 3 metric −10% to −15%, MapAnything −10% to −33%. With a taped distance, one MoGe-2 photo is off a median 2.5 to 3.0 in on 1 to 3 m spans and 6 to 9 in on 3 to 10 m spans at that range.
 
 **Limits.** Two scenes, both institutional buildings rather than houses, photographed with a DSLR that is sharper and lower-noise than a phone camera; phone photos should score the same or worse. The true poses are exact; real AR poses add the drift measured in section 1. The taped distance is simulated as exact. MapAnything was given intrinsics but not poses; giving it AR poses is untested here.
+
+## 3. Which photos to keep (ETH3D)
+
+`uv run python -m evals.frames` writes [results/frames.md](results/frames.md). Each ETH3D photo is scored alone (MoGe-2, scaled by one taped 1 to 3 m distance) and described by what an app can measure while capturing: the median distance to the wall points in view, and the median angle between the viewing ray and the wall's surface (from the laser scan's normals). Both scenes pooled, |length error| in inches, median / p90:
+
+| Keep | Photos kept | 1-3 m spans | 3-10 m spans |
+| --- | --- | --- | --- |
+| every photo | 121 of 121 | 2.7 / 11.2 | 7.6 / 38.5 |
+| wall within 6 m | 15 of 121 | 1.9 / 6.8 | 4.3 / 14.4 |
+| wall within 8 m | 27 of 121 | 2.1 / 7.2 | 4.8 / 16.1 |
+| wall within 12 m | 42 of 121 | 2.2 / 8.0 | 5.3 / 19.4 |
+| wall seen within 40 degrees of head-on | 53 of 121 | 2.4 / 9.5 | 7.5 / 36.1 |
+| wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.6 | 7.1 / 32.0 |
+
+Distance is what matters: the p90 on 3 to 10 m spans falls from 38.5 to 14.4 in when only photos within 6 m are kept. Viewing angle barely changes anything, but no photo here is closer to head-on than 26 degrees, so a head-on shot is untested. Only 15 photos are within 6 m, all of them from electro, so the near-range numbers rest on one building.
 
 ## Replay session from a real walk
 
