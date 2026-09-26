@@ -140,10 +140,11 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
-        // B-14: a limit says whether it is a minimum or a maximum.
+        // B-14: a limit says whether it is a minimum or a maximum. The unit is left off: VoiceOver
+        // text spells lengths out ("3 feet") once B-16 lands, the screen text says "3 ft".
         let window = element(app, "check.window")
         XCTAssertTrue(window.exists, "missing check.window")
-        XCTAssertTrue((window.value as? String)?.contains("The rule is at least 3 ft") == true,
+        XCTAssertTrue((window.value as? String)?.contains("The rule is at least 3") == true,
                       "the window rule must read as a minimum, got \(String(describing: window.value))")
         // The result reveal slides its content in; a tap while it moves can miss (one failure in
         // three local runs), so wait until the button takes taps.
