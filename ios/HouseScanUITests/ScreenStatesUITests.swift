@@ -30,6 +30,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
+        ("markFeatures-groundQuestion", ["-uiDemoGroundQuestion"], "markFeatures"),
+        ("markFeatures-groundAnswered", ["-uiDemoGroundAnswer", "mulch"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("gapRequest-groundOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "groundOut"], "gapRequest"),
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
@@ -55,6 +57,7 @@ final class ScreenStatesUITests: XCTestCase {
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
+        "markFeatures-groundQuestion", "markFeatures-groundAnswered",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -64,6 +67,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
+        "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
+        "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -118,6 +123,7 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.overheadClear", timeout: 15)
         tap(app, "action.finishWalk")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
+        tap(app, "ground.answer.gravel")
         tap(app, "window.opens.no")
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10))
@@ -167,6 +173,36 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.markPoint", timeout: 5)
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
+    }
+
+    /// The ground question asks until it is answered, then folds into one row with the answer;
+    /// Change opens the answers again with the current one selected, and a new pick folds it back.
+    @MainActor
+    func testGroundQuestionFoldsIntoARowAndChangeReopensIt() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoGroundQuestion"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        for id in ["lawn", "mulch", "gravel", "concrete", "drive", "deck", "notSure"] {
+            XCTAssertTrue(element(app, "ground.answer.\(id)").exists, "missing ground.answer.\(id)")
+        }
+        XCTAssertFalse(element(app, "ground.change").exists, "an unanswered question must not show Change")
+
+        tap(app, "ground.answer.gravel")
+        XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5), "the answer must fold into a row")
+        XCTAssertTrue(element(app, "ground.answer.lawn").waitForNonExistence(timeout: 5), "the answers must go once answered")
+        XCTAssertTrue(element(app, "ground.answered").label.contains("Gravel"), "the row must show the answer")
+
+        tap(app, "ground.change")
+        let gravel = element(app, "ground.answer.gravel")
+        XCTAssertTrue(gravel.waitForExistence(timeout: 5), "Change must bring the answers back")
+        XCTAssertTrue(gravel.isSelected, "the current answer must show as selected")
+        XCTAssertFalse(element(app, "ground.change").exists)
+
+        tap(app, "ground.answer.notSure")
+        XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "ground.answered").label.contains("Not sure"))
     }
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent

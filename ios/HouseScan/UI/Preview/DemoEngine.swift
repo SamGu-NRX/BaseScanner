@@ -68,8 +68,12 @@ final class DemoEngine: ScanActions {
             state.phase = .unsupported
             return
         }
-        let phase = value("-uiDemoPhase").flatMap(ScanPhase.init(rawValue:)) ?? .onboarding
+        // The ground question and its answer live on the feature review, so either argument opens it.
+        let groundAnswer = value("-uiDemoGroundAnswer").flatMap(Self.groundAnswer)
+        let opensReview = arguments.contains("-uiDemoGroundQuestion") || groundAnswer != nil
+        let phase: ScanPhase = opensReview ? .markFeatures : value("-uiDemoPhase").flatMap(ScanPhase.init(rawValue:)) ?? .onboarding
         jump(to: phase)
+        state.groundAnswer = groundAnswer
         if let raw = value("-uiDemoMarking"), let kind = FeatureKind(rawValue: raw) {
             state.marking = MarkingState(kind: kind, step: 0, refusal: arguments.contains("-uiDemoRefusal") ? .noSurface : nil)
         }
@@ -799,6 +803,7 @@ final class DemoEngine: ScanActions {
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
+        state.groundAnswer = nil
     }
 
     func liveCameraView() -> AnyView {
@@ -831,6 +836,11 @@ final class DemoEngine: ScanActions {
 
     /// A refusal in the homeowner's words, as the engine sends it.
     static let rejection = "Some of the wall's measurements were missing. Check what you marked, then send it again."
+
+    /// `-uiDemoGroundAnswer`: a `GroundType` raw value, or `notSure`.
+    private static func groundAnswer(_ raw: String) -> GroundAnswer? {
+        raw == "notSure" ? .notSure : GroundType(rawValue: raw).map(GroundAnswer.type)
+    }
 
     private static func coaching(_ raw: String) -> Coaching? {
         switch raw {
