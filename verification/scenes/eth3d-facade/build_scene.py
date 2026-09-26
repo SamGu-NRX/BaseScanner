@@ -42,8 +42,10 @@ RNG_SEED = 7  # fixed so RANSAC, and therefore every number in README.md, is rep
 # moves by feet for a few pixels of error.
 MAX_VIEW_ANGLE_DEG = 75.0
 COVERAGE_STEP_FT = 0.25
-BATTERY_HEIGHT_FT = 39.5 / 12  # Base Core height, docs/01 rules table; the wall band's top probe
-HEADROOM_FT = 6.5  # NEC 110.26 headroom, docs/01; the overhead band's top probe
+# Base Core height, docs/04 (What Base does today); the wall band's top probe
+BATTERY_HEIGHT_FT = 39.5 / 12
+# NEC 110.26 headroom, docs/04 (Public rule values); the overhead band's top probe
+HEADROOM_FT = 6.5
 GROUND_OUT_FT = 6.0  # how far out the ground band claims to have been seen
 OVERHEAD_OUT_FT = 3.0  # overhead search depth in front of the wall
 OVERHEAD_MAX_FT = 12.0  # anything higher than this is not reported as an overhead
