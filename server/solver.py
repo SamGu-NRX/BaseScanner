@@ -1,9 +1,10 @@
 """The placement solver: a pure function from a parsed scene and the rules to a result.
 
 It slides the battery footprint along every straight wall segment, runs every check at each start
-position, and decides. Every check follows the strict rule (plan contract C5, docs/02 Lane C):
-PASS only when the margin is larger than the error, FAIL only when the value is past the threshold
-by more than the error, otherwise UNSURE. An area nobody observed is never a pass.
+position, and decides. Every check follows the strict rule (docs/00, Decisions: every check
+answers PASS, FAIL or UNSURE): PASS only when the margin is larger than the error, FAIL only when
+the value is past the threshold by more than the error, otherwise UNSURE. An area nobody observed
+is never a pass.
 
 Start positions are a 2 in grid plus every position where some check can change its outcome (an
 opening's clearance edge, a coverage boundary, a ground patch edge), plus the midpoints between
@@ -753,8 +754,8 @@ class Solver:
             "",
             "route.crossing",
             None,
-            rule_source="docs/02 Lane C: the cable can't cross a door, a garage or a "
-            "stretch with no wall",
+            rule_source="Demo rule: the cable can't cross a door, a garage or a stretch with "
+            "no wall",
         )
         if "fail" in effects:
             path.outcome = FAIL

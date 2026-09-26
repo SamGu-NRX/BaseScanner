@@ -1,8 +1,8 @@
-"""Draw a placement result as a top-down 2D site plan (docs/01 D2) in SVG.
+"""Draw a placement result as a top-down 2D site plan in SVG.
 
 The plan is drawn in the meter wall's frame: the wall runs left to right across the page with the
-house above it and the yard below, whatever the scene frame's axes are. Colours follow docs/01 D2
-(blue meter area, purple cable, red battery spot and its clearance); gas is utility-locate yellow.
+house above it and the yard below, whatever the scene frame's axes are. Colours: blue meter area,
+purple cable, red battery spot and its clearance; gas is utility-locate yellow.
 Ground nobody saw is hatched, as in the app's coverage fog. The deciding clearances are drawn as
 dimension lines with their measured values, so the drawing shows why the spot works.
 

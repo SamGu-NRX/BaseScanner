@@ -19,29 +19,29 @@ policy:
   notice: "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
 
 battery:
-  width_ft: {value: 2.583333333333, source: "Base Core spec: 30.68 in wide, rounded up to 31 in (docs/01 C2)"}
+  width_ft: {value: 2.583333333333, source: "Base Core spec: 30.68 in wide, rounded up to 31 in (docs/04, What Base does today)"}
   depth_ft: {value: 1.833333333333, source: "Base Core spec: 22 in deep"}
   height_ft: {value: 3.291666666667, source: "Base Core spec: 39.5 in tall"}
 
 # Default measurement error by how a position was measured, used when an item has no plus_minus_ft.
-# These are the plan's estimates (docs/02 Lane C), not measured error bars; the D3 tape test checks them.
+# Day-1 estimates, not measured error bars (docs/00, Conventions the code relies on); the field test in experiments/evals/field checks them.
 errors:
-  tap_ft: {value: 0.3, source: "docs/02 Lane C estimate for AR taps; untested"}
-  vlm_ft: {value: 1.5, source: "docs/02 Lane C estimate for photo detections; untested"}
-  mesh_ft: {value: 0.5, source: "docs/02 Lane C estimate for the LiDAR mesh; untested"}
+  tap_ft: {value: 0.3, source: "Day-1 estimate for AR taps; untested (docs/00, Conventions)"}
+  vlm_ft: {value: 1.5, source: "Day-1 estimate for photo detections; untested (docs/00, Conventions)"}
+  mesh_ft: {value: 0.5, source: "Day-1 estimate for the LiDAR mesh; untested (docs/00, Conventions)"}
   # Walls from ARKit's detected planes on phones without LiDAR. No measurement exists; assumed
   # coarser than the mesh until the tape test measures it.
   plane_ft: {value: 0.75, source: "Untested estimate for ARKit plane detection without LiDAR; no measurement", placeholder: true}
   tape_ft: {value: 0.05, source: "Tape measure read to the nearest half inch", placeholder: true}
-  wall_ft: {value: 0.3, source: "Walls come from AR taps: docs/02 Lane C estimate; untested"}
-  meter_ft: {value: 0.3, source: "The meter is an AR tap: docs/02 Lane C estimate; untested"}
+  wall_ft: {value: 0.3, source: "Walls come from AR taps: day-1 estimate; untested (docs/00, Conventions)"}
+  meter_ft: {value: 0.3, source: "The meter is an AR tap: day-1 estimate; untested (docs/00, Conventions)"}
   # Added per foot walked from the meter to the default error of AR-placed positions (tap and
   # vlm objects, walls, ground patches); not to tape, the meter itself or explicit plus_minus_ft.
   # 0.3 ft + 0.16 ft/ft covers S1's p90 at 3, 10 and 30 ft walked (0.78, 1.9, 5.1 ft).
   drift_per_ft: {value: 0.16, source: "S1 real-data evals (PR #12): ARKit drift on outdoor ADVIO walks, p90 8.2 in after 3 ft, 22.3 in after 10 ft, 60.1 in after 30 ft, mostly ~7% scale error. 2018 iPhone 6s, ARKit 1.0; current phones untested"}
 
 sweep:
-  step_ft: {value: 0.166666666667, source: "docs/01 C2: slide the footprint in 2 in steps"}
+  step_ft: {value: 0.166666666667, source: "Slide the footprint in 2 in steps (docs/00, Decisions)"}
   # Wall ends closer than this are one corner, not a stretch with no wall. Two taps of one corner can
   # differ by twice the tap error.
   wall_join_ft: {value: 0.6, source: "Twice the AR tap error estimate", placeholder: true}
@@ -52,8 +52,8 @@ clearances:
   gas_ft: {value: 3.0, source: "Base help page: 3 ft from the gas meter; Austin Energy §1.9; Texas Gas Service"}
   ac_ft: {value: 3.0, source: "Base help page: 3 ft from AC units, fences and other batteries"}
   opening_ft: {value: 3.0, source: "IRC 2021 R328.4: 3 ft from doors and windows directly entering the dwelling. Applying it to garage doors (openings.types) is a demo choice the code does not require"}
-  drive_ft: {value: 5.0, source: "No public value (docs/01 rules table: TBD)", placeholder: true}
-  pool_ft: {value: 10.0, source: "No public value (docs/01 rules table: TBD); the demo ring drawn in docs/eli5.html", placeholder: true}
+  drive_ft: {value: 5.0, source: "No public value (docs/04, Public rule values)", placeholder: true}
+  pool_ft: {value: 10.0, source: "No public value (docs/04, Public rule values)", placeholder: true}
   # Wall-mounted equipment directly above the battery: minimum sideways gap along the wall.
   wall_equipment_ft: {value: 0.0, source: "No public value; 0 means only overlap fails", placeholder: true}
 
@@ -86,7 +86,7 @@ ground:
   allowed: [concrete, gravel, lawn, mulch]
   # Surfaces vehicles reach, measured by clearances.drive_ft.
   drivable: [drive]
-  source: "docs/01 ground types; which surfaces are allowed is a demo choice"
+  source: "Ground types from schemas/scene.schema.json; which surfaces are allowed is a demo choice"
   placeholder: true
 
 route:
@@ -94,7 +94,7 @@ route:
   # Past this length the route is UNSURE; beyond max_ft it fails.
   confident_reach_ft: {value: 15.0, source: "No public value", placeholder: true}
   height_ft: {value: 1.0, source: "Cable run height above ground", placeholder: true}
-  corner_allowance_ft: {value: 0.5, source: "docs/02 Lane C: a little per corner", placeholder: true}
+  corner_allowance_ft: {value: 0.5, source: "Day-1 estimate: a little per corner; untested", placeholder: true}
   # What a wall object across the route does: fail, review (UNSURE for a person), detour (go over or
   # under it at route height), allow (pass behind it). Types not listed are allowed.
   crossing:

@@ -20,8 +20,8 @@ def test_example_scene_validates() -> None:
     Draft202012Validator(SCENE_SCHEMA).validate(EXAMPLE)
 
 
-def test_docs01_minimal_scene_validates() -> None:
-    # The docs/01 fields alone, without any optional addition, are a valid scene.
+def test_minimal_scene_validates() -> None:
+    # The required fields alone, without any optional addition, are a valid scene.
     minimal = {
         "meter": {"pos": [0, 5, 0], "wall_id": "w1"},
         "walls": [{"id": "w1", "baseline": [[-10, 0], [10, 0]], "height_ft": 9}],
