@@ -39,30 +39,49 @@ final class KeyframeStore {
         return nextIndex
     }
 
-    /// Writes a keyframe's JPEG unrotated, as the sensor produced it. Returns whether it was
-    /// stored, and an upright thumbnail for the capture acknowledgment.
+    /// Writes a keyframe's JPEG unrotated, as the sensor produced it, with `camera`, the pose of
+    /// the frame those bytes came from. Returns whether it was stored, and an upright thumbnail
+    /// for the capture acknowledgment.
+    ///
+    /// Bytes that don't decode are refused before anything is written: a photo no one can open
+    /// is not a view, so it must not become a keyframe the coverage counts. The thumbnail is that
+    /// decode. (Before, an undecodable photo was stored with a gray placeholder thumbnail.)
     func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame) async -> (stored: Bool, thumbnail: CGImage?) {
         let id = String(format: "k%05d", index)
         let url = directory.appending(path: "\(id).jpg")
         let startedIn = epoch
-        let thumbnail = await Task.detached(priority: .utility) { () -> CGImage? in
-            guard let data = Self.data(of: payload) else { return nil }
+        let written = await Task.detached(priority: .utility) { () -> Result<CGImage, KeyframeWriteFailure> in
+            guard let data = Self.data(of: payload) else { return .failure(.noPhoto) }
+            guard let thumbnail = ImageWork.uprightThumbnail(jpeg: data) else { return .failure(.undecodable) }
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
-                return nil
+                return .failure(.writeFailed)
             }
-            return ImageWork.uprightThumbnail(jpeg: data) ?? Self.placeholder
+            return .success(thumbnail)
         }.value
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            RuntimeLog.engine.error("keyframe \(id, privacy: .public) was not written")
+        let thumbnail: CGImage
+        switch written {
+        case .success(let image):
+            thumbnail = image
+        case .failure(let failure):
+            RuntimeLog.capture.error("keyframe \(id, privacy: .public) not stored: \(failure.rawValue, privacy: .public)")
             return (false, nil)
         }
         // Taken in a world frame that was discarded while the file was being written.
-        guard startedIn == epoch else { return (false, nil) }
+        guard startedIn == epoch else {
+            RuntimeLog.capture.info("keyframe \(id, privacy: .public) not stored: its world frame was discarded")
+            return (false, nil)
+        }
         keyframes.append(StoredKeyframe(id: id, camera: camera))
         keyframes.sort { $0.id < $1.id }
         return (true, thumbnail)
+    }
+
+    enum KeyframeWriteFailure: String, Error {
+        case noPhoto = "no photo data"
+        case undecodable = "photo does not decode"
+        case writeFailed = "write failed"
     }
 
     /// Writes a still such as the meter close-up. Returns false when there was nothing to write.
@@ -136,13 +155,5 @@ final class KeyframeStore {
 
     nonisolated private static func purpose(of name: String) -> String {
         (name as NSString).deletingPathExtension
-    }
-
-    /// A tiny gray square so an acknowledgment still appears when a thumbnail can't be made.
-    nonisolated private static var placeholder: CGImage? {
-        let context = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
-        context?.setFillColor(gray: 0.5, alpha: 1)
-        context?.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
-        return context?.makeImage()
     }
 }

@@ -68,7 +68,7 @@ final class ScanEngine {
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
     /// Tilt-up views kept when the current gap request began: an overhead request is closed by a
-    /// new one (`recordOverheadClear`), which keeps no keyframe.
+    /// new one (`keepOverheadView`); counting keyframes would not do, since the walk keeps them too.
     private var overheadViewsAtGapStart = 0
     /// Requests the homeowner skipped or answered with something overhead: they go to installer
     /// review, and the result doesn't offer them as captures again.
@@ -81,8 +81,9 @@ final class ScanEngine {
     /// Set once the tilt-up step is answered or skipped: the walk asks it once per scan.
     var tiltUpSettled = false
     /// The tilted-up view the overhead question is about. "Open sky or nothing overhead" keeps it
-    /// in the coverage map (`recordOverheadClear`), which the export sends as the overhead band;
-    /// "A roof edge, porch or stairs" keeps nothing, so the server treats that stretch as unseen.
+    /// as a keyframe and in the coverage map (`keepOverheadView`), which the export sends as the
+    /// overhead band; "A roof edge, porch or stairs" keeps nothing, so the server treats that
+    /// stretch as unseen.
     private var pendingOverhead: SourceFrame?
 
     // Tracking recovery
@@ -415,7 +416,9 @@ final class ScanEngine {
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         var skip: CaptureDecision.SkipReason?
         if case .skip(let reason) = decision { skip = reason }
-        if decision.isKeep, frame.jpeg.isAvailable, !keptSourceIDs.contains(frame.id) {
+        // The gate judges sharpness and exposure from this frame's own quality when it has one,
+        // else from the last measured frame's. A kept photo must have been judged itself.
+        if decision.isKeep, frame.quality != nil, frame.jpeg.isAvailable, !keptSourceIDs.contains(frame.id) {
             autoCapture.didKeep(sample)
             keptSourceIDs.insert(frame.id)
             keep(frame)
@@ -472,8 +475,10 @@ final class ScanEngine {
     }
 
     /// Stores a kept frame; coverage and the capture count move only once its photo is on disk,
-    /// so the strip never claims a view the bundle lacks.
-    private func keep(_ frame: SourceFrame) {
+    /// so the strip never claims a view the bundle lacks. The photo, pose and tracking all come
+    /// from the one `SourceFrame`, so what is credited is the pose of the stored image. With
+    /// `overhead`, the stored view is also kept as a clear overhead view.
+    private func keep(_ frame: SourceFrame, overhead: Bool = false) {
         let kind: CaptureEvent.Kind = state.phase == .gapRequest ? .gap : .walk
         let index = store.nextKeyframeIndex()
         let scan = generation
@@ -489,9 +494,16 @@ final class ScanEngine {
             // A frame queued before a reset must not be written into the new scan's store.
             guard scan == generation else { return }
             let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
-            guard scan == generation, saved.stored else { return }
+            guard scan == generation else { return }
+            guard saved.stored else {
+                // Not stored, so not kept: a later pass over the same replay frame may keep it.
+                keptSourceIDs.remove(frame.id)
+                if overhead { RuntimeLog.engine.error("overhead: the view asked about was not stored; nothing recorded") }
+                return
+            }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
+            if overhead { recordOverhead(frame) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
             afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? frame.timestamp)
@@ -587,10 +599,11 @@ final class ScanEngine {
     /// needs it: over any of the tilt-up step's stretch during the walk, or, for an overhead gap
     /// request, over enough of the requested span that recording it settles the request
     /// (`GapPlanner.overheadViewSettles`), so "nothing overhead" always closes it. Only the
-    /// homeowner can say whether what is above is open sky or an eave. Every frame counts, not
-    /// only kept keyframes: the view is evidence through the answer, not through a photo.
+    /// homeowner can say whether what is above is open sky or an eave. Any frame with a photo
+    /// counts, not only frames auto-capture kept: "nothing overhead" stores that photo as a
+    /// keyframe, and the view counts only once it is stored (`keepOverheadView`).
     private func askOverheadIfTiltedUp(_ frame: SourceFrame) {
-        guard !state.overheadQuestion, frame.tracking == .normal, let map = coverage else { return }
+        guard !state.overheadQuestion, frame.tracking == .normal, frame.jpeg.isAvailable, let map = coverage else { return }
         let wanted: ClosedRange<Float>
         switch state.phase {
         case .wallWalk:
@@ -618,9 +631,9 @@ final class ScanEngine {
         pendingOverhead = nil
         state.overheadQuestion = false
         tiltUpSettled = true
-        // After settling, so the guidance this recomputes moves past the tilt-up step.
-        let recorded = clear && frame.map { recordOverheadClear(from: $0) } == true
-        RuntimeLog.engine.info("tilt-up step settled: \(recorded ? "clear overhead recorded" : "nothing recorded", privacy: .public)")
+        // After settling, so the guidance recomputed once it is stored moves past the tilt-up step.
+        let storing = clear && frame.map { keepOverheadView($0) } == true
+        RuntimeLog.engine.info("tilt-up step settled: \(storing ? "storing the clear overhead view" : "nothing recorded", privacy: .public)")
     }
 
     /// The answer to the overhead question during an overhead gap request. "Nothing overhead"
@@ -635,8 +648,8 @@ final class ScanEngine {
             skipCurrentGap(because: "something is overhead")
             return
         }
-        if frame.map({ recordOverheadClear(from: $0) }) != true {
-            RuntimeLog.engine.error("overhead answer: the view asked about could not be recorded")
+        if frame.map({ keepOverheadView($0) }) != true {
+            RuntimeLog.engine.error("overhead answer: the view asked about could not be kept")
         }
     }
 
@@ -948,21 +961,30 @@ final class ScanEngine {
         }
     }
 
-    /// Keeps the tilt-up view as overhead evidence (`CoverageMap.recordOverhead`). Call it only
-    /// once the homeowner answered that nothing is overhead (`answerOverhead(clear: true)`): the
-    /// camera can't tell open sky from an eave. `frame` is the view that was tilted up; nil uses
-    /// the latest frame. Returns false when nothing was kept: tracking was not normal, or the
-    /// view did not show the wall from the top of the wall band (6.5 ft) upward. The export then
-    /// sends each stretch the view reached as an overhead entry with the height seen.
-    @discardableResult
-    func recordOverheadClear(from frame: SourceFrame? = nil) -> Bool {
-        guard var map = coverage, let frame = frame ?? lastFrame else { return false }
+    /// Keeps the tilted-up view the overhead question was about as overhead evidence. Call it
+    /// only once the homeowner answered that nothing is overhead (`answerOverhead(clear: true)`):
+    /// the camera can't tell open sky from an eave. The view's photo is stored as a keyframe
+    /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
+    /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
+    /// view doesn't show the wall from the top of the wall band (6.5 ft) upward.
+    func keepOverheadView(_ frame: SourceFrame) -> Bool {
+        guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
+              !map.overheadReach(from: frame.camera).isEmpty else { return false }
+        keep(frame, overhead: true)
+        return true
+    }
+
+    /// Records a stored tilted-up view in the coverage map; the export then sends each stretch it
+    /// reached as an overhead entry with the height seen.
+    private func recordOverhead(_ frame: SourceFrame) {
+        guard var map = coverage else { return }
         let reach = map.recordOverhead(frame.camera, trackingNormal: frame.tracking == .normal)
-        guard !reach.isEmpty else { return false }
+        guard !reach.isEmpty else {
+            RuntimeLog.engine.error("overhead: the stored view no longer reaches above the wall band; nothing recorded")
+            return
+        }
         coverage = map
         RuntimeLog.engine.info("overhead: kept a view reaching \(reach.map(\.out).min() ?? 0) m over s=\(reach.first?.span.lowerBound ?? 0)...\(reach.last?.span.upperBound ?? 0)")
-        afterCoverageChange(camera: frame.camera, time: frame.timestamp)
-        return true
     }
 
     /// Ends the current request without the view it asked for ("I can't get there", or something

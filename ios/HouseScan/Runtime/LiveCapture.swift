@@ -155,6 +155,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     private static let encodeMove: Float = 0.15
     private static let encodeTurn: Float = 5 * .pi / 180
     private static let encodeInterval = 0.3
+    /// A walk JPEG is also encoded after this long without one, moved or not. The overhead
+    /// question is only asked on a frame with a photo (the answer stores it), and a phone held
+    /// still while tilted up would otherwise never get one. A guess: one encode a second while
+    /// standing still costs little; not measured on a phone.
+    private static let encodeStill = 1.0
 
     init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
         self.onFrame = onFrame
@@ -223,7 +228,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 if let last = state.lastEncode {
                     let moved = simd_distance(camera.position, last.camera.position) >= Self.encodeMove
                         || camera.rotationAngle(to: last.camera) >= Self.encodeTurn
-                    decision = moved && time - last.time >= Self.encodeInterval
+                    decision = (moved && time - last.time >= Self.encodeInterval) || time - last.time >= Self.encodeStill
                 } else {
                     decision = true
                 }
