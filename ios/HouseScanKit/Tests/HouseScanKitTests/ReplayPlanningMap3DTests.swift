@@ -41,11 +41,12 @@ import simd
     }
 
     /// Depth a LiDAR sensor would report for the synthetic wall's scene: the wall's plane above
-    /// the ground and the ground's plane in front of the wall, nothing else. 128 x 96 pixels: at
-    /// 64 x 48 the rays land farther apart than a voxel a few meters out, and nothing reads as seen.
+    /// the ground and the ground's plane in front of the wall, nothing else. 256 x 192 pixels,
+    /// ARKit's depth size: at 128 x 96 the facade's lowest row gets too few rays to count as seen
+    /// (`Map3D.groundReach` needs it), and at 64 x 48 nothing does.
     static func renderedDepth(_ camera: CameraFrame, wall: WallFrame) -> DepthImage {
-        let width = 128
-        let height = 96
+        let width = 256
+        let height = 192
         let intrinsics = DepthImage.intrinsics(scaling: camera.intrinsics, from: camera.imageSize, toWidth: width, height: height)
         let m = camera.cameraToWorld
         let rotation = simd_float3x3(

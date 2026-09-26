@@ -232,6 +232,12 @@ extension Map3D {
     /// meters, in whole rows of `groundRowSpacing`; nil when not even the first voxel in front
     /// of the wall was. Ground is checked every half voxel out (`groundHeight`), so no voxel
     /// between two rows goes unchecked.
+    ///
+    /// The reach is reported from the wall's line, but ground can only be judged from the first
+    /// voxel past the facade's face (`nearStart`): nearer, the voxels hold the face. That strip
+    /// counts as seen only where the facade shows at its foot at every sample (`footShowsFace`):
+    /// the rays that reached the face's lowest row crossed the strip just above the ground, as
+    /// the rays to the face do for `facingReach`.
     public func groundReach(cell index: Int, along wall: WallFrame) -> Float? {
         groundReach(cell: index, along: wall, facade: facadeOffset(cell: index, along: wall) ?? 0)
     }
@@ -242,10 +248,35 @@ extension Map3D {
 
     private func groundReach(cell index: Int, along wall: WallFrame, facade: Float) -> Float? {
         let ss = samples(in: cellRange(index))
+        guard ss.allSatisfy({ footShowsFace(wall, s: $0, facade: facade) }) else { return nil }
         guard let seen = contiguousReach(from: nearStart(facade), to: config.outDepth, { out in
             ss.allSatisfy { groundHeight(wall, s: $0, out: out) != nil }
         }) else { return nil }
         return (seen / config.groundRowSpacing + 1e-4).rounded(.down) * config.groundRowSpacing
+    }
+
+    /// How far the facade face at its lowest row may turn up from facing out, radians. A low
+    /// object standing at the foot, too near the face to part from it at 10 cm voxels, gives the
+    /// face's voxel its top as well: in the synthetic foot scene (`Map3DFootTests`) a clear foot
+    /// faces straight out, and a box 0.1 m tall and 0.05 m deep turns it 27 degrees up. 20
+    /// degrees is between them: a guess from that scene, not measured on a phone.
+    static let footFaceTilt: Float = 20 * .pi / 180
+
+    /// Whether the facade shows at its lowest row at s: a well-seen surface on the face
+    /// (`faceSample`), nothing proud of it there, and facing out within `footFaceTilt`.
+    private func footShowsFace(_ wall: WallFrame, s: Float, facade: Float) -> Bool {
+        let height = config.voxelSize
+        let sample = faceSample(wall, s: s, height: height, facade: facade)
+        guard sample.face, sample.relief == nil else { return false }
+        let outward = frame.mapDirection(wall.segment(atS: s).outward)
+        for out in stride(from: facade - config.recessDepth, through: facade + faceTolerance, by: config.voxelSize / 2) {
+            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), voxel.isWellSeenSurface(config),
+                  let normal = voxel.normal else { continue }
+            let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s) - facade
+            guard centerOut >= -config.recessDepth - 1e-4, centerOut <= faceTolerance + 1e-4 else { continue }
+            if simd_dot(simd_normalize(normal), outward) >= cos(Self.footFaceTilt) { return true }
+        }
+        return false
     }
 
     /// Height of the ground seen at a point in front of the wall, meters above the chain's
