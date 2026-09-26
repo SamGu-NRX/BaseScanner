@@ -1,0 +1,82 @@
+import HouseScanKit
+import simd
+import Testing
+
+@Suite struct ReplayPlanningTests {
+    /// Portrait camera 2.6 m in front of the wall z = 0 at height 1.4, pitched down 20 degrees.
+    static func planned(x: Float, t: Double) -> PlannedFrame {
+        let camera = portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forwardFacingWall(pitchedDown: 20))
+        return PlannedFrame(camera: camera, timestamp: t, trackingNormal: true)
+    }
+
+    /// Walk left from 0 to -5, then right to 5, in 0.5 m steps 0.55 s apart (0.91 m/s, under the
+    /// 1.5 m/s limit): 11 + 20 = 31 frames.
+    static func outAndBack() -> [PlannedFrame] {
+        let xs = (0...10).map { -Float($0) * 0.5 } + (1...20).map { -5 + Float($0) * 0.5 }
+        return xs.enumerated().map { planned(x: $1, t: Double($0) * 0.55) }
+    }
+
+    @Test func assumedWallFromAStraightWalk() throws {
+        // x from -5 to 5: centroid (0, 1.4, 2.6); the covariance has only an xx term, so the walk runs
+        // along (1, 0, 0) and the perpendicular is (0, 0, 1). The cameras look along -z, against it, so
+        // outward = (0, 0, 1). Ground = 1.4 - 1.4 = 0; the path's middle is x = 0 (5 m of 10), so the
+        // meter is at (0, 1.5, 2.6 - offset).
+        let frames = (0...20).map { Self.planned(x: -5 + Float($0) * 0.5, t: Double($0) * 0.55) }
+        let result = try #require(ReplayPlanning.assumedWall(frames: frames))
+        #expect(nearlyEqual(result.wall.outward, SIMD3(0, 0, 1)))
+        #expect(nearlyEqual(result.wall.groundY, 0))
+        #expect(nearlyEqual(result.wall.meter, SIMD3(0, 1.5, 2.6 - result.offset)))
+        #expect(result.coveredCells > 0)
+        // The offset search maximises covered cells; it does not recover the true 2.6. Straight ahead,
+        // both bands stay visible from about 2.1 m (nearer, the far ground sample leaves the bottom
+        // of the image) to 3.6 m (farther, two of three ground samples pass 65 degrees from the
+        // normal). The wall footprint widens with distance while sideways ground samples pass 65
+        // degrees sooner, so the best offset lies inside that range. It is 3.25 today.
+        #expect(result.offset >= 2.25 && result.offset <= 3.5)
+    }
+
+    @Test func assumedWallNeedsTwoFrames() {
+        #expect(ReplayPlanning.assumedWall(frames: [Self.planned(x: 0, t: 0)]) == nil)
+    }
+
+    @Test func heldBackWindowLeavesAGapThatItsReplayFills() throws {
+        let frames = Self.outAndBack()
+        let wall = standardWall()
+        let planner = GapPlanner()
+        let held = try #require(ReplayPlanning.heldBackWindow(frames: frames, wall: wall))
+        #expect(held.frames.count >= 3 && held.frames.count <= 8)
+        #expect(held.ends.lowerBound < 0 && held.ends.upperBound > 0)
+
+        // The walk without the window, with the ends marked, leaves exactly that gap unsatisfied.
+        var rest = frames
+        rest.removeSubrange(held.frames)
+        var walked = ReplayPlanning.simulateWalk(rest, wall: wall)
+        walked.setEnd(.left, at: held.ends.lowerBound)
+        walked.setEnd(.right, at: held.ends.upperBound)
+        #expect(planner.plan(walked) == held.gap)
+        #expect(!planner.isSatisfied(held.gap, walked))
+
+        // Replaying the window with its lead-in through a fresh auto-capture fills it.
+        let replay = ReplayPlanning.gapReplayRange(held.frames)
+        #expect(replay.upperBound == held.frames.upperBound)
+        #expect(replay.lowerBound == max(0, held.frames.lowerBound - 2))
+        var capture = AutoCapture()
+        for frame in frames[replay] {
+            let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: .normal, quality: nil)
+            if capture.evaluate(sample, newlySeenCells: walked.newlySeenCount(from: frame.camera)).isKeep {
+                capture.didKeep(sample)
+                walked.observe(frame.camera, trackingNormal: true)
+            }
+        }
+        #expect(planner.isSatisfied(held.gap, walked))
+    }
+
+    @Test func simulateWalkKeepsEveryStrideOnceTrackingSettles() {
+        // Frame 0 waits for tracking; from 0.55 s on, each 0.5 m stride meets the 0.5 m spacing, so
+        // the cells around every stride are covered and nothing in [-4, 4] is left unseen on the wall.
+        let frames = (0...20).map { Self.planned(x: -5 + Float($0) * 0.5, t: Double($0) * 0.55) }
+        let map = ReplayPlanning.simulateWalk(frames, wall: standardWall())
+        #expect(map.coveredFraction(.wall, in: -4...4) == 1)
+        #expect(map.coveredFraction(.ground, in: -4...4) == 1)
+    }
+}

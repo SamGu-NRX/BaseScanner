@@ -96,12 +96,17 @@ public struct CoverageMap: Sendable {
         cells[band]?[index]?.level ?? .unseen
     }
 
-    /// Indices of every cell overlapping `range`.
+    /// Indices of every cell overlapping `range` by more than a thousandth of a cell.
+    ///
+    /// Ranges built from cell edges (gap spans, seen extents) sit within Float rounding of a
+    /// boundary: `Float(i) * width / width` can floor to i - 1, and the next cell's start can land
+    /// an ulp below this cell's end. Without the tolerance, 9 of the 121 cells within 9 m of the
+    /// meter picked up a neighbour, which could read a gap's 3 of 4 cells covered as 4 of 5 (80 %).
     public func indices(overlapping range: ClosedRange<Float>) -> ClosedRange<Int> {
-        let first = cellIndex(forS: range.lowerBound)
-        var last = cellIndex(forS: range.upperBound)
-        if cellRange(last).lowerBound >= range.upperBound, last > first { last -= 1 }
-        return first...last
+        let tolerance = config.cellWidth * 1e-3
+        let first = cellIndex(forS: range.lowerBound + tolerance)
+        let last = cellIndex(forS: range.upperBound - tolerance)
+        return first...max(first, last)
     }
 
     /// The s range allowed by the marked ends; unbounded sides are nil.
