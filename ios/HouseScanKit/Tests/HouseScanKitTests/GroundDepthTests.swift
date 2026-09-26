@@ -155,7 +155,7 @@ import Testing
 
         let item = try JSONDecoder().decode(PlacementMissingEvidence.self, from: Data(
             #"{"kind":"band","band":"ground","span_ft":[1.7,5.6],"out_ft":2.5,"message":"m"}"#.utf8))
-        let plan = try #require(GapPlanner().plan(for: item, leftEnd: nil, rightEnd: 0.5))
+        let plan = try #require(GapPlanner().plan(for: item, leftEnd: nil, rightEnd: 0.5, limitEnds: [.right]))
         #expect(GapPlanner().isSatisfied(plan, map))
         #expect(!GapPlanner().isSatisfied(plan, Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: false)))
     }

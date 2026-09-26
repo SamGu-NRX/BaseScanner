@@ -8,9 +8,8 @@ import simd
 extension ScanEngine {
     /// The side ending the wall applies to now, and whether the end lands at the reticle. The
     /// walk's own side while it asks to walk or to mark the end; during a request about the wall
-    /// in front of the homeowner (tilt down, tilt up, step back), the side the walk is on, which
-    /// is the first without an end, as the planner orders them. Nil when both ends are marked or
-    /// the walk is doing something else.
+    /// in front of the homeowner (tilt down, tilt up, step back), the side of the meter the phone
+    /// is on (`WalkedEnd.side`). Nil when both ends are marked or the walk is doing something else.
     private var endOnOffer: (side: WallSide, atReticle: Bool)? {
         guard state.phase == .wallWalk, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion,
               nextWallSide == nil, let map = coverage else { return nil }
@@ -20,9 +19,8 @@ extension ScanEngine {
         case .markEnd(let side):
             return (side, true)
         case .aimAtGround, .aimAtWall, .stepBack:
-            if map.leftEnd == nil { return (.left, false) }
-            if map.rightEnd == nil { return (.right, false) }
-            return nil
+            guard let side = WalkedEnd.side(phone: phonePosition, wall: map.wall, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return nil }
+            return (side == .left ? .left : .right, false)
         case .findMeter, .aimAtWallForMeter, .holdOnMeter, .walkComplete, .tiltUp, .markNextWall, .gap, .seeBehind:
             return nil
         }
@@ -33,8 +31,12 @@ extension ScanEngine {
     /// lost it.
     func walkedEnd(_ side: WallSide) -> Float? {
         guard let map = coverage else { return nil }
-        let phone = currentFrame.flatMap { $0.tracking.hasLostItsPlace ? nil : $0.camera.position }
-        return WalkedEnd.end(side.walk, phone: phone, walked: map.walkedPositions, wall: map.wall)
+        return WalkedEnd.end(side.walk, phone: phonePosition, walked: map.walkedPositions, wall: map.wall)
+    }
+
+    /// Where the phone is; nil while it has lost its place.
+    private var phonePosition: SIMD3<Float>? {
+        currentFrame.flatMap { $0.tracking.hasLostItsPlace ? nil : $0.camera.position }
     }
 
     /// The end preview for this moment (`ScanViewState.endPreview`).
