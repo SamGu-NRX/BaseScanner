@@ -591,8 +591,12 @@ class Solver:
         if d <= EPS:
             d = min(0.0, max(self.ws_span[0] - s1, s0 - self.ws_span[1]))
         e = self.scene.meter_plus_minus + piece.plus_minus
-        c.measured, c.plus_minus = d, e
         c.outcome = at_least(d, e, 0.0)
+        # The spot is placed and shown against the meter's anchor, so the meter's error can hold
+        # back a pass but never excuse an overlap the wall's error alone doesn't cover.
+        if c.outcome == UNSURE and at_least(d, piece.plus_minus, 0.0) == FAIL:
+            c.outcome, e = FAIL, piece.plus_minus
+        c.measured, c.plus_minus = d, e
         box = f"{ft(ws.width_ft.value)} wide by {ft(ws.depth_ft.value)} deep"
         if c.outcome == FAIL:
             c.reason = f"The battery would stand in the {box} working space in front of the meter."

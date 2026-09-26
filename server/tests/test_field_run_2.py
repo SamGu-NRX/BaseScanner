@@ -2,12 +2,13 @@
 
 import copy
 
-from helpers import observed_band, parsed, rect, shared_fixture
+import pytest
+from helpers import W, at_start, observed_band, parsed, rect, shared_fixture
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from test_s4_round import PUBLIC, answer
 
-from solver import SOLVE_BUDGET_S, UNSURE, Solver, estimate_fails
+from solver import FAIL, PASS, SOLVE_BUDGET_S, UNSURE, Solver, estimate_fails
 
 # --- #44: a spot whose best estimate overlaps the meter's working space ----------------------
 
@@ -55,6 +56,29 @@ def test_an_estimate_past_a_rule_never_outranks_one_that_clears(
         return
     chosen = min(unsures, key=lambda c: abs(c.s0 - result["spot"]["span_ft"][0]))
     assert not estimate_fails(chosen)
+
+
+def test_an_overlap_past_the_walls_error_fails_the_working_space() -> None:
+    # Before: -1.25 against the meter's 0.792 plus the wall's 0.713 was UNSURE. The meter's
+    # error no longer excuses an overlap, so the numbers give FAIL: -1.25 + 0.713 < 0.
+    c = at_start(meter_known_loosely(), -W, "meter_working_space", PUBLIC)
+    assert c.measured == pytest.approx(-1.25)
+    assert c.outcome == FAIL
+    assert c.plus_minus == pytest.approx(0.713)
+
+
+@pytest.mark.parametrize(
+    ("s1", "outcome"),
+    [
+        (-1.25 - 0.792 - 0.713 - 0.1, PASS),  # clear by more than both errors
+        (-1.25 - 0.1, UNSURE),  # clear, but by less than both
+        (-1.25 + 0.713 - 0.1, UNSURE),  # an overlap within the wall's error
+    ],
+)
+def test_the_meters_error_still_holds_back_a_working_space_pass(s1: float, outcome: str) -> None:
+    c = at_start(meter_known_loosely(), s1 - W, "meter_working_space", PUBLIC)
+    assert c.outcome == outcome
+    assert c.plus_minus == pytest.approx(0.792 + 0.713)
 
 
 # --- #45: the summary counts only unseen checks -----------------------------------------------
