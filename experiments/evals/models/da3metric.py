@@ -20,6 +20,7 @@ image is resized, longest side 504 unless --max-side is given, each side rounded
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -64,7 +65,7 @@ def load(device):
     return net.to(device=torch.device(device))
 
 
-def run(net, inputs: RunInputs) -> list[ImageResult]:
+def run(net, inputs: RunInputs) -> Iterator[ImageResult]:
     import torch
     from depth_anything_3.utils.io.input_processor import InputProcessor
 
@@ -76,7 +77,6 @@ def run(net, inputs: RunInputs) -> list[ImageResult]:
     processor = InputProcessor()
     process_res = inputs.max_side or DEFAULT_PROCESS_RES
     device = next(net.parameters()).device
-    results = []
     for i, path in enumerate(inputs.images):
         rgb = load_rgb(path)
         h, w = rgb.shape[:2]
@@ -115,22 +115,19 @@ def run(net, inputs: RunInputs) -> list[ImageResult]:
         metric = (raw * (focal_net / CANONICAL_FOCAL_PX)).astype(np.float32)
         non_sky = sky < NON_SKY_BELOW
         depth_in, valid_in = depth_to_input(metric, non_sky, r)
-        results.append(
-            ImageResult(
-                path=path,
-                depth=depth_in,
-                valid=valid_in,
-                intrinsics=k.copy(),
-                seconds=seconds,
-                resample=r,
-                network_wh=(net_w, net_h),
-                extra={
-                    "focal_network_px": round(focal_net, 3),
-                    "sky_fraction": round(float(1 - non_sky.mean()), 4),
-                },
-            )
+        yield ImageResult(
+            path=path,
+            depth=depth_in,
+            valid=valid_in,
+            intrinsics=k.copy(),
+            seconds=seconds,
+            resample=r,
+            network_wh=(net_w, net_h),
+            extra={
+                "focal_network_px": round(focal_net, 3),
+                "sky_fraction": round(float(1 - non_sky.mean()), 4),
+            },
         )
         del out, x
         if device.type == "mps":
             torch.mps.empty_cache()
-    return results

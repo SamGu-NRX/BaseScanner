@@ -71,6 +71,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "518 resolution set)",
     )
     ap.add_argument("--device", default="auto", choices=["auto", "mps", "cpu", "cuda"])
+    ap.add_argument(
+        "--mps-cap-gb",
+        type=float,
+        default=3.6,
+        help="hard cap on GPU memory after loading, so on the shared Mac a run that needs more "
+        "fails instead of growing; MoGe-2 at its default 3600 tokens needs 3.05 GiB",
+    )
     ap.add_argument("--fp32", action="store_true", help="disable mixed precision")
     ap.add_argument("--out", required=True, type=Path)
     args = ap.parse_args(argv)
@@ -127,6 +134,11 @@ def main(argv: list[str] | None = None) -> None:
     start = time.perf_counter()
     model = module.load(device)
     load_seconds = time.perf_counter() - start
+    if device == "mps":
+        torch.mps.empty_cache()
+        torch.mps.set_per_process_memory_fraction(
+            args.mps_cap_gb * 1e9 / torch.mps.recommended_max_memory()
+        )
     inputs = RunInputs(
         images=images,
         intrinsics=intrinsics,
@@ -136,13 +148,10 @@ def main(argv: list[str] | None = None) -> None:
         device=device,
         fp32=args.fp32,
     )
-    results = module.run(model, inputs)
-    del model
-    if device == "mps":
-        torch.mps.empty_cache()
-
+    # Each result is written as soon as it exists: MoGe-2 and DA3 yield one image at a time, so a
+    # long session never holds every depth map in memory at once.
     per_image = []
-    for res in results:
+    for res in module.run(model, inputs):
         write_npz(
             args.out,
             res.path.stem,
@@ -172,6 +181,10 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(f"{res.path.stem}: {res.seconds:.2f} s, {json.dumps(summary)}", file=sys.stderr)
 
+    del model
+    if device == "mps":
+        torch.mps.empty_cache()
+
     run = {
         "model": args.model,
         "license": module.LICENSE,
@@ -196,7 +209,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.model == "mapanything":
         run["timing_note"] = "views run jointly; per-image seconds = joint seconds / views"
     (args.out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
-    print(f"wrote {len(results)} npz and run.json to {args.out}", file=sys.stderr)
+    print(f"wrote {len(per_image)} npz and run.json to {args.out}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -180,7 +180,7 @@ No photo here is closer to head-on than 26 degrees, so a head-on shot is unteste
 
 `make field SESSION=session.zip TRUTH=survey.json MAP=map.json RULES=rules.json SCORING=../scoring` turns one Measure Lab session (PR #7's one-hour tape protocol) and its tape survey into one table of every method, scored by the scoring harness (PR #4, `experiments/scoring`). The map is the same file `score import-measure-lab` reads. The command runs these steps (`evals/field.py`):
 
-1. It turns each keyframe upright and runs MoGe-2 on it. Session images are sideways sensor images, and the model expects upright photos. Peak memory is 4.13 GB.
+1. It turns each keyframe upright and runs MoGe-2 on it. Session images are sideways sensor images, and the model expects upright photos. **Run `make field` with nothing else heavy on the machine:** MoGe-2 at its default resolution peaks at 4.07 GB, just over the shared machine's 4 GB per process. Depth maps are written as each keyframe finishes, so the peak does not grow with session length, and a 3.6 GB GPU cap stops a run that would grow instead of letting it swell. Storing its encoder in half precision to get under 4 GB failed: parts of the encoder run outside autocast and reject fp16 weights.
 2. It gives every point the rig made from taps a second position: MoGe-2's depth at the tapped pixel, placed with that keyframe's AR pose. It then recomputes walls and every session measurement with Measure Lab's own formulas (`Wall.swift`, `Measurements.swift`).
 3. It writes three scoring-harness results files:
    - `moge2`: the model's own scale;

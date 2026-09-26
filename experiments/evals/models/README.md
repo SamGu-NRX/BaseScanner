@@ -100,7 +100,7 @@ With poses given, the output poses reproduce the input ones to within 2.3 cm and
 
 ## Memory
 
-The Mac these run on is shared, so each process should stay near 4 GB. MoGe-2's and Depth Anything 3's peaks were not measured; their checkpoints are 1.3 GB each. MapAnything's `from_pretrained` builds the 1.2 B-parameter model in fp32 (4.9 GB) and then reads the 4.9 GB fp32 checkpoint into it. `map_anything.load` instead builds the model on the meta device and streams each tensor straight to the GPU, casting the two transformer stacks (92% of the weights) to bf16: 2.64 GB of weights. `run_groups.py` caps GPU memory at 3.8 GB (`--mps-cap-gb`). Measured peak footprint: 4.05 GB for 2- and 4-view groups at 392 px. Its native 518 px, or 8 views, runs out of memory under that cap.
+The Mac these run on is shared, so each process should stay near 4 GB. MoGe-2 at its default 3600 tokens needs 3.05 GiB of GPU memory and peaks at 4.07 GB in total, flat over a session, because `run.py` writes each depth map as soon as it exists; `--mps-cap-gb` (3.6 by default) makes a run that needs more fail instead of growing. Depth Anything 3's peak was not measured; its checkpoint is 1.3 GB. MapAnything's `from_pretrained` builds the 1.2 B-parameter model in fp32 (4.9 GB) and then reads the 4.9 GB fp32 checkpoint into it. `map_anything.load` instead builds the model on the meta device and streams each tensor straight to the GPU, casting the two transformer stacks (92% of the weights) to bf16: 2.64 GB of weights. `run_groups.py` caps GPU memory at 3.8 GB (`--mps-cap-gb`). Measured peak footprint: 4.05 GB for 2- and 4-view groups at 392 px. Its native 518 px, or 8 views, runs out of memory under that cap.
 
 ## Known issues
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -43,10 +44,9 @@ def load(device):
     return MoGeModel.from_pretrained(REPO, revision=REVISION).to(device).eval()
 
 
-def run(model, inputs: RunInputs) -> list[ImageResult]:
+def run(model, inputs: RunInputs) -> Iterator[ImageResult]:
     import torch
 
-    results = []
     for i, path in enumerate(inputs.images):
         rgb = load_rgb(path)
         h, w = rgb.shape[:2]
@@ -91,19 +91,16 @@ def run(model, inputs: RunInputs) -> list[ImageResult]:
             + RESOLUTION_LEVEL / 9 * (model.num_tokens_range[1] - model.num_tokens_range[0])
         )
         grid_h, grid_w = round((num_tokens / aspect) ** 0.5), round((num_tokens * aspect) ** 0.5)
-        results.append(
-            ImageResult(
-                path=path,
-                depth=depth_in,
-                valid=valid_in,
-                intrinsics=intrinsics_to_input(k_net, r),
-                seconds=seconds,
-                resample=r,
-                network_wh=(grid_w * 14, grid_h * 14),
-                extra={"fov_x_deg": fov_x, "num_tokens": num_tokens},
-            )
+        yield ImageResult(
+            path=path,
+            depth=depth_in,
+            valid=valid_in,
+            intrinsics=intrinsics_to_input(k_net, r),
+            seconds=seconds,
+            resample=r,
+            network_wh=(grid_w * 14, grid_h * 14),
+            extra={"fov_x_deg": fov_x, "num_tokens": num_tokens},
         )
         del out, tensor
         if inputs.device.startswith("mps"):
             torch.mps.empty_cache()
-    return results
