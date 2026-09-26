@@ -18,6 +18,7 @@ extension ScanEngine: ScanActions {
             // assumed from the trajectory, see ReplayPlayer.wallDescription).
             let wall = replay.wall
             guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, groundMeasured: replay.groundMeasured) else { return }
+            markTimes[MarkKey.meter] = captureClock
             go(.meterCloseUp)
             return
         }
@@ -46,6 +47,7 @@ extension ScanEngine: ScanActions {
             return
         }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform))
+        markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
     }
 
@@ -158,6 +160,8 @@ extension ScanEngine: ScanActions {
         guard state.overheadQuestion else { return }
         switch state.phase {
         case .wallWalk:
+            // Something overhead is an answer, not a view: the stretch goes to review unseen.
+            resolveGuidance(clear ? .met : .skipped)
             settleTiltUp(clear: clear)
             if let frame = currentFrame {
                 resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
@@ -209,7 +213,9 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
-        state.features.append(feature(marking.kind, taps: pendingTaps, wall: wall))
+        let marked = feature(marking.kind, taps: pendingTaps, wall: wall)
+        markTimes[MarkKey.feature(marked.id)] = captureClock
+        state.features.append(marked)
         state.marking = nil
         pendingTaps = []
     }
@@ -260,6 +266,8 @@ extension ScanEngine: ScanActions {
 
     func finishWalk() {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
+        // Done while a request is still up passes it by.
+        resolveGuidance(.superseded)
         state.marking = nil
         nextWallSide = nil
         nextWallRefusal = nil
@@ -285,6 +293,12 @@ extension ScanEngine: ScanActions {
         case .wallWalk:
             guard let map = coverage else { return }
             let task = ScanEngine.name(state.guidance)
+            switch state.guidance {
+            case .aimAtGround, .aimAtWall, .seeBehind, .walk, .markEnd, .tiltUp, .markNextWall:
+                resolveGuidance(.cannotReach)
+            default:
+                return
+            }
             switch state.guidance {
             case .aimAtGround(let s):
                 updateCoverage { $0.markSkipped(.ground, (s - 0.5)...(s + 0.5)) }

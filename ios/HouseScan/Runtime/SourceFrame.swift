@@ -24,8 +24,13 @@ struct SourceFrame: Sendable {
     /// ARKit has found none or the frame doesn't carry them.
     var groundPlanes: [SIMD4<Float>] = []
     /// LiDAR depth copied with the photo of a frame that could be kept; nil without LiDAR, and on
-    /// frames without a photo.
+    /// frames without a photo. Coverage reads it; a replay's recorded depth plays in here too.
     var depth: DepthImage?
+    /// The same ARKit depth map as float32 meters with its confidence, for the packet. Live frames
+    /// with a photo only: a replay's depth is not ARKit's own, so it never goes into the packet.
+    var sensorDepth: DepthPacket?
+    /// Camera settings of a live frame with a photo; nil on a replay.
+    var exposure: PhotoExposure?
     /// Shown for review or tapping only; never offered to auto-capture.
     var isReview = false
     /// Carries only pose and tracking, so overlays follow the camera between sampled frames.
@@ -42,6 +47,16 @@ struct SourceFrame: Sendable {
         case .notAvailable: .notAvailable
         }
     }
+}
+
+/// The camera settings a photo was taken with: `ARCamera.exposureDuration` and
+/// `exposureOffset`, and ISO, focal length and f-number from `ARFrame.exifData` when it has them.
+struct PhotoExposure: Sendable, Equatable {
+    var durationS: Double?
+    var offsetEV: Double?
+    var iso: Double?
+    var focalLengthMM: Double?
+    var fNumber: Double?
 }
 
 enum JPEGPayload: Sendable {
@@ -80,6 +95,30 @@ enum ImageWork {
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         return FrameQuality(LumaImage(width: width, height: height, pixels: pixels))
+    }
+
+    /// The JPEG's luma as Pillow's `convert("L")` computes it (`PacketSharpness.luma`), row-major,
+    /// at the JPEG's full size: the input of the packet's sharpness.
+    /// The image is drawn into an RGB context in its own color space, so no color conversion
+    /// changes the decoded values. Nil when it does not decode.
+    static func luma(jpeg: Data) -> (pixels: [UInt8], width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let width = image.width
+        let height = image.height
+        let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        var rgbx = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = rgbx.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+            ) else { return false }
+            context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return nil }
+        let luma = rgbx.withUnsafeBytes { PacketSharpness.luma(rgbx: $0, width: width, height: height, bytesPerRow: width * 4) }
+        return (luma, width, height)
     }
 
     /// A small upright thumbnail: the landscape sensor image rotated 90° clockwise, as the
