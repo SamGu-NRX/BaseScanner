@@ -8,6 +8,7 @@ final class DemoEngine: ScanActions {
     let state = ScanViewState()
 
     private let freeze: Bool
+    private let noFeed: Bool
     private let offline: Bool
     private let passResult: Bool
     private var script: Task<Void, Never>?
@@ -29,6 +30,7 @@ final class DemoEngine: ScanActions {
             return arguments[index + 1]
         }
         freeze = arguments.contains("-uiDemoFreeze")
+        noFeed = arguments.contains("-uiDemoNoFeed")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -47,6 +49,9 @@ final class DemoEngine: ScanActions {
         }
         if let raw = value("-uiDemoCoaching") {
             state.coaching = Self.coaching(raw)
+        }
+        if arguments.contains("-uiDemoNoFeed") {
+            state.feed = .none
         }
         if arguments.contains("-uiDemoCloseUpFailed") {
             state.closeUpFailedAttempts = 2
@@ -100,14 +105,14 @@ final class DemoEngine: ScanActions {
     private func enterFindMeter() {
         state.phase = .findMeter
         state.guidance = .findMeter
-        state.feed = DemoScene.meterImage.map(CameraFeed.still) ?? .none
+        state.feed = noFeed ? .none : DemoScene.meterImage.map(CameraFeed.still) ?? .none
         state.projection = DemoScene.meterProjection
         state.wall = nil
         state.coverage = .empty
     }
 
     private func placeMeter() {
-        state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
+        state.feed = noFeed ? .none : DemoScene.image.map(CameraFeed.still) ?? .none
         state.projection = DemoScene.projection
         state.wall = DemoScene.wall
         state.captureCount = max(state.captureCount, 1)
@@ -115,7 +120,7 @@ final class DemoEngine: ScanActions {
 
     private func enterCloseUp() {
         placeMeter()
-        state.feed = DemoScene.closeUpImage.map(CameraFeed.still) ?? .none
+        state.feed = noFeed ? .none : DemoScene.closeUpImage.map(CameraFeed.still) ?? .none
         state.projection = DemoScene.closeUpProjection
         state.phase = .meterCloseUp
         state.guidance = .holdOnMeter
