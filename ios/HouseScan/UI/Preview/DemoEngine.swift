@@ -951,6 +951,11 @@ private extension ResultPresentation {
 
 extension DemoEngine {
     /// Nothing to record in the demo: either answer ends the step, as in the real engine.
+    func answerGround(_ answer: GroundAnswer) {
+        guard state.phase == .markFeatures else { return }
+        state.groundAnswer = answer
+    }
+
     func answerOverhead(clear: Bool) {
         guard state.overheadQuestion else { return }
         state.overheadQuestion = false
