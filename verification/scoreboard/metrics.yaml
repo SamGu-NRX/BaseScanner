@@ -130,6 +130,16 @@ metrics:
       less_than: 1000
       require_current_sha: true
 
+  - id: S2-7
+    workstream: S2
+    ref: origin/t3/server
+    text: ruff clean
+    command:
+      run: uv run ruff check . && uv run ruff format --check .
+      cwd: server
+      timeout_s: 300
+      slow: true
+
   - id: S2-8
     workstream: S2
     ref: origin/t3/server
@@ -142,16 +152,6 @@ metrics:
       key: contract_problem_count
       equals: 0
       require_current_sha: true
-
-  - id: S2-7
-    workstream: S2
-    ref: origin/t3/server
-    text: ruff clean
-    command:
-      run: uv run ruff check . && uv run ruff format --check .
-      cwd: server
-      timeout_s: 300
-      slow: true
 
   # --- S3 --------------------------------------------------------------------------------------
   - id: S3-1
@@ -176,7 +176,7 @@ metrics:
     ref: origin/t3/ios-mvf
     text: Zero build warnings
     report:
-      glob: ~/house-scanning-data/reports/sim/*/report.json
+      glob: ~/house-scanning-data/reports/sim/*t3-ios-mvf*/report.json
       key: build.warnings
       length_equals: 0
       require_current_sha: true
@@ -221,7 +221,7 @@ metrics:
       run reached, plus symbol-name button labels) finds no issues; S4-2 shows how many screens
       the app reached
     report:
-      glob: ~/house-scanning-data/reports/a11y/*/report.json
+      glob: ~/house-scanning-data/reports/a11y/*t3-ios-mvf*/report.json
       key: issue_count
       equals: 0
       require_current_sha: true
@@ -264,7 +264,7 @@ metrics:
     ref: origin/t3/ios-mvf
     text: Screenshot report per app state
     report:
-      glob: ~/house-scanning-data/reports/sim/*/report.json
+      glob: ~/house-scanning-data/reports/sim/*t3-ios-mvf*/report.json
       key: states
       length_at_least: 9
       require_current_sha: true
