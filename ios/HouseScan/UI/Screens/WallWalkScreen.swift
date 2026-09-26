@@ -200,7 +200,11 @@ struct FeatureTray: View {
     var onPick: (FeatureKind) -> Void
     var onClose: () -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 8)]
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 1 : 3)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
