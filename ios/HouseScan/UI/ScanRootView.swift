@@ -81,17 +81,26 @@ struct ScanRootView: View {
 }
 
 /// Haptics for the moments that matter, fired on the same state change the screen animates:
-/// a photo taken, the meter pinned, a mark placed or refused, a requested view done, the result.
+/// a deliberate photo, the meter pinned, a mark placed or refused, a requested view done, the
+/// result.
 private struct ScanHaptics: ViewModifier {
     let state: ScanViewState
 
     func body(content: Content) -> some View {
         content
-            .sensoryFeedback(.impact(weight: .light, intensity: 0.6), trigger: state.lastCapture?.id)
+            .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: deliberateCaptureID) { _, new in new != nil }
             .sensoryFeedback(.success, trigger: state.phase, condition: Self.isMilestone)
             .sensoryFeedback(.success, trigger: state.gap?.isSatisfied ?? false) { _, new in new }
             .sensoryFeedback(.impact(weight: .medium), trigger: state.features.count) { old, new in new > old }
             .sensoryFeedback(.warning, trigger: state.marking?.refusal) { _, new in new != nil }
+    }
+
+    /// The walk takes a photo about every second; a tap for each would become noise the
+    /// homeowner learns to ignore, so walk photos get only the counter's flash. The close-up
+    /// and requested views are moments the homeowner is working toward, so they get a tap.
+    private var deliberateCaptureID: Int? {
+        guard let capture = state.lastCapture, capture.kind != .walk else { return nil }
+        return capture.id
     }
 
     private static func isMilestone(_ old: ScanPhase, _ new: ScanPhase) -> Bool {
