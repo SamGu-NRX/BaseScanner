@@ -30,7 +30,6 @@ Paths marked with a pull request exist only on that branch until it merges.
 | `experiments/` | One folder per experiment | Accuracy evals in PR #12, Measure Lab in PR #7, meter reading in PR #16 |
 | `web/` | Browser toolchain for a reviewer view | The review page (PR #15) is parked |
 | `docs/` | The overview, the walkthrough, public rules and code citations, and the live-survey design | |
-| `docs/briefings/` | The 26 September morning briefing, a dated snapshot of findings and decisions | |
 | `.agents/skills/` | Shared agent skills for writing, planning and review, linked from `.claude/skills/` | |
 | `sites/landing` | The landing page, a submodule | Change it in its own repository |
 
