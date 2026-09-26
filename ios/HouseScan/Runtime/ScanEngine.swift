@@ -101,9 +101,16 @@ final class ScanEngine {
         if let folder = options.replayFolder {
             Task { await loadReplay(folder) }
         } else if !ARWorldTrackingConfiguration.isSupported {
-            state.failure = .arUnsupported
-            go(.unsupported)
+            fail(.arUnsupported)
         }
+    }
+
+    /// Every failure the homeowner has to act on (no AR, camera denied, a failed session, an
+    /// unreadable replay) ends on the failure screen, which reads `state.failure` for its words.
+    /// Setting the failure alone left the flow on whatever screen was up.
+    private func fail(_ failure: ScanFailure) {
+        state.failure = failure
+        go(.unsupported)
     }
 
     private func loadReplay(_ folder: URL) async {
@@ -114,8 +121,8 @@ final class ScanEngine {
             player.show(index: 0)
             RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, wall \(player.wallDescription, privacy: .public)")
         } catch {
-            state.failure = .replayUnreadable(String(describing: error))
             RuntimeLog.engine.error("replay unreadable: \(String(describing: error), privacy: .public)")
+            fail(.replayUnreadable(String(describing: error)))
         }
     }
 
@@ -484,9 +491,9 @@ final class ScanEngine {
         case .interruptionEnded:
             state.coaching = .relocalizing
         case .cameraDenied:
-            state.failure = .cameraDenied
+            fail(.cameraDenied)
         case .failed(let message):
-            state.failure = .sessionFailed(message)
+            fail(.sessionFailed(message))
         }
     }
 
