@@ -58,6 +58,57 @@ final class FullFlowUITests: XCTestCase {
         XCTAssertTrue(showedHidden, "the wall map never reported hidden cells behind the bin")
     }
 
+    /// Device run 1's failure on the synthetic replay (`-autopilotCantGetThere`): "Can't get there"
+    /// goes to the ground by the meter before it is seen, then ends each side where the walk went
+    /// farthest, 5 m left and right of the meter (16 ft 5 in). The old rule put the ends at the
+    /// unbroken covered reach, 2.5 ft here, and the export left out everything past it. The ends
+    /// must land within a keyframe's spacing (0.5 m, 1.6 ft) of the phone, and the scene must
+    /// report the wall and the ground the walk saw, the ground by the meter included.
+    @MainActor
+    func testCantGetThereEndsWhereThePhoneIs() throws {
+        var tape = ""
+        var scene: [String: Any] = [:]
+        try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere"], beforeLeaving: { app, phase in
+            guard phase == "wallWalk" else { return }
+            let element = app.descendants(matching: .any)["wallTape"]
+            let bothEnds = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "value CONTAINS 'Left end' AND value CONTAINS 'Right end'"), object: element)
+            XCTAssertEqual(XCTWaiter().wait(for: [bothEnds], timeout: 90), .completed, "the walk never ended both sides")
+            tape = element.value as? String ?? ""
+        }, onScene: { data in
+            scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        })
+        // The wall map says where each end is, in words VoiceOver reads.
+        XCTAssertTrue(tape.contains("Left end ") && tape.contains("left of your meter") && tape.contains("Right end "), "wall map: \(tape)")
+
+        // Ends: the baseline's end points as distances along it from the meter, in feet.
+        let walls = try XCTUnwrap(scene["walls"] as? [[String: Any]])
+        XCTAssertEqual(walls.count, 1)
+        let baseline = try XCTUnwrap(walls.first?["baseline"] as? [[Double]])
+        let meterPos = try XCTUnwrap((scene["meter"] as? [String: Any])?["pos"] as? [Double])
+        let first = try XCTUnwrap(baseline.first), last = try XCTUnwrap(baseline.last)
+        let length = hypot(last[0] - first[0], last[1] - first[1])
+        let along = { (p: [Double]) in ((p[0] - meterPos[0]) * (last[0] - first[0]) + (p[1] - meterPos[2]) * (last[1] - first[1])) / length }
+        XCTAssertEqual(along(first), -16.40, accuracy: 1.7, "left end")
+        XCTAssertEqual(along(last), 16.40, accuracy: 1.7, "right end")
+        let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+        let ends = try XCTUnwrap(coverage["ends"] as? [String: [String: String]])
+        XCTAssertEqual(ends["left"]?["kind"], "unexplored")
+        XCTAssertEqual(ends["right"]?["kind"], "unexplored")
+
+        let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+        func spans(_ band: String) -> [[Double]] { observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] } }
+        let wall = spans("wall"), ground = spans("ground")
+        XCTAssertFalse(wall.isEmpty, "no wall observed: \(observed)")
+        XCTAssertTrue(ground.contains { $0[0] <= 0 && $0[1] >= 0 }, "no ground observed by the meter: \(ground)")
+        XCTAssertTrue(ground.contains { $0[0] < -10 }, "no ground observed past 10 ft left: \(ground)")
+        XCTAssertTrue(ground.contains { $0[1] > 10 }, "no ground observed past 10 ft right: \(ground)")
+        let attachment = XCTAttachment(string: "wall map: \(tape)\nends: \(along(first)) ft, \(along(last)) ft\nobserved: \(observed)")
+        attachment.name = "cantGetThere-scene"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
     @MainActor
     private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
@@ -129,16 +180,20 @@ final class FullFlowUITests: XCTestCase {
     }
 
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
-    /// waits to leave it.
+    /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
+    /// once the result shows.
     @MainActor
-    private func runFlow(replay: String, beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in }) throws {
+    private func runFlow(
+        replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
+        onScene: ((Data) throws -> Void)? = nil
+    ) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
         // slow screen can never make the test miss the next one.
         let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: gate) }
-        var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path]
+        var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path] + extraArguments
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
@@ -161,6 +216,12 @@ final class FullFlowUITests: XCTestCase {
             add(shot)
             try audit(app, screen: phase)
             beforeLeaving(app, phase)
+            if phase == "result", let onScene {
+                let file = gate.appending(path: "scene.json")
+                let deadline = Date().addingTimeInterval(20)
+                while !FileManager.default.fileExists(atPath: file.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+                try onScene(try Data(contentsOf: file))
+            }
             try Data().write(to: gate.appending(path: phase))
         }
         // Closing the AR view returns to the result.
