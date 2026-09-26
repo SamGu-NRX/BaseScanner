@@ -77,6 +77,88 @@ import Testing
         #expect(deepestFt >= 1.833333 + 10 + 0.3 + 0.16 * farEdge)
     }
 
+    // Ground past a right end at s = 0.5. `downCamera(s:out:)` at out 0.3 sees the ground from
+    // 0.9032 m behind the wall's line to 1.5032 m in front, within 0.9024 m along it.
+
+    static func pastEnd(cameraS: [Float], out: Float, limit: Bool) -> CoverageMap {
+        var map = CoverageMap(wall: standardWall())
+        map.setEnd(.right, at: 0.5)
+        map.setEndIsLimit(.right, limit)
+        for s in cameraS { map.observe(downCamera(s: s, out: out), trackingNormal: true) }
+        return map
+    }
+
+    /// Past a limit end the ground counts once both sides of the continued line are seen, as far
+    /// out as the nearer side reaches: rows 0 to 5 (0.762 m) behind, 0 to 9 in front. Cameras at
+    /// 0.9 and 1.2 both see s from 0.2976 to 1.8024, so past cells 0 to 7 (0.5 to 1.7192).
+    @Test func groundPastALimitEndCountsWhereBothSidesWereSeen() throws {
+        let map = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: true)
+        #expect(map.groundDepthPastLimit(.right, 0).map { nearlyEqual($0, 0.762) } == true)
+        #expect(map.groundDepthPastLimit(.right, 7).map { nearlyEqual($0, 0.762) } == true)
+        #expect(map.groundDepthPastLimit(.right, 8) == nil)
+        let past = try #require(map.groundDepthSpans().first { $0.span.upperBound > 0.5 + 1e-4 })
+        // It starts exactly at the end, where the ground inside the ends is clipped.
+        #expect(past.span.lowerBound == 0.5)
+        #expect(nearlyEqual(past.span.upperBound, 0.5 + 8 * 0.1524))
+        #expect(nearlyEqual(past.out, 0.762))
+    }
+
+    /// Past an unexplored end nothing is reported, and a limit end that moves or is cleared is
+    /// unexplored again.
+    @Test func pastAnUnexploredEndNothingChanges() {
+        let unexplored = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: false)
+        #expect(unexplored.groundDepthPastLimit(.right, 0) == nil)
+        #expect(unexplored.groundDepthSpans().allSatisfy { $0.span.upperBound <= 0.5 })
+        var moved = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: true)
+        moved.setEnd(.right, at: 0.6)
+        #expect(!moved.limitEnds.contains(.right))
+        #expect(moved.groundDepthSpans().allSatisfy { $0.span.upperBound <= 0.6 })
+        var cleared = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: true)
+        cleared.clearEnd(.right)
+        #expect(cleared.limitEnds.isEmpty)
+        // Marking the end a limit after the walk replays the walk against it.
+        var later = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: false)
+        later.setEndIsLimit(.right, true)
+        #expect(later.groundDepthPastLimit(.right, 0).map { nearlyEqual($0, 0.762) } == true)
+    }
+
+    /// From 1.1 m out the cameras see the front of the line out to 2.3 m but only its first row
+    /// behind it (0.1 m): one side is not the ground the server credits, so nothing past the end.
+    @Test func oneSideOfTheContinuedLineIsNotEnough() {
+        let map = Self.pastEnd(cameraS: [0.9, 1.2], out: 1.1, limit: true)
+        #expect(map.groundDepthPastLimit(.right, 0) == nil)
+        #expect(map.groundDepthSpans().allSatisfy { $0.span.upperBound <= 0.5 })
+    }
+
+    /// Cameras in front of the scanned wall short of the end see the ground behind the line past
+    /// the end only through the house: a sight line from s = 0.2 to (0.538, -0.1524) crosses the
+    /// line at s = 0.42, short of the end. The same rows seen from past the end count.
+    @Test func groundBehindTheLineIsNotSeenThroughTheHouse() {
+        let map = Self.pastEnd(cameraS: [-0.1, 0.2], out: 0.3, limit: true)
+        #expect(map.groundDepthPastLimit(.right, 0) == nil)
+    }
+
+    /// The export reports ground past a limit end as a span beyond the chain's end, and a server
+    /// request there closes on the phone only past a limit.
+    @Test func groundPastALimitEndIsExportedAndSettlesARequest() throws {
+        let map = Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: true)
+        let wall = SceneWall(meter: map.wall.meter, outward: map.wall.outward, groundY: map.wall.groundY)
+        let data = try SceneExport.jsonData(SceneInput(
+            wall: wall, baselineS: -2...0.5, coverage: SceneCoverage(map, leftEndMarked: false, rightEndMarked: true)))
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let observed = try #require(JSONSchemaValidator.Value.parse(data)["coverage"]?["observed"]?.array)
+        let past = observed.filter { $0["band"]?.string == "ground" && ($0["span_ft"]?.numbers?.last ?? 0) > 1.6405 }
+        #expect(past.count == 1)
+        #expect(past.first?["span_ft"]?.numbers == [1.6404, 5.6404])
+        #expect(past.first?["out_ft"]?.number == 2.5)
+
+        let item = try JSONDecoder().decode(PlacementMissingEvidence.self, from: Data(
+            #"{"kind":"band","band":"ground","span_ft":[1.7,5.6],"out_ft":2.5,"message":"m"}"#.utf8))
+        let plan = try #require(GapPlanner().plan(for: item, leftEnd: nil, rightEnd: 0.5))
+        #expect(GapPlanner().isSatisfied(plan, map))
+        #expect(!GapPlanner().isSatisfied(plan, Self.pastEnd(cameraS: [0.9, 1.2], out: 0.3, limit: false)))
+    }
+
     @Test func exportReportsTheDepthInFeetNeverRoundedUp() throws {
         let map = Self.map(outs: [1.0, 4.0])
         let wall = SceneWall(meter: map.wall.meter, outward: map.wall.outward, groundY: map.wall.groundY)
