@@ -112,8 +112,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         var lastEncode: (time: Double, camera: CameraFrame)?
     }
 
-    /// Every sixth frame (about 10 per second at 60 fps) is sampled; more adds cost, not coverage.
+    /// Every sixth frame (about 10 per second at 60 fps) is sampled for capture; more adds cost,
+    /// not coverage. Every second frame carries the pose, so overlays drawn over the 60 fps camera
+    /// view move at 30 fps instead of 10.
     private static let sampleEvery = 6
+    private static let poseEvery = 2
     /// A walk JPEG is encoded once the phone moved 0.15 m or turned 5° since the last one: well
     /// under auto-capture's 0.5 m / 15° spacing, so no keepable frame lacks an image.
     private static let encodeMove: Float = 0.15
@@ -130,7 +133,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             state.frameCount += 1
             return state.frameCount
         }
-        guard count % Self.sampleEvery == 0 else { return }
+        guard count % Self.poseEvery == 0 else { return }
         let shared = shared.withLock { $0 }
         let intrinsics = frame.camera.intrinsics
         let resolution = frame.camera.imageResolution
@@ -140,8 +143,16 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             imageSize: SIMD2(Float(resolution.width), Float(resolution.height))
         )
         let tracking = Self.tracking(frame.camera.trackingState)
-        let quality = Self.quality(frame.capturedImage)
         let meterAnchor = shared.meterAnchorID.flatMap { id in frame.anchors.first { $0.identifier == id }?.transform }
+        guard count % Self.sampleEvery == 0 else {
+            let pose = SourceFrame(
+                id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
+                quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlaneY: nil, isPoseOnly: true
+            )
+            Task { @MainActor [onFrame] in onFrame(pose) }
+            return
+        }
+        let quality = Self.quality(frame.capturedImage)
         let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.alignment == .horizontal }
             .map { $0.transform.columns.3.y }

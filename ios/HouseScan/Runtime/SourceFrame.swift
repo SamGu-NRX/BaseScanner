@@ -24,6 +24,8 @@ struct SourceFrame: Sendable {
     var groundPlaneY: Float?
     /// Shown for review or tapping only; never offered to auto-capture.
     var isReview = false
+    /// Carries only pose and tracking, so overlays follow the camera between sampled frames.
+    var isPoseOnly = false
 
     var projection: CameraProjection {
         CameraProjection(cameraToWorld: camera.cameraToWorld, intrinsics: camera.intrinsics, imageSize: camera.imageSize)

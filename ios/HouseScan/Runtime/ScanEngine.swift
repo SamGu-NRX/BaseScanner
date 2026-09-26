@@ -161,12 +161,13 @@ final class ScanEngine {
     // MARK: Frames
 
     func ingest(_ frame: SourceFrame) {
-        lastFrame = frame
+        if !frame.isPoseOnly { lastFrame = frame }
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
         if state.tracking != frame.tracking { state.tracking = frame.tracking }
         if let y = frame.groundPlaneY { groundPlaneY = y }
         refreshMeterFromAnchor(frame)
+        guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else { return }
 
