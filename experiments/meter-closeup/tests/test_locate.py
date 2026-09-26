@@ -16,7 +16,8 @@ def test_core_drops_letters_before_the_first_digit():
 def test_tokens_merge_digit_groups_and_keep_mixed_groups():
     assert tokens("12 345 678") == ["12 345 678"]
     assert tokens("NO. 12345678") == ["12345678"]
-    assert tokens("Type: SCS1321") == ["SCS1321"]
+    # A line of two to four groups is also offered whole.
+    assert tokens("Type: SCS1321") == ["SCS1321", "Type: SCS1321"]
     # "1" and "ABC00" have fewer than 4 digits; the digit run and the whole line remain.
     assert tokens("1 ABC00 1234 5678") == ["1234 5678", "1 ABC00 1234 5678"]
 
