@@ -76,13 +76,14 @@ struct WallWalkScreen: View {
             return prompt
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
+        if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
         return ScanCopy.guidance(state.guidance)
     }
 
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, let coaching = state.coaching {
+        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching = state.coaching {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         return .normal
@@ -91,12 +92,13 @@ struct WallWalkScreen: View {
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
-        case marking, endQuestion, tray, markEnd, finish, walking
+        case marking, endQuestion, overheadQuestion, tray, markEnd, finish, walking
     }
 
     private var controlsKey: ControlsKey {
         if state.marking != nil { return .marking }
         if state.endQuestion != nil { return .endQuestion }
+        if state.overheadQuestion { return .overheadQuestion }
         if trayOpen { return .tray }
         if case .markEnd = state.guidance { return .markEnd }
         if bothEndsMarked { return .finish }
@@ -106,7 +108,7 @@ struct WallWalkScreen: View {
     /// True while the guidance points at a particular stretch the homeowner might not reach.
     private var asksForArea: Bool {
         switch state.guidance {
-        case .walk, .aimAtGround, .aimAtWall: true
+        case .walk, .aimAtGround, .aimAtWall, .tiltUp: true
         default: false
         }
     }
@@ -156,6 +158,27 @@ struct WallWalkScreen: View {
                 .accessibilityIdentifier("action.endBlocked")
             }
             .transition(.opacity)
+        case .overheadQuestion:
+            // Same shape as the end question: one question, two equal full-width answers.
+            VStack(spacing: 8) {
+                Button {
+                    actions.answerOverhead(clear: true)
+                } label: {
+                    Label(ScanCopy.overheadClear, systemImage: "sun.max")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.overheadClear")
+                Button {
+                    actions.answerOverhead(clear: false)
+                } label: {
+                    Label(ScanCopy.overheadCovered, systemImage: "house")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.overheadCovered")
+            }
+            .transition(.opacity)
         case .tray:
             FeatureTray(
                 onPick: { kind in actions.beginMarking(kind) },
@@ -197,7 +220,7 @@ struct WallWalkScreen: View {
     }
 
     private var reply: InstructionCard.Reply? {
-        guard asksForArea, state.marking == nil, state.endQuestion == nil, state.coaching == nil, !trayOpen else { return nil }
+        guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.coaching == nil, !trayOpen else { return nil }
         return InstructionCard.Reply(
             title: "Can't get there",
             identifier: "action.cannotAccess",

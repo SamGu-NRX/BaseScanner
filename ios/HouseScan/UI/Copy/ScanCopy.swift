@@ -41,9 +41,11 @@ enum ScanCopy {
             Instruction(title: "Tilt up to show more wall", detail: "Around \(Distance.fromMeter(s)).")
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
-        case .tiltUp:
-            // Placeholder wording until lane G's pass.
-            Instruction(title: "Tilt up to show above this part of the wall", detail: "Point your phone up at the wall above where the battery would go.")
+        case .tiltUp(let span):
+            Instruction(
+                title: "Tilt up to show above the area by your meter",
+                detail: "Aim at the wall \(Distance.stretchAroundMeter(span)) and whatever is above it."
+            )
         case .walkComplete:
             Instruction(title: "That's the whole wall", detail: "Tap Done when you're ready.")
         case .gap:
@@ -181,13 +183,33 @@ enum ScanCopy {
             return Instruction(title: "Show the wall \(place)", detail: "Tilt up so the wall above this spot is in view.")
         case .server(let detail):
             return Instruction(title: gap.band == .ground ? "Show the ground \(place)" : "Show the wall \(place)", detail: detail)
-        case .groundOut, .walkOut, .overhead:
-            // Placeholder wording until lane G's pass.
-            return Instruction(title: "One more view \(place)", detail: nil)
+        case .groundOut(let out):
+            return Instruction(
+                title: "Show the ground out to about \(Distance.feetAtLeast(out)) from the wall",
+                detail: "\(place.capitalizedFirst). Step back and tilt down until that much ground is in view."
+            )
+        case .walkOut(let out):
+            return Instruction(
+                title: "Walk along this stretch about \(Distance.feetAtLeast(out)) out from the wall",
+                detail: "\(place.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
+            )
+        case .overhead:
+            return Instruction(
+                title: "Tilt up here",
+                detail: "\(place.capitalizedFirst). Show the wall above this spot, up to the roof or the sky."
+            )
         }
     }
 
     // MARK: Upload
+
+    /// The question after the tilt-up view. The camera can't tell open sky from an eave.
+    static let overheadQuestion = Instruction(
+        title: "What's above that part of the wall?",
+        detail: "The battery needs clear space above it."
+    )
+    static let overheadClear = "Open sky or nothing overhead"
+    static let overheadCovered = "A roof edge, porch or stairs"
 
     /// The question after "Wall ends here". A corner means the wall goes on out of sight, which
     /// the result must not treat as the end of usable wall.

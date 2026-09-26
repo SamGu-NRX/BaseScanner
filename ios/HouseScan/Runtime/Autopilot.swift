@@ -54,6 +54,7 @@ final class Autopilot {
 
         await markFeatures(replay)
         await markEnds(replay)
+        await tiltUp()
         await pause(1.0)
         await engine.waitForGate(.wallWalk)
         engine.finishWalk()
@@ -205,6 +206,35 @@ final class Autopilot {
             }
             await pause(0.6)
         }
+    }
+
+    /// The tilt-up step: plays the recording's closing tilt-up frames and answers "Open sky or
+    /// nothing overhead", which is what the synthetic fixture shows above its wall. A recording
+    /// without tilt-up frames can't answer honestly, so it gets "Can't get there" instead.
+    private func tiltUp() async {
+        guard await waitUntil(timeout: 5, { self.isTiltingUp }) else {
+            log("the walk did not ask to tilt up")
+            return
+        }
+        await pause(hold)
+        guard engine.playReplayTiltUp() else {
+            log("no tilt-up frames on this replay; skipping the step as a homeowner would")
+            engine.cannotAccessArea()
+            return
+        }
+        guard await waitUntil(timeout: 20, { self.engine.state.overheadQuestion }) else {
+            log("no tilt-up frame was kept; skipping the step")
+            if isTiltingUp { engine.cannotAccessArea() }
+            return
+        }
+        await pause(hold)
+        engine.answerOverhead(clear: true)
+        log("answered the overhead question: open sky (\(engine.overheadObservations.count) overhead view recorded)")
+    }
+
+    private var isTiltingUp: Bool {
+        if case .tiltUp = engine.state.guidance { return true }
+        return false
     }
 
     // MARK: Helpers

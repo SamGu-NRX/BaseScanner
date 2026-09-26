@@ -17,6 +17,9 @@ import SwiftUI
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.
+/// - `-uiDemoOverheadQuestion`: the tilt-up view is in and the walk asks what is overhead.
+/// - `-uiDemoGap <groundOut|walkOut|overhead>`: the gap screen shows that server request.
 /// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.
 enum UIDemo {
     @MainActor
