@@ -367,6 +367,8 @@ final class ScanEngine {
         let scan = generation
         let store = store
         Task {
+            // The task can start after a reset or after the flow left the close-up.
+            guard scan == generation, state.phase == .meterCloseUp else { return }
             let saved = await store.saveStill(frame.jpeg, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
@@ -478,9 +480,15 @@ final class ScanEngine {
         let store = store
         pendingSaves[scan, default: 0] += 1
         Task {
+            // Every exit drains this generation's count, so the upload never waits on a write
+            // that was refused or failed.
+            defer {
+                let left = (pendingSaves[scan] ?? 1) - 1
+                pendingSaves[scan] = left > 0 ? left : nil
+            }
+            // A frame queued before a reset must not be written into the new scan's store.
+            guard scan == generation else { return }
             let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
-            let left = (pendingSaves[scan] ?? 1) - 1
-            pendingSaves[scan] = left > 0 ? left : nil
             guard scan == generation, saved.stored else { return }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
