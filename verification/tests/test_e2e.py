@@ -183,6 +183,13 @@ def test_server_breaking_coverage_rule_fails(fake_url):
     assert re.search(r"ground under .* was not observed", joined)
 
 
+def test_a_result_breaking_its_schema_counts_against_the_contract(fake_url):
+    strict = {"scene": {}, "result": {"required": ["nothing_has_this"]}}
+    record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict)
+    assert record["status"] == "fail"
+    assert record["contract_problems"] and record["contract_problems"] == record["problems"]
+
+
 def test_bad_input_is_not_blamed_on_the_server(fake_url):
     strict = {"scene": {"required": ["nothing_has_this"]}, "result": {}}
     record = judge(fake_url, Endpoint("/place", "application/json"), item(), strict)

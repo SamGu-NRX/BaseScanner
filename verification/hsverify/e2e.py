@@ -282,25 +282,29 @@ def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict
     status, payload, ms = post(url, endpoint, item)
     record |= {"http_status": status, "latency_ms": round(ms, 1)}
     if status != 200:
-        return record | {"status": "fail", "problems": [f"HTTP {status}: {payload[:500]!r}"]}
+        failure = [f"HTTP {status} for a scene that validates: {payload[:500]!r}"]
+        return record | {"status": "fail", "problems": failure, "contract_problems": failure}
     result = json.loads(payload)
     record["result"] = result
     problems = [f"result schema: {e}" for e in schema_errors(result, schemas["result"])]
     if problems:
-        return record | {"status": "fail", "problems": problems[:20]}
+        return record | {"status": "fail", "problems": problems[:20], "contract_problems": problems}
 
-    problems += invariant_problems(item.scene, result, sent=item.raw)
+    # Contract problems hold for any scene; expectation problems depend on one case's geometry.
+    contract = problems + invariant_problems(item.scene, result, sent=item.raw)
+    contract += property_problems(url, endpoint, item, result)
     if item.real and ms > LATENCY_BUDGET_MS:
-        problems.append(f"real-derived scene took {ms:.0f} ms, budget {LATENCY_BUDGET_MS:.0f}")
+        contract.append(f"real-derived scene took {ms:.0f} ms, budget {LATENCY_BUDGET_MS:.0f}")
     mismatches = assumption_mismatches(item.rules_assumed, result)
-    if item.expect and not mismatches:
-        problems += expectation_problems(item.expect, result)
-    problems += property_problems(url, endpoint, item, result)
+    expected = expectation_problems(item.expect, result) if item.expect and not mismatches else []
+    problems = contract + expected
 
     record["decision"] = result["decision"]
     record["outcome_lengths_ft"] = outcome_lengths(result)
     if mismatches:
         record["assumption_mismatches"] = mismatches
+    record["contract_problems"] = contract
+    record["expectation_problems"] = expected
     record["problems"] = problems
     record["status"] = "fail" if problems else "assumption mismatch" if mismatches else "pass"
     return record
@@ -358,6 +362,11 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
         "counts": counts,
         "all_passed": all(r["status"] in ("pass", "skipped") for r in records) and bool(records),
         "latency_ms": max(real) if real else None,
+        "scenes_answered": sum(1 for r in records if "decision" in r),
+        # Invariants and properties broken, summed over every answered scene. Case
+        # expectations are counted separately because a case can be wrong itself.
+        "contract_problem_count": sum(len(r.get("contract_problems", [])) for r in records),
+        "expectation_problem_count": sum(len(r.get("expectation_problems", [])) for r in records),
         "real_scene_passed": any(r.get("real") and r["status"] == "pass" for r in records),
         # Null when the run had no app export, so the scoreboard looks for an older run.
         "app_export_scene_valid": all(r["status"] != "bad input" for r in exported)

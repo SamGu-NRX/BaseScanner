@@ -130,6 +130,19 @@ metrics:
       less_than: 1000
       require_current_sha: true
 
+  - id: S2-8
+    workstream: S2
+    ref: origin/t3/server
+    text: >-
+      Black-box (verification e2e): every answer valid under C2, consistent with its decision
+      and the C5 margin rule, never passing unobserved ground or wall, deterministic, symmetric
+      when mirrored, and never passing without coverage
+    report:
+      glob: ~/house-scanning-data/reports/e2e/*/report.json
+      key: contract_problem_count
+      equals: 0
+      require_current_sha: true
+
   - id: S2-7
     workstream: S2
     ref: origin/t3/server
