@@ -38,7 +38,7 @@ import simd
     }
 
     @Test func straightWallGivesTheRectangleTheSpanSaw() {
-        let polygons = Self.straight.groundPatchPolygons(over: [ObservedSpan(span: -1...2, out: 1.5)], within: -5...5)
+        let polygons = Self.straight.groundPatchPolygons(over: [ObservedSpan(span: -1...2, out: 1.5)], within: -5...5, joinGap: 0, inset: 0, behind: 0)
         #expect(polygons.count == 1)
         expectPolygon(polygons[0], [SIMD2(-1, 0), SIMD2(2, 0), SIMD2(2, 1.5), SIMD2(-1, 1.5)])
     }
@@ -46,22 +46,42 @@ import simd
     /// A rotated wall: the rectangle follows the wall's own along and outward.
     @Test func rectangleFollowsARotatedWall() {
         let wall = SceneWall(meter: SIMD3(1, 1.2, -2), outward: SIMD3(0.6, 0, 0.8), groundY: -0.3)
-        let polygons = wall.groundPatchPolygons(over: [ObservedSpan(span: 0...1, out: 2)], within: -5...5)
+        let polygons = wall.groundPatchPolygons(over: [ObservedSpan(span: 0...1, out: 2)], within: -5...5, joinGap: 0, inset: 0, behind: 0)
         // along (0.8, -0.6), outward (0.6, 0.8), from the meter's plan point (1, -2).
         expectPolygon(polygons[0], [SIMD2(1, -2), SIMD2(1.8, -2.6), SIMD2(3.0, -1.0), SIMD2(2.2, -0.4)])
     }
 
+    /// Touching spans on one piece make one stepped polygon, each step out to its own reach.
     @Test func eachSpanKeepsItsOwnReach() {
         let spans = [ObservedSpan(span: 0...1, out: 1.2), ObservedSpan(span: 1...1.5, out: 0.6)]
-        let polygons = Self.straight.groundPatchPolygons(over: spans, within: -5...5)
-        #expect(polygons.count == 2)
-        expectPolygon(polygons[1], [SIMD2(1, 0), SIMD2(1.5, 0), SIMD2(1.5, 0.6), SIMD2(1, 0.6)])
+        let polygons = Self.straight.groundPatchPolygons(over: spans, within: -5...5, joinGap: 0, inset: 0, behind: 0)
+        #expect(polygons.count == 1)
+        expectPolygon(polygons[0], [SIMD2(0, 0), SIMD2(1.5, 0), SIMD2(1.5, 0.6), SIMD2(1, 0.6), SIMD2(1, 1.2), SIMD2(0, 1.2)])
+        // Apart by more than the join gap, they stay two.
+        let apart = [ObservedSpan(span: 0...1, out: 1.2), ObservedSpan(span: 1.1...1.5, out: 0.6)]
+        #expect(Self.straight.groundPatchPolygons(over: apart, within: -5...5, joinGap: 0.05, inset: 0, behind: 0).count == 2)
+    }
+
+    /// A gap under the join gap takes the lower reach; the inset pulls in each run's ends, every
+    /// top and each riser toward the lower step, and `behind` starts the polygon behind the wall.
+    @Test func insetAndBehindBoundThePolygon() {
+        let spans = [ObservedSpan(span: 0...1, out: 1.2), ObservedSpan(span: 1.01...1.5, out: 0.6)]
+        let polygons = Self.straight.groundPatchPolygons(over: spans, within: -5...5, joinGap: 0.02, inset: 0.001, behind: 0.003)
+        #expect(polygons.count == 1)
+        expectPolygon(polygons[0], [
+            SIMD2(0.001, -0.003), SIMD2(1.499, -0.003), SIMD2(1.499, 0.599), SIMD2(0.999, 0.599),
+            SIMD2(0.999, 1.199), SIMD2(0.001, 1.199),
+        ])
+        // The lower span on the left: its reach runs across the gap to the higher span's start.
+        let rising = [ObservedSpan(span: 0...1, out: 0.6), ObservedSpan(span: 1.01...1.5, out: 1.2)]
+        let up = Self.straight.groundPatchPolygons(over: rising, within: -5...5, joinGap: 0.02, inset: 0.001, behind: 0)
+        expectPolygon(up[0], [SIMD2(0.001, 0), SIMD2(1.499, 0), SIMD2(1.499, 1.199), SIMD2(1.011, 1.199), SIMD2(1.011, 0.599), SIMD2(0.001, 0.599)])
     }
 
     /// One rectangle per piece; the wedge outside the corner, in front of neither piece, is not
     /// drawn.
     @Test func spanOverAConvexCornerLeavesTheWedgeOut() {
-        let polygons = Self.convex.groundPatchPolygons(over: [ObservedSpan(span: 1...3, out: 1)], within: -5...5)
+        let polygons = Self.convex.groundPatchPolygons(over: [ObservedSpan(span: 1...3, out: 1)], within: -5...5, joinGap: 0, inset: 0, behind: 0)
         #expect(polygons.count == 2)
         expectPolygon(polygons[0], [SIMD2(1, 0), SIMD2(2, 0), SIMD2(2, 1), SIMD2(1, 1)])
         expectPolygon(polygons[1], [SIMD2(2, 0), SIMD2(2, -1), SIMD2(3, -1), SIMD2(3, 0)])
@@ -70,7 +90,7 @@ import simd
 
     /// At a 90 degree inside corner neither rectangle reaches past the other piece's line.
     @Test func spanOverAConcaveCornerStaysInFrontOfBothPieces() {
-        let polygons = Self.concave.groundPatchPolygons(over: [ObservedSpan(span: -3 ... -1, out: 1)], within: -5...5)
+        let polygons = Self.concave.groundPatchPolygons(over: [ObservedSpan(span: -3 ... -1, out: 1)], within: -5...5, joinGap: 0, inset: 0, behind: 0)
         #expect(polygons.count == 2)
         expectPolygon(polygons[0], [SIMD2(-2, 1), SIMD2(-2, 0), SIMD2(-1, 0), SIMD2(-1, 1)])
         expectPolygon(polygons[1], [SIMD2(-2, 0), SIMD2(-1, 0), SIMD2(-1, 1), SIMD2(-2, 1)])
@@ -80,7 +100,7 @@ import simd
     /// is cut there: the triangle x + z > 2 comes off the meter's piece, the half below z = 0 off
     /// the other.
     @Test func sharpInsideCornerIsCutAtTheNeighbouringWall() {
-        let polygons = Self.sharp.groundPatchPolygons(over: [ObservedSpan(span: 0...3, out: 1)], within: -5...5)
+        let polygons = Self.sharp.groundPatchPolygons(over: [ObservedSpan(span: 0...3, out: 1)], within: -5...5, joinGap: 0, inset: 0, behind: 0)
         #expect(polygons.count == 2)
         expectPolygon(polygons[0], [SIMD2(0, 0), SIMD2(2, 0), SIMD2(1, 1), SIMD2(0, 1)])
         let r = Float(0.5).squareRoot()
@@ -92,13 +112,13 @@ import simd
     }
 
     @Test func spanPastAChainEndStopsAtTheEnd() {
-        let polygons = Self.straight.groundPatchPolygons(over: [ObservedSpan(span: -3...4, out: 1)], within: -1...2)
+        let polygons = Self.straight.groundPatchPolygons(over: [ObservedSpan(span: -3...4, out: 1)], within: -1...2, joinGap: 0, inset: 0, behind: 0)
         #expect(polygons.count == 1)
         expectPolygon(polygons[0], [SIMD2(-1, 0), SIMD2(2, 0), SIMD2(2, 1), SIMD2(-1, 1)])
         // Ground past a limit end, wholly beyond the chain, gives nothing.
-        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 2...4, out: 1)], within: -1...2).isEmpty)
+        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 2...4, out: 1)], within: -1...2, joinGap: 0, inset: 0, behind: 0).isEmpty)
         // Nor past the end of a piece round a corner.
-        let polygons2 = Self.convex.groundPatchPolygons(over: [ObservedSpan(span: 1...5, out: 1)], within: -1...2.5)
+        let polygons2 = Self.convex.groundPatchPolygons(over: [ObservedSpan(span: 1...5, out: 1)], within: -1...2.5, joinGap: 0, inset: 0, behind: 0)
         expectPolygon(polygons2[1], [SIMD2(2, 0), SIMD2(2, -0.5), SIMD2(3, -0.5), SIMD2(3, 0)])
     }
 
@@ -107,14 +127,14 @@ import simd
     /// only), a negative one or a non-finite one likewise vouch for no area.
     @Test func spanWithNoReachGivesNoPatch() {
         for out: Float in [0, -0.5, .nan, .infinity] {
-            #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 0...2, out: out)], within: -5...5).isEmpty, "out \(out)")
+            #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 0...2, out: out)], within: -5...5, joinGap: 0, inset: 0, behind: 0).isEmpty, "out \(out)")
         }
     }
 
     @Test func slivers() {
         // A span touching the chain end only at its edge, or 1 mm wide, leaves nothing to draw.
-        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 2...3, out: 1)], within: -1...2).isEmpty)
-        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 0...0.00001, out: 1)], within: -1...2).isEmpty)
+        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 2...3, out: 1)], within: -1...2, joinGap: 0, inset: 0, behind: 0).isEmpty)
+        #expect(Self.straight.groundPatchPolygons(over: [ObservedSpan(span: 0...0.00001, out: 1)], within: -1...2, joinGap: 0, inset: 0, behind: 0).isEmpty)
     }
 }
 
@@ -138,11 +158,24 @@ import simd
         // The driveway strip stays first and unchanged; one mulch patch per piece of the chain.
         #expect(ground.map { $0["type"]?.string } == ["drive", "mulch", "mulch", "mulch"])
         #expect(ground.allSatisfy { $0["plus_minus_ft"] == nil })
-        // The meter's piece, s = -2...3 m, out to 1.2 m (3.937 ft): the ground span clipped at both corners.
+        // The meter's piece, s = -2...3 m, out to 1.2 m (3.937 ft): the entry as written,
+        // [-6.5616, 9.8425] (-6.56168 and 9.84252 rounded inward), pulled in 0.0001 ft, from
+        // 0.001 ft behind the wall line.
         let patches = try Self.polygons(data, type: "mulch")
-        #expect(patches[1] == [[-6.5617, 0], [9.8425, 0], [9.8425, 3.937], [-6.5617, 3.937]])
-        // The right piece past the convex corner, s = 3...6 m, runs from (3, 0) to (3, -3) m.
-        #expect(patches[2] == [[9.8425, 0], [9.8425, -9.8425], [13.7795, -9.8425], [13.7795, 0]])
+        Self.expectBox(patches[1], x: -6.5615...9.8424, z: -0.001...3.9369)
+        // The right piece past the convex corner, s = 3...6 m, runs from (3, 0) to (3, -3) m:
+        // written [9.8426, 19.685], so z from -(9.8427 - 9.84252) to -(19.6849 - 9.84252).
+        Self.expectBox(patches[2], x: 9.8415...13.7794, z: -9.8424...(-0.0002))
+    }
+
+    /// The patch's extent in plan feet, within one rounding step of `x` and `z`.
+    static func expectBox(
+        _ polygon: [[Double]], x: ClosedRange<Double>, z: ClosedRange<Double>, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        let xs = polygon.map { $0[0] }, zs = polygon.map { $0[1] }
+        let actual = [xs.min() ?? .nan, xs.max() ?? .nan, zs.min() ?? .nan, zs.max() ?? .nan]
+        let expected = [x.lowerBound, x.upperBound, z.lowerBound, z.upperBound]
+        #expect(zip(actual, expected).allSatisfy { abs($0 - $1) <= 1.5e-4 }, "\(actual) != \(expected)", sourceLocation: sourceLocation)
     }
 
     @Test func noAnswerOrNotSureSendsNoPatch() throws {

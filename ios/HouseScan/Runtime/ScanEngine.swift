@@ -40,9 +40,9 @@ final class ScanEngine {
     private var closeUpRetake: (problem: CloseUpProblem, since: Double)?
     /// The reader's answer for the close-up on screen, for the advice after "None of these".
     private var meterReadout: MeterReadout?
-    /// Camera and depth of the frame the close-up photo on disk was taken from, when its tracking
-    /// was normal: coverage takes it when the close-up step ends (`observeCloseUpView`).
-    var closeUpView: (camera: CameraFrame, depth: DepthImage?)?
+    /// The close-up view coverage may take when the close-up step ends (`observeCloseUpView`):
+    /// that of the photo on disk, once the reader's image checks passed it.
+    var closeUpCredit = CloseUpCredit()
     /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
     /// for its own generation's. Keyed so a write finishing after a reset can't count against
     /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
@@ -217,7 +217,7 @@ final class ScanEngine {
             closeUpPending = false
             closeUpRetake = nil
             meterReadout = nil
-            closeUpView = nil
+            closeUpCredit = CloseUpCredit()
             state.meterNumber = nil
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
@@ -452,6 +452,9 @@ final class ScanEngine {
 
     private func captureCloseUp(_ frame: SourceFrame) {
         state.closeUp = .captured(nil)
+        // This shot's save replaces the photo on disk: the last one's view no longer counts.
+        closeUpCredit.shotStarted()
+        let view = frame.tracking == .normal ? CloseUpView(camera: frame.camera, depth: frame.depth) : nil
         let scan = generation
         let store = store
         Task {
@@ -463,19 +466,19 @@ final class ScanEngine {
                 retakeCloseUp(.blurry)
                 return
             }
-            closeUpView = frame.tracking == .normal ? (frame.camera, frame.depth) : nil
             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             state.closeUp = .captured(thumbnail)
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
-            await readMeterNumber(scan: scan)
+            await readMeterNumber(scan: scan, view: view)
         }
     }
 
     /// Reads the meter number from the saved close-up, off the main actor, then offers the
     /// candidates for the homeowner to pick from (never filling one in) or asks for a retake.
-    private func readMeterNumber(scan: Int) async {
+    /// `view` is the shot's, which coverage may take once the reader has passed its photo.
+    private func readMeterNumber(scan: Int, view: CloseUpView?) async {
         state.meterNumber = .reading
         let reader = MeterNumberReaders.make()
         let photo = store.directory.appending(path: "meter_close.jpg")
@@ -484,6 +487,7 @@ final class ScanEngine {
             return await reader.read(jpeg: jpeg)
         }.value
         guard scan == generation, state.phase == .meterCloseUp, state.meterNumber == .reading else { return }
+        closeUpCredit.photoChecked(view, passed: readout?.photoPassedChecks == true)
         guard let readout else {
             RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
             retakeCloseUp(.noNumber)
@@ -581,6 +585,9 @@ final class ScanEngine {
         let index = store.nextKeyframeIndex()
         let scan = generation
         let store = store
+        // The walked-path segment the frame was captured in: a break while its photo stores must
+        // not join it to frames captured after the break.
+        let segment = coverage?.pathSegment
         pendingSaves[scan, default: 0] += 1
         Task {
             // Every exit drains this generation's count, so the upload never waits on a write
@@ -602,7 +609,7 @@ final class ScanEngine {
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             // The frame's own time lets the walked path join only poses kept close together in time.
             // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
-            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth)
+            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
@@ -907,10 +914,11 @@ final class ScanEngine {
             // 65 degree view limit. Geometry only; not tried on a device.
             return (map.wall.world(s: center, height: 0, out: out), max(standOff, out + 1))
         case .walkOut(let out):
-            // The walk has to pass `out` plus the position error at the span's far edge; 0.3 m
-            // more leaves room for drifting toward the wall. The 0.3 m is a guess.
-            let farEdge = max(abs(plan.span.lowerBound), abs(plan.span.upperBound))
-            return (map.wall.world(s: center, height: 1.2), max(standOff, out + CoverageMap.positionError(atS: farEdge) + 0.3))
+            // The walk has to pass `out` plus the wall's position error at the span's end where it
+            // is larger (farther from the meter, or on a piece with a larger default); 0.3 m more
+            // leaves room for drifting toward the wall. The 0.3 m is a guess.
+            let error = max(map.positionError(atS: plan.span.lowerBound), map.positionError(atS: plan.span.upperBound))
+            return (map.wall.world(s: center, height: 1.2), max(standOff, out + error + 0.3))
         case .overhead(let height):
             // Aim where a tilted-up view reaches, or at the height asked for when that is higher.
             let aim = max(Self.tiltUpHeight(map), height ?? 0)

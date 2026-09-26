@@ -23,8 +23,8 @@ import Testing
 
     @Test func positionErrorIsTheServerDefault() {
         // 0.3 ft at the meter; 0.3 + 0.16 * 10 = 1.9 ft at 10 ft.
-        #expect(nearlyEqual(CoverageMap.positionError(atS: 0), 0.09144))
-        #expect(nearlyEqual(CoverageMap.positionError(atS: -3.048), 1.9 * 0.3048))
+        #expect(nearlyEqual(ServerErrorDefaults.wall(.tap, atS: 0), 0.09144))
+        #expect(nearlyEqual(ServerErrorDefaults.wall(.tap, atS: -3.048), 1.9 * 0.3048))
     }
 
     @Test func clearanceIsTheWalkedDistanceLessTheErrorAtTheFarEdge() {
@@ -44,11 +44,11 @@ import Testing
         // One pass angles in from 2.0 m to 1.4 m out between s = 0 and 0.5 (0.78 m apart).
         map.observe(Self.camera(s: 0, out: 2.0), trackingNormal: true, time: 0)
         map.observe(Self.camera(s: 0.5, out: 1.4), trackingNormal: true, time: 1)
-        #expect(map.walkedClearance(at: 1).map { nearlyEqual($0, 1.4 - CoverageMap.positionError(atS: 0.3048)) } == true)
+        #expect(map.walkedClearance(at: 1).map { nearlyEqual($0, 1.4 - ServerErrorDefaults.wall(.tap, atS: 0.3048)) } == true)
         // A later pass 1.8 m out over the same stretch shows more of it clear.
         map.observe(Self.camera(s: 0, out: 1.8), trackingNormal: true, time: 2)
         map.observe(Self.camera(s: 0.5, out: 1.8), trackingNormal: true, time: 3)
-        #expect(map.walkedClearance(at: 1).map { nearlyEqual($0, 1.8 - CoverageMap.positionError(atS: 0.3048)) } == true)
+        #expect(map.walkedClearance(at: 1).map { nearlyEqual($0, 1.8 - ServerErrorDefaults.wall(.tap, atS: 0.3048)) } == true)
     }
 
     @Test func jumpsAndLimitedTrackingAreNotWalked() {

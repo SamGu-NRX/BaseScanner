@@ -17,17 +17,19 @@ struct VisionMeterNumberReader: MeterNumberReader {
         Self.readout(jpeg: jpeg, orientation: orientation)
     }
 
-    private static let retakeNoNumber = MeterReadout(candidates: [], retake: .noNumber, numberTooSmall: false)
+    /// Nothing read in a photo that decoded and is in focus.
+    private static let retakeNoNumber = MeterReadout(candidates: [], retake: .noNumber, numberTooSmall: false, photoPassedChecks: true)
+    private static let undecodable = MeterReadout(candidates: [], retake: .noNumber, numberTooSmall: false, photoPassedChecks: false)
 
     private static func readout(jpeg: Data, orientation: CGImagePropertyOrientation) -> MeterReadout {
         guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
               let gray = luma(of: image)
-        else { return retakeNoNumber }
+        else { return undecodable }
 
         // The eval's flow blocks a blurry photo before showing candidates, so Vision need not run.
         if MeterPhotoChecks.isOutOfFocus(sharpness: MeterPhotoChecks.wholePhotoSharpness(gray)) {
-            return MeterReadout(candidates: [], retake: .blurry, numberTooSmall: false)
+            return MeterReadout(candidates: [], retake: .blurry, numberTooSmall: false, photoPassedChecks: false)
         }
 
         let text = VNRecognizeTextRequest()
@@ -63,7 +65,8 @@ struct VisionMeterNumberReader: MeterNumberReader {
                 MeterNumberCandidate(id: index, text: candidate.core, barcodeConfirmed: candidate.barcodeConfirmed)
             },
             retake: nil,
-            numberTooSmall: choices.numberTooSmall
+            numberTooSmall: choices.numberTooSmall,
+            photoPassedChecks: true
         )
     }
 

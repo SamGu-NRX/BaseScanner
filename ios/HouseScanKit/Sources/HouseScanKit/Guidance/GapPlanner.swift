@@ -200,23 +200,25 @@ public struct GapPlanner: Sendable {
     }
 
     /// The fraction of `requested` (feet) that `spans` (meters) cover, measured the way the server
-    /// reads the uploaded scene: the spans in feet at the export's four decimals, joined where
-    /// they touch within 1e-9 ft (server/scene.py `missing` on origin/t3/server).
+    /// reads the uploaded scene: the spans in feet as the export writes them, each end rounded
+    /// inward (`SceneExport.spanInward`), and gaps under the server's COVERAGE_TOLERANCE_FT
+    /// (0.01 ft, server/scene.py `missing` at t3/server 930e8e5) read as rounding, not unseen.
     static func fraction(of requested: ClosedRange<Double>, coveredBy spans: [ClosedRange<Float>]) -> Double {
-        let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
         let low = requested.lowerBound
         let high = requested.upperBound
         guard high > low else { return 0 }
         let eps = 1e-9
+        let tolerance = 0.01
         var cursor = low
         var missing = 0.0
-        for (a, b) in spans.map({ (feet($0.lowerBound), feet($0.upperBound)) }).sorted(by: { $0 < $1 }) {
+        let written = spans.compactMap { SceneExport.spanInward($0) }.map { ($0[0], $0[1]) }
+        for (a, b) in written.sorted(by: { $0 < $1 }) {
             if b <= cursor + eps { continue }
             if a >= high - eps { break }
-            if a > cursor + eps { missing += min(a, high) - cursor }
+            if a > cursor + eps, min(a, high) - cursor >= tolerance { missing += min(a, high) - cursor }
             cursor = max(cursor, b)
         }
-        if cursor < high - eps { missing += high - cursor }
+        if cursor < high - eps, high - cursor >= tolerance { missing += high - cursor }
         return max(0, 1 - missing / (high - low))
     }
 
