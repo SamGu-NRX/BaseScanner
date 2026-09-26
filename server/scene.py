@@ -576,7 +576,14 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
             raise SceneError(f"/walls/{wi}/id", f"duplicate wall id {wid!r}")
         wall_ids.add(wid)
         pts = [_xz(p) for p in wall["baseline"]]
-        wall_err = _error(wall, errors.wall_ft.value)
+        # How the wall's line was found sets its default error: AR taps (also when `source` is
+        # absent), the LiDAR mesh, or detected planes. All three drift with distance walked.
+        default = {
+            "tap": errors.wall_ft,
+            "mesh": errors.mesh_ft,
+            "plane": errors.plane_ft,
+        }[wall.get("source", "tap")]
+        wall_err = _error(wall, default.value)
         wall_drift = 0.0 if "plus_minus_ft" in wall else drift
         pts = _merge_collinear(pts, COLLINEAR_FT, f"/walls/{wi}/baseline")
         if prev_end is not None:

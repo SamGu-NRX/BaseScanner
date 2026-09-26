@@ -69,6 +69,7 @@ class Errors(_Strict):
     tap_ft: Value
     vlm_ft: Value
     mesh_ft: Value
+    plane_ft: Value
     tape_ft: Value
     wall_ft: Value
     meter_ft: Value

@@ -82,7 +82,7 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 
 A check is settled when everything it depends on is observed and measured; then it passes or fails on the numbers. What follows is the coverage (`coverage.observed`) and the measurements each check needs, so a capture that supplies exactly this gets a decision on the first upload. Values in brackets are the public rules (`rules.yaml`); private rules may differ, and a request always names the exact span and depth.
 
-Notation, all in feet: the battery stands at s from `s0` to `s1` (width W = 2.58, depth D = 1.83). `e` is the wall's position error at the battery's far edge from the meter: the wall's `plus_minus_ft`, or the default 0.3 plus 0.16 per foot along the walls from the meter. `r` is a check's rule value. A ground band "over [a, b] out to d" means an observed `{"band": "ground", "span_ft": [a, b], "out_ft": d}` (or several that together cover it).
+Notation, all in feet: the battery stands at s from `s0` to `s1` (width W = 2.58, depth D = 1.83). `e` is the wall's position error at the battery's far edge from the meter: the wall's `plus_minus_ft`, or the default for its `source` (tap 0.3, the default when `source` is absent; mesh 0.5; plane 0.75, an untested estimate) plus 0.16 per foot along the walls from the meter. `r` is a check's rule value. A ground band "over [a, b] out to d" means an observed `{"band": "ground", "span_ft": [a, b], "out_ft": d}` (or several that together cover it).
 
 | Check | Reads | Coverage that settles it |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ Notation, all in feet: the battery stands at s from `s0` to `s1` (width W = 2.58
 | `route_path` | `walls`, openings on the route | wall band from the meter to the battery's near edge |
 | `route_length` | `walls`, `meter` | nothing to observe |
 
-Errors: a measured value passes only when it clears the rule by more than its error. Objects take the default error for their `source` (tape 0.05, tap 0.3, vlm 1.5, plus 0.16 per foot along the walls for tap and vlm) unless they carry `plus_minus_ft`; `facing` and `overheads` entries default to the mesh error, 0.5. Every `out_ft` is taken as exact, so report the distance you are sure of (for a walked path, the distance from the wall less your position error).
+Errors: a measured value passes only when it clears the rule by more than its error. Objects take the default error for their `source` (tape 0.05, tap 0.3, vlm 1.5, plus 0.16 per foot along the walls for tap and vlm) unless they carry `plus_minus_ft`, and walls likewise (tap 0.3, mesh 0.5, plane 0.75, each plus the same drift). Send a wall's `source` when its line comes from the mesh or detected planes rather than taps, so the error bars match how it was measured; `facing` and `overheads` entries default to the mesh error, 0.5. Every `out_ft` is taken as exact, so report the distance you are sure of (for a walked path, the distance from the wall less your position error).
 
 Ends and corners:
 

@@ -29,6 +29,9 @@ errors:
   tap_ft: {value: 0.3, source: "docs/02 Lane C estimate for AR taps; untested"}
   vlm_ft: {value: 1.5, source: "docs/02 Lane C estimate for photo detections; untested"}
   mesh_ft: {value: 0.5, source: "docs/02 Lane C estimate for the LiDAR mesh; untested"}
+  # Walls from ARKit's detected planes on phones without LiDAR. No measurement exists; assumed
+  # coarser than the mesh until the tape test measures it.
+  plane_ft: {value: 0.75, source: "Untested estimate for ARKit plane detection without LiDAR; no measurement", placeholder: true}
   tape_ft: {value: 0.05, source: "Tape measure read to the nearest half inch", placeholder: true}
   wall_ft: {value: 0.3, source: "Walls come from AR taps: docs/02 Lane C estimate; untested"}
   meter_ft: {value: 0.3, source: "The meter is an AR tap: docs/02 Lane C estimate; untested"}

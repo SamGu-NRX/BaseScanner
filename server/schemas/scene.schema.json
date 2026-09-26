@@ -41,7 +41,8 @@
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' wall default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
+          "source": {"enum": ["tap", "mesh", "plane"], "description": "How the wall's line was found: AR taps, the LiDAR mesh, or ARKit's detected planes. Sets the default error when plus_minus_ft is absent (errors.wall_ft, mesh_ft, plane_ft in rules.yaml). Absent means tap."},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' default for the wall's source, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
