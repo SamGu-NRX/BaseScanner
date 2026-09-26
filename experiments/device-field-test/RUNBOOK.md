@@ -66,17 +66,30 @@ to the meter is fully covered. Then check the strip is covered without a gap fro
 stand. Run 1 shows why: the tap puts the wall's end at the edge of the unbroken covered stretch, and if
 that stretch is empty, the end lands at the meter. See [README.md](README.md#result-run-1).
 
+How to fill it:
+- Stand about 7 ft out from the meter and tilt down until the ground out to 4 ft from the wall is in view.
+- Wait for the photo counter to flash, take a 2 ft step sideways, and wait for another flash. Do the same
+  with the wall up to 6½ ft.
+
+Each spot must be seen from two positions at least 0.25 m apart. Only kept photos count, and a photo is
+kept after about 0.5 m of movement or 15° of turn.
+
 ## Run 2: the same wall with clutter
 
 Put an obstacle in front of the meter or panel and repeat run 1. Add these:
 
 | ID | Do | Expect |
 |---|---|---|
-| C-3 | On the close-up, point away for 4 s or more, twice | "Can't get a clear shot" after the first failed try; the close-up is skipped after the second |
-| C-4 | Or shake gently so frames alternate sharp and blurry, for 30 s | Known B-04: the way out may never appear |
+| C-4 | On the close-up, shake gently so frames alternate sharp and blurry, for 30 s | Known B-04: the way out may never appear |
+| C-3 | Then point away for 4 s or more, twice | "Can't get a clear shot" after the first failed try; the close-up is skipped after the second |
+| W-13 | Walk past the obstacle, look from the side, then tap Can't see past it | "Something is in front of the wall here"; the cells behind it turn hatched. Needs a build with LiDAR occlusion (after 1.1) and a Pro iPhone |
 | M-2 | Tap Add something on the feature list | Known B-09: nothing visible happens |
 
 ## Run 3: interruptions (separate short recordings)
+
+Group the tests into short recordings: W-12 then M-3; W-10 then W-11; U-4 then U-3; O-4 alone. A call or a
+lock can end a screen recording, and this way it takes only its own tests with it. O-4 deletes the app and
+every scan on it, so export scans first.
 
 | ID | Do | Expect |
 |---|---|---|
