@@ -13,7 +13,9 @@ those. A feasible stretch narrower than the grid step is therefore still found (
 import itertools
 import math
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from shapely import Geometry, Polygon, unary_union
@@ -46,6 +48,11 @@ class Check:
     subject: str | None = None
     unsure_cause: str | None = None
     missing: list[tuple[str, float, float]] = field(default_factory=list)
+    # Computing the exact unseen stretch is slow, so it is deferred until a result reports it.
+    missing_later: Callable[[], list[tuple[str, float, float]]] | None = None
+
+    def all_missing(self) -> list[tuple[str, float, float]]:
+        return self.missing + (self.missing_later() if self.missing_later else [])
 
     def to_json(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -234,7 +241,7 @@ class Solver:
                 return c
         if not self._covered(fp, self.unobserved_ground, 0.0):
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing = self._missing_ground(fp, 0.0)
+            c.missing_later = partial(self._missing_ground, fp, 0.0)
             c.reason = "The ground under the footprint was not seen."
             return c
         # A patch edge's error matters only where an allowed surface meets a disallowed or
@@ -329,11 +336,11 @@ class Solver:
                     f"battery against a {ft(t)} rule: too close to call."
                 )
             if not covered:
-                c.missing = self._missing_band(band, fp, t)
+                c.missing_later = partial(self._missing_band, band, fp, t)
             return c
         if not covered:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing = self._missing_band(band, fp, t)
+            c.missing_later = partial(self._missing_band, band, fp, t)
             c.reason = (
                 f"Not everything within {ft(t)} of the battery was seen, so a {noun} could "
                 "hide there."
@@ -850,7 +857,7 @@ _BAND_TEXT = {
 def _missing_json(c: Candidate) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[float, float, str]]] = {}
     for chk in c.checks:
-        for band, a, b in chk.missing:
+        for band, a, b in chk.all_missing():
             by_band.setdefault(band, []).append((a, b, chk.id))
     out = []
     for band, items in by_band.items():
