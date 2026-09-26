@@ -280,6 +280,29 @@ enum CloseUpProblem: Equatable, Sendable {
     case meterNotCentered
     case tooFar
     case tracking
+    /// The best reading's characters are too small in the photo: move closer.
+    case numberTooSmall
+    /// No number could be read at all: retake.
+    case noNumber
+}
+
+/// One reading of the meter number from the close-up, for the homeowner to confirm.
+struct MeterNumberCandidate: Identifiable, Equatable, Sendable {
+    let id: Int
+    var text: String
+    /// A barcode on the meter carries the same number.
+    var barcodeConfirmed: Bool
+}
+
+/// The meter number after the close-up. The homeowner confirms it by tapping; nothing is
+/// filled in automatically.
+enum MeterNumberState: Equatable, Sendable {
+    case reading
+    /// The best candidates, barcode-confirmed first, at most three.
+    case choose([MeterNumberCandidate])
+    case confirmed(String)
+    /// The homeowner skipped the close-up; the number goes to review.
+    case skipped
 }
 
 // MARK: - Features
@@ -371,8 +394,13 @@ enum UploadState: Equatable, Sendable {
     case packaging
     case uploading(fraction: Double)
     case analyzing
-    /// `offline` means the bundle is saved on the phone and can be retried.
+    /// A network failure or a server error (5xx): sending again can work. `offline` means no
+    /// connection at all.
     case failed(message: String, offline: Bool)
+    /// The server refused the scan (4xx), its answer couldn't be read, or the scan couldn't be
+    /// packaged. Sending again would send the same thing, so the way on is back to the review
+    /// or start over, never "Try again".
+    case rejected(message: String)
     case done
 }
 
@@ -476,6 +504,8 @@ final class ScanViewState {
     /// Close-up attempts that ended without a usable photo. "Can't get a clear shot" appears
     /// from the second one on, never earlier.
     var closeUpFailedAttempts = 0
+    /// Nil until the close-up photo is taken.
+    var meterNumber: MeterNumberState?
 
     var captureCount = 0
     var lastCapture: CaptureEvent?
@@ -518,6 +548,9 @@ protocol ScanActions: AnyObject {
     func finishOnboarding()
     func markMeter(at point: CGPoint?, viewSize: CGSize)
     func skipCloseUp()
+    /// The homeowner's pick from `MeterNumberState.choose`; nil means "None of these", which
+    /// asks for a retake.
+    func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
     /// The answer to `ScanViewState.endQuestion`. A corner exports as an unexplored end, a
     /// blocked wall as a limit; an end left unanswered stays unexplored.
@@ -537,6 +570,8 @@ protocol ScanActions: AnyObject {
     /// for become `.skipped` and the guidance moves on to the next task.
     func cannotAccessArea()
     func retryUpload()
+    /// After a rejected upload: back to the feature review, keeping the scan.
+    func backToReview()
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()
