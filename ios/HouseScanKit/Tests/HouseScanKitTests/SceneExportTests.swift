@@ -180,6 +180,18 @@ import simd
         #expect(errors == ["$.walls: 0 items, fewer than minItems 1"])
     }
 
+    /// The schema closes `attrs` to operable and well: an exported window passes, another key fails.
+    @Test func attrsAcceptOnlyKnownKeys() throws {
+        let (_, v) = try Self.exported()
+        guard case .object(var document) = v, case .array(var objects)? = document["objects"],
+              case .object(var window) = objects[1] else { Issue.record("no window object"); return }
+        #expect(try SceneSchemas.scene().validate(v) == [])
+        window["attrs"] = .object(["operable": .bool(true), "locked": .bool(false)])
+        objects[1] = .object(window)
+        document["objects"] = .array(objects)
+        #expect(try !SceneSchemas.scene().validate(.object(document)).isEmpty)
+    }
+
     @Test func invalidInputThrows() {
         var input = Self.input()
         input.features = [.fence(foot: [.zero])]
