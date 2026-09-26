@@ -38,6 +38,7 @@ from evals.drift import (
     similarity_scale_2d,
     window_pairs,
 )
+from evals.geometry import quat_wxyz_to_matrix
 from evals.paths import EVALS_DIR
 
 MARVIN_DIR = EVALS_DIR / "marvin"
@@ -86,15 +87,60 @@ def level_frame(points: np.ndarray) -> np.ndarray:
     return Vt
 
 
-def walk_errors(ark: np.ndarray, truth: np.ndarray) -> dict:
-    """Per distance: ARKit's and the truth's straight-line displacement (m), windows from every
-    image."""
+def heading(v: np.ndarray) -> np.ndarray:
+    """Heading of y-up vectors (N, 3): the angle of their (x, z) part."""
+    return np.arctan2(v[:, 0], v[:, 2])
+
+
+def turn(v: np.ndarray, delta: np.ndarray) -> np.ndarray:
+    """Turn y-up vectors about y so each heading grows by delta (radians)."""
+    c, s = np.cos(delta), np.sin(delta)
+    return np.c_[v[:, 0] * c + v[:, 2] * s, v[:, 1], v[:, 2] * c - v[:, 0] * s]
+
+
+def circular_std_deg(a: np.ndarray) -> float:
+    return float(np.degrees(np.sqrt(-2 * np.log(abs(np.mean(np.exp(1j * a)))))))
+
+
+def align_headings(
+    ark_p: np.ndarray, ark_q: np.ndarray, truth_p: np.ndarray, truth_fwd: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """ARKit positions in a frame with the truth's handedness and vertical sign, the per-image
+    heading offset (truth minus ARKit, radians) and how steady it is (circular std, degrees).
+
+    ARKit's poses are in Unity's left-handed axes (camera looking along +z) and the truth's level
+    frame has an arbitrary vertical sign, so the z flip that makes the heading offset steadiest is
+    taken; a correct pairing holds it within a degree over a whole walk.
+    """
+    fwd = quat_wxyz_to_matrix(ark_q)[:, :, 2]
+    best = None
+    for flip in (1.0, -1.0):
+        f = fwd * np.array([1.0, 1.0, flip])
+        delta = heading(truth_fwd) - heading(f)
+        spread = circular_std_deg(delta)
+        if best is None or spread < best[2]:
+            best = (flip, delta, spread)
+    flip, delta, spread = best
+    p = ark_p * np.array([1.0, 1.0, flip])
+    if (p[:, 1] - p[:, 1].mean()) @ (truth_p[:, 1] - truth_p[:, 1].mean()) < 0:
+        p = p * np.array([1.0, -1.0, 1.0])
+    return p, delta, spread
+
+
+def walk_errors(ark: np.ndarray, truth: np.ndarray, delta: np.ndarray) -> dict:
+    """Per distance, windows from every image: ARKit's and the truth's straight-line displacement
+    (m), and the two displacements with ARKit's turned by the heading offset at the window's
+    start, for position error."""
     out = {}
     for ft in DISTANCES_FT:
         i, j = window_pairs(truth, ft * FEET, 1)
+        da = at(ark, j) - ark[i]
+        dt = at(truth, j) - truth[i]
         out[ft] = {
-            "ark": np.linalg.norm(at(ark, j) - ark[i], axis=1),
-            "truth": np.linalg.norm(at(truth, j) - truth[i], axis=1),
+            "ark": np.linalg.norm(da, axis=1),
+            "truth": np.linalg.norm(dt, axis=1),
+            "ark_turned": turn(da, delta[i]),
+            "truth_vec": dt,
         }
     return out
 
@@ -123,11 +169,20 @@ def evaluate() -> dict:
             keys = sorted(k for k in ark_rows if f"{name}/{k}" in truth)
             if len(keys) < 30:
                 continue
-            ark = np.array([ark_rows[k][:3] for k in keys])
             # y up, as `horizontal_path_length` expects.
             t = np.array([truth[f"{name}/{k}"][:3] for k in keys]) @ frame.T
             t = t[:, [0, 2, 1]]
-            errs = walk_errors(ark, t)
+            # The truth's camera looks along +z of its world-to-camera rotation (COLMAP).
+            fwd = (
+                np.array([quat_wxyz_to_matrix(truth[f"{name}/{k}"][3:])[2] for k in keys]) @ frame.T
+            )
+            ark, delta, spread = align_headings(
+                np.array([ark_rows[k][:3] for k in keys]),
+                np.array([ark_rows[k][3:] for k in keys]),
+                t,
+                fwd[:, [0, 2, 1]],
+            )
+            errs = walk_errors(ark, t, delta)
             long = np.concatenate(
                 [errs[ft]["ark"] / errs[ft]["truth"] for ft in DISTANCES_FT if ft >= SCALE_MIN_FT]
             )
@@ -143,6 +198,7 @@ def evaluate() -> dict:
                     "images": len(keys),
                     "walked_m": float(horizontal_path_length(t)[-1]),
                     "scale": scale,
+                    "heading_offset_spread_deg": round(spread, 2),
                     "gps_over_truth": gps,
                     "errors": errs,
                 }
@@ -194,17 +250,43 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         "| Walked | As tracked | Beyond scale | As tracked, without those walks |",
         "| --- | --- | --- | --- |",
     ]
+    position = {}
     for ft in DISTANCES_FT:
         raw, beyond, kept = [], [], []
+        pos, pos_beyond, pos_kept = [], [], []
         for w in all_walks:
             e = w["errors"][ft]
             raw.append(e["ark"] - e["truth"])
             beyond.append(e["ark"] / w["scale"] - e["truth"])
+            pe = np.linalg.norm(e["ark_turned"] - e["truth_vec"], axis=1)
+            pos.append(pe)
+            pos_beyond.append(np.linalg.norm(e["ark_turned"] / w["scale"] - e["truth_vec"], axis=1))
             if abs(w["scale"] - 1) <= OUTLIER:
                 kept.append(e["ark"] - e["truth"])
+                pos_kept.append(pe)
         lines.append(
             f"| {ft} ft | {_abs(np.concatenate(raw))} | {_abs(np.concatenate(beyond))} | "
             f"{_abs(np.concatenate(kept))} |"
+        )
+        position[ft] = (pos, pos_beyond, pos_kept)
+    spreads = np.array([w["heading_offset_spread_deg"] for w in all_walks])
+    lines += [
+        "",
+        "## Position error after walking, pooled over all walks",
+        "",
+        "|ARKit - truth| of the whole displacement, inches, median / p90, ARKit's displacement "
+        "turned by the heading offset at the window's start (so sideways drift counts), as in "
+        "section 1. The heading offset between ARKit and the truth holds steady to "
+        f"{np.median(spreads):.1f} degrees (median walk; worst {spreads.max():.1f}). 'Scale "
+        "removed' divides each walk's own scale out first. Columns as above.",
+        "",
+        "| Walked | As tracked | Scale removed | As tracked, without those walks | 0.16 ft/ft allowance |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for ft, (pos, pos_beyond, pos_kept) in position.items():
+        lines.append(
+            f"| {ft} ft | {_abs(np.concatenate(pos))} | {_abs(np.concatenate(pos_beyond))} | "
+            f"{_abs(np.concatenate(pos_kept))} | {0.16 * ft * 12:.1f} |"
         )
     gps = [
         (w["gps_over_truth"][0], w["gps_over_truth"][1]) for w in all_walks if w["gps_over_truth"]

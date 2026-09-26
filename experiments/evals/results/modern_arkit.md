@@ -22,6 +22,17 @@ Walks within 2% of the ground truth's scale: 30 of 35.
 | 20 ft | 4.5 / 34.8 | 3.2 / 30.7 | 4.2 / 11.9 |
 | 30 ft | 5.9 / 45.8 | 3.9 / 38.9 | 5.5 / 16.2 |
 
+## Position error after walking, pooled over all walks
+
+|ARKit - truth| of the whole displacement, inches, median / p90, ARKit's displacement turned by the heading offset at the window's start (so sideways drift counts), as in section 1. The heading offset between ARKit and the truth holds steady to 0.6 degrees (median walk; worst 3.1). 'Scale removed' divides each walk's own scale out first. Columns as above.
+
+| Walked | As tracked | Scale removed | As tracked, without those walks | 0.16 ft/ft allowance |
+| --- | --- | --- | --- | --- |
+| 3 ft | 1.5 / 6.9 | 1.4 / 8.8 | 1.4 / 4.0 | 5.8 |
+| 10 ft | 3.3 / 18.7 | 2.8 / 22.6 | 3.1 / 8.6 | 19.2 |
+| 20 ft | 5.4 / 37.5 | 4.4 / 35.0 | 5.1 / 13.4 | 38.4 |
+| 30 ft | 7.2 / 50.0 | 5.5 / 45.1 | 6.9 / 18.5 | 57.6 |
+
 ## Can GPS check the ground truth's scale?
 
 GPS / truth over each walk: median 0.936, range 0.155 to 1.065 (35 walks). On the 11 walks where GPS fits within 1.5 m, median 0.978, range 0.923 to 1.065. GPS noise of 1 to 9 m over 25 to 160 m walks cannot pin the scale to 2%.
