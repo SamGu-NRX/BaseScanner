@@ -75,7 +75,7 @@ Report every row at every spot. Never average away missing outputs.
 - **Absolute error.** |predicted - true| in inches, with the signed error. Median and maximum per house.
 - **Error relative to the deciding threshold.** With margin m = |true - threshold| and survey uncertainty u, report error / max(m, u). Above 1, the error could flip the check. If both are zero, report "at threshold".
 - **Missing outputs.** Against the fixed denominator, split into unsupported, failed, and not surveyed.
-- **Unsafe passes.** A pipeline PASS where the label is FAIL or borderline. This matters most. Report false rejections beside it.
+- **Unsafe passes.** A pipeline PASS where the label is FAIL. This matters most. Count a PASS where the label is borderline or UNSURE separately as a missed review, and a pipeline UNSURE or FAIL where the label is PASS as over-caution. Report false rejections beside them.
 - **Abstentions.** UNSURE rate, split into justified, when the label is borderline or evidence is missing, and avoidable.
 - **Capture time.** Walk time, taps and retakes of the shared recording. Photo rows cannot claim a shorter capture from it.
 - **Latency.** Upload finished to result shown, cold and warm, with crashes and timeouts.
