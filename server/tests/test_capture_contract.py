@@ -207,7 +207,11 @@ def test_a_request_ending_at_the_meter_reads_naturally() -> None:
     raw = shared_fixture()
     observed_band(raw, "wall", [(-40, 0), (3, 40)])  # the cable's first 3 ft unseen
     messages = [m["message"] for m in answer(raw)["missing_evidence"] if m.get("band") == "wall"]
-    assert messages == ["Show the wall from the meter to 3 ft 0 in right of the meter."]
+    # The cable runs 1 ft up (route.height_ft), so that is how high the view must reach.
+    assert messages == [
+        "Show the wall from the meter to 3 ft 0 in right of the meter, seen at least 1 ft 0 in "
+        "up the wall."
+    ]
 
 
 # --- float noise at the end of the wall -----------------------------------------------------------

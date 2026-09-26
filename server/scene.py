@@ -248,14 +248,28 @@ class Scene:
 
     # --- coverage --------------------------------------------------------------------------------
 
-    def observed_intervals(self, band: str) -> list[tuple[float, float]]:
-        return merge_intervals([(a, b) for a, b, _ in self.observed.get(band, [])])
+    def observed_intervals(
+        self, band: str, up_to: float | None = None
+    ) -> list[tuple[float, float]]:
+        """Observed stretches of a 1D band. With `up_to`, only views that reached above that
+        height count: a wall entry's out_ft is how high up the face was seen, and one without
+        out_ft saw the whole band."""
+        return merge_intervals(
+            [
+                (a, b)
+                for a, b, out in self.observed.get(band, [])
+                if up_to is None or out is None or out > up_to
+            ]
+        )
 
-    def missing(self, band: str, s_lo: float, s_hi: float) -> list[tuple[float, float]]:
-        """Parts of [s_lo, s_hi] not observed in a 1D band. A gap narrower than
-        COVERAGE_TOLERANCE_FT is rounding between the capture's spans and the unrolled walls (the
-        app reported a wall seen to 15 ft that unrolls to 15.00006 ft), not an unseen stretch."""
-        gaps = subtract_intervals((s_lo, s_hi), self.observed_intervals(band))
+    def missing(
+        self, band: str, s_lo: float, s_hi: float, up_to: float | None = None
+    ) -> list[tuple[float, float]]:
+        """Parts of [s_lo, s_hi] not observed in a 1D band (above `up_to`, see
+        observed_intervals). A gap narrower than COVERAGE_TOLERANCE_FT is rounding between the
+        capture's spans and the unrolled walls (the app reported a wall seen to 15 ft that
+        unrolls to 15.00006 ft), not an unseen stretch."""
+        gaps = subtract_intervals((s_lo, s_hi), self.observed_intervals(band, up_to))
         return [(a, b) for a, b in gaps if b - a >= COVERAGE_TOLERANCE_FT]
 
     def unobserved_ground(self) -> Geometry:
@@ -340,13 +354,15 @@ class Scene:
                 self._cache[key] = self.wall_line(lo, hi).buffer(1e-6, cap_style="flat")
         return self._cache[key]
 
-    def unobserved_wall_lines(self) -> Geometry:
-        """Stretches of the chain's line nobody saw, the part a view of the wall settles."""
-        if "wall-lines" not in self._cache:
+    def unobserved_wall_lines(self, up_to: float | None = None) -> Geometry:
+        """Stretches of the chain's line nobody saw up to height `up_to`, the part a view of the
+        wall settles."""
+        key = f"wall-lines-{up_to}"
+        if key not in self._cache:
             lo, hi = self.pieces[0].s0, self.pieces[-1].s1
-            gaps = self.missing("wall", lo, hi)
-            self._cache["wall-lines"] = unary_union([self.wall_line(a, b) for a, b in gaps])
-        return self._cache["wall-lines"]
+            gaps = self.missing("wall", lo, hi, up_to)
+            self._cache[key] = unary_union([self.wall_line(a, b) for a, b in gaps])
+        return self._cache[key]
 
     def unexplored_area(self) -> Geometry:
         """Where the walls past an unexplored end might run: in front of the scanned walls only
@@ -355,12 +371,13 @@ class Scene:
             self._cache["unexplored"] = unary_union(self._unexplored_discs())
         return self._cache["unexplored"]
 
-    def unobserved_wall(self) -> Geometry:
-        if "wall" not in self._cache:
-            self._cache["wall"] = unary_union(
-                [self.unobserved_wall_lines(), self.unexplored_area()]
+    def unobserved_wall(self, up_to: float | None = None) -> Geometry:
+        key = f"wall-{up_to}"
+        if key not in self._cache:
+            self._cache[key] = unary_union(
+                [self.unobserved_wall_lines(up_to), self.unexplored_area()]
             )
-        return self._cache["wall"]
+        return self._cache[key]
 
 
 def merge_intervals(intervals: list[tuple[float, float]]) -> list[tuple[float, float]]:

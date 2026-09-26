@@ -253,7 +253,18 @@ class Solver:
         self.bad = [g for g in scene.ground if g.type not in r.ground.allowed]
         self.drives = [g for g in scene.ground if g.type in r.ground.drivable]
         self.unobserved_ground = scene.unobserved_ground()
-        self.unobserved_wall = scene.unobserved_wall()
+        # How high up the wall each check needs the face seen, from rules.yaml: the battery's
+        # back to its top, the cable at its run height, and the band's top (headroom height) for
+        # anything that can hang above the battery: boxes, vents, gas and openings (up to the
+        # height above which a window no longer counts, when the rules set one).
+        above = r.headroom.min_ft.value
+        exempt = r.openings.exempt_bottom_above_ft
+        self.wall_height = {
+            "backing": r.battery.height_ft.value,
+            "route": r.route.height_ft.value,
+            "above": above,
+            "openings": above if exempt is None else min(above, exempt),
+        }
         ws = r.meter_working_space
         self.ws_span = (-ws.width_ft.value / 2, ws.width_ft.value / 2)
         self.ws_poly = scene.band_polygon(self.ws_span[0], self.ws_span[1], ws.depth_ft.value)
@@ -315,10 +326,11 @@ class Solver:
                 "of the wall or a stretch with no wall), so the battery can't sit flush."
             )
             return c
-        missing = self.scene.missing("wall", s0, s1)
+        up_to = self.wall_height["backing"]
+        missing = self.scene.missing("wall", s0, s1, up_to)
         if missing:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing = [View("wall", a, b) for a, b in missing]
+            c.missing = [View("wall", a, b, _above(up_to)) for a, b in missing]
             c.reason = "Part of the wall behind the battery was not seen."
             return c
         c.reason = "The whole footprint backs onto one straight, observed wall segment."
@@ -374,10 +386,12 @@ class Solver:
             c.reason = "The footprint sits within measurement error of a surface boundary."
         return c
 
-    def _unobserved(self, band: str) -> Geometry:
-        return self.unobserved_ground if band == "ground" else self.unobserved_wall
+    def _unobserved(self, band: str, up_to: float | None) -> Geometry:
+        return self.unobserved_ground if band == "ground" else self.scene.unobserved_wall(up_to)
 
-    def _missing(self, band: str, fp: Polygon, radius: float) -> list[View]:
+    def _missing(
+        self, band: str, fp: Polygon, radius: float, up_to: float | None = None
+    ) -> list[View]:
         """The views that would show what nobody saw within `radius` of the footprint. Only what
         a view can settle is requested; the rest lies past an unexplored end, which the
         past_end request covers. For the wall band, the area past an unexplored end that lies in
@@ -388,7 +402,7 @@ class Solver:
             parts = [("ground", self.unobserved_ground)]
         else:
             parts = [
-                ("wall", self.scene.unobserved_wall_lines()),
+                ("wall", self.scene.unobserved_wall_lines(up_to)),
                 ("ground", self.scene.unexplored_area()),
             ]
         out = []
@@ -403,14 +417,19 @@ class Solver:
             ]
             if extents:
                 a, b = min(a for a, _ in extents), max(b for _, b in extents)
-                depth = _up(self.scene.farthest_out(region)) if view == "ground" else None
+                if view == "ground":
+                    depth = _up(self.scene.farthest_out(region))
+                else:
+                    depth = None if up_to is None else _above(up_to)
                 out.append(View(view, a, b, depth))
         return out
 
-    def _missing_bands(self, bands: list[str], fp: Polygon, radius: float) -> list[View]:
+    def _missing_bands(
+        self, bands: list[str], fp: Polygon, radius: float, up_to: float | None
+    ) -> list[View]:
         """Every unseen band, so one recapture settles the check (a clearance can need both the
         ground and the wall)."""
-        return [m for band in bands for m in self._missing(band, fp, radius)]
+        return [m for band in bands for m in self._missing(band, fp, radius, up_to)]
 
     def check_clearance(
         self,
@@ -423,9 +442,12 @@ class Solver:
         items: list[tuple[str, Geometry, float, bool | None]],
         band: str,
         noun: str,
+        wall_height: float | None = None,
     ) -> Check:
         """Minimum plan distance from the footprint to each item. `items` holds (label, geometry,
-        error, counts) where counts None means an unknown attribute decides whether it applies."""
+        error, counts) where counts None means an unknown attribute decides whether it applies.
+        `wall_height` is how high up the wall the face must have been seen, for a check that
+        reads the wall band."""
         t = rule.value
         c = Check(check_id, label, PASS, "", rule_key, rule, threshold=t, comparison="at_least")
         worst_key: tuple[int, float] | None = None
@@ -453,8 +475,12 @@ class Solver:
         # have been seen reaches that much further.
         radius = t + piece.plus_minus
         bands = ["ground", "wall"] if band == "ground+wall" else [band]
-        unseen = [b for b in bands if not self._covered(fp, self._unobserved(b), radius)]
-        missing_later = partial(self._missing_bands, unseen, fp, radius) if unseen else None
+        unseen = [
+            b for b in bands if not self._covered(fp, self._unobserved(b, wall_height), radius)
+        ]
+        missing_later = (
+            partial(self._missing_bands, unseen, fp, radius, wall_height) if unseen else None
+        )
         if c.outcome == UNSURE:
             if c.unsure_cause == "unknown_attribute":
                 c.reason = (
@@ -527,7 +553,8 @@ class Solver:
         if c.outcome == FAIL:
             c.reason = f"{c.subject} is on the wall directly above the battery."
             return c
-        missing = self.scene.missing("wall", s0 - t, s1 + t)
+        up_to = self.wall_height["above"]
+        missing = self.scene.missing("wall", s0 - t, s1 + t, up_to)
         if c.outcome == UNSURE:
             c.unsure_cause = "margin"
             c.reason = f"{c.subject} ends within measurement error of the battery's edge."
@@ -537,7 +564,7 @@ class Solver:
         else:
             c.reason = "Nothing is mounted on the wall above the battery."
         if missing and c.outcome == UNSURE:
-            c.missing = [View("wall", a, b) for a, b in missing]
+            c.missing = [View("wall", a, b, _above(up_to)) for a, b in missing]
         return c
 
     def check_meter_space(self, piece: Piece, fp: Polygon, s0: float, s1: float) -> Check:
@@ -745,7 +772,8 @@ class Solver:
         length = (
             (hi - lo) + corners * r.corner_allowance_ft.value + sum(d["extra_ft"] for d in detours)
         )
-        missing = self.scene.missing("wall", lo, hi)
+        route_height = self.wall_height["route"]
+        missing = self.scene.missing("wall", lo, hi, route_height)
 
         path = Check(
             "route_path",
@@ -783,7 +811,7 @@ class Solver:
             )
         elif missing:
             path.outcome, path.unsure_cause = UNSURE, "unobserved"
-            path.missing = [View("wall", a, b) for a, b in missing]
+            path.missing = [View("wall", a, b, _above(route_height)) for a, b in missing]
             path.reason = "Part of the wall the cable would run along was not seen."
         else:
             path.reason = "The cable runs along continuous, observed wall with nothing blocking it."
@@ -869,6 +897,7 @@ class Solver:
                 # Gas meters hang on the wall as well as standing on the ground.
                 "ground+wall",
                 "gas meter or pipe",
+                self.wall_height["above"],
             ),
             self.check_clearance(
                 "ac_clearance",
@@ -916,6 +945,7 @@ class Solver:
                 [(o.label, o.geom, o.plus_minus, self._opening_counts(o)) for o in self.openings],
                 "wall",
                 "door or window",
+                self.wall_height["openings"],
             ),
             self.check_along_wall(piece, s0, s1),
             self.check_measured(
@@ -1182,6 +1212,7 @@ def _route_json(solver: Solver, c: Candidate) -> dict[str, Any]:
 
 
 _DEPTH_TEXT = {
+    "wall": ", seen at least {} up the wall",
     "ground": ", at least {} out from the wall",
     "facing": ", clear at least {} out from the wall",
     "overhead": ", clear at least {} up",
