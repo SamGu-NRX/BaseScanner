@@ -78,12 +78,15 @@ public struct GuidancePlanner: Sendable {
 
     /// The task for this moment. Switches away from the current task only when it is satisfied or
     /// has been held for `minDwell` seconds and the preferred task differs. An unsatisfied aim
-    /// task is kept while the preferred one asks for the same stretch (`sameStretch`).
+    /// task is kept while the preferred one asks for the same stretch (`sameStretch`), or for the
+    /// same band while its own stretch is still in the camera's window (`stillInView`).
     public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double) -> GuidanceOutput {
         let preferred = preferredTask(coverage: coverage, camera: camera)
         if let current, current != preferred {
             let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
-            if satisfied || (time - since >= config.minDwell && !Self.sameStretch(current, preferred)) {
+            let cameraS = camera.map { coverage.wall.wallPoint($0.position).s }
+            let held = Self.sameStretch(current, preferred) || Self.stillInView(current, preferred, cameraS: cameraS)
+            if satisfied || (time - since >= config.minDwell && !held) {
                 self.current = preferred
                 since = time
             }
@@ -183,11 +186,29 @@ public struct GuidancePlanner: Sendable {
         }
     }
 
+    /// Meters either side of the camera that `laggingBand` and `hiddenNearCamera` look at.
+    static let lagWindow: Float = 1
+
+    /// Two aim tasks for the same band while the current one's stretch is still within
+    /// `lagWindow` of the camera. `sameStretch` compares with the preferred task at each update,
+    /// so small drifts added up: on device run 2 the card went 5 ft 3 in, 4 ft 9 in, 4 ft 6 in,
+    /// 4 ft, each step under half the stretch but 0.38 m in all, while the same ground was still
+    /// in front of the homeowner.
+    static func stillInView(_ current: GuidanceTask, _ preferred: GuidanceTask, cameraS: Float?) -> Bool {
+        guard let cameraS else { return false }
+        switch (current, preferred) {
+        case (.aimAtGround(let s), .aimAtGround), (.aimAtWall(let s), .aimAtWall):
+            return abs(s - cameraS) <= lagWindow
+        default:
+            return false
+        }
+    }
+
     /// A band that lags the other around the camera: the other band is covered there but this one
     /// isn't, over at least `lagRun`.
     private func laggingBand(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
-        let window = (s - 1)...(s + 1)
+        let window = (s - Self.lagWindow)...(s + Self.lagWindow)
         let indices = coverage.indices(overlapping: window)
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
         func done(_ level: CoverageLevel) -> Bool { level == .covered || level == .skipped }
@@ -203,7 +224,7 @@ public struct GuidancePlanner: Sendable {
     private func hiddenNearCamera(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
-        let hidden = coverage.indices(overlapping: (s - 1)...(s + 1)).filter { index in
+        let hidden = coverage.indices(overlapping: (s - Self.lagWindow)...(s + Self.lagWindow)).filter { index in
             SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
         }
         guard hidden.count >= needed, let mid = middle(hidden, coverage) else { return nil }
