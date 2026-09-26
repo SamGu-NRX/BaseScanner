@@ -51,6 +51,18 @@ public struct DepthFrame: Sendable {
         self.kind = kind
     }
 
+    /// A stored LiDAR depth image (a replay's, `DepthImage`) taken with `pose`'s camera. The image
+    /// keeps its own intrinsics and size; both types use z-depth and the same pixel convention,
+    /// so only millimeters become meters (0 stays no measurement).
+    public init(image: DepthImage, pose: CameraFrame) {
+        let camera = CameraFrame(
+            cameraToWorld: pose.cameraToWorld, intrinsics: image.intrinsics,
+            imageSize: SIMD2(Float(image.width), Float(image.height)))
+        self.init(
+            camera: camera, width: image.width, height: image.height,
+            depth: image.millimeters.map { Float($0) / 1000 }, kind: .lidar(confidence: image.confidence))
+    }
+
     /// A depth image covering the same view as a photo taken by `photo`, at `width` x `height`.
     /// Depth pixel (u, v) covers photo pixels from u W / w to (u + 1) W / w across and likewise
     /// down, so the intrinsics scale by w / W and h / H.

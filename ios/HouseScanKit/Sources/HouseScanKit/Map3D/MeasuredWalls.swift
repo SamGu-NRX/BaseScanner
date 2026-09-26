@@ -1,14 +1,6 @@
 import Foundation
 import simd
 
-/// What a measured wall was found from.
-public enum WallSource: String, Sendable, Equatable {
-    /// LiDAR: depth rays or ARKit's reconstructed mesh.
-    case mesh
-    /// Planes ARKit detected, on a phone without LiDAR.
-    case plane
-}
-
 /// One straight piece of wall found in the map. Points are plan (x, z) in the map frame.
 public struct MeasuredWall: Sendable, Equatable {
     /// Ends of the piece, left to right as seen from outside.
@@ -16,7 +8,9 @@ public struct MeasuredWall: Sendable, Equatable {
     public var end: SIMD2<Float>
     /// Unit, from the wall toward the outside.
     public var outward: SIMD2<Float>
-    public var source: WallSource
+    /// What it was found from: `.mesh` for LiDAR depth rays or ARKit's mesh, `.plane` for
+    /// planes ARKit detected on a phone without LiDAR. Never `.tap`.
+    public var source: WallLineSource
     /// Plan cells of vertical surface that support it.
     public var support: Int
     /// How far the true wall line may lie from this one anywhere along the piece, meters: two
@@ -46,8 +40,9 @@ public struct MeasuredWallChain: Sendable, Equatable {
 
     /// The chain as a `WallFrame` for coverage and scene.json: its meter piece passes through
     /// `meter` (world) with the measured piece's direction, and each measured corner is a turn
-    /// at the same distance along the chain from the meter. `frame` is the map's frame. Nil when
-    /// the chain is empty.
+    /// at the same distance along the chain from the meter, carrying its piece's source. `frame`
+    /// is the map's frame. Nil when the chain is empty. The meter piece's source is
+    /// `walls[meterIndex].source`; a `WallFrame` has no field for it.
     public func wallFrame(meter: SIMD3<Float>, groundY: Float, frame: MapFrame) -> WallFrame? {
         guard meterIndex < walls.count else { return nil }
         func worldOutward(_ wall: MeasuredWall) -> SIMD3<Float> {
@@ -63,12 +58,12 @@ public struct MeasuredWallChain: Sendable, Equatable {
         let meterS = min(max(simd_dot(SIMD2(meterMap.x, meterMap.z) - meterPiece.start, meterPiece.along), inset), meterPiece.length - inset)
         var s = meterPiece.length - meterS
         for index in walls.indices.dropFirst(meterIndex + 1) {
-            result.turn(.right, at: WallCorner(s: s, outward: worldOutward(walls[index])))
+            result.turn(.right, at: WallCorner(s: s, outward: worldOutward(walls[index]), source: walls[index].source))
             s += walls[index].length
         }
         s = -meterS
         for index in walls.indices.prefix(meterIndex).reversed() {
-            result.turn(.left, at: WallCorner(s: s, outward: worldOutward(walls[index])))
+            result.turn(.left, at: WallCorner(s: s, outward: worldOutward(walls[index]), source: walls[index].source))
             s -= walls[index].length
         }
         return result

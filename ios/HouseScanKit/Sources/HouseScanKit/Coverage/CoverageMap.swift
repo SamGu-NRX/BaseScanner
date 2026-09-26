@@ -134,6 +134,10 @@ public struct CoverageMap: Sendable {
     public private(set) var limitEnds: Set<WalkSide> = []
     /// Increments on every change.
     public private(set) var revision = 0
+    /// Under the 3D map, the cells it saw per band (`setMeasuredCovered`): a cell between the ends
+    /// is covered exactly when it is in here, whatever the camera sightings say. Seen, hidden and
+    /// skipped still come from the sightings. Nil, the default, leaves covering to the sightings.
+    public private(set) var measuredCovered: [SurfaceBand: Set<Int>]?
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
     /// Per cell, per ground depth row (0 at the wall foot, then every `groundDepthSpacing` out to
@@ -231,7 +235,40 @@ public struct CoverageMap: Sendable {
     }
 
     public func level(_ band: SurfaceBand, _ index: Int) -> CoverageLevel {
-        cells[band]?[index]?.level ?? .unseen
+        guard let measuredCovered else { return cells[band]?[index]?.level ?? .unseen }
+        if measuredCovered[band]?.contains(index) == true, allows(index) { return .covered }
+        guard var cell = cells[band]?[index] else { return .unseen }
+        cell.covered = false
+        return cell.level
+    }
+
+    /// Makes the 3D map's seen cells the covered ones (`measuredCovered`), so the strip and the
+    /// planners ask for what the export, which reads the 3D map, will send.
+    public mutating func setMeasuredCovered(_ covered: [SurfaceBand: Set<Int>]) {
+        guard covered != measuredCovered else { return }
+        measuredCovered = covered
+        revision += 1
+    }
+
+    /// The cells the 3D map saw, for `setMeasuredCovered`: a wall cell whose whole s range lies in
+    /// a stretch seen up to headroom (`Map3DCoverage.wall`), and a ground cell whose whole range
+    /// lies in a ground stretch seen out to at least `groundBandDepth`. `coverage` must be read
+    /// along `wall`.
+    public func cells(seenIn coverage: Map3DCoverage) -> [SurfaceBand: Set<Int>] {
+        // Spans are built from the same cell edges, so this only absorbs Float rounding.
+        let tolerance = config.cellWidth * 1e-3
+        func cells(within spans: [ClosedRange<Float>]) -> Set<Int> {
+            var result: Set<Int> = []
+            for span in spans {
+                for index in indices(overlapping: span) {
+                    let cell = cellRange(index)
+                    if cell.lowerBound >= span.lowerBound - tolerance, cell.upperBound <= span.upperBound + tolerance { result.insert(index) }
+                }
+            }
+            return result
+        }
+        let deepGround = coverage.ground.filter { $0.out + 1e-4 >= config.groundBandDepth }.map(\.span)
+        return [.wall: cells(within: coverage.wall), .ground: cells(within: deepGround)]
     }
 
     /// Indices of every cell overlapping `range` by more than a thousandth of a cell.
@@ -869,8 +906,8 @@ public struct CoverageMap: Sendable {
     /// Marks the not-yet-covered cells of `range` as skipped ("I can't get there").
     public mutating func markSkipped(_ band: SurfaceBand, _ range: ClosedRange<Float>) {
         for index in indices(overlapping: range) where allows(index) {
+            guard level(band, index) != .covered else { continue }
             var cell = cells[band]?[index] ?? Cell(rowCount: config.rowsPerBand)
-            guard !cell.covered else { continue }
             cell.skipped = true
             cells[band, default: [:]][index] = cell
         }
@@ -963,6 +1000,7 @@ public struct CoverageMap: Sendable {
     /// s extent of cells seen, covered or found hidden, or nil when none are.
     public var seenExtent: ClosedRange<Float>? {
         let seen = cells.values.flatMap { $0.filter { $0.value.isSeen || !$0.value.hiddenRows.isEmpty }.keys }
+            + (measuredCovered?.values.flatMap { $0 } ?? [])
         guard let low = seen.min(), let high = seen.max() else { return nil }
         return cellRange(low).lowerBound...cellRange(high).upperBound
     }
@@ -981,7 +1019,8 @@ public struct CoverageMap: Sendable {
     /// Covered stretches of a band, merged, in meters of s. Only covered cells count: a cell seen
     /// from one position has no parallax behind it.
     public func coveredIntervals(_ band: SurfaceBand) -> [ClosedRange<Float>] {
-        let indices = (cells[band] ?? [:]).filter { $0.value.covered && allows($0.key) }.keys.sorted()
+        let covered = measuredCovered.map { Array($0[band] ?? []) } ?? (cells[band] ?? [:]).filter { $0.value.covered }.map(\.key)
+        let indices = covered.filter(allows).sorted()
         var runs: [ClosedRange<Float>] = []
         for index in indices {
             let range = cellRange(index)
@@ -1005,7 +1044,8 @@ public struct CoverageMap: Sendable {
 
     /// Total covered cells over both bands.
     public var coveredCount: Int {
-        cells.values.reduce(0) { $0 + $1.values.filter(\.covered).count }
+        if let measuredCovered { return measuredCovered.values.reduce(0) { $0 + $1.count } }
+        return cells.values.reduce(0) { $0 + $1.values.filter(\.covered).count }
     }
 }
 
