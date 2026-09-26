@@ -659,3 +659,8 @@ final class DemoEngine: ScanActions {
         return sample
     }()
 }
+
+// Placeholder for contract (overhead question) so the app compiles; lane G replaces it.
+extension DemoEngine {
+    func answerOverhead(clear: Bool) {}
+}

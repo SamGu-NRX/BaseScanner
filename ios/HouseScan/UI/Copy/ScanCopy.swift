@@ -41,6 +41,9 @@ enum ScanCopy {
             Instruction(title: "Tilt up to show more wall", detail: "Around \(Distance.fromMeter(s)).")
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
+        case .tiltUp:
+            // Placeholder wording until lane G's pass.
+            Instruction(title: "Tilt up to show above this part of the wall", detail: "Point your phone up at the wall above where the battery would go.")
         case .walkComplete:
             Instruction(title: "That's the whole wall", detail: "Tap Done when you're ready.")
         case .gap:
@@ -178,6 +181,9 @@ enum ScanCopy {
             return Instruction(title: "Show the wall \(place)", detail: "Tilt up so the wall above this spot is in view.")
         case .server(let detail):
             return Instruction(title: gap.band == .ground ? "Show the ground \(place)" : "Show the wall \(place)", detail: detail)
+        case .groundOut, .walkOut, .overhead:
+            // Placeholder wording until lane G's pass.
+            return Instruction(title: "One more view \(place)", detail: nil)
         }
     }
 

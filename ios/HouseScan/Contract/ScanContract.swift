@@ -235,6 +235,9 @@ enum GuidanceStep: Equatable, Sendable {
     case stepBack
     /// Both ends marked and coverage is complete enough; review marked features.
     case walkComplete
+    /// Point the phone up at the wall above this stretch (meters of s), to show what is overhead
+    /// where the battery would stand.
+    case tiltUp(span: ClosedRange<Float>)
     /// Show a specific gap (see `ScanViewState.gap`).
     case gap
 }
@@ -375,6 +378,13 @@ struct GapRequest: Identifiable, Equatable, Sendable {
         case wallAboveCandidate
         /// The server listed evidence it needs; `detail` is its plain-language text.
         case server(detail: String)
+        /// Show the ground out to `out` meters from the wall.
+        case groundOut(out: Float)
+        /// Walk this stretch at least `out` meters from the wall: a walked path shows the space
+        /// in front of the wall is clear out to it.
+        case walkOut(out: Float)
+        /// Tilt up here to show what is overhead.
+        case overhead
     }
 
     let id: Int
@@ -518,6 +528,9 @@ final class ScanViewState {
     /// the wall turns a corner (it continues, unexplored) or something blocks it (a fence, gate
     /// or property line: a real limit). Nil when nothing is being asked.
     var endQuestion: WallSide?
+    /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
+    /// camera can't tell open sky from an eave, so the homeowner answers.
+    var overheadQuestion = false
     var upload: UploadState = .idle
     var result: ResultPresentation?
 
@@ -555,6 +568,8 @@ protocol ScanActions: AnyObject {
     /// The answer to `ScanViewState.endQuestion`. A corner exports as an unexplored end, a
     /// blocked wall as a limit; an end left unanswered stays unexplored.
     func answerWallEnd(turnsCorner: Bool)
+    /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
+    func answerOverhead(clear: Bool)
     func beginMarking(_ kind: FeatureKind)
     func markFeaturePoint(at point: CGPoint?, viewSize: CGSize)
     func cancelMarking()

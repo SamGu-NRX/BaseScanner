@@ -300,3 +300,8 @@ extension ScanEngine: ScanActions {
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
     }
 }
+
+// Placeholder for contract (overhead question) so the app compiles; lane G replaces it.
+extension ScanEngine {
+    func answerOverhead(clear: Bool) {}
+}

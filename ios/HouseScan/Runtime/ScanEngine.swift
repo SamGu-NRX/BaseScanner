@@ -914,6 +914,7 @@ extension ScanEngine {
         case .aimAtWall: "aimAtWall"
         case .stepBack: "stepBack"
         case .walkComplete: "walkComplete"
+        case .tiltUp: "tiltUp"
         case .gap: "gap"
         }
     }
