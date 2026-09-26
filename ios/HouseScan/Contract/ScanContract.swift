@@ -291,11 +291,14 @@ enum FeatureKind: String, Equatable, Sendable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// How many taps a mark takes: two diagonal corners for openings, one point otherwise.
+    /// How many taps a mark takes: two diagonal corners for a door or window, two points along
+    /// the near edge of a driveway or the foot of a fence, one point for a gas meter or AC unit.
+    /// scene.json (server/schemas/scene.schema.json) stores a driveway as a ground polygon and a
+    /// fence as a facing gap over a span, so both need a line, not a point.
     var tapCount: Int {
         switch self {
-        case .door, .window: 2
-        case .gasMeter, .acUnit, .driveway, .fence: 1
+        case .door, .window, .driveway, .fence: 2
+        case .gasMeter, .acUnit: 1
         }
     }
 }
@@ -382,6 +385,10 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var outcome: CheckOutcome
     /// Plain-language reason from the server.
     var reason: String
+    /// For an unsure check: true when a person has to judge it (a measurement inside its error
+    /// band, a fact the camera can't establish, or a policy that sends it to review), false when
+    /// more photos would settle it.
+    var needsPerson: Bool = false
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -418,6 +425,11 @@ struct ResultPresentation: Equatable, Sendable {
     }
 
     var decision: Decision
+    /// The server's one-sentence summary.
+    var summary: String = ""
+    /// False while the server's rules hold placeholder values: every would-be pass or reject is
+    /// then manual_review, and the screen should say the rules aren't final.
+    var policyApproved: Bool = true
     var spot: BatterySpot?
     /// Cable route as (s, height) points along the wall, meters, from the meter to the spot.
     var cableRoute: [SIMD2<Float>]
