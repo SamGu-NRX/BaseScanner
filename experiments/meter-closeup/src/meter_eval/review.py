@@ -3,9 +3,9 @@
 `build` writes REVIEW_DIR/review.html with each whole photo, the number the AI readers
 settled on, and below it a zoom on the line Vision read. The whole photo comes first so the
 reviewer sees every identifier on the plate, not only the one Vision found. The reviewer
-keeps the number (K) or types a correction (F, then Enter) and downloads the answers as CSV. `ingest` copies that CSV to
-DATA_DIR/labels_human.csv, where `labels.py` picks it up. Everything stays outside git,
-because the page shows plaintext meter numbers.
+keeps the number (K) or types a correction (F, then Enter) and downloads the answers as CSV.
+`ingest` copies that CSV to DATA_DIR/labels_human.csv, where `labels.py` picks it up.
+Everything stays outside git, because the page shows plaintext meter numbers.
 """
 
 import argparse

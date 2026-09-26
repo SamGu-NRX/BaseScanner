@@ -4,9 +4,10 @@
 
 For each photo: whether Vision read the number, where the number-finding ranking put it, the
 checks the app would run, and whether they would have asked for a retake. As in the app, the
-checks use the ranking's top candidate, not the true number; --number only scores the outcome. The summary counts the two costly outcomes: a retake asked for a photo that read
-(a wasted retake) and a photo accepted that did not read (a re-request later). The meter
-number is taken from the command line and is never written to disk.
+checks use the ranking's top candidate, not the true number; --number only scores the
+outcome. The summary counts the two costly outcomes: a retake asked for a photo that read (a
+wasted retake) and a photo accepted that did not read (a re-request later). The meter number
+is taken from the command line and is never written to disk.
 """
 
 import argparse
