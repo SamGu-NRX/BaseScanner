@@ -6,7 +6,7 @@ A comparison is fair when every pipeline processes the same recording, at the sa
 
 ## Fix the inputs first
 
-- **One recording per house**, from a non-LiDAR iPhone running the lane A tap flow in the [feature map](../01-feature-map.md). LiDAR is a separate labeled condition.
+- **One recording per house**, from a non-LiDAR iPhone running [Measure Lab](https://github.com/SamGu-NRX/house-scanning/pull/7) (`experiments/measure-lab`) until the lane A app in the [feature map](../01-feature-map.md) records sessions. LiDAR is a separate labeled condition.
 - **Three candidate spots per house.** Mark each 31 in x 22 in footprint with chalk or painter's tape before recording. Pick a clear-looking spot, one near a rule boundary, and one between. Pipelines see the marks in images, never distances. Score spot placement error separately.
 - **One policy.** Every pipeline is scored under one complete set of `rules.yaml` parameters that does not change during the study. Unpublished values read "set by Base".
 - **One frame list** for every row, plus the close-ups. About 50 frames is a compute guess, not a tested optimum.
@@ -21,7 +21,7 @@ Reconstruction rows such as MapAnything or OOOSplat join only if their predictio
 
 ## Gates
 
-- **Fieldwork waits for a working exporter and one verified projection.** Each saved image needs one timestamp, pose, intrinsics and image size from the same `ARFrame`. Then run the [implementation plan](../02-implementation-plan.md) test: project a tapped mark into three saved frames and record the pixel error.
+- **Fieldwork waits for a working exporter and one verified projection.** Measure Lab saves each keyframe's timestamp, pose, intrinsics and image size from the same `ARFrame`, and the capture-contract probe in [#9](https://github.com/SamGu-NRX/house-scanning/pull/9) checks that metadata. Before fieldwork, still run the [implementation plan](../02-implementation-plan.md) test: project a tapped mark into three saved frames and record the pixel error.
 - **Decision scoring waits for a complete policy evaluator** that returns UNSURE when evidence is missing. Distance errors do not wait.
 - **House 1 is for debugging.** Freeze all code before houses 2 and 3.
 
@@ -48,25 +48,13 @@ Say whether each distance starts at the wall or the footprint edge. Mixing them 
 
 Record a missing feature as "absent" and an unreachable one as "not measured", never a guess. Every distance applies to every spot, so the denominator is fixed. Also record which windows open, door swings, drivable surfaces and ground type.
 
-## Ground-truth file
+## Survey and results files
 
-Keep one file per house beside the real capture, outside git. Store survey values in meters and map candidates and predictions to Site Model v0.1 through a versioned adapter with explicit coordinate transforms. Values are illustrative.
+The formats are in the harness README, `experiments/scoring/README.md` ([#4](https://github.com/SamGu-NRX/house-scanning/pull/4)): a rules file, one survey file per house and one results file per pipeline run. All three use feet and the survey IDs above. Keep real surveys and results beside the capture in `captures/` or `data/`, never in git. The recording's sha256 is its capture ID, and every results file carries the rules file's sha256, so a run on another recording or policy cannot be scored by mistake.
 
-```json
-{
-	"format": 1, "house": "h01", "unit": "m",
-	"recording_sha256": "...", "rules_sha256": "...",
-	"candidates": [{"id": "c1", "mark": "blue tape", "from_corner": "west", "along_wall": 2.26}],
-	"distances": [{"id": "4", "candidate": "c1", "from": "footprint edge", "to": "regulator",
-		"status": "measured", "readings": [1.042, 1.036], "value": 1.039, "plus_minus": 0.009}],
-	"facts": [{"candidate": "c1", "window_opens": true, "surface": "gravel"}],
-	"labels": [{"candidate": "c1", "check": "gas", "label": "pass"}]
-}
-```
+To score the AR row, write a short map after the walk from each Measure Lab measurement to its survey ID. `score import-measure-lab` turns the session and the map into a results file.
 
-Predictions use the same IDs, with a value and plus-or-minus or a reason for none. The scorer rejects unit, capture-hash and policy-hash mismatches after normalization.
-
-A teammate who built no pipeline labels each check at each spot PASS, FAIL or UNSURE from the survey and frozen rules, before seeing outputs. A true value within survey uncertainty of the threshold is borderline. This labeler is a reference, not an installer.
+The harness derives each check's survey outcome from the survey value, its uncertainty and the frozen rules, with the strict rule in its README: a value exactly on a threshold is borderline. A teammate who built no pipeline records the facts a tape cannot settle, such as which windows open and which surfaces a car can reach, before seeing any output. This reference is not an installer.
 
 ## Metrics
 
@@ -75,7 +63,7 @@ Report every row at every spot. Never average away missing outputs.
 - **Absolute error.** |predicted - true| in inches, with the signed error. Median and maximum per house.
 - **Error relative to the deciding threshold.** With margin m = |true - threshold| and survey uncertainty u, report error / max(m, u). Above 1, the error could flip the check. If both are zero, report "at threshold".
 - **Missing outputs.** Against the fixed denominator, split into unsupported, failed, and not surveyed.
-- **Unsafe passes.** A pipeline PASS where the label is FAIL. This matters most. Count a PASS where the label is borderline or UNSURE separately as a missed review, and a pipeline UNSURE or FAIL where the label is PASS as over-caution. Report false rejections beside them.
+- **Unsafe passes.** A pipeline PASS where the label is FAIL. This matters most. Count a PASS where the label is borderline or UNSURE separately as a missed review, and a pipeline UNSURE or FAIL where the label is PASS as over-caution. Report false rejections beside them, and count a pass or fail made without its measurement separately.
 - **Abstentions.** UNSURE rate, split into justified, when the label is borderline or evidence is missing, and avoidable.
 - **Capture time.** Walk time, taps and retakes of the shared recording. Photo rows cannot claim a shorter capture from it.
 - **Latency.** Upload finished to result shown, cold and warm, with crashes and timeouts.
