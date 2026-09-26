@@ -19,12 +19,22 @@ public enum ReplayPlanning {
     /// A wall assumed from the trajectory alone, for replays recorded without wall taps.
     ///
     /// The wall runs parallel to the principal horizontal walking direction, on the side the
-    /// camera mostly looks toward, at the offset (searched from 1.5 m to 8 m in 0.25 m steps) that
-    /// lets the most cells be covered. The ground is assumed 1.4 m below the mean camera height
-    /// (a phone held at chest height), and the meter 1.5 m above the ground at the wall point
-    /// nearest the middle of the walk, so the walk covers both sides of it. This is an assumption
-    /// for exercising the flow, not a measurement.
-    public static func assumedWall(frames: [PlannedFrame], config: CoverageConfig = CoverageConfig()) -> (wall: WallFrame, coveredCells: Int, offset: Float)? {
+    /// camera mostly looks toward. The ground is assumed 1.4 m below the mean camera height (a
+    /// phone held at chest height), and the meter 1.5 m above the ground. The offset (searched from
+    /// 1.5 m to 8 m in 0.25 m steps) and the meter's place along the wall are the pair that lets
+    /// the most cells be covered within `reach` of the meter, the stretch the gap planner and the
+    /// walk care about; among equal meter places, the one nearest the middle of the walk wins.
+    ///
+    /// The meter is not simply put at the middle of the walk because a walk need not look at the
+    /// wall there: on the ADVIO replay (advio-20-0040-0075) the camera faces the wall only for
+    /// frames 14 to 29, about 13 to 5.5 m before the middle, and faces away or straight ahead
+    /// elsewhere. With the meter at the middle (and the 1.5 m offset that then covered most), the
+    /// nearest covered cell was 2.9 m away and the ground from 2.9 m left to 6.1 m right of the
+    /// meter was a gap no frame sees, so no held-back window could make a closable gap.
+    /// This is an assumption for exercising the flow, not a measurement.
+    public static func assumedWall(
+        frames: [PlannedFrame], config: CoverageConfig = CoverageConfig(), reach: Float = GapPlannerConfig().reach
+    ) -> (wall: WallFrame, coveredCells: Int, offset: Float)? {
         guard frames.count >= 2 else { return nil }
         let positions = frames.map(\.camera.position)
         let centroid = positions.reduce(SIMD3<Float>.zero, +) / Float(positions.count)
@@ -52,11 +62,42 @@ public enum ReplayPlanning {
             guard let wall = WallFrame(meter: SIMD3(onLine.x, groundY + 1.5, onLine.z), outward: outward, groundY: groundY) else { continue }
             var map = CoverageMap(wall: wall, config: config)
             for frame in frames { map.observe(frame.camera, trackingNormal: frame.trackingNormal) }
-            if map.coveredCount > (best?.coveredCells ?? -1) {
-                best = (wall, map.coveredCount, offset)
-            }
+            guard let (shift, count) = bestMeterShift(map, reach: reach), count > (best?.coveredCells ?? -1) else { continue }
+            // A whole number of cells, so the shifted wall's cells are the ones counted here.
+            let meter = wall.meter + wall.along * (Float(shift) * config.cellWidth)
+            guard let shifted = WallFrame(meter: meter, outward: outward, groundY: groundY) else { continue }
+            best = (shifted, count, offset)
         }
         return best
+    }
+
+    /// The meter shift along the wall, in whole cells, with the most covered cells (both bands)
+    /// within `reach` of the shifted meter, and that count. Ties go to the shift whose thinner side
+    /// has the most covered cells, so the walk covers both sides of the meter, then to the
+    /// smallest shift.
+    private static func bestMeterShift(_ map: CoverageMap, reach: Float) -> (shift: Int, count: Int)? {
+        guard let extent = map.seenExtent else { return nil }
+        let width = map.config.cellWidth
+        func covered(_ range: ClosedRange<Float>) -> Int {
+            map.indices(overlapping: range).reduce(0) { total, index in
+                total + SurfaceBand.allCases.filter { map.level($0, index) == .covered }.count
+            }
+        }
+        var best: (shift: Int, count: Int, balance: Int)?
+        for shift in map.indices(overlapping: extent) {
+            let center = Float(shift) * width
+            let left = covered((center - reach)...center)
+            let right = covered(center...(center + reach))
+            let candidate = (shift: shift, count: left + right, balance: min(left, right))
+            if let current = best {
+                let better = candidate.count != current.count ? candidate.count > current.count
+                    : candidate.balance != current.balance ? candidate.balance > current.balance
+                    : abs(shift) < abs(current.shift)
+                guard better else { continue }
+            }
+            best = candidate
+        }
+        return best.map { ($0.shift, $0.count) }
     }
 
     private static func middleOfPath(_ positions: [SIMD3<Float>]) -> SIMD3<Float> {

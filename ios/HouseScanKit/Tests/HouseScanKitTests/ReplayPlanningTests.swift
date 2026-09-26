@@ -41,6 +41,25 @@ import Testing
         #expect(result.offset >= 2.25 && result.offset <= 3.5)
     }
 
+    @Test func assumedMeterGoesWhereTheWalkFacesTheWall() throws {
+        // x from -10 to 10 at z = 2.6. Only x <= -4 faces the wall z = 0; the rest look along the walk
+        // (+x), tilted up 10 degrees. Such a camera sees no wall cell at any offset d: it needs
+        // |s - x| >= d / tan(24.8 deg) = 2.17 d to be inside the image's horizontal half-width
+        // (atan(240 / 500) less the 3 % margin), but at most d tan(65 deg) = 2.14 d to be within
+        // 65 degrees of the normal. Its lowest ray, 22.6 degrees down, meets the ground 3.4 m out,
+        // past the 3.0 m that 65 degrees allows from 1.4 m up. So only x in [-10, -4] covers
+        // anything, and the meter belongs in its middle, not at the walk's middle x = 0.
+        let frames = (0...40).map { (step: Int) -> PlannedFrame in
+            let x = -10 + Float(step) * 0.5
+            let forward = x <= -4 ? forwardFacingWall(pitchedDown: 20) : simd_normalize(SIMD3<Float>(1, 0.176, 0))
+            return PlannedFrame(camera: portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forward), timestamp: Double(step) * 0.55, trackingNormal: true)
+        }
+        let result = try #require(ReplayPlanning.assumedWall(frames: frames))
+        #expect(nearlyEqual(result.wall.outward, SIMD3(0, 0, 1)))
+        #expect(abs(result.wall.meter.x - -7) <= 0.5, "meter at x = \(result.wall.meter.x)")
+        #expect(result.coveredCells > 0)
+    }
+
     @Test func assumedWallNeedsTwoFrames() {
         #expect(ReplayPlanning.assumedWall(frames: [Self.planned(x: 0, t: 0)]) == nil)
     }

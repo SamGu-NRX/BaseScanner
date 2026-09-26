@@ -48,7 +48,7 @@ final class ReplayPlayer {
         }
         guard let assumed = ReplayPlanning.assumedWall(frames: planned) else { throw ReplayError.noFrames }
         let description = String(
-            format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, %d cells covered with every frame; not a measured wall",
+            format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, meter where the walk covers most, %d cells covered within 20 ft of it with every frame; not a measured wall",
             assumed.offset, assumed.coveredCells
         )
         return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description)
