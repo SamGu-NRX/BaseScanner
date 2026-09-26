@@ -59,12 +59,6 @@ final class FullFlowUITests: XCTestCase {
                 // An element without a label is otherwise impossible to find from the report.
                 let described = element.map { "type \($0.elementType.rawValue) frame \($0.frame)" } ?? "no element"
                 found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "") (\(described))"
-                if let element, element.exists, !element.frame.isEmpty {
-                    let shot = XCTAttachment(screenshot: element.screenshot())
-                    shot.name = "audit-element-\(screen)"
-                    shot.lifetime = .keepAlways
-                    self.add(shot)
-                }
                 return true
             }
             return found

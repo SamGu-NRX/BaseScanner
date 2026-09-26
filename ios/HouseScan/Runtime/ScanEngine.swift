@@ -532,7 +532,8 @@ final class ScanEngine {
                 return
             }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
-            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
+            // The frame's own time lets the walked path join only poses kept close together in time.
+            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
@@ -939,6 +940,9 @@ final class ScanEngine {
     func setEnd(_ side: WallSide, at s: Float, kind: EndKind) {
         guard var map = coverage else { return }
         map.setEnd(side == .left ? .left : .right, at: s)
+        // Ground past a limit end still counts toward clearances (server contract, "Ends and
+        // corners"); past an unexplored end it doesn't.
+        map.setEndIsLimit(side == .left ? .left : .right, kind == .limit)
         coverage = map
         endKinds[side] = kind
         publishWall()
@@ -952,6 +956,7 @@ final class ScanEngine {
     /// What the homeowner said is at an already marked end.
     func setEndKind(_ side: WallSide, _ kind: EndKind) {
         endKinds[side] = kind
+        updateCoverage { $0.setEndIsLimit(side == .left ? .left : .right, kind == .limit) }
         RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) is \(kind == .limit ? "limit" : "unexplored", privacy: .public)")
     }
 
