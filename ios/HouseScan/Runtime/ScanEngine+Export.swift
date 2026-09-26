@@ -19,13 +19,14 @@ extension ScanEngine {
         let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
         let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
 
-        // Tap geometry must never stop the export: SceneExport rejects negative heights, a top
-        // below a bottom, ground points behind the wall and a zero-length driveway edge, and
-        // taps can produce each of them once the ground or the meter anchor moves after the tap
-        // (a window tapped wholly below a guessed ground, a fence foot that ends up behind the
-        // refined wall line). Such marks are clamped to the nearest valid shape here, or dropped
-        // when nothing valid is left, and logged.
-        let features: [SceneFeature] = state.features.compactMap { feature in
+        // SceneExport rejects negative heights, a top below a bottom, ground points behind the
+        // wall and a zero-length driveway edge, and taps can produce each of them once the ground
+        // or the meter anchor moves after the tap (a window tapped wholly below a guessed ground,
+        // a fence foot that ends up behind the refined wall line). Such marks are clamped to the
+        // nearest valid shape here and logged. A driveway or fence with nothing valid left fails
+        // the export instead (`ExportError.markCollapsed`): dropping it would send the ground
+        // near it as seen and clear, which can pass its clearance check with the hazard unsent.
+        let features: [SceneFeature] = try state.features.map { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
             case .door, .window:
@@ -42,16 +43,9 @@ extension ScanEngine {
             case .acUnit:
                 return .pointObject(kind: .ac, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
             case .fence:
-                guard points.count == 2 else { return Self.dropped(feature, "needs two taps") }
-                return .fence(foot: points.map { Self.inFront(of: sceneWall, $0) })
+                return .fence(foot: try Self.groundLine(feature, points, wall: sceneWall))
             case .driveway:
-                guard points.count == 2 else { return Self.dropped(feature, "needs two taps") }
-                let edge = points.map { Self.inFront(of: sceneWall, $0) }
-                // SceneExport's own degenerate-edge tolerance is 1e-3 ft; 1 cm keeps well clear of it.
-                guard simd_distance(SIMD2(edge[0].x, edge[0].z), SIMD2(edge[1].x, edge[1].z)) > 0.01 else {
-                    return Self.dropped(feature, "taps coincide in plan")
-                }
-                return .driveway(edge: edge)
+                return .driveway(edge: try Self.groundLine(feature, points, wall: sceneWall))
             }
         }
 
@@ -94,15 +88,31 @@ extension ScanEngine {
         return c.out >= 0.001 ? point : wall.world(s: c.s, height: c.height, out: 0.001)
     }
 
-    private static func dropped(_ feature: MarkedFeature, _ reason: String) -> SceneFeature? {
-        RuntimeLog.engine.error("export: dropped \(feature.kind.rawValue, privacy: .public) \(feature.id.uuidString, privacy: .public): \(reason, privacy: .public)")
-        return nil
+    /// The two ground points of a driveway edge or a fence foot, each moved in front of the wall.
+    /// Throws `markCollapsed` when they are not two points 1 cm apart in plan: a wall line refined
+    /// past both taps puts them on one point. SceneExport's own degenerate-edge tolerance is
+    /// 1e-3 ft; 1 cm keeps well clear of it.
+    private static func groundLine(_ feature: MarkedFeature, _ points: [SIMD3<Float>], wall: SceneWall) throws(ExportError) -> [SIMD3<Float>] {
+        let line = points.map { inFront(of: wall, $0) }
+        guard line.count == 2, simd_distance(SIMD2(line[0].x, line[0].z), SIMD2(line[1].x, line[1].z)) > 0.01 else {
+            RuntimeLog.engine.error("export: \(feature.kind.rawValue, privacy: .public) \(feature.id.uuidString, privacy: .public) has \(points.count) taps that don't make a line; asking for it to be marked again")
+            throw .markCollapsed(feature.kind)
+        }
+        return line
     }
 
     enum ExportError: Error, CustomStringConvertible {
         case noWall
+        /// A driveway or fence whose taps no longer make a line. The homeowner has to mark it
+        /// again; `UploadFailure.packaging(_:)` says so.
+        case markCollapsed(FeatureKind)
 
-        var description: String { "There is no wall to export yet." }
+        var description: String {
+            switch self {
+            case .noWall: "There is no wall to export yet."
+            case .markCollapsed(let kind): "The \(kind.rawValue) mark's taps don't make a line."
+            }
+        }
     }
 
     /// The server's result in the terms the screens use (meters, wall coordinates).
@@ -114,17 +124,24 @@ extension ScanEngine {
 
         var spot: BatterySpot?
         if let placed = result.spot {
-            // Placed from the offset to the meter, as result.schema.json asks, so the AR box
-            // follows the meter's anchor. The offset is split along the result's own `along` and
-            // `outward` vectors (same scene frame as the offset), which keeps the bundled sample
-            // meaningful on any wall orientation.
-            let offset = placed.meterOffsetFt
-            let centerS = meters(offset.x * placed.along.x + offset.y * placed.along.y)
-            let centerOut = meters(offset.x * placed.outward.x + offset.y * placed.outward.y)
-            let width = meters(placed.widthFt)
+            // Placed by its `span_ft`, its stretch in s along the wall chain, which the screens
+            // turn into world points piece by piece (`WallGeometry.world(s:)`), so a spot round a
+            // corner lands on the right piece and still moves with the meter's anchor. The meter
+            // offset split along the spot's own `along` gave s only on the meter's piece: past a
+            // corner it measured along the other piece's direction and drew the spot on the
+            // meter's wall. Both s and the depth below are frame-free, so the bundled sample (in
+            // its own frame) still means the same on any wall.
+            let low = meters(min(placed.spanFt.x, placed.spanFt.y))
+            let high = meters(max(placed.spanFt.x, placed.spanFt.y))
             let depth = meters(placed.depthFt)
+            // How far the footprint's centre stands out from its back edge (back-left and
+            // back-right corners come first), along the spot's own outward: the gap to the wall
+            // is what exceeds half the depth. The server puts the back on the wall line. Decoding
+            // refuses a footprint without exactly four corners.
+            let d = placed.center - (placed.footprint[0] + placed.footprint[1]) / 2
+            let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
             spot = BatterySpot(
-                span: (centerS - width / 2)...(centerS + width / 2),
+                span: low...high,
                 depth: depth, height: meters(placed.heightFt),
                 offsetFromWall: max(0, centerOut - depth / 2)
             )
