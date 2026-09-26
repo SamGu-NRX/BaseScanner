@@ -464,18 +464,24 @@ def validate_schema(raw: Any) -> None:
     if errors:
         e = errors[0]
         path = "/" + "/".join(str(p) for p in e.absolute_path)
-        raise SceneError(path, _capped(e.message))
+        raise SceneError(path, _capped(e.message, e.instance))
 
 
-# jsonschema quotes the whole offending value in its message; a refusal shouldn't echo a large
-# upload back, and the path already says where the problem is.
-MESSAGE_CHARS = 200
+# jsonschema quotes the whole offending value in its message ("<value> is too long"); a refusal
+# shouldn't echo a large upload back. The quote is cut to its start, keeping the verdict after it,
+# and the path already says where the problem is.
+QUOTE_CHARS = 200
+MESSAGE_CHARS = 1000
 
 
-def _capped(message: str) -> str:
-    if len(message) <= MESSAGE_CHARS:
-        return message
-    return f"{message[:MESSAGE_CHARS]}… ({len(message) - MESSAGE_CHARS} more characters cut)"
+def _capped(message: str, instance: Any) -> str:
+    quoted = repr(instance)
+    if len(quoted) > QUOTE_CHARS and quoted in message:
+        cut = len(quoted) - QUOTE_CHARS
+        message = message.replace(quoted, f"{quoted[:QUOTE_CHARS]}… ({cut} characters cut)", 1)
+    if len(message) > MESSAGE_CHARS:
+        message = f"{message[:MESSAGE_CHARS]}…"
+    return message
 
 
 def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = None) -> Scene:

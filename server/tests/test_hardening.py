@@ -241,6 +241,7 @@ def test_validation_message_is_capped() -> None:
         parse_scene(raw, PUBLIC.rules)
     assert caught.value.path == "/meter"
     assert len(caught.value.message) < 300
+    assert caught.value.message.endswith("is not of type 'object'")
 
 
 def test_refusal_body_stays_small(client: TestClient) -> None:
