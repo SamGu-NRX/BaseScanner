@@ -153,6 +153,15 @@ enum ScanCopy {
         }
     }
 
+    /// The name mid-sentence: "Tap the gas meter", "Mark AC unit". Lowercasing `name` read
+    /// "ac unit" (B-16).
+    static func noun(_ kind: FeatureKind) -> String {
+        switch kind {
+        case .acUnit: "AC unit"
+        default: name(kind).lowercased()
+        }
+    }
+
     static func symbol(_ kind: FeatureKind) -> String {
         switch kind {
         case .gasMeter: "flame.fill"
@@ -165,10 +174,10 @@ enum ScanCopy {
     }
 
     static func markingPrompt(_ marking: MarkingState) -> Instruction {
-        let noun = name(marking.kind).lowercased()
+        let item = noun(marking.kind)
         switch (marking.kind, marking.step) {
         case (.door, 0), (.window, 0):
-            return Instruction(title: "Tap the \(noun)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+            return Instruction(title: "Tap the \(item)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
         case (.door, _), (.window, _):
             return Instruction(title: "Now tap its top-right corner", detail: nil)
         case (.driveway, 0):
@@ -180,7 +189,7 @@ enum ScanCopy {
         case (.fence, _):
             return Instruction(title: "Now tap the bottom at the other end", detail: nil)
         case (.gasMeter, _), (.acUnit, _):
-            return Instruction(title: "Tap the \(noun)", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+            return Instruction(title: "Tap the \(item)", detail: "Put the circle on it and tap Mark, or tap it on screen.")
         }
     }
 
@@ -366,14 +375,18 @@ enum ScanCopy {
     }
 
     /// "Measured 3 ft 2 in. The rule is 3 ft, and the measurement can be off by about 4 in."
-    static func measurement(_ row: CheckRow) -> String? {
+    /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
+    static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
-        var parts = ["Measured \(Distance.feetAndInches(measured))."]
+        func length(_ meters: Float) -> String {
+            spoken ? Distance.spoken(meters) : Distance.feetAndInches(meters)
+        }
+        var parts = ["Measured \(length(measured))."]
         if let threshold = row.threshold {
             if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)), and the measurement can be off by about \(Distance.feetAndInches(plusMinus)).")
+                parts.append("The rule is \(length(threshold)), and the measurement can be off by about \(length(plusMinus)).")
             } else {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)).")
+                parts.append("The rule is \(length(threshold)).")
             }
         }
         return parts.joined(separator: " ")

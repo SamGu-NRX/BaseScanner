@@ -293,32 +293,21 @@ struct ResultScene3D: View {
 
     // MARK: - Accessibility
 
+    /// Lengths are spelled out: VoiceOver reads "ft" and "in" as letters (B-16).
     private var accessibilitySummary: String {
         guard let spot = result.spot else { return "No battery spot shown" }
         var parts: [String]
         if spot.span.lowerBound > 0 {
-            parts = ["Battery \(Self.feetAndInches(spot.span.lowerBound)) right of your meter"]
+            parts = ["Battery \(Distance.spoken(spot.span.lowerBound)) right of your meter"]
         } else if spot.span.upperBound < 0 {
-            parts = ["Battery \(Self.feetAndInches(-spot.span.upperBound)) left of your meter"]
+            parts = ["Battery \(Distance.spoken(-spot.span.upperBound)) left of your meter"]
         } else {
             parts = ["Battery below your meter"]
         }
         if let cable = result.cableLength {
-            parts.append("cable \(Self.feetAndInches(cable))")
+            parts.append("cable \(Distance.spoken(cable))")
         }
         return parts.joined(separator: ", ")
-    }
-
-    /// "3 ft 4 in", "12 ft", "8 in", rounded to the nearest inch.
-    private static func feetAndInches(_ meters: Float) -> String {
-        let inches = Int((meters / 0.0254).rounded())
-        let feet = inches / 12
-        let rest = inches % 12
-        switch (feet, rest) {
-        case (0, _): return "\(rest) in"
-        case (_, 0): return "\(feet) ft"
-        default: return "\(feet) ft \(rest) in"
-        }
     }
 }
 
