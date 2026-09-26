@@ -72,9 +72,10 @@ final class Autopilot {
                 log("skipping the gap: no held-back frames to show it")
                 await engine.waitForGate(.gapRequest)
                 engine.skipGap()
-            } else if await !waitFor(.uploading, timeout: 150) {
-                log("gap not satisfied by the held-back frames; skipping it")
-                engine.skipGap()
+            } else {
+                // The held-back frames were chosen on geometry alone; on a LiDAR replay depth can
+                // find part of the gap hidden in them, and then they don't settle it.
+                await playGapFrames(replay)
             }
         }
         guard await waitFor(.uploading, timeout: 150) else { return fail("upload did not start") }
@@ -297,16 +298,25 @@ final class Autopilot {
         if request.reason == .overhead {
             await answerOverheadGap()
         } else {
-            _ = await waitUntil(timeout: 60) { !replay.isPlaying || self.engine.state.gap?.id != request.id }
-            await pause(hold)
-            if engine.state.phase == .gapRequest, let gap = engine.state.gap, gap.id == request.id, !gap.isSatisfied {
-                log("the replay does not settle server request \(request.id); skipping it")
-                await engine.waitForGate(.gapRequest)
-                engine.skipGap()
-            }
+            await playGapFrames(replay)
         }
         // A settled request stays on screen for a moment before the next upload.
         _ = await waitUntil(timeout: 10) { self.engine.state.phase != .gapRequest || self.engine.state.gap?.id != request.id }
+    }
+
+    /// Waits while the engine plays the replay's frames for the current request. A replay shows
+    /// only what it recorded, so when they don't settle the request the autopilot says "I can't
+    /// get there", as a homeowner would.
+    private func playGapFrames(_ replay: ReplayPlayer) async {
+        guard let request = engine.state.gap else { return }
+        _ = await waitUntil(timeout: 60) { !replay.isPlaying || self.engine.state.gap?.id != request.id }
+        // Time for the last frame's keyframe to be stored and counted.
+        await pause(hold)
+        if engine.state.phase == .gapRequest, let gap = engine.state.gap, gap.id == request.id, !gap.isSatisfied {
+            log("the replay does not settle request \(request.id) (\(Int(gap.progress * 100))% of it seen); skipping it")
+            await engine.waitForGate(.gapRequest)
+            engine.skipGap()
+        }
     }
 
     /// "Open sky or nothing overhead", then a wait for the view to be stored: it counts as an

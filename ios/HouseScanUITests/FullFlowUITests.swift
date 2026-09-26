@@ -31,12 +31,6 @@ final class FullFlowUITests: XCTestCase {
             .appending(path: "Fixtures/synthetic-wall-lidar", directoryHint: .isDirectory).path
     }
 
-    /// MERGE: the lead sets this to true once the depth coverage path (CoverageMap with depth and
-    /// the replay passing it) and the UI lane's wall-map summary that names hidden cells are in this
-    /// tree. Until then the app ignores the depth maps, so the LiDAR replay runs the flow as a phone
-    /// without LiDAR and the hidden-cell check is skipped.
-    static let checksHiddenCells = false
-
     static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     @MainActor
@@ -52,7 +46,7 @@ final class FullFlowUITests: XCTestCase {
     func testFullFlowFromLidarReplay() throws {
         var showedHidden = false
         try runFlow(replay: Self.lidarFixture) { app, phase in
-            guard Self.checksHiddenCells, !showedHidden else { return }
+            guard !showedHidden else { return }
             switch phase {
             // At the autopilot's 3x the walk plays in about 6 s. No other frame sees the wall
             // behind the bin, so its cells stay hidden once the bin has been in view.
@@ -61,9 +55,7 @@ final class FullFlowUITests: XCTestCase {
             default: break
             }
         }
-        if Self.checksHiddenCells {
-            XCTAssertTrue(showedHidden, "the wall map never reported hidden cells behind the bin")
-        }
+        XCTAssertTrue(showedHidden, "the wall map never reported hidden cells behind the bin")
     }
 
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
