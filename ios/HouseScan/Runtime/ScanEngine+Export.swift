@@ -45,9 +45,14 @@ extension ScanEngine {
             )
         }
 
+        // A guessed ground puts the same error into every height in the scene. scene.json has no
+        // field for "the ground was estimated", so the error bars say it instead.
+        let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
         let input = SceneInput(
             wall: sceneWall,
             baselineS: low...high,
+            meterPlusMinus: groundError,
+            objectPlusMinus: groundError,
             features: features,
             coverage: SceneCoverage(
                 leftEndMarked: wallEndKinds[.left] == .limit,
@@ -61,6 +66,10 @@ extension ScanEngine {
         )
         return try SceneExport.jsonData(input)
     }
+
+    /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held
+    /// for scanning sit roughly 1.1 to 1.7 m up, so ±0.3 m. A hypothesis; no measured spread exists.
+    static let estimatedGroundError: Float = 0.3
 
     enum ExportError: Error, CustomStringConvertible {
         case noWall

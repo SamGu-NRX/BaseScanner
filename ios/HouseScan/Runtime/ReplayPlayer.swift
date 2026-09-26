@@ -17,6 +17,9 @@ final class ReplayPlayer {
     /// The wall the replay measures: the recorded one, or one assumed from the trajectory.
     let wall: WallFrame
     let wallDescription: String
+    /// True when the ground height comes from the recording's wall taps; an assumed wall puts
+    /// the ground 1.4 m under the mean camera height, a guess.
+    let groundMeasured: Bool
     /// Frames the autopilot holds back from the walk for the gap loop, once prepared.
     private(set) var heldBack: ReplayPlanning.HeldBackWindow?
     private(set) var isPlaying = false
@@ -31,6 +34,7 @@ final class ReplayPlayer {
         let planned: [PlannedFrame]
         let wall: WallFrame
         let wallDescription: String
+        let groundMeasured: Bool
     }
 
     /// Reads session.json and settles the wall. Deriving an assumed wall projects every frame
@@ -44,14 +48,14 @@ final class ReplayPlayer {
             )
         }
         if let declared = session.declaredWall, let frame = WallFrame(meter: declared.meter, outward: declared.outward, groundY: declared.groundY) {
-            return Loaded(session: session, planned: planned, wall: frame, wallDescription: "recorded (wall taps in session.json)")
+            return Loaded(session: session, planned: planned, wall: frame, wallDescription: "recorded (wall taps in session.json)", groundMeasured: true)
         }
         guard let assumed = ReplayPlanning.assumedWall(frames: planned) else { throw ReplayError.noFrames }
         let description = String(
             format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, meter where the walk covers most, %d cells covered within 20 ft of it with every frame; not a measured wall",
             assumed.offset, assumed.coveredCells
         )
-        return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description)
+        return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description, groundMeasured: false)
     }
 
     init(folder: URL, loaded: Loaded, onFrame: @escaping @MainActor (SourceFrame) -> Void) {
@@ -61,6 +65,7 @@ final class ReplayPlayer {
         planned = loaded.planned
         wall = loaded.wall
         wallDescription = loaded.wallDescription
+        groundMeasured = loaded.groundMeasured
     }
 
     /// Finds the frames to hold back for the autopilot's gap loop. Heavy, so it runs off the

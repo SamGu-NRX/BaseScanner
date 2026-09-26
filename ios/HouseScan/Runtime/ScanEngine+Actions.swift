@@ -17,7 +17,7 @@ extension ScanEngine: ScanActions {
             // A replay has no live surfaces to raycast; its wall comes from the recording (or is
             // assumed from the trajectory, see ReplayPlayer.wallDescription).
             let wall = replay.wall
-            guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY) else { return }
+            guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, groundMeasured: replay.groundMeasured) else { return }
             go(.meterCloseUp)
             return
         }
@@ -36,8 +36,10 @@ extension ScanEngine: ScanActions {
         }
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
-        let groundY = groundBelow(hit.position, camera: frame.camera)
-        guard setWall(meter: hit.position, outward: outward, groundY: groundY) else {
+        // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at
+        // chest height, 1.4 m above it. `refineGround` replaces the guess as planes arrive.
+        let measured = groundBelow(hit.position)
+        guard setWall(meter: hit.position, outward: outward, groundY: measured ?? frame.camera.position.y - 1.4, groundMeasured: measured != nil) else {
             state.guidance = .aimAtWallForMeter
             return
         }
@@ -47,13 +49,13 @@ extension ScanEngine: ScanActions {
 
     /// The ground at the meter: the highest detected horizontal plane at least 0.3 m below it whose
     /// extent comes within 2 m of it (so a porch or a neighbour's lawn elsewhere doesn't count), or
-    /// the camera height minus 1.4 m (a phone held at chest height) until one appears.
-    private func groundBelow(_ meter: SIMD3<Float>, camera: CameraFrame) -> Float {
+    /// nil when no such plane has been detected.
+    func groundBelow(_ meter: SIMD3<Float>) -> Float? {
         let near = detectedGroundPlanes.filter { plane in
             let horizontal = simd_distance(SIMD2(plane.x, plane.z), SIMD2(meter.x, meter.z))
             return plane.y < meter.y - 0.3 && horizontal - plane.w <= 2
         }
-        return near.map(\.y).max() ?? camera.position.y - 1.4
+        return near.map(\.y).max()
     }
 
     func skipCloseUp() {

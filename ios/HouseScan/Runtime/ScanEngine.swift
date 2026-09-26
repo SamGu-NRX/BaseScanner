@@ -43,6 +43,9 @@ final class ScanEngine {
     /// Detected horizontal planes as (center x, y, center z, radius), world meters.
     private var groundPlanes: [SIMD4<Float>] = []
     private var lastFrame: SourceFrame?
+    /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
+    /// than the chest-height guess. The export widens position errors while it is a guess.
+    private(set) var groundMeasured = false
     private var endKinds: [WallSide: EndKind] = [:]
 
     // Gap loop
@@ -188,7 +191,10 @@ final class ScanEngine {
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
         if state.tracking != frame.tracking { state.tracking = frame.tracking }
-        if !frame.groundPlanes.isEmpty { groundPlanes = frame.groundPlanes }
+        if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
+            groundPlanes = frame.groundPlanes
+            refineGround()
+        }
         refreshMeterFromAnchor(frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
@@ -207,6 +213,19 @@ final class ScanEngine {
         default:
             break
         }
+    }
+
+    /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
+    /// wall always replaces the guess, and a better plane replaces an earlier one.
+    private func refineGround() {
+        guard var wall = coverage?.wall, let y = groundBelow(wall.meter) else { return }
+        // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
+        guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
+        RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
+        wall.groundY = y
+        groundMeasured = true
+        coverage?.updateWall(wall)
+        publishWall()
     }
 
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
@@ -469,9 +488,10 @@ final class ScanEngine {
     // MARK: Wall
 
     /// Sets the wall from a meter point and the wall's outward normal, and starts coverage.
-    func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float) -> Bool {
+    func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
+        self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
         publishWall()
