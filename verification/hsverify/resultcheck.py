@@ -26,6 +26,7 @@ from typing import Any
 from jsonschema import Draft202012Validator
 
 EPS = 1e-6
+NUMBER_TOL_FT = 1e-5
 # Spot centres and offsets are rounded by the server; a hundredth of a foot is 1/8 inch.
 OFFSET_TOL_FT = 0.01
 # Sweep start ranges are sampled; a pass run may reach one 2 in step past a covered edge.
@@ -265,6 +266,13 @@ def expectation_problems(expect: dict, result: dict) -> list[str]:
                     problems.append(
                         f"check {check['id']}: {field} {check.get(field)}, expected {rule[field]}"
                     )
+            # Pinned numbers catch a server that measures from somewhere else (for example
+            # another battery depth) and lands on the right outcome by accident. The server
+            # rounds to 6 decimals.
+            for field in ("measured_ft", "plus_minus_ft"):
+                got = check.get(field)
+                if field in rule and (got is None or abs(got - rule[field]) > NUMBER_TOL_FT):
+                    problems.append(f"check {check['id']}: {field} {got}, expected {rule[field]}")
 
     if "missing_evidence_empty" in expect:
         empty = not result.get("missing_evidence")

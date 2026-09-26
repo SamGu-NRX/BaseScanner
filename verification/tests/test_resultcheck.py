@@ -250,6 +250,13 @@ def test_expectations():
     assert len(msgs) == 4, msgs
 
 
+def test_pinned_check_numbers():
+    r = result()
+    assert expectation_problems({"checks": [{"match": "gas", "measured_ft": 5.0000004}]}, r) == []
+    msgs = expectation_problems({"checks": [{"match": "gas", "measured_ft": 4.5}]}, r)
+    assert msgs == ["check gas_clearance: measured_ft 5.0, expected 4.5"]
+
+
 def test_assumption_mismatch():
     assert assumption_mismatches({"gas": 3.0}, result()) == []
     assert assumption_mismatches({"gas": 4.0}, result())

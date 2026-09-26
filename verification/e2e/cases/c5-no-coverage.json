@@ -1,0 +1,86 @@
+{
+  "id": "c5-no-coverage",
+  "source": "scene.schema.json coverage and end descriptions at origin/t3/server 69c6c3c; C5",
+  "description": "A clean straight wall with ground and facing measurements but no coverage field. Nothing is known to be observed, so no start may pass, the result must ask for views, and it cannot reject because both ends default to unexplored.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -6,
+            0.0
+          ],
+          [
+            10,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -6,
+            0.0
+          ],
+          [
+            10,
+            0.0
+          ],
+          [
+            10,
+            10.0
+          ],
+          [
+            -6,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -6.0,
+          10.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ]
+  },
+  "rules_assumed": {},
+  "expect": {
+    "decision_in": [
+      "manual_review"
+    ],
+    "missing_evidence_empty": false,
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -6,
+          7.4
+        ],
+        "outcome": "unsure"
+      }
+    ]
+  }
+}
