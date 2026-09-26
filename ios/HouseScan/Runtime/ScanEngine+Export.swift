@@ -1,5 +1,6 @@
 import Foundation
 import HouseScanKit
+import OSLog
 import simd
 
 extension ScanEngine {
@@ -18,21 +19,39 @@ extension ScanEngine {
         let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
         let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
 
-        let features: [SceneFeature] = state.features.map { feature in
+        // Tap geometry must never stop the export: SceneExport rejects negative heights, a top
+        // below a bottom, ground points behind the wall and a zero-length driveway edge, and
+        // taps can produce each of them once the ground or the meter anchor moves after the tap
+        // (a window tapped wholly below a guessed ground, a fence foot that ends up behind the
+        // refined wall line). Such marks are clamped to the nearest valid shape here, or dropped
+        // when nothing valid is left, and logged.
+        let features: [SceneFeature] = state.features.compactMap { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
-            case .door:
-                return .opening(kind: .door, span: feature.span, bottom: feature.bottom ?? 0, top: feature.top ?? 0, operable: nil)
-            case .window:
-                return .opening(kind: .window, span: feature.span, bottom: feature.bottom ?? 0, top: feature.top ?? 0, operable: feature.opens)
+            case .door, .window:
+                let heights = [feature.bottom ?? 0, feature.top ?? 0]
+                let bottom = max(0, heights.min() ?? 0)
+                let top = max(bottom, heights.max() ?? 0)
+                if bottom != feature.bottom || top != feature.top {
+                    RuntimeLog.engine.info("export: \(feature.kind.rawValue, privacy: .public) heights \(feature.bottom ?? .nan)...\(feature.top ?? .nan) clamped to \(bottom)...\(top)")
+                }
+                return .opening(kind: feature.kind == .door ? .door : .window, span: feature.span, bottom: bottom, top: top,
+                                operable: feature.kind == .window ? feature.opens : nil)
             case .gasMeter:
                 return .pointObject(kind: .gasMeter, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
             case .acUnit:
                 return .pointObject(kind: .ac, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
             case .fence:
-                return .fence(foot: points)
+                guard points.count == 2 else { return Self.dropped(feature, "needs two taps") }
+                return .fence(foot: points.map { Self.inFront(of: sceneWall, $0) })
             case .driveway:
-                return .driveway(edge: points)
+                guard points.count == 2 else { return Self.dropped(feature, "needs two taps") }
+                let edge = points.map { Self.inFront(of: sceneWall, $0) }
+                // SceneExport's own degenerate-edge tolerance is 1e-3 ft; 1 cm keeps well clear of it.
+                guard simd_distance(SIMD2(edge[0].x, edge[0].z), SIMD2(edge[1].x, edge[1].z)) > 0.01 else {
+                    return Self.dropped(feature, "taps coincide in plan")
+                }
+                return .driveway(edge: edge)
             }
         }
 
@@ -70,6 +89,18 @@ extension ScanEngine {
     /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held
     /// for scanning sit roughly 1.1 to 1.7 m up, so ±0.3 m. A hypothesis; no measured spread exists.
     static let estimatedGroundError: Float = 0.3
+
+    /// A ground point on or behind the wall line moved to 1 mm in front of it, keeping its s. The
+    /// millimetre keeps float round-off from turning an on-the-line point into a negative depth.
+    private static func inFront(of wall: SceneWall, _ point: SIMD3<Float>) -> SIMD3<Float> {
+        let c = wall.wallCoordinates(of: point)
+        return c.out >= 0.001 ? point : wall.world(s: c.s, height: c.height, out: 0.001)
+    }
+
+    private static func dropped(_ feature: MarkedFeature, _ reason: String) -> SceneFeature? {
+        RuntimeLog.engine.error("export: dropped \(feature.kind.rawValue, privacy: .public) \(feature.id.uuidString, privacy: .public): \(reason, privacy: .public)")
+        return nil
+    }
 
     enum ExportError: Error, CustomStringConvertible {
         case noWall

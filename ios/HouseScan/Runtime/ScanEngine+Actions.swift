@@ -228,6 +228,14 @@ extension ScanEngine: ScanActions {
         if case .failed = state.upload { startUpload() }
     }
 
+    /// Back to the feature review after a rejected upload. The scan (wall, coverage, keyframes,
+    /// features) stays; confirming the review runs the gap check and the upload again.
+    func backToReview() {
+        guard state.phase == .uploading, case .rejected = state.upload else { return }
+        state.upload = .idle
+        go(.markFeatures)
+    }
+
     func captureMissing(_ id: String) {
         guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
@@ -274,8 +282,7 @@ extension ScanEngine: ScanActions {
     }
 }
 
-// Placeholders for contract 1cc297f so the app compiles; the engine lane replaces both.
+// Placeholder for contract 1cc297f so the app compiles; the meter-number flow replaces it.
 extension ScanEngine {
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {}
-    func backToReview() {}
 }

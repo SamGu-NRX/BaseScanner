@@ -657,25 +657,24 @@ final class ScanEngine {
     private func upload() async {
         let scan = generation
         state.upload = .packaging
-        // Keyframe writes still in flight belong in the bundle.
+        // Keyframe writes still in flight belong in the scene's keyframe list.
         for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
-        let bundle: URL
+        let scene: Data
         do {
-            bundle = try await store.writeBundle(sceneJSON: try sceneJSON())
-            RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(self.store.keyframes.count) keyframes")
+            scene = try sceneJSON()
         } catch {
-            guard scan == generation else { return }
-            RuntimeLog.engine.error("packaging failed: \(String(describing: error), privacy: .public)")
-            state.upload = .failed(message: String(describing: error), offline: false)
+            RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
+            state.upload = UploadFailure.packaging
             return
         }
-        guard scan == generation, !Task.isCancelled else { return }
+        saveReplayBundle(scene: scene)
+        guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
-            let data = try await resultClient.submit(bundle: bundle) { [weak self] fraction in
+            let data = try await resultClient.submit(scene: scene) { [weak self] fraction in
                 Task { @MainActor in
                     guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
@@ -696,7 +695,22 @@ final class ScanEngine {
         } catch {
             guard scan == generation else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
-            state.upload = .failed(message: String(describing: error), offline: (error as? URLError) != nil)
+            state.upload = UploadFailure.state(for: error)
+        }
+    }
+
+    /// Writes scene.json with the keyframes and stills into the scan folder's `scan.zip`, for
+    /// replay and debugging only: nothing uploads it, and the upload never waits for it or fails
+    /// because of it.
+    private func saveReplayBundle(scene: Data) {
+        let store = store
+        Task {
+            do {
+                let bundle = try await store.writeBundle(sceneJSON: scene)
+                RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(store.keyframes.count) keyframes (kept on the phone)")
+            } catch {
+                RuntimeLog.engine.error("replay bundle not written: \(String(describing: error), privacy: .public)")
+            }
         }
     }
 
