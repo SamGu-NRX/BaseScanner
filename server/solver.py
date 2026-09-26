@@ -1352,7 +1352,8 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
         if any(c.unsure_cause == "unobserved" for c in best.checks if c.outcome == UNSURE):
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "
-                f"{len(ids)} checks depend on areas the scan did not see."
+                + ("1 check depends" if len(ids) == 1 else f"{len(ids)} checks depend")
+                + " on areas the scan did not see."
             )
         else:
             summary = (
@@ -1411,7 +1412,8 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
     return {
         "schema_version": SCHEMA_VERSION,
         "decision": decision,
-        "summary": summary,
+        # Every answer names whose rules decided it when the policy asks (the public demo).
+        "summary": f"{summary} {r.policy.notice}" if r.policy.notice else summary,
         "reasons": reasons,
         "policy": {
             "id": r.policy.id,
@@ -1419,6 +1421,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             "auto_approve": auto,
             "sources": list(loaded.sources),
             "rules_sha256": loaded.sha256,
+            "notice": r.policy.notice,
         },
         "spot": _spot_json(solver, spot) if spot else None,
         "route": _route_json(solver, spot) if spot else None,

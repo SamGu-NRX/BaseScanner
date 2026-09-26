@@ -35,9 +35,10 @@
       "properties": {
         "id": {"type": ["string", "null"]},
         "version": {"type": ["string", "null"]},
-        "auto_approve": {"type": "boolean", "description": "Whether the rules allow automatic decisions: false when no policy is selected or the rules file sets auto_approve false (the public rules.yaml does, because it holds placeholder values). When false, every would-be pass or reject becomes manual_review. Each check's rule.placeholder says which values decided it."},
+        "auto_approve": {"type": "boolean", "description": "Whether the rules allow automatic decisions: false when no policy is selected or the rules set auto_approve false (the public strict policy does, because some values are placeholders; the public demo policy decides anyway and says so in notice). When false, every would-be pass or reject becomes manual_review. Each check's rule.placeholder says which values decided it."},
         "sources": {"type": "array", "items": {"enum": ["public", "private"]}, "description": "Which rules files were loaded."},
-        "rules_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Hash of the merged rules the decision used."}
+        "rules_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Hash of the merged rules the decision used."},
+        "notice": {"type": ["string", "null"], "description": "Whose rules these are, to show with the answer, for example that the public demo policy is not Base's. Null for rules that need no such label."}
       }
     },
     "spot": {

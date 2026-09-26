@@ -1,4 +1,5 @@
 import copy
+import html
 import io
 import json
 import time
@@ -105,6 +106,7 @@ def test_health_reports_the_loaded_policy(client: TestClient) -> None:
         "auto_approve": policy.auto_approve and policy.id is not None,
         "sources": list(api.LOADED.sources),
         "rules_sha256": api.LOADED.sha256,
+        "notice": policy.notice,
     }
 
 
@@ -344,7 +346,7 @@ def test_site_plan_is_svg_for_the_same_upload(client: TestClient) -> None:
     assert svg.status_code == 200
     assert svg.headers["content-type"].startswith("image/svg+xml")
     assert svg.text.startswith("<svg")
-    assert placed["summary"] in svg.text
+    assert html.escape(placed["summary"]) in svg.text
 
 
 def test_site_plan_refuses_bad_input_like_placements(client: TestClient) -> None:
