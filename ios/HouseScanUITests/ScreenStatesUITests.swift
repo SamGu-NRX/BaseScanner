@@ -105,6 +105,10 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         tap(app, "action.onboardingNext")
         tap(app, "action.onboardingNext")
+        // Both prompts come from "Allow camera", so the page says why before either shows.
+        let permissions = element(app, "onboarding.permissions")
+        XCTAssertTrue(permissions.waitForExistence(timeout: 5), "missing onboarding.permissions")
+        XCTAssertTrue(permissions.label.contains("Motion & Fitness, which helps measure your wall"), "the motion prompt must be explained: \(permissions.label)")
         tap(app, "action.finishOnboarding")
         XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 10))
         // A tap on the camera marks the meter, like the button.

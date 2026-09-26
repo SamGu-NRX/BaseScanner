@@ -1,4 +1,5 @@
 import ARKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import HouseScanKit
@@ -128,6 +129,7 @@ final class ScanEngine {
     /// The packet's sensor streams for the current world frame.
     private(set) var recorder: CaptureRecorder
     private let motion = MotionSource()
+    private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
     /// When each mark was made, on the capture clock (`MarkKey`).
@@ -274,6 +276,25 @@ final class ScanEngine {
         let deadline = ContinuousClock.now + .seconds(120)
         while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    /// Leaves the onboarding for the meter search. Live, the camera and then Motion & Fitness are
+    /// asked for first, while the onboarding that says why is still on screen; otherwise the AR
+    /// session and the barometer raise both prompts over "Find your electric meter".
+    func leaveOnboarding() {
+        let cameraUnasked = AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined
+        guard replay == nil, cameraUnasked || MotionSource.needsPermission else {
+            go(.findMeter)
+            return
+        }
+        guard !askingForPermissions else { return }
+        askingForPermissions = true
+        Task {
+            if cameraUnasked { _ = await AVCaptureDevice.requestAccess(for: .video) }
+            await motion.requestPermission()
+            askingForPermissions = false
+            if state.phase == .onboarding { go(.findMeter) }
         }
     }
 

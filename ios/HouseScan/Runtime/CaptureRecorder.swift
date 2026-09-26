@@ -323,6 +323,25 @@ final class MotionSource {
         return queue
     }()
     private(set) var isRunning = false
+    private let activity = CMMotionActivityManager()
+
+    /// Whether Motion & Fitness is still to be asked for. Only the barometer needs it; declined,
+    /// the barometer records no rows and the other streams run as before.
+    static var needsPermission: Bool {
+        CMAltimeter.isRelativeAltitudeAvailable() && CMAltimeter.authorizationStatus() == .notDetermined
+            && CMMotionActivityManager.isActivityAvailable()
+    }
+
+    /// Shows the Motion & Fitness prompt and returns once it is answered. CMAltimeter has no call
+    /// that only asks; an activity query asks for the same permission and calls back after the
+    /// answer. The handler runs on the main queue, so it may be a main-actor closure.
+    func requestPermission() async {
+        guard Self.needsPermission else { return }
+        let now = Date()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            activity.queryActivityStarting(from: now, to: now, to: .main) { _, _ in continuation.resume() }
+        }
+    }
 
     /// Which streams this phone has; the packet lists only streams with rows.
     var available: Set<CaptureRecorder.Stream> {

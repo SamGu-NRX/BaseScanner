@@ -8,7 +8,7 @@ import SwiftUI
 extension ScanEngine: ScanActions {
     func finishOnboarding() {
         guard state.phase == .onboarding else { return }
-        go(.findMeter)
+        leaveOnboarding()
     }
 
     func markMeter(at point: CGPoint?, viewSize: CGSize) {
