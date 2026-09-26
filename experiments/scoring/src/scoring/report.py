@@ -61,6 +61,7 @@ CHECK_COLUMNS = (
     "missed_review",
     "over_caution",
     "false_rejection",
+    "decided_without_measurement",
     "abstention",
 )
 
@@ -90,6 +91,7 @@ RUN_COLUMNS = (
     "missed_reviews",
     "over_cautious",
     "false_rejections",
+    "decided_without_measurement",
     "abstentions_justified",
     "abstentions_avoidable",
     "could_flip",
@@ -181,6 +183,7 @@ def check_row(run: RunScore, score: CheckScore) -> dict[str, str]:
         "missed_review": flag(score.missed_review),
         "over_caution": flag(score.over_caution),
         "false_rejection": flag(score.false_rejection),
+        "decided_without_measurement": flag(score.decided_without_measurement),
         "abstention": score.abstention or "",
     }
 
@@ -218,6 +221,7 @@ def run_row(run: RunScore) -> dict[str, str]:
         "missed_reviews": decision(run.missed_reviews),
         "over_cautious": decision(run.over_cautious),
         "false_rejections": decision(run.false_rejections),
+        "decided_without_measurement": decision(run.decided_without_measurement),
         "abstentions_justified": decision(run.abstentions("justified")),
         "abstentions_avoidable": decision(run.abstentions("avoidable")),
         "could_flip": str(run.could_flip),
@@ -349,11 +353,12 @@ def _checks(runs: list[RunScore]) -> list[str]:
                 str(run.missed_reviews),
                 str(run.over_cautious),
                 str(run.false_rejections),
+                str(run.decided_without_measurement),
                 str(run.abstentions("justified")),
                 str(run.abstentions("avoidable")),
             ]
         else:
-            decided = ["no decisions", "", "", "", "", "", ""]
+            decided = ["no decisions", "", "", "", "", "", "", ""]
         rows.append([f"`{run.results.pipeline}`", *decided, str(run.could_flip)])
     header = [
         "Pipeline",
@@ -362,6 +367,7 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "Missed reviews",
         "Over-cautious",
         "False rejections",
+        "Decided without its measurement",
         "Unsure, justified",
         "Unsure, avoidable",
         "Error could flip",
@@ -371,16 +377,19 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "### Checks",
         "",
         f"{total} checks, {judged} with a survey outcome. The survey passes a check when its "
-        "value clears the pass line by at least its ± and fails it when it misses the fail line "
-        "by more. For most checks the two lines are one threshold, and anything between is "
-        "borderline. A check with a review band (such as route length between review_route_ft "
+        "value clears the pass line by more than its ± and fails it when it misses the fail "
+        "line by more than its ±. For most checks the two lines are one threshold, and anything "
+        "between, including a value exactly on a line, is borderline. A check with a review "
+        "band (such as route length between review_route_ft "
         "and max_route_ft) is review in between. Borderline and review both call for unsure. "
         "An unsafe pass is a run's pass where the survey fails. A missed review is a pass "
         "where the survey is borderline or review. Over-cautious counts unsure or fail "
-        "where the survey passes; false rejections are the fails among them. An unsure is "
-        "justified when the survey is borderline or review, or the run has no value. The error "
-        "could flip a check when it is larger than both the survey's distance to the nearest "
-        "threshold and its ±.",
+        "where the survey passes; false rejections are the fails among them. Decided without its "
+        "measurement counts a pass or fail where the run's own measurement is missing as "
+        "failed or unsupported, whatever the survey says; each is also scored as usual. An "
+        "unsure is justified when the survey is borderline or review, or the run has no value. "
+        "The error could flip a check when it is at least as large as both the survey's "
+        "distance to the nearest threshold and its ±.",
         "",
         *_table(header, rows),
     ]
@@ -398,29 +407,53 @@ def _timing(runs: list[RunScore]) -> list[str]:
     return ["", "### Timing", "", *_table(["Pipeline", "Capture (s)", "Processing (s)"], rows)]
 
 
-def _wrong_pass(run: RunScore, score: CheckScore) -> str:
+def _survey_text(score: CheckScore) -> str:
+    """The survey outcome and the lines it was judged against, for the named lists."""
     survey, threshold, review = score.survey, score.threshold, score.review
-    reported = score.measurement.reported
-    has_value = reported is not None and reported.value_ft is not None
-    run_value = f"{feet(reported.value_ft)} ft" if has_value else "no value"
     limits = f"`{threshold.name}` {threshold.pass_when} {feet(threshold.value_ft)} ft"
     if review is not None:
         limits = f"`{review.name}` {feet(review.value_ft)} ft and {limits}"
+    if survey.value_ft is None:
+        return f"the survey is {score.truth} ({survey.status.replace('_', ' ')}) against {limits}"
+    return (
+        f"the survey is {score.truth} at {feet(survey.value_ft)} ± "
+        f"{feet(survey.plus_minus_ft)} ft against {limits}"
+    )
+
+
+def _wrong_pass(run: RunScore, score: CheckScore) -> str:
+    reported = score.measurement.reported
+    has_value = reported is not None and reported.value_ft is not None
+    run_value = f"{feet(reported.value_ft)} ft" if has_value else "no value"
     return (
         f"- `{run.results.pipeline}` passed `{score.check.check}` at "
-        f"`{score.check.candidate}`; the survey is {score.truth} at "
-        f"{feet(survey.value_ft)} ± {feet(survey.plus_minus_ft)} ft against {limits} "
-        f"(run measured {run_value})."
+        f"`{score.check.candidate}`; {_survey_text(score)} (run measured {run_value})."
+    )
+
+
+def _blind_decision(run: RunScore, score: CheckScore) -> str:
+    reported = score.measurement.reported
+    assert reported is not None and reported.missing is not None
+    return (
+        f"- `{run.results.pipeline}` reported {score.reported} for `{score.check.check}` at "
+        f"`{score.check.candidate}` with measurement `{score.check.measurement}` missing "
+        f"({reported.missing}); {_survey_text(score)}."
     )
 
 
 def _unsafe(runs: list[RunScore]) -> list[str]:
-    """List every unsafe pass, then every missed review, by name."""
+    """List every unsafe pass, missed review and decision made without its measurement."""
     lines = []
-    for title, picked in (
-        ("Unsafe passes", lambda score: score.unsafe_pass),
-        ("Missed reviews", lambda score: score.missed_review),
+    for title, picked, line in (
+        ("Unsafe passes", lambda score: score.unsafe_pass, _wrong_pass),
+        ("Missed reviews", lambda score: score.missed_review, _wrong_pass),
+        (
+            "Decided without its measurement",
+            lambda score: score.decided_without_measurement,
+            _blind_decision,
+        ),
     ):
-        found = [_wrong_pass(run, score) for run in runs for score in run.checks if picked(score)]
-        lines += ["", f"### {title}", "", *found] if found else ["", f"No {title.lower()}."]
+        found = [line(run, score) for run in runs for score in run.checks if picked(score)]
+        empty = "No such decisions." if title.startswith("Decided") else f"No {title.lower()}."
+        lines += ["", f"### {title}", "", *found] if found else ["", empty]
     return lines

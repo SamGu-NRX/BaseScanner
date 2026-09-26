@@ -388,16 +388,15 @@ def test_check_policy_must_match_across_candidates(tmp_path: Path, different: st
 
 @pytest.mark.parametrize("missing", ["failed", "unsupported"])
 @pytest.mark.parametrize("outcome", ["pass", "fail"])
-def test_missing_evidence_cannot_decide_check(tmp_path: Path, missing: str, outcome: str):
-    def edit(files: Files) -> None:
-        reported(files, "c1-route")["missing"] = missing
-        files.results["outcomes"][1]["outcome"] = outcome
-
-    message = study_error(tmp_path, edit)
-    assert str(tmp_path / "results.json") in message
-    assert "outcomes for route at c1" in message
-    assert "measurement 'c1-route'" in message
-    assert f"is {missing}; report 'unsure'" in message
+def test_decision_without_its_measurement_is_accepted(tmp_path: Path, missing: str, outcome: str):
+    # The scorer records what the pipeline decided; metrics.py flags it instead of rejecting it.
+    files = Files(tmp_path)
+    reported(files, "c1-route")["missing"] = missing
+    files.results["outcomes"][1]["outcome"] = outcome
+    rules, truth, results = files.write_all()
+    (run,) = load_study(rules, [truth], [results]).houses[0].runs
+    assert run.outcomes[("c1", "route")] == outcome
+    assert run.measurements["c1-route"].missing == missing
 
 
 def test_absent_feature_can_pass_clearance(tmp_path: Path):

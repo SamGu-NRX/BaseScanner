@@ -13,7 +13,7 @@
     {"id": "c1-route", "value_ft": 12.250, "plus_minus_ft": 0.3},
     {"id": "c1-pool", "value_ft": null, "missing": "absent"},
     {"id": "c2-gas", "value_ft": 3.350, "plus_minus_ft": 0.3},
-    {"id": "c2-facing", "value_ft": null, "missing": "absent"},
+    {"id": "c2-facing", "value_ft": null, "missing": "failed"},
     {"id": "c2-route", "value_ft": 19.500, "plus_minus_ft": 0.3},
     {"id": "c2-pool", "value_ft": null, "missing": "failed"}
   ],
@@ -25,7 +25,7 @@
     {"candidate": "c2", "check": "gas", "outcome": "pass"},
     {"candidate": "c2", "check": "facing_gap", "outcome": "pass"},
     {"candidate": "c2", "check": "route", "outcome": "pass"},
-    {"candidate": "c2", "check": "pool", "outcome": "unsure"}
+    {"candidate": "c2", "check": "pool", "outcome": "fail"}
   ],
   "timing": {"capture_s": 420, "processing_s": 12.5}
 }

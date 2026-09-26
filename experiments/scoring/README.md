@@ -32,7 +32,7 @@ Everything under `fixtures/` is synthetic. Keep real surveys and results beside 
 
 ## Input formats
 
-All three are JSON and start with `"format": 1` and `"unit": "ft"`. Every length is in feet. Numbers are read as exact decimals, so a survey value exactly one tolerance from a threshold lands on the same side every time (in floats, 3.3 minus 3.0 is 0.2999999999999998). Unknown fields, duplicate keys, `NaN`, negative lengths and numbers written as strings are all rejected. Fields marked "or null" must still be present.
+All three are JSON and start with `"format": 1` and `"unit": "ft"`. Every length is in feet. Numbers are read as exact decimals, so a survey value exactly one tolerance from a threshold lands on the same side every time. In floats, 3.1 minus 3.0 is 0.10000000000000009, which would pass a 3.1 ± 0.1 ft clearance against a 3 ft rule that is exactly borderline. Unknown fields, duplicate keys, `NaN`, negative lengths and numbers written as strings are all rejected. Fields marked "or null" must still be present.
 
 ### Rules file
 
@@ -52,7 +52,7 @@ Named thresholds, using the parameter names from `rules.yaml`. Use public or cle
 |---|---|
 | threshold name | The `rules.yaml` parameter name. Must end in `_ft`. |
 | `value_ft` | The threshold. |
-| `pass_when` | `at_least` for a clearance (the distance must be at least the value), `at_most` for a limit such as route length. A value exactly on the threshold passes either way. |
+| `pass_when` | `at_least` for a clearance (the distance must clear the value), `at_most` for a limit such as route length. Passing is strict: a value exactly on the threshold is borderline, not a pass (see "Survey outcome of a check" below). |
 | `source` | Where the number comes from, or `Synthetic placeholder`. |
 
 Each results file carries the sha256 of the exact rules file it was produced under. Any edit to the rules, even whitespace, changes the hash, so a run made under a different policy cannot be scored by mistake. `shasum -a 256 rules.json` prints it.
@@ -114,30 +114,30 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | `capture` | Must appear in exactly one survey's `captures`. |
 | `scale_source` | `native_metric`, `scale_reference` or `ar_poses`. |
 | `measurements[]` | One entry for every survey measurement id. The scale reference is optional. `value_ft` is a number or null. With a number, `plus_minus_ft` is the run's reported uncertainty, or null if it reports none. With null, `missing` says why: `unsupported` (the pipeline cannot produce this distance), `failed` (it tried and got nothing) or `absent` (it says the feature is not there). |
-| `outcomes` | One entry per survey check: `pass`, `unsure` or `fail`. Set the whole field to null for a run that measures distances but makes no decisions. |
+| `outcomes` | One entry per survey check: `pass`, `unsure` or `fail`. Report what the pipeline actually decided. A pass or fail whose measurement is missing as `failed` or `unsupported` is accepted, scored as usual and flagged as decided without its measurement. Set the whole field to null for a run that measures distances but makes no decisions. |
 | `timing.capture_s`, `processing_s` | Seconds, or null if not recorded. Runs on the same capture must report the same `capture_s` or null. |
 
 ## What the scorer reports
 
-The markdown summary has one section per house. Each section has a distances table, a checks table, a timing table, and every unsafe pass and missed review listed by name. Nothing is averaged across houses, and a missing output is never averaged away. The CSVs hold one row per run and measurement, per run and check, and per run.
+The markdown summary has one section per house. Each section has a distances table, a checks table, a timing table, and every unsafe pass, missed review and decision made without its measurement, listed by name. Nothing is averaged across houses, and a missing output is never averaged away. The CSVs hold one row per run and measurement, per run and check, and per run.
 
 **Distances.** Signed error is run minus survey, in inches, so positive means the run overestimated. The summary gives the median and maximum absolute error over the distances both sides measured. "Survey inside run's ±" counts the scored distances where the absolute error is at most the run's reported uncertainty, out of those where the run reported one. Every survey measurement except the scale reference is in the denominator and lands in exactly one bucket: scored, unsupported, failed, wrongly absent (the run says it is not there, the survey measured it), phantom (the run measured a feature the survey found absent), absent in both, or not surveyed.
 
 **The scale reference is excluded from every error statistic.** A run that was given it can match it exactly, so its error says nothing about accuracy. Its rows appear in `measurements.csv` with status `scale_reference` and no error. The summary says this at the top.
 
-**Survey outcome of a check.** Let s be the survey value's margin on the passing side of the threshold, and u the survey uncertainty. The check passes when s ≥ u, fails when s < −u, and is borderline in between. A value exactly on the threshold with u = 0 passes. The same value with any uncertainty is borderline. An absent feature passes. An unmeasured one is unknown and is left out of the decision counts.
+**Survey outcome of a check.** Let s be the survey value's margin on the passing side of the threshold, and u the survey uncertainty. The check passes when s > u, fails when s < −u, and is borderline otherwise. Both comparisons are strict, following `docs/02-implementation-plan.md` "Lane C": "A check answers PASS if the margin is larger than the error." So a value exactly on the threshold is borderline, with or without uncertainty, and so is a value exactly u from it on either side. An absent feature passes. An unmeasured one is unknown and is left out of the decision counts.
 
 A check with a review band follows `docs/02-implementation-plan.md` "Lane C": past the confident reach it is unsure, over the maximum it fails. For the route, with length L and survey uncertainty u:
 
 | Survey | Outcome |
 |---|---|
-| L + u ≤ `review_route_ft` | pass |
+| L + u < `review_route_ft` | pass |
 | L − u > `max_route_ft` | fail |
 | anything else | review |
 
-So a route exactly on `review_route_ft` with u = 0 passes, and one exactly on `max_route_ft` is review, not fail. A pipeline should apply the same rule with its own ±.
+So a route exactly on either line is review, including when u = 0. A pipeline should apply the same strict rule with its own ±, as the lane C solver does: pass only when the margin is larger than the error, fail only when the miss is larger than the error. A pipeline that passes a value exactly on a line is counted as a missed review.
 
-**Error relative to the threshold.** The ratio is |error| / max(m, u), where m is the survey value's distance to the nearest threshold. For a band, that is whichever of the two lines is closer, since crossing either changes the outcome. Above 1, the run's error could flip the check. When m and u are both zero the ratio has no denominator, so the CSV reports `at_threshold`, and any nonzero error counts as a possible flip.
+**Error relative to the threshold.** The ratio is |error| / max(m, u), where m is the survey value's distance to the nearest threshold. For a band, that is whichever of the two lines is closer, since crossing either changes the outcome. At 1 or above, the run's error could flip the check: an error equal to the margin can put the run exactly on a line, which no longer passes or fails. When m and u are both zero the ratio has no denominator, so the CSV reports `at_threshold`, and any nonzero error counts as a possible flip.
 
 **Decisions.** A correct run passes a passing check, fails a failing one, and says unsure on a borderline or review one. Borderline means the survey itself is unsure. Three wrong answers are counted separately, and each means the same for a single-threshold check and a banded one:
 
@@ -145,7 +145,11 @@ So a route exactly on `review_route_ft` with u = 0 passes, and one exactly on `m
 - A missed review is a run's pass where the survey is borderline or review: the answer needed a person to look.
 - Over-caution is a run's unsure or fail where the survey passes. False rejections are the fails among them, listed on their own too.
 
-The protocol note counts a pass on a borderline survey as unsafe. This scorer counts it as a missed review instead, so that "unsafe" always means the survey shows the spot breaks a rule, and the borderline cases stay visible in their own column and list. A run's fail where the survey is borderline or review is a disagreement but none of the three. An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
+The protocol note counts a pass on a borderline survey as unsafe. This scorer counts it as a missed review instead, so that "unsafe" always means the survey shows the spot breaks a rule, and the borderline cases stay visible in their own column and list. A run's fail where the survey is borderline or review is a disagreement but none of the three.
+
+**Decided without its measurement.** A pass or fail where the run's own measurement of the deciding distance is missing as `failed` or `unsupported`. The scorer accepts it and scores it like any other outcome, so a pass on a failing survey is still an unsafe pass. It is also counted in this separate column, flagged in `checks.csv` as `decided_without_measurement`, and listed by name, whatever the survey outcome, including unknown. Missing as `absent` does not count: the run says the feature is not there, and an absent feature can decide a clearance.
+
+An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
 
 **Timing.** Capture and processing seconds, as the run reported them. Every row that shares a recording shares its capture time. A photo row cannot claim a shorter capture from it.
 

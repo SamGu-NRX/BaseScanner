@@ -22,39 +22,53 @@ CHECK = Check("c1", "gas", "m", "gas_clearance_ft")
 
 
 class TestTruthOutcome:
-    # at_least 3 ft: pass when value - 3 >= u, fail when value - 3 < -u, else borderline.
+    # Strict, per docs/02-implementation-plan.md Lane C: pass when the margin s > u, fail when
+    # s < -u, borderline otherwise. A value exactly on the threshold, or exactly u from it, is
+    # borderline, including when u = 0.
 
-    def test_value_on_the_threshold_with_no_uncertainty_passes(self):
-        assert truth_outcome(survey("3", "0"), threshold("3")) == "pass"
+    @pytest.mark.parametrize(
+        ("value", "plus_minus", "expected"),
+        [
+            # at_least 3, u = 0
+            ("3.001", "0", "pass"),
+            ("3", "0", "borderline"),  # on the threshold
+            ("2.999", "0", "fail"),
+            # at_least 3, u = 0.3: lines at 3.3 (pass) and 2.7 (fail)
+            ("3.301", "0.3", "pass"),
+            ("3.3", "0.3", "borderline"),  # margin equal to u
+            ("3.299", "0.3", "borderline"),
+            ("3", "0.3", "borderline"),
+            ("2.701", "0.3", "borderline"),
+            ("2.7", "0.3", "borderline"),  # miss equal to u
+            ("2.699", "0.3", "fail"),
+        ],
+    )
+    def test_at_least_boundaries(self, value, plus_minus, expected):
+        assert truth_outcome(survey(value, plus_minus), threshold("3")) == expected
 
-    def test_value_on_an_at_most_threshold_with_no_uncertainty_passes(self):
-        assert truth_outcome(survey("20", "0"), threshold("20", "at_most")) == "pass"
+    @pytest.mark.parametrize(
+        ("value", "plus_minus", "expected"),
+        [
+            # at_most 20, u = 0
+            ("19.999", "0", "pass"),
+            ("20", "0", "borderline"),  # on the threshold
+            ("20.001", "0", "fail"),
+            # at_most 20, u = 0.05: lines at 19.95 (pass) and 20.05 (fail)
+            ("19.949", "0.05", "pass"),
+            ("19.95", "0.05", "borderline"),  # margin equal to u
+            ("19.951", "0.05", "borderline"),
+            ("20.049", "0.05", "borderline"),
+            ("20.05", "0.05", "borderline"),  # miss equal to u
+            ("20.051", "0.05", "fail"),
+        ],
+    )
+    def test_at_most_boundaries(self, value, plus_minus, expected):
+        assert truth_outcome(survey(value, plus_minus), threshold("20", "at_most")) == expected
 
-    def test_value_on_the_threshold_with_uncertainty_is_borderline(self):
-        assert truth_outcome(survey("3", "0.01"), threshold("3")) == "borderline"
-
-    def test_margin_equal_to_uncertainty_passes(self):
-        # 3.3 - 3.0 is 0.2999999999999998 in floats, which would be borderline.
-        assert truth_outcome(survey("3.3", "0.3"), threshold("3")) == "pass"
-
-    def test_margin_just_under_uncertainty_is_borderline(self):
-        assert truth_outcome(survey("3.299", "0.3"), threshold("3")) == "borderline"
-
-    def test_miss_equal_to_uncertainty_is_borderline(self):
-        # 2.7 +- 0.3 reaches 3.0, which passes, so the survey cannot call it a fail.
-        assert truth_outcome(survey("2.7", "0.3"), threshold("3")) == "borderline"
-
-    def test_miss_beyond_uncertainty_fails(self):
-        assert truth_outcome(survey("2.699", "0.3"), threshold("3")) == "fail"
-
-    def test_just_below_the_threshold_with_no_uncertainty_fails(self):
-        assert truth_outcome(survey("2.999", "0"), threshold("3")) == "fail"
-
-    def test_at_most_direction(self):
-        rule = threshold("20", "at_most")
-        assert truth_outcome(survey("19.9", "0.05"), rule) == "pass"
-        assert truth_outcome(survey("19.96", "0.05"), rule) == "borderline"
-        assert truth_outcome(survey("20.051", "0.05"), rule) == "fail"
+    def test_equality_is_exact_decimal(self):
+        # 3.1 - 3.0 is 0.10000000000000009 in floats, which would clear u = 0.1 and pass.
+        assert 3.1 - 3.0 > 0.1
+        assert truth_outcome(survey("3.1", "0.1"), threshold("3")) == "borderline"
 
     def test_absent_feature_clears_an_at_least_rule(self):
         assert truth_outcome(survey(None, None, status="absent"), threshold("3")) == "pass"
@@ -83,9 +97,10 @@ class TestErrorToMargin:
         assert error_to_margin(D("0.1"), (D("0"),), D("0")) == AT_THRESHOLD
         assert error_to_margin(D("0"), (D("0"),), D("0")) == AT_THRESHOLD
 
-    def test_ratio_of_exactly_one_cannot_flip(self):
-        assert could_flip(D("1"), D("0.5")) is False
-        assert could_flip(D("1.0001"), D("0.5")) is True
+    def test_ratio_of_exactly_one_can_flip(self):
+        # The run could land exactly on the line, which no longer passes under the strict rule.
+        assert could_flip(D("0.9999"), D("0.5")) is False
+        assert could_flip(D("1"), D("0.5")) is True
 
     def test_at_threshold_flips_on_any_error(self):
         assert could_flip(AT_THRESHOLD, D("0.001")) is True
@@ -230,11 +245,11 @@ class TestScoreCheck:
 
     def test_survey_on_the_threshold_with_no_uncertainty(self):
         score = check_score("3", "0", "3.1", "0.3", "pass")
-        assert score.truth == "pass"
+        assert score.truth == "borderline"
         assert score.margin_ft == D("0")
         assert score.error_to_margin == AT_THRESHOLD
         assert score.could_flip is True
-        assert score.agrees is True
+        assert (score.agrees, score.missed_review) == (False, True)
 
     def test_absent_feature_passes_without_a_ratio(self):
         score = check_score(None, None, None, None, "pass", missing="absent", status="absent")
@@ -242,6 +257,51 @@ class TestScoreCheck:
         assert score.margin_ft is None
         assert score.error_to_margin is None
         assert score.agrees is True
+
+
+class TestDecidedWithoutItsMeasurement:
+    # A pass or fail although the run's measurement is missing as failed or unsupported.
+
+    @pytest.mark.parametrize("missing", ["failed", "unsupported"])
+    def test_pass_on_a_failing_survey_is_flagged_and_still_unsafe(self, missing):
+        score = check_score("2.5", "0.02", None, None, "pass", missing=missing)
+        assert score.decided_without_measurement is True
+        assert (score.truth, score.unsafe_pass, score.agrees) == ("fail", True, False)
+        assert score.abstention is None
+
+    def test_fail_on_a_passing_survey_is_flagged_and_still_a_false_rejection(self):
+        score = check_score("5", "0.02", None, None, "fail", missing="unsupported")
+        assert score.decided_without_measurement is True
+        assert (score.false_rejection, score.over_caution) == (True, True)
+
+    def test_correct_decision_is_flagged_but_agrees(self):
+        score = check_score("2.5", "0.02", None, None, "fail", missing="failed")
+        assert (score.decided_without_measurement, score.agrees) == (True, True)
+
+    def test_flagged_even_when_the_survey_outcome_is_unknown(self):
+        score = check_score(None, None, None, None, "pass", missing="failed", status="not_measured")
+        assert score.truth == "unknown"
+        assert score.agrees is None
+        assert score.decided_without_measurement is True
+
+    def test_unsure_without_a_measurement_is_not_flagged(self):
+        score = check_score("2.5", "0.02", None, None, "unsure", missing="failed")
+        assert score.decided_without_measurement is False
+        assert score.abstention == "justified"
+
+    def test_decision_on_a_claimed_absence_is_not_flagged(self):
+        agreed = check_score(None, None, None, None, "pass", missing="absent", status="absent")
+        assert agreed.decided_without_measurement is False
+        wrongly_absent = check_score("2.5", "0.02", None, None, "pass", missing="absent")
+        assert wrongly_absent.decided_without_measurement is False
+        assert wrongly_absent.unsafe_pass is True
+
+    def test_decision_with_a_measurement_is_not_flagged(self):
+        assert check_score("5", "0.02", "5.1", "0.3", "pass").decided_without_measurement is False
+
+    def test_run_without_decisions_is_not_judged(self):
+        score = check_score("5", "0.02", None, None, None, missing="failed")
+        assert score.decided_without_measurement is None
 
 
 REVIEW = threshold("15", "at_most", "review_route_ft")
@@ -254,16 +314,19 @@ def route_outcome(value: str, plus_minus: str = "0"):
 
 
 class TestRouteBand:
-    # Pass when length + u <= 15, fail when length - u > 20, review otherwise.
+    # Strict: pass when length + u < 15, fail when length - u > 20, review otherwise, so a
+    # length exactly on either line, or exactly u from it, is review.
 
     @pytest.mark.parametrize(
         ("length", "expected"),
         [
             ("10", "pass"),
-            ("15", "pass"),  # on the review line: pass
+            ("14.999", "pass"),
+            ("15", "review"),  # on the review line
             ("15.001", "review"),
             ("17.5", "review"),
-            ("20", "review"),  # on the max line: still review, not fail
+            ("19.999", "review"),
+            ("20", "review"),  # on the max line: review, not fail
             ("20.001", "fail"),
             ("25", "fail"),
         ],
@@ -274,10 +337,11 @@ class TestRouteBand:
     @pytest.mark.parametrize(
         ("length", "plus_minus", "expected"),
         [
-            ("14.7", "0.3", "pass"),  # 14.7 + 0.3 = 15, on the review line
-            ("14.701", "0.3", "review"),  # its +- crosses the review line
-            ("14.9", "0.3", "review"),
-            ("20.3", "0.3", "review"),  # 20.3 - 0.3 = 20, not past max
+            ("14.699", "0.3", "pass"),  # 14.999 < 15
+            ("14.7", "0.3", "review"),  # 14.7 + 0.3 = 15, on the review line
+            ("14.701", "0.3", "review"),
+            ("20.299", "0.3", "review"),  # 19.999, not past max
+            ("20.3", "0.3", "review"),  # 20.3 - 0.3 = 20, on the max line
             ("20.301", "0.3", "fail"),
             ("19.9", "0.3", "review"),  # its +- reaches past max, but a fail needs all of it past
         ],
@@ -354,9 +418,10 @@ class TestRouteBand:
             survey("15", "0"), reported("15.1", "0.3"), scale_reference=False
         )
         score = score_check(ROUTE, MAX, measurement, "pass", REVIEW)
-        assert score.truth == "pass"
+        assert score.truth == "review"
         assert score.error_to_margin == AT_THRESHOLD
         assert score.could_flip is True
+        assert score.missed_review is True
 
 
 GAS = threshold("3", "at_least")
@@ -483,5 +548,6 @@ class TestRunScore:
         run = run_score("5", outcomes={("c1", "gas"): "pass"})
         assert run.makes_decisions
         assert (run.judged, run.agreements, run.unsafe_passes) == (1, 1, 0)
+        assert run.decided_without_measurement == 0
         assert run_score("5").makes_decisions is False
         assert run_score("5").agreements == 0

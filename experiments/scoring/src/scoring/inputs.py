@@ -4,8 +4,8 @@ Any problem raises InputError naming the file, the field and what was wrong. A t
 survey has to stop the run, because a silently skipped row changes the score without anyone seeing.
 
 Numbers are parsed as Decimal, not float. Checks compare survey values against thresholds, and an
-exact tie has to land on the same side every time: in floats 3.3 - 3.0 is 0.2999999999999998, which
-would turn a value exactly one survey tolerance above the threshold into a borderline.
+exact tie has to land on the same side every time: in floats 3.1 - 3.0 is 0.10000000000000009, which
+would pass a 3.1 +- 0.1 ft clearance against a 3 ft rule that is exactly borderline.
 """
 
 import hashlib
@@ -640,15 +640,9 @@ def _match(results: Results, truth: Truth, rules: Rules) -> None:
             f'{path}: no outcome for {_checks_list(absent)}; report "unsure" when the run '
             "cannot decide, or set outcomes to null for a run that makes no decisions"
         )
-    for check in truth.checks:
-        outcome = results.outcomes[(check.candidate, check.check)]
-        measurement = results.measurements[check.measurement]
-        if outcome != "unsure" and measurement.missing in ("failed", "unsupported"):
-            raise InputError(
-                f"{path}: outcomes for {check.check} at {check.candidate}: cannot report "
-                f"{outcome!r} when measurement {check.measurement!r} is "
-                f"{measurement.missing}; report 'unsure'"
-            )
+    # A pass or fail whose measurement is missing as failed or unsupported is accepted and
+    # scored: the scorer measures what pipelines do, and metrics.py counts it as a decision
+    # made without its measurement.
 
 
 def _require_same_capture_time(results: Results, earlier: list[Results]) -> None:

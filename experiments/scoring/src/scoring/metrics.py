@@ -99,15 +99,16 @@ def truth_outcome(
     """The outcome the tape survey supports under the rules.
 
     Margins are signed so that positive is the passing side, and u is the survey uncertainty.
-    The check passes when the margin to the pass line is at least u and fails when the margin to
-    the fail line is below -u. The fail line is `threshold`. The pass line is `review` when the
-    check has a review band and `threshold` otherwise. Anything else is borderline for a single
-    threshold, or review for a band, as docs/02-implementation-plan.md "Lane C" sends a route
-    past the confident reach to UNSURE.
+    The check passes when the margin to the pass line is larger than u and fails when the margin
+    to the fail line is below -u. The fail line is `threshold`. The pass line is `review` when
+    the check has a review band and `threshold` otherwise. Anything else is borderline for a
+    single threshold, or review for a band, as docs/02-implementation-plan.md "Lane C" sends a
+    route past the confident reach to UNSURE.
 
-    Equality passes, matching "within 20 ft" and "at least 3 ft": with u = 0 a value exactly on
-    the pass line passes, and a value exactly on the fail line of a band is review, not fail. A
-    missing feature clears every at_least rule.
+    Both comparisons are strict, following Lane C: "A check answers PASS if the margin is larger
+    than the error." A value exactly on a line, or exactly u from it, is borderline or review,
+    never pass or fail, including when u = 0. The solver uses the same rule, so a correct
+    pipeline agrees with this outcome. A missing feature clears every at_least rule.
     """
     if survey.status == "not_measured":
         return "unknown"
@@ -119,7 +120,7 @@ def truth_outcome(
     fail_margin = passing_margin_ft(survey, threshold)
     uncertainty = survey.plus_minus_ft
     assert pass_margin is not None and fail_margin is not None and uncertainty is not None
-    if pass_margin >= uncertainty:
+    if pass_margin > uncertainty:
         return "pass"
     if fail_margin < -uncertainty:
         return "fail"
@@ -149,7 +150,7 @@ def expected_outcome(truth: TruthOutcome) -> Outcome | None:
 def error_to_margin(
     abs_error_ft: Decimal, margins_ft: tuple[Decimal, ...], survey_plus_minus_ft: Decimal
 ) -> Decimal | str:
-    """error / max(m, survey uncertainty). Above 1, the run's error could flip the check.
+    """error / max(m, survey uncertainty). At 1 or above, the run's error could flip the check.
 
     m is the survey value's distance to the nearest threshold in `margins_ft`: the one threshold,
     or either edge of a review band, since crossing either edge changes the outcome. Returns
@@ -163,10 +164,12 @@ def error_to_margin(
 
 
 def could_flip(ratio: Decimal | str, abs_error_ft: Decimal) -> bool:
+    """An error equal to the margin can put the run exactly on a line, where it no longer passes
+    or fails under the strict rule, so a ratio of exactly 1 can flip the check."""
     if ratio == AT_THRESHOLD:
         return abs_error_ft > 0
     assert isinstance(ratio, Decimal)
-    return ratio > 1
+    return ratio >= 1
 
 
 @dataclass(frozen=True)
@@ -194,6 +197,10 @@ class CheckScore:
     # An unsure or fail where the survey passes.
     over_caution: bool | None
     false_rejection: bool | None
+    # A pass or fail although the run's own measurement is missing as failed or unsupported.
+    # Missing as absent is not counted: the run says the feature does not exist, which can
+    # decide a clearance. Counted whatever the survey outcome, including unknown.
+    decided_without_measurement: bool | None
     abstention: Abstention | None
 
 
@@ -221,6 +228,10 @@ def score_check(
     expected = expected_outcome(truth)
     agrees = unsafe = missed = cautious = rejection = None
     abstention: Abstention | None = None
+    blind = None
+    if reported is not None:
+        run_missing = measurement.reported.missing if measurement.reported else None
+        blind = reported in ("pass", "fail") and run_missing in ("failed", "unsupported")
     if reported is not None and truth != "unknown":
         agrees = reported == expected
         unsafe = reported == "pass" and truth == "fail"
@@ -250,6 +261,7 @@ def score_check(
         missed_review=missed,
         over_caution=cautious,
         false_rejection=rejection,
+        decided_without_measurement=blind,
         abstention=abstention,
     )
 
@@ -313,6 +325,10 @@ class RunScore:
     @property
     def over_cautious(self) -> int:
         return sum(score.over_caution is True for score in self.checks)
+
+    @property
+    def decided_without_measurement(self) -> int:
+        return sum(score.decided_without_measurement is True for score in self.checks)
 
     @property
     def false_rejections(self) -> int:
