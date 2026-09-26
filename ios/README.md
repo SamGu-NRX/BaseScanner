@@ -8,6 +8,28 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 - `HouseScan/Runtime/` is the engine: ARKit and replay frame sources, the state machine behind `ScanActions`, keyframe storage, upload and the autopilot.
 - `HouseScan/UI/` holds the screens. They read `ScanViewState` and call `ScanActions`; `HouseScan/Contract/ScanContract.swift` is the boundary between the two.
 
+## 3D map
+
+`HouseScanKit/Sources/HouseScanKit/Map3D/` keeps a live occupancy map of the space around the meter. A ray from the camera marks the voxels it passes through as free and the voxel it stops in as surface. Voxels no ray reached stay unknown, so a wall behind a bush stays unseen until some view gets past the bush. The map uses 10 cm voxels in 8³ bricks, stored only once a ray reaches them, in the meter-anchored, gravity-aligned `MapFrame`. The default bounds hold at most 32 MB.
+
+`Runtime/Map3DFeed.swift` converts ARKit data into the map's inputs on the AR delegate queue. Nothing calls it yet. Integrate only frames with normal tracking.
+
+| Phone | Session setting | Feed |
+| --- | --- | --- |
+| LiDAR | `frameSemantics.insert(.sceneDepth)`, `sceneReconstruction = .meshWithClassification` | `depthFrame` → `Map3D.integrate`; `meshChunks` → `Map3D.update` |
+| No LiDAR | plane detection (already on) | `featureFrame` → `Map3D.integrate`; `planes` → `Map3D.update` |
+
+Outputs, all against a `WallFrame` (the walk's, or one built from the map's own walls):
+
+- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`. A span is seen only where rays reached it.
+- `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners, each marked `mesh` or `plane`. `wallFrame(meter:groundY:frame:)` turns it into a `WallFrame`. scene.json's walls have no `source` field, so the source doesn't reach the server.
+- `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
+- `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
+
+Without LiDAR, only occluders that carry tracked feature points hide what is behind them. `DepthFrame.Kind.estimated` takes monocular depth with a per-pixel standard deviation. That depth is never used for walls.
+
+On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel). `swift test -c release --filter Map3DPerformanceTests` prints the current numbers.
+
 ## Launch arguments
 
 | Argument | Effect |
