@@ -11,14 +11,32 @@ public struct GapPlan: Sendable, Equatable {
         case server
     }
 
+    /// What settles the request.
+    public enum Need: Sendable, Equatable {
+        /// `GapPlannerConfig.satisfiedFraction` of the band's cells over the span covered.
+        case cells
+        /// The ground seen out to this many meters from the wall over the whole span
+        /// (`CoverageMap.groundDepth(at:)`).
+        case groundOut(Float)
+        /// The span walked past with this many meters of clearance left after the position error
+        /// (`CoverageMap.walkedClearance(at:)`): the walk must pass `out` plus the error out.
+        case walkOut(Float)
+        /// A recorded tilt-up view over the whole span reaching this height, meters
+        /// (`CoverageMap.overheadHeight(at:)`); nil when any recorded view does.
+        case overhead(Float?)
+    }
+
+    /// The band the request is drawn on: facing requests on the ground, overhead on the wall.
     public var band: SurfaceBand
     public var span: ClosedRange<Float>
     public var reason: Reason
+    public var need: Need
 
-    public init(band: SurfaceBand, span: ClosedRange<Float>, reason: Reason) {
+    public init(band: SurfaceBand, span: ClosedRange<Float>, reason: Reason, need: Need = .cells) {
         self.band = band
         self.span = span
         self.reason = reason
+        self.need = need
     }
 }
 
@@ -87,12 +105,36 @@ public struct GapPlanner: Sendable {
         return runs.filter { $0.upperBound - $0.lowerBound >= config.minRun - 1e-4 }
     }
 
+    /// The fraction of the request's cells that meet its need.
     public func progress(of gap: GapPlan, _ coverage: CoverageMap) -> Double {
-        coverage.coveredFraction(gap.band, in: gap.span)
+        // A reach meets a request in feet as the export will report it (rounded down), so the
+        // phone never calls a request met that the uploaded scene falls short of.
+        func reaches(_ value: Float?, _ needed: Float) -> Bool {
+            guard let value else { return false }
+            return SceneExport.feetDown(value) >= SceneExport.round4(Double(needed) * SceneUnits.feetPerMeter)
+        }
+        let met: (Int) -> Bool
+        switch gap.need {
+        case .cells:
+            return coverage.coveredFraction(gap.band, in: gap.span)
+        case .groundOut(let out):
+            met = { reaches(coverage.groundDepth(at: $0), out) }
+        case .walkOut(let out):
+            met = { reaches(coverage.walkedClearance(at: $0), out) }
+        case .overhead(let height):
+            met = { index in height.map { reaches(coverage.overheadHeight(at: index), $0) } ?? (coverage.overheadHeight(at: index) != nil) }
+        }
+        let cells = coverage.indices(overlapping: gap.span).filter(coverage.isWithinEnds)
+        guard !cells.isEmpty else { return 0 }
+        return Double(cells.filter(met).count) / Double(cells.count)
     }
 
+    /// A cell-coverage request is met at `satisfiedFraction`. A request with a reach is met only
+    /// over its whole span: the server settles it only when observed entries cover all of it
+    /// (server/README.md, "What settles each check").
     public func isSatisfied(_ gap: GapPlan, _ coverage: CoverageMap) -> Bool {
-        progress(of: gap, coverage) >= config.satisfiedFraction
+        let progress = progress(of: gap, coverage)
+        return gap.need == .cells ? progress >= config.satisfiedFraction : progress >= 1
     }
 
     private func distanceToMeter(_ run: ClosedRange<Float>) -> Float {
@@ -101,25 +143,35 @@ public struct GapPlanner: Sendable {
 }
 
 extension GapPlanner {
-    /// The capture request for an item of the server's missing evidence, or nil when no walk can
-    /// settle it (overhead and facing bands need a person with a tape).
+    /// The capture request for an item of the server's missing evidence, or nil when no capture
+    /// can settle it.
     ///
-    /// A band item asks for its own span. A past-end item asks for the ground 2 m beyond that
-    /// end: far enough to show whether the wall continues, near enough to stay one instruction.
+    /// A band item asks for its own span, and for its `out_ft` when it has one: ground seen that
+    /// far out, a walk past the span that far out (facing), a tilt-up view reaching that high
+    /// (overhead). A facing item without `out_ft` asks for a measurement of what faces the wall,
+    /// which a walk can't give, so it has no request. A past-end item asks for the ground 2 m
+    /// beyond that end: far enough to show whether the wall continues, near enough to stay one
+    /// instruction.
     public func plan(for item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?) -> GapPlan? {
         let metersPerFoot: Float = 0.3048
         switch item.kind {
         case .band:
             guard let span = item.spanFt else { return nil }
+            let out = item.outFt.map { Float($0) * metersPerFoot }
             let band: SurfaceBand
+            let need: GapPlan.Need
             switch item.band {
-            case .wall?: band = .wall
-            case .ground?: band = .ground
-            case .overhead?, .facing?, nil: return nil
+            case .wall?: (band, need) = (.wall, .cells)
+            case .ground?: (band, need) = (.ground, out.map(GapPlan.Need.groundOut) ?? .cells)
+            case .facing?:
+                guard let out else { return nil }
+                (band, need) = (.ground, .walkOut(out))
+            case .overhead?: (band, need) = (.wall, .overhead(out))
+            case nil: return nil
             }
             let low = Float(min(span.x, span.y)) * metersPerFoot
             let high = Float(max(span.x, span.y)) * metersPerFoot
-            return GapPlan(band: band, span: low...high, reason: .server)
+            return GapPlan(band: band, span: low...high, reason: .server, need: need)
         case .pastEnd:
             guard let side = item.side else { return nil }
             switch side {

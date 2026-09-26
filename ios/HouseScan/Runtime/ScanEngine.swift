@@ -63,6 +63,9 @@ final class ScanEngine {
     private var gapCounter = 0
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
+    /// Tilt-up views kept when the current gap request began: an overhead request is closed by a
+    /// new one (`recordOverheadClear`), which keeps no keyframe.
+    private var overheadViewsAtGapStart = 0
     private var skippedGaps: [GapPlan] = []
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
@@ -501,15 +504,19 @@ final class ScanEngine {
     private func updateGap(camera: CameraFrame?) {
         guard let map = coverage, let plan = gapPlan, var request = state.gap else { return }
         request.progress = gapPlanner.progress(of: plan, map)
-        let satisfied = gapPlanner.isSatisfied(plan, map) && store.keyframes.count > keyframesAtGapStart
+        let fresh = if case .overhead = plan.need {
+            map.overheadCameras.count > overheadViewsAtGapStart
+        } else {
+            store.keyframes.count > keyframesAtGapStart
+        }
+        let satisfied = gapPlanner.isSatisfied(plan, map) && fresh
         state.guidance = .gap
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
-        state.target = plan.band == .ground
-            ? map.wall.world(s: center, height: 0, out: map.config.groundBandDepth / 2)
-            : map.wall.world(s: center, height: 1.2)
+        let cue = gapCue(plan, map, center: center)
+        state.target = cue.target
         if let camera {
             let from = map.wall.wallPoint(camera.position).s
-            state.path = [from, center].map { map.wall.world(s: $0, height: 0, out: 1.5) }
+            state.path = [from, center].map { map.wall.world(s: $0, height: 0, out: cue.standOut) }
         }
         logGuidance()
         if satisfied, !request.isSatisfied {
@@ -527,6 +534,32 @@ final class ScanEngine {
             }
         } else if !request.isSatisfied {
             state.gap = request
+        }
+    }
+
+    /// Where a gap request points the camera, and how far out from the wall to walk for it.
+    private func gapCue(_ plan: GapPlan, _ map: CoverageMap, center: Float) -> (target: SIMD3<Float>, standOut: Float) {
+        let standOff = planner.config.standOff
+        switch plan.need {
+        case .cells:
+            let target = plan.band == .ground
+                ? map.wall.world(s: center, height: 0, out: map.config.groundBandDepth / 2)
+                : map.wall.world(s: center, height: 1.2)
+            return (target, standOff)
+        case .groundOut(let out):
+            // 1 m beyond the requested depth: a phone at chest height (about 1.4 m) tilted down
+            // there sees the ground from about 2 m nearer the wall out to that depth, within the
+            // 65 degree view limit. Geometry only; not tried on a device.
+            return (map.wall.world(s: center, height: 0, out: out), max(standOff, out + 1))
+        case .walkOut(let out):
+            // The walk has to pass `out` plus the position error at the span's far edge; 0.3 m
+            // more leaves room for drifting toward the wall. The 0.3 m is a guess.
+            let farEdge = max(abs(plan.span.lowerBound), abs(plan.span.upperBound))
+            return (map.wall.world(s: center, height: 1.2), max(standOff, out + CoverageMap.positionError(atS: farEdge) + 0.3))
+        case .overhead(let height):
+            // Aim above the wall band, at the height asked for when there is one.
+            let aim = max(map.config.overheadFrom + 1, height ?? 0)
+            return (map.wall.world(s: center, height: aim), standOff)
         }
     }
 
@@ -696,9 +729,17 @@ final class ScanEngine {
     }
 
     func beginGap(_ plan: GapPlan, origin: GapRequest.Origin, reason: GapRequest.Reason) {
+        // A request with a reach says what to do in its own terms, whatever the caller passed.
+        let reason: GapRequest.Reason = switch plan.need {
+        case .cells: reason
+        case .groundOut(let out): .groundOut(out: out)
+        case .walkOut(let out): .walkOut(out: out)
+        case .overhead: .overhead
+        }
         gapCounter += 1
         gapPlan = plan
         keyframesAtGapStart = store.keyframes.count
+        overheadViewsAtGapStart = coverage?.overheadCameras.count ?? 0
         let progress = coverage.map { gapPlanner.progress(of: plan, $0) } ?? 0
         state.gap = GapRequest(id: gapCounter, origin: origin, reason: reason, band: plan.band == .ground ? .ground : .wall, span: plan.span, progress: progress, isSatisfied: false)
         state.guidance = .gap
@@ -732,9 +773,28 @@ final class ScanEngine {
         }
     }
 
+    /// Keeps the tilt-up view as overhead evidence (`CoverageMap.recordOverhead`). Call it only
+    /// once the homeowner answered that nothing is overhead (`answerOverhead(clear: true)`): the
+    /// camera can't tell open sky from an eave. `frame` is the view that was tilted up; nil uses
+    /// the latest frame. Returns false when nothing was kept: tracking was not normal, or the
+    /// view did not show the wall from the top of the wall band (6.5 ft) upward. The export then
+    /// sends each stretch the view reached as an overhead entry with the height seen.
+    @discardableResult
+    func recordOverheadClear(from frame: SourceFrame? = nil) -> Bool {
+        guard var map = coverage, let frame = frame ?? lastFrame else { return false }
+        let reach = map.recordOverhead(frame.camera, trackingNormal: frame.tracking == .normal)
+        guard !reach.isEmpty else { return false }
+        coverage = map
+        RuntimeLog.engine.info("overhead: kept a view reaching \(reach.map(\.out).min() ?? 0) m over s=\(reach.first?.span.lowerBound ?? 0)...\(reach.last?.span.upperBound ?? 0)")
+        afterCoverageChange(camera: frame.camera, time: frame.timestamp)
+        return true
+    }
+
     func skipCurrentGap() {
         guard let plan = gapPlan else { return }
-        coverage?.markSkipped(plan.band, plan.span)
+        // Only a cell request marks cells: skipping a deeper, walked or overhead view says
+        // nothing about the band the strip draws.
+        if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
         skippedGaps.append(plan)
         publishCoverage()
         RuntimeLog.engine.info("gap \(self.gapCounter) skipped")

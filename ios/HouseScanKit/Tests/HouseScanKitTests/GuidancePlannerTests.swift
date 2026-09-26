@@ -106,7 +106,7 @@ import Testing
         let path = planner.update(coverage: CoverageMap(wall: wall), camera: Self.homeowner(), time: 0).path
         #expect(path.count == 3)
         for (point, s) in zip(path, [Float(0), -0.5, -1]) {
-            #expect(nearlyEqual(point, SIMD3(s, 0, 1.5)))
+            #expect(nearlyEqual(point, SIMD3(s, 0, GuidanceConfig().standOff)))
         }
     }
 
@@ -118,7 +118,7 @@ import Testing
         #expect(path.count == 7)
         for point in path {
             let p = wall.wallPoint(point)
-            #expect(nearlyEqual(p.out, 1.5) && nearlyEqual(p.height, 0))
+            #expect(nearlyEqual(p.out, GuidanceConfig().standOff) && nearlyEqual(p.height, 0))
         }
         let first = try #require(path.first)
         let last = try #require(path.last)

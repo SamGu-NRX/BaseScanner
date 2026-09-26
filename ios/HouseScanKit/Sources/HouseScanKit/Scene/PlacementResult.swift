@@ -352,6 +352,10 @@ public struct PlacementMissingEvidence: Codable, Sendable, Equatable {
     public var kind: PlacementEvidenceKind
     public var band: PlacementBand?
     public var spanFt: SIMD2<Double>?
+    /// Ground, facing and overhead requests: how far the view must reach, feet, out from the wall
+    /// (ground, facing) or up from the ground (overhead). An observed entry settles the request
+    /// when its `out_ft` is at least this.
+    public var outFt: Double?
     public var side: PlacementSide?
     public var checks: [String]?
     public var message: String
@@ -359,6 +363,7 @@ public struct PlacementMissingEvidence: Codable, Sendable, Equatable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case kind, band, side, checks, message
         case spanFt = "span_ft"
+        case outFt = "out_ft"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -366,6 +371,7 @@ public struct PlacementMissingEvidence: Codable, Sendable, Equatable {
         kind = try c.decode(PlacementEvidenceKind.self, forKey: .kind)
         band = try c.decodeIfPresent(PlacementBand.self, forKey: .band)
         spanFt = c.contains(.spanFt) ? try c.placementPair(.spanFt) : nil
+        outFt = try c.decodeIfPresent(Double.self, forKey: .outFt)
         side = try c.decodeIfPresent(PlacementSide.self, forKey: .side)
         checks = try c.decodeIfPresent([String].self, forKey: .checks)
         message = try c.decode(String.self, forKey: .message)
@@ -376,6 +382,7 @@ public struct PlacementMissingEvidence: Codable, Sendable, Equatable {
         try c.encode(kind, forKey: .kind)
         try c.encodeIfPresent(band, forKey: .band)
         if let spanFt { try c.placementEncode(spanFt, forKey: .spanFt) }
+        try c.encodeIfPresent(outFt, forKey: .outFt)
         try c.encodeIfPresent(side, forKey: .side)
         try c.encodeIfPresent(checks, forKey: .checks)
         try c.encode(message, forKey: .message)
