@@ -40,7 +40,7 @@ These are the facts behind numbers in the code that the code alone doesn't expla
 - ARKit camera space is x right, y up, looking down −z, with image v growing downward. The ray through pixel (u, v) points along ((u − cx)/fx, −(v − cy)/fy, −1) before the camera-to-world rotation.
 - Keyframes are kept every 0.5 m or 15° of movement, a day-1 choice that Measure Lab kept.
 - Mesh vertices are local to their `ARMeshAnchor`. Copy each one out of ARKit's buffer, then multiply the copy by the anchor's transform, leaving the buffer untouched. Classified mesh needs `sceneReconstruction = .meshWithClassification` on the world-tracking configuration, on LiDAR phones only. RealityKit also turns classification off unless `automaticallyConfigureSession` is `false`.
-- On the mesh, the gap to a facing fence is a ray straight out from the wall at 1.5 ft high, and headroom is a ray straight up from 1 ft out. Both heights are day-1 choices, not measured. The mesh has holes, so each measurement is the smallest distance over a small fan of rays.
+- On the mesh, the gap to a facing fence is a ray straight out from the wall at 1.5 ft high, and headroom is a ray straight up from 1 ft out. The 1.5 ft height and the 1 ft offset are day-1 choices, not measured. The mesh has holes, so each measurement is the smallest distance over a small fan of rays.
 - LiDAR reads from about 0.5 m to 5 m, so capture stands 1 to 3 m from the wall. A ray that meets nothing within 5 m is unknown, not open.
 - The default error bars are day-1 estimates, untested: 0.3 ft for an AR tap, 0.5 ft for the LiDAR mesh and 1.5 ft for a position from photo detection. The server adds 0.16 ft per foot along the wall from the meter, from measured ARKit drift.
 

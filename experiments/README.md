@@ -8,5 +8,5 @@ The record of an experiment is its code and the files it produced. Its README is
 - The README stays under about 200 words: the question and its pass criteria, written before the run, the command that runs it and what that needs, the result in a sentence or two with its numbers, and what it changed in the product or the plan. Keep a failed result, because it says which part to change next.
 - Generated tables and plots from public data go in `results/` inside the folder, with the command that produced them. Anything from a real home, and anything Base gave us, goes in git-ignored `data/`.
 - When the product or the plan relies on the result, `docs/00-overview.md` gets one line under "Evidence so far" that points here.
-- Delete an experiment when a later one supersedes it. The finding stays in `docs/00`, and git keeps the code.
+- Delete an experiment when a later one supersedes it. First point its line in `docs/00` at the experiment that replaced it, so the finding stays and its source still exists. Git keeps the old code.
 - Read and write `scene.json`, the app's measurement file, so every method's numbers compare on the same terms.
