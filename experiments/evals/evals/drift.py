@@ -19,8 +19,8 @@ Three references are scored:
   (`reference_scale_check`), because GPS and ARCore both say the map was mis-scaled in 20 and 21;
 - `arcore`: the Pixel's ARCore track, an independent tracker with its own camera and IMU.
 
-`three_cornered_hat` splits the spread of the pairwise differences into each tracker's own spread,
-assuming their random errors are independent. That is how the report tells ARKit's error apart
+`three_cornered_hat` splits the variance of the pairwise differences into each tracker's own
+variance, assuming their random errors are independent. That is how the report tells ARKit's error apart
 from the reference's.
 
 A sequence whose ARKit track moves faster than a person walks (over 4 m/s between 10 Hz samples)
@@ -65,20 +65,34 @@ def yaw_between(R_from: np.ndarray, R_to: np.ndarray) -> np.ndarray:
 def window_pairs(
     ref_p: np.ndarray, distance_m: float, start_step: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Start and end sample indices: each start, and the first sample at which the reference has
-    walked `distance_m` of horizontal path since it. Windows that run off the end are dropped."""
+    """Start indices, and the fractional index at which the reference has walked exactly
+    `distance_m` of horizontal path since each start (interpolated within the sample step, so a
+    "3 ft" window is 3 ft, not the first sample past it). Windows that run off the end are dropped."""
     walked = horizontal_path_length(ref_p)
     i = np.arange(0, len(ref_p), start_step)
-    j = np.searchsorted(walked, walked[i] + distance_m)
-    keep = j < len(ref_p)
-    return i[keep], j[keep]
+    target = walked[i] + distance_m
+    j0 = np.searchsorted(walked, target)  # first sample at or past the target
+    keep = (j0 < len(ref_p)) & (j0 > 0)
+    i, j0, target = i[keep], j0[keep], target[keep]
+    frac = (target - walked[j0 - 1]) / (walked[j0] - walked[j0 - 1])
+    return i, (j0 - 1) + frac
+
+
+def at(p: np.ndarray, j: np.ndarray) -> np.ndarray:
+    """Positions at fractional sample indices, linearly interpolated."""
+    lo = np.floor(j).astype(int)
+    hi = np.minimum(lo + 1, len(p) - 1)
+    f = (j - lo)[:, None]
+    return p[lo] * (1 - f) + p[hi] * f
 
 
 def distance_errors(
     est_p: np.ndarray, ref_p: np.ndarray, i: np.ndarray, j: np.ndarray
 ) -> np.ndarray:
-    """|est[j] - est[i]| - |ref[j] - ref[i]| for each window, meters (signed)."""
-    return np.linalg.norm(est_p[j] - est_p[i], axis=1) - np.linalg.norm(ref_p[j] - ref_p[i], axis=1)
+    """|est(j) - est(i)| - |ref(j) - ref(i)| for each window, meters (signed); j may be fractional."""
+    de = at(est_p, j) - est_p[i]
+    dr = at(ref_p, j) - ref_p[i]
+    return np.linalg.norm(de, axis=1) - np.linalg.norm(dr, axis=1)
 
 
 def position_errors(
@@ -89,24 +103,20 @@ def position_errors(
     i: np.ndarray,
     j: np.ndarray,
 ) -> np.ndarray:
-    """|Y (est[j] - est[i]) - (ref[j] - ref[i])|, with Y the heading difference at the start."""
+    """|Y (est(j) - est(i)) - (ref(j) - ref(i))|, with Y the heading difference at the start."""
+    de = at(est_p, j) - est_p[i]
+    dr = at(ref_p, j) - ref_p[i]
     out = np.empty(len(i))
-    for k, (a, b) in enumerate(zip(i, j, strict=True)):
-        Y = yaw_between(est_R[a], ref_R[a])
-        out[k] = np.linalg.norm(Y @ (est_p[b] - est_p[a]) - (ref_p[b] - ref_p[a]))
+    for k, a in enumerate(i):
+        out[k] = np.linalg.norm(yaw_between(est_R[a], ref_R[a]) @ de[k] - dr[k])
     return out
-
-
-def robust_variance(x: np.ndarray) -> float:
-    """Variance about the median from the median absolute deviation (1.4826 MAD, squared)."""
-    x = np.asarray(x, dtype=float)
-    return float((1.4826 * np.median(np.abs(x - np.median(x)))) ** 2)
 
 
 def three_cornered_hat(var_ab: float, var_ac: float, var_bc: float) -> tuple[float, float, float]:
     """Each tracker's own variance from the variances of three pairwise differences, assuming
     independent errors: var_ab = a + b, var_ac = a + c, var_bc = b + c. A negative result means that
-    tracker's error is below what the other two can resolve."""
+    tracker's error is below what the other two can resolve. The inputs must be plain variances:
+    only those add for independent errors (a median-based spread does not)."""
     a = (var_ab + var_ac - var_bc) / 2
     b = var_ab - a
     c = var_ac - a
@@ -262,9 +272,9 @@ def evaluate_sequence(number: int) -> dict:
         result["position_error_truth_gps"][str(ft)] = _abs_stats_in(pe)
         arcore_vs_truth = distance_errors(refs["arcore"], refs["truth_gps"], i, j)
         va, vt, vc = three_cornered_hat(
-            robust_variance(errs["truth_gps"]),
-            robust_variance(errs["arcore"]),
-            robust_variance(arcore_vs_truth),
+            np.var(errs["truth_gps"], ddof=1),
+            np.var(errs["arcore"], ddof=1),
+            np.var(arcore_vs_truth, ddof=1),
         )
         sig = lambda v: round(float(np.sign(v) * np.sqrt(abs(v)) / INCH), 2)  # noqa: E731
         result["noise_split_in"][str(ft)] = {

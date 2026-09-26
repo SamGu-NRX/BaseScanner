@@ -4,7 +4,8 @@ Files used, per scene (`<scene>/` after extracting the two archives in `datasets
 
 - `dslr_calibration_undistorted/cameras.txt`, `images.txt`, `points3D.txt`: COLMAP text model of the
   undistorted images. PINHOLE cameras; each image line holds the world-to-camera rotation (QW, QX,
-  QY, QZ) and translation, OpenCV camera axes (+x right, +y down, +z forward). Units are meters,
+  QY, QZ) and translation, OpenCV camera axes (+x right, +y down, +z forward), and pixel centres
+  at half-integers (COLMAP's convention; `read_views` converts to OpenCV's). Units are meters,
   because the images were registered to the laser scans.
 - `images/dslr_images_undistorted/*.JPG`: the undistorted images, about 6200 x 4130 px.
 - `dslr_scan_eval/scan*.ply` and `scan_alignment.mlp`: the laser scans and the 4x4 matrix that
@@ -78,6 +79,8 @@ def read_views(scene_dir: Path) -> list[View]:
         if model != "PINHOLE":
             raise ValueError(f"{cal}/cameras.txt: camera {cid} is {model}, expected PINHOLE")
         fx, fy, cx, cy = map(float, params)
+        # COLMAP puts the first pixel's centre at (0.5, 0.5); OpenCV, used from here on, at (0, 0).
+        cx, cy = cx - 0.5, cy - 0.5
         cams[cid] = (int(w), int(h), np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]]))
     views = []
     lines = [x for x in (cal / "images.txt").read_text().splitlines() if not x.startswith("#")]
@@ -200,14 +203,15 @@ def occluder_points(scene: str, voxel: float = 0.02) -> np.ndarray:
     return pts.astype(np.float32)
 
 
-def excluded_pixels(view: View, width: int, height: int, dilate: int = 8) -> np.ndarray:
+def excluded_pixels(view: View, width: int, height: int, dilate: int = 13) -> np.ndarray:
     """Pixels ETH3D masks out, in the undistorted image resized to width x height.
 
     ETH3D's masks (`masks_for_images/dslr_images/*.png`, value 1 for glass, 2 for objects missing
     from the scan such as trees, trams and people) are drawn on the original distorted images, whose
-    camera model is not in these archives. Both images share a principal point near their centres
-    and the distortion is a few pixels at this size, so the mask is shifted by half the size
-    difference, scaled, and dilated by `dilate` pixels to cover the residual misalignment.
+    camera model is not in these archives. The undistorted image keeps the distorted image's whole
+    field of view (content reaches every border), so the mask is stretched to fill the frame: exact
+    at the centre and at the borders. In between, lens distortion displaces it by up to about 13
+    pixels at 1024 wide, which the dilation covers.
     """
     path = view.image_path.parents[2] / "masks_for_images" / "dslr_images" / f"{view.name}.png"
     if not path.exists():
@@ -216,11 +220,7 @@ def excluded_pixels(view: View, width: int, height: int, dilate: int = 8) -> np.
     mask = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if mask is None:
         raise ValueError(f"{path}: unreadable mask")
-    hd, wd = mask.shape
-    s = width / view.width
-    dx, dy = (view.width - wd) / 2, (view.height - hd) / 2
-    M = np.float32([[s, 0, dx * s], [0, s, dy * s]])
-    out = cv2.warpAffine((mask > 0).astype(np.uint8), M, (width, height), flags=cv2.INTER_NEAREST)
+    out = cv2.resize((mask > 0).astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST)
     if dilate:
         out = cv2.dilate(out, np.ones((2 * dilate + 1, 2 * dilate + 1), np.uint8))
     return out.astype(bool)
@@ -271,8 +271,7 @@ def visible_scan_points(
     cu = np.clip(((u + 0.5) * zbuffer_scale).astype(np.int64), 0, zw - 1)
     cv_ = np.clip(((v + 0.5) * zbuffer_scale).astype(np.int64), 0, zh - 1)
     zbuf = np.full((zh, zw), np.inf, dtype=np.float32)
-    order = np.argsort(-z)  # write far to near: the nearest depth lands last and stays
-    zbuf[cv_[order], cu[order]] = z[order]
+    np.minimum.at(zbuf, (cv_, cu), z.astype(np.float32))
     kernel = np.ones((window, window), np.uint8)
     zmin = cv2.erode(np.where(np.isfinite(zbuf), zbuf, np.float32(1e6)), kernel)
     zmax = cv2.dilate(np.where(np.isfinite(zbuf), zbuf, np.float32(0)), kernel)

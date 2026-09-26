@@ -44,6 +44,11 @@ def test_landscape_intrinsics_hand_computed():
     # image is 1280 x 720 and its continuous centre is (640, 360). Focal lengths swap.
     fx, fy, cx, cy = landscape_intrinsics_from_portrait(1000.0, 1010.0, 359.5, 639.5, 720)
     assert (fx, fy, cx, cy) == (1010.0, 1000.0, 640.0, 360.0)
+    # Off-centre: portrait (OpenCV) cx 349.5 is 10 px left of centre, cy 649.5 is 10 px below.
+    # Landscape u = portrait v, so cx_l = 650 (10 px right); landscape v = 720 - portrait u, so
+    # cy_l = 720 - 350 = 370 (10 px down). A clockwise rotation would give cy_l = 350 instead.
+    _, _, cx2, cy2 = landscape_intrinsics_from_portrait(1000.0, 1010.0, 349.5, 649.5, 720)
+    assert (cx2, cy2) == (650.0, 370.0)
 
 
 def test_landscape_camera_axes_for_upright_portrait_phone():
@@ -66,10 +71,14 @@ def test_column_major_layout():
 
 def test_relative_rotation_identity_and_yaw():
     np.testing.assert_allclose(relative_rotation_cv(np.eye(3), np.eye(3)), np.eye(3))
-    # Camera j is camera i turned 10 degrees left (about world +y): relative angle is 10 degrees.
-    assert rotation_angle_deg(
-        np.eye(3), relative_rotation_cv(np.eye(3), rot_y(10))
-    ) == pytest.approx(10)
+    # Camera j is camera i turned 10 degrees left about world +y (Measure Lab frames). A point
+    # straight ahead of camera i (OpenCV +z) then sits to camera j's right (+x in OpenCV), since j
+    # turned left. Checking the full matrix pins direction and the y/z flip, not just the angle.
+    R = relative_rotation_cv(np.eye(3), rot_y(10))
+    ahead_in_j = R @ np.array([0.0, 0.0, 1.0])
+    a = np.radians(10)
+    np.testing.assert_allclose(ahead_in_j, [np.sin(a), 0.0, np.cos(a)], atol=1e-12)
+    np.testing.assert_allclose(R @ np.array([0.0, 1.0, 0.0]), [0.0, 1.0, 0.0], atol=1e-12)
 
 
 def _kf(T: np.ndarray, intr=(500.0, 500.0, 320.0, 240.0)) -> dict:

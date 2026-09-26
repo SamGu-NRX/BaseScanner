@@ -110,6 +110,9 @@ def read_frames(video: Path, wanted: list[int]) -> dict[int, np.ndarray]:
 def build_session(seq: Sequence, start: float, end: float, out_dir: Path) -> dict:
     t = seq.frame_times
     ark = seq.arkit
+    # Keyframe i takes video frame i and ARKit row i; that holds only if they share timestamps.
+    if len(ark.t) != len(t) or not np.allclose(ark.t, t):
+        raise ValueError(f"advio-{seq.number:02d}: arkit.csv rows do not match frames.csv times")
     initialised = np.linalg.norm(ark.p, axis=1) > 0
     idx = np.flatnonzero((t >= start) & (t <= end) & initialised)
     if len(idx) == 0:

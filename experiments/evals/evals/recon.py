@@ -168,21 +168,23 @@ class Scene:
             u = np.round(K[0, 0] * Xc[:, 0] / z + K[0, 2]).astype(np.int64)
             w = np.round(K[1, 1] * Xc[:, 1] / z + K[1, 2]).astype(np.int64)
         ok = (z > 0.1) & (u >= 0) & (u < WIDTH) & (w >= 0) & (w < h)
-        order = np.argsort(-z[ok])
         buf = np.full((h, WIDTH), 1e6, np.float32)
-        buf[w[ok][order], u[ok][order]] = z[ok][order]
+        np.minimum.at(buf, (w[ok], u[ok]), z[ok].astype(np.float32))
         buf = cv2.erode(buf, np.ones((5, 5), np.uint8))
         buf[buf >= 1e6] = np.nan
         self._oracle[view] = (buf, K)
         return buf, K
 
 
-def _fused_points(scene: Scene, members: list[str], per_view) -> Points | None:
+def _fused_points(
+    scene: Scene, members: list[str], per_view, max_range: float | None = None
+) -> Points | None:
     """Average each evaluation point over the views of a group that see it.
 
     per_view(view) -> (depth map, K used for back-projection, 4x4 cam-to-world or None). With None
     the ground-truth pose places the points and `c` is the camera centre; with a model's own pose
-    the points stay in the model's frame and `c` is zero.
+    the points stay in the model's frame and `c` is zero. With `max_range`, only points within
+    that distance (meters) of the nearest camera of the group are kept.
     """
     idx_all, c_all, r_all = [], [], []
     for name in members:
@@ -212,9 +214,16 @@ def _fused_points(scene: Scene, members: list[str], per_view) -> Points | None:
     rs = np.zeros((len(uniq), 3))
     np.add.at(cs, inv, c)
     np.add.at(rs, inv, r)
-    return Points(
+    pts = Points(
         gt=scene.cands[uniq].astype(np.float64), c=cs / counts[:, None], r=rs / counts[:, None]
     )
+    if max_range is None:
+        return pts
+    centres = np.array([scene.views[m].center for m in members])
+    near = np.min(np.linalg.norm(pts.gt[:, None, :] - centres[None], axis=2), axis=1) <= max_range
+    if near.sum() < 2:
+        return None
+    return Points(gt=pts.gt[near], c=pts.c[near], r=pts.r[near])
 
 
 def _load_pred(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -224,8 +233,12 @@ def _load_pred(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     return depth, _K(z["intrinsics"]), T
 
 
+RANGES = {"all points": None, "within 6 m of a camera": 6.0}
+MIN_PAIRS = 300  # fewer pairs than this in a cell are reported as n/a
+
+
 def score_scene(scene: Scene, rng: np.random.Generator) -> dict:
-    results: dict = {}
+    """{range: {method: {views: pooled summary}}} for every method with predictions on disk."""
     pred_root = PREDICTIONS / scene.name
     per_frame_models = (
         sorted(p.name for p in pred_root.glob("*") if p.is_dir() and p.name != "mapanything")
@@ -233,7 +246,6 @@ def score_scene(scene: Scene, rng: np.random.Generator) -> dict:
         else []
     )
 
-    # Evaluation floor: the scan's own rendered depth, placed with the true poses.
     def oracle(name):
         d, K = scene.oracle_depth(name)
         return d, K, None
@@ -247,44 +259,96 @@ def score_scene(scene: Scene, rng: np.random.Generator) -> dict:
 
         methods[f"fused/{model}"] = per_frame
 
-    for method, fn in methods.items():
-        results[method] = {}
-        for n, groups in scene.groups.items():
-            raws = []
-            for members in groups:
-                pts = _fused_points(scene, members, fn)
-                if pts is not None:
-                    raws.append(evaluate_raw(pts, rng))
-            results[method][n] = pool(raws)
-        if method.startswith("fused/"):
-            model = method.split("/", 1)[1]
-            raws = []
-            for name in scene.views:
-                pts = _fused_points(scene, [name], fn)
-                if pts is not None:
-                    raws.append(evaluate_raw(pts, rng, pairs_per_bin=1500))
-            results[f"single/{model}"] = {"1": pool(raws), "views": len(raws)}
-
     ma_root = pred_root / "mapanything"
-    if ma_root.exists():
-        results["mapanything"] = {}
-        for n, groups in scene.groups.items():
-            raws = []
-            for members in groups:
-                run = ma_root / f"n{n}-{members[0]}"
-                if not run.exists():
-                    continue
+    out: dict = {}
+    for range_name, max_range in RANGES.items():
+        results: dict = {}
+        for method, fn in methods.items():
+            results[method] = {}
+            for n, groups in scene.groups.items():
+                raws = []
+                for members in groups:
+                    pts = _fused_points(scene, members, fn, max_range)
+                    if pts is not None:
+                        raws.append(evaluate_raw(pts, rng))
+                results[method][n] = pool(raws)
+            if method.startswith("fused/"):
+                raws = []
+                for name in scene.views:
+                    pts = _fused_points(scene, [name], fn, max_range)
+                    if pts is not None:
+                        raws.append(evaluate_raw(pts, rng, pairs_per_bin=1500))
+                results["single/" + method.split("/", 1)[1]] = {"1": pool(raws)}
+        if ma_root.exists():
+            results["mapanything"] = {}
+            for n, groups in scene.groups.items():
+                raws = []
+                for members in groups:
+                    run = ma_root / f"n{n}-{members[0]}"
+                    if not (run / "run.json").exists():
+                        continue
 
-                def ma(name, run=run):
-                    return _load_pred(run / f"{name}.npz")
+                    def ma(name, run=run):
+                        return _load_pred(run / f"{name}.npz")
 
-                pts = _fused_points(scene, members, ma)
-                if pts is not None:
-                    raws.append(evaluate_raw(pts, rng))
-            if raws:
-                results["mapanything"][n] = pool(raws)
-                results["mapanything"][n]["groups"] = len(raws)
-    return results
+                    pts = _fused_points(scene, members, ma, max_range)
+                    if pts is not None:
+                        raws.append(evaluate_raw(pts, rng))
+                if raws:
+                    results["mapanything"][n] = pool(raws)
+        out[range_name] = results
+    return out
+
+
+LABELS = {
+    "oracle": "scan rendered as depth (evaluation floor)",
+    "single/moge2": "MoGe-2, one image",
+    "single/da3metric": "Depth Anything 3 metric, one image",
+    "fused/moge2": "MoGe-2 per frame + true poses",
+    "fused/da3metric": "Depth Anything 3 metric per frame + true poses",
+    "mapanything": "MapAnything, images + intrinsics",
+}
+
+
+def _cell(x: dict) -> str:
+    if x.get("pairs", 0) < MIN_PAIRS:
+        return "n/a"
+    return f"{x['median_in']:.1f} / {x['p90_in']:.1f}"
+
+
+def markdown(results: dict) -> str:
+    lines = [
+        "# ETH3D reconstruction accuracy (generated by `uv run python -m evals.recon score`)",
+        "",
+    ]
+    lines.append(
+        "|error in the distance between two wall points|, inches, median / p90, against the laser "
+        "scan. Scale error is the median of predicted / true length, minus 1."
+    )
+    for scene, ranges in results.items():
+        for range_name, methods in ranges.items():
+            lines += ["", f"## {scene}, {range_name}", ""]
+            for source, title in (
+                ("none", "Scale from the model (nothing measured by hand)"),
+                ("one_known_distance", "Scale from one taped distance (1 to 3 m)"),
+            ):
+                lines += [f"### {title}", ""]
+                lines.append("| Method | Views | 1-3 m | 3-10 m | Scale error, 3-10 m pairs |")
+                lines.append("| --- | --- | --- | --- | --- |")
+                order = [m for m in LABELS if m in methods]
+                order += [m for m in methods if m not in LABELS]
+                for m in order:
+                    for n, res in methods[m].items():
+                        b1, b2 = res[source]["1-3m"], res[source]["3-10m"]
+                        scale = (
+                            b2.get("scale_error_pct") if b2.get("pairs", 0) >= MIN_PAIRS else None
+                        )
+                        scale_txt = "n/a" if scale is None else f"{scale:+.1f}%"
+                        lines.append(
+                            f"| {LABELS.get(m, m)} | {n} | {_cell(b1)} | {_cell(b2)} | {scale_txt} |"
+                        )
+                lines.append("")
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
@@ -303,7 +367,9 @@ def main() -> None:
     results = {s: score_scene(Scene(s), rng) for s in args.scenes}
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "eth3d_recon.json").write_text(json.dumps(results, indent=1))
-    print(json.dumps(results, indent=1)[:4000])
+    md = markdown(results)
+    (args.out / "eth3d_recon.md").write_text(md)
+    print(md)
 
 
 if __name__ == "__main__":

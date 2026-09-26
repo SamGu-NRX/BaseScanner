@@ -8,7 +8,6 @@ from evals.drift import (
     gps_local_meters,
     horizontal_path_length,
     position_errors,
-    robust_variance,
     similarity_scale_2d,
     three_cornered_hat,
     tracking_failure_time,
@@ -32,9 +31,18 @@ def test_horizontal_path_ignores_height():
 
 def test_window_pairs_hand_case():
     ref = _straight_walk(10, 0.5)  # 0, 0.5, ..., 4.5 m
-    i, j = window_pairs(ref, 1.0, 3)  # starts 0, 3, 6, 9; 1 m is two samples later
+    i, j = window_pairs(ref, 1.0, 3)  # starts 0, 3, 6, 9; 1 m is exactly two samples later
     np.testing.assert_array_equal(i, [0, 3, 6])
-    np.testing.assert_array_equal(j, [2, 5, 8])
+    np.testing.assert_allclose(j, [2, 5, 8])
+
+
+def test_window_ends_between_samples():
+    ref = _straight_walk(10, 0.5)
+    # 0.75 m lands halfway between samples 1 and 2, not on the first sample past it.
+    i, j = window_pairs(ref, 0.75, 100)
+    np.testing.assert_allclose(j, [1.5])
+    est = ref * 0.8
+    np.testing.assert_allclose(distance_errors(est, ref, i, j), [-0.15])
 
 
 def test_distance_error_for_a_short_reading_track():
@@ -69,13 +77,6 @@ def test_yaw_between_extracts_heading_only():
     tilt = np.array([[1, 0, 0], [0, np.cos(0.3), -np.sin(0.3)], [0, np.sin(0.3), np.cos(0.3)]])
     Y = yaw_between(tilt, rot_y(25) @ tilt)
     np.testing.assert_allclose(Y, rot_y(25), atol=1e-12)
-
-
-def test_robust_variance_hand_case():
-    # Median 0, absolute deviations all 2: MAD 2, sigma 1.4826 * 2.
-    assert robust_variance(np.array([2.0, -2.0, 2.0, -2.0, 0.0, 2.0, -2.0])) == pytest.approx(
-        (1.4826 * 2) ** 2
-    )
 
 
 def test_three_cornered_hat_algebra():

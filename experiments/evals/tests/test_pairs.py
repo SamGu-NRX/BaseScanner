@@ -56,6 +56,20 @@ def test_known_distance_scale_with_camera_centres():
     np.testing.assert_allclose(pts.predicted(s), gt, atol=1e-12)
 
 
+def test_known_distance_picks_root_nearer_one_not_smaller():
+    # Same cameras, depth predicted 0.6x (too near): roots are 2/1.2 = 1.667 and 4/1.2 = 3.333.
+    # "Nearest 1" gives 1.667 (= 1/0.6, correct); "smallest positive" would too, so also check a
+    # case where the smaller root is wrong: depth 2.4x too far gives roots 0.417 and 0.833; the
+    # true scale 1/2.4 = 0.417 is the smaller one, and nearer-to-1 picks 0.833. That is the
+    # documented behaviour: without other evidence the model's own scale is trusted.
+    c = np.array([[0.0, 0, 0], [3.0, 0, 0]])
+    gt = np.array([[1.0, 0, 2], [2.0, 0, 2]])
+    near = Points(gt=gt, c=c, r=(gt - c) * 0.6)
+    assert scale_for_known_distance(near, np.array([0, 1])) == pytest.approx(1 / 0.6)
+    far = Points(gt=gt, c=c, r=(gt - c) * 2.4)
+    assert scale_for_known_distance(far, np.array([0, 1])) == pytest.approx(2 / 2.4)
+
+
 def test_summarize_in_inches_and_scale_error():
     e = np.array([1, -2, 3, -4, 5], dtype=float) * INCH
     ratios = np.array([1.00, 1.02, 1.04, 1.06, 1.08])
@@ -68,10 +82,13 @@ def test_summarize_in_inches_and_scale_error():
 def test_bilinear_depth_sampling():
     from evals.recon import _sample_depth
 
+    # Rows are y, columns are x: d[y, x].
     d = np.array([[1.0, 2.0], [3.0, 4.0], [np.nan, 5.0]])
-    uv = np.array([[0.5, 0.5], [0.0, 0.0], [0.25, 1.5], [1.5, 0.0]])
+    uv = np.array([[0.5, 0.5], [0.0, 0.0], [0.25, 1.5], [1.5, 0.0], [0.25, 0.75]])
     out = _sample_depth(d, uv)
     assert out[0] == pytest.approx(2.5)
     assert out[1] == pytest.approx(1.0)
     assert np.isnan(out[2])  # touches the NaN pixel
     assert np.isnan(out[3])  # outside the image
+    # x = 0.25 along a row adds 0.25, y = 0.75 down a column adds 1.5: 1 + 0.25 + 1.5.
+    assert out[4] == pytest.approx(2.75)
