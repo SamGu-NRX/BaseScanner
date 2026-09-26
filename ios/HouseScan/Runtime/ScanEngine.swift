@@ -382,10 +382,16 @@ final class ScanEngine {
 
     // MARK: Guidance
 
-    private func updateGuidance(camera: CameraFrame, time: Double) {
+    /// The planner's dwell runs on the screen's clock, not on `time` (the frame's timestamp).
+    /// "Don't change the instruction for 3 s" is about what the person looking at the screen
+    /// reads. Live, the two clocks agree; a replay at 3x speed on frame time changed the card
+    /// every second or so, which the verify lane's wall-clock check (I6) and the accessibility
+    /// audit both caught.
+    private func updateGuidance(camera: CameraFrame, time _: Double) {
         // The end question is on screen: the next step waits for its answer.
         guard let map = coverage, state.endQuestion == nil else { return }
-        let output = planner.update(coverage: map, camera: camera, time: time)
+        let screenTime = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
+        let output = planner.update(coverage: map, camera: camera, time: screenTime)
         state.guidance = Self.step(output.task)
         state.target = output.target
         state.path = output.path
