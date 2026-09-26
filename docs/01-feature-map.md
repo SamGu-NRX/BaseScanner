@@ -1,5 +1,7 @@
 # Feature map
 
+> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+
 **Priority:** **P0** = needed for the demo · **P1** = strong add · **P2** = stretch
 **Lanes (one teammate each):** **A** capture app · **B** object detection and geometry · **C** rules + placement code · **D** output, testing, pitch
 
@@ -99,4 +101,4 @@ Public sources only. The team's working numbers are in `private/internal-notes.m
 
 ## Not doing
 
-Android, Expo, rebuilding a 3D model from uploaded video, full-house or roof scans.
+Android, Expo, full-house or roof scans.

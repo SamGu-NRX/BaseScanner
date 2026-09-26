@@ -237,6 +237,7 @@
 
 <h1>House scanning: what we are building, what works, and what is blocked</h1>
 <p class="meta">Team briefing, 26 September 2026, facts as of 09:10. Readers: Sam, Hunter, Shrey, Aiden. About ten minutes.</p>
+<p class="changed"><b>Update 11:15:</b> the team split into client and server teams; see <a href="../eli5.html">docs/eli5.html</a>.</p>
 
 <p class="lede">A homeowner walks the outside wall around their electric meter with an iPhone. The phone measures the wall, a server applies the clearance rules in plain code, and the app shows where the battery goes, in AR, on the real wall.</p>
 <p class="lede">Today it runs end to end in the iPhone Simulator on a recorded real walk and gets a real answer from the live server. It has never run on a physical iPhone at a real wall. That is the blocker, and the first job this morning.</p>
@@ -785,7 +786,7 @@
     </svg>
     <figcaption>Learned depth models (MoGe-2, Depth Anything 3), rescaled with the phone's poses. Flat walls come out at about 5 in at best at a realistic phone error. Window and door edges, which are what clearances are measured from, come out at 8 in or worse in every setting.</figcaption>
   </figure>
-  <p class="changed"><b>What it changed:</b> no photo-to-3D measurement pipeline. Every point a check depends on is an AR tap; learned depth only draws the 3D picture. This saved building the wrong thing.</p>
+  <p class="changed"><b>What it changed:</b> 3D modeling stays central. Learned depth alone is too rough at edges, so LiDAR and the phone's poses supply the scale. World models are not evaluated yet. (Corrected at midday; the 09:10 version said to drop photo-to-3D measurement.)</p>
 </div>
 
 <div class="finding" id="finding-3">

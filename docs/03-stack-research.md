@@ -1,5 +1,7 @@
 # Stack research: libraries, open-source projects, how they fit
 
+> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+
 This came from five parallel research agents on 2026-09-25 using live web searches. Anything marked
 **UNVERIFIED** couldn't be confirmed. Licenses are what each repo or model card said on that date, so re-check them before shipping a product.
 
@@ -32,7 +34,7 @@ PHONE: RealityKit box attached to the meter's anchor + cable line
 
 | Piece | Rule(s) it serves | Why this tool, and what we're skipping |
 |---|---|---|
-| ARKit + LiDAR mesh | Passage width, headroom, gaps between openings, cable length | Real measurements (~±6–8 cm on walls, ~5 m range) instead of estimates by eye. Skip photogrammetry. |
+| ARKit + LiDAR mesh | Passage width, headroom, gaps between openings, cable length | Real measurements (~±6–8 cm on walls, ~5 m range) instead of estimates by eye. |
 | Guided walk to both ends | "please send more photos" follow-ups | Makes "unseen space" impossible |
 | One continuous session | same wall? / panel behind meter | Shared coordinates; nothing pieced together from unordered photos |
 | Stray Scanner fork | everything downstream | The only maintained MIT recorder of position + lens data + depth. No open-source app also exports the mesh |

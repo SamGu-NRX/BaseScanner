@@ -1,39 +1,45 @@
 # Agent guide
 
-A homeowner scans the outside wall around their electric meter with an iPhone. The server decides whether a Base Power battery fits there and where, and the app shows the spot in AR. Four-person hackathon, started 2026-09-25.
+A homeowner scans the outside of their house around the electric meter with an iPhone. The system works out whether a Base Power battery fits there and where, and the app shows the spot in AR. It is a hackathon project that started on 2026-09-25. The MVP is three problems: a phone that guides the homeowner until everything the model needs is captured, photos and their metadata turned into a 3D model, and that model evaluated against the placement criteria.
+
+## Who owns what
+
+- **Client team.** Sam, working with AI agents, owns the iOS app in `ios/`: guided capture, the live on-device 3D map with fog of war, and the capture packet it sends to the server. Aiden films video and gathers sample datasets.
+- **Server team.** Hunter, working with his own agents, owns everything after the packet: building a 3D model or point cloud, then evaluating the criteria on it.
+
+Edit the other team's files only with that team's OK, and talk to the author before editing files that an open pull request also changes. Two writers on one file cost more time than asking does.
 
 ## Where to look
 
-Read the rows for your task, not all of `docs/`.
+Read the row for your task. Files marked with a pull request exist only on that branch until it merges.
 
 | Task | Read |
 | --- | --- |
-| Goal, decisions, open questions | `docs/00-overview.md` |
-| Capture app (lane A) | `docs/02-implementation-plan.md` "Lane A", `docs/05-live-guided-survey-hld.md` |
-| Geometry and detection (lane B) | `docs/02` "Lane B", `docs/03-stack-research.md` |
-| Placement solver and rules (lane C) | `docs/02` "Lane C", the rules table in `docs/01-feature-map.md`, citations in `docs/04-prior-art-and-codes.md` |
-| Output, testing, pitch (lane D) | `docs/02` "Lane D", `docs/04` |
-| Data sent from the app to the server | `scene.json` in `docs/01` |
+| What the system is, what's decided, what's open | `docs/00-overview.md` |
+| The iOS app | `ios/README.md` |
+| The capture packet the app sends | `packet/README.md` (coming on branch `t3/packet`) |
+| The rules engine, API and capture contract | `server/README.md` (PR #11), especially "What settles each check" |
+| Turning photos into a 3D model | `recon/HANDOFF.md` (PR #20) |
+| Accuracy evals on public datasets | `experiments/evals/README.md` (PR #12) |
+| Branches, checks and TestFlight | `CONTRIBUTING.md` |
+| Rule citations and day-1 reasoning | `docs/01` to `05`; `docs/00` and the component READMEs win where they differ |
 
-## Hard rules
+## Rules
 
-- **This repository is public.** `private/` holds materials Base gave the team and is git-ignored. Never commit, quote or summarize them in tracked files: prompt text, prompt names, output field names, internal thresholds. Team notes go in `private/internal-notes.md`.
-- **Plain code decides placement.** Vision models only recognize things (object boxes, panel brand, meter text). Every clearance number lives in `server/rules.yaml` with its source: a code citation, Base's public help page, or a labeled demo placeholder. Values the team can't publish go in the git-ignored `private/rules.yaml`, which the server merges over the public file when it exists.
-- **Unseen is not clear.** A check with no evidence for its area is UNSURE, never PASS.
-- **Never run ML on Google Maps, Street View, Mapbox or Esri imagery.** Their terms forbid it. Use StratMap or NAIP.
-- **Place AR results relative to the meter's anchor**, not in raw world coordinates. Use `.gravity` world alignment, not `.gravityAndHeading`.
-- The camera image is landscape and the intrinsics match it. Rotate one and you must rotate the other.
+- **Keep Base's materials in `private/`, which git ignores.** The repository is public. Don't commit, quote or summarize those materials in tracked files, including prompt text, prompt names, output field names and internal thresholds. Team notes go in `private/internal-notes.md`. Real captures, photos of homes and dataset images go in `captures/`, `fixtures/real/` or `data/`, which git also ignores.
+- **Make placement decisions in deterministic code.** Models build the geometry and recognize things such as the meter's text or an object's outline. Plain code over that geometry makes the pass or fail decision, so every answer traces back to a rule and a measurement. Clearance numbers live in rules files with their sources, never in code: public values with citations in `server/rules.yaml` (PR #11), and Base's values in the git-ignored `private/rules.yaml`, which the server merges over them.
+- **Treat unseen as unsure, never as clear.** A gap in the scan could hide a gas meter. When a check depends on an area nobody observed, return UNSURE and name the view that would settle it.
+- **Use StratMap or NAIP for aerial imagery.** Google Maps, Street View, Mapbox and Esri forbid running ML on their imagery in their terms.
+- **Place AR results relative to the meter's anchor, with `.gravity` world alignment.** ARKit corrects anchors as tracking improves, so a result tied to the meter moves with it while raw world coordinates drift. `.gravityAndHeading` depends on the compass, which is unreliable next to a house.
+- **Rotate the intrinsics whenever you rotate a camera image.** Camera images are landscape sensor images and the intrinsics match that orientation. A rotated image with unrotated intrinsics produces wrong 3D geometry without any error.
 
-## Decided
+Decided: the app is native iOS only (Swift, ARKit, RealityKit), because Expo has no first-class ARKit support. It uses LiDAR and other depth sensors when present and never requires them, since most homeowners' phones lack LiDAR.
 
-The capture app is native Swift with ARKit and RealityKit in `ios/`, because Expo has no first-class ARKit support. LiDAR is used when the phone has it and is never required.
+## Working in the repository
 
-## Working in this repo
-
-- `ios/` is the capture app (project generated by XcodeGen). `server/` is the Python server (uv). `web/` is a browser toolchain for the reviewer view and zero-install capture experiments. `experiments/` holds one folder per experiment. `sites/landing` is the landing page, a submodule; change it in its own repository.
 - `make check` runs every suite; `make ios`, `make server` and `make web` run one each. `CONTRIBUTING.md` lists the matching CI checks.
-- Branch from `main`, keep one writer per branch, and open a pull request. People merge; agents never push to `main` or merge.
-- Teammates own lanes A–D (`docs/01-feature-map.md`). Agents edit a lane's files only with its owner's OK, and coordinate with the author before editing files an open pull request also changes.
-- Several agents share one Mac. Exit code 137 means the system killed the process, usually for memory. Find the allocation before rerunning; macOS swaps before it kills, so one runaway process can freeze the whole machine.
-- Don't pick a signing team in Xcode's Signing & Capabilities pane: it writes into `project.pbxproj` and fails the CI drift check. Put `DEVELOPMENT_TEAM` in `ios/Config/Local.xcconfig` instead (see `ios/README.md`).
-- After editing `ios/project.yml`, run `make ios-project` (needs XcodeGen 2.46.0) and commit the regenerated project.
+- Branch from `main`, keep one writer per branch, and open a pull request. People merge. Agents never push to `main` or merge, so a person sees every change before it lands.
+- Several agents share one Mac. Exit code 137 means the system killed the process, usually for memory. Find the large allocation before rerunning, because macOS swaps before it kills and one runaway process can freeze the whole machine.
+- Set your signing team in `ios/Config/Local.xcconfig` (copy `Local.xcconfig.example`; see `ios/README.md`), not in Xcode's Signing & Capabilities pane. The pane writes into `project.pbxproj`, and CI fails on that drift.
+- After editing `ios/project.yml`, run `make ios-project` (it needs XcodeGen 2.46.0) and commit the regenerated project, because CI regenerates it and fails on any difference.
+- `sites/landing` is the landing page, a submodule. Change it in its own repository.

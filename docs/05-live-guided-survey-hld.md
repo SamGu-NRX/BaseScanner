@@ -1,5 +1,7 @@
 # Base Power — Live Guided Site Survey
 
+> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+
 **High-Level Design · v0.1 · September 25, 2026**
 
 **Status:** Public architecture proposal for review; no implementation or existing lane decisions are changed by this document.

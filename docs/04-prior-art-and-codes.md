@@ -1,5 +1,7 @@
 # Prior art, what Base does publicly, and code citations
 
+> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+
 Researched 2026-09-25. UNVERIFIED items are marked.
 
 ## What Base does today (public)

@@ -1,5 +1,7 @@
 # Implementation plan
 
+> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+
 The main trick is to unroll the house's walls into one straight line, measured in feet from the meter. Almost
 every rule then becomes a check on a 1-D number line, and the placement code gets simple.
 
