@@ -21,24 +21,3 @@ def auc(scores: Sequence[float], labels: Sequence[bool]) -> float | None:
         return None
     wins = sum((p > n) + 0.5 * (p == n) for p in pos for n in neg)
     return wins / (len(pos) * len(neg))
-
-
-def loosest_threshold(
-    values: Sequence[float], ok: Sequence[bool], target: float, higher_is_better: bool
-) -> tuple[float, int, float] | None:
-    """Most permissive cut-off whose accepted photos read correctly at least `target` of the time.
-
-    A photo is accepted when its value is >= the cut-off (or <= it when lower is better).
-    Returns (cut-off, photos accepted, their read rate), or None if no cut-off reaches target.
-    """
-    pairs = sorted(zip(values, ok, strict=True), reverse=higher_is_better)
-    best = None
-    good = 0
-    for count, (value, success) in enumerate(pairs, start=1):
-        good += success
-        # Only cut between distinct values, so every photo at the cut-off value is included.
-        if count < len(pairs) and pairs[count][0] == value:
-            continue
-        if good / count >= target:
-            best = (value, count, good / count)
-    return best

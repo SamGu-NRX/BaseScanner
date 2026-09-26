@@ -1,6 +1,7 @@
 """Cheap photo checks a phone could run on a close-up before accepting it.
 
-All take a grayscale image as a float array of 0-255 values.
+Images are grayscale float arrays of 0-255 values; boxes are normalized [x, y, w, h] with a
+top-left origin, as meterocr returns them.
 """
 
 import numpy as np
@@ -50,11 +51,16 @@ def union_box(boxes: list[list[float]]) -> list[float]:
 
 
 def region_checks(g: np.ndarray, box: list[float]) -> dict[str, float]:
-    """Checks on a text box: its height in pixels, and sharpness, glare and contrast inside it."""
+    """Checks on a text box: its height in pixels, and sharpness, glare and contrast inside it.
+
+    lap_var_32 measures sharpness after resizing the box so its line is 32 px tall, which
+    makes one threshold usable for labels photographed at any size.
+    """
     region = crop_box(g, box, pad=0.25)
     return {
         "text_height_px": box[3] * g.shape[0],
         "lap_var": laplacian_variance(region),
+        "lap_var_32": laplacian_variance(resample_to_height(g, box, 32)),
         "saturated": saturated_fraction(region),
         "contrast": rms_contrast(region),
     }
@@ -76,6 +82,11 @@ def digit_lines(lines: list[dict], min_digits: int = 4) -> list[dict]:
     return [line for line in lines if sum(ch.isdigit() for ch in line["text"]) >= min_digits]
 
 
+def tallest_digit_line(lines: list[dict]) -> dict | None:
+    """The phone's guess at the meter number: the tallest line with at least 4 digits."""
+    return max(digit_lines(lines), key=lambda line: line["box"][3], default=None)
+
+
 def device_checks(g: np.ndarray, lines: list[dict]) -> dict[str, float]:
     """Checks a phone can compute without knowing the answer.
 
@@ -83,13 +94,13 @@ def device_checks(g: np.ndarray, lines: list[dict]) -> dict[str, float]:
     how the app would find a meter number before reading it. With no such line every
     region check is 0, which the app should treat as a failed photo.
     """
-    candidates = digit_lines(lines)
+    tallest = tallest_digit_line(lines)
     checks = {
-        "digit_lines": float(len(candidates)),
+        "digit_lines": float(len(digit_lines(lines))),
         "global_lap_var": laplacian_variance(downscale_long_side(g, 1024)),
         "global_saturated": saturated_fraction(g),
     }
-    if not candidates:
+    if tallest is None:
         return checks | {
             "text_height_px": 0.0,
             "lap_var": 0.0,
@@ -98,15 +109,7 @@ def device_checks(g: np.ndarray, lines: list[dict]) -> dict[str, float]:
             "contrast": 0.0,
             "confidence": 0.0,
         }
-    tallest = max(candidates, key=lambda line: line["box"][3])
-    return (
-        checks
-        | region_checks(g, tallest["box"])
-        | {
-            "lap_var_32": laplacian_variance(resample_to_height(g, tallest["box"], 32)),
-            "confidence": float(tallest["confidence"]),
-        }
-    )
+    return checks | region_checks(g, tallest["box"]) | {"confidence": float(tallest["confidence"])}
 
 
 def downscale_long_side(g: np.ndarray, long_side: int) -> np.ndarray:

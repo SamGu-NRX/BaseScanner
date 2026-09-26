@@ -11,9 +11,8 @@ Plaintext labels stay in the data directory; the manifest keeps only digests (se
 import csv
 import re
 
-from meter_eval.commons import MANIFEST
 from meter_eval.match import digest, lenient_digest, normalize, normalize_class
-from meter_eval.paths import DATA_DIR
+from meter_eval.paths import DATA_DIR, MANIFEST
 
 READER1 = DATA_DIR / "labels_reader1.csv"
 READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
@@ -79,7 +78,7 @@ def build() -> list[dict]:
         r2 = second[image_id]
         source = sources[image_id]
         number = r1["meter_number"]
-        usable = "no: " + r1["notes"] if number == "EXCLUDE" else "yes"
+        usable = "no: " + scrub(r1["notes"]) if number == "EXCLUDE" else "yes"
         row = {key: source[key] for key in ("title", "page_url", "image_url", "license")}
         row |= {
             "id": image_id,

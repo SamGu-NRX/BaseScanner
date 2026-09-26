@@ -12,20 +12,8 @@ from PIL import Image
 from meter_eval.match import class_read, number_boxes
 from meter_eval.ocr import CONFIGS, PRIMARY, Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
-from meter_eval.quality import device_checks, gray, region_checks, union_box
+from meter_eval.quality import device_checks, gray, region_checks, tallest_digit_line, union_box
 from meter_eval.stats import wilson
-
-CHECKS = [
-    "text_height_px",
-    "lap_var",
-    "lap_var_32",
-    "saturated",
-    "contrast",
-    "confidence",
-    "digit_lines",
-    "global_lap_var",
-    "global_saturated",
-]
 
 
 def usable_rows() -> list[dict]:
@@ -46,6 +34,8 @@ def evaluate(row: dict, results: dict[str, dict]) -> dict:
             out[f"number_lenient_{config}"] = int(lenient is not None)
             if config == PRIMARY and strict is not None:
                 out["number_box"] = json.dumps([round(v, 5) for v in union_box(strict)])
+                # Is the tallest line with 4+ digits, the phone's guess at the label, the number?
+                out["tallest_is_number"] = int(tallest_digit_line(lines)["box"] in strict)
         if row["class_label"]:
             out[f"class_{config}"] = int(class_read(lines, row["class_label"]))
     return out
@@ -75,7 +65,7 @@ def run() -> list[dict]:
 
 
 def rate(rows: list[dict], key: str) -> str:
-    values = [r[key] for r in rows if r.get(key) != "" and key in r]
+    values = [r[key] for r in rows if r.get(key, "") != ""]
     if not values:
         return "n/a"
     hits = sum(int(v) for v in values)
@@ -113,7 +103,12 @@ def main() -> None:
         writer = csv.DictWriter(handle, fieldnames=fields, restval="")
         writer.writeheader()
         writer.writerows(rows)
-    text = table(rows)
+    located = [r for r in rows if "tallest_is_number" in r]
+    hits = sum(r["tallest_is_number"] for r in located)
+    text = table(rows) + (
+        f"\nOn {hits} of {len(located)} photos whose number was read, the tallest line with 4 or"
+        " more digits was the meter number.\n"
+    )
     (RESULTS_DIR / "clean.md").write_text(text)
     print(text)
 

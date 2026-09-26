@@ -10,8 +10,13 @@ from meter_eval.match import (
     number_read,
     rows_of_text,
 )
-from meter_eval.quality import crop_box, laplacian_variance, rms_contrast, saturated_fraction
-from meter_eval.stats import auc, loosest_threshold, wilson
+from meter_eval.quality import (
+    crop_box,
+    laplacian_variance,
+    rms_contrast,
+    saturated_fraction,
+)
+from meter_eval.stats import auc, wilson
 
 
 def line(text, x, y, w=0.1, h=0.05):
@@ -120,24 +125,3 @@ def test_wilson_interval_for_8_of_10():
 def test_auc_perfect_and_tied():
     assert auc([3, 2, 1, 0], [True, True, False, False]) == 1.0
     assert auc([1, 1], [True, False]) == 0.5
-
-
-def test_loosest_threshold_higher_is_better():
-    values = [10, 9, 8, 7, 6, 5]
-    ok = [True, True, True, True, False, False]
-    # Accepting >= 7 keeps 4/4; >= 6 keeps 4/5 = 0.8.
-    assert loosest_threshold(values, ok, 0.95, higher_is_better=True) == (7, 4, 1.0)
-    assert loosest_threshold(values, ok, 0.8, higher_is_better=True) == (6, 5, 0.8)
-
-
-def test_loosest_threshold_lower_is_better():
-    values = [0.0, 0.1, 0.2, 0.5]
-    ok = [True, True, False, False]
-    assert loosest_threshold(values, ok, 0.95, higher_is_better=False) == (0.1, 2, 1.0)
-
-
-def test_loosest_threshold_never_splits_tied_values():
-    values = [5, 5, 4]
-    ok = [True, False, True]
-    # Both photos at 5 go in together (1/2), so no cut-off reaches 0.95.
-    assert loosest_threshold(values, ok, 0.95, higher_is_better=True) is None
