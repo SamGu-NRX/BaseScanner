@@ -15,7 +15,7 @@ Every number comes from real data. Synthetic data appears only in the unit tests
 
 What the ETH3D numbers measure: the error in the distance between two scanned surface points, against a laser scan, reported separately for surface interiors, vertical surfaces (walls, fences) and depth edges (window frames, equipment, fence edges). Clearance endpoints are often edges, and edges score worst. Every "p90" below counts failures (no prediction, or a taped reference that no scale could match) as infinitely wrong.
 
-1. **ARKit drift: far worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, ARKit and ARCore on the same rig disagree about a walked distance by a median 2.8 in after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3) and 25.7 in after 30 ft (p90 60.1). That is a disagreement between two trackers, not a bound on ARKit's error, but most of it is one steady offset that GPS attributes to ARKit: it reads distances 5% to 17% short. One of four walks lost tracking entirely.
+1. **ARKit drift: far worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, ARKit and ARCore on the same rig disagree about a walked distance by a median 2.8 in after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3) and 25.7 in after 30 ft (p90 60.1). That is a disagreement between two trackers, not a bound on ARKit's error, but most of it is one steady offset that GPS attributes to ARKit: it reads distances 5% to 17% short. Position error, which also counts sideways drift, is larger against ADVIO's truth: p90 18.6, 55.7, 94.6 and 132.6 in after 3, 10, 20 and 30 ft. That is two to three times the server's allowance of 0.16 ft per ft, though the truth's own heading and position noise inflate it. One of four walks lost tracking entirely.
 2. **Photos alone: no.** Each model's own metric scale is off. Within 6 m of the camera, MoGe-2 reads 4% to 12% long and Depth Anything 3 metric 7% to 11% short: median errors of 6 to 8 in on 1 to 3 m spans, p90 about 20 in.
 3. **One photo plus one taped distance: good median, loose tail, worst on walls and edges.** A single MoGe-2 photo scaled by a taped 1 to 3 m distance is off a median 1.6 in on 1 to 3 m spans (electro, within 6 m). The p90 is 9.6 in on surfaces overall, 15.1 in on vertical surfaces and 26.9 in at edges. That settles only clear-cut placements.
 4. **More photos with true poses and no rescale: no gain.** On a fixed set of points and pairs, per-photo depth averaged over 1, 2, 4 and 8 photos with the true poses gives, with one tape, medians of 1.8, 2.3, 2.5 and 2.8 in and p90s of 8.6, 11.4, 15.7 and 10.8 in on 1 to 3 m spans. Each photo carries its own scale error, and averaging mixes them.
@@ -29,7 +29,7 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
    **Verdict:** neither way reaches about 4 in at p90 with the pose error measured on the one phone we have. Triangulation-rescaled depth reaches it on walls only if a current phone's AR scale error is about 2% or less. That is an assumption, and the Measure Lab tape protocol can check it on a real phone in an hour.
 6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.5 to 6.8 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
 7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
-8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2%, the setting under which walls came out at 3.9 in p90, is plausible for this phone. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. The field tape test stays decisive (section 6).
+8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2%, the setting under which walls came out at 3.9 in p90, is plausible for this phone. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. Its position error p90 over trusted walks is 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft (50.0 in at 30 ft counting the three doubtful walks), inside the server's 0.16 ft per ft allowance. The field tape test stays decisive (section 6).
 
 ## Reproduce
 
@@ -95,6 +95,17 @@ The truth also wanders between fix points. The results file splits the variance 
 | 30 ft | 88.2 / 156.8 | 44.5 / 92.9 | 25.7 / 60.1 | −24.8 |
 
 The ARCore column is the tightest comparison, but it is not a conservative estimate of ARKit's error: two trackers on one rig can share errors that cancel in their difference.
+
+**Position error.** Distance error only compares how far each track moved, so it cannot see sideways drift, and placement relative to the meter needs the whole displacement. Here ARKit's displacement is turned by the heading difference at each window's start, against the GPS-rescaled truth, both as tracked and with each walk's own ARKit scale divided out (0.838, 0.943 and 0.951 in walks 20 to 22). Pooled over walks 20 to 22, median / p90 inches:
+
+| Walked | As tracked | Scale removed | Server allowance, 0.16 ft per ft |
+| --- | --- | --- | --- |
+| 3 ft | 8.3 / 18.6 | 7.7 / 20.4 | 5.8 |
+| 10 ft | 26.3 / 55.7 | 24.5 / 59.6 | 19.2 |
+| 20 ft | 50.4 / 94.6 | 47.7 / 102.5 | 38.4 |
+| 30 ft | 73.8 / 132.6 | 70.4 / 144.6 | 57.6 |
+
+Removing the scale barely changes the numbers, so what remains is heading and random error. Much of it is the reference's own: its random error is the largest of the three trackers', and its heading at each window's start enters directly. These numbers therefore overstate ARKit's error, but they are the only position errors this data supports. ARCore cannot serve as a position reference, because its orientation convention is undocumented.
 
 **Limits.** A 2018 phone with ARKit 1.0, walking briskly with the camera pointed along the path. Current phones may track better; there is no data on them here.
 
@@ -250,6 +261,14 @@ Thirty of 35 walks are within 2%. Three atrium walks read 18% to 51% short; on t
 | 30 ft | 5.9 / 45.8 | 5.5 / 16.2 |
 
 The 3 ft row in the results file is below what this reference resolves (images 0.2 to 1.4 m apart, and reference jitter up to 0.4 m), so it is not repeated here.
+
+**Position error**, the same windows with ARKit's displacement turned by the heading offset at each window's start. ARKit's quaternions are (w, x, y, z) in Unity's left-handed axes, and each walk is paired with the reference by the handedness that keeps the heading offset steady: it holds to 0.6° over a median walk (worst 3.1°). Median / p90 inches:
+
+| Walked | As tracked | Without the three doubtful walks | Server allowance, 0.16 ft per ft |
+| --- | --- | --- | --- |
+| 10 ft | 3.3 / 18.7 | 3.1 / 8.6 | 19.2 |
+| 20 ft | 5.4 / 37.5 | 5.1 / 13.4 | 38.4 |
+| 30 ft | 7.2 / 50.0 | 6.9 / 18.5 | 57.6 |
 
 **Verdict.**
 - **Within 2%?** Probably, for this phone; not proven. Against the only reference available, this 2022 iPhone's ARKit holds its scale within 2% on 30 of 35 outdoor walks, and each site's walks agree with each other to within about 1 to 2.5%.
