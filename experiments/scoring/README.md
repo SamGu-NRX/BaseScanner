@@ -150,7 +150,7 @@ An excerpt of a map file. A real map has a key for every survey measurement id; 
 
 | Map entry | Becomes |
 |---|---|
-| `{"session_measurement": id, "key": k}` | That measurement's `values[k]`, converted to feet. `k` is one of `straight`, `horizontal`, `vertical`, `alongWall`, `gapToWall`, `heightAboveGround`. A measurement with `accepted: false` (the rig's own abstention, for example a negative `heightAboveGround`) becomes a null value, missing `failed`. |
+| `{"session_measurement": id, "key": k}` | That measurement's `values[k]`, converted to feet. `k` must match the session measurement's `compared` field: `accepted` validates that quantity only. A measurement with `accepted: false` (the rig's own abstention, for example a negative `heightAboveGround`) becomes a null value, missing `failed`. |
 | `{"refusal": id}` | The rig tried and refused: a null value, missing `failed`. |
 | `"absent"` | The operator saw no such feature: missing `absent`. |
 | `"unsupported"` | The rig has no way to measure it: missing `unsupported`. |
@@ -169,7 +169,7 @@ The importer stops with a specific message, and writes nothing, for:
 - a map key that is not a survey measurement id;
 - a survey measurement the map leaves out;
 - a session measurement or refusal id the session does not have;
-- a values key that measurement lacks;
+- a values key that measurement lacks or that differs from its `compared` field;
 - a session format other than version 2;
 - a map written for another session;
 - an entry with no uncertainty;
@@ -210,7 +210,7 @@ So a route exactly on either line is review, including when u = 0. A pipeline sh
 
 The protocol note counts a pass on a borderline survey as unsafe. This scorer counts it as a missed review instead, so that "unsafe" always means the survey shows the spot breaks a rule, and the borderline cases stay visible in their own column and list. A run's fail where the survey is borderline or review is a disagreement but none of the three.
 
-**Decided without its measurement.** A pass or fail where the run's own measurement of the deciding distance is missing as `failed` or `unsupported`. The scorer accepts it and scores it like any other outcome, so a pass on a failing survey is still an unsafe pass. It is also counted in this separate column, flagged in `checks.csv` as `decided_without_measurement`, and listed by name, whatever the survey outcome, including unknown. Missing as `absent` does not count: the run says the feature is not there, and an absent feature can decide a clearance.
+**Decided without its measurement.** A pass or fail where the run's own deciding distance is missing as `failed` or `unsupported`, or is marked `absent` for an `at_most` limit. The scorer accepts it and scores it like any other outcome, so a pass on a failing survey is still an unsafe pass. It is also counted in this separate column, flagged in `checks.csv` as `decided_without_measurement`, and listed by name, whatever the survey outcome, including unknown. An absent feature can support an `at_least` clearance, but absence cannot establish a maximum route length.
 
 An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
 

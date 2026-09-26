@@ -72,6 +72,7 @@ class SessionMeasurement:
     id: str
     time: Decimal
     values: dict[str, Decimal]
+    compared: str
     accepted: bool
 
 
@@ -178,6 +179,7 @@ def load_session(path: Path) -> Session:
                 key: _number(value, f"{at} ({measurement_id}).values.{key}")
                 for key, value in values.items()
             },
+            compared=_text(entry.get("compared"), f"{at} ({measurement_id}).compared"),
             accepted=accepted,
         )
 
@@ -304,6 +306,11 @@ def _check_map(mapping: Map, session: Session, truth: Truth) -> None:
             raise InputError(
                 f"{at}.key: measurement {entry.measurement!r} has no {entry.key!r} value; it has "
                 f"{', '.join(measurement.values) or 'none'}"
+            )
+        if entry.key != measurement.compared:
+            raise InputError(
+                f"{at}.key: {entry.key!r} was not the validated quantity for measurement "
+                f"{entry.measurement!r}; its compared field is {measurement.compared!r}"
             )
         if measurement.accepted and measurement.values[entry.key] < 0:
             raise InputError(

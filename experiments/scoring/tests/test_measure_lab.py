@@ -151,6 +151,18 @@ class TestImport:
         m3.update(accepted=False, warnings=["estimatedPlane"])
         assert by_id(setup.run())["c1-gas"]["missing"] == "failed"
 
+    def test_accepted_straight_does_not_validate_unchecked_along_wall(self, setup: Setup):
+        m5 = setup.measurement("m5")
+        m5.update(compared="straight", accepted=True, warnings=[])
+        setup.session["walls"][0].update(validations=[], warnings=["wallNotValidated"])
+        error = setup.error()
+        assert "map.json: measurements.c1-route.key" in error
+        assert "'alongWall'" in error and "'straight'" in error
+
+    def test_missing_compared_quantity_is_rejected(self, setup: Setup):
+        del setup.measurement("m5")["compared"]
+        assert "measurements[4] (m5).compared: expected a non-empty string" in setup.error()
+
     def test_header_timing_and_ids(self, setup: Setup):
         results = setup.run()
         zip_bytes = (setup.root / "session.zip").read_bytes()

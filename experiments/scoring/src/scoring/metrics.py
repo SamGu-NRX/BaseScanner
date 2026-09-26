@@ -209,9 +209,8 @@ class CheckScore:
     # An unsure or fail where the survey passes.
     over_caution: bool | None
     false_rejection: bool | None
-    # A pass or fail although the run's own measurement is missing as failed or unsupported.
-    # Missing as absent is not counted: the run says the feature does not exist, which can
-    # decide a clearance. Counted whatever the survey outcome, including unknown.
+    # A pass or fail without a deciding distance. Absence only supports at_least clearances,
+    # not at_most limits. Counted whatever the survey outcome, including unknown.
     decided_without_measurement: bool | None
     abstention: Abstention | None
 
@@ -243,7 +242,10 @@ def score_check(
     blind = None
     if reported is not None:
         run_missing = measurement.reported.missing if measurement.reported else None
-        blind = reported in ("pass", "fail") and run_missing in ("failed", "unsupported")
+        blind = reported in ("pass", "fail") and (
+            run_missing in ("failed", "unsupported")
+            or (run_missing == "absent" and threshold.pass_when == "at_most")
+        )
     if reported is not None and truth != "unknown":
         agrees = reported == expected
         unsafe = reported == "pass" and truth == "fail"
