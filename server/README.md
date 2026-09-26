@@ -23,7 +23,7 @@ The public demo runs at **https://house-scanning-server.vercel.app** (Vercel pro
 npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
 ```
 
-Only `server/` uploads (`.vercelignore`), so the repository's `private/` rules can't reach a deployment; `/health` shows `sources: ["public"]`. Vercel caps a request body at 4.5 MB, so send it bare `scene.json` or a zip without the keyframe JPEGs; the solver doesn't read the images. The project isn't connected to Git: a deploy is always this command.
+Only `server/` uploads (`.vercelignore`), so the repository's `private/` rules can't reach a deployment; `/health` shows `sources: ["public"]`. Vercel caps a request body at 4.5 MB, so send bare `scene.json`: the solver doesn't read the images, and a zip must hold every JPEG its `scene.json` names or it is refused with 422 `missing_bundle_file`. The project isn't connected to Git: a deploy is always this command.
 
 ## API
 

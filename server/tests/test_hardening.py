@@ -205,14 +205,28 @@ def test_private_sources_are_withheld_from_answers(tmp_path: Path) -> None:
     private.write_text(
         "policy: {id: p, version: '1', auto_approve: true, allow_reject: true}\n"
         "clearances:\n  gas_ft: {value: 4.0, source: 'SECRET CITATION'}\n"
+        # The ground surface check cites ground.source, set here alongside another ground key.
+        "ground:\n  drivable: [drive]\n  source: 'SECRET GROUND CITATION'\n"
     )
     loaded = load_rules(private)
     result = solve(parse_scene(shared_fixture(), loaded.rules), loaded)
-    assert "SECRET CITATION" not in json.dumps(result)
+    assert "SECRET" not in json.dumps(result)
     gas = next(c for c in result["checks"] if c["id"] == "gas_clearance")
     ac = next(c for c in result["checks"] if c["id"] == "ac_clearance")
+    ground = next(c for c in result["checks"] if c["id"] == "ground_surface")
     assert gas["rule"]["source"] == "Private rules"
+    assert ground["rule"]["source"] == "Private rules"
     assert ac["rule"]["source"].startswith("Base help page")
+
+
+def test_a_private_ground_list_is_not_shown_with_the_public_citation(tmp_path: Path) -> None:
+    # ground has one citation for the whole group; a private list under it makes it private.
+    private = tmp_path / "rules.yaml"
+    private.write_text("ground:\n  allowed: [concrete, gravel]\n")
+    loaded = load_rules(private)
+    result = solve(parse_scene(shared_fixture(), loaded.rules), loaded)
+    ground = next(c for c in result["checks"] if c["id"] == "ground_surface")
+    assert ground["rule"]["source"] == "Private rules"
 
 
 # --- served schemas -----------------------------------------------------------------------------

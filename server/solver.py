@@ -59,14 +59,15 @@ class Check:
     missing: list[tuple[str, float, float]] = field(default_factory=list)
     # Computing the exact unseen stretch is slow, so it is deferred until a result reports it.
     missing_later: Callable[[], list[tuple[str, float, float]]] | None = None
+    # Other rule keys whose values or citation the check uses; if the private file set any of
+    # them, the citation is withheld.
+    cites: tuple[str, ...] = ()
 
     def all_missing(self) -> list[tuple[str, float, float]]:
         return self.missing + (self.missing_later() if self.missing_later else [])
 
     def rule_keys(self) -> tuple[str, ...]:
-        # route_length's citation names the confident reach too.
-        extra = ("route.confident_reach_ft",) if self.id == "route_length" else ()
-        return (self.rule_key, *extra)
+        return (self.rule_key, *self.cites)
 
     def to_json(self, private_keys: frozenset[str] = frozenset()) -> dict[str, Any]:
         source = self.rule.source if self.rule else self.rule_source
@@ -106,6 +107,12 @@ def _is_private(keys: tuple[str, ...], private_keys: frozenset[str]) -> bool:
 
 def _round(v: float | None) -> float | None:
     return None if v is None else round(v, 6)
+
+
+def _outward(a: float, b: float) -> list[float]:
+    """A requested view's span, rounded to 6 decimals away from its middle: rounding an end
+    inward would leave a sliver that capturing exactly the listed span never covers."""
+    return [math.floor(a * 1e6) / 1e6, math.ceil(b * 1e6) / 1e6]
 
 
 def at_least(value: float, error: float, threshold: float) -> str:
@@ -268,6 +275,8 @@ class Solver:
             None,
             rule_source=self.r.ground.source,
             rule_placeholder=self.r.ground.placeholder,
+            # The citation is ground.source, shared by the whole ground group.
+            cites=("ground",),
         )
         ew = piece.plus_minus
         # "Clearly on a disallowed surface" erodes the patch by the error, rounded up to 0.1 ft
@@ -315,6 +324,13 @@ class Solver:
         extent = self.scene.s_extent(region)
         return [(band, *extent)] if extent else []
 
+    def _missing_bands(
+        self, bands: list[str], fp: Polygon, radius: float
+    ) -> list[tuple[str, float, float]]:
+        """Every unseen band, so one recapture settles the check (a clearance can need both the
+        ground and the wall)."""
+        return [m for band in bands for m in self._missing(band, fp, radius)]
+
     def check_clearance(
         self,
         check_id: str,
@@ -357,7 +373,7 @@ class Solver:
         radius = t + piece.plus_minus
         bands = ["ground", "wall"] if band == "ground+wall" else [band]
         unseen = [b for b in bands if not self._covered(fp, self._unobserved(b), radius)]
-        missing_later = partial(self._missing, unseen[0], fp, radius) if unseen else None
+        missing_later = partial(self._missing_bands, unseen, fp, radius) if unseen else None
         if c.outcome == UNSURE:
             if c.unsure_cause == "unknown_attribute":
                 c.reason = (
@@ -658,6 +674,7 @@ class Solver:
             threshold=r.max_ft.value,
             review_threshold=cr.value,
             comparison="at_most",
+            cites=("route.confident_reach_ft",),
         )
         run = f"{ft(length)} (± {ft(e)})"
         confident = cr.value
@@ -1040,7 +1057,7 @@ def _missing_json(c: Candidate) -> list[dict[str, Any]]:
                 {
                     "kind": "band",
                     "band": band,
-                    "span_ft": [_round(a), _round(b)],
+                    "span_ft": _outward(a, b),
                     "checks": ids,
                     "message": f"Show the {_BAND_TEXT[band]} from {where(a)} to {where(b)}.",
                 }
