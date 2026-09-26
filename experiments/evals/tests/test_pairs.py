@@ -1,0 +1,77 @@
+"""Hand-computed cases for the point-pair metric."""
+
+import numpy as np
+import pytest
+
+from evals.pairs import (
+    INCH,
+    Points,
+    length_errors,
+    sample_pairs,
+    scale_for_known_distance,
+    summarize,
+)
+
+
+def _line_points(xs, pred_scale=1.0, c=None):
+    gt = np.array([[x, 0.0, 0.0] for x in xs])
+    r = gt * pred_scale
+    c = np.zeros_like(gt) if c is None else c
+    return Points(gt=gt, c=c, r=r)
+
+
+def test_sample_pairs_respects_bin():
+    gt = np.array([[0.0, 0, 0], [2.0, 0, 0], [5.0, 0, 0], [5.5, 0, 0]])
+    rng = np.random.default_rng(1)
+    pairs = sample_pairs(gt, 1.0, 3.0, 50, rng)
+    d = np.linalg.norm(gt[pairs[:, 0]] - gt[pairs[:, 1]], axis=1)
+    assert len(pairs) == 50
+    assert np.all((d >= 1.0) & (d < 3.0))
+    # Only {0,1} (2 m) and {1,2} (3 m, excluded: upper bound open) qualify, so only 0-1 pairs appear.
+    assert set(map(frozenset, pairs.tolist())) == {frozenset({0, 1})}
+
+
+def test_length_error_of_a_scaled_reconstruction():
+    pts = _line_points([0.0, 2.0, 7.0], pred_scale=1.1)
+    pairs = np.array([[0, 1], [0, 2]])
+    np.testing.assert_allclose(length_errors(pts, pairs), [0.2, 0.7])
+    # Rescaled by 1/1.1 the errors vanish.
+    np.testing.assert_allclose(length_errors(pts, pairs, s=1 / 1.1), [0.0, 0.0], atol=1e-12)
+
+
+def test_known_distance_scale_without_centres():
+    pts = _line_points([0.0, 2.0], pred_scale=1.25)
+    assert scale_for_known_distance(pts, np.array([0, 1])) == pytest.approx(0.8)
+
+
+def test_known_distance_scale_with_camera_centres():
+    # Cameras at x = 0 and x = 3 m see points (1, 0, 2) and (2, 0, 2), 1 m apart, with depth
+    # predicted 1.2x too far. Predicted separation along x is |-3 + 2.4 s|, so s = 2/2.4 or 4/2.4
+    # both give 1 m; the root nearer 1 (0.833 = 1/1.2) is the right one and is chosen.
+    c = np.array([[0.0, 0, 0], [3.0, 0, 0]])
+    gt = np.array([[1.0, 0, 2], [2.0, 0, 2]])
+    pts = Points(gt=gt, c=c, r=(gt - c) * 1.2)
+    s = scale_for_known_distance(pts, np.array([0, 1]))
+    assert s == pytest.approx(1 / 1.2)
+    np.testing.assert_allclose(pts.predicted(s), gt, atol=1e-12)
+
+
+def test_summarize_in_inches_and_scale_error():
+    e = np.array([1, -2, 3, -4, 5], dtype=float) * INCH
+    ratios = np.array([1.00, 1.02, 1.04, 1.06, 1.08])
+    s = summarize(e, ratios)
+    assert s["median_in"] == pytest.approx(3.0)
+    assert s["p90_in"] == pytest.approx(4.6)  # numpy linear percentile of [1,2,3,4,5]
+    assert s["scale_error_pct"] == pytest.approx(4.0)
+
+
+def test_bilinear_depth_sampling():
+    from evals.recon import _sample_depth
+
+    d = np.array([[1.0, 2.0], [3.0, 4.0], [np.nan, 5.0]])
+    uv = np.array([[0.5, 0.5], [0.0, 0.0], [0.25, 1.5], [1.5, 0.0]])
+    out = _sample_depth(d, uv)
+    assert out[0] == pytest.approx(2.5)
+    assert out[1] == pytest.approx(1.0)
+    assert np.isnan(out[2])  # touches the NaN pixel
+    assert np.isnan(out[3])  # outside the image
