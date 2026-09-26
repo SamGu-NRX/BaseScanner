@@ -605,6 +605,9 @@ final class ScanViewState {
     /// True when no server is configured and the result will be the bundled sample: nothing is
     /// sent, and every screen that talks about the upload or shows the spot must say so.
     var usesSampleResult = false
+    /// The scan's bundle (scene.json, keyframe photos and their poses) once it is packaged, for
+    /// "Share scan". Photos leave the phone only if the homeowner shares this.
+    var shareableScan: URL?
     /// A camera permission or session failure the homeowner can act on.
     var failure: ScanFailure?
 
