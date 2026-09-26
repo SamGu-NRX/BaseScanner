@@ -248,6 +248,14 @@ def _read_json(path: Path) -> tuple[Any, bytes]:
         raw = path.read_bytes()
     except OSError as error:
         raise InputError(f"{path}: cannot read ({error.strerror})") from None
+    return _parse_json(raw, str(path)), raw
+
+
+def _parse_json(raw: bytes, path: str) -> Any:
+    """Parse JSON with every float as an exact Decimal, rejecting duplicate keys and NaN.
+
+    `path` names the source in error messages, which may be a member inside a zip.
+    """
 
     def reject_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         seen: dict[str, Any] = {}
@@ -264,7 +272,7 @@ def _read_json(path: Path) -> tuple[Any, bytes]:
         raise InputError(f"{path}: {name} is not a measurement; write null for a missing value")
 
     try:
-        data = json.loads(
+        return json.loads(
             raw,
             parse_float=Decimal,
             parse_constant=reject_constant,
@@ -276,7 +284,6 @@ def _read_json(path: Path) -> tuple[Any, bytes]:
         ) from None
     except UnicodeDecodeError:
         raise InputError(f"{path}: not UTF-8 text") from None
-    return data, raw
 
 
 def _unique_id(fields: _Fields, seen: Container[str], kind: str) -> str:

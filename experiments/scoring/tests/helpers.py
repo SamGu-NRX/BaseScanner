@@ -3,6 +3,8 @@
 import copy
 import hashlib
 import json
+import sys
+import zipfile
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -157,3 +159,36 @@ class Files:
         if fill_hash and not self.results["rules_sha256"]:
             self.results["rules_sha256"] = hashlib.sha256(rules.read_bytes()).hexdigest()
         return rules, self.write("truth.json", self.truth), self.write("results.json", self.results)
+
+
+MEASURE_LAB = FIXTURES / "measure-lab"
+SESSION_ID = "synthetic-session-01"
+SESSION_ZIP = MEASURE_LAB / f"{SESSION_ID}.zip"
+
+
+def session_zip(session: dict[str, Any] | bytes, dest: Path, folder: str = SESSION_ID) -> Path:
+    """Zip a session the way Measure Lab shares one: the session folder at the top, holding
+    session.json and keyframes/. Stored, with fixed timestamps, so the bytes and therefore the
+    capture id (the zip's sha256) are the same on every machine."""
+    raw = session if isinstance(session, bytes) else (json.dumps(session, indent=2) + "\n").encode()
+    with zipfile.ZipFile(dest, "w", zipfile.ZIP_STORED) as archive:
+        for name, data in (
+            (f"{folder}/", b""),
+            (f"{folder}/keyframes/", b""),
+            (f"{folder}/session.json", raw),
+        ):
+            info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.external_attr = (0o40755 if name.endswith("/") else 0o100644) << 16
+            archive.writestr(info, data)
+    return dest
+
+
+def committed_session() -> dict[str, Any]:
+    return json.loads((MEASURE_LAB / SESSION_ID / "session.json").read_text())
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["rebuild-session-zip"]:
+    # uv run python tests/helpers.py rebuild-session-zip
+    raw = (MEASURE_LAB / SESSION_ID / "session.json").read_bytes()
+    print(hashlib.sha256(session_zip(raw, SESSION_ZIP).read_bytes()).hexdigest())

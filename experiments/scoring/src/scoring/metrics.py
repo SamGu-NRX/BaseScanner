@@ -116,24 +116,36 @@ def truth_outcome(
         if threshold.pass_when != "at_least":
             raise ValueError(f"absent measurement {survey.id!r} cannot decide an at_most rule")
         return "pass"
-    pass_margin = passing_margin_ft(survey, review or threshold)
-    fail_margin = passing_margin_ft(survey, threshold)
-    uncertainty = survey.plus_minus_ft
-    assert pass_margin is not None and fail_margin is not None and uncertainty is not None
-    if pass_margin > uncertainty:
+    assert survey.value_ft is not None and survey.plus_minus_ft is not None
+    return decide(survey.value_ft, survey.plus_minus_ft, threshold, review)
+
+
+def decide(
+    value_ft: Decimal, plus_minus_ft: Decimal, threshold: Threshold, review: Threshold | None
+) -> Literal["pass", "fail", "borderline", "review"]:
+    """The strict Lane C rule for one value and its uncertainty; truth_outcome explains it.
+
+    The survey outcome and the Measure Lab importer's --decide row both call this, so a run
+    that emulates the rule and the survey it is scored against can never disagree about ties.
+    """
+    pass_margin = margin_ft(value_ft, review or threshold)
+    if pass_margin > plus_minus_ft:
         return "pass"
-    if fail_margin < -uncertainty:
+    if margin_ft(value_ft, threshold) < -plus_minus_ft:
         return "fail"
     return "review" if review else "borderline"
 
 
-def passing_margin_ft(survey: SurveyMeasurement, threshold: Threshold) -> Decimal | None:
-    """Survey value minus threshold, signed so that positive is the passing side."""
-    if survey.value_ft is None:
-        return None
+def margin_ft(value_ft: Decimal, threshold: Threshold) -> Decimal:
+    """Value minus threshold, signed so that positive is the passing side."""
     if threshold.pass_when == "at_least":
-        return survey.value_ft - threshold.value_ft
-    return threshold.value_ft - survey.value_ft
+        return value_ft - threshold.value_ft
+    return threshold.value_ft - value_ft
+
+
+def passing_margin_ft(survey: SurveyMeasurement, threshold: Threshold) -> Decimal | None:
+    """The survey value's margin_ft, or None when the survey has no value."""
+    return None if survey.value_ft is None else margin_ft(survey.value_ft, threshold)
 
 
 def expected_outcome(truth: TruthOutcome) -> Outcome | None:

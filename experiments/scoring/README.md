@@ -117,6 +117,69 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | `outcomes` | One entry per survey check: `pass`, `unsure` or `fail`. Report what the pipeline actually decided. A pass or fail whose measurement is missing as `failed` or `unsupported` is accepted, scored as usual and flagged as decided without its measurement. Set the whole field to null for a run that measures distances but makes no decisions. |
 | `timing.capture_s`, `processing_s` | Seconds, or null if not recorded. Runs on the same capture must report the same `capture_s` or null. |
 
+## Import a Measure Lab session
+
+`score import-measure-lab` turns a session zip shared from Measure Lab (session format 2, documented in `experiments/measure-lab/README.md` "Session format") into a results file. The rig names its measurements with app-generated ids and reports meters, so the team writes a map file after the walk that ties each survey measurement to what the rig produced.
+
+```sh
+uv run score import-measure-lab fixtures/measure-lab/synthetic-session-01.zip \
+  --map fixtures/measure-lab/map.json --rules fixtures/rules.json \
+  --truth fixtures/truth/synthetic-01.json --out data/measure-lab.json
+```
+
+Add `--decide` for a second row that makes decisions (write it to another `--out` file). The importer then computes pass, unsure or fail for every check from the run's own value and uncertainty, with the same strict rule the scorer applies to the survey: pass when the margin is larger than the uncertainty, fail when the miss is larger, unsure otherwise, and unsure whenever there is no value. A feature the operator marked absent passes an `at_least` check. The pipeline id gets a `+rule` suffix so the row is visibly rule-emulated. This emulates the lane C rule until a real solver exists; it says nothing about how the solver will behave.
+
+An excerpt of a map file. A real map has a key for every survey measurement id; `fixtures/measure-lab/map.json` is a complete one.
+
+```json
+{
+  "format": 1, "unit": "ft",
+  "pipeline": "measure-lab",
+  "session": "synthetic-session-01",
+  "notes": "plus_minus_ft_by_key is docs/02's ±0.3 ft for AR taps, the plan's untested estimate.",
+  "plus_minus_ft_by_key": {"straight": 0.3, "alongWall": 0.3, "gapToWall": 0.3},
+  "measurements": {
+    "wall-length": {"session_measurement": "m2", "key": "alongWall"},
+    "c1-gas": {"session_measurement": "m3", "key": "straight", "plus_minus_ft": 0.25},
+    "c2-facing": {"refusal": "r1"},
+    "c1-pool": "absent",
+    "c2-pool": "unsupported"
+  }
+}
+```
+
+| Map entry | Becomes |
+|---|---|
+| `{"session_measurement": id, "key": k}` | That measurement's `values[k]`, converted to feet. `k` is one of `straight`, `horizontal`, `vertical`, `alongWall`, `gapToWall`, `heightAboveGround`. A measurement with `accepted: false` (the rig's own abstention, for example a negative `heightAboveGround`) becomes a null value, missing `failed`. |
+| `{"refusal": id}` | The rig tried and refused: a null value, missing `failed`. |
+| `"absent"` | The operator saw no such feature: missing `absent`. |
+| `"unsupported"` | The rig has no way to measure it: missing `unsupported`. |
+
+The uncertainty must be stated: an entry's own `plus_minus_ft`, or else the entry's key in `plus_minus_ft_by_key`. The code has no default. The ±0.3 ft in the example map is docs/02's figure for AR taps, the plan's untested estimate, not a measured error bar. The scale reference may be left out of the map, as in a results file. `session` must match the zip's session id, so a map cannot be applied to the wrong walk. `notes` is free text.
+
+What the importer writes:
+
+- **Feet.** Meters divided exactly by 0.3048, then rounded half up to 6 decimal places (a millionth of a foot). ARKit is good to centimeters at best, so the rounding is invisible, and it keeps values inside the scorer's 12-decimal limit. `--decide` works on the rounded value, the same one the scorer reads.
+- **capture:** the zip's sha256. Add it to the house's `captures` in the survey before importing.
+- **rules_sha256:** the rules file's sha256. **scale_source:** `ar_poses`, since ARKit tracking supplies metric scale.
+- **capture_s:** from the session's start (`startedAtUptime`) to its last measurement, to the millisecond. **processing_s:** null. The rig shows each value as it is tapped, so there is no processing stage after the walk, and session.json records no time for one.
+
+The importer stops with a specific message, and writes nothing, for:
+
+- a map key that is not a survey measurement id;
+- a survey measurement the map leaves out;
+- a session measurement or refusal id the session does not have;
+- a values key that measurement lacks;
+- a session format other than version 2;
+- a map written for another session;
+- an entry with no uncertainty;
+- an accepted measurement with a negative value;
+- a zip that is not in the survey's captures.
+
+It also scores its own output before saving it, so a file it writes always loads.
+
+The fixture zip is built reproducibly from `fixtures/measure-lab/synthetic-session-01/session.json`. After editing that file, run `uv run python tests/helpers.py rebuild-session-zip` and put the printed sha256 in the survey's captures.
+
 ## What the scorer reports
 
 The markdown summary has one section per house. Each section has a distances table, a checks table, a timing table, and every unsafe pass, missed review and decision made without its measurement, listed by name. Nothing is averaged across houses, and a missing output is never averaged away. The CSVs hold one row per run and measurement, per run and check, and per run.

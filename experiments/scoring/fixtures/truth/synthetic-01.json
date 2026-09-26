@@ -2,7 +2,7 @@
   "format": 1,
   "unit": "ft",
   "house": "synthetic-01",
-  "captures": ["synthetic-01-walk-1"],
+  "captures": ["synthetic-01-walk-1", "7ded14d64c8b2810d9b26150b439bc9c4dc52a753f6189ee22d481fc14ce8e9d"],
   "scale_reference": "scale",
   "candidates": [
     {

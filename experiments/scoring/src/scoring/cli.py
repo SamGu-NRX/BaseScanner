@@ -4,16 +4,22 @@ import argparse
 import sys
 from pathlib import Path
 
+from scoring import measure_lab
 from scoring.inputs import InputError, load_study
 from scoring.metrics import score_run
 from scoring.report import markdown, write_csvs
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["import-measure-lab"]:
+        return measure_lab.main(argv[1:])
     parser = argparse.ArgumentParser(
         prog="score",
         description="Score pipeline runs against a tape survey. Prints a markdown summary and "
         "writes measurements.csv, checks.csv and runs.csv.",
+        epilog="To turn a Measure Lab session into a results file, run "
+        "`score import-measure-lab --help`.",
     )
     parser.add_argument("--rules", type=Path, required=True, help="rules file (JSON)")
     parser.add_argument(
