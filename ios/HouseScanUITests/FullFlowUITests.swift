@@ -8,6 +8,8 @@ import XCTest
 /// - HOUSESCAN_REPLAY: a session folder for `testFullFlowFromRealReplay`, and a replacement for the
 ///   synthetic fixture in `testFullFlowFromReplay`.
 /// - HOUSESCAN_SERVER_URL: upload to this server instead of answering with the bundled sample.
+/// - HOUSESCAN_AUDIT_REPORT_ONLY=1: record accessibility audit issues as attachments instead of
+///   failing, to list every issue in one run. CI leaves it unset, so any issue fails the test.
 final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
     static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "result", "resultAR"]
@@ -41,6 +43,22 @@ final class FullFlowUITests: XCTestCase {
     }
 
     @MainActor
+    private func audit(_ app: XCUIApplication, screen: String) throws {
+        guard Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" else {
+            try app.performAccessibilityAudit()
+            return
+        }
+        try app.performAccessibilityAudit { issue in
+            let note = XCTAttachment(string: "screen.\(screen): \(issue.compactDescription) - \(issue.detailedDescription) [\(issue.element?.identifier ?? "")] \(issue.element?.label ?? "")")
+            note.name = "audit-\(screen)"
+            note.lifetime = .keepAlways
+            self.add(note)
+            print("AUDIT screen.\(screen): \(issue.compactDescription) | \(issue.element?.label ?? "")")
+            return true
+        }
+    }
+
+    @MainActor
     private func runFlow(replay: String) throws {
         let app = XCUIApplication()
         var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "3"]
@@ -61,7 +79,7 @@ final class FullFlowUITests: XCTestCase {
             shot.name = phase
             shot.lifetime = .keepAlways
             add(shot)
-            try app.performAccessibilityAudit()
+            try audit(app, screen: phase)
         }
         // Closing the AR view returns to the result.
         XCTAssertTrue(app.descendants(matching: .any)["screen.result"].waitForExistence(timeout: 20), "closing AR did not return to the result")
