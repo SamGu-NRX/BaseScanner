@@ -29,8 +29,14 @@ class Reader:
             [str(BINARY)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1
         )
 
-    def read(self, path: Path, config: str = PRIMARY, crop: list[float] | None = None) -> dict:
-        request = {"path": str(path), **CONFIGS[config]}
+    def read(
+        self,
+        path: Path,
+        config: str = PRIMARY,
+        crop: list[float] | None = None,
+        barcodes: bool = False,
+    ) -> dict:
+        request = {"path": str(path), **CONFIGS[config], "barcodes": barcodes}
         if crop is not None:
             request["crop"] = crop
         assert self.process.stdin and self.process.stdout

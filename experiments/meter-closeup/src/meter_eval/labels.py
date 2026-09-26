@@ -11,7 +11,7 @@ Plaintext labels stay in the data directory; the manifest keeps only digests (se
 import csv
 import re
 
-from meter_eval.match import digest, lenient_digest, normalize, normalize_class
+from meter_eval.match import core, digest, lenient_digest, normalize, normalize_class
 from meter_eval.paths import DATA_DIR, MANIFEST
 
 READER1 = DATA_DIR / "labels_reader1.csv"
@@ -34,6 +34,8 @@ FIELDS = [
     "number_sha256",
     "number_sha256_lenient",
     "number_len",
+    "number_core_sha256",
+    "number_core_len",
     "number_agreed",
     "class_label",
     "class_kind",
@@ -98,6 +100,8 @@ def build() -> list[dict]:
                 "number_sha256": digest(normalize(number)),
                 "number_sha256_lenient": lenient_digest(number),
                 "number_len": len(normalize(number)),
+                "number_core_sha256": digest(core(number)),
+                "number_core_len": len(core(number)),
                 "number_agreed": "yes" if agreed else "no",
             }
         label = r1["class_label"]

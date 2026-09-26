@@ -30,6 +30,15 @@ def normalize_class(text: str) -> str:
     return re.sub(r"[^A-Z0-9()]", "", text.upper().replace("×", "X"))
 
 
+def core(text: str) -> str:
+    """The normalized text without a leading run of letters before a digit.
+
+    "NO. 12345678", "ABC 123456" and "XYZW123456" become 12345678, 123456 and 123456, so a
+    utility prefix or a label word printed apart from the number does not decide a match.
+    """
+    return re.sub(r"^[A-Z]+(?=\d)", "", normalize(text))
+
+
 def digest(normalized: str) -> str:
     return hashlib.sha256(normalized.encode()).hexdigest()
 
