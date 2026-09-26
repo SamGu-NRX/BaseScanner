@@ -217,3 +217,11 @@ def test_a_zip_with_two_manifests_is_refused(tmp_path):
 def test_a_folder_without_a_manifest_is_refused(tmp_path):
     with pytest.raises(PacketError, match="no manifest"):
         PacketFiles(tmp_path)
+
+
+def test_an_unclassified_mesh_has_only_class_zero():
+    data = bytearray(mesh_ply())
+    for i in range(1, 5):  # the class byte ends each 14-byte face
+        data[-14 * i + 13] = 0
+    assert mesh_problems(bytes(data), classified=False) == []
+    assert mesh_problems(mesh_ply(), classified=False) != []

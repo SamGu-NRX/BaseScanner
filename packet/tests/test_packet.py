@@ -196,7 +196,9 @@ def test_depth_bytes_must_match_its_size(packet):
     d = m["photos"][0]["depth"]
     d["width"], d["height"] = 12, 9  # same aspect, a quarter of the pixels
     save(packet, m)
-    assert "float32 is 432" in only_problem(packet)
+    problems = validate(packet).problems
+    assert len(problems) == 2
+    assert "float32 is 432" in problems[0] and "uint8 is 108" in problems[1]
 
 
 def test_confidence_above_high(packet):
@@ -240,3 +242,104 @@ def test_a_path_that_leaves_the_packet_breaks_the_schema(packet):
     m["scene"]["path"] = "../scene.json"
     save(packet, m)
     assert validate(packet).problems[0].startswith("schema: scene/path")
+
+
+# --- 1.1 additions ------------------------------------------------------------------------------
+
+
+def as_1_0(m: dict) -> dict:
+    """The fixture as a 1.0 writer would have written it: no 1.1 fields."""
+    m["packet_version"] = "1.0"
+    del m["depth_frames"]
+    del m["session"]["device"]["mesh_classification_enabled"]
+    m["lidar"]["planes"] = m.pop("planes")
+    for plane in m["lidar"]["planes"]:
+        plane.pop("boundary_m", None)
+    for p in m["photos"]:
+        del p["depth"]["confidence"]  # optional in 1.0 even for ARKit depth
+    return m
+
+
+def test_a_1_0_packet_still_validates(packet):
+    save(packet, as_1_0(manifest(packet)))
+    report = validate(packet)
+    assert report.ok, report.problems
+    assert len(report.warnings) == 1  # the files only 1.1 names are now unlisted
+
+
+def test_arkit_depth_needs_confidence_from_1_1(packet):
+    m = manifest(packet)
+    del m["photos"][0]["depth"]["confidence"]
+    (packet / "depth" / "p00001.conf.u8").unlink()
+    save(packet, m)
+    assert "needs confidence (required from 1.1)" in only_problem(packet)
+
+
+def test_estimated_depth_needs_sigma(packet):
+    m = manifest(packet)
+    del m["depth_frames"][1]["sigma"]
+    save(packet, m)
+    assert only_problem(packet).startswith("schema: depth_frames/1")
+
+
+def test_sigma_must_be_finite_and_sized(packet):
+    m = manifest(packet)
+    f = m["depth_frames"][1]
+    sigma = np.full((f["height"], f["width"]), 0.15, "<f4")
+    sigma[0, 0] = np.inf
+    replace_file(packet, f["sigma"], sigma.tobytes())
+    save(packet, m)
+    assert "sigma has NaN or infinite values" in only_problem(packet)
+    replace_file(packet, f["sigma"], sigma[:, :-1].tobytes())
+    save(packet, m)
+    assert "sigma is 1656 bytes" in only_problem(packet)
+
+
+def test_a_depth_frame_off_its_trajectory(packet):
+    m = manifest(packet)
+    m["depth_frames"][0]["pose"][14] += 0.05  # 5 cm out from the wall
+    save(packet, m)
+    assert only_problem(packet).startswith("depth_frames[0] d00001: 0.050 m from the trajectory")
+
+
+def test_depth_frame_intrinsics_describe_the_depth_grid(packet):
+    m = manifest(packet)
+    m["depth_frames"][0]["intrinsics"] = [80.0, 80.0, 48.0, 36.0]  # the photo's, not the map's
+    save(packet, m)
+    assert "principal point" in validate(packet).problems[0]
+
+
+def test_depth_frames_in_time_order(packet):
+    m = manifest(packet)
+    a, b = m["depth_frames"]
+    a["t"], b["t"] = b["t"], a["t"]
+    save(packet, m)
+    assert any(p.startswith("depth_frames (in manifest order)") for p in validate(packet).problems)
+
+
+def test_planes_in_both_places(packet):
+    m = manifest(packet)
+    m["lidar"]["planes"] = m["planes"]
+    save(packet, m)
+    assert "use one (top level)" in only_problem(packet)
+
+
+def test_a_boundary_outside_its_extent(packet):
+    m = manifest(packet)
+    m["planes"][0]["boundary_m"][0] = [-3.5, -1.2]  # half a meter past the 6 m extent
+    save(packet, m)
+    assert "leaves the 6.0 x 2.4 m extent" in only_problem(packet)
+
+
+def test_a_mesh_needs_the_classification_flag_from_1_1(packet):
+    m = manifest(packet)
+    del m["session"]["device"]["mesh_classification_enabled"]
+    save(packet, m)
+    assert "mesh_classification_enabled is required" in only_problem(packet)
+
+
+def test_classes_must_be_zero_when_classification_was_off(packet):
+    m = manifest(packet)
+    m["session"]["device"]["mesh_classification_enabled"] = False
+    save(packet, m)
+    assert "every face's class must be 0" in only_problem(packet)

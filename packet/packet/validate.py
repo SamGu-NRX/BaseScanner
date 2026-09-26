@@ -165,16 +165,19 @@ def file_problems(files: PacketFiles, ref: dict, where: str) -> list[str]:
     return []
 
 
+def depth_refs(d: dict, where: str) -> list[tuple[str, dict]]:
+    return [(f"{where}.{key}", d[key]) for key in ("map", "confidence", "sigma") if key in d]
+
+
 def file_refs(manifest: dict) -> list[tuple[str, dict]]:
     """Every file the manifest names, with where it is named."""
     refs = []
     for i, p in enumerate(manifest.get("photos", [])):
         refs.append((f"photos[{i}].image", p["image"]))
-        depth = p.get("depth")
-        if depth:
-            refs.append((f"photos[{i}].depth.map", depth["map"]))
-            if "confidence" in depth:
-                refs.append((f"photos[{i}].depth.confidence", depth["confidence"]))
+        if "depth" in p:
+            refs += depth_refs(p["depth"], f"photos[{i}].depth")
+    for i, f in enumerate(manifest.get("depth_frames", [])):
+        refs += depth_refs(f, f"depth_frames[{i}]")
     for name, s in manifest.get("streams", {}).items():
         refs.append((f"streams.{name}", s))
     if manifest.get("lidar", {}).get("mesh"):
@@ -207,7 +210,13 @@ def image_problems(files: PacketFiles, photo: dict, where: str) -> list[str]:
     return out
 
 
-def depth_problems(files: PacketFiles, photo: dict, intact: set[str], where: str) -> list[str]:
+ARKIT_DEPTH = {"arkit_scene_depth", "arkit_smoothed_scene_depth"}
+# A boundary vertex may sit on the extent's edge; allow float rounding and 1 cm.
+BOUNDARY_TOL_M = 0.01
+
+
+def photo_depth_problems(photo: dict, where: str) -> list[str]:
+    """A photo's depth covers the photo's field of view: same aspect, no larger."""
     d = photo["depth"]
     w, h = d["width"], d["height"]
     out = []
@@ -219,20 +228,37 @@ def depth_problems(files: PacketFiles, photo: dict, intact: set[str], where: str
             f"{where}: depth {w}x{h} does not have the photo's aspect "
             f"({photo['width']}x{photo['height']}); it cannot be aligned by scaling"
         )
-    if d["map"]["bytes"] != w * h * 4:
-        return [
-            *out,
-            f"{where}: depth map is {d['map']['bytes']} bytes, {w}x{h} float32 is {w * h * 4}",
-        ]
-    if d["map"]["path"] not in intact:
-        return out  # reported by file_problems
-    depth = np.frombuffer(files.read(d["map"]["path"]), dtype="<f4")
-    if not np.isfinite(depth).all():
-        out.append(f"{where}: depth has NaN or infinite values; write 0 for no measurement")
-    elif (depth < 0).any():
-        out.append(f"{where}: depth has negative values")
-    elif (depth > 0).mean() < 0.01:
-        out.append(f"{where}: depth is empty (under 1% of pixels measured)")
+    return out
+
+
+def depth_data_problems(
+    files: PacketFiles, d: dict, intact: set[str], minor: int, where: str
+) -> list[str]:
+    """The depth map, its confidence and its sigma: sizes, values, and which are required."""
+    w, h = d["width"], d["height"]
+    out = []
+    source = d.get("source")
+    if source in ARKIT_DEPTH and minor >= 1 and "confidence" not in d:
+        out.append(f"{where}: {source} depth needs confidence (required from 1.1)")
+    if source == "estimated" and "sigma" not in d:
+        out.append(f"{where}: estimated depth needs sigma")
+    for key, dtype, name in (("map", "<f4", "depth"), ("sigma", "<f4", "sigma")):
+        if key not in d:
+            continue
+        if d[key]["bytes"] != w * h * 4:
+            out.append(
+                f"{where}: {name} is {d[key]['bytes']} bytes, {w}x{h} float32 is {w * h * 4}"
+            )
+            continue
+        if d[key]["path"] not in intact:
+            continue  # reported by file_problems
+        values = np.frombuffer(files.read(d[key]["path"]), dtype=dtype)
+        if not np.isfinite(values).all():
+            out.append(f"{where}: {name} has NaN or infinite values; write 0 for no measurement")
+        elif (values < 0).any():
+            out.append(f"{where}: {name} has negative values")
+        elif key == "map" and (values > 0).mean() < 0.01:
+            out.append(f"{where}: depth is empty (under 1% of pixels measured)")
     if "confidence" in d:
         if d["confidence"]["bytes"] != w * h:
             out.append(
@@ -242,6 +268,23 @@ def depth_problems(files: PacketFiles, photo: dict, intact: set[str], where: str
             conf = np.frombuffer(files.read(d["confidence"]["path"]), dtype=np.uint8)
             if conf.max(initial=0) > 2:
                 out.append(f"{where}: confidence values must be 0, 1 or 2")
+    return out
+
+
+def plane_problems(plane: dict, where: str) -> list[str]:
+    out = rigid_problems(plane["pose"], where)
+    if "boundary_m" in plane:
+        ex, ez = plane["extent_m"]
+        b = np.asarray(plane["boundary_m"], dtype=float)
+        if not np.isfinite(b).all():
+            out.append(f"{where}: boundary_m must be finite")
+        elif (np.abs(b[:, 0]) > ex / 2 + BOUNDARY_TOL_M).any() or (
+            np.abs(b[:, 1]) > ez / 2 + BOUNDARY_TOL_M
+        ).any():
+            out.append(
+                f"{where}: boundary_m leaves the {ex} x {ez} m extent centred on the pose; "
+                "is it in ARKit's anchor frame instead of the pose's?"
+            )
     return out
 
 
@@ -308,8 +351,9 @@ MESH_HEADER = [
 ]
 
 
-def mesh_problems(data: bytes) -> list[str]:
-    """A binary PLY with exactly the layout README.md fixes, indices in range, classes 0 to 7."""
+def mesh_problems(data: bytes, classified: bool = True) -> list[str]:
+    """A binary PLY with exactly the layout README.md fixes, indices in range, classes 0 to 7,
+    and all 0 when classification was off."""
     end = data.find(b"end_header\n")
     if not data.startswith(b"ply\n") or end < 0:
         return ["lidar.mesh: not a PLY file"]
@@ -346,6 +390,8 @@ def mesh_problems(data: bytes) -> list[str]:
         out.append("lidar.mesh: a face index is out of range")
     if nf and faces["c"].max() >= MESH_CLASSIFICATIONS:
         out.append("lidar.mesh: classification must be an ARMeshClassification raw value, 0 to 7")
+    elif nf and not classified and faces["c"].any():
+        out.append("lidar.mesh: classification was off, so every face's class must be 0")
     return out
 
 
@@ -371,6 +417,7 @@ def validate(source: Path) -> Report:
         return report  # the checks below rely on the shape the schema guarantees
 
     problems = report.problems
+    minor = int(manifest["packet_version"].split(".")[1])
     session = manifest["session"]
     start, end = session["capture"]["started_at_uptime"], session["capture"]["ended_at_uptime"]
     if not end > start:
@@ -413,7 +460,20 @@ def validate(source: Path) -> Report:
         if p["image"]["path"] in intact:
             problems += image_problems(files, p, where)
         if "depth" in p:
-            problems += depth_problems(files, p, intact, where)
+            problems += photo_depth_problems(p, where)
+            problems += depth_data_problems(files, p["depth"], intact, minor, where)
+
+    frames = manifest.get("depth_frames", [])
+    frame_ids = [f["id"] for f in frames]
+    if len(set(frame_ids)) != len(frame_ids):
+        problems.append("depth_frames: ids must be unique")
+    problems += increasing_problems([f["t"] for f in frames], "depth_frames (in manifest order)")
+    for i, f in enumerate(frames):
+        where = f"depth_frames[{i}] {f['id']}"
+        in_window(f["t"], where)
+        problems += rigid_problems(f["pose"], where)
+        problems += intrinsics_problems(f["intrinsics"], f["width"], f["height"], where)
+        problems += depth_data_problems(files, f, intact, minor, where)
 
     streams = manifest.get("streams", {})
     trajectory = None
@@ -445,23 +505,35 @@ def validate(source: Path) -> Report:
                 f"session.capture.distance_walked_m is {walked}; "
                 f"the trajectory walks {measured:.3f}"
             )
-        for i, p in enumerate(photos):
+        posed = [(f"photos[{i}] {p['id']}", p) for i, p in enumerate(photos)]
+        posed += [(f"depth_frames[{i}] {f['id']}", f) for i, f in enumerate(frames)]
+        for where, p in posed:
             j = int(np.abs(trajectory[:, 0] - p["t"]).argmin())
             dt = abs(trajectory[j, 0] - p["t"])
             dist = float(np.linalg.norm(trajectory[j, 1:4] - matrix(p["pose"])[:3, 3]))
             if dt > PHOTO_TRAJECTORY_DT:
-                problems.append(f"photos[{i}] {p['id']}: no trajectory sample within {dt:.3f} s")
+                problems.append(f"{where}: no trajectory sample within {dt:.3f} s")
             elif dist > PHOTO_TRAJECTORY_DIST:
                 problems.append(
-                    f"photos[{i}] {p['id']}: {dist:.3f} m from the trajectory at its time; "
+                    f"{where}: {dist:.3f} m from the trajectory at its time; "
                     "poses and trajectory disagree (frame or clock)"
                 )
 
     lidar = manifest.get("lidar", {})
-    if "mesh" in lidar and lidar["mesh"]["path"] in intact:
-        problems += mesh_problems(files.read(lidar["mesh"]["path"]))
-    for i, plane in enumerate(lidar.get("planes", [])):
-        problems += rigid_problems(plane["pose"], f"lidar.planes[{i}]")
+    classified = session["device"].get("mesh_classification_enabled")
+    if "mesh" in lidar:
+        if minor >= 1 and classified is None:
+            problems.append(
+                "session.device.mesh_classification_enabled is required with a mesh (from 1.1)"
+            )
+        if lidar["mesh"]["path"] in intact:
+            problems += mesh_problems(files.read(lidar["mesh"]["path"]), classified is not False)
+    if "planes" in manifest and "planes" in lidar:
+        problems.append("planes appear at the top level and in lidar.planes; use one (top level)")
+    planes = [("planes", pl) for pl in manifest.get("planes", [])]
+    planes += [("lidar.planes", pl) for pl in lidar.get("planes", [])]
+    for i, (key, plane) in enumerate(planes):
+        problems += plane_problems(plane, f"{key}[{i}]")
 
     photo_ids = set(ids)
     for i, m in enumerate(manifest.get("marks", [])):
@@ -506,9 +578,10 @@ def validate(source: Path) -> Report:
         "photos": len(photos),
         "photo_size": f"{photos[0]['width']}x{photos[0]['height']}",
         "photos_with_depth": sum("depth" in p for p in photos),
+        "depth_frames": len(frames),
         "streams": {n: s["rows"] for n, s in streams.items()},
         "mesh": "mesh" in lidar,
-        "planes": len(lidar.get("planes", [])),
+        "planes": len(planes),
         "marks": len(manifest.get("marks", [])),
         "guidance": len(manifest.get("guidance", [])),
         "seconds": round(end - start, 2),

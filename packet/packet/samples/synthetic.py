@@ -31,6 +31,7 @@ T0, T1, RATE = 100.0, 102.0, 60
 W, H, FX = 96, 72, 80.0
 DEPTH_W, DEPTH_H = 24, 18
 PHOTO_TICKS = (15, 60, 105)  # trajectory samples the photos are taken at
+DEPTH_FRAME_TICKS = (30, 75)  # depth recorded between photos (1.1)
 WALL_DISTANCE = 2.5
 
 
@@ -125,6 +126,7 @@ def build(out: Path) -> Path:
                 "lidar": True,
                 "scene_depth_enabled": True,
                 "mesh_enabled": True,
+                "mesh_classification_enabled": True,
             },
             "capture": {
                 "started_at": "2026-09-26T12:00:00Z",
@@ -140,25 +142,33 @@ def build(out: Path) -> Path:
         },
         "photos": photos,
         "streams": streams,
-        "lidar": {
-            "mesh": w.add_bytes("lidar/mesh.ply", mesh),
-            "planes": [
-                {
-                    "id": "wall",
-                    "alignment": "vertical",
-                    "classification": "wall",
-                    "pose": column_major(wall_plane),
-                    "extent_m": [6.0, 2.4],
-                },
-                {
-                    "id": "ground",
-                    "alignment": "horizontal",
-                    "classification": "floor",
-                    "pose": column_major(ground_plane),
-                    "extent_m": [6.0, 3.0],
-                },
-            ],
-        },
+        "depth_frames": depth_frames(w, times, poses),
+        "lidar": {"mesh": w.add_bytes("lidar/mesh.ply", mesh)},
+        "planes": [
+            {
+                "id": "wall",
+                "alignment": "vertical",
+                "classification": "wall",
+                "pose": column_major(wall_plane),
+                "extent_m": [6.0, 2.4],
+                # An L of wall: a window cut out of the top right (plane x, z = -height).
+                "boundary_m": [
+                    [-3.0, -1.2],
+                    [3.0, -1.2],
+                    [3.0, 0.2],
+                    [0.0, 0.2],
+                    [0.0, 1.2],
+                    [-3.0, 1.2],
+                ],
+            },
+            {
+                "id": "ground",
+                "alignment": "horizontal",
+                "classification": "floor",
+                "pose": column_major(ground_plane),
+                "extent_m": [6.0, 3.0],
+            },
+        ],
         "marks": [
             {
                 "id": "m1",
@@ -239,6 +249,36 @@ def build(out: Path) -> Path:
         },
     }
     return w.finish(manifest)
+
+
+def depth_frames(w: PacketWriter, times: np.ndarray, poses: list[np.ndarray]) -> list[dict]:
+    """Depth between photos: one frame from ARKit (with confidence), one estimated from the image
+    (with sigma), at the depth map's own resolution."""
+    scale = DEPTH_W / W
+    frames = []
+    for n, k in enumerate(DEPTH_FRAME_TICKS, start=1):
+        fid = f"d{n:05d}"
+        depth = np.full((DEPTH_H, DEPTH_W), WALL_DISTANCE, dtype=np.float32)
+        if n == 1:
+            data = w.add_depth(
+                fid, depth, confidence=np.full(depth.shape, 2), folder="depth_frames"
+            )
+            data["source"] = "arkit_scene_depth"
+        else:
+            sigma = np.full(depth.shape, 0.15, dtype=np.float32)
+            data = w.add_depth(fid, depth, sigma=sigma, folder="depth_frames")
+            data["source"] = "estimated"
+        frames.append(
+            {
+                "id": fid,
+                "t": float(times[k]),
+                "pose": column_major(poses[k]),
+                "intrinsics": [FX * scale, FX * scale, DEPTH_W / 2, DEPTH_H / 2],
+                "tracking": {"state": "normal", "reason": None},
+                **data,
+            }
+        )
+    return frames
 
 
 def mesh_ply() -> bytes:

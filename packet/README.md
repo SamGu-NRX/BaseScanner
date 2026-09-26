@@ -7,7 +7,7 @@ the placement rules. One packet is one scan session: a folder, or a zip of one, 
 [`manifest.schema.json`](manifest.schema.json) checks the manifest's shape, and
 `python -m packet validate` checks everything below.
 
-Version 1.0. The **App** column in each table says what `t3/ios-mvf` at `a39d0a5` records:
+Version 1.1 ([what changed from 1.0](#versioning)). The **App** column in each table says what `t3/ios-mvf` at `a39d0a5` records:
 **now** (exported today), **partial** (computed in the app but not exported, or exported in
 another form) or **planned**. [What the app records today](#what-the-app-records-today) lists
 the gaps.
@@ -19,6 +19,7 @@ manifest.json          what everything is (this document)
 photos/p00001.jpg      full-resolution photos, one per kept frame
 depth/p00001.f32       depth aligned to that photo (LiDAR phones)
 depth/p00001.conf.u8   its confidence
+depth_frames/d00001.*  depth recorded between photos, without an image (1.1)
 streams/*.csv          trajectory, IMU, barometer, location, heading
 lidar/mesh.ply         ARKit mesh with per-face classification (LiDAR phones)
 scene.json             the app's placement request (C1), unchanged
@@ -67,7 +68,9 @@ These hold for every field unless its row says otherwise.
   pixels x ∈ [c·W/w, (c+1)·W/w), y ∈ [r·H/h, (r+1)·H/h). Values are float32 little-endian
   meters along the camera's −z axis (not the distance along the ray), row by row from the top,
   and 0 means no measurement. Confidence is one byte per depth pixel, ARKit's
-  `ARConfidenceLevel`: 0 low, 1 medium, 2 high.
+  `ARConfidenceLevel`: 0 low, 1 medium, 2 high. Sigma (1.1) is float32 meters per depth pixel,
+  one standard deviation, in the same layout. A depth frame has no photo: its `intrinsics`
+  describe the depth map's own pixel grid.
 
 ## Session
 
@@ -80,6 +83,7 @@ These hold for every field unless its row says otherwise.
 | `session.device.ios_version` | `UIDevice.systemVersion` | planned |
 | `session.device.lidar` | `ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)` | planned |
 | `session.device.scene_depth_enabled`, `mesh_enabled` | What the session actually ran with | planned |
+| `session.device.mesh_classification_enabled` | 1.1. `sceneReconstruction` included `.meshWithClassification`. Required with a mesh; when false every face's class is 0, which otherwise could not be told from ARKit's own "none" | planned (S6) |
 | `session.capture.started_at`, `started_at_uptime`, `ended_at_uptime` | Wall clock and uptime at the first frame, uptime at the last | planned |
 | `session.capture.distance_walked_m` | Horizontal length of the trajectory (meter frame x and z). Must match `streams.trajectory` within 1% | planned |
 | `session.world_alignment` | Always `"gravity"` | partial: the app runs with `.gravity` but does not write it |
@@ -103,7 +107,7 @@ One entry per kept frame, in time order. Required: `id`, `image`, `width`, `heig
 | `exposure.duration_s`, `exposure.iso`, `exposure.offset_ev` | `ARCamera.exposureDuration` and `exposureOffset` (iOS 15); ISO from the high-resolution still's metadata | planned |
 | `lens.focal_length_mm`, `lens.f_number`, `lens.camera` | From the still's EXIF; `camera` is `wide`, `ultra_wide` or `telephoto` | planned |
 | `sharpness` | `{"method": "laplacian_variance_luma_640", "value"}`, defined below | partial: the app scores sharpness another way and does not export it |
-| `depth` | `map`, optional `confidence`, `width`, `height`, `source` (`arkit_scene_depth`, `arkit_smoothed_scene_depth`, or `rendered_from_laser_scan` in samples) | planned (S6, LiDAR) |
+| `depth` | `map`, `confidence`, `sigma`, `width`, `height`, `source`. Sources: `arkit_scene_depth` and `arkit_smoothed_scene_depth` (LiDAR; from 1.1 they need `confidence`, which marks glass, dark surfaces and edges low); `estimated` (1.1: metric depth inferred from the image on a phone without LiDAR; needs `sigma`, since the uncertainty decides what counts as a surface); `rendered_from_laser_scan` (samples only) | planned (S6) |
 
 **Sharpness** is the variance of the 4-neighbour Laplacian of the image's luma, after scaling the
 long side to 640 px with bilinear filtering (images already smaller are used as they are). One
@@ -150,12 +154,33 @@ end_header
 ```
 
 Every face is a triangle. `classification` is `ARMeshClassification`'s raw value: 0 none, 1 wall,
-2 floor, 3 ceiling, 4 table, 5 seat, 6 window, 7 door. `comment` lines may follow `ply`.
+2 floor, 3 ceiling, 4 table, 5 seat, 6 window, 7 door. When classification was off, every class
+is 0 and `session.device.mesh_classification_enabled` is false (1.1). `comment` lines may follow
+`ply`.
 
-`lidar.planes` lists `ARPlaneAnchor`s: `id`, `alignment` (`horizontal` or `vertical`),
-`classification`, `pose` (plane to meter frame; the plane is its local x-z plane and its normal
-is +y), and `extent_m` ([x, z]). App: planned. The app reads plane anchors for its coverage and
-taps but does not export them.
+## Depth frames
+
+`depth_frames` (1.1) holds depth recorded between photos, with no image: `id`, `t`, `pose`
+(camera to meter frame), `intrinsics` for the depth map's grid, `width`, `height`, `map`, and
+`confidence` or `sigma` as for a photo's depth. Photos are kept about every 0.5 m, but an
+on-device map fuses depth at about 10 Hz, so photo-rate depth alone cannot rebuild the
+occupancy the phone used to decide what was seen. Each frame must sit on the trajectory like a
+photo. Cost: at 256 × 192 a frame with confidence is about 246 KB, so 10 Hz is about 2.5 MB/s;
+record a few hertz. App: planned (S6).
+
+## Planes
+
+`planes` (1.1, top level) lists `ARPlaneAnchor`s, which every ARKit phone detects, LiDAR or not:
+`id`, `alignment` (`horizontal` or `vertical`), `classification`, `pose`, `extent_m` and optional
+`boundary_m`. `pose` maps the plane into the meter frame and already includes the extent's
+centre and `planeExtent.rotationOnYAxis`, so `extent_m` ([x, z]) is a rectangle centred on it.
+ARKit's anchor transform alone is not that centre. The plane is its local x-z plane and its
+normal is +y. `boundary_m` is `geometry.boundaryVertices` as [x, z] in the same frame as
+`extent_m`, since ARKit's extent often claims a full rectangle over an L of wall or a wall broken
+by a window. The validator checks that the boundary lies inside the extent, which catches a
+boundary left in the anchor's frame. 1.0 put planes in `lidar.planes`; 1.x readers still accept
+it there, but a packet may not use both. App: planned. The app reads plane anchors for its
+coverage and taps but does not export them.
 
 ## Marks, guidance and the scene
 
@@ -192,6 +217,13 @@ ignores fields it does not know. A writer bumps the minor version for additions 
 field, stream or enum value a reader may skip) and the major version for anything an old reader
 would misread: a renamed or removed field, a changed unit, frame or column order. The validator
 accepts `1.x`.
+
+1.1 adds, from S6's proposals on #22: `depth_frames`; the `estimated` depth source with
+`sigma`; top-level `planes` with `boundary_m`, and the statement of what a plane's `pose`
+includes; and `session.device.mesh_classification_enabled`. Two rules apply only to packets
+that say 1.1 or later, so 1.0 packets stay valid: ARKit depth needs `confidence`, and a mesh
+needs the classification flag. A 1.0 reader of a 1.1 packet misses depth frames, sigma and
+top-level planes, and reads everything else as before.
 
 ## Transport
 
@@ -244,8 +276,9 @@ order of cost:
    log.
 5. **New sensors:** Core Motion (accelerometer, gyroscope, magnetometer, device motion,
    altimeter); location and heading behind a consent prompt.
-6. **LiDAR (S6):** `sceneDepth` with confidence per photo, the mesh with classification, plane
-   anchors.
+6. **LiDAR and the live map (S6):** `sceneDepth` with confidence per photo, depth frames between
+   photos, estimated depth with sigma on phones without LiDAR, the mesh with its
+   classification flag, plane anchors with boundaries.
 7. **Transport:** the manifest-then-files upload above.
 
 ## Tools
@@ -283,7 +316,10 @@ The validator checks:
 - the stream columns, unit quaternions and tracking values;
 - that photos sit on the trajectory, and that distance walked matches it;
 - that depth has its photo's aspect and the right byte count, with finite, non-negative values
-  and confidence of at most 2;
-- the mesh layout, face indices and classes;
+  and sigma, confidence of at most 2, and confidence for ARKit depth and sigma for estimated
+  depth;
+- that depth frames sit on the trajectory, in time order, with intrinsics that fit their grid;
+- that plane boundaries lie inside their extent, and planes appear in one place only;
+- the mesh layout, face indices and classes, and the classification flag;
 - mark and guidance consistency;
 - consent for location and heading.

@@ -19,7 +19,7 @@ from PIL import Image
 
 from packet.validate import STREAM_COLUMNS
 
-PACKET_VERSION = "1.0"
+PACKET_VERSION = "1.1"
 SHARPNESS_METHOD = "laplacian_variance_luma_640"
 
 
@@ -58,16 +58,27 @@ class PacketWriter:
             ref["nominal_rate_hz"] = rate_hz
         return ref
 
-    def add_depth(self, photo_id: str, depth: np.ndarray, confidence: np.ndarray | None) -> dict:
+    def add_depth(
+        self,
+        name: str,
+        depth: np.ndarray,
+        confidence: np.ndarray | None = None,
+        sigma: np.ndarray | None = None,
+        folder: str = "depth",
+    ) -> dict:
         h, w = depth.shape
         ref = {
-            "map": self.add_bytes(f"depth/{photo_id}.f32", depth.astype("<f4").tobytes()),
+            "map": self.add_bytes(f"{folder}/{name}.f32", depth.astype("<f4").tobytes()),
             "width": w,
             "height": h,
         }
         if confidence is not None:
             conf = confidence.astype(np.uint8).tobytes()
-            ref["confidence"] = self.add_bytes(f"depth/{photo_id}.conf.u8", conf)
+            ref["confidence"] = self.add_bytes(f"{folder}/{name}.conf.u8", conf)
+        if sigma is not None:
+            ref["sigma"] = self.add_bytes(
+                f"{folder}/{name}.sigma.f32", sigma.astype("<f4").tobytes()
+            )
         return ref
 
     def finish(self, manifest: dict, zip_too: bool = False) -> Path:

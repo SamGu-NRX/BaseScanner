@@ -1,5 +1,5 @@
 {
- "packet_version": "1.0",
+ "packet_version": "1.1",
  "session": {
   "id": "synthetic-0001",
   "producer": {
@@ -12,7 +12,8 @@
    "ios_version": "n/a",
    "lidar": true,
    "scene_depth_enabled": true,
-   "mesh_enabled": true
+   "mesh_enabled": true,
+   "mesh_classification_enabled": true
   },
   "capture": {
    "started_at": "2026-09-26T12:00:00Z",
@@ -307,69 +308,187 @@
    "nominal_rate_hz": 1
   }
  },
+ "depth_frames": [
+  {
+   "id": "d00001",
+   "t": 100.5,
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    -0.5,
+    0.0,
+    2.5,
+    1.0
+   ],
+   "intrinsics": [
+    20.0,
+    20.0,
+    12.0,
+    9.0
+   ],
+   "tracking": {
+    "state": "normal",
+    "reason": null
+   },
+   "map": {
+    "path": "depth_frames/d00001.f32",
+    "bytes": 1728,
+    "sha256": "6bedc12ac8ed368df03325e5ee0a12a34db6c5d26bdd43ad86665ba1cc11a5b9"
+   },
+   "width": 24,
+   "height": 18,
+   "confidence": {
+    "path": "depth_frames/d00001.conf.u8",
+    "bytes": 432,
+    "sha256": "50df04e966aa60b11660f8a8c2ca6456aea34ee7137ddea4c1687989085439b8"
+   },
+   "source": "arkit_scene_depth"
+  },
+  {
+   "id": "d00002",
+   "t": 101.25,
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.25,
+    0.0,
+    2.5,
+    1.0
+   ],
+   "intrinsics": [
+    20.0,
+    20.0,
+    12.0,
+    9.0
+   ],
+   "tracking": {
+    "state": "normal",
+    "reason": null
+   },
+   "map": {
+    "path": "depth_frames/d00002.f32",
+    "bytes": 1728,
+    "sha256": "6bedc12ac8ed368df03325e5ee0a12a34db6c5d26bdd43ad86665ba1cc11a5b9"
+   },
+   "width": 24,
+   "height": 18,
+   "sigma": {
+    "path": "depth_frames/d00002.sigma.f32",
+    "bytes": 1728,
+    "sha256": "3cd6948e48938afac643b908d3f182743276f0a59e205fe2d6986475d060810d"
+   },
+   "source": "estimated"
+  }
+ ],
  "lidar": {
   "mesh": {
    "path": "lidar/mesh.ply",
    "bytes": 369,
    "sha256": "6424380bcc053a1e5ea20a26d196ffa5d1140e3f6e70d0def5b9b20f8c2a97b4"
-  },
-  "planes": [
-   {
-    "id": "wall",
-    "alignment": "vertical",
-    "classification": "wall",
-    "pose": [
-     1.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     1.0,
-     0.0,
-     0.0,
-     -1.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     1.0
-    ],
-    "extent_m": [
-     6.0,
-     2.4
-    ]
-   },
-   {
-    "id": "ground",
-    "alignment": "horizontal",
-    "classification": "floor",
-    "pose": [
-     1.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     1.0,
-     0.0,
-     0.0,
-     0.0,
-     0.0,
-     1.0,
-     0.0,
-     0.0,
-     -1.2,
-     0.0,
-     1.0
-    ],
-    "extent_m": [
-     6.0,
-     3.0
-    ]
-   }
-  ]
+  }
  },
+ "planes": [
+  {
+   "id": "wall",
+   "alignment": "vertical",
+   "classification": "wall",
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    -1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "extent_m": [
+    6.0,
+    2.4
+   ],
+   "boundary_m": [
+    [
+     -3.0,
+     -1.2
+    ],
+    [
+     3.0,
+     -1.2
+    ],
+    [
+     3.0,
+     0.2
+    ],
+    [
+     0.0,
+     0.2
+    ],
+    [
+     0.0,
+     1.2
+    ],
+    [
+     -3.0,
+     1.2
+    ]
+   ]
+  },
+  {
+   "id": "ground",
+   "alignment": "horizontal",
+   "classification": "floor",
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    -1.2,
+    0.0,
+    1.0
+   ],
+   "extent_m": [
+    6.0,
+    3.0
+   ]
+  }
+ ],
  "marks": [
   {
    "id": "m1",
