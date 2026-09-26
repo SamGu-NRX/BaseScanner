@@ -7,8 +7,8 @@ datasets. Requirements: uv, and Xcode 26 or newer with an iOS Simulator runtime.
 
 | Check | Command, from `verification/` | Output |
 | --- | --- | --- |
-| The app at `t3/ios-mvf` on the real ADVIO replay, uploading to a server started from `t3/server`; a screenshot per `STATE` | `make sim-app` (`REF=`, `SERVER_REF=`, `ARGS=` to vary) | `reports/sim/<run>/index.html` |
-| Every case, the ETH3D facade scene and optional app exports through the server's API | `make e2e` (`ARGS="--app-export <sim report>"`, `SERVER_REF=`, or `ARGS=--server-url <url>`) | `reports/e2e/<run>/report.md` |
+| The app at `t3/ios-mvf` on the real ADVIO replay, uploading to a server started from `t3/server`; a screenshot per `STATE` | `make sim-app` (`REF=`, `SERVER_REF=` or `SERVER_URL=` for the hosted API, `ARGS=`) | `reports/sim/<run>/index.html` |
+| Every case, the ETH3D facade scene and optional app exports through the server's API | `make e2e` (`ARGS="--app-export <sim report>"`, `SERVER_REF=` or `SERVER_URL=`) | `reports/e2e/<run>/report.md` |
 | Apple's accessibility audit on every screen the app reaches | `uv run python -m hsverify.a11yaudit --ref <ref> --replay <session> --autopilot` | `reports/a11y/<run>/index.html` |
 | A replay session is well formed; its poses against ground truth | `uv run python -m hsverify.replaycheck <session>` | printed |
 | Every open PR and plan metric with its evidence | `make scoreboard` (`ARGS=--slow` also runs test suites) | `SCOREBOARD.md` |

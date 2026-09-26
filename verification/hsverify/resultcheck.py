@@ -308,9 +308,10 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         if request["kind"] != "band" or "span_ft" not in request or "band" not in request:
             continue
         a, b = sorted(request["span_ft"])
-        # A ground request carries no distance out, so it may want deeper ground over a span
-        # already seen; only ground seen out to GROUND_FAR_FT makes it redundant.
-        far = GROUND_FAR_FT if request["band"] == "ground" else 0.0
+        # A ground request may want deeper ground over a span already seen: it is redundant only
+        # where ground was seen as far out as it asks (out_ft, S2 55cb4b0), or, when it does not
+        # say, out to GROUND_FAR_FT.
+        far = request.get("out_ft", GROUND_FAR_FT) if request["band"] == "ground" else 0.0
         if b - a > EPS and covers(observed(scene, request["band"], min_out_ft=far), a, b):
             problems.append(
                 f"missing_evidence asks for {request['band']} {request['span_ft']}, "

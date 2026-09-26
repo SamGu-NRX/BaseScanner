@@ -306,6 +306,14 @@ def missing_required(required: list[str], states: list[ShotRecord]) -> list[str]
     return [f"required state {name} never appeared" for name in required if name not in seen]
 
 
+def logged_message(line: str) -> str:
+    """The message of one ndjson log line, or "" for the banner and anything unreadable."""
+    try:
+        return json.loads(line).get("eventMessage") or ""
+    except (json.JSONDecodeError, AttributeError):
+        return ""
+
+
 def copy_app_export(out: Path) -> tuple[str | None, list[str]]:
     """Copy the scan bundle the app last logged into `out` as scan.zip.
 
@@ -313,8 +321,11 @@ def copy_app_export(out: Path) -> tuple[str | None, list[str]]:
     and no problem; a logged bundle that cannot be copied is a problem.
     """
     log = out / "state.ndjson"
-    bundles = [b for line in log.open() if (b := parse_bundle_line(line))] if log.exists() else []
+    lines = log.read_text().splitlines() if log.exists() else []
+    bundles = [b for line in lines if (b := parse_bundle_line(line))]
     if not bundles:
+        if any(logged_message(line).startswith("bundle ") for line in lines):
+            return None, ["the app logged a bundle line this runner cannot read; see state.ndjson"]
         return None, []
     path, keyframes = bundles[-1]
     try:

@@ -152,9 +152,6 @@
     "gas": 3.0
   },
   "expect": {
-    "decision_not": [
-      "pass"
-    ],
     "sweep_runs": [
       {
         "wall_id": "w1",

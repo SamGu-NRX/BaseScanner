@@ -19,7 +19,9 @@ LOG_PREDICATE = f'subsystem == "{SUBSYSTEM}"'
 ENGINE_CATEGORY = "engine"
 # The engine logs `bundle <path> with <N> keyframes` once it has written a scan bundle; the path
 # is on the Mac's disk, inside the Simulator's app container.
-_BUNDLE_RE = re.compile(r"^bundle (.+) with (\d+) keyframes$")
+# "bundle <path>.zip with N keyframes", optionally followed by ", <details>" (app 194f2eb adds
+# depth and mesh counts).
+_BUNDLE_RE = re.compile(r"^bundle (.+\.zip) with (\d+) keyframes(?:,.*)?$")
 
 # A state name is an identifier-like token. Anything after it on the line is detail.
 _STATE_RE = re.compile(r"STATE=([A-Za-z0-9_.\-]+)")

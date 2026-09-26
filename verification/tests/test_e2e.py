@@ -6,6 +6,7 @@ import threading
 import time
 import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import ClassVar
 
 import pytest
 
@@ -74,19 +75,20 @@ def test_multipart_endpoint_names_its_file_field():
     )
 
 
-def test_one_path_with_json_and_upload_uses_the_upload():
+def test_one_path_with_json_and_upload_uses_json_as_the_app_does():
     both = {
         "post": {
             "requestBody": {
                 "content": {
                     "application/json": {"schema": {}},
+                    "application/zip": {"schema": {"type": "string", "format": "binary"}},
                     "multipart/form-data": {"schema": {"$ref": "#/components/schemas/Upload"}},
                 }
             }
         }
     }
     assert discover_endpoint(openapi({"/v1/placements": both})) == Endpoint(
-        "/v1/placements", "multipart/form-data", "bundle"
+        "/v1/placements", "application/json", None, accepts_zip=True
     )
 
 
@@ -274,8 +276,10 @@ class RefusingServer(BaseHTTPRequestHandler):
     """Refuses every request with 422 after `delay` seconds."""
 
     delay = 0.0
+    content_types: ClassVar[list[str]] = []
 
     def do_POST(self):
+        RefusingServer.content_types.append(self.headers["Content-Type"])
         self.rfile.read(int(self.headers["Content-Length"]))
         time.sleep(self.delay)
         self.send_response(422)
@@ -333,3 +337,13 @@ def test_a_sim_report_folder_is_an_app_export_with_its_sha(tmp_path):
     (tmp_path / "report.json").write_text(json.dumps({"sha": "abc123"}))
     with pytest.raises(SystemExit, match="never reached the upload"):
         load_app_export(tmp_path)
+
+
+def test_a_prebuilt_zip_goes_as_application_zip_when_the_endpoint_takes_it(refusing_url):
+    RefusingServer.content_types.clear()
+    bomb = hostile_inputs()[4]
+    json_only = Endpoint("/p", "application/json")
+    assert judge_hostile(refusing_url, json_only, bomb, SCHEMAS)["status"] == "skipped"
+    zip_too = Endpoint("/p", "application/json", accepts_zip=True)
+    assert judge_hostile(refusing_url, zip_too, bomb, SCHEMAS)["status"] == "pass"
+    assert RefusingServer.content_types == ["application/zip"]

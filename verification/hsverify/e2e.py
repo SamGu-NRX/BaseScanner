@@ -233,6 +233,7 @@ class Endpoint:
     path: str
     content_type: str  # "application/json" or "multipart/form-data"
     file_field: str | None = None
+    accepts_zip: bool = False  # also takes a raw application/zip body (a prebuilt bundle)
 
 
 def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
@@ -261,14 +262,16 @@ def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
     elif len(candidates) > 1:
         named = [c for c in candidates if re.search(r"scene|place|solve|placement", c[0])]
         candidates = named if len(named) == 1 else candidates
-    # One path taking both a JSON body and an upload: use the upload, which is how the app sends
-    # scene.json with its keyframe JPEGs (C1).
+    # One path taking both a JSON body and an upload: use JSON, which is how the app sends
+    # scene.json since t3/ios-mvf 657ab28 (the hosted API refuses bodies over 4.5 MB).
     if len({c[0] for c in candidates}) == 1 and len(candidates) > 1:
-        candidates = [c for c in candidates if c[1] == "multipart/form-data"] or candidates[:1]
+        candidates = [c for c in candidates if c[1] == "application/json"] or candidates[:1]
     if len(candidates) != 1:
         listed = ", ".join(f"{p} ({k})" for p, k, _ in candidates) or "none"
         raise SystemExit(f"Cannot tell which endpoint takes a scene: {listed}. Pass --endpoint.")
     path, kind, schema = candidates[0]
+    body = openapi.get("paths", {}).get(path, {}).get("post", {}).get("requestBody", {})
+    accepts_zip = "application/zip" in body.get("content", {})
     file_field = None
     if kind == "multipart/form-data":
         props = resolve_ref(openapi, schema).get("properties", {})
@@ -281,7 +284,7 @@ def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
         if len(binary) != 1:
             raise SystemExit(f"{path}: expected one file field in the upload form, got {binary}")
         file_field = binary[0]
-    return Endpoint(path, kind, file_field)
+    return Endpoint(path, kind, file_field, accepts_zip)
 
 
 def resolve_ref(openapi: dict, schema: dict) -> dict:
@@ -309,7 +312,9 @@ def post(
     url: str, endpoint: Endpoint, item: SceneInput, timeout_s: float = 60
 ) -> tuple[int | None, bytes, float]:
     """Send one scene. A timeout or a dropped connection comes back as status None."""
-    if endpoint.content_type == "application/json":
+    if item.bundle is not None and endpoint.accepts_zip:
+        body, ctype = item.bundle, "application/zip"
+    elif endpoint.content_type == "application/json":
         body, ctype = item.raw, "application/json"
     else:
         boundary = uuid.uuid4().hex
@@ -587,8 +592,15 @@ def judge_hostile(
     """A refusal (400, 413, 422) or a valid result, either within the time budget and, for a
     server started here, the memory budget. A crash, a hang, a slow answer or a large
     allocation is a failure."""
-    if item.bundle is not None and endpoint.content_type == "application/json":
-        return {"status": "skipped", "skip_reason": "the endpoint takes JSON, not a zip"}
+    if (
+        item.bundle is not None
+        and endpoint.content_type == "application/json"
+        and not (endpoint.accepts_zip)
+    ):
+        return {
+            "status": "skipped",
+            "skip_reason": "the endpoint takes neither a zip nor an upload",
+        }
     before = limit.reset() if limit else 0.0
     status, payload, ms = post(url, endpoint, item, timeout_s=HOSTILE_BUDGET_MS / 1000 + 5)
     record = {"http_status": status, "latency_ms": round(ms, 1)}

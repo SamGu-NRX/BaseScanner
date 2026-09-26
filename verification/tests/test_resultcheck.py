@@ -590,3 +590,12 @@ def test_transforms():
         "out_ft": 40.0,
     }
     assert with_requests_captured(scene, result()) is None
+
+
+def test_a_ground_request_is_redundant_only_as_far_out_as_it_asks():
+    r = result()
+    ask = {"kind": "band", "band": "ground", "span_ft": [-3.0, -1.0], "message": ""}
+    r["missing_evidence"] = [ask | {"out_ft": 2.5}]  # SCENE saw this ground 3 ft out
+    assert any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))
+    r["missing_evidence"] = [ask | {"out_ft": 3.5}]
+    assert not any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))

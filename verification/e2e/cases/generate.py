@@ -272,7 +272,6 @@ case(
     straight_scene(-3, 16, objects=[gas("w1", (6.5, 7.5), spike)])
     | {"facing": [facing("w1", (-3, 16), depth=12.0)]},
     {
-        "decision_not": ["pass"],
         "sweep_runs": [
             {"wall_id": "w1", "start_ft": [3, 9], "outcome": "fail", "failing_match": "gas"}
         ],
@@ -913,7 +912,7 @@ case(
     "Straight wall with default (drifting) errors. The route to a start a right of the meter is "
     "a +/- (0.6 + 0.16(a + W)): pass below a = 12.058, fail above a = 25.016, unsure between.",
     drift_scene(-1, 29),
-    {"start_outcomes": starts(reach_points), "decision_not": ["pass"]},
+    {"start_outcomes": starts(reach_points)},
     {"route_length": MAX_ROUTE},
 )
 # Mirror: left of the meter the near edge is the battery's right edge b = a + W, route = -b, and
@@ -926,7 +925,6 @@ case(
     drift_scene(-29, 1),
     {
         "start_outcomes": starts([(-s - W, o, why + " (b = a + W)") for s, o, why in reach_points]),
-        "decision_not": ["pass"],
     },
     {"route_length": MAX_ROUTE},
 )

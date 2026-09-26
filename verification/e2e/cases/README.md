@@ -17,9 +17,11 @@ uv run python e2e/cases/generate.py
 
 ## Why the assertions avoid the decision
 
-`rules.yaml` sets `policy.auto_approve: false`, so any would-be pass or reject becomes
-`manual_review`. The cases therefore assert on the sweep, on single checks, on `spot` and on
-`missing_evidence`. They assert a decision only where the scene alone forces it:
+Whether a would-be pass or reject is decided or sent to a person depends on the policy, which
+changes: `rules.yaml` set `policy.auto_approve: false` when the cases were written, and S2's
+`cd0da8b` made the public policy `demo`, which decides automatically. The cases therefore assert
+on the sweep, on single checks, on `spot` and on `missing_evidence`. They assert a decision only
+where the scene alone forces it, under any policy:
 
 - An unsure spot or an unobserved area rules out `pass`.
 - An unexplored end rules out `reject`. So does a missing `coverage`, since its ends then default
@@ -255,6 +257,6 @@ errors, corrected once `rules.yaml` was published:
 - 04: the golden gives w1 outward [0, −1] for a baseline running +x, which contradicts the
   schema's clockwise rule. Its pad also relies on a ground check whose passing surfaces are not
   published. The flush rule it tests is exercised by g03 and g12b.
-- 11 (d): its expectation is a pass, which `auto_approve: false` can't produce. Its photo-request
+- 11 (d): its expectation is a pass, which `auto_approve: false` could not produce when the cases were written. Its photo-request
   half duplicates g01.
 - 14: needs a pass. The result schema already requires every field it lists.

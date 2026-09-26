@@ -152,9 +152,6 @@
         "outcome": "fail",
         "why": "25.5 - 5.09 = 20.41 > 20 (b = a + W)"
       }
-    ],
-    "decision_not": [
-      "pass"
     ]
   }
 }

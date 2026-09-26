@@ -144,3 +144,11 @@ def test_logged_bundle_that_is_gone_is_a_problem(tmp_path):
     assert export is None
     assert len(problems) == 1
     assert problems[0].startswith(f"the app logged bundle {gone} with 5 keyframes; copy failed")
+
+
+def test_a_bundle_line_the_runner_cannot_read_is_a_problem(tmp_path):
+    write_log(tmp_path, log_line("bundle written to a new place, 5 keyframes", category="engine"))
+    assert copy_app_export(tmp_path) == (
+        None,
+        ["the app logged a bundle line this runner cannot read; see state.ndjson"],
+    )

@@ -65,8 +65,11 @@ def test_plain_line():
 BUNDLE_PATH = "/Users/x/Library/Developer/CoreSimulator/Devices/D/data/Caches/Scans/S/scan.zip"
 
 
-def test_reads_the_engine_bundle_line():
-    line = entry(f"bundle {BUNDLE_PATH} with 77 keyframes", category="engine")
+@pytest.mark.parametrize(
+    "suffix", ["", ", 0 with depth, no mesh (kept on the phone)", ", 12 with depth, mesh"]
+)
+def test_reads_the_engine_bundle_line(suffix):
+    line = entry(f"bundle {BUNDLE_PATH} with 77 keyframes{suffix}", category="engine")
     assert parse_bundle_line(line) == (BUNDLE_PATH, 77)
 
 

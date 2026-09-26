@@ -3,6 +3,9 @@
 
 REF ?= origin/t3/ios-mvf
 SERVER_REF ?= origin/t3/server
+# Set SERVER_URL to use a running server (the hosted API) instead of starting one from SERVER_REF.
+SERVER_URL ?=
+SERVER = $(if $(SERVER_URL),--server-url $(SERVER_URL),--server-ref $(SERVER_REF))
 REPLAY ?= $(HOME)/house-scanning-data/replays/advio-20-0040-0075
 ARGS ?=
 
@@ -19,17 +22,17 @@ sim:
 	uv run python -m hsverify.simrun --ref $(REF) $(ARGS)
 
 # The app at REF on the real ADVIO replay (C3), driven by its autopilot, uploading to the server
-# started from SERVER_REF: a screenshot per STATE in ~/house-scanning-data/reports/sim/. Fails
+# started from SERVER_REF (or at SERVER_URL): a screenshot per STATE in ~/house-scanning-data/reports/sim/. Fails
 # unless the run reaches the result state; the scan bundle is copied into the report as scan.zip.
 sim-app:
 	uv run python -m hsverify.simrun --ref $(REF) --replay $(REPLAY) --autopilot \
-		--server-ref $(SERVER_REF) --extra-arg=-autopilotHold --extra-arg=3 \
+		$(SERVER) --extra-arg=-autopilotHold --extra-arg=3 \
 		--idle 60 --timeout 900 --require result --label replay $(ARGS)
 
 # Every case in e2e/cases/ plus the ETH3D facade scene through the server's API at SERVER_REF;
 # each result is validated against server/schemas/result.schema.json at the same ref.
 e2e:
-	uv run python -m hsverify.e2e --server-ref $(SERVER_REF) --scene scenes/eth3d-facade/case.json $(ARGS)
+	uv run python -m hsverify.e2e $(SERVER) --scene scenes/eth3d-facade/case.json $(ARGS)
 
 # Self-test of the runner against a fixture app that logs a known STATE sequence.
 sim-probe:
