@@ -201,6 +201,7 @@ final class ScanEngine {
             let loaded = try await Task.detached(priority: .userInitiated) { try ReplayPlayer.load(folder: folder) }.value
             let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame) }
             replay = player
+            map3D?.expectReplay(frames: player.frames.count)
             let withDepth = player.frames.filter { $0.depth != nil }.count
             state.depthAvailable = withDepth > 0
             player.show(index: 0)

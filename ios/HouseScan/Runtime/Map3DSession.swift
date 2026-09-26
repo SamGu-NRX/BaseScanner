@@ -40,8 +40,9 @@ struct Map3DFog: Equatable, Sendable {
 /// 45 of that replay's frames before integrating them, and its walk never saw a covered cell.
 ///
 /// The AR delegate queue only converts ARKit objects (`Map3DFeed`) and drops the result into an
-/// inbox, so a slow integration never holds ARKit's frames. The inbox holds one depth or feature
-/// frame: a newer one replaces an older one not yet integrated. Mesh chunks and planes are kept
+/// inbox, so a slow integration never holds ARKit's frames. The inbox holds one live depth or
+/// feature frame: a newer one replaces an older one not yet integrated. Replay depth frames queue
+/// instead, up to the replay's length (`ingest(_: SourceFrame)`). Mesh chunks and planes are kept
 /// per anchor id, newest first, so the inbox is bounded by the anchors ARKit has.
 ///
 /// Mesh chunks go into the map as they arrive and are not kept: a copy of every chunk would grow
@@ -86,6 +87,7 @@ final class Map3DSession: Sendable {
             inbox.generation += 1
             inbox.active = true
             inbox.frame = nil
+            inbox.replay = []
             inbox.command = .start(wall)
             schedule(&inbox)
         }
@@ -118,6 +120,7 @@ final class Map3DSession: Sendable {
             inbox.generation += 1
             inbox.active = false
             inbox.frame = nil
+            inbox.replay = []
             inbox.command = nil
             inbox.reset = .some((inbox.reset ?? false) || forgetAnchors)
             if forgetAnchors {
@@ -130,16 +133,26 @@ final class Map3DSession: Sendable {
 
     /// A replay frame. Only its LiDAR depth adds to the map: a replay carries no feature points,
     /// and frames without normal tracking, shown for review or carrying only a pose add nothing.
+    /// Unlike live frames, none is dropped: `ReplayPlanning` plans the autopilot's gap with every
+    /// depth frame, so the map must see the same ones. They queue, at most `replayLength` of them.
     @MainActor
     func ingest(_ frame: SourceFrame) {
         guard frame.tracking == .normal, !frame.isReview, !frame.isPoseOnly, let depth = frame.depth else { return }
         let camera = frame.camera
         inbox.withLock { inbox in
             guard inbox.active else { return }
-            if inbox.frame != nil { inbox.dropped += 1 }
-            inbox.frame = .replay(depth, camera)
+            inbox.replay.append((depth, camera))
+            if inbox.replay.count > max(1, inbox.replayLength) {
+                inbox.replay.removeFirst()
+                inbox.dropped += 1
+            }
             schedule(&inbox)
         }
+    }
+
+    /// How many frames the replay being played has: the most its queue holds.
+    func expectReplay(frames count: Int) {
+        inbox.withLock { $0.replayLength = count }
     }
 
     // MARK: AR delegate queue
@@ -196,7 +209,7 @@ final class Map3DSession: Sendable {
     /// main actor as a snapshot. The autopilot waits for it before acting on coverage; a person
     /// never needs to. Blocks while an integration runs.
     var isCatchingUp: Bool {
-        if inbox.withLock({ $0.drainScheduled || $0.frame != nil || $0.command != nil || $0.reset != nil }) { return true }
+        if inbox.withLock({ $0.drainScheduled || $0.frame != nil || !$0.replay.isEmpty || $0.command != nil || $0.reset != nil }) { return true }
         return core.withLock { core in
             core.map != nil && (core.revision != core.publishedRevision || core.snapshotRunning || core.publishScheduled)
         }
@@ -224,8 +237,6 @@ final class Map3DSession: Sendable {
     private enum FrameInput: Sendable {
         case depth(DepthFrame)
         case features(FeatureFrame, planes: [PlaneObservation])
-        /// Converted on the queue, off the main actor.
-        case replay(DepthImage, CameraFrame)
     }
 
     private enum WallCommand: Sendable {
@@ -239,6 +250,9 @@ final class Map3DSession: Sendable {
         /// A wall is set: frames are taken.
         var active = false
         var frame: FrameInput?
+        /// Replay depth frames in play order, converted on the queue, off the main actor.
+        var replay: [(depth: DepthImage, camera: CameraFrame)] = []
+        var replayLength = 0
         /// Frames replaced before they were integrated; logged with the next snapshot.
         var dropped = 0
         /// Applied before `command`. The value says whether to forget the anchors too.
@@ -281,6 +295,7 @@ final class Map3DSession: Sendable {
         let taken = inbox.withLock { inbox -> Inbox in
             let taken = inbox
             inbox.frame = nil
+            inbox.replay = []
             inbox.dropped = 0
             inbox.reset = nil
             inbox.command = nil
@@ -355,9 +370,13 @@ final class Map3DSession: Sendable {
                     map.update(plane)
                 }
                 map.integrate(features)
-            case .replay(let depth, let camera):
-                map.integrate(DepthFrame(image: depth, pose: camera))
             }
+            core.map = map
+            changed = true
+        }
+        if var map = core.map, !taken.replay.isEmpty {
+            core.map = nil
+            for item in taken.replay { map.integrate(DepthFrame(image: item.depth, pose: item.camera)) }
             core.map = map
             changed = true
         }
