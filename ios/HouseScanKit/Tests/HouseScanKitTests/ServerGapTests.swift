@@ -125,7 +125,8 @@ import Testing
     /// The request's span is read as the server sent it and the export as written. Ground seen up
     /// to an end at 0.5 m (1.64042 ft) is written to 1.6404 ft, rounded inward. The server reads
     /// a shortfall under its 0.01 ft tolerance as rounding, so a request to 1.64042 ft is met, but
-    /// one 0.02 ft past what was seen is not.
+    /// one 0.02 ft past what was seen is not. Past the (unexplored) end by that much, it has no
+    /// capture request at all (`reachesPastEnd`), so it is planned here as if no end were marked.
     @Test func aRequestSpanIsReadInTheServersFeet() throws {
         var map = CoverageMap(wall: standardWall())
         for out: Float in [1.0, 4.0] {
@@ -135,8 +136,9 @@ import Testing
         let rounding = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.64042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
         #expect(GapPlanner().isSatisfied(rounding, map))
-        let short = try #require(GapPlanner().plan(
-            for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.66042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        let pastEnd = try item(#"{"kind":"band","band":"ground","span_ft":[0,1.66042],"out_ft":7.0,"message":"m"}"#)
+        #expect(GapPlanner().plan(for: pastEnd, leftEnd: nil, rightEnd: map.rightEnd) == nil)
+        let short = try #require(GapPlanner().plan(for: pastEnd, leftEnd: nil, rightEnd: nil))
         #expect(!GapPlanner().isSatisfied(short, map))
         let exact = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.6404],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
