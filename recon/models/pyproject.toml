@@ -1,0 +1,38 @@
+[project]
+name = "house-scanning-recon-depth"
+version = "0.1.0"
+description = "MoGe-2 depth for the reconstruction worker's photos-only path, run as its own process"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "huggingface-hub>=0.34",
+    "moge",
+    "numpy>=2.1",
+    "opencv-python-headless>=4.10,<5",
+    "pillow>=10",
+    "torch>=2.7",
+    "torchvision>=0.22",
+]
+
+[tool.uv]
+package = false
+override-dependencies = ["opencv-python-headless>=4.10,<5", "opencv-python; sys_platform == 'never'"]
+
+# Pinned to the last commit before the MoGe-3 rewrite, whose packaging supports only Linux and
+# Windows. Its packaging lists demo and training extras as hard requirements; the inference path
+# needs only the list below.
+[tool.uv.sources]
+moge = { git = "https://github.com/microsoft/MoGe", rev = "07444410f1e33f402353b99d6ccd26bd31e469e8" }
+
+[[tool.uv.dependency-metadata]]
+name = "moge"
+version = "2.0.0"
+requires-dist = [
+    "huggingface-hub",
+    "numpy",
+    "opencv-python-headless",
+    "pillow",
+    "scipy",
+    "torch>=2.0.0",
+    "torchvision",
+    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
+]

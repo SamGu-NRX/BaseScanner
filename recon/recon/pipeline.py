@@ -1,0 +1,185 @@
+"""The worker: one capture in, a 3D model, geometry, coverage, scene.json and the server's answer out.
+
+Stages, each a function of the one before, so any of them can move to another machine:
+capture (adapters) -> depth maps (LiDAR, or MoGe-2 rescaled by the AR poses) -> fused volume and
+mesh -> ground and wall geometry -> occlusion-aware coverage -> scene.json -> placement server.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+from recon import capture as cap
+from recon import coverage, depth, fusion, geometry, scene, server
+from recon.capture import FEET, Capture
+from recon.glb import write_glb
+
+# Error bars the worker states on what it measures, by depth source. MoGe-2: the upper end of the
+# 95% interval of the ETH3D surface p90 over 1 to 3 m spans at an assumed 2% pose error, 6.7 in
+# (experiments/evals README section 3 on t3/evals). LiDAR: no measured value here, so none is
+# sent and the server applies its default for mesh measurements (0.5 ft).
+PLUS_MINUS_FT = {"moge2-triangulated": 0.56, "lidar": None}
+
+
+def _log(msg: str) -> None:
+    print(f"recon: {msg}", file=sys.stderr, flush=True)
+
+
+def reconstruct(capture: Capture, depths: dict, depth_report: dict, move_meter: bool = False) -> dict:
+    """Everything after depth, up to coverage, returned for the writers and the acceptance checks."""
+    t0 = time.perf_counter()
+    source = depth_report["source"]
+    poses = {f.id: f.cam_to_world for f in capture.frames}
+    vol = fusion.integrate(depths, poses)
+    surface = fusion.mesh(vol)
+    _log(
+        f"fused at {vol.voxel * 100:.1f} cm voxels: {len(surface.vertices)} vertices, {len(surface.faces)} faces"
+    )
+    ground = geometry.fit_ground(surface, capture.ground_y)
+    cams = np.array([f.center for f in capture.frames])
+    lines = geometry.wall_lines(surface, ground.y, cams, np.random.default_rng(0))
+    line = geometry.choose_wall(lines, capture, move_meter)
+    wall = geometry.wall_frame(line, capture, ground.y, move_meter)
+    cov = coverage.compute(wall, capture.frames, depths, vol, surface)
+    _log(f"coverage over {len(cov.cells)} cells ({time.perf_counter() - t0:.0f} s)")
+    return {
+        "depths": depths,
+        "depth_report": depth_report,
+        "source": source,
+        "volume": vol,
+        "mesh": surface,
+        "ground": ground,
+        "lines": lines,
+        "line": line,
+        "wall": wall,
+        "coverage": cov,
+    }
+
+
+def geometry_doc(r: dict) -> dict:
+    """Walls and ground for the rules engine: the scene frame in feet, and the meter's frame."""
+    wall, line, ground = r["wall"], r["line"], r["ground"]
+    lo, hi = wall.s_range
+    ends = [wall.world(s, 0.0) for s in (lo, hi)]
+    return {
+        "units": "ft",
+        "depth_source": r["source"],
+        "accuracy": depth.ACCURACY_NOTE[r["source"]],
+        "meter": {"pos": [round(float(v) / FEET, 4) for v in wall.meter]},
+        "walls": [
+            {
+                "id": scene.WALL_ID,
+                "baseline": [
+                    [round(float(p[0]) / FEET, 4), round(float(p[2]) / FEET, 4)] for p in ends
+                ],
+                "s_range_ft": [round(lo / FEET, 3), round(hi / FEET, 3)],
+                "along": [round(float(v), 5) for v in wall.along],
+                "outward": [round(float(v), 5) for v in wall.outward],
+                "fit_rms_in": round(line.rms_m / FEET * 12, 2),
+            }
+        ],
+        "other_walls": [
+            {
+                "baseline": [
+                    [round(float(p[0]) / FEET, 4), round(float(p[2]) / FEET, 4)]
+                    for p in (w.foot + w.along * w.extent[0], w.foot + w.along * w.extent[1])
+                ],
+                "fit_rms_in": round(w.rms_m / FEET * 12, 2),
+            }
+            for w in r["lines"]
+            if w is not line
+        ],
+        "ground": {
+            "height_ft": round(ground.y / FEET, 4),
+            "normal": [round(float(v), 5) for v in ground.normal],
+            "tilt_deg": round(float(np.degrees(np.arccos(min(1.0, ground.normal[1])))), 2),
+            "fit_rms_in": round(ground.rms_m / FEET * 12, 2),
+        },
+    }
+
+
+def write_model(r: dict, path: Path) -> None:
+    """The mesh in the meter's frame (origin at the meter's foot, axes as the world's)."""
+    m = r["mesh"]
+    write_glb(path, m.vertices - r["wall"].origin, m.faces, m.colors, m.normals)
+
+
+def run(
+    bundle: Path, out: Path, work: Path, depth_mode: str, server_url: str | None, move_meter: bool
+) -> dict:
+    out.mkdir(parents=True, exist_ok=True)
+    capture = cap.load(bundle, work)
+    _log(f"{capture.source}: {len(capture.frames)} frames from {bundle}")
+    t0 = time.perf_counter()
+    depths, depth_report = depth.depth_maps(capture, work / capture.root.name, depth_mode)
+    _log(f"depth from {depth_report['source']} ({time.perf_counter() - t0:.0f} s)")
+    r = reconstruct(capture, depths, depth_report, move_meter)
+    write_model(r, out / "model.glb")
+    geo = geometry_doc(r)
+    (out / "geometry.json").write_text(json.dumps(geo, indent=1))
+    cov = r["coverage"]
+    doc = scene.build(capture, r["wall"], cov, PLUS_MINUS_FT[r["source"]])
+    (out / "scene.json").write_text(json.dumps(doc, indent=1))
+    (out / "coverage.json").write_text(json.dumps(_coverage_doc(cov), indent=1))
+    result = None
+    if server_url:
+        result = server.place(doc, server_url, out)
+        _log(f"server: {result.get('decision')}")
+    report = _report(capture, r, geo, doc, result)
+    (out / "report.md").write_text(report)
+    return {"report": report, "result": result}
+
+
+def _coverage_doc(cov: coverage.CellCoverage) -> dict:
+    ft = lambda a: [None if not np.isfinite(x) else round(float(x) / FEET, 3) for x in a]  # noqa: E731
+    return {
+        "cell_ft": round(coverage.CELL_M / FEET, 3),
+        "cells_s_ft": ft(cov.cells),
+        "wall_observed": cov.wall.tolist(),
+        "ground_out_ft": ft(cov.ground_out),
+        "facing_gap_ft": ft(cov.facing_gap),
+        "facing_clear_ft": ft(cov.facing_clear),
+        "overhead_clearance_ft": ft(cov.overhead_clearance),
+        "overhead_clear_ft": ft(cov.overhead_clear),
+    }
+
+
+def _report(capture: Capture, r: dict, geo: dict, doc: dict, result: dict | None) -> str:
+    cov, dr = r["coverage"], r["depth_report"]
+    cell_ft = coverage.CELL_M / FEET
+    lines = [
+        f"# Reconstruction of {capture.root.name}",
+        "",
+        f"- Input: {capture.source}, {len(capture.frames)} frames.",
+        f"- Depth: {r['source']}. {depth.ACCURACY_NOTE[r['source']]}",
+    ]
+    if r["source"] == "moge2-triangulated":
+        lines.append(
+            f"- Scale fitted for {dr['fitted']} of {dr['frames']} frames: MoGe-2 x {dr['median_scale']:.3f} "
+            f"median ({dr['scale_range'][0]:.3f} to {dr['scale_range'][1]:.3f}); the rest take the median."
+        )
+    lines += [
+        f"- Model: {len(r['mesh'].vertices)} vertices at {r['volume'].voxel * 100:.1f} cm voxels (model.glb, meter frame).",
+        f"- Wall: {geo['walls'][0]['s_range_ft'][0]:.1f} to {geo['walls'][0]['s_range_ft'][1]:.1f} ft of s, "
+        f"plane fit RMS {geo['walls'][0]['fit_rms_in']:.1f} in; {len(geo['other_walls'])} other wall stretches.",
+        f"- Ground: {geo['ground']['height_ft']:+.2f} ft, tilt {geo['ground']['tilt_deg']:.1f} deg, fit RMS {geo['ground']['fit_rms_in']:.1f} in.",
+        f"- Wall band observed: {cov.wall.sum() * cell_ft:.1f} of {len(cov.cells) * cell_ft:.1f} ft.",
+        f"- Ground seen at least 4 ft out: {(cov.ground_out >= 4 * FEET).sum() * cell_ft:.1f} ft of wall.",
+        f"- Facing: gap measured over {np.isfinite(cov.facing_gap).sum() * cell_ft:.1f} ft; "
+        f"overhead: clearance measured over {np.isfinite(cov.overhead_clearance).sum() * cell_ft:.1f} ft.",
+        f"- scene.json: {len(doc['coverage']['observed'])} observed entries, {len(doc['facing'])} facing, {len(doc['overheads'])} overheads.",
+    ]
+    lines += [f"- Note: {n}" for n in capture.notes]
+    if result is not None:
+        lines += ["", f"## Server: {result.get('decision')}", "", result.get("summary", ""), ""]
+        lines += ["| Check | Outcome | Reason |", "| --- | --- | --- |"]
+        for c in result.get("checks", []):
+            lines.append(
+                f"| {c.get('check')} | {c.get('outcome')} | {str(c.get('reason', '')).replace('|', '/')} |"
+            )
+    return "\n".join(lines) + "\n"

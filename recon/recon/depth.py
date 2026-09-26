@@ -1,0 +1,216 @@
+"""A metric depth map per frame: the phone's LiDAR when it has one, otherwise MoGe-2 rescaled by
+features triangulated with the AR poses.
+
+LiDAR depth is metric as measured and is used as is, keeping medium and high confidence only.
+
+The photos-only path is method (b) of the evals (experiments/evals README section 3 on t3/evals):
+MoGe-2 predicts each photo's depth with a scale that is a few percent wrong and different per
+photo; SIFT features matched across the photo and its nearest neighbours facing the same way are
+triangulated with the AR poses, and each photo's depth is multiplied by median(z_tri / z_pred).
+Measured there on ETH3D electro, 8 photos, 1 to 3 m spans on walls: p90 2.8 in [2.0, 4.4] with
+exact poses, 5.0 in [3.8, 6.8] with an assumed 2% pose scale error, 10.8 in [8.6, 13.1] with the
+2018 iPhone's measured pose error. Those assume perfect feature matching; with real matching
+walls reached 6.3 in even with exact poses.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from recon.capture import UP, Capture, Frame
+from recon.triangulate import view_scales
+
+MAX_SIDE = 640  # MoGe-2 input; keeps the model process under 4 GB (2.97 GB peak at 640 x 480)
+MIN_CONFIDENCE = 1  # ARKit confidence: 0 low, 1 medium, 2 high
+NEIGHBOURS = 7
+MODELS = Path(__file__).resolve().parents[1] / "models"
+ACCURACY_NOTE = {
+    "lidar": "LiDAR depth as measured; this worker has no measured error bar for iPhone LiDAR.",
+    "moge2-triangulated": (
+        "MoGe-2 rescaled per photo by features triangulated with the AR poses. On ETH3D, wall "
+        "p90 over 1 to 3 m spans was 5.0 in [3.8, 6.8] at an assumed 2% pose scale error and "
+        "10.8 in [8.6, 13.1] at the 2018 iPhone's measured pose error."
+    ),
+}
+
+
+@dataclass
+class Depth:
+    depth: np.ndarray  # float32 meters, z along the camera axis, NaN where unknown
+    intrinsics: (
+        np.ndarray
+    )  # fx, fy, cx, cy for this map's resolution, (0, 0) at the top-left corner
+    color: np.ndarray  # BGR uint8 image at the same resolution
+    source: str
+
+
+def scaled(intrinsics: np.ndarray, s: float) -> np.ndarray:
+    return intrinsics * s
+
+
+def upright_turns(cam_to_world: np.ndarray) -> int:
+    """np.rot90 turns (counter-clockwise) that put world up at the top of the frame's image.
+    Sensor images are sideways for a phone held upright; MoGe-2 was trained on upright photos."""
+    x, y = (cam_to_world[:3, :3].T @ UP)[:2]  # world up in ARKit camera axes (+y is image up)
+    if abs(y) >= abs(x):
+        return 0 if y > 0 else 2
+    return 1 if x > 0 else 3
+
+
+def rotated_intrinsics(k: np.ndarray, w: float, h: float, turns: int) -> np.ndarray:
+    """Intrinsics of the image turned by np.rot90(image, turns), for a w x h original, with pixel
+    (0, 0) at the top-left corner: a turn takes (u, v) to (v, w - u)."""
+    fx, fy, cx, cy = k
+    return {
+        0: np.array([fx, fy, cx, cy]),
+        1: np.array([fy, fx, cy, w - cx]),
+        2: np.array([fx, fy, w - cx, h - cy]),
+        3: np.array([fy, fx, h - cy, cx]),
+    }[turns % 4]
+
+
+def lidar(frame: Frame) -> Depth:
+    d = frame.lidar
+    depth = np.fromfile(d.file, dtype="<f4")
+    if depth.size != d.width * d.height:
+        raise ValueError(f"{d.file}: {depth.size} values, expected {d.width} x {d.height}")
+    depth = depth.reshape(d.height, d.width).copy()
+    if d.confidence is not None:
+        conf = np.fromfile(d.confidence, dtype=np.uint8).reshape(d.height, d.width)
+        depth[conf < MIN_CONFIDENCE] = np.nan
+    depth[~(depth > 0)] = np.nan
+    color = cv2.resize(_image(frame), (d.width, d.height), interpolation=cv2.INTER_AREA)
+    return Depth(depth, scaled(frame.intrinsics, d.width / frame.width), color, "lidar")
+
+
+def _image(frame: Frame) -> np.ndarray:
+    img = cv2.imread(str(frame.image), cv2.IMREAD_COLOR)
+    if img is None:
+        raise FileNotFoundError(frame.image)
+    if img.shape[:2] != (frame.height, frame.width):
+        raise ValueError(
+            f"{frame.image}: {img.shape[1]}x{img.shape[0]}, keyframe says {frame.width}x{frame.height}"
+        )
+    return img
+
+
+def moge(capture: Capture, work: Path) -> dict[str, Depth]:
+    """MoGe-2 depth per frame at up to MAX_SIDE px, in the frame's own (unrotated) orientation."""
+    work.mkdir(parents=True, exist_ok=True)
+    manifest, meta = [], {}
+    for f in capture.frames:
+        img = _image(f)
+        s = min(1.0, MAX_SIDE / max(f.width, f.height))
+        small = cv2.resize(
+            img, (round(f.width * s), round(f.height * s)), interpolation=cv2.INTER_AREA
+        )
+        k_small = scaled(f.intrinsics, small.shape[1] / f.width)
+        turns = upright_turns(f.cam_to_world)
+        up_path = work / f"{f.id}.upright.jpg"
+        cv2.imwrite(str(up_path), np.rot90(small, turns), [cv2.IMWRITE_JPEG_QUALITY, 95])
+        k_up = rotated_intrinsics(k_small, small.shape[1], small.shape[0], turns)
+        out = work / f"{f.id}.moge2.npz"
+        meta[f.id] = (out, turns, k_small, small)
+        if not out.exists():
+            manifest.append({"image": str(up_path), "fx": float(k_up[0]), "out": str(out)})
+    if manifest:
+        (work / "moge2.json").write_text(json.dumps(manifest, indent=1))
+        subprocess.run(
+            [
+                "uv",
+                "run",
+                "--project",
+                str(MODELS),
+                "python",
+                str(MODELS / "moge_depth.py"),
+                str(work / "moge2.json"),
+            ],
+            check=True,
+            env={**os.environ},
+        )
+    depths = {}
+    for fid, (out, turns, k_small, small) in meta.items():
+        d = np.rot90(np.load(out)["depth"], -turns).astype(np.float32)
+        if d.shape != small.shape[:2]:
+            raise ValueError(f"{out}: depth {d.shape} does not match the image {small.shape[:2]}")
+        depths[fid] = Depth(np.ascontiguousarray(d), k_small, small, "moge2")
+    return depths
+
+
+def _cv_pose(T: np.ndarray) -> np.ndarray:
+    """ARKit camera axes to OpenCV's (+y down, +z forward)."""
+    return T @ np.diag([1.0, -1.0, -1.0, 1.0])
+
+
+def _cv_K(k: np.ndarray) -> np.ndarray:
+    fx, fy, cx, cy = k
+    return np.array([[fx, 0, cx - 0.5], [0, fy, cy - 0.5], [0, 0, 1.0]])
+
+
+def neighbours(poses: dict[str, np.ndarray], fid: str, n: int = NEIGHBOURS) -> list[str]:
+    """The frame and its n nearest frames looking the same way (within 60 degrees)."""
+    T = poses[fid]
+    fwd = -T[:3, 2]
+    near = [k for k in poses if k != fid and -poses[k][:3, 2] @ fwd > 0.5]
+    near.sort(key=lambda k: np.linalg.norm(poses[k][:3, 3] - T[:3, 3]))
+    return [fid, *near[:n]]
+
+
+def rescale(capture: Capture, depths: dict[str, Depth]) -> tuple[dict[str, Depth], dict]:
+    """Multiplies each frame's MoGe-2 depth by its triangulated scale. Frames without enough
+    triangulated points take the median of the others; with none at all this refuses."""
+    poses = {f.id: f.cam_to_world for f in capture.frames}
+    gray = {k: cv2.cvtColor(d.color, cv2.COLOR_BGR2GRAY) for k, d in depths.items()}
+    fits = {}
+    for fid in poses:
+        group = neighbours(poses, fid)
+        if len(group) < 2:
+            continue
+        fits[fid] = view_scales(
+            {k: gray[k] for k in group},
+            {k: _cv_K(depths[k].intrinsics) for k in group},
+            {k: _cv_pose(poses[k]) for k in group},
+            {k: depths[k].depth for k in group},
+        )[fid]
+    good = [f.scale for f in fits.values() if f.scale is not None]
+    if not good:
+        raise RuntimeError(
+            "no frame had enough features triangulated with the AR poses to fix MoGe-2's scale; "
+            "the photos need texture and overlap"
+        )
+    fallback = float(np.median(good))
+    out, used = {}, {}
+    for fid, d in depths.items():
+        fit = fits.get(fid)
+        fitted = fit is not None and fit.scale is not None
+        s = fit.scale if fitted else fallback
+        used[fid] = {"scale": s, "points": fit.points if fit else 0, "fitted": fitted}
+        out[fid] = Depth(d.depth * np.float32(s), d.intrinsics, d.color, "moge2-triangulated")
+    report = {
+        "fitted": len(good),
+        "frames": len(depths),
+        "median_scale": fallback,
+        "scale_range": [float(min(good)), float(max(good))],
+        "per_frame": used,
+    }
+    return out, report
+
+
+def depth_maps(capture: Capture, work: Path, mode: str) -> tuple[dict[str, Depth], dict]:
+    """mode: "auto" (LiDAR when every frame has it), "lidar" or "moge"."""
+    if mode == "lidar" or (mode == "auto" and capture.has_lidar):
+        if not capture.has_lidar:
+            raise ValueError("--depth lidar, but not every keyframe carries LiDAR depth")
+        return {f.id: lidar(f) for f in capture.frames}, {"source": "lidar"}
+    print(f"depth: MoGe-2 on {len(capture.frames)} frames", file=sys.stderr)
+    raw = moge(capture, work / "moge2")
+    depths, report = rescale(capture, raw)
+    return depths, {"source": "moge2-triangulated", **report}
