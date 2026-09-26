@@ -286,11 +286,14 @@ enum GuidanceStep: Equatable, Sendable {
     /// Hold the meter in the ring until the close-up is taken.
     case holdOnMeter
     /// Walk along the wall toward `side`. `remaining` is meters of s still unseen on that side,
-    /// nil while the end is unknown.
+    /// nil while the end is unknown. "Can't get there" and "Wall ends here" end the wall on that
+    /// side where `ScanViewState.endPreview` shows.
     case walk(side: WallSide, remaining: Float?)
-    /// The wall is covered on this side; mark where it ends.
+    /// The walk has gone about 20 ft on this side (`GuidanceConfig.reach`); ask where the wall
+    /// ends, marked at the reticle (`ScanActions.markWallEnd`).
     case markEnd(side: WallSide)
-    /// Tilt down: the ground at the foot of the wall around `s` is missing.
+    /// Tilt down: the ground at the foot of the wall around `s` is missing. The walk asks for the
+    /// ground in front of the meter (s = 0) first.
     case aimAtGround(s: Float)
     /// Tilt up or step back: the wall face around `s` is missing.
     case aimAtWall(s: Float)
@@ -320,6 +323,27 @@ enum Coaching: Equatable, Sendable {
     case holdSteady
     case relocalizing
     case trackingLost
+    /// The phone stands past an end it can't see back from, so the walk keeps no photos: nothing
+    /// in them would count (`CoverageMap.unexploredEndPassed`).
+    case pastWallEnd
+}
+
+/// Where a wall end would land if the homeowner ended the wall now, while ending it is on offer.
+/// The strip draws it before the tap, so an end never lands somewhere the screen didn't show.
+struct EndPreview: Equatable, Sendable {
+    var side: WallSide
+    /// Meters of s. During the walk, where "Wall ends here" puts it, and "Can't get there" too
+    /// while the walk asks to walk that way: the phone's place along the wall, kept to the stretch
+    /// walked on that side (`WalkedEnd`). While the walk asks for the end (`GuidanceStep.markEnd`),
+    /// where the reticle meets the wall.
+    var s: Float
+    /// True when `s` comes from the reticle (`ScanActions.markWallEnd`), false when from the
+    /// phone's place (`ScanActions.endWallHere`).
+    var atReticle: Bool
+    /// Meters of walked path past `s` on this side, set when the homeowner walked back toward the
+    /// meter by at least a keyframe's spacing: what the walk saw from there is left out if the wall
+    /// ends at `s`.
+    var leavesOutWalked: Float?
 }
 
 // MARK: - Captures
@@ -631,6 +655,10 @@ final class ScanViewState {
     /// the wall turns a corner (it continues, unexplored) or something blocks it (a fence, gate
     /// or property line: a real limit). Nil when nothing is being asked.
     var endQuestion: WallSide?
+    /// Where the wall end on the side being walked would land now; nil while ending it isn't on
+    /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
+    /// else). "Wall ends here" shows only while it is set.
+    var endPreview: EndPreview?
     /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
     /// camera can't tell open sky from an eave, so the homeowner answers.
     var overheadQuestion = false
@@ -675,7 +703,12 @@ protocol ScanActions: AnyObject {
     /// The homeowner's pick from `MeterNumberState.choose`; nil means "None of these", which
     /// asks for a retake.
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
+    /// Marks a wall end where `point` meets the wall, on whichever side of the meter that is.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
+    /// "Wall ends here" during the walk: ends the wall on the side being walked where
+    /// `ScanViewState.endPreview` shows it (the phone's place), then asks what is there
+    /// (`ScanViewState.endQuestion`). Does nothing while `endPreview` is nil or at the reticle.
+    func endWallHere()
     /// The answer to `ScanViewState.endQuestion`. During the walk a corner asks for the next wall
     /// (`GuidanceStep.markNextWall`); a corner the walk doesn't follow exports as an unexplored
     /// end, a blocked wall as a limit, and an end left unanswered stays unexplored.
@@ -700,7 +733,9 @@ protocol ScanActions: AnyObject {
     /// "I can't get there": the gap is recorded for installer review.
     func skipGap()
     /// "I can't get to this part of the wall", during the walk: the cells the guidance is asking
-    /// for become `.skipped` and the guidance moves on to the next task.
+    /// for become `.skipped` and the guidance moves on to the next task. While the walk asks to
+    /// walk a side, that side's end goes where `ScanViewState.endPreview` shows, as an unexplored
+    /// end.
     func cannotAccessArea()
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.

@@ -14,7 +14,10 @@ import OSLog
 ///   UI tests raise it so each screen stays long enough to screenshot and audit.
 /// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
 ///   that phase exists in the folder. UI tests write it once they have screenshotted and audited
-///   the screen, so a slow audit can never miss a screen.
+///   the screen, so a slow audit can never miss a screen. After the result shows, the autopilot
+///   also writes the scan's scene.json there, for the test to check.
+/// - `-autopilotCantGetThere`: the autopilot ends the walk with "Can't get there" instead of
+///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-coverage map3d|legacy`: where coverage comes from (default `map3d`). `map3d` is the 3D
 ///   occupancy map (`Map3DSession`): scene.json's coverage and walls, the fog overlay, and on a
 ///   phone with depth the strip's and planners' covered cells. `legacy` is the camera-sighting
@@ -37,6 +40,7 @@ struct LaunchOptions: Equatable {
     var autopilotGate: URL?
     var coverage: CoverageModel = .map3d
     var estimatedDepth = ScanEngine.estimatedDepthByDefault
+    var autopilotCantGetThere = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -50,6 +54,7 @@ struct LaunchOptions: Equatable {
             replayFolder = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
         }
         autopilot = arguments.contains("-autopilot")
+        autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }

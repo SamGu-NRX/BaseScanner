@@ -331,7 +331,7 @@ extension ScanEngine: ScanActions {
         case .gapRequest:
             skipCurrentGap()
         case .wallWalk:
-            guard let map = coverage else { return }
+            guard coverage != nil else { return }
             let task = ScanEngine.name(state.guidance)
             switch state.guidance {
             case .aimAtGround, .aimAtWall, .seeBehind, .walk, .markEnd, .tiltUp, .markNextWall:
@@ -353,10 +353,9 @@ extension ScanEngine: ScanActions {
                     }
                 }
             case .walk(let side, _), .markEnd(let side):
-                // The walk can't continue this way: stop the wall here, as an unexplored end.
-                let reach = GuidancePlanner().reach(side == .left ? .left : .right, coverage: map)
-                let s = side == .left ? -reach : reach
-                setEnd(side, at: s, kind: .unexplored)
+                // The walk can't continue this way: stop the wall where the phone is, as an
+                // unexplored end (`WalkedEnd`), where the strip's preview showed it.
+                endWalkCannotGoOn(side)
             case .tiltUp:
                 settleTiltUp(clear: false)
             case .markNextWall:

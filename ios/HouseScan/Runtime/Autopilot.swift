@@ -47,6 +47,7 @@ final class Autopilot {
         guard await waitFor(.meterCloseUp, timeout: 10) else { return fail("meter was not marked") }
         await takeCloseUp()
         guard await waitFor(.wallWalk, timeout: 150) else { return fail("walk did not start") }
+        if engine.options.autopilotCantGetThere { await skipGroundByMeterBeforeItIsSeen(replay) }
 
         await pause(0.5)
         guard await waitUntil(timeout: 120, { !replay.isPlaying }) else { return fail("walk replay did not finish") }
@@ -54,7 +55,11 @@ final class Autopilot {
         await settleMap3D()
 
         await markFeatures(replay)
-        await markEnds(replay)
+        if engine.options.autopilotCantGetThere {
+            await endWalkByCantGetThere(replay)
+        } else {
+            await markEnds(replay)
+        }
         await tiltUp()
         await pause(1.0)
         await engine.waitForGate(.wallWalk)
@@ -86,6 +91,7 @@ final class Autopilot {
         }
         guard await waitFor(.uploading, timeout: 150) else { return fail("upload did not start") }
         guard await driveToResult(replay) else { return }
+        writeSceneForTest()
         await pause(hold)
         await engine.waitForGate(.result)
         engine.showAR()
@@ -213,6 +219,89 @@ final class Autopilot {
                 }
             }
             await pause(0.6)
+        }
+    }
+
+    // MARK: Can't get there (-autopilotCantGetThere)
+
+    /// The walk's first request is the ground in front of the meter. This says "Can't get there"
+    /// to it as soon as it shows, before the replay has shown that ground from two places: on
+    /// device run 1 nothing had seen it when the ends were set, and the walk has to move on.
+    private func skipGroundByMeterBeforeItIsSeen(_ replay: ReplayPlayer) async {
+        _ = await waitUntil(timeout: 20) { self.isAskingForGroundByMeter || !replay.isPlaying }
+        guard isAskingForGroundByMeter, let map = engine.coverage else {
+            log("the walk did not ask for the ground by the meter while the replay played")
+            return
+        }
+        let window = map.indices(overlapping: -GuidancePlanner.aimHalfWidth...GuidancePlanner.aimHalfWidth)
+        let covered = window.filter { map.level(.ground, $0) == .covered }.count
+        engine.cannotAccessArea()
+        log("can't get there on the ground by the meter, \(covered) of its \(window.count) cells covered; now \(ScanEngine.name(self.engine.state.guidance))")
+    }
+
+    private var isAskingForGroundByMeter: Bool {
+        if case .aimAtGround(let s) = engine.state.guidance { return abs(s) < 0.01 }
+        return false
+    }
+
+    /// Ends each side with "Can't get there" where the walk went farthest that way, as a
+    /// homeowner who reached the end of what they can walk would, instead of marking the ends.
+    /// The phone stands there again (that frame plays once more), and any request about the wall
+    /// or ground in front of it gets "Can't get there" first, until the walk asks to walk on that
+    /// way: that is when the tap ends the wall. The engine logs where each end went.
+    private func endWalkByCantGetThere(_ replay: ReplayPlayer) async {
+        guard let wall = engine.coverage?.wall else { return }
+        let walkEnd = ScanEngine.tiltUpFrames(in: replay, map: engine.coverage ?? CoverageMap(wall: wall)).lowerBound
+        let played = (0..<walkEnd).filter { !(replay.heldBack?.frames.contains($0) ?? false) }
+        for side in [WallSide.left, .right] {
+            let along = { (index: Int) in side.walk.sign * wall.wallPoint(replay.camera(at: index).position).s }
+            guard let index = played.max(by: { along($0) < along($1) }) else { continue }
+            replay.play(range: index..<(index + 1), speed: 3)
+            _ = await waitUntil(timeout: 10) { !replay.isPlaying }
+            await pause(0.3)
+            for _ in 0..<8 where !isWalking(side) && asksAboutTheWallHere {
+                engine.cannotAccessArea()
+                await pause(0.3)
+            }
+            guard isWalking(side) else {
+                log("the walk never asked to walk \(side.rawValue) at s=\(side.walk.sign * along(index)); leaving that end unmarked")
+                continue
+            }
+            await pause(hold)
+            engine.cannotAccessArea()
+            let end = side == .left ? engine.coverage?.leftEnd : engine.coverage?.rightEnd
+            log("can't get there on the \(side.rawValue) with the phone at s=\(side.walk.sign * along(index)): end at s=\(end ?? .nan)")
+        }
+    }
+
+    private func isWalking(_ side: WallSide) -> Bool {
+        switch engine.state.guidance {
+        case .walk(let walking, _), .markEnd(let walking): walking == side
+        default: false
+        }
+    }
+
+    private var asksAboutTheWallHere: Bool {
+        switch engine.state.guidance {
+        case .aimAtGround, .aimAtWall, .seeBehind: true
+        default: false
+        }
+    }
+
+    /// With `-autopilotGate`, leaves the scene.json of the scan the result answers (the one the
+    /// last upload sent) in the gate folder, for the UI test to check its ends and what it
+    /// reports as seen.
+    private func writeSceneForTest() {
+        guard let gate = engine.options.autopilotGate else { return }
+        guard let scene = engine.uploadedScene else {
+            log("no uploaded scene.json to write to the gate folder")
+            return
+        }
+        do {
+            try scene.write(to: gate.appending(path: "scene.json"))
+            log("wrote scene.json to the gate folder")
+        } catch {
+            log("could not write scene.json to the gate folder: \(error)")
         }
     }
 

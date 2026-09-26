@@ -10,6 +10,10 @@ import SwiftUI
 /// so they read in grayscale, and a legend line under the strip while any is on it: skipped is
 /// slate with a slash, hidden (depth saw something in front) a violet dashed outline round the
 /// stretch, as on the camera. On a phone with depth the same line says the map is depth-checked.
+///
+/// While ending the wall is on offer, a dashed chalk line shows where the end would land and the
+/// strip past it on that side is dimmed: that part would be left out. The line follows the phone
+/// (or the reticle) frame by frame, so it doesn't animate.
 struct WallTape: View {
     var coverage: CoverageStrip
     var wall: WallGeometry
@@ -19,6 +23,8 @@ struct WallTape: View {
     var highlight: GapRequest?
     /// The phone has depth, so a cell counts only where depth confirms the wall itself.
     var depthChecked = false
+    /// Where a wall end would land now (`ScanViewState.endPreview`); nil hides the line.
+    var endPreview: EndPreview?
 
     /// Glyph size for the meter and feature marks. It follows the text size, like every other
     /// glyph in the app (fixed 9 and 10 pt sizes failed the audit's Dynamic Type check), and
@@ -32,7 +38,7 @@ struct WallTape: View {
     private static let footInMeters: Float = 0.3048
 
     var body: some View {
-        let extent = Self.extent(coverage: coverage, wall: wall, cameraS: cameraS)
+        let extent = Self.extent(coverage: coverage, wall: wall, cameraS: cameraS, also: markedS + [endPreview?.s].compactMap(\.self))
         VStack(spacing: 4) {
             GeometryReader { proxy in
                 let map = TapeMap(extent: extent, width: proxy.size.width)
@@ -79,14 +85,19 @@ struct WallTape: View {
     private var skippedSections: [ClosedRange<Float>] { sections(of: .skipped) }
 
     private var showsFooter: Bool {
-        depthChecked || !hiddenSections.isEmpty || !skippedSections.isEmpty
+        depthChecked || !hiddenSections.isEmpty || !skippedSections.isEmpty || leavesOutWalked != nil
     }
+
+    private var leavesOutWalked: Float? { endPreview?.leavesOutWalked }
 
     private var footer: some View {
         let layout = typeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
             : AnyLayout(HStackLayout(spacing: 12))
         return layout {
+            if let leavesOutWalked {
+                LegendEntry(title: ScanCopy.endLeavesOut(leavesOutWalked)) { EndPreviewSwatch() }
+            }
             if !hiddenSections.isEmpty {
                 LegendEntry(title: "Hidden behind something") { HiddenSwatch() }
             }
@@ -124,12 +135,19 @@ struct WallTape: View {
         }
     }
 
+    /// The middle of each marked feature. A mark past an end still counts (the server puts it on
+    /// the wall's line continued past the end), so the strip draws it where it is rather than
+    /// pinned to the strip's edge.
+    private var markedS: [Float] {
+        features.map { ($0.span.lowerBound + $0.span.upperBound) / 2 }
+    }
+
     /// The s range drawn: everything the engine considers worth drawing, the marked ends, the
-    /// meter and the homeowner, plus a little air on both sides.
-    static func extent(coverage: CoverageStrip, wall: WallGeometry, cameraS: Float?) -> ClosedRange<Float> {
+    /// meter, the homeowner and `also`, plus a little air on both sides.
+    static func extent(coverage: CoverageStrip, wall: WallGeometry, cameraS: Float?, also: [Float] = []) -> ClosedRange<Float> {
         var lower = min(coverage.visibleRange.lowerBound, 0)
         var upper = max(coverage.visibleRange.upperBound, 0)
-        for value in [wall.leftEnd, wall.rightEnd, cameraS].compactMap(\.self) {
+        for value in [wall.leftEnd, wall.rightEnd, cameraS].compactMap(\.self) + also {
             lower = min(lower, value)
             upper = max(upper, value)
         }
@@ -190,6 +208,16 @@ struct WallTape: View {
             }
         }
 
+        // What ending the wall at the preview would leave out: everything past it on that side.
+        if let preview = endPreview {
+            let x = map.x(preview.s)
+            let band = CGRect(x: 0, y: wallRow.minY, width: size.width, height: groundRow.maxY - wallRow.minY)
+            let veil = preview.side == .left
+                ? band.divided(atDistance: max(0, x), from: .minXEdge).slice
+                : band.divided(atDistance: max(0, x), from: .minXEdge).remainder
+            context.fill(Path(veil), with: .color(.black.opacity(0.55)))
+        }
+
         // Foot ticks along the bottom edge; every fifth foot is longer.
         let firstFoot = Int((map.extent.lowerBound / Self.footInMeters).rounded(.up))
         let lastFoot = Int((map.extent.upperBound / Self.footInMeters).rounded(.down))
@@ -214,6 +242,17 @@ struct WallTape: View {
             let x = map.x(end)
             let cap = CGRect(x: x - 1.5, y: wallRow.minY - 4, width: 3, height: groundRow.maxY - wallRow.minY + 8)
             context.fill(Path(roundedRect: cap, cornerRadius: 1.5), with: .color(Palette.chalk))
+        }
+
+        // Where the end would land: a dashed chalk line as tall as the end caps, on a dark
+        // underlay so it reads over bright cells in sun.
+        if let preview = endPreview {
+            let x = map.x(preview.s)
+            var line = Path()
+            line.move(to: CGPoint(x: x, y: wallRow.minY - 4))
+            line.addLine(to: CGPoint(x: x, y: groundRow.maxY + 4))
+            context.stroke(line, with: .color(.black.opacity(0.6)), lineWidth: 4)
+            context.stroke(line, with: .color(Palette.chalk), style: StrokeStyle(lineWidth: 2, dash: [3, 2.5]))
         }
 
         // The homeowner: a white pointer under the strip, like the cursor on a tape.
@@ -286,6 +325,18 @@ struct WallTape: View {
         if let skipped = Self.count(skippedSections.count, "section") {
             parts.append("\(skipped) skipped")
         }
+        if let preview = endPreview {
+            var sentence = preview.atReticle
+                ? "Wall ends here marks the \(preview.side.rawValue) end \(Self.spokenFromMeter(preview.s))"
+                : "If you end the wall now, the \(preview.side.rawValue) end goes \(Self.spokenFromMeter(preview.s))"
+            if let leavesOutWalked {
+                sentence += ", leaving out \(Distance.spoken(leavesOutWalked)) you walked"
+            }
+            parts.append(sentence)
+        }
+        for (side, end) in [("Left", wall.leftEnd), ("Right", wall.rightEnd)] {
+            if let end { parts.append("\(side) end \(Self.spokenFromMeter(end))") }
+        }
         if wall.leftEnd != nil, wall.rightEnd != nil {
             parts.append("Both ends marked")
         }
@@ -293,6 +344,12 @@ struct WallTape: View {
             parts.append("Checked with your phone's depth sensor")
         }
         return parts.joined(separator: ". ")
+    }
+
+    /// "5 feet 2 inches left of your meter", or "at your meter" within 3 in, as `Distance.fromMeter`.
+    static func spokenFromMeter(_ s: Float) -> String {
+        if abs(s) < Distance.metersPerInch * 3 { return "at your meter" }
+        return "\(Distance.spoken(s)) \(s < 0 ? "left" : "right") of your meter"
     }
 
     /// "1 section", "2 sections"; nil for none.
@@ -331,6 +388,22 @@ private struct HiddenSwatch: View {
             .fill(Palette.hidden.opacity(0.22))
             .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Palette.hidden, style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
             .frame(width: 18, height: 12)
+    }
+}
+
+/// The end preview as the strip draws it: a dashed chalk line with the stretch past it dimmed.
+private struct EndPreviewSwatch: View {
+    var body: some View {
+        Canvas { context, size in
+            let rect = CGRect(origin: .zero, size: size)
+            context.fill(Path(roundedRect: rect, cornerRadius: 2), with: .color(Palette.cell(.covered)))
+            context.fill(Path(rect.divided(atDistance: size.width / 2, from: .minXEdge).remainder), with: .color(.black.opacity(0.55)))
+            var line = Path()
+            line.move(to: CGPoint(x: size.width / 2, y: 0))
+            line.addLine(to: CGPoint(x: size.width / 2, y: size.height))
+            context.stroke(line, with: .color(Palette.chalk), style: StrokeStyle(lineWidth: 2, dash: [3, 2.5]))
+        }
+        .frame(width: 18, height: 12)
     }
 }
 

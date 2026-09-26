@@ -7,7 +7,7 @@ import SwiftUI
 /// - `-uiDemoFreeze`: don't run the timed scripts, so the screen holds still.
 /// - `-uiDemoMarking <FeatureKind raw value>`: open the walk in marking mode.
 /// - `-uiDemoRefusal`: the marking shows a refusal.
-/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost>`.
+/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost|pastWallEnd>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
 /// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
 /// - `-uiDemoGroundQuestion`: open the feature review with the ground question unanswered.
@@ -20,6 +20,8 @@ import SwiftUI
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
+///   where they stand leaves part of the walk out.
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
 ///   `-uiDemoRefusal` the last mark was refused.
 /// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.

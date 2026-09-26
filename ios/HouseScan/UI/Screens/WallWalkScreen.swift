@@ -25,8 +25,9 @@ struct WallWalkScreen: View {
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
             }
-            // The mark (a feature, or the next wall round a corner) lands under the circle.
-            if state.marking != nil || isMarkingNextWall {
+            // The mark (a feature, the next wall round a corner, or the wall's end when the walk
+            // asks for it) lands under the circle.
+            if state.marking != nil || isMarkingNextWall || controlsKey == .markEnd {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -54,7 +55,8 @@ struct WallWalkScreen: View {
                             features: state.features,
                             cameraS: cameraS,
                             highlight: nil,
-                            depthChecked: state.depthAvailable
+                            depthChecked: state.depthAvailable,
+                            endPreview: showsEndPreview ? state.endPreview : nil
                         )
                     }
                 }
@@ -115,6 +117,18 @@ struct WallWalkScreen: View {
         case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall, .seeBehind: true
         default: false
         }
+    }
+
+    /// The end preview shows only with the buttons that set it: not over a question, a mark or
+    /// the feature tray.
+    private var showsEndPreview: Bool {
+        controlsKey == .walking || controlsKey == .markEnd
+    }
+
+    /// "Wall ends here" at the phone's place, offered whenever the walk is on a side whose end
+    /// isn't marked (B-06), not only once it asks for the end.
+    private var offersEndHere: Bool {
+        controlsKey == .walking && state.endPreview?.atReticle == false
     }
 
     private var isMarkingNextWall: Bool {
@@ -209,6 +223,17 @@ struct WallWalkScreen: View {
                     .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
                     .accessibilityIdentifier("action.markEnd")
                     .transition(.opacity)
+                case .walking where offersEndHere:
+                    Button {
+                        actions.endWallHere()
+                    } label: {
+                        Label("Wall ends here", systemImage: "flag")
+                            .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Ends the wall where you're standing, at the dashed line on the map")
+                    .accessibilityIdentifier("action.endHere")
+                    .transition(.opacity)
                 case .finish:
                     Button {
                         actions.finishWalk()
@@ -233,6 +258,14 @@ struct WallWalkScreen: View {
                 title: ScanCopy.cannotSeeBehind,
                 identifier: "action.cannotAccess",
                 hint: "Skips the part behind it. An installer will look at it instead.",
+                perform: { actions.cannotAccessArea() }
+            )
+        }
+        if case .walk = state.guidance {
+            return InstructionCard.Reply(
+                title: "Can't get there",
+                identifier: "action.cannotAccess",
+                hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.",
                 perform: { actions.cannotAccessArea() }
             )
         }

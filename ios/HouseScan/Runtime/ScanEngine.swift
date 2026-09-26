@@ -44,6 +44,8 @@ final class ScanEngine {
     /// The wall the last scene.json described (`exportGeometry()`), with the walk's wall at that
     /// moment, so the answer's wall can follow the walk's as the meter anchor is refined.
     private var exported: (wall: WallFrame, walk: WallFrame)?
+    /// The scene.json last packaged for the upload: what the result answers.
+    private(set) var uploadedScene: Data?
     /// The wall the last scene.json described, where it is now: the server's s runs along it.
     /// Under `-coverage map3d` it can be the measured chain rather than `coverage.wall`; it moves
     /// as the walk's wall moves (`WallFrame.following`).
@@ -569,11 +571,15 @@ final class ScanEngine {
         guard let map = coverage else { return }
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
+        // Past an end it can't see back from, a photo adds nothing: it is refused and the screen says so.
+        let pastEnd = map.unexploredEndPassed(by: frame.camera)
         var skip: CaptureDecision.SkipReason?
         switch decision {
         case .skip(let reason):
             skip = reason
             logGate("skipped: \(reason)")
+        case .keep where pastEnd != nil:
+            logGate("refused: past the \(pastEnd?.rawValue ?? "") end, nothing between the ends in view")
         // The gate judges sharpness and exposure from this frame's own quality when it has one,
         // else from the last measured frame's. A kept photo must have been judged itself.
         case .keep where frame.quality == nil:
@@ -588,7 +594,7 @@ final class ScanEngine {
             keptSourceIDs.insert(frame.id)
             keep(frame)
         }
-        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, time: frame.timestamp)
+        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, pastEnd: pastEnd != nil, time: frame.timestamp)
         afterCoverageChange(camera: frame.camera, time: frame.timestamp)
         askOverheadIfTiltedUp(frame)
     }
@@ -598,8 +604,10 @@ final class ScanEngine {
     /// seconds of frames without it: the gate judges every frame, and one fast frame at 30 fps
     /// would otherwise flash a prompt for a single frame. During the walk moving and blurry read
     /// as "Slow down", never "Hold steady", which would tell a walking homeowner to stop. Both
-    /// durations are guesses to try on a phone, not measured.
-    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, time: Double) -> Coaching? {
+    /// durations are guesses to try on a phone, not measured. Standing past an end the phone
+    /// can't see back from (`pastEnd`) is debounced the same way and comes before the gate's
+    /// reasons: no photo is kept there whatever the gate says.
+    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, pastEnd: Bool, time: Double) -> Coaching? {
         let showAfter = 0.7
         let clearAfter = 0.5
         guard tracking == .normal else {
@@ -607,11 +615,12 @@ final class ScanEngine {
             gateClearSince = nil
             return coaching(for: tracking, skip: nil)
         }
-        let candidate: Coaching? = switch skip {
+        var candidate: Coaching? = switch skip {
         case .moving?, .blurry?: .slowDown
         case .tooDark?: .tooDark
         default: nil
         }
+        if pastEnd { candidate = .pastWallEnd }
         if let problem = gateProblem, time < problem.since { gateProblem = nil }  // replay restarted
         if let candidate {
             gateClearSince = nil
@@ -1116,6 +1125,7 @@ final class ScanEngine {
         map3D?.reset(forgetAnchors: true)
         state.map3D = nil
         exported = nil
+        uploadedScene = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
@@ -1166,6 +1176,7 @@ final class ScanEngine {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
         exported = nil
+        uploadedScene = nil
         map3D?.start(wall: frame)
         // With depth the 3D map decides what is covered from the start (`applyMap3D`).
         mapDecidesCoverage = map3D != nil && (state.depthAvailable || depthEstimator != nil)
@@ -1436,6 +1447,7 @@ final class ScanEngine {
             updateRecording()
             return
         }
+        uploadedScene = scene
         // The answer's s runs along this wall; `presentation(of:)` places the result on it.
         if let walk = coverage?.wall { exported = (geometry.wall, walk) }
         saveBundle(scene: scene, mesh: meshSnapshot)
@@ -1568,6 +1580,7 @@ final class ScanEngine {
         map3D?.reset(forgetAnchors: false)
         state.map3D = nil
         exported = nil
+        uploadedScene = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
@@ -1653,6 +1666,7 @@ final class ScanEngine {
 
     /// Records what request is on screen now in the guidance log.
     func noteGuidance() {
+        publishEndPreview()
         guard let t = captureClock else { return }
         guidanceLog.show(guidanceRequest(), at: t) { old, next in closingOutcome(old, next: next) }
     }
