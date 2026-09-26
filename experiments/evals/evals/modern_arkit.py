@@ -207,6 +207,21 @@ def evaluate() -> dict:
     return scenes
 
 
+def site_spread(
+    scales: np.ndarray, draws: int = 10_000, seed: int = 0
+) -> tuple[float, float, float]:
+    """Walk-to-walk standard deviation of ARKit's scale within one site, and its 95% bootstrap
+    interval over walks. Walks off by more than `OUTLIER` are left out: their reference is in doubt.
+    """
+    s = scales[np.abs(scales - 1) <= OUTLIER]
+    if len(s) < 3:
+        raise ValueError(f"{len(s)} trusted walks; need at least 3 for a spread")
+    rng = np.random.default_rng(seed)
+    boot = s[rng.integers(0, len(s), (draws, len(s)))].std(axis=1, ddof=1)
+    lo, hi = np.percentile(boot, [2.5, 97.5])
+    return float(s.std(ddof=1)), float(lo), float(hi)
+
+
 def _abs(x_m: np.ndarray) -> str:
     a = np.abs(x_m) / INCH
     return f"{np.median(a):.1f} / {np.percentile(a, 90):.1f}"
@@ -237,6 +252,24 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         "",
         f"Walks within 2% of the ground truth's scale: {int(np.sum(np.abs(s_all - 1) <= 0.02))} of "
         f"{len(all_walks)}.",
+        "",
+        "## Walk-to-walk spread of ARKit's scale within a site",
+        "",
+        f"Standard deviation over each site's walks within {OUTLIER:.0%} of the reference, with a "
+        "95% bootstrap interval over walks. A reference scaled to ARKit would carry one scale per "
+        "site, which shifts every walk of that site alike, so this spread survives it: a single "
+        "walk's scale error is at least this large, unless the reference's own scale varies walk "
+        "to walk in step with ARKit's.",
+        "",
+        "| Site | Walks used | Spread (1 SD) | 95% interval |",
+        "| --- | --- | --- | --- |",
+    ]
+    for scene, walks in scenes.items():
+        s = np.array([w["scale"] for w in walks])
+        sd, lo, hi = site_spread(s)
+        used = int(np.sum(np.abs(s - 1) <= OUTLIER))
+        lines.append(f"| {scene} | {used} | {100 * sd:.2f}% | {100 * lo:.2f}% to {100 * hi:.2f}% |")
+    lines += [
         "",
         "## Distance error after walking, pooled over all walks",
         "",

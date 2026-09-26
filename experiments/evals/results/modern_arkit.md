@@ -11,6 +11,16 @@ MARViN, iPhone 14 Pro Max, ARKit 6, outdoor walks, against the dataset's COLMAP 
 
 Walks within 2% of the ground truth's scale: 30 of 35.
 
+## Walk-to-walk spread of ARKit's scale within a site
+
+Standard deviation over each site's walks within 10% of the reference, with a 95% bootstrap interval over walks. A reference scaled to ARKit would carry one scale per site, which shifts every walk of that site alike, so this spread survives it: a single walk's scale error is at least this large, unless the reference's own scale varies walk to walk in step with ARKit's.
+
+| Site | Walks used | Spread (1 SD) | 95% interval |
+| --- | --- | --- | --- |
+| atrium | 7 | 0.28% | 0.12% to 0.36% |
+| bar | 13 | 0.75% | 0.46% to 0.94% |
+| church | 12 | 0.34% | 0.19% to 0.44% |
+
 ## Distance error after walking, pooled over all walks
 
 |ARKit - truth| of the straight-line displacement, inches, median / p90. 'Beyond scale' divides each walk's own scale out first. The last column leaves out walks whose scale is off by more than 10%: there ARKit and the reference disagree about whether the phone moved at all between images, so the reference itself is in doubt. The 3 ft row is below what this reference resolves: images are 0.2 to 1.4 m apart, and the reference jitters by up to 0.4 m on those walks.

@@ -270,6 +270,7 @@ The 3 ft row in the results file is below what this reference resolves (images 0
 
 **Verdict.**
 - **Within 2%?** Probably, for this phone; not proven. Against the only reference available, this 2022 iPhone's ARKit holds its scale within 2% on 30 of 35 outdoor walks, and each site's walks agree with each other to within about 1 to 2.5%.
+- **Walk-to-walk floor.** A reference scaled to ARKit would carry one scale per site, so the spread between one site's trusted walks survives it. That spread is 0.28% [0.12, 0.36] at atrium, 0.75% [0.46, 0.94] at bar and 0.34% [0.19, 0.44] at church (1 SD, 95% interval), so a single walk's scale error is at least about 0.3% to 0.8%.
 - **What it means for section 3.** A pose scale error of about 2% is the first thing walls need, and this is the first evidence from a current phone that ARKit meets it. It is not enough: at 2%, walls still come out at a p90 of 5.0 in [3.8, 6.8] (section 3). The 2018 phone's 5% to 17% does not describe current hardware.
 - **What stops it being settled:**
   - the reference's scale cannot be checked independently to 2%;

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from evals.geometry import rot_y
-from evals.modern_arkit import level_frame, walk_errors
+from evals.modern_arkit import level_frame, site_spread, walk_errors
 
 
 def test_level_frame_finds_the_vertical_of_a_tilted_walk():
@@ -56,3 +56,12 @@ def test_align_headings_recovers_a_mirrored_world():
         p[:, 2] * np.cos(delta) - p[:, 0] * np.sin(delta),
     ]
     np.testing.assert_allclose(turned - turned[0], truth - truth[0], atol=1e-9)
+
+
+def test_site_spread_leaves_out_doubtful_walks():
+    # 1.00, 1.02, 1.04 have sample SD 0.02; the 0.60 walk is beyond OUTLIER and ignored.
+    sd, lo, hi = site_spread(np.array([1.00, 1.02, 1.04, 0.60]))
+    assert sd == pytest.approx(0.02)
+    assert 0.0 <= lo <= sd <= hi
+    with pytest.raises(ValueError):
+        site_spread(np.array([1.0, 1.01, 0.5]))
