@@ -190,11 +190,15 @@ No photo here is closer to head-on than 26 degrees, so a head-on shot is unteste
 3. It writes three scoring-harness results files:
    - `moge2`: the model's own scale;
    - `moge2-triangulated`: method (b) of section 3, each keyframe rescaled to features triangulated with the session's AR poses across it and its 7 nearest keyframes;
-   - `moge2-tape`: one scale for the session, from the survey's scale reference, when the map ties that reference to a session measurement.
+   - `moge2-tape`: one depth scale for the session, solved so the survey's scale reference comes out at its taped length. Each point moves along its ray from its own keyframe's camera and camera positions don't scale, so it solves along the rays rather than dividing lengths; a length ratio is exact only when both taps share a keyframe. The reference must be a straight point-to-point measurement.
 
    They state no uncertainty and make no decisions: none of them has a validated error bar.
 4. It imports the rig's own row with `score import-measure-lab` and scores every row with `score`.
-5. It writes `field_report.md` with the phone's AR scale error: the rig's values over the tape, as a median over mapped spans of 10 ft or more. That is the number section 3's verdict hinges on.
+5. It writes `field_report.md` with the phone's AR scale error, the number section 3's verdict hinges on:
+   - Only measurements the rig accepted count, as in PR #4's importer.
+   - The scale is a least-squares fit over straight spans of 10 ft or more, weighted by length, with a 95% bound per span and overall. The bound combines the tape's ± with an assumed 2 in of tapping error per span, which the field test itself will check (`--tap-error-in`).
+   - It needs an accepted span of about 30 ft (29 ft or more), and answers "within 2%" as yes, no or cannot tell, under the same strict rule as placements.
+   - Each session writes to its own folder, cleared on a re-run, so `score` never picks up an earlier run's rows.
 
 MapAnything is left out. In section 3, given poses, it was worse than (b) everywhere. It left 10% to 20% of pairs without a prediction and did not fix its scale on facade. It also cannot take a phone's full keyframe set within the 4 GB limit.
 
@@ -208,7 +212,7 @@ MapAnything is left out. In section 3, given poses, it was worse than (b) everyw
 
 **Field checklist**, on top of the one-hour protocol, so every row has inputs:
 
-- **Two long spans for the AR scale error.** Tape the 30 ft span and one more straight span of at least 10 ft, for example along the facing fence. Measure both in the rig and map both.
+- **Three long spans for the AR scale error.** Measure the 30 ft span twice in the rig, walking each way, and one more straight span of at least 20 ft, for example along the facing fence. Tape and map all three. With 2 in of tapping error per span, one 30 ft span bounds the scale to ±1.1% (95%); these three bound it to ±0.7%, enough to tell 1% from 2%.
 - **A scale reference for the tape row.** Mark two painter's-tape crosses 1 to 3 m apart on the wall and tape the distance. Tap both crosses with On wall, measure them (straight), and name that measurement the survey's `scale_reference` in the map.
 - **Every surveyed endpoint as a rig tap.** The learned rows only recompute measurements the rig made. Tap the window edges, the meter's bottom edge, the fence foot and the overhead, on frozen frames and on the near surface (the frame, not the glass).
 - **Neighbours for triangulation.** At each tapped feature, walk about 2 m sideways, slowly, 2 to 6 m from the wall, keeping the feature and some textured surface in view. That gives at least 8 keyframes of it, facing within 60° of the same way. Don't point at the sky.

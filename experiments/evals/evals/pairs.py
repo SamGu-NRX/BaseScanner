@@ -56,17 +56,9 @@ def pair_distances(p: np.ndarray, pairs: np.ndarray) -> np.ndarray:
     return np.linalg.norm(p[pairs[:, 0]] - p[pairs[:, 1]], axis=1)
 
 
-def scale_for_known_distance(points: Points, pair: np.ndarray) -> float:
-    """Scale s that makes the predicted distance of one pair equal its true (taped) distance.
-
-    Solves |dc + s dr| = d for s > 0, with dc and dr the pair's differences in c and r; with c = 0
-    this is simply d / |dr|. With camera centres two positive roots can exist (converging rays can
-    shrink or flip the pair); the one nearer 1, the model's own scale, is taken.
-    """
-    a, b = pair
-    dc = points.c[a] - points.c[b]
-    dr = points.r[a] - points.r[b]
-    d = float(np.linalg.norm(points.gt[a] - points.gt[b]))
+def scale_for_length(dc: np.ndarray, dr: np.ndarray, d: float) -> float:
+    """Scale s > 0 with |dc + s dr| = d: the pair's centre difference dc, offset difference dr and
+    true length d. Of two positive roots, the one nearer 1 (the model's own scale) is taken."""
     qa, qb, qc = dr @ dr, 2 * dc @ dr, dc @ dc - d * d
     if qa <= 0:
         raise ValueError("pair has identical predicted offsets; no scale can match it")
@@ -78,6 +70,18 @@ def scale_for_known_distance(points: Points, pair: np.ndarray) -> float:
     if not positive:
         raise ValueError(f"no positive scale makes this pair {d:.3f} m long")
     return float(min(positive, key=lambda x: abs(x - 1)))
+
+
+def scale_for_known_distance(points: Points, pair: np.ndarray) -> float:
+    """Scale s that makes the predicted distance of one pair equal its true (taped) distance.
+
+    Solves |dc + s dr| = d for s > 0, with dc and dr the pair's differences in c and r; with c = 0
+    this is simply d / |dr|. With camera centres two positive roots can exist (converging rays can
+    shrink or flip the pair); the one nearer 1, the model's own scale, is taken.
+    """
+    a, b = pair
+    d = float(np.linalg.norm(points.gt[a] - points.gt[b]))
+    return scale_for_length(points.c[a] - points.c[b], points.r[a] - points.r[b], d)
 
 
 def length_errors(points: Points, pairs: np.ndarray, s: float = 1.0) -> np.ndarray:

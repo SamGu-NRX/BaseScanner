@@ -30,11 +30,13 @@ import hashlib
 import json
 import time
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from evals.pairs import scale_for_length
 from evals.paths import EVALS_DIR
 from evals.recon import camera_points, load_prediction
 from evals.triangulate import view_scales
@@ -44,6 +46,10 @@ UP = np.array([0.0, 1.0, 0.0])
 ARKIT_TO_OPENCV = np.diag([1.0, -1.0, -1.0])
 NEIGHBOURS = 7
 SCALE_SPAN_MIN_FT = 10.0
+# The scale needs one long span: 2 in of tapping error is 1.7% of 10 ft but 0.6% of 30 ft. A nominal
+# 30 ft span taped a little short still counts.
+REQUIRED_SPAN_FT = 29.0
+TAP_ERROR_IN = 2.0  # assumed per-span tapping error until the field test measures it
 SCALE_KEYS = ("straight", "horizontal", "alongWall")
 FIELD_DIR = EVALS_DIR / "field"
 
@@ -189,32 +195,52 @@ def triangulated_scales(folder: Path, out: Path, session: dict, kids: list[str])
 # --- Points, walls, values (Measure Lab's definitions) ------------------------------------------
 
 
-def tap_point(kf: dict, pixel: list[float], depth: np.ndarray, scale: float) -> np.ndarray:
-    """World position of a tapped pixel from (scaled) depth; NaN if the depth there is invalid."""
+def tap_ray(kf: dict, pixel: list[float], depth: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """A tapped pixel as (camera centre, offset to the surface) in the world, from depth; the
+    offset is NaN if the depth there is invalid. Scaling depth by s moves the point to c + s r."""
     uv = np.array([[pixel[0] - 0.5, pixel[1] - 0.5]])  # continuous -> OpenCV pixel centres
-    pc = camera_points(depth * scale, keyframe_K_cv(kf), uv)[0]
+    pc = camera_points(depth, keyframe_K_cv(kf), uv)[0]
     T = keyframe_pose_cv(kf)
-    return T[:3, :3] @ pc + T[:3, 3]
+    return T[:3, 3], T[:3, :3] @ pc
 
 
-def learned_points(session: dict, depth_of, scale_of) -> dict[str, np.ndarray]:
-    """{point id: position}, each the mean of its taps' depth-based positions."""
+def learned_points(session: dict, depth_of, scale_of) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """{point id: (centre, offset)}, each the mean over the point's taps, with each tap's depth
+    scaled by `scale_of(keyframe)` (None: no scale, the point is NaN)."""
     kfs = {kf["id"]: kf for kf in session["keyframes"]}
     taps = {t["id"]: t for t in session["taps"]}
     out = {}
     for p in session["points"]:
-        positions = []
+        centres, offsets = [], []
         for tid in p["taps"]:
             tap = taps[tid]
             s = scale_of(tap["keyframe"])
-            if s is None:
-                positions.append(np.full(3, np.nan))
-                continue
-            positions.append(
-                tap_point(kfs[tap["keyframe"]], tap["pixel"], depth_of(tap["keyframe"]), s)
-            )
-        out[p["id"]] = np.mean(positions, axis=0)
+            c, r = tap_ray(kfs[tap["keyframe"]], tap["pixel"], depth_of(tap["keyframe"]))
+            centres.append(c)
+            offsets.append(r * s if s is not None else np.full(3, np.nan))
+        out[p["id"]] = (np.mean(centres, axis=0), np.mean(offsets, axis=0))
     return out
+
+
+def positions(points: dict, s: float = 1.0) -> dict[str, np.ndarray]:
+    """Point positions with every depth scaled by s: centre + s offset."""
+    return {pid: c + s * r for pid, (c, r) in points.items()}
+
+
+def tape_scale(session: dict, points: dict, measurement_id: str, key: str, meters: float) -> float:
+    """The one depth scale that makes the scale reference come out at its taped length.
+
+    Scaling depth moves each point along its ray from its own keyframe's camera, and camera
+    positions do not scale, so this solves |dc + s dr| = tape rather than dividing lengths (exact
+    only when both taps share a keyframe)."""
+    m = {x["id"]: x for x in session["measurements"]}[measurement_id]
+    if key != "straight" or m["to"] not in points:
+        raise ValueError(
+            f"scale reference {measurement_id} must be a point-to-point straight distance "
+            f"(got {key} to {m['to']}); measure the two tape marks with Measure, straight"
+        )
+    (ca, ra), (cb, rb) = points[m["from"]], points[m["to"]]
+    return scale_for_length(cb - ca, rb - ra, meters)
 
 
 def wall_frame(c1: np.ndarray, c2: np.ndarray, camera: np.ndarray) -> dict:
@@ -316,43 +342,100 @@ def capture_seconds(session: dict) -> float | None:
     return round(max(times) - session["session"]["startedAtUptime"], 3)
 
 
-def ar_scale_report(session: dict, truth: dict, mapping: dict) -> list[str]:
-    """The rig's values against the tape, and the scale error over long spans."""
+@dataclass(frozen=True)
+class ScaleEstimate:
+    scale: float  # AR / tape
+    bound: float  # 95% half-width on `scale`
+    spans: int
+    longest_ft: float
+
+
+def fit_scale(ar_ft: np.ndarray, tape_ft: np.ndarray, sigma_ft: np.ndarray) -> ScaleEstimate:
+    """Weighted least squares for ar = scale * tape with independent errors sigma per span:
+    scale = sum(w a t) / sum(w t^2), w = 1 / sigma^2, variance 1 / sum(w t^2). Longer spans weigh
+    more, because a tapping error is about the same size on any span."""
+    w = 1 / sigma_ft**2
+    scale = float(np.sum(w * ar_ft * tape_ft) / np.sum(w * tape_ft**2))
+    bound = float(1.96 / np.sqrt(np.sum(w * tape_ft**2)))
+    return ScaleEstimate(scale, bound, len(tape_ft), float(tape_ft.max()))
+
+
+def within(error_pct: float, bound_pct: float, limit_pct: float) -> str:
+    """The strict rule: yes only when the error plus its bound is inside the limit."""
+    if abs(error_pct) + bound_pct < limit_pct:
+        return "yes"
+    if abs(error_pct) - bound_pct > limit_pct:
+        return "no"
+    return "cannot tell"
+
+
+def ar_scale_report(session: dict, truth: dict, mapping: dict, tap_error_in: float) -> list[str]:
+    """The rig's values against the tape, and the AR scale error with its bound.
+
+    Only measurements the rig accepted count (as in the scoring harness's importer). Each span's
+    error is the tape's own plus-minus and an assumed tapping error of `tap_error_in` per span, in
+    quadrature; the tapping error is an assumption until the field test measures it.
+    """
     rig = {m["id"]: m for m in session["measurements"]}
     tape = {m["id"]: m for m in truth["measurements"] if m["status"] == "measured"}
     lines = [
-        "| Survey measurement | Key | Tape (ft) | AR (ft) | AR / tape |",
-        "| --- | --- | --- | --- | --- |",
+        "| Survey measurement | Key | Tape (ft) | AR (ft) | AR / tape | 95% bound | Used for scale |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    long_ratios = []
+    ar, tp, sig = [], [], []
     for sid, entry in mapping["measurements"].items():
         if not isinstance(entry, dict) or "session_measurement" not in entry or sid not in tape:
             continue
-        ar_ft = rig[entry["session_measurement"]]["values"][entry["key"]] / FEET
+        m = rig[entry["session_measurement"]]
         t = tape[sid]["value_ft"]
-        ratio = ar_ft / t
-        lines.append(f"| {sid} | {entry['key']} | {t:.3f} | {ar_ft:.3f} | {ratio:.4f} |")
-        if entry["key"] in SCALE_KEYS and t >= SCALE_SPAN_MIN_FT:
-            long_ratios.append(ratio)
-    if long_ratios:
-        err = (np.median(long_ratios) - 1) * 100
-        lines += [
-            "",
-            f"AR scale error: {err:+.1f}% (median over {len(long_ratios)} spans of "
-            f"{SCALE_SPAN_MIN_FT:g} ft or more).",
+        if not m["accepted"]:
+            lines.append(
+                f"| {sid} | {entry['key']} | {t:.3f} | | | | no: the rig did not accept it |"
+            )
+            continue
+        a = m["values"][entry["key"]] / FEET
+        sigma = float(np.hypot(tap_error_in / 12, tape[sid]["plus_minus_ft"]))
+        use = entry["key"] in SCALE_KEYS and t >= SCALE_SPAN_MIN_FT
+        reason = "yes" if use else f"no: not a straight span of {SCALE_SPAN_MIN_FT:g} ft or more"
+        lines.append(
+            f"| {sid} | {entry['key']} | {t:.3f} | {a:.3f} | {a / t:.4f} | "
+            f"±{1.96 * sigma / t:.4f} | {reason} |"
+        )
+        if use:
+            ar.append(a)
+            tp.append(t)
+            sig.append(sigma)
+    lines.append("")
+    if not tp or max(tp) < REQUIRED_SPAN_FT:
+        return [
+            *lines,
+            f"AR scale error: not resolved. It needs an accepted span of about 30 ft "
+            f"(at least {REQUIRED_SPAN_FT:g} ft); see the field checklist.",
         ]
-    else:
-        lines += [
-            "",
-            f"AR scale error: not measured (no mapped span of {SCALE_SPAN_MIN_FT:g} ft or more).",
-        ]
-    return lines
+    est = fit_scale(np.array(ar), np.array(tp), np.array(sig))
+    err, bound = 100 * (est.scale - 1), 100 * est.bound
+    return [
+        *lines,
+        f"AR scale error: {err:+.2f}% ± {bound:.2f}% (95%, {est.spans} spans, longest "
+        f"{est.longest_ft:.1f} ft, weighted by length; tapping error assumed {tap_error_in:g} in "
+        f"per span). Within 2%: {within(err, bound, 2.0)}.",
+    ]
 
 
 # --- Command ----------------------------------------------------------------------------------
 
 
-def score(session_path: Path, truth_path, map_path, rules_path, out_dir: Path) -> str:
+ROW_FILES = ("moge2.json", "moge2-triangulated.json", "moge2-tape.json", "measure-lab.json")
+
+
+def score(
+    session_path: Path,
+    truth_path,
+    map_path,
+    rules_path,
+    out_dir: Path,
+    tap_error_in: float = TAP_ERROR_IN,
+) -> str:
     folder, capture = unpack(session_path)
     session = load_session(folder)
     out = work_dir(folder)
@@ -384,18 +467,11 @@ def score(session_path: Path, truth_path, map_path, rules_path, out_dir: Path) -
             else "."
         ),
     ]
+    native = learned_points(session, depth_of, lambda k: 1.0)
+    triangulated = learned_points(session, depth_of, lambda k: fits[k].scale if k in fits else None)
     rows = {
-        "moge2": (
-            "native_metric",
-            learned_values(session, learned_points(session, depth_of, lambda k: 1.0)),
-        ),
-        "moge2-triangulated": (
-            "ar_poses",
-            learned_values(
-                session,
-                learned_points(session, depth_of, lambda k: fits[k].scale if k in fits else None),
-            ),
-        ),
+        "moge2": ("native_metric", learned_values(session, positions(native))),
+        "moge2-triangulated": ("ar_poses", learned_values(session, positions(triangulated))),
     }
     missing = []
     if not session["measurements"]:
@@ -421,12 +497,10 @@ def score(session_path: Path, truth_path, map_path, rules_path, out_dir: Path) -
         and tape
         and tape["status"] == "measured"
     ):
-        native = rows["moge2"][1][ref["session_measurement"]][ref["key"]]
-        s = tape["value_ft"] * FEET / native
-        rows["moge2-tape"] = (
-            "scale_reference",
-            learned_values(session, learned_points(session, depth_of, lambda k: s)),
+        s = tape_scale(
+            session, native, ref["session_measurement"], ref["key"], tape["value_ft"] * FEET
         )
+        rows["moge2-tape"] = ("scale_reference", learned_values(session, positions(native, s)))
     else:
         lines.append(
             "- No `moge2-tape` row: the map does not tie the survey's scale reference to a "
@@ -434,6 +508,9 @@ def score(session_path: Path, truth_path, map_path, rules_path, out_dir: Path) -
         )
     processing = time.perf_counter() - started
     out_dir.mkdir(parents=True, exist_ok=True)
+    # A re-run must not leave an earlier run's rows for `score` to pick up.
+    for name in ROW_FILES:
+        (out_dir / name).unlink(missing_ok=True)
     for name, (source, recomputed) in rows.items():
         doc = results_file(
             name,
@@ -451,7 +528,7 @@ def score(session_path: Path, truth_path, map_path, rules_path, out_dir: Path) -
         "",
         "## AR scale error against the tape",
         "",
-        *ar_scale_report(session, truth, mapping),
+        *ar_scale_report(session, truth, mapping, tap_error_in),
     ]
     lines += ["", f"Results files: {', '.join(f'{n}.json' for n in rows)} in {out_dir}."]
     return "\n".join(lines) + "\n"
@@ -466,14 +543,16 @@ def main() -> None:
     ap.add_argument("--truth", type=Path)
     ap.add_argument("--map", type=Path)
     ap.add_argument("--rules", type=Path)
-    ap.add_argument("--out-dir", type=Path, default=FIELD_DIR / "results")
+    ap.add_argument("--out-dir", type=Path, help="default: a folder per session under the data dir")
+    ap.add_argument("--tap-error-in", type=float, default=TAP_ERROR_IN)
     args = ap.parse_args()
     if args.step == "prepare":
         print(prepare(unpack(args.session)[0]))
         return
-    report = score(args.session, args.truth, args.map, args.rules, args.out_dir)
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    (args.out_dir / "field_report.md").write_text(report)
+    out_dir = args.out_dir or FIELD_DIR / "results" / args.session.stem
+    report = score(args.session, args.truth, args.map, args.rules, out_dir, args.tap_error_in)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "field_report.md").write_text(report)
     print(report)
 
 

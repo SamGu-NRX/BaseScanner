@@ -66,7 +66,7 @@ pose-priors:
 # (the tape survey, the team's map for `score import-measure-lab`, the rules file) it also writes
 # the learned-depth results files, imports the rig's own row with the scoring harness at SCORING
 # (experiments/scoring, PR #4) and scores every row in one table.
-FIELD_OUT ?= $(DATA)/evals/field/results
+FIELD_OUT ?= $(DATA)/evals/field/results/$(basename $(notdir $(SESSION)))
 SCORING ?= ../scoring
 field:
 	uv sync --project models
