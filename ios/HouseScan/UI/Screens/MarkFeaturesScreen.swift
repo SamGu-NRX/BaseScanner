@@ -175,7 +175,7 @@ private struct FeatureRow: View {
                         .frame(width: Metrics.minTarget, height: Metrics.minTarget)
                 }
                 .foregroundStyle(Palette.danger)
-                .accessibilityLabel("Remove \(ScanCopy.name(feature.kind).lowercased())")
+                .accessibilityLabel("Remove \(ScanCopy.noun(feature.kind))")
                 .accessibilityIdentifier("action.deleteFeature")
             }
             if feature.kind == .window {
@@ -229,7 +229,7 @@ private struct FlowChips: View {
                 .contentShape(.rect(cornerRadius: 14))
         }
         .buttonStyle(PressableStyle())
-        .accessibilityLabel("Add \(ScanCopy.name(kind).lowercased())")
+        .accessibilityLabel("Add \(ScanCopy.noun(kind))")
         .accessibilityIdentifier("feature.\(kind.rawValue)")
     }
 }
