@@ -16,7 +16,7 @@ public struct PointSeparation: Sendable, Equatable {
 }
 
 /// The quantity a tape reading is compared against.
-public enum MeasuredQuantity: String, Sendable, CaseIterable, Codable {
+public enum MeasuredQuantity: String, Sendable, CaseIterable {
     /// 3D distance between two points.
     case straight
     /// Horizontal distance between two points.

@@ -1,6 +1,6 @@
 // Draws MeasureLab's placeholder app icon: a black tape-measure blade with tick marks on the
-// app's tape yellow. App Store Connect rejects an upload without an icon, and this keeps it
-// free of third-party art. The PNG is opaque, as the App Store requires.
+// app's tape yellow. App Store Connect rejects an upload without an icon or with transparency,
+// so the PNG is opaque.
 //
 // Run from experiments/measure-lab:
 //   swift Tools/make-app-icon.swift MeasureLab/Assets.xcassets/AppIcon.appiconset/AppIcon.png

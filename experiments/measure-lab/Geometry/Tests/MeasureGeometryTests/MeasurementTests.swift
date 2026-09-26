@@ -42,8 +42,6 @@ struct MeasuredValuesTests {
         #expect(values[.vertical] == 1)
     }
 
-    // Regression for review defect 3: the height used to be recorded as |h|, so a point 1 m below
-    // a sloped ground line read as 1 m above it.
     @Test func `height above ground keeps its sign`() throws {
         // Ground rises 0.4 m over 4 m, so at along-wall 2 it is at y = 0.2; y = −0.8 is 1 m below.
         let sloped = try Wall(contact1: SIMD3(0, 0, 0), contact2: SIMD3(4, 0.4, 0), cameraPosition: SIMD3(2, 1.5, 3))

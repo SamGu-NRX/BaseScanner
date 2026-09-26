@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 /// Session folders live in Documents/Sessions/<id>/, which the Files app can also see
 /// (UIFileSharingEnabled), so a session can be recovered even if sharing fails.
 enum SessionStore {
-    static var root: URL {
+    private static var root: URL {
         URL.documentsDirectory.appending(path: "Sessions", directoryHint: .isDirectory)
     }
 

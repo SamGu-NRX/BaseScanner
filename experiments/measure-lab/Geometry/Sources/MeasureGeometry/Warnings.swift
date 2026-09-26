@@ -4,7 +4,7 @@
 /// contact follows the wall it defines into every point on that wall and every measurement that
 /// uses them. The observations themselves keep only their own warnings, so analysis can still
 /// tell where a warning started.
-public enum MeasurementWarning: String, Sendable, Codable, CaseIterable, Comparable {
+public enum MeasurementWarning: String, Sendable, Codable {
     /// A ground hit on ARKit's estimated surface rather than a found plane.
     case estimatedPlane
     /// A ground hit on a found plane's extension, past its detected edge.
@@ -21,10 +21,6 @@ public enum MeasurementWarning: String, Sendable, Codable, CaseIterable, Compara
     case wallValidationFailed
     /// A height above ground came out negative: the point is below the wall's ground line.
     case belowGround
-
-    public static func < (a: Self, b: Self) -> Bool {
-        allCases.firstIndex(of: a)! < allCases.firstIndex(of: b)!
-    }
 }
 
 /// The qualification of a wall, from its contacts' warnings and its validation contacts.
@@ -92,7 +88,7 @@ public func measurementWarnings(
     return normalized(result)
 }
 
-/// Sorted and without repeats, so equal sets compare and encode the same way.
+/// Sorted by name and without repeats, so equal sets compare and encode the same way.
 func normalized(_ warnings: [MeasurementWarning]) -> [MeasurementWarning] {
-    Array(Set(warnings)).sorted()
+    Set(warnings).sorted { $0.rawValue < $1.rawValue }
 }

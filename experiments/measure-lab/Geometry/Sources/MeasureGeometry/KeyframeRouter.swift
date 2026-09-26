@@ -13,7 +13,7 @@ public struct KeyframeRouter<Session: Hashable & Sendable>: Sendable {
         case unknown
     }
 
-    public private(set) var current: Session?
+    private var current: Session?
     private var reported: [Session: Int] = [:]
     /// Reservation totals of closed sessions that still wait for writes.
     private var closing: [Session: Int] = [:]
@@ -55,10 +55,5 @@ public struct KeyframeRouter<Session: Hashable & Sendable>: Sendable {
         closing[session] = nil
         reported[session] = nil
         return (.closed, true)
-    }
-
-    /// Closed sessions still waiting for writes.
-    public var waitingSessions: Set<Session> {
-        Set(closing.keys)
     }
 }

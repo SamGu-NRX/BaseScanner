@@ -33,10 +33,6 @@ func degrees(fromRadians radians: Double) -> Double {
     radians * 180 / .pi
 }
 
-func radians(fromDegrees degrees: Double) -> Double {
-    degrees * .pi / 180
-}
-
 /// `acos` in degrees with the cosine clamped to [-1, 1], so a rounding error just past 1 gives
 /// 0° instead of NaN.
 func acosDegrees(_ cosine: Double) -> Double {

@@ -2,27 +2,25 @@
 
 ## Question
 
-Can an ordinary iPhone without LiDAR measure what the battery placement checks need, outdoors, on the first try? The checks need a straight wall's line, points on that wall (meter, door and window edges), a facing gap to a fence or wall, and an overhead height. The method comes from the no-LiDAR capture research note (`docs/research/t3-no-lidar-capture.md`, in review). This folder is the rig that tests it, not the product capture app in `ios/`.
+Can an ordinary iPhone without LiDAR measure what the battery placement checks need, outdoors, on the first try? The checks need a straight wall's line, points on that wall (meter, door and window edges), a facing gap to a fence or wall, and an overhead height. The method comes from the no-LiDAR capture research note (`docs/research/t3-no-lidar-capture.md`).
 
-The rig also records every session in a documented format, so the server, a depth model or a later reconstruction pipeline can replay the same frames and taps.
+Every session is also recorded in the format below, so other pipelines can replay the same frames and taps.
 
-## What the app does
+## Using the app
 
-The app runs ARKit world tracking with `worldAlignment = .gravity` (y is up) and horizontal and vertical plane detection. It never turns on scene reconstruction. On a LiDAR phone, the Session sheet has a switch that records scene depth maps for comparison runs; it is off by default and locked after the first tap.
+The app tracks with ARKit and never uses LiDAR scene reconstruction. On a LiDAR phone, the Session sheet can record depth maps for comparison runs; the switch is off by default and locked after the first tap.
 
-A tap counts only after tracking has been normal for 1 s. Tapping the camera image marks that spot. **Mark** marks the spot under the center ring, which keeps a finger off the target. **Freeze** holds one frame still for precise tapping. Every tap rebuilds its ray from the saved frame's pose and intrinsics, never from the live camera.
+Taps count only after tracking has been normal for 1 s. Tap the camera image to mark a spot, or press **Mark** to mark under the center ring. **Freeze** holds one frame still for precise tapping.
 
-| Tool | What a tap does | Refused when |
+| Tool | A tap | Refused when |
 | --- | --- | --- |
-| Ground | ARKit raycast to a horizontal plane: a found plane, else its extension, else ARKit's estimate. The last two are flagged, and so is a ray looking down less than 30°. | ARKit finds no ground along the ray |
-| Wall | First and second taps are ground contacts at the wall's base. Direction `u` is the horizontal part of `p2 − p1`; normal `n = u × g`, flipped to face the camera. Later taps are optional validation contacts, reported as distance from the plane. | Contacts under 2 m apart horizontally; camera within 0.1 m of the wall's plane |
-| On wall | `t = n·(p1 − o) / (n·d)`, point `= o + t·d`. Reports along-wall distance from the first contact and signed height above the ground line through both contacts. Hits beyond the contacts are flagged, and every point inherits its wall's warnings: a flagged contact, no check contact yet, or a failed check. | `t ≤ 0`; ray more than 60° from the normal (`\|n·d\| < 0.5`) |
-| Two-view | Tap a feature, step sideways, tap it again in a new frame. The point is the midpoint of the rays' closest approach. Frozen second views show the first ray as a dashed line. | Ray angle under 15°; closest approach behind a camera; rays more than 2 in apart; both taps on one frame |
-| Measure | Point to point: straight, horizontal, height difference, and along-wall distance against a chosen wall. Point to wall: facing gap (perpendicular distance to the wall line from above) and height above the wall's ground line. Takes a tape reading in feet and inches (`6`, `3 1/4`) and shows app minus tape. | |
+| Ground | Finds the ground under the tap. Hits past the edge of a found plane, on ARKit's estimated surface, or looking down less than 30° are flagged. | ARKit finds no ground there |
+| Wall | The first two taps mark where the wall meets the ground, and the wall is the vertical plane through them. Later taps on the wall's base check that plane. | The two contacts are under 2 m apart; the camera stands in line with the wall |
+| On wall | Finds where the tap meets the newest wall. Reports the distance along the wall from the first contact and the height above the ground line. Points beyond the contacts are flagged. A point also carries its wall's warnings: a flagged contact, no check yet, or a failed check. | The ray is more than 60° from straight on, or the wall is behind the camera |
+| Two-view | Tap a feature, step sideways, and tap it again in a new frame. On a frozen second view, a dashed line shows where the feature must lie. | The views are under 15° apart, the rays miss by more than 2 in, or both taps are on one frame |
+| Measure | Point to point: straight, horizontal, height difference, and distance along a chosen wall. Point to wall: facing gap and height above ground. Type the tape reading in feet and inches (`6`, `3 1/4`) to record app minus tape. | |
 
-The geometry lives in `Geometry/`, a Swift package that uses the standard library's `SIMD3<Double>` and Foundation only, so it builds and tests on macOS and Linux. Each formula above has a test against a hand-computed answer, as do pixel rays, projection, the portrait screen mapping, tape parsing and keyframe spacing.
-
-The thresholds are the research note's gates. Each one is a hypothesis this run tests, not a calibrated value. The 2 m contact spacing is the note's 6.5 ft rounded to the figure the experiment brief uses. The 0.1 m camera offset is this rig's own guard: closer than that, the side of the wall the camera is on, which sets the normal's sign, is within tracking noise.
+The limits are the research note's gates. Each is a hypothesis this run tests, not a calibrated value, and every session records the ones it used.
 
 ## Pass criteria
 
@@ -30,7 +28,7 @@ Set before the run, from the research note. The method passes when all of these 
 
 - Wall, opening and rigid-ground distances are within 4 in of the tape. Facing gap and overhead height are within 6 in.
 - The 30 ft span is within 8 in. The return-to-reference gap is within 4 in.
-- Every accepted measurement's interval contains the taped value, using the bounds above as the interval (app value ± bound). A measurement with `accepted: false` counts as an abstention. It inherits every warning of the points and walls it depends on: a flagged ground hit, a wall whose contact was flagged, a wall with no check or a failed one, and a negative height above ground. Its error is still recorded, to show whether each warning was needed.
+- Every accepted measurement's interval contains the taped value, using the bounds above as the interval (app value ± bound). A measurement with `accepted: false` is an abstention; record its error anyway, to show whether its warnings were needed.
 - The hidden-contact, low-parallax, mismatched-tap and wrong-plane cases abstain: a refusal, a flag, or a failed wall check.
 - On both sides of a threshold, the decision rule never gives a false PASS. Use the public 3 ft fence clearance from Base's help page as `T`: PASS when `distance − bound > T`, FAIL when `distance + bound < T`, UNSURE otherwise. Equality is UNSURE, matching the Lane C decision rule.
 - The uncoached operator finishes one capture in 8 minutes, with at most one corrective prompt per measurement.
@@ -63,7 +61,7 @@ Bring an iPhone without LiDAR running this app, a 50 ft tape, a spirit level, ch
 
 ## Build and run
 
-Requires Xcode 26 or newer. The deployment target is iOS 26.0. XcodeGen 2.46.0 is needed only to change `project.yml`.
+Requires Xcode 26 or newer and an iPhone on iOS 26. XcodeGen 2.46.0 is needed only to change `project.yml`.
 
 From this folder:
 
@@ -79,11 +77,7 @@ To run on a phone:
 2. Set `DEVELOPMENT_TEAM` to your Team ID and `BUNDLE_ID_PREFIX` to a prefix your team can register. The app id becomes `<prefix>.measurelab`.
 3. Open `MeasureLab.xcodeproj`, pick the iPhone, and run.
 
-The app icon is a placeholder drawn by `Tools/make-app-icon.swift`; the command to redraw it is at the top of that file.
-
 Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabilities tab empty; setting it there writes your team into `project.pbxproj`, and CI's drift check fails.
-
-`.github/workflows/measure-lab.yml` runs only when this folder or the workflow changes. It runs the geometry tests on Linux (Swift 6.2), regenerates the project and fails on drift, runs the tests on macOS, and builds the app unsigned.
 
 ## Session format
 
@@ -124,11 +118,11 @@ Top-level fields of session.json (`format` is `"measure-lab-session"`, `formatVe
 
 Keyframes are saved when the camera moves 0.5 m or turns 15° since the last saved one, and at every live tap and freeze. They are listed in arrival order; sort by `id` or `timestamp` if order matters. A JPEG that was still being written when the zip was made can be in the folder without an entry; use only listed keyframes. `displayMappingCheck` on live taps is the pixel distance between ARKit's display transform and the app's own portrait mapping for the same screen point. It should stay under a pixel or two; a larger value means frozen-frame taps land on the wrong pixel.
 
-To replay a tap: read the keyframe's `pose` and `intrinsics`, build the ray through `pixel`, and compare it with `rayOrigin` and `rayDirection`. `Geometry/` does exactly this in `CameraFrame.ray(throughPixel:)`.
+To replay a tap, build the ray through `pixel` from its keyframe's `pose` and `intrinsics`; it should match `rayOrigin` and `rayDirection`. `CameraFrame.ray(throughPixel:)` in `Geometry/` does this.
 
 ## Results
 
-Not run yet. The outdoor run on a physical iPhone without LiDAR is still to do.
+Not run yet.
 
 | Quantity | Method | Tape | Captures (error, in) | Max | Median | Abstentions | Within bound |
 | --- | --- | --- | --- | --- | --- | --- | --- |

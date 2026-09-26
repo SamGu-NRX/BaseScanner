@@ -2,8 +2,7 @@ import Testing
 @testable import MeasureGeometry
 
 struct KeyframeRouterTests {
-    // Regression for review defect 2: with a single "closed session" slot, switching A → B → C
-    // before A's pending write reported back dropped that keyframe from A's session.json.
+    // A's write reports back only after two more switches; it must still reach A's manifest.
     @Test func `a write survives two session switches`() {
         var router = KeyframeRouter<String>()
         router.open("A")
@@ -13,11 +12,10 @@ struct KeyframeRouterTests {
         router.open("C")
         #expect(keepA)
         #expect(!keepB)
-        #expect(router.waitingSessions == ["A"])
         let late = router.report(for: "A")
         #expect(late.route == .closed)
         #expect(late.drained)
-        #expect(router.waitingSessions.isEmpty)
+        #expect(router.report(for: "A").route == .unknown)
     }
 
     @Test func `writes already reported before closing need no waiting`() {

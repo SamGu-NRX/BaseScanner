@@ -174,7 +174,6 @@ struct MeasureSheet: View {
 
     private func save() {
         guard let target, let quantity = selectedQuantity else { return }
-        if case .point(let id) = target, id == fromID { return }
         let reading = if case .success(let reading) = tape { reading } else { TapeReading?.none }
         session.addMeasurement(from: fromID, to: target, referenceWall: referenceWall, compared: quantity, tape: reading)
         dismiss()

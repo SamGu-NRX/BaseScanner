@@ -20,8 +20,8 @@ final class LabSession {
     /// agree to rounding; 2 px is an arbitrary alarm level, not a measured one.
     static let displayMappingTolerance = 2.0
 
-    let wallGates = WallGates()
-    let triangulationGates = TriangulationGates()
+    private let wallGates = WallGates()
+    private let triangulationGates = TriangulationGates()
     let recorder = KeyframeRecorder()
     let lidarAvailable = ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
     let meshReconstructionSupported = ARWorldTrackingConfiguration.supportsSceneReconstruction(.mesh)
@@ -290,7 +290,7 @@ final class LabSession {
         return nil
     }
 
-    var activeWall: (id: String, wall: Wall)? {
+    private var activeWall: (id: String, wall: Wall)? {
         guard let id = manifest.walls.last?.id, let wall = walls[id] else { return nil }
         return (id, wall)
     }
@@ -351,7 +351,7 @@ final class LabSession {
 
     /// Logs a tap that never reached a frame, for example while tracking is limited.
     func refuseUnresolvedTap(reason: String, message: String) {
-        _ = logRefusal(tap: nil, reason: reason, message: message, values: [:])
+        logRefusal(tap: nil, Refusal(reason: reason, message: message))
         announce(.refused, "Not measured", [message])
         save()
     }
@@ -377,12 +377,11 @@ final class LabSession {
         case .twoView: handleTwoView(input, tap: &tap)
         }
         manifest.taps.append(tap)
-        if let check = input.displayMappingCheck, check > Self.displayMappingTolerance, var event = lastEvent {
+        if let check = input.displayMappingCheck, check > Self.displayMappingTolerance, let event = lastEvent {
             // Frozen-frame taps rely on this mapping; say so on the spot rather than only in the log.
-            event = LabEvent(id: event.id, tone: .warning, title: event.title, lines: event.lines + [
+            lastEvent = LabEvent(id: event.id, tone: .warning, title: event.title, lines: event.lines + [
                 "Screen mapping is off by \(check.formatted(.number.precision(.fractionLength(1)))) px; frozen taps may miss",
             ])
-            lastEvent = event
         }
         save()
     }
@@ -407,9 +406,7 @@ final class LabSession {
                     contact1: firstPosition, contact2: point.position, cameraPosition: input.ray.origin, gates: wallGates
                 )
             } catch {
-                let (reason, message, values) = Self.explain(error)
-                tap.refusal = logRefusal(tap: tap.id, reason: reason, message: message, values: values)
-                announce(.refused, "No wall from \(firstID) and \(point.id)", [message])
+                refuse(&tap, "No wall from \(firstID) and \(point.id)", Self.explain(error))
                 return
             }
             let id = "W\(manifest.walls.count + 1)"
@@ -449,18 +446,14 @@ final class LabSession {
 
     private func handleWallPoint(_ input: TapInput, tap: inout TapRecord) {
         guard let (wallID, wall) = activeWall else {
-            let message = "There is no wall yet. Make one with the Wall tool."
-            tap.refusal = logRefusal(tap: tap.id, reason: "noWall", message: message, values: [:])
-            announce(.refused, "Not measured", [message])
+            refuse(&tap, "Not measured", Refusal(reason: "noWall", message: "There is no wall yet. Make one with the Wall tool."))
             return
         }
         let hit: WallHit
         do {
             hit = try wall.intersect(input.ray, gates: wallGates)
         } catch {
-            let (reason, message, values) = Self.explain(error)
-            tap.refusal = logRefusal(tap: tap.id, reason: reason, message: message, values: values)
-            announce(.refused, "Not on \(wallID)", [message])
+            refuse(&tap, "Not on \(wallID)", Self.explain(error))
             return
         }
         let point = addPoint(
@@ -482,20 +475,19 @@ final class LabSession {
             return
         }
         guard first.keyframeID != input.snapshot.keyframeID else {
-            let message = "Both taps are on the same frame. Step sideways, freeze a new frame, then tap the feature."
-            tap.refusal = logRefusal(tap: tap.id, reason: "sameFrame", message: message, values: [:])
-            announce(.refused, "Need a second view", [message])
+            refuse(&tap, "Need a second view", Refusal(
+                reason: "sameFrame",
+                message: "Both taps are on the same frame. Step sideways, freeze a new frame, then tap the feature."
+            ))
             return
         }
         let result: Triangulation
         do {
             result = try Triangulation(first.ray, input.ray, gates: triangulationGates)
         } catch {
-            let (reason, message, values) = Self.explain(error)
-            tap.refusal = logRefusal(tap: tap.id, reason: reason, message: message, values: values)
             // A small angle can be fixed from the first view; a miss means the taps disagree.
             if case .rayAngleTooSmall = error {} else { twoViewFirst = nil }
-            announce(.refused, "Not triangulated", [message])
+            refuse(&tap, "Not triangulated", Self.explain(error))
             return
         }
         twoViewFirst = nil
@@ -521,9 +513,10 @@ final class LabSession {
     /// Adds a ground point from the tap's raycast, or logs why there is none.
     private func makeGroundPoint(_ input: TapInput, tap: inout TapRecord) -> PointRecord? {
         guard let hit = input.ground else {
-            let message = "ARKit found no ground along that ray. Aim at ground it has mapped, or move closer."
-            tap.refusal = logRefusal(tap: tap.id, reason: "noGround", message: message, values: [:])
-            announce(.refused, "No ground there", [message])
+            refuse(&tap, "No ground there", Refusal(
+                reason: "noGround",
+                message: "ARKit found no ground along that ray. Aim at ground it has mapped, or move closer."
+            ))
             return nil
         }
         let lookDown = input.ray.lookDownDegrees
@@ -593,10 +586,6 @@ final class LabSession {
         }
     }
 
-    func wall(id: String) -> Wall? {
-        walls[id]
-    }
-
     func point(id: String) -> PointRecord? {
         manifest.points.first { $0.id == id }
     }
@@ -606,9 +595,9 @@ final class LabSession {
         switch target {
         case .point(let id):
             guard let to = point(id: id) else { return [:] }
-            return measuredValues(from: from.position, to: .point(to.position), referenceWall: referenceWall.flatMap(wall(id:)))
+            return measuredValues(from: from.position, to: .point(to.position), referenceWall: referenceWall.flatMap { walls[$0] })
         case .wall(let id):
-            guard let wall = wall(id: id) else { return [:] }
+            guard let wall = walls[id] else { return [:] }
             return measuredValues(from: from.position, to: .wall(wall))
         }
     }
@@ -701,16 +690,30 @@ final class LabSession {
 
     // MARK: - Log helpers
 
-    private func logRefusal(tap: String?, reason: String, message: String, values: [String: Double]) -> String {
+    /// Why a tap was refused: a stable code for analysis, the text shown, and the numbers behind it.
+    private struct Refusal {
+        let reason: String
+        let message: String
+        var values: [String: Double] = [:]
+    }
+
+    /// Logs the refusal against the tap and shows it.
+    private func refuse(_ tap: inout TapRecord, _ title: String, _ refusal: Refusal) {
+        tap.refusal = logRefusal(tap: tap.id, refusal)
+        announce(.refused, title, [refusal.message])
+    }
+
+    @discardableResult
+    private func logRefusal(tap: String?, _ refusal: Refusal) -> String {
         let id = "R\(manifest.refusals.count + 1)"
         manifest.refusals.append(RefusalRecord(
             id: id,
             time: ProcessInfo.processInfo.systemUptime,
             tool: tool.rawValue,
             tap: tap,
-            reason: reason,
-            message: message,
-            values: values
+            reason: refusal.reason,
+            message: refusal.message,
+            values: refusal.values
         ))
         return id
     }
@@ -738,46 +741,60 @@ final class LabSession {
         return lines
     }
 
-    private static func explain(_ error: WallError) -> (String, String, [String: Double]) {
+    private static func explain(_ error: WallError) -> Refusal {
         switch error {
         case .contactsTooClose(let separation, let minimum):
-            ("contactsTooClose",
-             "The contacts are \(Format.length(separation)) apart; at least \(Format.length(minimum)) is needed. Mark the second one farther along.",
-             ["separation": separation, "minimum": minimum])
+            Refusal(
+                reason: "contactsTooClose",
+                message: "The contacts are \(Format.length(separation)) apart; at least \(Format.length(minimum)) is needed. Mark the second one farther along.",
+                values: ["separation": separation, "minimum": minimum]
+            )
         case .cameraInWallPlane(let offset, let minimum):
-            ("cameraInWallPlane",
-             "You're standing in line with the wall, so its front side is unclear. Step out in front of it and mark the second contact again.",
-             ["offset": offset, "minimum": minimum])
+            Refusal(
+                reason: "cameraInWallPlane",
+                message: "You're standing in line with the wall, so its front side is unclear. Step out in front of it and mark the second contact again.",
+                values: ["offset": offset, "minimum": minimum]
+            )
         }
     }
 
-    private static func explain(_ error: WallHitError) -> (String, String, [String: Double]) {
+    private static func explain(_ error: WallHitError) -> Refusal {
         switch error {
         case .grazing(let angle, let maximum):
-            ("grazingRay",
-             "That ray meets the wall \(Format.degrees(angle)) from straight on; the limit is \(Format.degrees(maximum)). Stand more in front of the point.",
-             ["angleFromNormal": angle, "maximum": maximum])
+            Refusal(
+                reason: "grazingRay",
+                message: "That ray meets the wall \(Format.degrees(angle)) from straight on; the limit is \(Format.degrees(maximum)). Stand more in front of the point.",
+                values: ["angleFromNormal": angle, "maximum": maximum]
+            )
         case .behindCamera(let t):
-            ("wallBehindCamera",
-             "The wall plane is behind the camera along that ray. Face the wall and try again.",
-             ["t": t])
+            Refusal(
+                reason: "wallBehindCamera",
+                message: "The wall plane is behind the camera along that ray. Face the wall and try again.",
+                values: ["t": t]
+            )
         }
     }
 
-    private static func explain(_ error: TriangulationError) -> (String, String, [String: Double]) {
+    private static func explain(_ error: TriangulationError) -> Refusal {
         switch error {
         case .rayAngleTooSmall(let angle, let minimum):
-            ("rayAngleTooSmall",
-             "The two views are \(Format.degrees(angle)) apart; at least \(Format.degrees(minimum)) is needed. Step farther sideways and mark it again.",
-             ["rayAngle": angle, "minimum": minimum])
+            Refusal(
+                reason: "rayAngleTooSmall",
+                message: "The two views are \(Format.degrees(angle)) apart; at least \(Format.degrees(minimum)) is needed. Step farther sideways and mark it again.",
+                values: ["rayAngle": angle, "minimum": minimum]
+            )
         case .behindCamera(let t1, let t2):
-            ("raysMeetBehindCamera",
-             "The rays meet behind the camera, so the taps aren't on the same feature. Start over.",
-             ["t1": t1, "t2": t2])
+            Refusal(
+                reason: "raysMeetBehindCamera",
+                message: "The rays meet behind the camera, so the taps aren't on the same feature. Start over.",
+                values: ["t1": t1, "t2": t2]
+            )
         case .raysMiss(let gap, let maximum):
-            ("raysMiss",
-             "The rays pass \(Format.inches(gap)) apart (limit \(Format.inches(maximum))), so the taps may be on different features. Start over.",
-             ["gap": gap, "maximum": maximum])
+            Refusal(
+                reason: "raysMiss",
+                message: "The rays pass \(Format.inches(gap)) apart (limit \(Format.inches(maximum))), so the taps may be on different features. Start over.",
+                values: ["gap": gap, "maximum": maximum]
+            )
         }
     }
 }

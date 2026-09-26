@@ -9,22 +9,20 @@ public struct PortraitFillMapping: Sendable, Equatable {
     public let imageHeight: Double
     public let viewWidth: Double
     public let viewHeight: Double
+    /// View points per image pixel. The rotated image is imageHeight wide and imageWidth tall.
+    public let scale: Double
 
+    /// Nil when a dimension is zero, negative or not finite, or the scaled image would overflow,
+    /// for example before SwiftUI has laid out the camera view.
     public init?(imageWidth: Double, imageHeight: Double, viewWidth: Double, viewHeight: Double) {
-        let dimensions = [imageWidth, imageHeight, viewWidth, viewHeight]
-        guard dimensions.allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
+        guard [imageWidth, imageHeight, viewWidth, viewHeight].allSatisfy({ $0.isFinite && $0 > 0 }) else { return nil }
         let scale = max(viewWidth / imageHeight, viewHeight / imageWidth)
-        guard scale.isFinite, scale > 0,
-              (imageHeight * scale).isFinite, (imageWidth * scale).isFinite else { return nil }
+        guard scale.isFinite, scale > 0, (imageHeight * scale).isFinite, (imageWidth * scale).isFinite else { return nil }
         self.imageWidth = imageWidth
         self.imageHeight = imageHeight
         self.viewWidth = viewWidth
         self.viewHeight = viewHeight
-    }
-
-    /// View points per image pixel. The rotated image is imageHeight wide and imageWidth tall.
-    public var scale: Double {
-        max(viewWidth / imageHeight, viewHeight / imageWidth)
+        self.scale = scale
     }
 
     /// Where the rotated image's top-left corner sits in the view; negative on a cropped side.

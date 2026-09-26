@@ -2,8 +2,6 @@ import Testing
 @testable import MeasureGeometry
 
 struct WarningsTests {
-    // Regression for review defect 1: a wall point took only its own flags, so a point on a wall
-    // whose first contact looked down too shallowly was recorded as accepted.
     @Test func `a wall point inherits its wall's contact warnings`() {
         let wall = WallStatus(contactWarnings: [[.shallowLookDown], []], validations: [true])
         let point = PointEvidence(own: [], wall: wall)
@@ -64,7 +62,6 @@ struct WarningsTests {
         ) == [.wallValidationFailed])
     }
 
-    // Regression for review defect 3, second half: a negative height must not pass as accepted.
     @Test func `a negative height above ground is flagged`() {
         let good = WallStatus(contactWarnings: [[], []], validations: [true])
         let clean = PointEvidence(own: [])

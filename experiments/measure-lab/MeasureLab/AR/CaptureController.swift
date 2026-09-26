@@ -50,11 +50,6 @@ final class CaptureController {
         return view
     }
 
-    func pause() {
-        arView?.session.pause()
-        session.save()
-    }
-
     private func run(reset: Bool) {
         let configuration = ARWorldTrackingConfiguration()
         // .gravity, not .gravityAndHeading: the compass is unreliable next to a house (docs/00).
@@ -89,8 +84,8 @@ final class CaptureController {
     // MARK: - Freezing
 
     func freeze(viewSize: CGSize) {
-        guard session.markBlocker == nil else {
-            session.refuseUnresolvedTap(reason: "trackingNotReady", message: session.markBlocker ?? "")
+        if let blocker = session.markBlocker {
+            session.refuseUnresolvedTap(reason: "trackingNotReady", message: blocker)
             return
         }
         guard let frame = arView?.session.currentFrame else { return }
@@ -99,13 +94,7 @@ final class CaptureController {
             session.keyframeDelivered(result.delivery)
             guard case .success(let saved) = result.delivery.result, let cgImage = result.image else { return }
             let snapshot = saved.snapshot
-            guard let mapping = PortraitFillMapping(
-                imageWidth: Double(snapshot.imageWidth),
-                imageHeight: Double(snapshot.imageHeight),
-                viewWidth: Double(viewSize.width),
-                viewHeight: Double(viewSize.height)
-            ) else {
-                session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera view isn't ready yet. Try again.")
+            guard let mapping = portraitMapping(imageWidth: snapshot.imageWidth, imageHeight: snapshot.imageHeight, viewSize: viewSize) else {
                 return
             }
             frozen = FrozenFrame(
@@ -175,8 +164,9 @@ final class CaptureController {
             session.refuseUnresolvedTap(reason: "noFrame", message: "The camera hasn't delivered a frame yet.")
             return nil
         }
-        guard viewSize.width.isFinite, viewSize.height.isFinite, viewSize.width > 0, viewSize.height > 0 else {
-            session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera view isn't ready yet. Try again.")
+        // imageResolution is the size of capturedImage, which the recorder saves unscaled.
+        let resolution = frame.camera.imageResolution
+        guard let mapping = portraitMapping(imageWidth: Int(resolution.width), imageHeight: Int(resolution.height), viewSize: viewSize) else {
             return nil
         }
         let delivery: KeyframeRecorder.Delivery
@@ -194,19 +184,24 @@ final class CaptureController {
         let toImage = frame.displayTransform(for: .portrait, viewportSize: viewSize).inverted()
         let normalized = CGPoint(x: point.x / viewSize.width, y: point.y / viewSize.height).applying(toImage)
         let pixel = (u: Double(normalized.x) * Double(snapshot.imageWidth), v: Double(normalized.y) * Double(snapshot.imageHeight))
-        let mapping = PortraitFillMapping(
-            imageWidth: Double(snapshot.imageWidth),
-            imageHeight: Double(snapshot.imageHeight),
-            viewWidth: Double(viewSize.width),
-            viewHeight: Double(viewSize.height)
-        )
-        guard let mapping else {
-            session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera image or view isn't ready yet. Try again.")
-            return nil
-        }
         let mapped = mapping.imagePixel(forViewPoint: point.x, point.y)
         let check = ((mapped.u - pixel.u) * (mapped.u - pixel.u) + (mapped.v - pixel.v) * (mapped.v - pixel.v)).squareRoot()
         return (snapshot, pixel, check)
+    }
+
+    /// The frozen-frame mapping for this view size, or a logged refusal when the view has no usable
+    /// size yet.
+    private func portraitMapping(imageWidth: Int, imageHeight: Int, viewSize: CGSize) -> PortraitFillMapping? {
+        let mapping = PortraitFillMapping(
+            imageWidth: Double(imageWidth),
+            imageHeight: Double(imageHeight),
+            viewWidth: Double(viewSize.width),
+            viewHeight: Double(viewSize.height)
+        )
+        if mapping == nil {
+            session.refuseUnresolvedTap(reason: "invalidViewport", message: "The camera view isn't ready yet. Try again.")
+        }
+        return mapping
     }
 
     /// Ground raycast along the tap ray: a found plane first, then its infinite extension, then

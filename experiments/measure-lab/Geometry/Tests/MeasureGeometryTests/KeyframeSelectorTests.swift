@@ -34,8 +34,8 @@ struct KeyframeSelectorTests {
         #expect(selector.wantsKeyframe(at: identityPose))
     }
 
-    // Regression for review defect 4: a failed write used to move the checkpoint anyway, so frames
-    // until about x = 1 m were suppressed after a failure at x = 0.5 m.
+    // If a failed write at x = 0.5 m moved the checkpoint, frames until about x = 1 m would be
+    // skipped.
     @Test func `a cancelled write leaves spacing at the last success`() {
         var selector = savedAtOrigin()
         let failed = selector.reserve(at: poseTurned(0, at: SIMD3(0.5, 0, 0)))

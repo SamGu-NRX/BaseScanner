@@ -4,7 +4,7 @@ import Foundation
 ///
 /// For ARKit these come from `ARCamera.intrinsics` and describe the unrotated (landscape) sensor
 /// image. Rotating or cropping the image changes them.
-public struct CameraIntrinsics: Sendable, Equatable, Codable {
+public struct CameraIntrinsics: Sendable, Equatable {
     public var fx: Double
     public var fy: Double
     public var cx: Double
@@ -58,11 +58,6 @@ public struct CameraPose: Sendable, Equatable {
             zAxis.x, zAxis.y, zAxis.z, 0,
             position.x, position.y, position.z, 1,
         ]
-    }
-
-    /// Where the camera looks, in world coordinates.
-    public var forward: SIMD3<Double> {
-        -zAxis
     }
 
     func toWorld(_ cameraVector: SIMD3<Double>) -> SIMD3<Double> {
@@ -139,8 +134,7 @@ public struct CameraFrame: Sendable, Equatable {
     ///
     /// In camera space the pixel lies along ((u − cx)/fx, −(v − cy)/fy, −1): image v grows downward
     /// while camera y grows upward, and the camera looks along −z. This is `pixel_ray` in
-    /// docs/02-implementation-plan.md.
-    /// Throws only for a pose whose axes are zero or non-finite.
+    /// docs/02-implementation-plan.md. Throws only for a pose whose axes are zero or non-finite.
     public func ray(throughPixel u: Double, _ v: Double) throws(GeometryInputError) -> Ray {
         let k = intrinsics
         let cameraDirection = SIMD3((u - k.cx) / k.fx, -(v - k.cy) / k.fy, -1)
