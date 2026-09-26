@@ -280,23 +280,26 @@ public struct CoverageMap: Sendable {
 
     private func visibleRows(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame, among rows: [Int]) -> Set<Int> {
         let offsets = rowOffsets(band)
-        return sampledRows(index, from: camera, rows: rows, normal: band == .wall ? wall.outward : WallFrame.up) { s, row in
+        return sampledRows(index, from: camera, rows: rows, onWallFace: band == .wall) { s, row in
             band == .wall ? wall.world(s: s, height: offsets[row]) : wall.world(s: s, height: 0, out: offsets[row])
         }
     }
 
     /// The rows of a cell whose samples, a quarter and three quarters along it, are all in view:
     /// in front of the camera, inside the image margin, within `maxDistance`, and seen within
-    /// `maxAngleFromNormal` of the surface's `normal`.
+    /// `maxAngleFromNormal` of the surface's normal: the outward of the cell's piece of wall for
+    /// the wall face, up for the ground.
     private func sampledRows(
-        _ index: Int, from camera: CameraFrame, rows: [Int], normal: SIMD3<Float>,
+        _ index: Int, from camera: CameraFrame, rows: [Int], onWallFace: Bool,
         point: (_ s: Float, _ row: Int) -> SIMD3<Float>
     ) -> Set<Int> {
-        // Behind the wall's plane the wall itself hides both bands. Occlusion is otherwise not
-        // modelled, and the ground row at the wall's foot would pass from there.
-        guard wall.wallPoint(camera.position).out > 0 else { return [] }
         let range = cellRange(index)
         let width = range.upperBound - range.lowerBound
+        let middle = range.lowerBound + width / 2
+        // Behind the plane of the cell's piece of wall the wall itself hides both bands. Occlusion
+        // is otherwise not modelled, and the ground row at the wall's foot would pass from there.
+        guard wall.out(of: camera.position, pieceAtS: middle) > 0 else { return [] }
+        let normal = onWallFace ? wall.segment(atS: middle).outward : WallFrame.up
         let alongs = [range.lowerBound + width * 0.25, range.lowerBound + width * 0.75]
         let cosLimit = cos(config.maxAngleFromNormal)
         func sees(_ point: SIMD3<Float>) -> Bool {
@@ -322,7 +325,7 @@ public struct CoverageMap: Sendable {
     /// The ground depth rows of a cell a frame sees, by the same rules as the bands' rows.
     public func visibleDepthRows(_ index: Int, from camera: CameraFrame) -> Set<Int> {
         let rows = groundDepthRows
-        return sampledRows(index, from: camera, rows: Array(rows.indices), normal: WallFrame.up) { s, row in
+        return sampledRows(index, from: camera, rows: Array(rows.indices), onWallFace: false) { s, row in
             wall.world(s: s, height: 0, out: rows[row])
         }
     }
@@ -578,16 +581,53 @@ public struct CoverageMap: Sendable {
     /// end by -d), and skipped cells move by whole cells, the remainder (under half a cell,
     /// 7.6 cm, below tap error) waiting for later moves. The replay clips to the current ends, so
     /// cells beyond an end seen before it was marked are gone until a new frame sees them.
+    /// Corners the walk followed move like the ends, so they keep their place in the world: pass
+    /// `frame` with the corners it had (a copy of `wall` with a new meter or ground).
     /// Assumes the wall's direction is unchanged.
     public mutating func updateWall(_ frame: WallFrame) {
         guard frame != wall else { return }
         let delta = simd_dot(wall.meter - frame.meter, frame.along)
+        var frame = frame
+        frame.shiftCorners(by: delta)
         wall = frame
         leftEnd = leftEnd.map { $0 + delta }
         rightEnd = rightEnd.map { $0 + delta }
         pendingShift += delta
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
+        replayObservedCameras(shiftingSkippedBy: whole)
+    }
+
+    /// How far from the marked end on its side (or, with none marked, the far edge of what was
+    /// seen) a corner may lie: 3 m. A guess, not measured: the homeowner marked the end at the
+    /// corner, and AR taps near the walk are off by well under a meter, so a corner farther
+    /// away means the marked wall is some other wall.
+    public static let maxCornerFromEnd: Float = 3
+
+    /// Follows the wall round a corner on `side`, to the wall the homeowner marked at `point`
+    /// facing `outward` (toward the homeowner). The corner is where the two walls' lines meet on
+    /// the ground (`WallFrame.corner(on:meeting:outward:)`). The end on that side is cleared, so
+    /// the walk goes on along the new wall, and every kept camera is replayed against the new
+    /// chain: cells past the corner were measured on the old wall's line. Changes nothing when
+    /// it throws.
+    @discardableResult
+    public mutating func turnCorner(_ side: WalkSide, meeting point: SIMD3<Float>, outward: SIMD3<Float>) throws(CornerRefusal) -> WallCorner {
+        let corner = try wall.corner(on: side, meeting: point, outward: outward)
+        let seenEdge = seenExtent.map { side == .left ? $0.lowerBound : $0.upperBound }
+        let reference = (side == .left ? leftEnd : rightEnd) ?? seenEdge ?? 0
+        guard abs(corner.s - reference) <= Self.maxCornerFromEnd else { throw .implausible(s: corner.s) }
+        wall.turn(side, at: corner)
+        switch side {
+        case .left: leftEnd = nil
+        case .right: rightEnd = nil
+        }
+        replayObservedCameras(shiftingSkippedBy: 0)
+        return corner
+    }
+
+    /// Rebuilds seen and covered cells by replaying `observedCameras` against the current wall,
+    /// keeping skipped cells, moved by `whole` cells.
+    private mutating func replayObservedCameras(shiftingSkippedBy whole: Int) {
         var skipped: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
         for (band, bandCells) in cells {
             for (index, cell) in bandCells where cell.skipped {
