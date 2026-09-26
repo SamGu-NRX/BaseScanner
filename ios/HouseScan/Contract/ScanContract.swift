@@ -165,6 +165,9 @@ enum CellState: UInt8, Equatable, Sendable {
     case seen
     /// Seen from at least two positions with normal tracking. Evidence exists; this is not a pass.
     case covered
+    /// The homeowner said they can't get there. Recorded for installer review; never evidence,
+    /// and drawn distinctly from both fog and covered.
+    case skipped
 }
 
 /// Coverage of the unrolled wall, in fixed-width cells along s.
@@ -389,6 +392,12 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     /// band, a fact the camera can't establish, or a policy that sends it to review), false when
     /// more photos would settle it.
     var needsPerson: Bool = false
+    /// The deciding measurement, the rule's limit and the measurement's error, in meters, when the
+    /// server gave them. A borderline result shows all three ("3 ft 2 in from the gas meter; the
+    /// rule is 3 ft and our measurement can be off by about 4 in").
+    var measured: Float? = nil
+    var threshold: Float? = nil
+    var plusMinus: Float? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -437,6 +446,8 @@ struct ResultPresentation: Equatable, Sendable {
     var checks: [CheckRow]
     var clearances: [ClearanceZone]
     var missing: [MissingEvidence]
+    /// A side of the meter the walk didn't reach, so a closer spot may exist there.
+    var unseenSide: WallSide? = nil
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
@@ -462,6 +473,9 @@ final class ScanViewState {
     var wall: WallGeometry?
     var coverage: CoverageStrip = .empty
     var closeUp: CloseUpState = .aiming(hold: 0, problem: nil)
+    /// Close-up attempts that ended without a usable photo. "Can't get a clear shot" appears
+    /// from the second one on, never earlier.
+    var closeUpFailedAttempts = 0
 
     var captureCount = 0
     var lastCapture: CaptureEvent?
@@ -509,6 +523,9 @@ protocol ScanActions: AnyObject {
     func confirmFeatures()
     /// "I can't get there": the gap is recorded for installer review.
     func skipGap()
+    /// "I can't get to this part of the wall", during the walk: the cells the guidance is asking
+    /// for become `.skipped` and the guidance moves on to the next task.
+    func cannotAccessArea()
     func retryUpload()
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
