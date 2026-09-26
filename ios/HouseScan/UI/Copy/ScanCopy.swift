@@ -38,7 +38,8 @@ enum ScanCopy {
         case .aimAtGround(let s):
             Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)).")
         case .aimAtWall(let s):
-            Instruction(title: "Tilt up to show more wall", detail: "Around \(Distance.fromMeter(s)).")
+            // "Around at your meter" read wrong once the walk starts at the meter.
+            Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s)).")
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
         case .tiltUp(let span):
@@ -81,6 +82,8 @@ enum ScanCopy {
             Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
             Instruction(title: "Your phone lost its place", detail: "Aim back at your meter and move slowly.")
+        case .pastWallEnd:
+            Instruction(title: "You're past the end of the wall", detail: "Photos here aren't kept. Walk back toward your meter.")
         }
     }
 
@@ -93,7 +96,15 @@ enum ScanCopy {
         case .tooDark: "moon.fill"
         case .holdSteady: "hand.raised.fill"
         case .relocalizing, .trackingLost: "location.slash.fill"
+        case .pastWallEnd: "arrow.uturn.backward"
         }
+    }
+
+    // MARK: Wall ends
+
+    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk.
+    static func endLeavesOut(_ meters: Float) -> String {
+        "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
     }
 
     // MARK: Close-up
