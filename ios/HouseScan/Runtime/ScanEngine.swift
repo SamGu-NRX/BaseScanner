@@ -431,13 +431,22 @@ final class ScanEngine {
 
     private func trackRelocalization(_ frame: SourceFrame) {
         guard live != nil else { return }
-        if case .limited(.relocalizing) = frame.tracking {
-            let since = relocalizingSince ?? frame.timestamp
-            relocalizingSince = since
-            // After 20 s ARKit is unlikely to relocalize; the old world frame is gone
-            // (checklist R5). Start again from the meter.
-            if frame.timestamp - since > 20 { resetSpatialState(reason: "relocalization timed out") }
-        } else {
+        guard case .limited(.relocalizing) = frame.tracking else {
+            relocalizingSince = nil
+            return
+        }
+        let since = relocalizingSince ?? frame.timestamp
+        relocalizingSince = since
+        // After 20 s ARKit is unlikely to relocalize; the old world frame is gone (checklist R5).
+        guard frame.timestamp - since > 20 else { return }
+        switch state.phase {
+        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest:
+            // Capture still needs the world frame: start again from the meter.
+            resetSpatialState(reason: "relocalization timed out")
+        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+            // The bundle is already packed and the server's answer does not depend on the live
+            // world frame, so the scan and the result stay. The AR result hides its overlay while
+            // tracking is not normal and shows it again if ARKit does relocalize.
             relocalizingSince = nil
         }
     }
