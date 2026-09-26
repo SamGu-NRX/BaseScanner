@@ -27,6 +27,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
 import re
 import socket
 import subprocess
@@ -358,6 +359,7 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
         f"# End-to-end run against `{meta['server_ref']}` at `{meta['server_sha'][:12]}`",
         "",
         f"{meta['started_at']}. Endpoint `{meta['endpoint']}` via {meta['transport']}. "
+        f"Load average {meta['load_average_1_5_15']} on {os.cpu_count()} cores. "
         + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())),
         "",
         "| Scene | Status | Decision | ms | Problems |",
@@ -459,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
         "endpoint": f"POST {endpoint.path} ({endpoint.content_type})",
         "transport": "solver shim (HTTP layer not tested)" if args.via_shim else "server API",
         "command": " ".join([sys.executable, "-m", "hsverify.e2e", *(argv or sys.argv[1:])]),
+        # Latency on this shared Mac depends on what else runs; keep the load with the numbers.
+        "load_average_1_5_15": [round(x, 1) for x in os.getloadavg()],
         "cases_sha256": hashlib.sha256(b"".join(i.raw for i in items)).hexdigest(),
     }
     report = write_report(out, meta, records)
