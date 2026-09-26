@@ -13,6 +13,13 @@ struct WallTape: View {
     var cameraS: Float?
     var highlight: GapRequest?
 
+    /// Glyph size for the meter and feature marks. It follows the text size, like every other
+    /// glyph in the app (fixed 9 and 10 pt sizes failed the audit's Dynamic Type check), and
+    /// stops growing at 16 pt so the marks still fit the strip's 58 pt height.
+    @ScaledMetric(relativeTo: .caption2) private var glyphSize: CGFloat = 10
+    private var glyph: CGFloat { min(glyphSize, 16) }
+    private var glyphBox: CGFloat { glyph * 1.8 }
+
     private static let footInMeters: Float = 0.3048
 
     var body: some View {
@@ -27,18 +34,18 @@ struct WallTape: View {
                     ForEach(features) { feature in
                         let center = (feature.span.lowerBound + feature.span.upperBound) / 2
                         Image(systemName: ScanCopy.symbol(feature.kind))
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: glyph, weight: .bold))
                             .foregroundStyle(Palette.chalk)
-                            .frame(width: 18, height: 16)
+                            .frame(width: glyphBox, height: glyphBox * 0.9)
                             .background(Palette.ink.opacity(0.9), in: .rect(cornerRadius: 4))
-                            .position(x: map.x(center), y: 8)
+                            .position(x: Self.inside(map.x(center), halfWidth: glyphBox / 2, width: proxy.size.width), y: glyphBox / 2 - 1)
                     }
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: 9, weight: .black))
+                        .font(.system(size: glyph * 0.9, weight: .black))
                         .foregroundStyle(.white)
-                        .frame(width: 18, height: 18)
+                        .frame(width: glyphBox, height: glyphBox)
                         .background(Palette.signal, in: .circle)
-                        .position(x: map.x(0), y: 8)
+                        .position(x: Self.inside(map.x(0), halfWidth: glyphBox / 2, width: proxy.size.width), y: glyphBox / 2 - 1)
                 }
             }
             .frame(height: 58)
@@ -53,6 +60,13 @@ struct WallTape: View {
     }
 
     // MARK: Layout
+
+    /// Keeps a glyph of `halfWidth` inside the strip. When the walk covers only one side, the
+    /// meter sits at the strip's end, and a glyph centred there hung half outside it, which the
+    /// accessibility audit reported as clipped on the real ADVIO replay.
+    static func inside(_ x: CGFloat, halfWidth: CGFloat, width: CGFloat) -> CGFloat {
+        min(max(x, halfWidth), max(halfWidth, width - halfWidth))
+    }
 
     struct TapeMap {
         var extent: ClosedRange<Float>

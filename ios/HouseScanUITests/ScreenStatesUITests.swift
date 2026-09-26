@@ -112,14 +112,37 @@ final class ScreenStatesUITests: XCTestCase {
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
-        var issues: [String] = []
-        try app.performAccessibilityAudit { issue in
-            let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
-            issues.append("\(issue.compactDescription) (\(element))")
-            return true
+        // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
+        // Intelligence" over the photo count), so an issue fails the test only when a second
+        // audit, after the banner's few seconds on screen, finds it again.
+        let first = try audit(app)
+        guard !first.isEmpty else { return }
+        Thread.sleep(forTimeInterval: 6)
+        let second = try audit(app)
+        for key in first.keys.sorted() where second[key] != nil {
+            XCTFail("\(name): \(second[key] ?? key)")
         }
-        for issue in issues {
-            XCTFail("\(name): \(issue)")
+    }
+
+    /// Issues keyed by type, identifier and label. A failed snapshot (the tree changed while the
+    /// audit read it) is retried once; a second failure throws.
+    @MainActor
+    private func audit(_ app: XCUIApplication) throws -> [String: String] {
+        func run() throws -> [String: String] {
+            var found: [String: String] = [:]
+            try app.performAccessibilityAudit { issue in
+                let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
+                let key = "\(issue.auditType.rawValue)|\(issue.element?.identifier ?? "")|\(issue.element?.label ?? "")"
+                found[key] = "\(issue.compactDescription) (\(element))"
+                return true
+            }
+            return found
+        }
+        do {
+            return try run()
+        } catch {
+            Thread.sleep(forTimeInterval: 1)
+            return try run()
         }
     }
 

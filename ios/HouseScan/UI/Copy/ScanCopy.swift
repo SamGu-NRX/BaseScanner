@@ -27,7 +27,7 @@ enum ScanCopy {
         case .walk(let side, let remaining):
             Instruction(
                 title: "Walk slowly to your \(side.rawValue)",
-                detail: remaining.map { "Keep the wall and the ground in view. About \(Distance.roughFeet($0)) to go." }
+                detail: remaining.map { "Keep the wall and the ground in view. About \(Distance.remainingWalk($0)) to go." }
                     ?? "Keep the wall and the ground in view."
             )
         case .markEnd(let side):

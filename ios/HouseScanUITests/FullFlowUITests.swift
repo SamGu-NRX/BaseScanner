@@ -56,15 +56,31 @@ final class FullFlowUITests: XCTestCase {
             try app.performAccessibilityAudit { issue in
                 let element = issue.element
                 let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
-                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
+                // An element without a label is otherwise impossible to find from the report.
+                let described = element.map { "type \($0.elementType.rawValue) frame \($0.frame)" } ?? "no element"
+                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "") (\(described))"
+                if let element, element.exists, !element.frame.isEmpty {
+                    let shot = XCTAttachment(screenshot: element.screenshot())
+                    shot.name = "audit-element-\(screen)"
+                    shot.lifetime = .keepAlways
+                    self.add(shot)
+                }
                 return true
             }
             return found
         }
-        let first = try pass()
+        // A failed snapshot means the tree changed while the audit read it (seen once on CI);
+        // retry that pass once, and let a second failure throw.
+        func passRetrying() throws -> [String: String] {
+            do { return try pass() } catch {
+                Thread.sleep(forTimeInterval: 1)
+                return try pass()
+            }
+        }
+        let first = try passRetrying()
         guard !first.isEmpty else { return }
         Thread.sleep(forTimeInterval: 1.0)
-        let second = try pass()
+        let second = try passRetrying()
         let persistent = first.keys.filter { second[$0] != nil }.sorted()
         for key in persistent {
             let text = "screen.\(screen): \(second[key] ?? key)"

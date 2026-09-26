@@ -17,6 +17,14 @@ enum Distance {
     }
 
     /// Whole feet for rough amounts ("about 12 ft to go"), never below 1 ft.
+    /// How far is left to walk, in 5 ft steps above 5 ft. The walk card showed the nearest foot,
+    /// so its text changed about every stride; a coarse count reads calmer and changes rarely.
+    static func remainingWalk(_ meters: Float) -> String {
+        let feet = abs(meters) / (metersPerInch * 12)
+        guard feet > 5 else { return roughFeet(meters) }
+        return "\(Int((feet / 5).rounded()) * 5) ft"
+    }
+
     static func roughFeet(_ meters: Float) -> String {
         let feet = max(1, Int((abs(meters) / (metersPerInch * 12)).rounded()))
         return "\(feet) ft"
