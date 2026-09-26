@@ -131,7 +131,9 @@ public struct CoverageConfig: Sendable, Equatable {
 /// when the depth at its pixel matches its own distance (`CoverageConfig.depthTolerance`). A
 /// nearer reading hides it; a farther reading, no reading or a low-confidence one is no evidence
 /// either way (the surface is not where the wall model puts it, or nothing was measured). This
-/// holds for the bands, the ground depth rows and the ground past a limit end alike.
+/// holds for the bands, the ground depth rows and the ground past a limit end alike, and a later
+/// view without depth adds nothing to a row a depth frame found hidden: it can't see past what
+/// stands there either.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
     public let config: CoverageConfig
@@ -149,27 +151,29 @@ public struct CoverageMap: Sendable {
     /// is covered exactly when it is in here, whatever the camera sightings say. Seen, hidden and
     /// skipped still come from the sightings. Nil, the default, leaves covering to the sightings.
     public private(set) var measuredCovered: [SurfaceBand: Set<Int>]?
-    /// How far the ground under the wall may lie above `wall.groundY`, meters: taken off every
-    /// height the map reports (`wallSeenHeight(at:)`, `overheadHeight(at:)`), since a row sampled
-    /// at height h over a ground guessed too low stands only h minus the error above the real
-    /// one. 0 once the ground is measured; the engine sets its chest-height guess's error until
-    /// then. The rows themselves, and which cells are covered, don't change with it.
+    /// How far the ground under the wall may lie from `wall.groundY` either way, meters, while it
+    /// is a guess: 0 once the ground is measured; the engine sets its chest-height guess's error
+    /// until then. Guessed too low, a row sampled at height h stands only h less the error above
+    /// the real ground, so the error comes off every height the map reports
+    /// (`wallSeenHeight(at:)`, `overheadHeight(at:)`). Guessed too high, the rows from the guessed
+    /// ground up miss the real foot of the wall, so a seen height also needs the foot rows below
+    /// the guessed ground, down to the error (`wallRows`). Which cells the strip counts as
+    /// covered doesn't change with it. Changing it rebuilds the cells from the kept cameras.
     public var heightError: Float = 0 {
-        didSet { if heightError != oldValue { revision += 1 } }
+        didSet { if heightError != oldValue { replayObservedCameras(shiftingSkippedBy: 0) } }
     }
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
     /// Per cell, per ground depth row (0 at the wall foot, then every `groundDepthSpacing` out to
-    /// `groundDepthReach`), the camera positions that saw it, pairwise at least `coveringBaseline`
-    /// apart, two at most. Separate from `cells` so the near ground band the strip draws keeps its
-    /// meaning.
-    private var depthCells: [Int: [[SIMD3<Float>]]] = [:]
+    /// `groundDepthReach`), the sightings of it, as in a cell's rows. Separate from `cells` so the
+    /// near ground band the strip draws keeps its meaning.
+    private var depthCells: [Int: [[Sight]]] = [:]
     /// Per limit end, per cell past it (0 touching the end, counting away from the meter), the
     /// camera positions that saw each ground depth row on both sides of the wall's continued
     /// line: the rows in front (out = +row), then the rows behind (out = -row). Kept like
     /// `depthCells`. The cells start at the end itself, so what they report meets the ground
     /// clipped to the end exactly.
-    private var pastLimitCells: [WalkSide: [Int: [[SIMD3<Float>]]]] = [:]
+    private var pastLimitCells: [WalkSide: [Int: [[Sight]]]] = [:]
     /// s shift from meter moves not yet applied to skipped cells, meters (see `updateWall`).
     private var pendingShift: Float = 0
     /// Cameras of the frames `observe` recorded, oldest first, so a new wall frame can be replayed
@@ -184,29 +188,66 @@ public struct CoverageMap: Sendable {
     /// Per entry of `observedCameras`, the frame clock time it was kept at; nil when the caller
     /// gave none, and such a pose is never joined into walked path.
     private var observedTimes: [Double?] = []
-    /// Indices of `observedCameras` whose pose is not joined to the one before it
-    /// (`breakWalkedPath`).
-    private var pathStarts: Set<Int> = []
-    /// Set by `breakWalkedPath` until the next observed camera starts a new stretch.
-    private var pathBroken = false
+    /// Per entry of `observedCameras`, the walked-path segment it was captured in (`pathSegment`).
+    private var observedSegments: [Int] = []
+    /// The stretch of continuous walking a frame captured now belongs to. `breakWalkedPath`
+    /// starts a new one. A caller that stores a frame before observing it reads this when the
+    /// frame is captured and passes it to `observe`, so a store that finishes after a break
+    /// can't join the frame to ones captured on the other side of it.
+    public private(set) var pathSegment = 0
+    /// Per ground depth cell, the rows a kept frame's depth showed hidden behind something nearer
+    /// while short of two positions: a later view without depth can't add to them.
+    private var depthHidden: [Int: Set<Int>] = [:]
+    /// As `depthHidden`, for the rows past each limit end (`pastLimitCells`).
+    private var pastLimitHidden: [WalkSide: [Int: Set<Int>]] = [:]
+
+    /// One camera position that saw a sample row, and whether that frame's depth confirmed it.
+    private struct Sight: Sendable {
+        var position: SIMD3<Float>
+        var depthVerified: Bool
+    }
+
+    /// Adds a sighting from `position` unless the row holds two already or one nearer than
+    /// `coveringBaseline` (no parallax); true when added.
+    private func add(_ row: inout [Sight], _ position: SIMD3<Float>, verified: Bool) -> Bool {
+        guard row.count < 2, row.allSatisfy({ simd_distance($0.position, position) >= config.coveringBaseline }) else { return false }
+        row.append(Sight(position: position, depthVerified: verified))
+        return true
+    }
+
+    /// A depth frame found the row hidden behind something nearer: the sightings no depth
+    /// confirmed may have been of that obstruction, so they go. Sightings depth confirmed stay.
+    /// True when any went.
+    private static func dropUnverified(_ row: inout [Sight]) -> Bool {
+        let before = row.count
+        row.removeAll { !$0.depthVerified }
+        return row.count != before
+    }
 
     private struct Cell: Sendable {
-        /// Per sample row, the camera positions that saw it, pairwise at least
-        /// `coveringBaseline` apart. Two are enough, so a row stops collecting at two.
-        var rows: [[SIMD3<Float>]]
+        /// Per sample row, its sightings, pairwise at least `coveringBaseline` apart. Two are
+        /// enough, so a row stops collecting at two.
+        var rows: [[Sight]]
+        /// Rows below this are the wall's foot rows under a guessed ground (`wallRows`): they
+        /// count toward a seen height, not toward the band the strip draws.
+        let firstBandRow: Int
         /// Rows a kept frame's depth showed hidden behind something nearer.
         var hiddenRows: Set<Int> = []
         var skipped = false
         var covered = false
 
-        init(rowCount: Int) {
+        init(rowCount: Int, firstBandRow: Int) {
             rows = Array(repeating: [], count: rowCount)
+            self.firstBandRow = firstBandRow
         }
 
-        var isSeen: Bool { rows.contains { !$0.isEmpty } }
+        var isSeen: Bool { rows[firstBandRow...].contains { !$0.isEmpty } }
+
+        /// Every band row seen from two positions.
+        var bandCovered: Bool { rows[firstBandRow...].allSatisfy { $0.count >= 2 } }
 
         /// A hidden row stops blocking once it has its two positions.
-        var isHidden: Bool { hiddenRows.contains { rows[$0].count < 2 } }
+        var isHidden: Bool { hiddenRows.contains { $0 >= firstBandRow && rows[$0].count < 2 } }
 
         var level: CoverageLevel {
             if covered { return .covered }
@@ -324,24 +365,28 @@ public struct CoverageMap: Sendable {
     ///
     /// `depth` is the frame's LiDAR depth, taken with the same pose. With it a sample counts only
     /// where the depth confirms it (see the type's comment), and cells whose rows something nearer
-    /// hides become `.hidden`. It is used and kept as `storedDepth(_:)`.
+    /// hides become `.hidden`. It is used and kept as `storedDepth(_:)`. A frame without depth
+    /// can't tell what stands in front of the wall, so it adds nothing to a row an earlier depth
+    /// frame found hidden.
+    ///
+    /// `segment` is the walked-path segment the frame was captured in (`pathSegment` read at
+    /// capture); nil means the current one. Poses join into walked path only within a segment.
     @discardableResult
-    public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool, time: Double? = nil, depth: DepthImage? = nil) -> Delta {
+    public mutating func observe(
+        _ camera: CameraFrame, trackingNormal: Bool, time: Double? = nil, depth: DepthImage? = nil, segment: Int? = nil
+    ) -> Delta {
         guard trackingNormal else {
             breakWalkedPath()
             return Delta()
         }
-        if pathBroken {
-            pathStarts.insert(observedCameras.count)
-            pathBroken = false
-        }
         let depth = depth.map(Self.storedDepth)
         observedCameras.append(camera)
         observedTimes.append(time)
+        observedSegments.append(segment ?? pathSegment)
         observedDepths.append(depth)
         let depthChanged = recordDepth(from: camera, depth: depth)
         let pastChanged = recordPastLimits(from: camera, depth: depth)
-        let (delta, levelChanged) = recordSightings(visibleCells(from: camera, depth: depth), from: camera.position)
+        let (delta, levelChanged) = recordSightings(visibleCells(from: camera, depth: depth), from: camera.position, depthChecked: depth != nil)
         if delta.changed || levelChanged || depthChanged || pastChanged { revision += 1 }
         return delta
     }
@@ -374,40 +419,40 @@ public struct CoverageMap: Sendable {
     /// `observe` after visibility, for planners that precompute what each frame sees.
     @discardableResult
     public mutating func record(_ sightings: [Sighting], from position: SIMD3<Float>) -> Delta {
-        let (delta, levelChanged) = recordSightings(sightings, from: position)
+        let (delta, levelChanged) = recordSightings(sightings, from: position, depthChecked: false)
         if delta.changed || levelChanged { revision += 1 }
         return delta
     }
 
     /// `record` without the revision: also whether any cell's level changed, which a hidden
-    /// cell's row gaining a position can do without counting in `Delta`.
+    /// cell's row gaining a position can do without counting in `Delta`. Sightings not checked
+    /// against depth add no position to a row found hidden.
     @discardableResult
-    private mutating func recordSightings(_ sightings: [Sighting], from position: SIMD3<Float>) -> (Delta, levelChanged: Bool) {
+    private mutating func recordSightings(
+        _ sightings: [Sighting], from position: SIMD3<Float>, depthChecked: Bool
+    ) -> (Delta, levelChanged: Bool) {
         var delta = Delta()
         var levelChanged = false
         for sighting in sightings where allows(sighting.index) {
-            var cell = cells[sighting.band]?[sighting.index] ?? Cell(rowCount: rowOffsets(sighting.band).count)
+            var cell = cells[sighting.band]?[sighting.index] ?? newCell(sighting.band)
             let wasSeen = cell.isSeen
             let before = cell.level
             var added = false
-            for row in sighting.rows where cell.rows.indices.contains(row) {
-                let positions = cell.rows[row]
+            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !cell.hiddenRows.contains(row)) {
                 // A repeated or nearby frame adds no parallax, so it adds nothing.
-                guard positions.count < 2,
-                      positions.allSatisfy({ simd_distance($0, position) >= config.coveringBaseline }) else { continue }
-                cell.rows[row].append(position)
-                added = true
+                if add(&cell.rows[row], position, verified: depthChecked) { added = true }
             }
-            // A row with its two positions is settled; a later blocked view changes nothing.
-            for row in sighting.hiddenRows where cell.rows.indices.contains(row) && cell.rows[row].count < 2 {
-                if cell.hiddenRows.insert(row).inserted { added = true }
+            // Only depth finds a row hidden. Its unconfirmed sightings go, and a row left short of
+            // two positions is hidden; one two confirmed sightings settled is not.
+            for row in sighting.hiddenRows where cell.rows.indices.contains(row) {
+                if Self.dropUnverified(&cell.rows[row]) { added = true }
+                if cell.rows[row].count < 2, cell.hiddenRows.insert(row).inserted { added = true }
             }
             guard added else { continue }
             if !wasSeen, cell.isSeen { delta.newlySeen += 1 }
-            if !cell.covered, cell.rows.allSatisfy({ $0.count >= 2 }) {
-                cell.covered = true
-                delta.newlyCovered += 1
-            }
+            let covered = cell.bandCovered
+            if covered, !cell.covered { delta.newlyCovered += 1 }
+            cell.covered = covered
             let after = cell.level
             if after == .hidden, before != .hidden { delta.newlyHidden += 1 }
             if after != before { levelChanged = true }
@@ -445,11 +490,25 @@ public struct CoverageMap: Sendable {
         return (0..<count).map { config.groundBandDepth * Float($0) / Float(count - 1) }
     }
 
-    /// Height of each wall row: 0 at the foot, then every `wallRowSpacing` up to
+    /// Height of each wall row above the ground as it stands in `wall.groundY`, lowest first: the
+    /// foot rows below it while the ground is a guess (every `wallRowSpacing` down, and one at
+    /// minus `heightError`), then 0 at the foot and every `wallRowSpacing` up to
     /// `wallCaptureHeight`.
     public var wallRows: [Float] {
         let count = Int((config.wallCaptureHeight / config.wallRowSpacing + 1e-3).rounded(.down))
-        return (0...max(1, count)).map { Float($0) * config.wallRowSpacing }
+        return footRows + (0...max(1, count)).map { Float($0) * config.wallRowSpacing }
+    }
+
+    /// The wall rows below the guessed ground, down to `heightError`, lowest first; none once the
+    /// ground is measured.
+    private var footRows: [Float] {
+        guard heightError > 0 else { return [] }
+        let steps = Int((heightError / config.wallRowSpacing - 1e-3).rounded(.down))
+        return [-heightError] + (0..<steps).reversed().map { -Float($0 + 1) * config.wallRowSpacing }.filter { $0 > -heightError }
+    }
+
+    private func newCell(_ band: SurfaceBand) -> Cell {
+        Cell(rowCount: rowOffsets(band).count, firstBandRow: band == .wall ? footRows.count : 0)
     }
 
     /// The rows of a cell a frame sees: a row counts when both of its samples, a quarter and
@@ -536,7 +595,7 @@ public struct CoverageMap: Sendable {
     // MARK: Wall height
 
     /// How high up the wall a cell was seen, meters above the ground: the highest wall row such
-    /// that every row from the foot up to it was seen from two positions at least
+    /// that every row from the lowest foot row up to it was seen from two positions at least
     /// `coveringBaseline` apart (with depth, and never through something nearer), less
     /// `heightError`. It is the height the covered samples reach, never the edge of a row nobody
     /// sampled. Nil when not even the first row above the foot is covered, nothing is left after
@@ -551,7 +610,7 @@ public struct CoverageMap: Sendable {
     private func seenWallRowHeight(at index: Int) -> Float? {
         guard allows(index), let cell = cells[.wall]?[index] else { return nil }
         let covered = cell.rows.prefix { $0.count >= 2 }.count
-        guard covered >= 2 else { return nil }
+        guard covered >= cell.firstBandRow + 2 else { return nil }
         return wallRows[covered - 1]
     }
 
@@ -580,26 +639,34 @@ public struct CoverageMap: Sendable {
     }
 
     private func visibleDepthRows(_ index: Int, from camera: CameraFrame, depth: DepthImage?) -> Set<Int> {
+        depthRowViews(index, from: camera, depth: depth).seen
+    }
+
+    private func depthRowViews(_ index: Int, from camera: CameraFrame, depth: DepthImage?) -> RowViews {
         let rows = groundDepthRows
         return sampledRows(index, from: camera, depth: depth, rows: Array(rows.indices), onWallFace: false) { s, row in
             wall.world(s: s, height: 0, out: rows[row])
-        }.seen
+        }
     }
 
     /// Adds a kept frame's view of the ground depth rows; true when any row gained a position.
-    /// Hidden rows gain nothing, so the reach stops at the first row something stood in front of.
+    /// Hidden rows gain nothing, so the reach stops at the first row something stood in front of,
+    /// and a frame without depth adds nothing to a row an earlier depth frame found hidden.
     @discardableResult
     private mutating func recordDepth(from camera: CameraFrame, depth: DepthImage?) -> Bool {
         let rowCount = groundDepthRows.count
         var changed = false
         for index in candidateIndices(for: camera) {
-            let seen = visibleDepthRows(index, from: camera, depth: depth)
-            guard !seen.isEmpty else { continue }
+            let views = depthRowViews(index, from: camera, depth: depth)
+            guard !views.seen.isEmpty || !views.hidden.isEmpty else { continue }
             var rows = depthCells[index] ?? Array(repeating: [], count: rowCount)
-            for row in seen where rows[row].count < 2
-                && rows[row].allSatisfy({ simd_distance($0, camera.position) >= config.coveringBaseline }) {
-                rows[row].append(camera.position)
-                changed = true
+            for row in views.hidden {
+                if Self.dropUnverified(&rows[row]) { changed = true }
+                if rows[row].count < 2 { depthHidden[index, default: []].insert(row) }
+            }
+            let hidden = depth == nil ? depthHidden[index] ?? [] : []
+            for row in views.seen where !hidden.contains(row) {
+                if add(&rows[row], camera.position, verified: depth != nil) { changed = true }
             }
             depthCells[index] = rows
         }
@@ -699,11 +766,12 @@ public struct CoverageMap: Sendable {
             func point(_ s: Float, _ out: Float) -> SIMD3<Float> {
                 origin + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out
             }
-            func sees(_ s: Float, _ out: Float) -> Bool {
+            /// Nil when the sample is out of view; without depth, a sample in view counts as seen.
+            func evidence(_ s: Float, _ out: Float) -> DepthEvidence? {
                 if out < 0 {
                     // Where the sight line crosses the continued line (out = 0).
                     let crossing = eye.s + (s - eye.s) * eye.out / (eye.out - out)
-                    guard (crossing - end) * side.sign >= 0 else { return false }
+                    guard (crossing - end) * side.sign >= 0 else { return nil }
                 }
                 let target = point(s, out)
                 let toCamera = camera.position - target
@@ -711,9 +779,9 @@ public struct CoverageMap: Sendable {
                 guard distance <= config.maxDistance, distance > 0,
                       simd_dot(toCamera / distance, WallFrame.up) >= cosLimit,
                       let pixel = camera.pixel(of: target),
-                      camera.contains(pixel: pixel, margin: config.imageMargin) else { return false }
-                guard let depth else { return true }
-                return depthEvidence(target, camera: camera, depth: depth) == .matches
+                      camera.contains(pixel: pixel, margin: config.imageMargin) else { return nil }
+                guard let depth else { return .matches }
+                return depthEvidence(target, camera: camera, depth: depth)
             }
             for cell in first...last {
                 let range = pastCellRange(side, cell, end: end)
@@ -723,11 +791,16 @@ public struct CoverageMap: Sendable {
                 var added = false
                 for row in rows.indices {
                     let out = row < depths.count ? depths[row] : -depths[row - depths.count]
-                    guard rows[row].count < 2,
-                          rows[row].allSatisfy({ simd_distance($0, camera.position) >= config.coveringBaseline }),
-                          alongs.allSatisfy({ sees($0, out) }) else { continue }
-                    rows[row].append(camera.position)
-                    added = true
+                    let found = alongs.map { evidence($0, out) }
+                    guard found.allSatisfy({ $0 != nil }) else { continue }
+                    if depth != nil, found.contains(.nearer) {
+                        if Self.dropUnverified(&rows[row]) { added = true }
+                        if rows[row].count < 2 { pastLimitHidden[side, default: [:]][cell, default: []].insert(row) }
+                        continue
+                    }
+                    guard found.allSatisfy({ $0 == .matches }),
+                          depth != nil || !(pastLimitHidden[side]?[cell]?.contains(row) ?? false) else { continue }
+                    if add(&rows[row], camera.position, verified: depth != nil) { added = true }
                 }
                 if added {
                     pastLimitCells[side, default: [:]][cell] = rows
@@ -738,22 +811,42 @@ public struct CoverageMap: Sendable {
         return changed
     }
 
+    /// Indices of `observedCameras` in the order the frames were captured, which a rebuild replays
+    /// them in: `observe` sees them in the order their photos finished storing. By walked-path
+    /// segment (a replay's gap loop plays recorded frames again in a later one), then frame time,
+    /// a frame without one (the close-up) first in its segment, then the order observed.
+    private var captureOrder: [Int] {
+        observedCameras.indices.sorted { a, b in
+            (observedSegments[a], observedTimes[a] ?? -.infinity, a) < (observedSegments[b], observedTimes[b] ?? -.infinity, b)
+        }
+    }
+
     /// Rebuilds the ground past the limit ends from `observedCameras`, after an end moved or
     /// became or stopped being a limit.
     private mutating func replayPastLimits() {
         pastLimitCells = [:]
+        pastLimitHidden = [:]
         guard !limitEnds.isEmpty else { return }
-        for (camera, depth) in zip(observedCameras, observedDepths) { recordPastLimits(from: camera, depth: depth) }
+        for index in captureOrder { recordPastLimits(from: observedCameras[index], depth: observedDepths[index]) }
     }
 
     // MARK: Facing space
 
-    /// The server's default position error for something placed in AR, meters, at `s` meters
-    /// along the wall from the meter: 0.3 ft plus 0.16 ft per foot (server/README.md, "Writing
-    /// a scene" and "What settles each check", on origin/t3/server at e0ee8d3). The 0.16 per foot
-    /// is the server's measured ARKit drift; in meters it is 0.16 m per meter.
-    public static func positionError(atS s: Float) -> Float {
-        0.3 * 0.3048 + 0.16 * abs(s)
+    /// The server's position error for the wall line at `s`, meters: the default for how the
+    /// piece holding `s` was found (tap 0.3 ft, mesh 0.5, plane 0.75) plus its drift of 0.16 ft
+    /// per foot from the meter (`ServerErrorDefaults`, mirrored from the server's rules). The
+    /// server widens each wall's error by its source, so a walked clearance measured from a
+    /// detected-plane wall has to give up more than one from a tapped wall.
+    public func positionError(atS s: Float) -> Float {
+        ServerErrorDefaults.wall(wall.segment(atS: s).source, atS: s)
+    }
+
+    /// Records how the meter piece's line was found (`WallFrame.source`); the export and the
+    /// walked clearance read it.
+    public mutating func setWallLineSource(_ source: WallLineSource) {
+        guard wall.source != source else { return }
+        wall.source = source
+        revision += 1
     }
 
     /// How far out from the wall a cell is known clear because the homeowner walked past it,
@@ -762,8 +855,8 @@ public struct CoverageMap: Sendable {
     /// `walkStep` apart and kept at most `walkGap` seconds apart; it shows the space
     /// between the wall and itself clear, out to its end nearer the wall. The cell is clear out
     /// to the largest distance d such that steps reaching at least d cover it along the wall.
-    /// That distance less `positionError` at the cell's edge farther from the meter is the
-    /// clearance, which the contract takes as exact ("for a walked path, the distance from the
+    /// That distance less `positionError` at the cell's edges (the larger: farther from the
+    /// meter, or on the piece with the larger default) is the clearance, which the contract takes as exact ("for a walked path, the distance from the
     /// wall less your position error"). Nil when no steps cover the cell, nothing is left after
     /// the error, or the cell lies beyond a marked end.
     ///
@@ -786,7 +879,7 @@ public struct CoverageMap: Sendable {
                 reached = max(reached, step.high)
             }
             guard reached >= cell.upperBound - tolerance else { continue }
-            let clear = depth - Self.positionError(atS: max(abs(cell.lowerBound), abs(cell.upperBound)))
+            let clear = depth - max(positionError(atS: cell.lowerBound), positionError(atS: cell.upperBound))
             return clear > 0 ? clear : nil
         }
         return nil
@@ -814,22 +907,31 @@ public struct CoverageMap: Sendable {
     /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
     /// was lost, or the capture paused): walked-path facing does not join the poses on either
     /// side. A straight line across an outage or a detour would claim space no one walked past.
+    /// Frames captured from now on belong to a new `pathSegment`.
     public mutating func breakWalkedPath() {
-        pathBroken = true
+        pathSegment += 1
     }
 
+    /// Steps between poses kept in the same segment, in capture order (their times): the order
+    /// they were observed in is the order their photos finished storing, which can differ.
     private func walkedSteps() -> [WalkedStep] {
-        observedCameras.indices.dropFirst().compactMap { index in
-            guard !pathStarts.contains(index),
-                  let t0 = observedTimes[index - 1], let t1 = observedTimes[index], abs(t1 - t0) <= config.walkGap else { return nil }
-            let first = observedCameras[index - 1]
-            let second = observedCameras[index]
-            guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
-            let a = wall.wallPoint(first.position)
-            let b = wall.wallPoint(second.position)
-            guard a.out > 0, b.out > 0 else { return nil }
-            return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
+        let timed = observedCameras.indices.compactMap { index in observedTimes[index].map { (index, $0) } }
+        let segments = Dictionary(grouping: timed) { observedSegments[$0.0] }.values
+        return segments.flatMap { members -> [WalkedStep] in
+            let ordered = members.sorted { ($0.1, $0.0) < ($1.1, $1.0) }
+            return zip(ordered, ordered.dropFirst()).compactMap { earlier, later in step(from: earlier, to: later) }
         }
+    }
+
+    private func step(from earlier: (Int, Double), to later: (Int, Double)) -> WalkedStep? {
+        guard later.1 - earlier.1 <= config.walkGap else { return nil }
+        let first = observedCameras[earlier.0]
+        let second = observedCameras[later.0]
+        guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
+        let a = wall.wallPoint(first.position)
+        let b = wall.wallPoint(second.position)
+        guard a.out > 0, b.out > 0 else { return nil }
+        return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
     }
 
     // MARK: Overhead
@@ -991,7 +1093,7 @@ public struct CoverageMap: Sendable {
     public mutating func markSkipped(_ band: SurfaceBand, _ range: ClosedRange<Float>) {
         for index in indices(overlapping: range) where allows(index) {
             guard level(band, index) != .covered else { continue }
-            var cell = cells[band]?[index] ?? Cell(rowCount: rowOffsets(band).count)
+            var cell = cells[band]?[index] ?? newCell(band)
             cell.skipped = true
             cells[band, default: [:]][index] = cell
         }
@@ -1064,16 +1166,18 @@ public struct CoverageMap: Sendable {
         var skipped: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
         for (band, bandCells) in cells {
             for (index, cell) in bandCells where cell.skipped {
-                var kept = Cell(rowCount: rowOffsets(band).count)
+                var kept = newCell(band)
                 kept.skipped = true
                 skipped[band, default: [:]][index + whole] = kept
             }
         }
         cells = skipped
         depthCells = [:]
-        for (camera, depth) in zip(observedCameras, observedDepths) {
+        depthHidden = [:]
+        for index in captureOrder {
+            let camera = observedCameras[index], depth = observedDepths[index]
             recordDepth(from: camera, depth: depth)
-            recordSightings(visibleCells(from: camera, depth: depth), from: camera.position)
+            recordSightings(visibleCells(from: camera, depth: depth), from: camera.position, depthChecked: depth != nil)
         }
         replayPastLimits()
         revision += 1
@@ -1136,7 +1240,7 @@ public struct CoverageMap: Sendable {
 /// A stretch of wall (s, meters) and how far the view of it reached, meters: out from the wall
 /// for ground and facing, up from the ground for overhead. It is scene.json's `coverage.observed`
 /// entry before conversion to feet (`span_ft`, `out_ft`), and like `out_ft` it is a distance the
-/// capture is sure of, never rounded up.
+/// capture is sure of. The export rounds it down (`SceneExport.feetDown`).
 public struct ObservedSpan: Sendable, Equatable {
     public var span: ClosedRange<Float>
     public var out: Float

@@ -4,11 +4,9 @@ import simd
 
 /// What scene.json says about the wall and what was seen, when the 3D map is the coverage model.
 struct Map3DExport: Sendable {
-    /// The wall scene.json describes: the measured chain, or the walk's tapped wall. Its corners
-    /// carry their pieces' sources.
+    /// The wall scene.json describes: the measured chain, or the walk's tapped wall. It and its
+    /// corners carry their pieces' sources (`WallFrame.source`, `WallCorner.source`).
     var wall: WallFrame
-    /// How the meter's piece was found (`SceneWall.source`): the measured piece's, or the walk's.
-    var meterSource: WallLineSource
     /// The described stretch in s of `wall`; contains 0, the meter.
     var baselineS: ClosedRange<Float>
     /// Measured along `wall` and clipped to `baselineS`, the wall band with the height each
@@ -71,17 +69,16 @@ enum Map3DCoverageSource {
     /// and the server reads a ground span past a limit end as covering both sides of the wall's
     /// continued line, so reporting it would claim ground nobody saw.
     ///
-    /// `tapWall`, `tapMeterSource` and `baselineS` are the walk's (`CoverageMap.wall`,
-    /// `ScanEngine.meterLineSource`, `ScanEngine.exportSpan`).
+    /// `tapWall` and `baselineS` are the walk's (`CoverageMap.wall`, `ScanEngine.exportSpan`).
     static func export(
-        _ snapshot: Map3DSnapshot, tapWall: WallFrame, tapMeterSource: WallLineSource, baselineS: ClosedRange<Float>,
+        _ snapshot: Map3DSnapshot, tapWall: WallFrame, baselineS: ClosedRange<Float>,
         leftEndMarked: Bool, rightEndMarked: Bool, walkedFacing: [ObservedSpan], confirmedOverhead: [ObservedSpan]
     ) throws(Map3DCoverageError) -> Map3DExport {
         guard snapshot.wall == tapWall else { throw .wallMismatch }
         switch measuredExport(snapshot, tapWall: tapWall, baselineS: baselineS) {
         case .success(let measured):
             return Map3DExport(
-                wall: measured.wall, meterSource: measured.meterSource, baselineS: measured.baselineS,
+                wall: measured.wall, baselineS: measured.baselineS,
                 coverage: sceneCoverage(measured.coverage, within: measured.baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
                 plusMinus: measured.plusMinus, tappedBecause: nil)
         case .failure(let refusal):
@@ -89,7 +86,7 @@ enum Map3DCoverageSource {
             coverage.facing = largerReach(coverage.facing, walkedFacing)
             coverage.overhead = largerReach(coverage.overhead, confirmedOverhead)
             return Map3DExport(
-                wall: tapWall, meterSource: tapMeterSource, baselineS: baselineS,
+                wall: tapWall, baselineS: baselineS,
                 coverage: sceneCoverage(coverage, within: baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
                 plusMinus: [], tappedBecause: refusal.reason)
         }
@@ -102,7 +99,7 @@ enum Map3DCoverageSource {
 
     private static func measuredExport(
         _ snapshot: Map3DSnapshot, tapWall: WallFrame, baselineS: ClosedRange<Float>
-    ) -> Result<(wall: WallFrame, meterSource: WallLineSource, baselineS: ClosedRange<Float>, coverage: Map3DCoverage, plusMinus: [Float?]), Refusal> {
+    ) -> Result<(wall: WallFrame, baselineS: ClosedRange<Float>, coverage: Map3DCoverage, plusMinus: [Float?]), Refusal> {
         guard let chain = snapshot.chain, chain.meterIndex < chain.walls.count else { return .failure(Refusal(reason: "no measured wall passes the meter")) }
         guard let measured = snapshot.measured, measured.wall.segments.count == chain.walls.count else {
             return .failure(Refusal(reason: "the snapshot has no measured wall frame"))
@@ -145,7 +142,7 @@ enum Map3DCoverageSource {
             return .failure(Refusal(reason: "the measured chain spans s=\(leftEnd)...\(rightEnd) m, short of the baseline \(low)...\(high) m"))
         }
 
-        return .success((measured.wall, meterPiece.source, low...high, measured.coverage, chain.walls.map(plusMinus(of:))))
+        return .success((measured.wall, low...high, measured.coverage, chain.walls.map(plusMinus(of:))))
     }
 
     /// The line's position error, meters: the fit's two standard errors (`MeasuredWall.plusMinus`),

@@ -43,10 +43,6 @@ public struct SceneWall: Sendable, Equatable {
         self.source = source
     }
 
-    /// How the line of each piece of `chain.segments` was found, in the same order.
-    var segmentSources: [WallLineSource] {
-        leftCorners.reversed().map(\.source) + [source] + rightCorners.map(\.source)
-    }
 
     /// Unit vector toward +s on the meter's wall: cross(-outward, up). For outward (0, 0, 1) this
     /// is (1, 0, 0), which is the scene schema's rule that outward is the baseline direction
@@ -57,7 +53,7 @@ public struct SceneWall: Sendable, Equatable {
 
     /// The straight pieces, left to right, and the index of the meter's.
     public var chain: (segments: [WallSegment], meter: Int) {
-        WallSegment.chain(outward: outward, left: leftCorners, right: rightCorners)
+        WallSegment.chain(outward: outward, source: source, left: leftCorners, right: rightCorners)
     }
 
     public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
@@ -205,10 +201,6 @@ public enum MeterPlaneSource: Sendable, Equatable {
     /// It is there so the server treats a meter placed on a guessed surface as less certain than
     /// one on a detected wall.
     public static let estimatedPlaneExtraError: Float = 0.15
-    /// The server's meter error when scene.json leaves it out: 0.3 ft (rules.yaml errors.meter_ft
-    /// on origin/t3/server at 739fb6f). Mirrored here so the extra error adds to it; if the rules
-    /// change, this goes stale.
-    public static let serverDefaultMeterError: Float = 0.3 * 0.3048
 }
 
 public struct SceneInput: Sendable {
@@ -309,10 +301,11 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
 }
 
 extension ObservedSpan {
-    /// At most `limit` spans (`limit` >= 1), made by joining the touching neighbours whose reaches
-    /// differ least, each join keeping the smaller reach, so nothing reports more than was seen.
-    /// Spans that do not touch are never joined: that would claim the gap between them. If more
-    /// than `limit` separate runs remain, the shortest are dropped, which only ever under-reports.
+    /// At most `limit` spans (`limit` >= 1), made by joining the touching neighbours (within
+    /// 0.1 mm) whose reaches differ least, each join keeping the smaller reach, so a joined span
+    /// reaches no farther than any span it covers. Spans farther apart are never joined: that
+    /// would claim the gap between them. If more than `limit` separate runs remain, the shortest
+    /// are dropped, which only reports less.
     static func coarsened(_ spans: [ObservedSpan], toAtMost limit: Int) -> [ObservedSpan] {
         var spans = spans.sorted { $0.span.lowerBound < $1.span.lowerBound }
         let touching: Float = 1e-4
@@ -401,7 +394,7 @@ public enum SceneExport {
         let objectError = input.objectPlusMinus.map(feet)
         let meterError: Float? = switch input.meterPlane {
         case .detectedPlane: input.meterPlusMinus
-        case .estimatedPlane: (input.meterPlusMinus ?? MeterPlaneSource.serverDefaultMeterError) + MeterPlaneSource.estimatedPlaneExtraError
+        case .estimatedPlane: (input.meterPlusMinus ?? ServerErrorDefaults.meter) + MeterPlaneSource.estimatedPlaneExtraError
         }
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
@@ -467,28 +460,52 @@ public enum SceneExport {
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
-        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: bandBudget)) }
+        let corners = chain.segments.dropLast().map(\.span.upperBound)
+        let writtenWalls = walls(chain.segments, ids: wallIDs, sources: chain.segments.map(\.source), plusMinus: input.wallPlusMinus, baselineS: input.baselineS, height: input.wallHeight, plan: plan)
+        let meterFeet = point3Feet(wall.meter)
+        // Ground entries stop short of every corner, after all joining. The server draws a ground
+        // entry as the strip in front of the chain over its span and, where the span crosses a
+        // corner, fills the sector between the two pieces' strips (server/scene.py
+        // `band_polygon`, t3/server 930e8e5); no coverage sample lies in that sector. It finds
+        // the corners from the walls as written, whose rounding moves them off the phone's by
+        // up to about 0.0001 ft, and an entry crossing by more than 1e-9 ft brings the sector
+        // back, so the cut is at the corners as the server computes them (`serverCornerS`).
+        // Entries that stop at a corner are drawn separately and unioned, which adds no sector.
+        // The wall, facing and overhead bands are read only as stretches of s (`missing`,
+        // `seen_to`), so crossing a corner claims nothing extra there. Joining first leaves room
+        // for one more entry per corner.
+        let serverCorners = Self.serverCornerS(writtenWalls, meterPlan: SIMD2(meterFeet[0], meterFeet[2]), meterWallID: input.wallID)
+        reaches = reaches.map { band, spans in
+            (band, ObservedSpan.coarsened(spans, toAtMost: band == "ground" ? max(1, bandBudget - corners.count) : bandBudget))
+        }
         var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {
-            observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
+            for item in spans {
+                guard let span = spanInward(item.span) else { continue }
+                let pieces = band == "ground" ? Self.cut(span, around: serverCorners, margin: cornerMarginFeet) : [span]
+                observed += pieces.map { .init(band: band, span_ft: $0, out_ft: feetDown(item.out)) }
+            }
         }
         if let type = input.groundType {
-            let seen = reaches.first { $0.band == "ground" }?.spans ?? []
-            ground += groundPatches(type, over: seen, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
+            // Patches from the ground entries as written, not the meters before rounding.
+            let written = observed.filter { $0.band == "ground" }.compactMap { entry in
+                entry.out_ft.map { out in
+                    ObservedSpan(
+                        span: Float(entry.span_ft[0] / SceneUnits.feetPerMeter)...Float(entry.span_ft[1] / SceneUnits.feetPerMeter),
+                        out: Float(out / SceneUnits.feetPerMeter))
+                }
+            }
+            ground += groundPatches(type, over: written, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
         }
 
         // Mesh measurements, split where the chain turns a corner so each entry names the wall it
         // is in front of. Coarsening first leaves room for one more entry per corner.
-        let corners = chain.segments.dropLast().map(\.span.upperBound)
         func measured(_ spans: [ObservedSpan], _ field: String, room: Int) throws -> [(id: String, span: [Double], value: Double)] {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "\(field)[\(index)].out") }
             let limit = room - corners.count
             guard limit >= 1 else { return [] }
-            return ObservedSpan.coarsened(spans, toAtMost: limit).flatMap { item in
-                let cuts = [item.span.lowerBound] + corners.filter { item.span.contains($0) && $0 != item.span.lowerBound && $0 != item.span.upperBound } + [item.span.upperBound]
-                return zip(cuts, cuts.dropFirst()).map { low, high in
-                    (wallIDAt((low + high) / 2), spanFeet(low...high), feetDown(item.out))
-                }
+            return Self.split(ObservedSpan.coarsened(spans, toAtMost: limit), at: corners).compactMap { item in
+                spanInward(item.span).map { (wallIDAt((item.span.lowerBound + item.span.upperBound) / 2), $0, feetDown(item.out)) }
             }
         }
         facing += try measured(input.meshFacing, "meshFacing", room: maxMeasured - facing.count).map {
@@ -503,7 +520,7 @@ public enum SceneExport {
         return SceneDocument(
             schema_version: "1.0",
             meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
-            walls: walls(chain.segments, ids: wallIDs, sources: wall.segmentSources, plusMinus: input.wallPlusMinus, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
+            walls: writtenWalls,
             objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(
                 ends: .init(
@@ -535,24 +552,100 @@ public enum SceneExport {
         }
     }
 
-    /// Patches of `type` over the ground `spans` saw (`SceneWall.groundPatchPolygons`), at most
-    /// `room` of them, without `plus_minus_ft` (the server's tap default). A span gives one patch
-    /// per piece it overlaps, so at most one more than the corners inside it. The spans are first
-    /// joined to leave room for that, as `coverage.observed` is (`ObservedSpan.coarsened`), which
-    /// only ever gives ground up.
+    /// How far short of a corner each ground entry beside it ends, feet. The corners come from
+    /// the server's own arithmetic on the written chain, so no margin is needed for rounding;
+    /// this one covers floating-point differences from the server's Python and small changes in
+    /// how it unrolls the chain, either of which would otherwise bring the whole sector back.
+    /// The 0.004 ft left between the two sides is under the server's COVERAGE_TOLERANCE_FT
+    /// (0.01 ft), so the wall, facing and overhead bands read it as rounding, and inside the
+    /// 0.005 ft by which it grows seen ground, which closes it with a rounded corner of that
+    /// radius rather than the sector.
+    static let cornerMarginFeet: Double = 0.002
+
+    /// A written span in feet with `margin` either side of each corner removed: the side to the
+    /// left ends at the corner less the margin rounded down to 4 decimals, the side to the right
+    /// starts at the corner plus the margin rounded up.
+    static func cut(_ span: [Double], around corners: [Double], margin: Double) -> [[Double]] {
+        var pieces = [span]
+        for corner in corners.sorted() {
+            let left = ((corner - margin) * 10_000).rounded(.down) / 10_000
+            let right = ((corner + margin) * 10_000).rounded(.up) / 10_000
+            pieces = pieces.flatMap { piece -> [[Double]] in
+                guard piece[0] < right, piece[1] > left else { return [piece] }
+                return [[piece[0], min(piece[1], left)], [max(piece[0], right), piece[1]]].filter { $0[0] < $0[1] }
+            }
+        }
+        return pieces
+    }
+
+    /// The s of each corner of the written chain as the server computes it (server/scene.py
+    /// `parse_scene`, t3/server 930e8e5): walls laid end to end from the chain's left end, each
+    /// as long as its written baseline, then shifted so the meter's plan point, projected onto
+    /// the meter's wall and clamped to it, is at 0. Feet.
+    fileprivate static func serverCornerS(_ walls: [SceneDocument.Wall], meterPlan: SIMD2<Double>, meterWallID: String) -> [Double] {
+        var s = 0.0
+        var pieces: [(id: String, a: SIMD2<Double>, along: SIMD2<Double>, s0: Double, s1: Double)] = []
+        for wall in walls {
+            let a = SIMD2(wall.baseline[0][0], wall.baseline[0][1])
+            let b = SIMD2(wall.baseline[1][0], wall.baseline[1][1])
+            let length = simd_length(b - a)
+            guard length > 0 else { continue }
+            pieces.append((wall.id, a, (b - a) / length, s, s + length))
+            s += length
+        }
+        let meterPieces = pieces.filter { $0.id == meterWallID }.map { piece -> (distance: Double, s: Double) in
+            let local = piece.s0 + simd_dot(meterPlan - piece.a, piece.along)
+            let clamped = min(max(local, piece.s0), piece.s1)
+            return (simd_length(meterPlan - (piece.a + piece.along * (clamped - piece.s0))), clamped)
+        }
+        let shift = meterPieces.min { $0.distance < $1.distance }?.s ?? 0
+        return pieces.dropLast().map { $0.s1 - shift }
+    }
+
+    /// Spans cut at every one of `cuts` that lies strictly inside them.
+    static func split(_ spans: [ObservedSpan], at cuts: [Float]) -> [ObservedSpan] {
+        spans.flatMap { item in
+            let edges = [item.span.lowerBound] + cuts.filter { item.span.lowerBound < $0 && $0 < item.span.upperBound }.sorted()
+                + [item.span.upperBound]
+            return zip(edges, edges.dropFirst()).map { ObservedSpan(span: $0...$1, out: item.out) }
+        }
+    }
+
+    /// Ground entries closer than this are one stretch to the server, which reads gaps under its
+    /// COVERAGE_TOLERANCE_FT (0.01 ft, server/scene.py at 930e8e5) as rounding and grows what was
+    /// seen by half of it; a patch may run across such a gap at the lower reach.
+    static let patchJoinGapFeet: Double = 0.01
+    /// How far every seen edge of a patch is pulled in before its vertices are rounded to the
+    /// nearest 0.0001 ft, which moves a point at most 0.71e-4 ft.
+    static let patchInsetFeet: Double = 1e-4
+    /// How far behind the wall line a patch starts. The server's wall line runs through the
+    /// baseline as written, rounded like the patch; a patch starting exactly on the phone's line
+    /// could round to a sliver short of the server's, which leaves that sliver an unrecorded
+    /// surface along the whole wall and the footprint's back edge off the patch. 0.001 ft is ten
+    /// rounding steps; behind the line is the house, where the server models no ground.
+    static let patchBehindWallFeet: Double = 0.001
+
+    /// Patches of `type` over the ground entries as written (`SceneWall.groundPatchPolygons`), at
+    /// most `room` of them, without `plus_minus_ft` (the server's tap default). The entries are
+    /// already split at corners and joined to their budget, so there is at most one patch per
+    /// entry.
     private static func groundPatches(
         _ type: SceneGroundType, over spans: [ObservedSpan], wall: SceneWall, extent: ClosedRange<Float>, room: Int
     ) -> [SceneDocument.Ground] {
-        let limit = room - (wall.chain.segments.count - 1)
-        guard limit >= 1 else { return [] }
-        let polygons = wall.groundPatchPolygons(over: ObservedSpan.coarsened(spans, toAtMost: limit), within: extent)
+        guard room >= 1 else { return [] }
+        let meters = { (feet: Double) in Float(feet / SceneUnits.feetPerMeter) }
+        let polygons = wall.groundPatchPolygons(
+            over: spans, within: extent, joinGap: meters(patchJoinGapFeet), inset: meters(patchInsetFeet), behind: meters(patchBehindWallFeet))
         let patches = polygons.compactMap { polygon -> SceneDocument.Ground? in
             var points: [[Double]] = []
             for p in polygon.map({ [feet($0.x), feet($0.y)] }) where p != points.last { points.append(p) }
             if points.count > 1, points.first == points.last { points.removeLast() }
             return points.count >= 3 ? SceneDocument.Ground(type: type.rawValue, polygon: points) : nil
         }
-        // Spans that overlap each other (never from CoverageMap) could still give more.
+        // At most one polygon per written ground entry (125 at most, `bandBudget`), each of at
+        // most 2 + 2 x 125 points plus two from a corner's cut, under the schema's 500. With so
+        // many driveway strips that the entries outnumber the room, the last patches go: less
+        // ground, never more.
         return Array(patches.prefix(room))
     }
 
@@ -606,9 +699,11 @@ public enum SceneExport {
 
     private static func feet(_ meters: Float) -> Double { round4(Double(meters) * SceneUnits.feetPerMeter) }
 
-    /// A reach in feet, rounded down to 4 decimals: the server takes every `out_ft` as exact, so
-    /// rounding must never report more than was seen. The 1e-7 ft allowance keeps Float noise in a
-    /// whole number of 6 in rows (1.4999999 ft for 3 rows) from dropping a full 0.0001 ft.
+    /// A reach in feet, rounded down to 4 decimals, since the server takes every `out_ft` as
+    /// exact. One exception: a value less than 1e-7 ft below a 4-decimal value rounds up to it.
+    /// That allowance absorbs Float32 error on exact half-foot values (three 6 in rows arrive as
+    /// 1.4999999 ft and are written as 1.5, not 1.4999); it also means any value can be written
+    /// up to 1e-7 ft above the Float it came from.
     static func feetDown(_ meters: Float) -> Double {
         let value = Double(meters) * SceneUnits.feetPerMeter
         let down = ((value + 1e-7) * 10_000).rounded(.down) / 10_000
@@ -616,6 +711,21 @@ public enum SceneExport {
     }
 
     private static func spanFeet(_ span: ClosedRange<Float>) -> [Double] { [feet(span.lowerBound), feet(span.upperBound)] }
+
+    /// A span of what was seen in feet, each end rounded to 4 decimals toward the other. One
+    /// exception: an end less than 1e-5 ft outside a 4-decimal value is taken as that value.
+    /// That allowance absorbs Float32 error on exact half-foot values: cell edges are whole 6 in
+    /// steps, which arrive a few 1e-6 ft off at 30 ft from the meter, and rounding one a full
+    /// step inward would open a 0.0001 ft gap between neighbouring entries that the server's
+    /// `seen_to` reads as unseen. It also means any end can be written up to 1e-5 ft (3
+    /// micrometres) outside the Float it came from. Nil when nothing is left.
+    static func spanInward(_ span: ClosedRange<Float>) -> [Double]? {
+        let noise = 1e-5
+        let low = ((Double(span.lowerBound) * SceneUnits.feetPerMeter - noise) * 10_000).rounded(.up) / 10_000
+        let high = ((Double(span.upperBound) * SceneUnits.feetPerMeter + noise) * 10_000).rounded(.down) / 10_000
+        guard low < high else { return nil }
+        return [low == 0 ? 0 : low, high == 0 ? 0 : high]
+    }
 
     private static func planFeet(_ p: SIMD3<Float>) -> [Double] { [feet(p.x), feet(p.z)] }
 

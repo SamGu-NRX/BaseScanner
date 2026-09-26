@@ -41,8 +41,8 @@ public struct MeasuredWallChain: Sendable, Equatable {
     /// The chain as a `WallFrame` for coverage and scene.json: its meter piece passes through
     /// `meter` (world) with the measured piece's direction, and each measured corner is a turn
     /// at the same distance along the chain from the meter, carrying its piece's source. `frame`
-    /// is the map's frame. Nil when the chain is empty. The meter piece's source is
-    /// `walls[meterIndex].source`; a `WallFrame` has no field for it.
+    /// is the map's frame. Nil when the chain is empty. The meter piece's source is its
+    /// `WallFrame.source`.
     public func wallFrame(meter: SIMD3<Float>, groundY: Float, frame: MapFrame) -> WallFrame? {
         guard meterIndex < walls.count else { return nil }
         func worldOutward(_ wall: MeasuredWall) -> SIMD3<Float> {
@@ -50,6 +50,7 @@ public struct MeasuredWallChain: Sendable, Equatable {
             return simd_normalize(SIMD3(d.x, 0, d.z))
         }
         guard var result = WallFrame(meter: meter, outward: worldOutward(walls[meterIndex]), groundY: groundY) else { return nil }
+        result.source = walls[meterIndex].source
         let meterMap = frame.map(meter)
         let meterPiece = walls[meterIndex]
         // s of the meter's foot on its piece, from the piece's start, kept a centimeter inside

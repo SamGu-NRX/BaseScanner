@@ -28,6 +28,37 @@ enum SceneSchemas {
     static func scene() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: data("scene.schema.json")) }
     static func result() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: data("result.schema.json")) }
 
+    /// The server branch the vendored copies come from.
+    static let serverBranch = "origin/t3/server"
+
+    /// The upstream copy of a vendored file: the repository's own tree once `branch` is merged
+    /// into it, otherwise `git show <branch>:<path>`. Nil when neither is there: no repository,
+    /// no git, or no such ref. CI checks out one commit of one branch (actions/checkout's default
+    /// depth 1), so there it is nil and the drift tests show as skipped, not passed.
+    static func upstream(_ path: String, branch: String) -> Data? {
+        guard let root = repoRoot() else { return nil }
+        let file = root.appendingPathComponent(path)
+        if FileManager.default.fileExists(atPath: file.path) { return try? Data(contentsOf: file) }
+        return gitShow("\(branch):\(path)", in: root)
+    }
+
+    private static func gitShow(_ object: String, in root: URL) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", root.path, "show", object]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? data : nil
+    }
+
     /// Walks up from this file to the first directory holding `server/schemas` or `.git`.
     static func repoRoot(from file: String = #filePath) -> URL? {
         var dir = URL(fileURLWithPath: file).deletingLastPathComponent()
@@ -142,15 +173,16 @@ enum SceneSchemas {
         #expect(try SceneSchemas.scene().validate(SceneSchemas.data("example-scene.json")) == [])
     }
 
-    @Test func vendoredCopiesMatchServer() throws {
-        // Without the server tree (before the server branch is merged) there is nothing to compare;
-        // the vendored copies then stand as taken from origin/t3/server 930e8e5.
-        guard let root = SceneSchemas.repoRoot() else { return }
+    /// Each vendored copy against the server's current one: the tree's `server/` once merged,
+    /// else origin/t3/server through git. Skipped, not passed, where neither can be read.
+    @Test(.enabled(
+        if: SceneSchemas.upstream(SceneSchemas.vendored[0].serverPath, branch: SceneSchemas.serverBranch) != nil,
+        "neither server/ nor \(SceneSchemas.serverBranch) is available to compare against"))
+    func vendoredCopiesMatchServer() throws {
         for (name, serverPath, _) in SceneSchemas.vendored {
-            let serverFile = root.appendingPathComponent(serverPath)
-            guard FileManager.default.fileExists(atPath: serverFile.path) else { continue }
-            let vendored = try SceneSchemas.data(name)
-            #expect(try Data(contentsOf: serverFile) == vendored, "Tests/HouseScanKitTests/Schemas/\(name) differs from \(serverPath); copy the server's file over it")
+            let server = try #require(
+                SceneSchemas.upstream(serverPath, branch: SceneSchemas.serverBranch), "\(serverPath) is not on \(SceneSchemas.serverBranch)")
+            #expect(server == (try SceneSchemas.data(name)), "Tests/HouseScanKitTests/Schemas/\(name) differs from \(serverPath); copy the server's file over it")
         }
     }
 

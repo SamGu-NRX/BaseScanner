@@ -12,6 +12,9 @@ import Foundation
 // below) still fails, because the app can't show a decision or outcome it doesn't know.
 // `reasons[].code`, `policy.sources` and `route.crossings[].effect` are plain strings: the app
 // never reads them, so a value the server adds to them must not break every decode.
+// `missing_evidence[].kind` and `.band` decode an unknown value as `.unknown`: one request the
+// app can't act on goes to installer review instead of hiding the whole answer. The keys and
+// their types stay required.
 
 public enum PlacementDecodingError: Error, Equatable, CustomStringConvertible {
     case unsupportedSchemaVersion(String)
@@ -59,18 +62,77 @@ public enum PlacementComparison: String, Codable, Sendable, Equatable {
     public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
 }
 
-public enum PlacementEvidenceKind: String, Codable, Sendable, Equatable {
+/// A missing-evidence item's kind. A kind the server adds after this app is `.unknown`, with no
+/// capture request (`GapPlanner.plan(for:leftEnd:rightEnd:)`), so the result shows it for
+/// installer review.
+public enum PlacementEvidenceKind: Codable, Sendable, Equatable {
     case band
-    case pastEnd = "past_end"
-    public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
+    case pastEnd
+    case unknown(String)
+
+    public init(rawValue: String) {
+        self = switch rawValue {
+        case "band": .band
+        case "past_end": .pastEnd
+        default: .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .band: "band"
+        case .pastEnd: "past_end"
+        case .unknown(let raw): raw
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        self.init(rawValue: try decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(rawValue)
+    }
 }
 
-public enum PlacementBand: String, Codable, Sendable, Equatable {
+/// A missing-evidence item's band. A band the server adds after this app is `.unknown`, with no
+/// capture request, as an unknown kind is.
+public enum PlacementBand: Codable, Sendable, Equatable {
     case wall
     case ground
     case overhead
     case facing
-    public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
+    case unknown(String)
+
+    public init(rawValue: String) {
+        self = switch rawValue {
+        case "wall": .wall
+        case "ground": .ground
+        case "overhead": .overhead
+        case "facing": .facing
+        default: .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .wall: "wall"
+        case .ground: "ground"
+        case .overhead: "overhead"
+        case .facing: "facing"
+        case .unknown(let raw): raw
+        }
+    }
+
+    public init(from decoder: any Decoder) throws {
+        self.init(rawValue: try decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var c = encoder.singleValueContainer()
+        try c.encode(rawValue)
+    }
 }
 
 public enum PlacementSide: String, Codable, Sendable, Equatable {

@@ -18,10 +18,11 @@ extension ScanEngine {
         let wall = geometry.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         // The corners carry their pieces' sources (`markNextWall`, or the measured chain's); the
-        // meter's piece is `geometry.meterSource`.
+        // meter's piece, its own (`meterLineSource`, set on the map in `markMeter`, or the
+        // measured piece's).
         let sceneWall = SceneWall(
             meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners,
-            source: geometry.meterSource)
+            source: wall.source)
 
         // SceneExport rejects negative heights, a top below a bottom, ground points behind the
         // wall and a zero-length driveway edge, and taps can produce each of them once the ground
@@ -91,8 +92,6 @@ extension ScanEngine {
     /// of its pieces' lines is known.
     struct ExportGeometry: Sendable {
         var wall: WallFrame
-        /// `SceneWall.source`: how the meter's piece was found.
-        var meterSource: WallLineSource
         var baselineS: ClosedRange<Float>
         var coverage: SceneCoverage
         /// `SceneInput.wallPlusMinus`; empty takes the server's default for every piece.
@@ -106,7 +105,7 @@ extension ScanEngine {
         guard let map = coverage else { throw ExportError.noWall }
         guard let map3D else {
             return ExportGeometry(
-                wall: map.wall, meterSource: meterLineSource, baselineS: Self.exportSpan(map),
+                wall: map.wall, baselineS: Self.exportSpan(map),
                 coverage: SceneCoverage(map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit),
                 plusMinus: [])
         }
@@ -119,7 +118,7 @@ extension ScanEngine {
             guard let map = coverage else { throw ExportError.noWall }
             guard snapshot.wall == map.wall else { continue }
             let export = try Map3DCoverageSource.export(
-                snapshot, tapWall: map.wall, tapMeterSource: meterLineSource, baselineS: Self.exportSpan(map),
+                snapshot, tapWall: map.wall, baselineS: Self.exportSpan(map),
                 leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit,
                 walkedFacing: map.facingSpans(), confirmedOverhead: map.overheadSpans())
             let why = if let reason = export.tappedBecause {
@@ -129,7 +128,7 @@ extension ScanEngine {
             }
             RuntimeLog.engine.info("export: 3D map revision \(snapshot.revision), \(why, privacy: .public), \(export.wall.segments.count) pieces, s \(export.baselineS.lowerBound)...\(export.baselineS.upperBound)")
             return ExportGeometry(
-                wall: export.wall, meterSource: export.meterSource, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
+                wall: export.wall, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
         }
         throw ExportError.wallKeptMoving
     }

@@ -46,9 +46,9 @@ final class ScanEngine {
     private var closeUpRetake: (problem: CloseUpProblem, since: Double)?
     /// The reader's answer for the close-up on screen, for the advice after "None of these".
     private var meterReadout: MeterReadout?
-    /// Camera and depth of the frame the close-up photo on disk was taken from, when its tracking
-    /// was normal: coverage takes it when the close-up step ends (`observeCloseUpView`).
-    var closeUpView: (camera: CameraFrame, depth: DepthImage?)?
+    /// The close-up view coverage may take when the close-up step ends (`observeCloseUpView`):
+    /// that of the photo on disk, once the reader's image checks passed it.
+    var closeUpCredit = CloseUpCredit()
     /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
     /// for its own generation's. Keyed so a write finishing after a reset can't count against
     /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
@@ -109,11 +109,11 @@ final class ScanEngine {
     // Tilt-up step and overhead requests
     /// Set once the tilt-up step is answered or skipped: the walk asks it once per scan.
     var tiltUpSettled = false
-    /// The tilted-up view the overhead question is about. "Open sky or nothing overhead" keeps it
-    /// as a keyframe and in the coverage map (`keepOverheadView`), which the export sends as the
-    /// overhead band; "A roof edge, porch or stairs" keeps nothing, so the server treats that
-    /// stretch as unseen.
-    private var pendingOverhead: SourceFrame?
+    /// The tilted-up view the overhead question is about, with the walked-path segment it was
+    /// captured in. "Open sky or nothing overhead" keeps it as a keyframe and in the coverage map
+    /// (`keepOverheadView`), which the export sends as the overhead band; "A roof edge, porch or
+    /// stairs" keeps nothing, so the server treats that stretch as unseen.
+    private var pendingOverhead: (frame: SourceFrame, segment: Int?)?
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -226,7 +226,7 @@ final class ScanEngine {
             closeUpPending = false
             closeUpRetake = nil
             meterReadout = nil
-            closeUpView = nil
+            closeUpCredit = CloseUpCredit()
             state.meterNumber = nil
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
@@ -300,15 +300,28 @@ final class ScanEngine {
         CaptureRecorder(directory: store.directory.appending(path: "streams-raw", directoryHint: .isDirectory))
     }
 
-    /// Streams record while a capture is under way, from the meter search to the upload, and stop
-    /// on the result; a request raised from the result starts them again. Core Motion runs only
-    /// with the live camera: a replay's frames were recorded by another phone at another time.
+    /// Streams record while a capture is under way, from the meter search through the upload that
+    /// sends it. They stop on the result, and when an upload fails or is refused, since the phone
+    /// may then sit idle for minutes; a request raised from the result, going back to the review
+    /// or sending again starts them again. Depth frames record only where the camera is meant to
+    /// be on the wall (the close-up, the walk, a gap request), so the meter search and the review
+    /// don't spend `DepthFrameBudget`. Core Motion runs only with the live camera: a replay's
+    /// frames were recorded by another phone at another time.
     private func updateRecording() {
         let capturing = switch state.phase {
-        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest, .uploading: true
+        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest: true
+        case .uploading:
+            switch state.upload {
+            case .failed, .rejected: false
+            case .idle, .packaging, .uploading, .analyzing, .done: true
+            }
         case .onboarding, .result, .resultAR, .unsupported: false
         }
-        recorder.setRecording(capturing)
+        let depthFrames = switch state.phase {
+        case .meterCloseUp, .wallWalk, .gapRequest: true
+        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        }
+        recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
         if capturing { motion.start(into: recorder) } else { motion.stop() }
     }
@@ -467,6 +480,9 @@ final class ScanEngine {
 
     private func captureCloseUp(_ frame: SourceFrame) {
         state.closeUp = .captured(nil)
+        // This shot's save replaces the photo on disk: the last one's view no longer counts.
+        closeUpCredit.shotStarted()
+        let view = frame.tracking == .normal ? CloseUpView(camera: frame.camera, depth: frame.depth) : nil
         let scan = generation
         let store = store
         Task {
@@ -478,19 +494,19 @@ final class ScanEngine {
                 retakeCloseUp(.blurry)
                 return
             }
-            closeUpView = frame.tracking == .normal ? (frame.camera, frame.depth) : nil
             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             state.closeUp = .captured(thumbnail)
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
-            await readMeterNumber(scan: scan)
+            await readMeterNumber(scan: scan, view: view)
         }
     }
 
     /// Reads the meter number from the saved close-up, off the main actor, then offers the
     /// candidates for the homeowner to pick from (never filling one in) or asks for a retake.
-    private func readMeterNumber(scan: Int) async {
+    /// `view` is the shot's, which coverage may take once the reader has passed its photo.
+    private func readMeterNumber(scan: Int, view: CloseUpView?) async {
         state.meterNumber = .reading
         let reader = MeterNumberReaders.make()
         let photo = store.directory.appending(path: "meter_close.jpg")
@@ -499,6 +515,7 @@ final class ScanEngine {
             return await reader.read(jpeg: jpeg)
         }.value
         guard scan == generation, state.phase == .meterCloseUp, state.meterNumber == .reading else { return }
+        closeUpCredit.photoChecked(view, passed: readout?.photoPassedChecks == true)
         guard let readout else {
             RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
             retakeCloseUp(.noNumber)
@@ -590,12 +607,16 @@ final class ScanEngine {
     /// Stores a kept frame; coverage and the capture count move only once its photo is on disk,
     /// so the strip never claims a view the bundle lacks. The photo, pose and tracking all come
     /// from the one `SourceFrame`, so what is credited is the pose of the stored image. With
-    /// `overhead`, the stored view is also kept as a clear overhead view.
-    private func keep(_ frame: SourceFrame, overhead: Bool = false) {
+    /// `overhead`, the stored view is also kept as a clear overhead view. `segment` is the
+    /// walked-path segment the frame was captured in, when it was captured before now.
+    private func keep(_ frame: SourceFrame, overhead: Bool = false, capturedIn segment: Int? = nil) {
         let kind: CaptureEvent.Kind = state.phase == .gapRequest ? .gap : .walk
         let index = store.nextKeyframeIndex()
         let scan = generation
         let store = store
+        // The walked-path segment the frame was captured in: a break while its photo stores must
+        // not join it to frames captured after the break.
+        let segment = segment ?? coverage?.pathSegment
         pendingSaves[scan, default: 0] += 1
         Task {
             // Every exit drains this generation's count, so the upload never waits on a write
@@ -617,7 +638,7 @@ final class ScanEngine {
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             // The frame's own time lets the walked path join only poses kept close together in time.
             // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
-            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth)
+            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
@@ -811,7 +832,8 @@ final class ScanEngine {
         let seen = Self.tiltedUp(frame.camera, map)
         guard seen.contains(where: { $0.overlaps(wanted) }) else { return }
         if state.phase == .gapRequest, let plan = gapPlan, !gapPlanner.overheadViewSettles(plan, map, camera: frame.camera) { return }
-        pendingOverhead = frame
+        // The segment now: the answer can come after a tracking break.
+        pendingOverhead = (frame, coverage?.pathSegment)
         state.overheadQuestion = true
         RuntimeLog.engine.info("tilt-up view over s \(seen.first?.lowerBound ?? 0)...\(seen.last?.upperBound ?? 0): asking what is overhead")
     }
@@ -820,12 +842,12 @@ final class ScanEngine {
     /// keeps the view the question was about; false for "A roof edge, porch or stairs", "Can't
     /// get there" or leaving the walk, which keep nothing.
     func settleTiltUp(clear: Bool) {
-        let frame = pendingOverhead
+        let pending = pendingOverhead
         pendingOverhead = nil
         state.overheadQuestion = false
         tiltUpSettled = true
         // After settling, so the guidance recomputed once it is stored moves past the tilt-up step.
-        let storing = clear && frame.map { keepOverheadView($0) } == true
+        let storing = clear && pending.map { keepOverheadView($0.frame, capturedIn: $0.segment) } == true
         RuntimeLog.engine.info("tilt-up step settled: \(storing ? "storing the clear overhead view" : "nothing recorded", privacy: .public)")
     }
 
@@ -834,14 +856,14 @@ final class ScanEngine {
     /// the request closes through `updateGap`. Something overhead means no view can settle it:
     /// the request goes to installer review and the gap loop moves on to the upload.
     func settleOverheadGap(clear: Bool) {
-        let frame = pendingOverhead
+        let pending = pendingOverhead
         pendingOverhead = nil
         state.overheadQuestion = false
         guard clear else {
             skipCurrentGap(because: "something is overhead", refused: false)
             return
         }
-        if frame.map({ keepOverheadView($0) }) != true {
+        if pending.map({ keepOverheadView($0.frame, capturedIn: $0.segment) }) != true {
             RuntimeLog.engine.error("overhead answer: the view asked about could not be kept")
         }
     }
@@ -922,10 +944,11 @@ final class ScanEngine {
             // 65 degree view limit. Geometry only; not tried on a device.
             return (map.wall.world(s: center, height: 0, out: out), max(standOff, out + 1))
         case .walkOut(let out):
-            // The walk has to pass `out` plus the position error at the span's far edge; 0.3 m
-            // more leaves room for drifting toward the wall. The 0.3 m is a guess.
-            let farEdge = max(abs(plan.span.lowerBound), abs(plan.span.upperBound))
-            return (map.wall.world(s: center, height: 1.2), max(standOff, out + CoverageMap.positionError(atS: farEdge) + 0.3))
+            // The walk has to pass `out` plus the wall's position error at the span's end where it
+            // is larger (farther from the meter, or on a piece with a larger default); 0.3 m more
+            // leaves room for drifting toward the wall. The 0.3 m is a guess.
+            let error = max(map.positionError(atS: plan.span.lowerBound), map.positionError(atS: plan.span.upperBound))
+            return (map.wall.world(s: center, height: 1.2), max(standOff, out + error + 0.3))
         case .overhead(let height):
             // Aim where a tilted-up view reaches, or at the height asked for when that is higher.
             let aim = max(Self.tiltUpHeight(map), height ?? 0)
@@ -982,10 +1005,25 @@ final class ScanEngine {
         // After 20 s ARKit is unlikely to relocalize; the old world frame is gone (checklist R5).
         guard frame.timestamp - since > 20 else { return }
         switch state.phase {
-        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest:
-            // Capture still needs the world frame: start again from the meter.
+        case .findMeter, .meterCloseUp, .wallWalk:
+            // The walk still needs the world frame: start again from the meter.
             RuntimeLog.capture.info("relocalization timed out after 20 s: resetting to the meter")
             resetSpatialState(reason: "relocalization timed out")
+        case .gapRequest:
+            // The scan so far is whole; only this request needs the lost frame. It goes to installer
+            // review as if the homeowner couldn't get there, and the upload that follows keeps the
+            // scan (and, for a request raised from the result, replaces the result with the new
+            // answer). The clock restarts, so a later request gets its own 20 s.
+            relocalizingSince = nil
+            // A request already met is on its way to the upload (`afterGapResolved`).
+            guard state.gap?.isSatisfied != true else { return }
+            RuntimeLog.capture.info("relocalization timed out after 20 s: leaving the gap for installer review")
+            skipCurrentGap(because: "the phone lost its place for 20 s")
+        case .markFeatures:
+            // The review needs no live frame: "Looks complete" uploads the scan as it is, and
+            // "Add something", which taps into the world frame, waits for tracking to return
+            // (`beginMarking`). Nothing is thrown away.
+            break
         case .uploading, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
@@ -1022,7 +1060,10 @@ final class ScanEngine {
         }
     }
 
-    /// Forgets everything tied to the old world frame and asks for the meter again.
+    /// Forgets everything tied to the old world frame and asks for the meter again. What
+    /// describes the house rather than a place in the old frame stays: the ground answer. The
+    /// close-up's own state (gate, readout, view) is reset when the close-up starts again
+    /// (`go(.meterCloseUp)`).
     func resetSpatialState(reason: String) {
         RuntimeLog.engine.info("spatial reset: \(reason, privacy: .public)")
         generation += 1
@@ -1031,6 +1072,8 @@ final class ScanEngine {
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
+        groundMeasured = false
+        lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
         live?.restart()
         coverage = nil
@@ -1045,9 +1088,14 @@ final class ScanEngine {
         state.target = nil
         state.path = []
         state.features = []
+        // A mark half placed holds taps in the old frame's wall coordinates.
+        state.marking = nil
+        pendingTaps = []
         state.gap = nil
         gapPlan = nil
         pastEndSide = nil
+        // Skipped requests name spans along the old wall.
+        skippedGaps = []
         automaticGaps = []
         automaticGapsStopped = false
         seeBehindBands = []
@@ -1056,11 +1104,20 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        // An answer describes a scan that no longer exists; the next upload brings a new one.
+        uploadTask?.cancel()
+        placement = nil
+        state.result = nil
+        state.upload = .idle
+        // The keyframes and stills, the meter close-up included, were taken in the old frame.
         store.discardKeyframes()
         // A bundle packed before this holds keyframes of the world frame just discarded.
         state.shareableScan = nil
         keptSourceIDs = []
         state.captureCount = 0
+        state.lastCapture = nil
+        gateProblem = nil
+        gateClearSince = nil
         autoCapture.reset()
         planner.reset()
         go(.findMeter)
@@ -1181,6 +1238,13 @@ final class ScanEngine {
     func runGapCheck() {
         automaticGaps = []
         automaticGapsStopped = false
+        // A request needs the camera in the scan's world frame; while the phone has lost its
+        // place, the scan goes as it is and the server's answer lists what is still unseen.
+        guard !state.tracking.hasLostItsPlace else {
+            RuntimeLog.engine.info("gap check skipped: the phone has lost its place; uploading the scan as it is")
+            startUpload()
+            return
+        }
         guard let map = coverage, let plan = gapPlanner.plan(map), !skippedGaps.contains(plan) else {
             startUpload()
             return
@@ -1245,10 +1309,11 @@ final class ScanEngine {
     /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
     /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
     /// view doesn't show the wall from the top of the wall band (7.5 ft, `wallCaptureHeight`) upward.
-    func keepOverheadView(_ frame: SourceFrame) -> Bool {
+    /// `segment` is the walked-path segment the view was captured in.
+    func keepOverheadView(_ frame: SourceFrame, capturedIn segment: Int?) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
               !map.overheadReach(from: frame.camera).isEmpty else { return false }
-        keep(frame, overhead: true)
+        keep(frame, overhead: true, capturedIn: segment)
         return true
     }
 
@@ -1294,6 +1359,8 @@ final class ScanEngine {
     private func upload() async {
         let scan = generation
         state.upload = .packaging
+        // Sending again from a failed upload stays on this phase, so `go` doesn't restart them.
+        updateRecording()
         // Keyframe writes still in flight belong in the scene's keyframe list.
         for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
@@ -1327,6 +1394,7 @@ final class ScanEngine {
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
+            updateRecording()
             return
         }
         // The answer's s runs along this wall; `presentation(of:)` places the result on it.
@@ -1368,6 +1436,7 @@ final class ScanEngine {
             guard scan == generation else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.state(for: error)
+            updateRecording()
         }
     }
 
@@ -1375,7 +1444,9 @@ final class ScanEngine {
     /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
     /// they can't get to one, or after `maxAutomaticGaps` requests.
     private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
-        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, let map = coverage else { return nil }
+        // A request raised while the phone has lost its place could only time out: show the result.
+        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
+              let map = coverage else { return nil }
         for item in result.missingEvidence {
             guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
                   !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
