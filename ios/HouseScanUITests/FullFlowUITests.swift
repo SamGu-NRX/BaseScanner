@@ -108,7 +108,10 @@ final class FullFlowUITests: XCTestCase {
         }
         let first = try passRetrying()
         guard !first.isEmpty else { return }
-        Thread.sleep(forTimeInterval: 1.0)
+        // Long enough for a system notification banner to leave: on CI one slid in over the
+        // find-meter screen and failed its contrast check twice a second apart (run 36264789032),
+        // as ScreenStatesUITests' audit also allows for.
+        Thread.sleep(forTimeInterval: 6.0)
         let second = try passRetrying()
         let persistent = first.keys.filter { second[$0] != nil }.sorted()
         for key in persistent {
