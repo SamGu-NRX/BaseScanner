@@ -90,28 +90,44 @@ def test_garage_door_with_footprint_still_blocks_route() -> None:
 
 
 def test_headroom_span_edge_error_counts() -> None:
-    # Before: a 5 ft overhead ending at s = 9 (± 0.5) was ignored for a battery starting at 9.
+    # Before: a 5 ft overhead ending at s = 9 was ignored for a battery starting at 9, though
+    # where a stretch sits along the wall is only known to the wall's error (± 0.3 here).
+    raw = shared_fixture()
+    raw["walls"][0]["plus_minus_ft"] = 0.3
+    raw["ground"] = pads_ground([(8.5, 12.5)])
+    raw["overheads"] = [
+        {"wall_id": "w1", "span_ft": [-40, 9], "clearance_ft": 5, "plus_minus_ft": 0.5},
+        {"wall_id": "w1", "span_ft": [9, 40], "clearance_ft": 9, "plus_minus_ft": 0.5},
+    ]
+    assert at_start(raw, 9.0, "headroom").outcome == "unsure"
+    assert at_start(raw, 9.4, "headroom").outcome == "pass"
+    # A stretch that lies under the battery wherever the error puts it still fails outright.
+    assert at_start(raw, 6.0, "headroom").outcome == "fail"
+
+
+def test_exact_touching_measurement_does_not_count() -> None:
+    # With exact geometry a stretch ending where the battery starts is beside it, not over it.
     raw = shared_fixture()
     raw["ground"] = pads_ground([(9, 12)])
     raw["overheads"] = [
         {"wall_id": "w1", "span_ft": [-40, 9], "clearance_ft": 5, "plus_minus_ft": 0.5},
         {"wall_id": "w1", "span_ft": [9, 40], "clearance_ft": 9, "plus_minus_ft": 0.5},
     ]
-    assert run(raw)["decision"] != "pass"
-    assert at_start(raw, 9.0, "headroom").outcome in {"unsure", "fail"}
-    assert at_start(raw, 9.6, "headroom").outcome == "pass"
+    assert at_start(raw, 9.0, "headroom").outcome == "pass"
 
 
 def test_facing_span_edge_error_counts() -> None:
-    # Before: a 1 ft facing gap ending at s = 9 (± 0.5) was ignored for a battery starting at 9.
+    # Before: a 1 ft facing gap ending at s = 9 was ignored for a battery starting at 9 on a wall
+    # known to ± 0.3.
     raw = shared_fixture()
-    raw["ground"] = pads_ground([(9, 12)])
+    raw["walls"][0]["plus_minus_ft"] = 0.3
+    raw["ground"] = pads_ground([(8.5, 12.5)])
     raw["facing"] = [
         {"wall_id": "w1", "span_ft": [-40, 9], "depth_ft": 1, "plus_minus_ft": 0.5},
         {"wall_id": "w1", "span_ft": [9, 40], "depth_ft": 9, "plus_minus_ft": 0.5},
     ]
-    assert at_start(raw, 9.0, "facing_gap").outcome != "pass"
-    assert at_start(raw, 9.6, "facing_gap").outcome == "pass"
+    assert at_start(raw, 9.0, "facing_gap").outcome == "unsure"
+    assert at_start(raw, 9.4, "facing_gap").outcome == "pass"
 
 
 # --- 4. meter past its wall's end ----------------------------------------------------------------
@@ -340,11 +356,16 @@ def test_long_wall_is_bounded_by_reach() -> None:
 # --- 13. route length rule citation -------------------------------------------------------------
 
 
-def test_route_length_cites_confident_reach_on_pass() -> None:
-    # Before: a pass inside the confident reach cited the maximum as its rule.
-    result = run(shared_fixture())
-    assert result["decision"] == "pass"
-    assert check(result, "route_length")["rule"]["key"] == "route.confident_reach_ft"
+def test_route_length_cites_both_lines() -> None:
+    # Before: the rule named only the maximum, hiding that a pass is decided by the confident
+    # reach. threshold_ft stays the maximum, the at_most line past which the run fails.
+    rules = golden_rules(
+        route={"confident_reach_ft": {"value": 15, "source": "reach test", "placeholder": True}}
+    )
+    reach = check(run(shared_fixture(), rules), "route_length")
+    assert reach["threshold_ft"] == 20
+    assert "reach test" in reach["rule"]["source"]
+    assert reach["rule"]["placeholder"] is True
 
 
 def test_route_length_cites_maximum_on_reject() -> None:

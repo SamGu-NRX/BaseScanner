@@ -471,15 +471,18 @@ class Solver:
         missing = self.scene.missing(band, s0, s1)
         worst_key: tuple[int, float] | None = None
         for m in entries:
-            # A measurement's stretch is itself only known to within its and the wall's error:
-            # one that reaches the battery only inside that band can't give a clean pass, but
-            # isn't a clear failure either.
-            edge = m.plus_minus + wall_error
-            overlap = min(s1, m.span[1]) - max(s0, m.span[0])
-            if overlap <= -edge + EPS or (edge == 0 and overlap <= EPS):
+            # plus_minus is the error of the measured height or depth; where the stretch sits
+            # along the wall is known to the wall's error. A measurement that lies under the
+            # battery wherever that error puts it counts in full; one that only might (it
+            # reaches the battery's edge within the error) can't give a clean pass, but isn't a
+            # clear failure either. With exact geometry, touching end to end is not overlap.
+            a, b = m.span
+            possible = a - wall_error < s1 - EPS and b + wall_error > s0 + EPS
+            if not possible:
                 continue
+            definite = a + wall_error < s1 - EPS and b - wall_error > s0 + EPS
             outcome = at_least(m.value - subtract, m.plus_minus, t)
-            if overlap <= edge + EPS and outcome == FAIL:
+            if not definite and outcome == FAIL:
                 outcome = UNSURE
             key = (_SEVERITY[outcome], -(m.value - m.plus_minus))
             if worst_key is None or key > worst_key:
@@ -611,24 +614,25 @@ class Solver:
             path.reason = "The cable runs along continuous, observed wall with nothing blocking it."
 
         outcome = reach_outcome(length, e, r.confident_reach_ft.value, r.max_ft.value)
-        # Cite the line that decided: the maximum when the run fails or is within error of it,
-        # otherwise the confident reach.
-        by_max = outcome == FAIL or length + e >= r.max_ft.value - EPS
-        rule_key, rule = (
-            ("route.max_ft", r.max_ft)
-            if by_max
-            else ("route.confident_reach_ft", r.confident_reach_ft)
+        # threshold_ft is the maximum, the line past which the run fails (at_most). A run past
+        # the confident reach but under the maximum is UNSURE, so the cited rule names both lines
+        # and is a placeholder if either is.
+        cr = r.confident_reach_ft
+        rule = Value(
+            value=r.max_ft.value,
+            source=f"{r.max_ft.source}. Review past {ft(cr.value)}: {cr.source}",
+            placeholder=r.max_ft.placeholder or cr.placeholder,
         )
         reach = Check(
             "route_length",
             "Cable run length",
             outcome,
             "",
-            rule_key,
+            "route.max_ft",
             rule,
             measured=length,
             plus_minus=e,
-            threshold=rule.value,
+            threshold=r.max_ft.value,
             comparison="at_most",
         )
         run = f"{ft(length)} (± {ft(e)})"
@@ -858,13 +862,24 @@ class Solver:
         return out
 
     def out_of_reach(self) -> list[dict[str, Any]]:
-        """Sweep runs for stretches of wall too far along for any route to pass, which are not
-        evaluated start by start."""
+        """Sweep runs for wall that is not evaluated start by start: segments too short for the
+        battery, and stretches too far along for any route to pass."""
         runs = []
         for piece in self.scene.walls:
             limit = self.reach_limit(piece)
             lo, hi = piece.s0, piece.s1 - self.W
             if hi < lo - EPS:
+                # Too short for the battery: any start runs off the end of the segment.
+                runs.append(
+                    {
+                        "wall_id": piece.wall_id,
+                        "segment": piece.index,
+                        "start_ft": [_round(lo), _round(lo)],
+                        "outcome": FAIL,
+                        "failing": ["wall_backing"],
+                        "unsure": [],
+                    }
+                )
                 continue
             for a, b in ((lo, min(hi, -limit - self.W)), (max(lo, limit), hi)):
                 if b - a > EPS:
