@@ -8,13 +8,15 @@
 # anything else in the private file replaces the public value. Never commit Base's values.
 
 policy:
-  id: public-demo
+  id: demo
   version: "2026-09-26"
-  # False because driveway, pool and reach values below are placeholders: a spot that passes every
-  # check still goes to manual review, and nothing is rejected automatically.
-  auto_approve: false
+  # Decides automatically so the team can test real passes and rejects, although the driveway,
+  # pool and reach values below are placeholders. HOUSESCAN_POLICY=strict sends every answer to a
+  # person instead (rules.py STRICT_POLICY).
+  auto_approve: true
   # Whether this policy may reject a site at all (some policies only pass or send to review).
   allow_reject: true
+  notice: "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
 
 battery:
   width_ft: {value: 2.583333333333, source: "Base Core spec: 30.68 in wide, rounded up to 31 in (docs/01 C2)"}

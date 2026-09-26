@@ -1,3 +1,4 @@
+import html
 import json
 import re
 import xml.etree.ElementTree as ET
@@ -26,7 +27,7 @@ def test_site_plan_is_well_formed_svg_with_the_key_elements(raw) -> None:
     root = ET.fromstring(svg)
     assert root.tag == f"{SVG}svg"
     assert root.find(f"{SVG}title") is not None
-    assert result["summary"] in svg
+    assert html.escape(result["summary"]) in svg
     classes = {el.get("class") for el in root.iter()}
     assert {"wall", "meter", "cable"} <= classes
     assert "battery" in classes or "battery unsure" in classes

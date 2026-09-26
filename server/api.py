@@ -12,6 +12,7 @@ absolute paths or `..` are still refused because a bundle carrying them was not 
 Run: uv run uvicorn api:app --host 0.0.0.0 --port 8000
 """
 
+import hmac
 import io
 import json
 import logging
@@ -61,6 +62,9 @@ MAX_SCENE_BYTES = _limit_bytes("HOUSESCAN_MAX_SCENE_MB", 10)
 
 # Loaded at import: invalid rules must stop the server before it answers anything.
 LOADED: LoadedRules = load_rules()
+# Required on every route but /health while private rules are loaded: answers carry each check's
+# threshold, so a server holding Base's values must not answer strangers.
+API_KEY: str | None = os.environ.get("HOUSESCAN_API_KEY") or None
 
 _ZIP_MAGIC = b"PK\x03\x04"
 _JSON_TYPES = {"application/json"}
@@ -94,6 +98,46 @@ app = FastAPI(
     version=SCHEMA_VERSION,
     description="Turns a phone capture (scene.json or a zip bundle) into a battery placement.",
 )
+
+
+def _private() -> bool:
+    return "private" in LOADED.sources
+
+
+@app.middleware("http")
+async def _require_key(request: Request, call_next: Any) -> Response:
+    # A browser's preflight carries no credentials; the request that follows it does.
+    if not _private() or request.url.path == "/health" or request.method == "OPTIONS":
+        return await call_next(request)
+    if API_KEY is None:
+        return _error_response(
+            503,
+            "no_api_key",
+            "This server holds private rules but has no HOUSESCAN_API_KEY, so it answers nothing.",
+            None,
+        )
+    if not _key_matches(request.headers.get("authorization", "")):
+        response = _error_response(
+            401,
+            "unauthorized",
+            "This server holds private rules: send the header Authorization: Bearer <key>.",
+            None,
+        )
+        response.headers["WWW-Authenticate"] = "Bearer"
+        return response
+    return await call_next(request)
+
+
+def _key_matches(header: str) -> bool:
+    scheme, _, key = header.partition(" ")
+    return (
+        API_KEY is not None
+        and scheme.lower() == "bearer"
+        and hmac.compare_digest(key.strip().encode(), API_KEY.encode())
+    )
+
+
+# Added after the key check, so it wraps it: refusals carry CORS headers a browser can read.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -139,11 +183,20 @@ def _policy() -> dict[str, Any]:
         "auto_approve": p.auto_approve and p.id is not None,
         "sources": list(LOADED.sources),
         "rules_sha256": LOADED.sha256,
+        "notice": p.notice,
     }
 
 
 @app.get("/health")
-def health() -> dict[str, Any]:
+def health(request: Request) -> dict[str, Any]:
+    if _private() and not _key_matches(request.headers.get("authorization", "")):
+        # Anyone may learn that private rules are loaded and a key is needed, not which rules.
+        return {
+            "status": "ok",
+            "schema_version": SCHEMA_VERSION,
+            "policy": {"sources": list(LOADED.sources)},
+            "auth": "bearer",
+        }
     return {"status": "ok", "schema_version": SCHEMA_VERSION, "policy": _policy()}
 
 

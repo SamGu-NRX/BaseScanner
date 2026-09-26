@@ -4,6 +4,8 @@ Every threshold the solver compares against lives in the rules file. A missing o
 a startup error naming the key, never a silent default.
 """
 
+import base64
+import binascii
 import copy
 import hashlib
 import json
@@ -17,8 +19,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SERVER_DIR = Path(__file__).resolve().parent
 PUBLIC_RULES = SERVER_DIR / "rules.yaml"
-PRIVATE_RULES_ENV = "HOUSESCAN_PRIVATE_RULES"
+PRIVATE_RULES_ENV = "HOUSESCAN_PRIVATE_RULES"  # a path to the private file
+# The private file's YAML itself, base64-encoded: how a deployment gets it without uploading a file.
+PRIVATE_RULES_B64_ENV = "HOUSESCAN_PRIVATE_RULES_B64"
 DEFAULT_PRIVATE_RULES = SERVER_DIR.parent / "private" / "rules.yaml"
+# Which public policy applies when no private rules are loaded: rules.yaml's demo policy, which
+# decides automatically, or the strict one, which sends every answer to a person because some
+# public values are placeholders.
+POLICY_ENV = "HOUSESCAN_POLICY"
+STRICT_POLICY = {
+    "id": "public-strict",
+    "auto_approve": False,
+    "notice": "Public rules with placeholder values; a person confirms every answer.",
+}
 
 Effect = Literal["fail", "review", "detour", "allow"]
 ObjectType = Literal[
@@ -42,6 +55,8 @@ class Policy(_Strict):
     version: str | None
     auto_approve: bool
     allow_reject: bool
+    # Shown with every answer: whose rules these are.
+    notice: str | None = None
 
 
 class Battery(_Strict):
@@ -171,10 +186,13 @@ _UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
-    with path.open() as f:
-        data = yaml.load(f, Loader=_UniqueKeyLoader)
+    return _parse_yaml(path.read_text(), str(path))
+
+
+def _parse_yaml(text: str, where: str) -> dict[str, Any]:
+    data = yaml.load(text, Loader=_UniqueKeyLoader)
     if not isinstance(data, dict):
-        raise ValueError(f"{path}: expected a mapping at the top level")
+        raise ValueError(f"{where}: expected a mapping at the top level")
     return data
 
 
@@ -214,18 +232,45 @@ def public_rules_dict() -> dict[str, Any]:
 
 
 def load_rules(private_path: Path | None = None) -> LoadedRules:
-    """Public rules, with the private file merged over them when it exists."""
-    data = public_rules_dict()
-    sources: tuple[str, ...] = ("public",)
-    if private_path is None:
-        env = os.environ.get(PRIVATE_RULES_ENV)
-        private_path = Path(env) if env else DEFAULT_PRIVATE_RULES
-        if env and not private_path.is_file():
-            raise FileNotFoundError(f"{PRIVATE_RULES_ENV}={env} does not name a file")
-    private_keys: frozenset[str] = frozenset()
-    if private_path.is_file():
-        private = _read_yaml(private_path)
-        private_keys = frozenset(overridden_keys(data, private))
-        data = deep_merge(data, private)
-        sources = ("public", "private")
-    return rules_from_dict(data, sources, private_keys)
+    """Public rules under the policy HOUSESCAN_POLICY names, with the private rules merged over
+    them when there are any: from `private_path`, else HOUSESCAN_PRIVATE_RULES_B64 (the YAML
+    itself) or HOUSESCAN_PRIVATE_RULES (a path), else private/rules.yaml if it exists."""
+    data = _public_policy(public_rules_dict())
+    private = _private_rules(private_path)
+    if private is None:
+        return rules_from_dict(data)
+    private_keys = frozenset(overridden_keys(data, private))
+    if "notice" not in private.get("policy", {}):
+        # The public notice says the answers are not under Base's rules; merged under private
+        # rules it would be false.
+        data["policy"]["notice"] = None
+    return rules_from_dict(deep_merge(data, private), ("public", "private"), private_keys)
+
+
+def _public_policy(data: dict[str, Any]) -> dict[str, Any]:
+    name = os.environ.get(POLICY_ENV, "demo")
+    if name == "demo":
+        return data
+    if name == "strict":
+        return deep_merge(data, {"policy": STRICT_POLICY})
+    raise ValueError(f"{POLICY_ENV}={name!r}: expected 'demo' or 'strict'")
+
+
+def _private_rules(private_path: Path | None) -> dict[str, Any] | None:
+    if private_path is not None:
+        return _read_yaml(private_path) if private_path.is_file() else None
+    encoded = os.environ.get(PRIVATE_RULES_B64_ENV)
+    path = os.environ.get(PRIVATE_RULES_ENV)
+    if encoded and path:
+        raise ValueError(f"both {PRIVATE_RULES_B64_ENV} and {PRIVATE_RULES_ENV} are set; set one")
+    if encoded:
+        try:
+            text = base64.b64decode(encoded, validate=True).decode()
+        except (binascii.Error, UnicodeDecodeError):
+            raise ValueError(f"{PRIVATE_RULES_B64_ENV} is not base64-encoded UTF-8") from None
+        return _parse_yaml(text, PRIVATE_RULES_B64_ENV)
+    if path:
+        if not Path(path).is_file():
+            raise FileNotFoundError(f"{PRIVATE_RULES_ENV}={path} does not name a file")
+        return _read_yaml(Path(path))
+    return _read_yaml(DEFAULT_PRIVATE_RULES) if DEFAULT_PRIVATE_RULES.is_file() else None

@@ -17,13 +17,30 @@ Without the web layer: `loaded = load_rules()`, then `solve(parse_scene(raw, loa
 
 ## Deploy
 
-The public demo runs at **https://house-scanning-server.vercel.app** (Vercel project `house-scanning-server`, public rules only). Redeploy from this directory:
+Two Vercel projects deploy this directory. Neither is connected to Git, so a merge doesn't redeploy them; only `server/` uploads (`.vercelignore`), so the repository's `private/` folder never reaches a deployment.
+
+| Deployment | Rules | Access |
+| --- | --- | --- |
+| **https://house-scanning-server.vercel.app** (`house-scanning-server`) | public, under the demo policy | open |
+| **https://house-scanning-server-private.vercel.app** (`house-scanning-server-private`) | public with the private rules merged over them | `Authorization: Bearer <key>` on every route but `/health` |
+
+Redeploy the public one from this directory:
 
 ```sh
 npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
 ```
 
-Only `server/` uploads (`.vercelignore`), so the repository's `private/` rules can't reach a deployment; `/health` shows `sources: ["public"]`. Vercel caps a request body at 4.5 MB, so send bare `scene.json`: the solver doesn't read the images, and a zip must hold every JPEG its `scene.json` names or it is refused with 422 `missing_bundle_file`. The project isn't connected to Git: a deploy is always this command.
+The private one gets its rules from environment variables set in its Vercel project, never from an uploaded file: `HOUSESCAN_PRIVATE_RULES_B64` holds `private/rules.yaml` base64-encoded, and `HOUSESCAN_API_KEY` the key. While private rules are loaded, every route but `/health` answers 401 without the key and 503 if no key is set, and `/health` says only that private rules are loaded. The key is in `server/.env.private.local` (git-ignored, mode 600) on the machine that set it up. This directory is linked to the public project, so deploy the private one from a copy of it that is linked to `house-scanning-server-private`:
+
+```sh
+rsync -a --exclude .venv --exclude .vercel --exclude '.env*' --exclude tests ./ /tmp/private-deploy/
+cd /tmp/private-deploy
+npx vercel@latest link --yes --project house-scanning-server-private --scope sam-gus-projects-7a4b6082
+npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
+cd - && rm -rf /tmp/private-deploy   # the link leaves a Vercel token in .env.local there
+```
+
+Vercel caps a request body at 4.5 MB, so send bare `scene.json`: the solver doesn't read the images, and a zip must hold every JPEG its `scene.json` names or it is refused with 422 `missing_bundle_file`. `examples/` has scenes and `curl` commands for both deployments, and `make smoke URL=...` posts them all.
 
 ## API
 
@@ -110,4 +127,4 @@ A check passes only when its margin exceeds its error and fails only when it mis
 
 ## Rules
 
-`rules.yaml` holds the public values. `placeholder: true` marks a value with no public source; because it has some, it sets `auto_approve: false`, which turns every pass or reject into manual review. At startup the server merges a git-ignored `private/rules.yaml` over it when one exists (path: `HOUSESCAN_PRIVATE_RULES`, else `<repo root>/private/rules.yaml`). Every value the private file sets must carry its own `source`, or the server refuses to start; answers show those citations only as "Private rules". Never commit Base's values. Base-derived tests live beside them in `private/tests/`: `uv run pytest ../private/tests -q`.
+`rules.yaml` holds the public values. `placeholder: true` marks a value with no public source (the pool's 10 ft and the driveway's 5 ft among them). Its `demo` policy decides automatically anyway, so the team can test real passes and rejects, and every answer says so: `policy.notice` and the end of `summary` read "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's." `HOUSESCAN_POLICY=strict` selects the earlier behaviour instead: `auto_approve: false`, so every would-be pass or reject goes to manual review. At startup the server merges private rules over the public ones when there are any: `HOUSESCAN_PRIVATE_RULES_B64` (the YAML, base64-encoded), else `HOUSESCAN_PRIVATE_RULES` (a path), else `<repo root>/private/rules.yaml` if it exists. Setting both variables is an error. Private rules replace the policy and drop the demo notice unless they set their own. Every value the private file sets must carry its own `source`, or the server refuses to start; answers show those citations only as "Private rules". Never commit Base's values. Base-derived tests live beside them in `private/tests/`: `uv run pytest ../private/tests -q`.
