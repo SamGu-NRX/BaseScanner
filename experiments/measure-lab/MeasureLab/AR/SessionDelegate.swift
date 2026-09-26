@@ -23,6 +23,7 @@ final class SessionDelegate: NSObject, ARSessionDelegate {
     func session(_ arSession: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
         let state = TrackingState(camera.trackingState)
         let time = ProcessInfo.processInfo.systemUptime
+        recorder.trackingChanged(isNormal: state == .normal, at: time)
         Task { @MainActor [session] in session.trackingChanged(to: state, at: time) }
     }
 

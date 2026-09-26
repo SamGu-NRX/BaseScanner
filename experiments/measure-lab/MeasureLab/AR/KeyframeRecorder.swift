@@ -15,9 +15,9 @@ final class KeyframeRecorder: @unchecked Sendable {
     struct Destination: Sendable, Equatable {
         let sessionID: String
         let folder: URL
-        /// Frames captured at or before this ARFrame timestamp belong to the previous AR map and
-        /// are refused. Zero accepts every frame.
-        var acceptsFramesAfter: Double = 0
+        /// A restarted session waits for limited/unavailable then normal tracking before writing.
+        /// The first session has no reset gate.
+        var resetGate: FrameResetGate?
     }
 
     /// A saved keyframe and the frame data a tap on it needs.
@@ -57,6 +57,13 @@ final class KeyframeRecorder: @unchecked Sendable {
             // finishes now can't commit into this session's spacing.
             state.selector.reset()
             state.count = 0
+        }
+    }
+
+    /// Called on the delegate queue before the main actor receives the tracking update.
+    func trackingChanged(isNormal: Bool, at uptime: Double) {
+        state.withLock { state in
+            state.destination?.resetGate?.trackingChanged(isNormal: isNormal, at: uptime)
         }
     }
 
@@ -106,7 +113,8 @@ final class KeyframeRecorder: @unchecked Sendable {
 
     private func reserve(pose: CameraPose, timestamp: Double, onlyIfDue: Bool) -> Reservation? {
         state.withLock { state in
-            guard let destination = state.destination, timestamp > destination.acceptsFramesAfter else { return nil }
+            guard let destination = state.destination else { return nil }
+            if let gate = destination.resetGate, !gate.accepts(frameTimestamp: timestamp) { return nil }
             if onlyIfDue, !state.selector.wantsKeyframe(at: pose) { return nil }
             state.count += 1
             return Reservation(
