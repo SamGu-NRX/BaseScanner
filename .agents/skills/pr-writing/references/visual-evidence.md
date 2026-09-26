@@ -1,27 +1,27 @@
 # Visual evidence
 
-Choose the changed behavior before collecting media. Capture the actual route or component through the host's supported browser, simulator or desktop tools. Do not redraw an interface to stand in for a screenshot. A design prototype is evidence of that prototype, not of the native or deployed product.
+Decide which behavior changed before you capture anything. Capture the real route or component with the browser, simulator or desktop tools the host supports. Never redraw an interface as a stand-in for a screenshot. A design prototype shows the prototype, not the native app or the deployed product.
 
 ## Capture a fair comparison
 
-Record the before and after revisions. Use the same viewport or device, route, data and relevant state. For a bug, reproduce the triggering condition on both versions. For a new feature, show the new flow and identify it as new. If the old build cannot run, label the missing or historical reference rather than fabricating a baseline.
+Note the commit for the before and the after. Keep the device or viewport, route, data and state the same in both. For a bug, trigger the same condition on both versions. For a new feature, show the new flow and label it as new. If the old build won't run, label the missing or historical reference. Never fake a baseline.
 
-Use isolated worktrees or existing builds so capturing the base does not disturb the active writer. Use approved test data. Identify fixture-driven behavior where it limits the claim; a visible success state does not prove a live backend write. Keep the capture procedure in the repository when it is reusable, including the route, fixture and build commands that actually worked.
+Capture the base in a separate worktree or from an existing build, so you don't disturb whoever is working in the main checkout. Use approved test data. Say when fixture data limits a claim. A success screen doesn't prove the backend saved anything. If the capture procedure will be reused, commit it to the repository with the route, fixture and build commands that worked.
 
-Place Before and After adjacent at readable, matching sizes. Label them and caption the behavioral difference. Crop to the relevant area consistently without hiding context needed to judge the change. Avoid tall comparison boards with large blank gaps or a gallery of unchanged screens. Preserve original captures when preparing a comparison.
+Put Before and After side by side at the same readable size. Label each and caption what changed in behavior. Crop both the same way, and keep enough around the change to judge it. Avoid tall comparison boards with blank gaps, and galleries of screens that didn't change. Keep the original captures when you build a comparison.
 
-Record motion at normal speed with the trigger, transition and settled result visible. Trim idle time without hiding failures or changing the timing being evaluated. Use H.264 MP4 when compatible with the host. Watch the encoded recording for dropped frames, legible text and correct orientation before uploading it.
+Record motion at normal speed, showing the trigger, the transition and the settled result. Trim idle time, but never cut a failure or change the timing under review. Use H.264 MP4 when the host plays it. Before uploading, watch the encoded file for dropped frames, unreadable text and wrong orientation.
 
 ## Publish and verify
 
-Use GitHub repository attachments for inline evidence, especially in private repositories. Keep sensitive captures off anonymous public image hosts. A private raw-file URL or a local filesystem path is not a reliable inline attachment.
+Attach inline evidence through GitHub's repository attachments, especially in a private repository. Keep sensitive captures off anonymous public image hosts. A private raw-file URL or a local path won't render inline.
 
-Prefer the installed GitHub CLI's documented attachment support when available; check command help before relying on `--attach`. Otherwise use the authenticated GitHub attachment UI or a repository's verified uploader. Do not copy an app-specific authentication workaround into another project. For a local before/after composition tool, verify its output mode before running it so capture files are not uploaded elsewhere.
+Use the GitHub CLI's attachment support if the installed version has it. Check `gh pr create --help` for `--attach` first. Otherwise use GitHub's attachment UI while signed in, or an uploader the repository already trusts. Don't carry one app's authentication workaround into another project. If a local tool composes the before-and-after image, check where it writes its output before you run it, so it doesn't upload captures somewhere else.
 
-With CLI attachment support, reference the local files in the Markdown body and pass each file with `--attach` alongside `--body-file`. The CLI replaces those references with uploaded URLs. If an upload partially fails, inspect the returned PR and its body before retrying: creation can succeed even when the command exits nonzero. Repair the existing PR rather than creating another.
+With CLI attachment support, reference the local files in the Markdown body and pass each file with `--attach` next to `--body-file`. The CLI swaps those references for uploaded URLs. If an upload fails partway, look at the returned PR and its body before retrying. The CLI can exit nonzero after it has already created the PR. Fix that PR instead of opening another.
 
-Use a compact Markdown table for a pair. Give images descriptive alt text. Put an interaction video in its own paragraph so it can render as a player. Preserve the original attachment URLs when editing an existing body.
+Show a pair in a small Markdown table. Give each image alt text that says what it shows. Put a video in its own paragraph so GitHub renders it as a player. Keep the original attachment URLs when you edit an existing body.
 
-Reopen the PR in its actual rendered view. Check that both images load at useful sizes, labels match their revisions, and the video plays. If publication or viewing is unavailable, return the draft and evidence paths with that specific remaining step.
+Open the PR's rendered page. Check that both images load at a useful size, each label matches its commit, and the video plays. If you can't publish or view the PR, hand back the draft and the evidence paths, and name the step still left.
 
 GitHub documents [attachment access and supported formats](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files) and [CLI attachment support](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli).
