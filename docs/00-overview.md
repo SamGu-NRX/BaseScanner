@@ -27,7 +27,7 @@ vision model. AR adds nothing there beyond better photos.
   Every check returns PASS / FAIL / UNSURE, with error bars on each measurement. See `02-implementation-plan.md`.
 - **The vision model only recognises things.** Gemini boxes → SAM 2 → cast onto the wall using where the phone was.
   Recognition prompts run on the close-ups.
-- **Native Swift + ARKit/RealityKit on a LiDAR iPhone.** Not Expo (no first-class ARKit), and not Android for v1.
+- **Native Swift + ARKit/RealityKit on iPhone, in `ios/`.** LiDAR is used when present, never required: most homeowners don't have it. Not Expo (no first-class ARKit), and not Android for v1.
 - **Normal dev app for the hackathon; an App Clip is only the pitch's rollout story** (see the gotchas in `03-stack-research.md`).
 
 ## Corrections made after the research (supersede earlier drafts)
@@ -51,9 +51,6 @@ vision model. AR adds nothing there beyond better photos.
 - **Whether the install includes a separate battery disconnect box** beside the meter. Base's public pages mention a wall-mounted
   transfer switch and a battery disconnect.
 - **Test these in hours 0–4** (the unknowns everything depends on). See `03-stack-research.md` § Test first.
-- **Native Swift vs Expo.** On 2026-09-25 an Expo app (SDK 57) was scaffolded at `apps/mobile/`, which conflicts with the
-  native-Swift decision above. Options: drop Expo; Expo shell + a native Swift module owning all AR capture; or Expo for the
-  non-AR screens only. Decide before anyone builds AR capture.
 
 ## Doc map
 
@@ -64,4 +61,5 @@ vision model. AR adds nothing there beyond better photos.
 | `02-implementation-plan.md` | how to build each part, code snippets, 24 h schedule, risks |
 | `03-stack-research.md` | libraries and open-source projects per part, licenses, gotchas, what to skip |
 | `04-prior-art-and-codes.md` | what Base does publicly, competitors, electrical-code citations, pitch angle |
+| `05-live-guided-survey-hld.md` | live guided survey: automatic capture, coverage display, next-view planning, evidence flow |
 | `eli5.html` | visual explainer for anyone new; step 4 is an interactive "slide the battery" demo |

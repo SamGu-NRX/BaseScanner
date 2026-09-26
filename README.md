@@ -1,6 +1,6 @@
 # House scanning
 
-We're exploring a simpler way to survey a home for a Base Power battery. 
+We're exploring a simpler way to survey a home for a Base Power battery.
 
 A homeowner walks the outside of their house with a phone app. The app measures the wall around the electric meter, and our code decides whether a Base Power battery can be installed there and, if so, where. The homeowner sees the spot in AR before they put the phone away.
 
@@ -29,8 +29,8 @@ Plain code makes the placement decision. Vision models only recognize things, su
 The plan targets iPhones, and a LiDAR iPhone makes some measurements easier. Most homeowners don't have one, so the experiments ask how far an ordinary phone gets:
 
 - Can AR taps on the ground and the wall measure the wall line, the room overhead, and the gap to a fence without LiDAR?
-- Can plain phone video do the job instead? [OOOSplat](https://github.com/ooolabdev/ooosplat) turns a video into a 3D scene. We scale the scene from one known distance and check a second distance against a tape measure.
-- How close does each method get? We tape-measure one real house and compare AR, a depth model on plain photos, and a vision model's guesses against the tape.
+- Can learned 3D models build accurate geometry from ordinary photos? We measure MapAnything, Depth Anything 3 and MoGe against laser-scanned building walls, with and without one known distance.
+- How far does phone AR tracking drift during a walk? We measure it on real outdoor iPhone walks with ground truth, then tape-measure one real house and compare every method against the tape.
 
 A convincing 3D view can still miss an obstacle or get a distance wrong, so every result keeps its original photos beside it.
 

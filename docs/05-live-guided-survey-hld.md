@@ -25,7 +25,8 @@ The repository baseline is documented in [the overview](00-overview.md), [featur
 | **Proposed** | Use native AR for stable spatial guidance, with LiDAR optional and a simpler camera-guidance fallback. |
 | **Proposed** | Keep immediate tracking and feedback on the phone; run heavier analysis and reconstruction asynchronously. |
 | **Experiment proposal** | Compare periodic MapAnything and stateful LingBot-Map reconstruction alongside the native AR geometry baseline. |
-| **Open** | Resolve the documented native Swift/Expo integration conflict; select representative iPhones, GPU environment, and acceptable latency/cost. |
+| **Decided** | Native Swift capture in `ios/`; LiDAR optional. |
+| **Open** | Select representative iPhones, GPU environment, and acceptable latency/cost. |
 | **Open** | Confirm the versioned rules configuration and aggregation contract before expanding automated decisions. |
 
 ### Relationship to the existing repository plan
@@ -344,7 +345,7 @@ When measurement uncertainty crosses a configured threshold, request a useful ad
 | [Unity AR Foundation](https://docs.unity3d.com/Packages/com.unity.xr.arfoundation@6.1/manual/index.html) | Shared AR interfaces backed by platform provider plug-ins | Alternative if the team prefers Unity and cross-platform development; does not remove native capability differences. |
 | [Browser video frame callbacks](https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestVideoFrameCallback) and [OpenCV.js camera processing](https://docs.opencv.org/4.11.0/dd/d00/tutorial_js_video_display.html) | Browser frame analysis and image processing | Useful fallback/prototype for camera coaching. A browser camera feed alone does not provide a persistent AR world map. |
 
-**Platform scope:** preserve the iPhone target and resolve the native Swift/Expo boundary before capture implementation. The proposed direction is native AR capture, with camera-and-motion and optional-depth modes evaluated on actual test devices. Android and browser references are future options. Keep the backend independent of the mobile framework.
+**Platform scope:** preserve the iPhone target. Capture is native Swift in `ios/`. The proposed direction is native AR capture, with camera-and-motion and optional-depth modes evaluated on actual test devices. Android and browser references are future options. Keep the backend independent of the mobile framework.
 
 ### Perception, reconstruction, and review
 
