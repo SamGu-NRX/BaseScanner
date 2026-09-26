@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage coverage-options
 
 test:
 	uv run ruff check .
@@ -90,3 +90,7 @@ modern-arkit:
 coverage:
 	uv run python -m evals.coverage prepare
 	uv run python -m evals.coverage
+
+coverage-options:
+	uv run python -m evals.coverage prepare
+	uv run python -m evals.coverage_options

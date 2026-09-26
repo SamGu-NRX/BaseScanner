@@ -32,7 +32,7 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
 7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
 8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2% is plausible for this phone, though even that setting leaves walls at a p90 of 5.0 in [3.8, 6.8]. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. Its position error p90 over trusted walks is 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft (50.0 in at 30 ft counting the three doubtful walks), inside the server's 0.16 ft per ft allowance. The field tape test stays decisive (section 6).
 
-9. **Does the app's coverage map claim surface no photo saw? Yes, on the one wall tested: 1.1 ft of 19.3 ft claimed (6%), against a bar of 0.5 ft.** All of it sits behind equipment standing in front of the wall (a scaffold's footings and cables), because the coverage code checks range, angle and image bounds but not occlusion (`CoverageMap.swift` lines 241 to 248 at beede15). The ground band and facade could not be tested: ETH3D's photographers stood too far from the walls for the app to credit any ground, or any of facade (section 7).
+9. **Does the app's coverage map claim surface no photo saw? Yes, on the one wall tested: 1.1 ft of 19.3 ft claimed (6%), against a bar of 0.5 ft.** All of it sits behind equipment standing in front of the wall (a scaffold's footings and cables), because the coverage code checks range, angle and image bounds but not occlusion (`CoverageMap.swift` lines 241 to 248 at beede15). The ground band and facade could not be tested: ETH3D's photographers stood too far from the walls for the app to credit any ground, or any of facade (section 7). Requiring views farther apart or at wider angles does not fix it without discarding good wall (6 to 8.5 ft here). A depth test against true depth does, which needs LiDAR (section 7b).
 
 ## Reproduce
 
@@ -342,6 +342,31 @@ The tape test on the team's phone is still the number to trust.
   - 9 rows with no depth beyond 5 m, the iPhone LiDAR's stated range.
 
 **Pre-registered, before any run.** An option passes when false-observed length on electro's wall is at most 0.5 ft, as in section 7. Missed length is measured against the same truth for every option: band seen from two positions at least 0.25 m apart. The recommendation is the passing option with the least missed length, preferring one that needs no LiDAR when two are within 1 ft of each other.
+
+**Results** on electro's 19.3 ft wall, in feet: false-observed (pass at 0.5 or less) and missed (band two photos saw that the option doesn't claim). The full grid is in the results file.
+
+| Option | Needs LiDAR | False-observed | Pass | Missed |
+| --- | --- | --- | --- | --- |
+| The app today (b = 0.25 m, θ = 0°) | no | 1.1 | no | 0.0 |
+| Views ≥ 2 m apart, any angle up to 45° | no | 1.1 | no | 0.0 |
+| Views ≥ 5 m apart* | no | 0.0 | yes | 6.0 |
+| Views ≥ 60° apart* | no | 0.0 | yes | 8.5 |
+| Depth test, true depth to 6 m, 3 or 9 rows | yes | 0.0 | yes | 3.3 |
+| Depth test, 9 rows, no depth past 5 m | yes | 0.0 | yes | 7.8 |
+| Depth test, 9 rows, 0.4 m of wall relief allowed* | yes | 0.1 | yes | 0.0 |
+
+\* Added after the pre-registered grid (b 0.25 to 2 m, θ 0 to 45°) changed nothing.
+
+- **Spacing or angle between views: no.** Nothing in the pre-registered grid moved the 1.1 ft. The footings hide the wall's base from every direction the photos were taken from, and seeing a cell from far-apart or differently angled views says nothing about whether something stands in front of it. The patch goes only when the rule refuses cells for want of spread: at 5 m apart (6.0 ft lost) or 60° apart (8.5 ft lost, 47% of what was seen). It is removed along with good wall, not singled out. At 75°, nothing is claimed.
+- **Depth test: yes, at a price the rule's shape sets.** With true depth it claims nothing unseen. The 3.3 ft it misses is the two pilasters. A tapped wall is a plane, so a pilaster 0.36 m proud of it reads as something in front of the wall, and a real LiDAR test would do the same. Allowing 0.4 m of relief keeps them (0 missed) and still rejects the footings (0.1 ft). At 0.5 m the footings get through (1.0 ft). That margin was found on this one wall and says nothing about bushes closer than 0.4 m. Nine rows instead of three changed nothing here, because the hidden patch touches the bottom row. It would matter for something mounted between rows.
+- **LiDAR's reach costs coverage.** iPhone LiDAR reads to about 5 m; photos 5 to 6 m out then earn nothing, which misses 7.8 ft on these DSLR photos. At the app's 2.6 m standoff that limit would rarely bind.
+- **Ground band: still untested.** Every option keeps the 65° gate, so none claims ground from these photos. None of the datasets on disk can test it: ADVIO and MARViN have no surface truth, and facade's photos stand even farther back. ETH3D's other outdoor scenes carry the same laser truth, at 0.3 to 0.7 GB each with images (courtyard, delivery_area, meadow, playground, terrace). Whether their photographers stood within 3.2 m of a wall can only be read after downloading, so I did not.
+
+**Recommendation.** Stay with "unseen is not clear" and make occlusion someone's job, because no rule about how the phone moved can stand in for it:
+- **LiDAR phones:** a depth test in `sees` (`CoverageMap.swift` lines 241 to 248), with rows closer than 0.99 m and an allowance for wall relief. The allowance needs field data before a number ships.
+- **Phones without LiDAR:** the app cannot know what hides the wall. Either the homeowner confirms nothing stands in front of each claimed stretch (for example, by marking obstacles on a still), or checks that need clear ground treat claims from those phones as unconfirmed.
+
+Tightening the baseline or angle would only ask for more photos: 6 to 8.5 extra feet of wall here, with no guarantee that the hidden patch goes.
 
 ## Replay session from a real walk
 

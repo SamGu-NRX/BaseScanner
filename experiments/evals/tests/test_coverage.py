@@ -12,6 +12,7 @@ from evals.coverage import (
     face_offsets,
     in_intervals,
     majority,
+    photo_truth,
     project,
     rotation_to_y,
     straight_runs,
@@ -155,3 +156,16 @@ def test_face_offsets_find_a_pilaster_but_not_a_bush():
     bush_cols = (columns > -0.78) & (columns < -0.42)
     assert (offsets[bush_cols] == 0).all()
     assert (offsets[(columns > -0.3) & (columns < 0.1)] == 0).all()
+
+
+def test_photo_truth_relief_allowance():
+    # A sample 5 m ahead; the scan's nearest surface there is 4.7 m, 0.3 m nearer.
+    view = _view()
+    zbuf = np.full((6, 10), 4.7, np.float32)
+    missing = np.zeros((6, 10), bool)
+    point = np.array([[0.0, 0.0, 5.0]])
+    args = (view, np.eye(3), zbuf, missing, point, True, 6.0)
+    # 4% of 5 m is 0.2 m, so a 0.2 m floor hides it and a 0.4 m allowance does not.
+    assert photo_truth(*args, hide_abs=0.2).hidden[0]
+    assert not photo_truth(*args, hide_abs=0.4).hidden[0]
+    assert photo_truth(*args, hide_abs=0.4).saw[0]

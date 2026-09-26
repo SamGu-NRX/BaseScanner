@@ -300,8 +300,11 @@ def app_config() -> dict:
     return call_driver({})["config"]
 
 
-def run_app(wall: Wall, cams: dict) -> dict:
-    """Feeds the keyframes, in order, to the app's CoverageMap through the Swift driver."""
+def run_app(
+    wall: Wall, cams: dict, variant: dict | None = None, hidden: list | None = None
+) -> dict:
+    """Feeds the keyframes, in order, to the app's CoverageMap through the Swift driver. `variant`
+    and `hidden` model the occlusion options (see the driver's header)."""
     payload = {
         "wall": {
             "meter": wall.meter.tolist(),
@@ -315,6 +318,10 @@ def run_app(wall: Wall, cams: dict) -> dict:
             for n, c in cams.items()
         ],
     }
+    if variant:
+        payload["variant"] = variant
+    if hidden:
+        payload["hidden"] = hidden
     return call_driver(payload)
 
 
@@ -408,7 +415,9 @@ class PhotoTruth:
         return self.framed & self.in_range & self.facing & ~self.hidden
 
 
-def photo_truth(view, R, zbuf, missing, points_lev, facing, max_distance) -> PhotoTruth:
+def photo_truth(
+    view, R, zbuf, missing, points_lev, facing, max_distance, hide_abs: float = HIDE_ABS_M
+) -> PhotoTruth:
     X = points_lev @ R  # levelled -> ETH3D world (R is orthonormal)
     u, v, z, framed = project(view, X)
     zh, zw = zbuf.shape
@@ -418,7 +427,7 @@ def photo_truth(view, R, zbuf, missing, points_lev, facing, max_distance) -> Pho
     mh, mw = missing.shape
     mu = np.clip(np.nan_to_num(u * mw / view.width).astype(np.int64), 0, mw - 1)
     mv = np.clip(np.nan_to_num(v * mh / view.height).astype(np.int64), 0, mh - 1)
-    hidden = framed & ((near < z - np.maximum(HIDE_ABS_M, HIDE_REL * z)) | missing[mv, mu])
+    hidden = framed & ((near < z - np.maximum(hide_abs, HIDE_REL * z)) | missing[mv, mu])
     distance = np.linalg.norm(X - view.center, axis=-1)
     return PhotoTruth(
         framed=framed,
@@ -552,7 +561,11 @@ def missed_cause(wall, band, index, rows, seers: dict[int, list[int]], cams: lis
     return majority(counts, MISSED_CAUSES)
 
 
-def evaluate_band(wall, band, cfg, app, views, cams, truths_by_band, centres, faces) -> dict:
+def evaluate_band(
+    wall, band, cfg, app, views, cams, truths_by_band, centres, faces, causes: bool = True
+) -> dict:
+    """Scores one band. `cfg` is the app's default config: the truth's two-position bar stays at its
+    baseline whatever option produced `app`. Causes are named only for the app as it is."""
     names = [v.name for v in views]
     s, offs, pts = band_samples(wall, band, cfg, faces)
     absent = np.isnan(pts[..., 0])  # ground inside a pilaster: nothing there to see
@@ -571,12 +584,12 @@ def evaluate_band(wall, band, cfg, app, views, cams, truths_by_band, centres, fa
     false2_cols = claimed & ((~seen2).sum(axis=1) >= UNSEEN_MIN_SAMPLES)
     missed_cols = ~claimed & seen2.all(axis=1)
     false_causes: Counter = Counter()
-    for c in np.flatnonzero(false_cols):
+    missed_causes: Counter = Counter()
+    for c in np.flatnonzero(false_cols) if causes else []:
         credited = [i for i, _ in by_cell.get(cell_index(s[c], cfg), [])]
         false_causes[false_observed_cause(truths, credited, c, np.flatnonzero(~seen1[c]))] += 1
-    missed_causes: Counter = Counter()
     app_offs = row_offsets(band, cfg)
-    for c in np.flatnonzero(missed_cols):
+    for c in np.flatnonzero(missed_cols) if causes else []:
         index = cell_index(s[c], cfg)
         rows = deficient_rows(
             by_cell.get(index, []), centres, len(app_offs), cfg["coveringBaseline"]
@@ -695,7 +708,43 @@ def pick_wall(ground_y, scan_lev, cams, cfg, rng) -> Wall | None:
 RUNS = ("electro", "facade")
 
 
-def evaluate_scene(scene: str) -> dict:
+@dataclass
+class Setup:
+    """One scene ready to score: the wall, the keyframes and each photo's truth and depth."""
+
+    scene: str
+    cfg: dict
+    views: list[View]
+    R: np.ndarray
+    cams: dict
+    wall: Wall
+    ground_rms: float
+    centres: np.ndarray
+    faces: np.ndarray
+    truths: dict[str, list[PhotoTruth]]
+    zbufs: list[np.ndarray]
+    missing: list[np.ndarray]
+
+    def score(self, app: dict, causes: bool = True) -> dict:
+        return {
+            band: evaluate_band(
+                self.wall,
+                band,
+                self.cfg,
+                app,
+                self.views,
+                list(self.cams.values()),
+                self.truths,
+                self.centres,
+                self.faces,
+                causes,
+            )
+            for band in ("wall", "ground")
+        }
+
+
+def setup_scene(scene: str) -> Setup | None:
+    """None when no photo sees a straight wall within the app's range."""
     cfg = app_config()
     views = read_views(ETH3D_DIR / scene)
     scan = scan_points(scene)
@@ -705,54 +754,54 @@ def evaluate_scene(scene: str) -> dict:
         ground_y, scan[::3].astype(np.float64) @ R.T, cams, cfg, np.random.default_rng(0)
     )
     if wall is None:
-        return {
-            "scene": scene,
-            "photos": len(views),
-            "wall": None,
-        }
-    app = run_app(wall, cams)
-
-    got = {(x["keyframe"], x["band"], x["index"], frozenset(x["rows"])) for x in app["sightings"]}
-    replica = replica_sightings(wall, cams, cfg)
-    mismatched = len(got ^ replica)
-
+        return None
     blockers = np.concatenate([scan, occluder_points(scene)])
     centres = np.array([c[0][:3, 3] for c in cams.values()])
     columns = band_samples(wall, "wall", cfg)[0]
     faces = face_offsets(wall, scan.astype(np.float64) @ R.T, columns)
     samples = {band: band_samples(wall, band, cfg, faces)[2] for band in ("wall", "ground")}
     truths: dict[str, list[PhotoTruth]] = {"wall": [], "ground": []}
+    zbufs, missings = [], []
     for v, centre in zip(views, centres, strict=True):
         zbuf = depth_buffer(v, blockers)
         missing = excluded_pixels(
             v, MASK_WIDTH, round(v.height * MASK_WIDTH / v.width), labels=(MISSING_FROM_SCAN,)
         )
+        zbufs.append(zbuf)
+        missings.append(missing)
         facing = {"wall": wall.out_of(centre) > 0, "ground": centre[1] > wall.ground_y}
         for band, pts in samples.items():
             truths[band].append(
                 photo_truth(v, R, zbuf, missing, pts, facing[band], cfg["maxDistance"])
             )
-    bands = {
-        band: evaluate_band(
-            wall, band, cfg, app, views, list(cams.values()), truths, centres, faces
-        )
-        for band in ("wall", "ground")
-    }
+    return Setup(
+        scene, cfg, views, R, cams, wall, ground_rms, centres, faces, truths, zbufs, missings
+    )
+
+
+def evaluate_scene(scene: str) -> dict:
+    setup = setup_scene(scene)
+    if setup is None:
+        return {"scene": scene, "photos": len(read_views(ETH3D_DIR / scene)), "wall": None}
+    wall, cams = setup.wall, setup.cams
+    app = run_app(wall, cams)
+    got = {(x["keyframe"], x["band"], x["index"], frozenset(x["rows"])) for x in app["sightings"]}
+    mismatched = len(got ^ replica_sightings(wall, cams, setup.cfg))
     seen_by = {x["keyframe"] for x in app["sightings"]}
     return {
         "scene": scene,
-        "photos": len(views),
+        "photos": len(setup.views),
         "photos_with_a_sighting": len(seen_by),
         "wall_length_ft": (wall.right - wall.left) / FEET,
         "wall_fit_rms_cm": 100 * wall.fit_rms_m,
-        "pilaster_ft": float((faces > 0).sum() * COLUMN_M / FEET),
-        "ground_fit_rms_cm": 100 * ground_rms,
+        "pilaster_ft": float((setup.faces > 0).sum() * COLUMN_M / FEET),
+        "ground_fit_rms_cm": 100 * setup.ground_rms,
         "meter_levelled_m": wall.meter.round(3).tolist(),
         "outward": wall.outward.round(4).tolist(),
         "wall": "picked",
         "sightings": len(got),
         "replica_mismatches": mismatched,
-        "bands": bands,
+        "bands": setup.score(app),
     }
 
 
