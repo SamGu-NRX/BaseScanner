@@ -290,15 +290,28 @@ final class ScanEngine {
         CaptureRecorder(directory: store.directory.appending(path: "streams-raw", directoryHint: .isDirectory))
     }
 
-    /// Streams record while a capture is under way, from the meter search to the upload, and stop
-    /// on the result; a request raised from the result starts them again. Core Motion runs only
-    /// with the live camera: a replay's frames were recorded by another phone at another time.
+    /// Streams record while a capture is under way, from the meter search through the upload that
+    /// sends it. They stop on the result, and when an upload fails or is refused, since the phone
+    /// may then sit idle for minutes; a request raised from the result, going back to the review
+    /// or sending again starts them again. Depth frames record only where the camera is meant to
+    /// be on the wall (the close-up, the walk, a gap request), so the meter search and the review
+    /// don't spend `DepthFrameBudget`. Core Motion runs only with the live camera: a replay's
+    /// frames were recorded by another phone at another time.
     private func updateRecording() {
         let capturing = switch state.phase {
-        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest, .uploading: true
+        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest: true
+        case .uploading:
+            switch state.upload {
+            case .failed, .rejected: false
+            case .idle, .packaging, .uploading, .analyzing, .done: true
+            }
         case .onboarding, .result, .resultAR, .unsupported: false
         }
-        recorder.setRecording(capturing)
+        let depthFrames = switch state.phase {
+        case .meterCloseUp, .wallWalk, .gapRequest: true
+        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        }
+        recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
         if capturing { motion.start(into: recorder) } else { motion.stop() }
     }
@@ -967,10 +980,25 @@ final class ScanEngine {
         // After 20 s ARKit is unlikely to relocalize; the old world frame is gone (checklist R5).
         guard frame.timestamp - since > 20 else { return }
         switch state.phase {
-        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest:
-            // Capture still needs the world frame: start again from the meter.
+        case .findMeter, .meterCloseUp, .wallWalk:
+            // The walk still needs the world frame: start again from the meter.
             RuntimeLog.capture.info("relocalization timed out after 20 s: resetting to the meter")
             resetSpatialState(reason: "relocalization timed out")
+        case .gapRequest:
+            // The scan so far is whole; only this request needs the lost frame. It goes to installer
+            // review as if the homeowner couldn't get there, and the upload that follows keeps the
+            // scan (and, for a request raised from the result, replaces the result with the new
+            // answer). The clock restarts, so a later request gets its own 20 s.
+            relocalizingSince = nil
+            // A request already met is on its way to the upload (`afterGapResolved`).
+            guard state.gap?.isSatisfied != true else { return }
+            RuntimeLog.capture.info("relocalization timed out after 20 s: leaving the gap for installer review")
+            skipCurrentGap(because: "the phone lost its place for 20 s")
+        case .markFeatures:
+            // The review needs no live frame: "Looks complete" uploads the scan as it is, and
+            // "Add something", which taps into the world frame, waits for tracking to return
+            // (`beginMarking`). Nothing is thrown away.
+            break
         case .uploading, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
@@ -1007,7 +1035,10 @@ final class ScanEngine {
         }
     }
 
-    /// Forgets everything tied to the old world frame and asks for the meter again.
+    /// Forgets everything tied to the old world frame and asks for the meter again. What
+    /// describes the house rather than a place in the old frame stays: the ground answer. The
+    /// close-up's own state (gate, readout, view) is reset when the close-up starts again
+    /// (`go(.meterCloseUp)`).
     func resetSpatialState(reason: String) {
         RuntimeLog.engine.info("spatial reset: \(reason, privacy: .public)")
         generation += 1
@@ -1016,6 +1047,8 @@ final class ScanEngine {
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
+        groundMeasured = false
+        lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
         live?.restart()
         coverage = nil
@@ -1027,9 +1060,14 @@ final class ScanEngine {
         state.target = nil
         state.path = []
         state.features = []
+        // A mark half placed holds taps in the old frame's wall coordinates.
+        state.marking = nil
+        pendingTaps = []
         state.gap = nil
         gapPlan = nil
         pastEndSide = nil
+        // Skipped requests name spans along the old wall.
+        skippedGaps = []
         automaticGaps = []
         automaticGapsStopped = false
         seeBehindBands = []
@@ -1038,11 +1076,20 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        // An answer describes a scan that no longer exists; the next upload brings a new one.
+        uploadTask?.cancel()
+        placement = nil
+        state.result = nil
+        state.upload = .idle
+        // The keyframes and stills, the meter close-up included, were taken in the old frame.
         store.discardKeyframes()
         // A bundle packed before this holds keyframes of the world frame just discarded.
         state.shareableScan = nil
         keptSourceIDs = []
         state.captureCount = 0
+        state.lastCapture = nil
+        gateProblem = nil
+        gateClearSince = nil
         autoCapture.reset()
         planner.reset()
         go(.findMeter)
@@ -1137,6 +1184,13 @@ final class ScanEngine {
     func runGapCheck() {
         automaticGaps = []
         automaticGapsStopped = false
+        // A request needs the camera in the scan's world frame; while the phone has lost its
+        // place, the scan goes as it is and the server's answer lists what is still unseen.
+        guard !state.tracking.hasLostItsPlace else {
+            RuntimeLog.engine.info("gap check skipped: the phone has lost its place; uploading the scan as it is")
+            startUpload()
+            return
+        }
         guard let map = coverage, let plan = gapPlanner.plan(map), !skippedGaps.contains(plan) else {
             startUpload()
             return
@@ -1250,6 +1304,8 @@ final class ScanEngine {
     private func upload() async {
         let scan = generation
         state.upload = .packaging
+        // Sending again from a failed upload stays on this phase, so `go` doesn't restart them.
+        updateRecording()
         // Keyframe writes still in flight belong in the scene's keyframe list.
         for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
@@ -1272,6 +1328,7 @@ final class ScanEngine {
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
+            updateRecording()
             return
         }
         saveBundle(scene: scene, mesh: meshSnapshot)
@@ -1311,6 +1368,7 @@ final class ScanEngine {
             guard scan == generation else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.state(for: error)
+            updateRecording()
         }
     }
 
@@ -1318,7 +1376,9 @@ final class ScanEngine {
     /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
     /// they can't get to one, or after `maxAutomaticGaps` requests.
     private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
-        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, let map = coverage else { return nil }
+        // A request raised while the phone has lost its place could only time out: show the result.
+        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
+              let map = coverage else { return nil }
         for item in result.missingEvidence {
             guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
                   !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }

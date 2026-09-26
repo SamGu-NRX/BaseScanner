@@ -279,8 +279,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     private let onEvent: @MainActor @Sendable (LiveEvent) -> Void
     private let queueState = Mutex(QueueState())
     private let context = CIContext(options: [.cacheIntermediates: false])
-    /// Serial. Every sampled frame is delivered through it, so frames reach the main actor in order
-    /// even when the one before was waiting on its JPEG.
+    /// Serial, and every frame the main actor gets passes through it, pose-only ones too, then
+    /// through the main queue (`deliver`), which is FIFO: frames reach the engine in capture
+    /// order even when a sampled frame waited on its JPEG. A pose-only frame used to go straight
+    /// to the main actor and overtake the sampled frame before it; the engine then saw time run
+    /// back. The cost is that a pose may wait behind one encode.
     private let encodeQueue = DispatchQueue(label: "dev.housescanning.housescan.jpeg", qos: .userInitiated)
 
     private struct QueueState {
@@ -342,7 +345,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
                 quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, isPoseOnly: true
             )
-            Task { @MainActor [onFrame] in onFrame(pose) }
+            encodeQueue.async { [self, pose] in deliver(pose) }
             return
         }
         let quality = Self.quality(frame.capturedImage)
@@ -379,7 +382,16 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 if let data = encode(image.buffer) { delivered.jpeg = .data(data) }
                 queueState.withLock { $0.encoding = false }
             }
-            Task { @MainActor [onFrame] in onFrame(delivered) }
+            deliver(delivered)
+        }
+    }
+
+    /// Hands a frame to the engine on the main queue. Called only from `encodeQueue`, in order;
+    /// `DispatchQueue.main` runs blocks in the order they were queued, where separate `Task`s
+    /// aimed at the main actor carry no such promise.
+    private func deliver(_ frame: SourceFrame) {
+        DispatchQueue.main.async { [onFrame] in
+            MainActor.assumeIsolated { onFrame(frame) }
         }
     }
 

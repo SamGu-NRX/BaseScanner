@@ -210,6 +210,9 @@ extension ScanEngine: ScanActions {
 
     func beginMarking(_ kind: FeatureKind) {
         guard state.phase == .wallWalk || state.phase == .markFeatures else { return }
+        // A mark is a tap into the world frame. The review hides "Add something" while the phone
+        // has lost its place; this holds if a tap races the change.
+        guard state.phase != .markFeatures || !state.tracking.hasLostItsPlace else { return }
         state.marking = MarkingState(kind: kind, step: 0, refusal: nil)
         pendingTaps = []
     }

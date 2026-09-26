@@ -35,19 +35,24 @@ public struct PacketDepthFrame: Sendable {
 }
 
 /// Which depth frames a capture records: at most one every `interval` seconds, and at most
-/// `limit` in all. Past the limit nothing more is admitted, so a long walk keeps its first
-/// `limit` frames. The live recorder and a replay's packaging both use it.
+/// `limit` in all. Past the limit nothing more is admitted, so a long capture keeps its first
+/// `limit` frames. The live recorder and a replay's packaging both use it. The app records depth
+/// frames only while the camera is meant to be on the wall (the meter close-up, the walk and gap
+/// requests), and not while it searches for the meter, shows the review or waits on an upload,
+/// so the budget is spent on views of the wall.
 public struct DepthFrameBudget: Sendable, Equatable {
     /// 2 Hz. packet/README.md asks for "a few hertz": a 256 × 192 frame with confidence is
     /// 245,760 bytes, so 10 Hz, the rate an on-device map fuses, would add about 2.5 MB a second.
-    /// 2 Hz adds about 0.5 MB a second, and a frame every 0.5 s is also about one per photo
-    /// spacing at walking pace. A choice, not measured: no device capture has been timed.
+    /// 2 Hz adds about 0.5 MB a second, and at walking pace (about 1 m/s) a frame every 0.5 s is
+    /// about one per 0.5 m photo spacing, so each photo has a depth frame between it and the
+    /// next. A choice, not measured: no device capture has been timed.
     public static let rateHz = 2.0
-    /// 300 frames: 2.5 minutes at 2 Hz, 73.7 MB at 256 × 192 with confidence, about twice the
-    /// README's 40 MB estimate for 80 photos. Share scan holds the recorded frames, the packet
-    /// folder and its zip at once while it builds the zip, so the phone briefly needs about three
-    /// times that. No measured walk length or storage budget backs the number; revisit it once a
-    /// device capture has been measured.
+    /// 300 frames: 150 s of close-up, walk and gap requests at 2 Hz, and 73.7 MB at 256 × 192
+    /// with confidence, about twice the README's 40 MB estimate for 80 photos. The replay
+    /// fixtures' capture runs 25 s; a longer one keeps its first 150 s. Share scan holds
+    /// the recorded frames, the packet folder and its zip at once while it builds the zip, so the
+    /// phone briefly needs about three times the total. No measured capture length or storage
+    /// budget backs the number; revisit it once a device capture has been measured.
     public static let maxFrames = 300
     /// Frame times jitter around their nominal spacing (ARKit's are not exact multiples of 1/60
     /// s, and a replay's 0.5 s steps may come out as 0.49999). Half a 60 Hz frame of slack keeps

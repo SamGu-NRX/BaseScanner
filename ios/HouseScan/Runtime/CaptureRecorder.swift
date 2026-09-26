@@ -75,6 +75,9 @@ final class CaptureRecorder: Sendable {
     private struct State {
         var sessionID = UUID().uuidString
         var recording = true
+        /// Depth frames record only while the camera is meant to be on the wall; the engine turns
+        /// them on for the close-up, the walk and a gap request (`setRecording`).
+        var recordingDepth = false
         /// Rows older than this are from a world frame `restart` discarded; ARKit can deliver a
         /// few after the reset.
         var since: Double = 0
@@ -111,9 +114,14 @@ final class CaptureRecorder: Sendable {
         }
     }
 
-    /// Off while no capture is under way (the result screens): rows are dropped.
-    func setRecording(_ on: Bool) {
-        state.withLock { $0.recording = on }
+    /// Off while no capture is under way (the result screens, a failed upload): rows and depth
+    /// frames are dropped. `depthFrames` narrows depth frames further, to the phases that aim the
+    /// camera at the wall.
+    func setRecording(_ on: Bool, depthFrames: Bool) {
+        state.withLock { state in
+            state.recording = on
+            state.recordingDepth = on && depthFrames
+        }
     }
 
     func recordPose(t: Double, tracking: TrackingCode, cameraToWorld m: simd_float4x4) {
@@ -151,7 +159,7 @@ final class CaptureRecorder: Sendable {
     /// depth map, so a frame the budget would drop costs nothing.
     func wantsDepthFrame(at t: Double) -> Bool {
         state.withLock { state in
-            state.recording && !state.depthFailed && t >= state.since && state.depthBudget.wants(t: t)
+            state.recordingDepth && !state.depthFailed && t >= state.since && state.depthBudget.wants(t: t)
         }
     }
 
@@ -162,7 +170,7 @@ final class CaptureRecorder: Sendable {
     func recordDepthFrame(t: Double, tracking: TrackingCode, cameraToWorld: simd_float4x4, intrinsics: SIMD4<Float>, depth: DepthPacket) {
         guard let confidence = depth.confidence, depth.meters.count == depth.width * depth.height, confidence.count == depth.meters.count else { return }
         state.withLock { state in
-            guard state.recording, !state.depthFailed, t >= state.since, state.depthBudget.admit(t: t) else { return }
+            guard state.recordingDepth, !state.depthFailed, t >= state.since, state.depthBudget.admit(t: t) else { return }
             let stem = "\(Self.depthFolder)/\(PacketDepthFrame.id(number: state.depthBudget.admitted))"
             let frame = DepthFrame(
                 t: t, tracking: tracking, cameraToWorld: cameraToWorld, intrinsics: intrinsics, width: depth.width, height: depth.height,

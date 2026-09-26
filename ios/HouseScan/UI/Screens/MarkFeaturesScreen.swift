@@ -112,13 +112,36 @@ struct MarkFeaturesScreen: View {
         }
     }
 
+    /// A mark is a tap into the scene, so while the phone has lost its place the chips give way
+    /// to a line that says so; "Looks complete" still sends the scan.
     private var addSomething: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Add something")
                 .font(Typeface.sectionTitle)
                 .accessibilityAddTraits(.isHeader)
-            FlowChips { kind in actions.beginMarking(kind) }
+            if state.tracking.hasLostItsPlace {
+                Label {
+                    Text("Your phone lost its place. Point it back at the wall to add more, or tap Looks complete to send the scan.")
+                } icon: {
+                    Image(systemName: "location.slash.fill")
+                        .foregroundStyle(Palette.muted)
+                        .accessibilityHidden(true)
+                }
+                .font(Typeface.hint)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Palette.canvas, in: .rect(cornerRadius: 16, style: .continuous))
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("review.lostPlace")
+                .transition(.opacity)
+            } else {
+                FlowChips { kind in actions.beginMarking(kind) }
+                    .transition(.opacity)
+            }
         }
+        // Opacity only, so it stays with reduced motion too.
+        .animation(Motion.text, value: state.tracking.hasLostItsPlace)
     }
 }
 
