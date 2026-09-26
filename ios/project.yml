@@ -58,8 +58,13 @@ targets:
     type: bundle.ui-testing
     platform: iOS
     sources:
+      # Fixtures stay out of the bundle: the tests read them at their source paths, and the two
+      # replays' same-named files (session.json, keyframes/k000NN.jpg) would collide in its one
+      # flat resources folder ("Multiple commands produce").
       - path: HouseScanUITests
         type: syncedFolder
+        excludes:
+          - Fixtures
     dependencies:
       - target: HouseScan
     settings:
