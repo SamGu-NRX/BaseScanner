@@ -30,6 +30,22 @@ enum Distance {
         return "\(feet) ft"
     }
 
+    /// Whole feet rounded up, for a distance the homeowner must reach at least: "out to about
+    /// 7 ft" must not ask for less than the request.
+    static func feetAtLeast(_ meters: Float) -> String {
+        "\(max(1, Int((abs(meters) / (metersPerInch * 12) - 0.001).rounded(.up)))) ft"
+    }
+
+    /// "5 ft either side of your meter", or "from 3 ft left to 5 ft right of your meter" when the
+    /// stretch is lopsided, for the tilt-up step.
+    static func stretchAroundMeter(_ span: ClosedRange<Float>) -> String {
+        let left = roughFeet(span.lowerBound), right = roughFeet(span.upperBound)
+        if span.lowerBound >= 0 { return "from your meter to \(right) right of it" }
+        if span.upperBound <= 0 { return "from \(left) left of your meter to your meter" }
+        if left == right { return "\(left) either side of your meter" }
+        return "from \(left) left to \(right) right of your meter"
+    }
+
     /// VoiceOver reads "ft" as letters; spell the units out.
     static func spoken(_ meters: Float) -> String {
         let totalInches = Int((abs(meters) / metersPerInch).rounded())
@@ -57,4 +73,9 @@ enum Distance {
         if span.contains(0) || abs(center) < 0.3 { return "around your meter" }
         return "about \(roughFeet(center)) \(center < 0 ? "left" : "right") of your meter"
     }
+}
+
+extension String {
+    /// "about 5 ft right of your meter" as the start of a sentence.
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
