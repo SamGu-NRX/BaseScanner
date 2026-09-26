@@ -479,3 +479,23 @@ def test_route_length_unsure_cause(start, cause) -> None:
     raw["ground"] = pads_ground([(start, start + 3)])
     reach = check(run(raw), "route_length")
     assert (reach["outcome"], reach["unsure_cause"]) == ("unsure", cause)
+
+
+def test_sweep_runs_only_claim_evaluated_starts_on_one_piece() -> None:
+    # Before (S4, case g03 at 44607e0): runs merged across pieces, so one pass run covered
+    # 15 ft of corner-crossing starts between two pads on a wall bent into short chords.
+    raw = shared_fixture()
+    arc = [[x, -0.02 * x * x] for x in (-9, -6, -4, -2, 0, 2, 4, 6, 7, 10)]
+    raw["walls"] = [{"id": "w1", "baseline": arc, "plus_minus_ft": 0}]
+    raw["ground"] = pads_ground([(-9.5, -5.5), (6.5, 10.5)], lo=-12, hi=12)
+    raw["coverage"] = everything_observed(-12, 12)
+    raw["facing"], raw["overheads"] = [], []
+    scene = parsed(raw)
+    result = run(raw)
+    for r in result["sweep"]:
+        piece = next(p for p in scene.walls if p.index == r["segment"])
+        a, b = r["start_ft"]
+        assert piece.s0 - 1e-6 <= a <= b <= max(piece.s1 - W, piece.s0) + 1e-6, r
+        if r["outcome"] == "pass":
+            for s0 in (a, (a + b) / 2, b):
+                assert evaluate_start(scene, golden_rules(), s0).outcome == "pass", (r, s0)

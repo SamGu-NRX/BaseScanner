@@ -30,6 +30,10 @@ errors:
   tape_ft: {value: 0.05, source: "Tape measure read to the nearest half inch", placeholder: true}
   wall_ft: {value: 0.3, source: "Walls come from AR taps: docs/02 Lane C estimate; untested"}
   meter_ft: {value: 0.3, source: "The meter is an AR tap: docs/02 Lane C estimate; untested"}
+  # Added per foot walked from the meter to the default error of AR-placed positions (tap and
+  # vlm objects, walls, ground patches); not to tape, the meter itself or explicit plus_minus_ft.
+  # 0.3 ft + 0.16 ft/ft covers S1's p90 at 3, 10 and 30 ft walked (0.78, 1.9, 5.1 ft).
+  drift_per_ft: {value: 0.16, source: "S1 real-data evals (PR #12): ARKit drift on outdoor ADVIO walks, p90 8.2 in after 3 ft, 22.3 in after 10 ft, 60.1 in after 30 ft, mostly ~7% scale error. 2018 iPhone 6s, ARKit 1.0; current phones untested"}
 
 sweep:
   step_ft: {value: 0.166666666667, source: "docs/01 C2: slide the footprint in 2 in steps"}

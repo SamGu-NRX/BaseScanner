@@ -14,7 +14,7 @@ import itertools
 import math
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import partial
 from typing import Any
 
@@ -247,8 +247,11 @@ class Solver:
             rule_placeholder=self.r.ground.placeholder,
         )
         ew = piece.plus_minus
+        # "Clearly on a disallowed surface" erodes the patch by the error, rounded up to 0.1 ft
+        # so the eroded patches are reused across candidates (at most 1.2 in more conservative).
+        erosion = math.ceil(round(ew, 9) * 10) / 10
         for g in self.bad:
-            core = self._buffered(g.polygon, -(g.plus_minus + ew))
+            core = self._buffered(g.polygon, -(g.plus_minus + erosion))
             if not core.is_empty and fp.intersection(core).area > _MEASURE_EPS:
                 c.outcome, c.subject = FAIL, f"ground[{g.index}] {g.type}"
                 c.reason = f"The footprint stands on {g.type}, which is not an allowed surface."
@@ -263,14 +266,10 @@ class Solver:
         # Containment is inclusive: touching a disallowed patch along an exact edge is not
         # standing on it (golden test 01).
         on_good = self._good_union.covers(fp)
-        near_bad = any(
-            fp.intersection(self._buffered(g.polygon, g.plus_minus + ew)).area > _MEASURE_EPS
-            for g in self.bad
-        )
+        near_bad = any(fp.distance(g.polygon) < g.plus_minus + ew - _MEASURE_EPS for g in self.bad)
         near_unknown = (
             not self._unclassified.is_empty
-            and fp.intersection(self._buffered(self._unclassified, self._ground_error + ew)).area
-            > _MEASURE_EPS
+            and fp.distance(self._unclassified) < self._ground_error + ew - _MEASURE_EPS
         )
         if on_good and not near_bad and not near_unknown:
             c.reason = "The whole footprint stands on an allowed surface."
@@ -531,7 +530,8 @@ class Solver:
         for gap in self.scene.gaps:
             if min(hi, gap.s1) - max(lo, gap.s0) > EPS:
                 # A gap no longer than the two walls' errors may not be a gap at all.
-                clear = (gap.s1 - gap.s0) - gap.plus_minus > EPS
+                gap_err = gap.error_at(max(abs(gap.s0), abs(gap.s1)))
+                clear = (gap.s1 - gap.s0) - gap_err > EPS
                 crossings.append(
                     {
                         "subject": "stretch with no wall",
@@ -681,10 +681,15 @@ class Solver:
 
     # --- candidates ----------------------------------------------------------------------------
 
-    def evaluate(self, piece: Piece, s0: float) -> Candidate:
+    def evaluate(self, wall_piece: Piece, s0: float) -> Candidate:
         r = self.r
         s1 = s0 + self.W
-        fp = self.footprint(piece, s0)
+        fp = self.footprint(wall_piece, s0)
+        # Checks see the wall's error at the battery's far edge from the meter, where AR drift
+        # is largest.
+        piece = replace(
+            wall_piece, plus_minus=wall_piece.error_at(max(abs(s0), abs(s1))), drift=0.0
+        )
         c = r.clearances
         checks = [
             self.check_backing(piece, s0, s1),
@@ -781,15 +786,18 @@ class Solver:
         ]
         route, path, reach = self.route_for(piece, s0, s1)
         checks += [path, reach]
-        return Candidate(piece, s0, s1, fp, checks, route, worst([x.outcome for x in checks]))
+        return Candidate(wall_piece, s0, s1, fp, checks, route, worst([x.outcome for x in checks]))
 
     def reach_limit(self, piece: Piece) -> float:
         """Past this |s| of its near edge a battery's route fails the maximum length whatever
         else is true: the route is never shorter than |s|, and its error is at most the meter's,
         the wall's and every possible detour's."""
         detour_err = sum(2 * o.plus_minus for o in self.route_objects)
-        e_max = self.scene.meter_plus_minus + piece.plus_minus + detour_err
-        return self.r.route.max_ft.value + e_max + 2 * EPS
+        e_fixed = self.scene.meter_plus_minus + piece.plus_minus + detour_err
+        if piece.drift >= 1:
+            return math.inf
+        # The route's error grows with |s| by the wall's drift: solve |s| - e(|s|) = max.
+        return (self.r.route.max_ft.value + e_fixed) / (1 - piece.drift) + 2 * EPS
 
     def starts(self, piece: Piece) -> list[float]:
         """Start positions (left edge, in s) to evaluate on one straight segment."""
@@ -800,13 +808,11 @@ class Solver:
             return []
         hi = max(hi, lo)
         step = self.r.sweep.step_ft.value
-        # The grid is anchored at the meter, in left-edge and right-edge form (starts k * step
-        # and k * step - W), so the start positions of a scene and of its mirror image map onto
-        # each other and left and right get the same treatment.
+        # The grid puts the battery's centre at k * step from the meter, so the start positions
+        # of a scene and of its mirror image map onto each other and left and right get the same
+        # treatment.
         k_lo, k_hi = math.floor(lo / step) - 1, math.ceil((hi + W) / step) + 1
-        points = [lo, hi]
-        for k in range(k_lo, k_hi + 1):
-            points += [k * step, k * step - W]
+        points = [lo, hi] + [k * step - W / 2 for k in range(k_lo, k_hi + 1)]
         # Along the wall: every place an interval can start or stop mattering.
         boundaries = [0.0, *self.ws_span]
         for o in self.scene.objects:
@@ -820,13 +826,13 @@ class Solver:
             boundaries += [g.s0, g.s1]
         offsets = {0.0}
         for m in [*self.equipment, *self.scene.overheads, *self.scene.facing]:
-            for e in (m.plus_minus, m.plus_minus + piece.plus_minus):
+            for e in (m.plus_minus, m.plus_minus + piece.error_at(max(abs(lo), abs(hi)))):
                 offsets |= {e, -e}
         for b in boundaries:
             for off in offsets:
                 points += [b + off, b - W - off]
         rt = self.r.route
-        e_route = self.scene.meter_plus_minus + piece.plus_minus
+        e_route = self.scene.meter_plus_minus + piece.error_at(max(abs(lo), abs(hi)))
         for line in (rt.confident_reach_ft.value, rt.max_ft.value):
             for x in (line - e_route, line + e_route, line):
                 points += [x, -x - W]
@@ -859,7 +865,7 @@ class Solver:
     def _clearance_edges(self, piece: Piece) -> list[tuple[Geometry, float]]:
         """(geometry, offset) pairs whose offset outlines bound some check's outcome."""
         c = self.r.clearances
-        ew = piece.plus_minus
+        ew = piece.error_at(max(abs(piece.s0), abs(piece.s1)))
         out: list[tuple[Geometry, float]] = []
         for t, objs in (
             (c.gas_ft.value, self.gas),
@@ -1029,12 +1035,17 @@ def _missing_json(c: Candidate) -> list[dict[str, Any]]:
     return out
 
 
-def _sweep_json(cands: list[Candidate], scene: Scene) -> list[dict[str, Any]]:
+def _sweep_json(cands: list[Candidate], scene: Scene, step: float) -> list[dict[str, Any]]:
+    """Merge evaluated starts into runs. A run only grows by a start on the same straight piece
+    within one sweep step of the previous one, so it never claims starts nobody evaluated."""
     runs: list[dict[str, Any]] = []
+    prev: Candidate | None = None
     for c in sorted(cands, key=lambda c: c.s0):
         wall = scene.wall_at((c.s0 + c.s1) / 2)
-        key = (wall, c.piece.index, c.outcome, sorted(c.failing()), sorted(c.unsure()))
-        if runs and runs[-1]["_key"] == key:
+        key = (wall, c.piece, c.outcome, sorted(c.failing()), sorted(c.unsure()))
+        adjacent = prev is not None and prev.piece == c.piece and c.s0 - prev.s0 <= step + EPS
+        prev = c
+        if runs and adjacent and runs[-1]["_key"] == key:
             runs[-1]["start_ft"][1] = _round(c.s0)
         else:
             runs.append(
@@ -1071,7 +1082,7 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
         ("left", scene.s_min, scene.walls[0].a, scene.walls[0]),
         ("right", scene.s_max, scene.walls[-1].b, scene.walls[-1]),
     ):
-        beyond = abs(s_end) - (e_end + piece.plus_minus) - r.route.max_ft.value > EPS
+        beyond = abs(s_end) - (e_end + piece.error_at(s_end)) - r.route.max_ft.value > EPS
         ends[side] = {
             "kind": scene.end_kinds[side],
             "s_ft": _round(s_end),
@@ -1234,7 +1245,8 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
         "missing_evidence": missing,
         "ends": ends,
         "sweep": sorted(
-            _sweep_json(cands, scene) + far, key=lambda run: (run["start_ft"][0], run["segment"])
+            _sweep_json(cands, scene, r.sweep.step_ft.value) + far,
+            key=lambda run: (run["start_ft"][0], run["segment"]),
         ),
         "stats": {
             "candidates": len(cands),

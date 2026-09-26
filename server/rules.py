@@ -57,6 +57,7 @@ class Errors(_Strict):
     tape_ft: Value
     wall_ft: Value
     meter_ft: Value
+    drift_per_ft: Value
 
 
 class Sweep(_Strict):

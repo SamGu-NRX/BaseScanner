@@ -17,7 +17,7 @@ GOLDEN_RULES: dict[str, Any] = {
     "policy": {"id": "golden-test", "version": "1", "auto_approve": True, "allow_reject": True},
     "errors": {
         k: {"value": 0.0, "source": "exact test geometry"}
-        for k in ("tap_ft", "vlm_ft", "mesh_ft", "tape_ft", "wall_ft", "meter_ft")
+        for k in ("tap_ft", "vlm_ft", "mesh_ft", "tape_ft", "wall_ft", "meter_ft", "drift_per_ft")
     },
     "facing": {"min_ft": {"value": 5.0, "source": "test"}, "measured_from": "wall"},
     "route": {

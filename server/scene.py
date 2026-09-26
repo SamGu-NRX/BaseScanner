@@ -15,7 +15,7 @@ import hashlib
 import itertools
 import json
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +69,13 @@ class Piece:
     along: Point2
     outward: Point2
     plus_minus: float
+    # Extra error per foot walked from the meter, for walls placed by AR taps without their own
+    # plus_minus_ft (rules.yaml errors.drift_per_ft).
+    drift: float = 0.0
+
+    def error_at(self, s: float) -> float:
+        """Position error of this piece's line at s."""
+        return self.plus_minus + self.drift * abs(s)
 
     def point(self, s: float, out: float = 0.0) -> Point2:
         t = s - self.s0
@@ -391,6 +398,7 @@ def _join_straight_walls(pieces: list[Piece]) -> list[Piece]:
                 along,
                 _outward(along),
                 max(prev.plus_minus, p.plus_minus),
+                max(prev.drift, p.drift),
             )
         else:
             out.append(p)
@@ -465,6 +473,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     if input_bytes is None:
         input_bytes = json.dumps(raw, sort_keys=True, separators=(",", ":")).encode()
     errors = rules.errors
+    drift = errors.drift_per_ft.value
     source_error = {
         "tap": errors.tap_ft.value,
         "vlm": errors.vlm_ft.value,
@@ -477,7 +486,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     wall_ids: set[str] = set()
     s = 0.0
     prev_end: Point2 | None = None
-    prev_err = 0.0
+    prev_err = prev_drift = 0.0
     for wi, wall in enumerate(raw["walls"]):
         wid = wall["id"]
         if wid in wall_ids:
@@ -485,6 +494,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         wall_ids.add(wid)
         pts = [_xz(p, f"/walls/{wi}/baseline") for p in wall["baseline"]]
         wall_err = _error(wall, errors.wall_ft.value)
+        wall_drift = 0.0 if "plus_minus_ft" in wall else drift
         pts = _merge_collinear(pts, COLLINEAR_FT, f"/walls/{wi}/baseline")
         if prev_end is not None:
             gap = _norm(_sub(pts[0], prev_end))
@@ -507,6 +517,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                         along,
                         _outward(along),
                         gap_err,
+                        prev_drift + wall_drift,
                     )
                 )
                 s += gap
@@ -527,10 +538,11 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                     along,
                     _outward(along),
                     wall_err,
+                    wall_drift,
                 )
             )
             s += length
-        prev_end, prev_err = pts[-1], wall_err
+        prev_end, prev_err, prev_drift = pts[-1], wall_err, wall_drift
 
     # Place the meter: s = 0 at its projection onto its own wall.
     meter = raw["meter"]
@@ -565,21 +577,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
             f"more than {max_off} ft means the scene is misaligned",
         )
     shift = best[2]
-    pieces = [
-        Piece(
-            p.kind,
-            p.wall_id,
-            p.index,
-            p.a,
-            p.b,
-            p.s0 - shift,
-            p.s1 - shift,
-            p.along,
-            p.outward,
-            p.plus_minus,
-        )
-        for p in pieces
-    ]
+    pieces = [replace(p, s0=p.s0 - shift, s1=p.s1 - shift) for p in pieces]
     wall_spans = [(p.wall_id, p.s0, p.s1) for p in pieces if p.kind == "wall"]
     pieces = _join_straight_walls(pieces)
     meter_piece = next(p for p in pieces if p.kind == "wall" and p.s0 - EPS <= 0 <= p.s1 + EPS)
@@ -603,6 +601,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         first.along,
         first.outward,
         first.plus_minus,
+        first.drift,
     )
     right_ext = Piece(
         "extension",
@@ -615,6 +614,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         last.along,
         last.outward,
         last.plus_minus,
+        last.drift,
     )
     pieces = [left_ext, *pieces, right_ext]
 
@@ -661,7 +661,11 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                 operable=attrs.get("operable"),
                 well=attrs.get("well"),
                 source=obj["source"],
-                plus_minus=_error(obj, source_error[obj["source"]]),
+                plus_minus=_error(
+                    obj,
+                    source_error[obj["source"]]
+                    + (drift * max(abs(span[0]), abs(span[1])) if obj["source"] != "tape" else 0),
+                ),
                 geom=geom,
                 points=tuple(pts),
             )
@@ -669,7 +673,9 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
 
     for i, patch in enumerate(raw.get("ground", [])):
         poly = _geometry([_xz(p, "") for p in patch["polygon"]], f"/ground/{i}/polygon")
-        scene.ground.append(GroundPatch(i, patch["type"], poly, _error(patch, errors.tap_ft.value)))
+        walked = max(abs(scene.s_of(c)) for c in poly.exterior.coords)
+        default = errors.tap_ft.value + drift * walked
+        scene.ground.append(GroundPatch(i, patch["type"], poly, _error(patch, default)))
 
     for key, target, value_key in (
         ("overheads", scene.overheads, "clearance_ft"),
