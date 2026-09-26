@@ -32,7 +32,7 @@ Set before the run, from the research note. The method passes when all of these 
 - The 30 ft span is within 8 in. The return-to-reference gap is within 4 in.
 - Every accepted measurement's interval contains the taped value, using the bounds above as the interval (app value ± bound). A measurement with `accepted: false` counts as an abstention. It inherits every warning of the points and walls it depends on: a flagged ground hit, a wall whose contact was flagged, a wall with no check or a failed one, and a negative height above ground. Its error is still recorded, to show whether each warning was needed.
 - The hidden-contact, low-parallax, mismatched-tap and wrong-plane cases abstain: a refusal, a flag, or a failed wall check.
-- On both sides of a threshold, the decision rule never gives a false PASS. Use the public 3 ft fence clearance from Base's help page as `T`: PASS when `distance − bound ≥ T`, FAIL when `distance + bound < T`, UNSURE otherwise.
+- On both sides of a threshold, the decision rule never gives a false PASS. Use the public 3 ft fence clearance from Base's help page as `T`: PASS when `distance − bound > T`, FAIL when `distance + bound < T`, UNSURE otherwise. Equality is UNSURE, matching the Lane C decision rule.
 - The uncoached operator finishes one capture in 8 minutes, with at most one corrective prompt per measurement.
 
 On a failure, narrow the method's claim or send that quantity to review. Never widen the bounds to pass. One house can admit a method to the demo; it cannot prove it across homes.
