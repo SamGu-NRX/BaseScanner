@@ -278,7 +278,7 @@ extension ScanEngine {
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
                 // or answered with something overhead stays with the installer.
-                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd)
+                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
                     .map { !skippedGaps.contains($0) } ?? false
             )
         }

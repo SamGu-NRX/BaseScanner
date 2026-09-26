@@ -184,11 +184,13 @@ public struct GuidancePlanner: Sendable {
     }
 
     /// A band that lags the other around the camera: the other band is covered there but this one
-    /// isn't, over at least `lagRun`.
+    /// isn't, over at least `lagRun`. Only cells between the ends count: cells seen before an end
+    /// was set stay in the map, but past it nothing is observed or skipped, so a task there could
+    /// never be met or refused (issue #38).
     private func laggingBand(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
         let window = (s - 1)...(s + 1)
-        let indices = coverage.indices(overlapping: window)
+        let indices = coverage.indices(overlapping: window).filter(coverage.isWithinEnds)
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
         func done(_ level: CoverageLevel) -> Bool { level == .covered || level == .skipped }
         let groundLag = indices.filter { done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) }
@@ -198,13 +200,14 @@ public struct GuidancePlanner: Sendable {
         return nil
     }
 
-    /// Cells hidden in either band around the camera, over at least `lagRun`. It comes before a
-    /// lagging band: aiming at a band something stands in front of adds nothing.
+    /// Cells hidden in either band around the camera, over at least `lagRun`, between the ends as
+    /// for `laggingBand`. It comes before a lagging band: aiming at a band something stands in
+    /// front of adds nothing.
     private func hiddenNearCamera(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
         let hidden = coverage.indices(overlapping: (s - 1)...(s + 1)).filter { index in
-            SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
+            coverage.isWithinEnds(index) && SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
         }
         guard hidden.count >= needed, let mid = middle(hidden, coverage) else { return nil }
         return .seeBehind(s: mid)
@@ -250,7 +253,7 @@ public struct GuidancePlanner: Sendable {
             return coverage.wall.wallPoint(camera.position).out >= config.tooClose + 0.2
         case .seeBehind(let s):
             return !coverage.indices(overlapping: (s - 0.3)...(s + 0.3)).contains { index in
-                SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
+                coverage.isWithinEnds(index) && SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
             }
         case .complete:
             return false

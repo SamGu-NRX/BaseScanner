@@ -405,7 +405,7 @@ extension ScanEngine: ScanActions {
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }
         let item = missing[index]
-        guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
+        guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds) else { return }
         beginServerGap(item, plan: plan)
     }
 
