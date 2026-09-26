@@ -14,7 +14,10 @@ import OSLog
 ///   UI tests raise it so each screen stays long enough to screenshot and audit.
 /// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
 ///   that phase exists in the folder. UI tests write it once they have screenshotted and audited
-///   the screen, so a slow audit can never miss a screen.
+///   the screen, so a slow audit can never miss a screen. After the result shows, the autopilot
+///   also writes the scan's scene.json there, for the test to check.
+/// - `-autopilotCantGetThere`: the autopilot ends the walk with "Can't get there" instead of
+///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 struct LaunchOptions: Equatable {
     var replayFolder: URL?
     var autopilot = false
@@ -22,6 +25,7 @@ struct LaunchOptions: Equatable {
     var sampleResult = false
     var autopilotHold: Double = 1.2
     var autopilotGate: URL?
+    var autopilotCantGetThere = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -35,6 +39,7 @@ struct LaunchOptions: Equatable {
             replayFolder = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
         }
         autopilot = arguments.contains("-autopilot")
+        autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }

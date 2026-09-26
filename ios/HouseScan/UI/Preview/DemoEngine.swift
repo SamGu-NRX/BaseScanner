@@ -24,6 +24,9 @@ final class DemoEngine: ScanActions {
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
     private var skippedSpan: ClosedRange<Float>?
+    /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
+    /// of the walk out.
+    private var walkedBack: Float?
     /// Things standing in front of the wall, as depth would find them: a looked-at cell in the
     /// span is hidden, or skipped once the homeowner said they can't see past it.
     private var obstructions: [(span: ClosedRange<Float>, skipped: Bool)] = []
@@ -86,6 +89,10 @@ final class DemoEngine: ScanActions {
             case .trackingLost: state.tracking = .notAvailable
             default: break
             }
+        }
+        if arguments.contains("-uiDemoEndPreview") {
+            walkedBack = 1.5
+            refreshGuidance()
         }
         if arguments.contains("-uiDemoEndQuestion") {
             state.endQuestion = .left
@@ -544,6 +551,7 @@ final class DemoEngine: ScanActions {
 
     private func refreshGuidance() {
         guard let wall = state.wall else { return }
+        defer { refreshEndPreview() }
         if wall.rightEnd == nil {
             if reachedRight >= demoRightEnd - 0.01 {
                 state.guidance = .markEnd(side: .right)
@@ -574,6 +582,19 @@ final class DemoEngine: ScanActions {
             state.guidance = .walkComplete
             state.target = nil
             state.path = []
+        }
+    }
+
+    /// Like the real engine: during the walk the end goes where the walk has reached on that
+    /// side; while the walk asks for the end, at the demo wall's end, which the reticle is on.
+    private func refreshEndPreview() {
+        state.endPreview = switch state.guidance {
+        case .walk(let side, _):
+            EndPreview(side: side, s: side == .right ? reachedRight : -reachedLeft, atReticle: false, leavesOutWalked: walkedBack)
+        case .markEnd(let side):
+            EndPreview(side: side, s: side == .right ? demoRightEnd : demoLeftEnd, atReticle: true, leavesOutWalked: nil)
+        default:
+            nil
         }
     }
 
@@ -631,6 +652,20 @@ final class DemoEngine: ScanActions {
             state.wall?.rightEnd = demoRightEnd
         } else {
             state.wall?.leftEnd = demoLeftEnd
+        }
+        state.endQuestion = side
+        refreshCoverage()
+        refreshGuidance()
+    }
+
+    func endWallHere() {
+        guard case .walk(let side, _) = state.guidance, let preview = state.endPreview, !preview.atReticle else { return }
+        if side == .right {
+            demoRightEnd = preview.s
+            state.wall?.rightEnd = preview.s
+        } else {
+            demoLeftEnd = preview.s
+            state.wall?.leftEnd = preview.s
         }
         state.endQuestion = side
         refreshCoverage()
@@ -851,6 +886,7 @@ final class DemoEngine: ScanActions {
         case "holdSteady": .holdSteady
         case "relocalizing": .relocalizing
         case "trackingLost": .trackingLost
+        case "pastWallEnd": .pastWallEnd
         default: nil
         }
     }
