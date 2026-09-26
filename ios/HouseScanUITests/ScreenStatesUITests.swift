@@ -22,6 +22,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
+        ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
+        ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
@@ -45,7 +47,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-overheadQuestion", "gapRequest-walkOut", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
     ]
 
@@ -86,8 +88,12 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "feature.window")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.45)).tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.35)).tap()
+        // The right end turns a corner: mark the next wall, walk on along it, and end it there.
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endCorner")
+        tap(app, "action.markNextWall")
+        tap(app, "action.markEnd", timeout: 30)
+        tap(app, "action.endBlocked")
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endBlocked")
         // Both ends answered: the walk asks to tilt up, then what is overhead.

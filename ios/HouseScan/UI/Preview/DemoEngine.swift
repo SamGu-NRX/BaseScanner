@@ -28,8 +28,11 @@ final class DemoEngine: ScanActions {
     private var rejectedUploads = 0
 
     private static let cellWidth: Float = 0.1524
-    private static let leftEnd: Float = -2.9
-    private static let rightEnd: Float = 4.3
+    /// Where the demo wall ends on each side, meters of s. Following a corner moves the end on.
+    private var demoLeftEnd: Float = -2.9
+    private var demoRightEnd: Float = 4.3
+    /// How far the made-up wall goes on past a corner the walk follows, meters.
+    private static let pastCorner: Float = 1.5
 
     init(arguments: [String]) {
         func value(_ flag: String) -> String? {
@@ -73,6 +76,14 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoEndQuestion") {
             state.endQuestion = .left
+        }
+        if arguments.contains("-uiDemoNextWall") {
+            state.wall?.rightEnd = demoRightEnd
+            reachedRight = demoRightEnd
+            refreshCoverage()
+            state.guidance = .markNextWall(side: .right, refusal: arguments.contains("-uiDemoRefusal") ? .notAtCorner : nil)
+            state.target = nil
+            state.path = []
         }
         if arguments.contains("-uiDemoTiltUp") || arguments.contains("-uiDemoOverheadQuestion") {
             enterTiltUp()
@@ -182,10 +193,10 @@ final class DemoEngine: ScanActions {
     }
 
     private func finishedWalkState() {
-        reachedLeft = -Self.leftEnd
-        reachedRight = Self.rightEnd
-        state.wall?.leftEnd = Self.leftEnd
-        state.wall?.rightEnd = Self.rightEnd
+        reachedLeft = -demoLeftEnd
+        reachedRight = demoRightEnd
+        state.wall?.leftEnd = demoLeftEnd
+        state.wall?.rightEnd = demoRightEnd
         state.captureCount = max(state.captureCount, 42)
         if state.features.isEmpty {
             state.features = [Self.demoFeature(.gasMeter), Self.demoFeature(.window)]
@@ -309,9 +320,9 @@ final class DemoEngine: ScanActions {
             }
             if case .walk(let side, _) = state.guidance {
                 if side == .right {
-                    reachedRight = min(reachedRight + 0.3, Self.rightEnd)
+                    reachedRight = min(reachedRight + 0.3, demoRightEnd)
                 } else {
-                    reachedLeft = min(reachedLeft + 0.3, -Self.leftEnd)
+                    reachedLeft = min(reachedLeft + 0.3, -demoLeftEnd)
                 }
                 capture(.walk)
                 refreshCoverage()
@@ -361,7 +372,7 @@ final class DemoEngine: ScanActions {
     // MARK: Coverage
 
     private func refreshCoverage() {
-        let wallRange = DemoScene.wallRange
+        let wallRange = min(DemoScene.wallRange.lowerBound, demoLeftEnd - 0.3)...max(DemoScene.wallRange.upperBound, demoRightEnd + 0.1)
         let count = Int(((wallRange.upperBound - wallRange.lowerBound) / Self.cellWidth).rounded(.up))
         var wallCells: [CellState] = []
         var groundCells: [CellState] = []
@@ -414,30 +425,30 @@ final class DemoEngine: ScanActions {
     private func refreshGuidance() {
         guard let wall = state.wall else { return }
         if wall.rightEnd == nil {
-            if reachedRight >= Self.rightEnd - 0.01 {
+            if reachedRight >= demoRightEnd - 0.01 {
                 state.guidance = .markEnd(side: .right)
-                state.target = DemoScene.wall.world(s: Self.rightEnd, height: 1.0)
+                state.target = wall.world(s: demoRightEnd, height: 1.0)
                 state.path = []
             } else {
-                state.guidance = .walk(side: .right, remaining: Self.rightEnd - reachedRight)
-                state.target = DemoScene.wall.world(s: min(reachedRight + 0.9, Self.rightEnd), height: 0.2, out: 0.3)
-                state.path = DemoScene.path(toward: min(reachedRight + 1.2, Self.rightEnd))
+                state.guidance = .walk(side: .right, remaining: demoRightEnd - reachedRight)
+                state.target = wall.world(s: min(reachedRight + 0.9, demoRightEnd), height: 0.2, out: 0.3)
+                state.path = DemoScene.path(toward: min(reachedRight + 1.2, demoRightEnd))
             }
         } else if wall.leftEnd == nil {
-            if reachedLeft >= -Self.leftEnd - 0.01 {
+            if reachedLeft >= -demoLeftEnd - 0.01 {
                 state.guidance = .markEnd(side: .left)
-                state.target = DemoScene.wall.world(s: Self.leftEnd, height: 1.0)
+                state.target = wall.world(s: demoLeftEnd, height: 1.0)
                 state.path = []
             } else {
-                state.guidance = .walk(side: .left, remaining: -Self.leftEnd - reachedLeft)
-                state.target = DemoScene.wall.world(s: max(-reachedLeft - 0.9, Self.leftEnd), height: 0.2, out: 0.3)
-                state.path = DemoScene.path(toward: max(-reachedLeft - 1.2, Self.leftEnd))
+                state.guidance = .walk(side: .left, remaining: -demoLeftEnd - reachedLeft)
+                state.target = wall.world(s: max(-reachedLeft - 0.9, demoLeftEnd), height: 0.2, out: 0.3)
+                state.path = DemoScene.path(toward: max(-reachedLeft - 1.2, demoLeftEnd))
             }
         } else if !tiltUpSettled {
             // Like the real engine: 1.5 m each side of the meter, inside the marked ends.
             let span = max(wall.leftEnd ?? -1.5, -1.5)...min(wall.rightEnd ?? 1.5, 1.5)
             state.guidance = .tiltUp(span: span)
-            state.target = DemoScene.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: 3.0)
+            state.target = wall.world(s: (span.lowerBound + span.upperBound) / 2, height: 3.0)
             state.path = []
         } else {
             state.guidance = .walkComplete
@@ -497,17 +508,48 @@ final class DemoEngine: ScanActions {
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         guard case .markEnd(let side) = state.guidance else { return }
         if side == .right {
-            state.wall?.rightEnd = Self.rightEnd
+            state.wall?.rightEnd = demoRightEnd
         } else {
-            state.wall?.leftEnd = Self.leftEnd
+            state.wall?.leftEnd = demoLeftEnd
         }
         state.endQuestion = side
         refreshCoverage()
         refreshGuidance()
     }
 
+    /// Like the real engine: during the walk a corner asks for the next wall, once per side here.
     func answerWallEnd(turnsCorner: Bool) {
+        guard let side = state.endQuestion else { return }
         state.endQuestion = nil
+        let followed = state.wall?.cornerSegments.contains { side == .right ? $0.span.lowerBound > 0 : $0.span.upperBound < 0 } ?? true
+        if turnsCorner, !followed {
+            state.guidance = .markNextWall(side: side, refusal: nil)
+            state.target = nil
+            state.path = []
+            return
+        }
+        refreshGuidance()
+    }
+
+    /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
+    func markNextWall(at point: CGPoint?, viewSize: CGSize) {
+        guard case .markNextWall(let side, _) = state.guidance, var wall = state.wall else { return }
+        let end = side == .right ? demoRightEnd : demoLeftEnd
+        // Facing back across the demo wall's front, running toward the camera (+z).
+        let outward = SIMD3<Float>(side == .right ? -1 : 1, 0, 0)
+        wall.cornerSegments.append(WallGeometry.Segment(
+            span: side == .right ? end...Float.infinity : -Float.infinity...end,
+            along: side == .right ? SIMD3(0, 0, 1) : SIMD3(0, 0, -1), outward: outward,
+            anchor: SIMD3(end, 0, 0), anchorS: end))
+        if side == .right {
+            wall.rightEnd = nil
+            demoRightEnd += Self.pastCorner
+        } else {
+            wall.leftEnd = nil
+            demoLeftEnd -= Self.pastCorner
+        }
+        state.wall = wall
+        refreshCoverage()
         refreshGuidance()
     }
 
@@ -561,6 +603,10 @@ final class DemoEngine: ScanActions {
     }
 
     func cannotAccessArea() {
+        if case .markNextWall = state.guidance {
+            refreshGuidance()
+            return
+        }
         if case .tiltUp = state.guidance {
             tiltUpSettled = true
             refreshGuidance()
@@ -568,11 +614,11 @@ final class DemoEngine: ScanActions {
         }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
-            skippedSpan = (reachedRight + 0.1)...Self.rightEnd
-            reachedRight = Self.rightEnd
+            skippedSpan = (reachedRight + 0.1)...demoRightEnd
+            reachedRight = demoRightEnd
         } else {
-            skippedSpan = Self.leftEnd...(-reachedLeft - 0.1)
-            reachedLeft = -Self.leftEnd
+            skippedSpan = demoLeftEnd...(-reachedLeft - 0.1)
+            reachedLeft = -demoLeftEnd
         }
         refreshCoverage()
         refreshGuidance()
@@ -617,6 +663,8 @@ final class DemoEngine: ScanActions {
         state.marking = nil
         reachedLeft = 0.3
         reachedRight = 0.3
+        demoLeftEnd = -2.9
+        demoRightEnd = 4.3
         skippedSpan = nil
         tiltUpSettled = false
         tiltUpTicks = 0

@@ -203,6 +203,13 @@ final class Autopilot {
                 await pause(hold)
                 engine.answerWallEnd(turnsCorner: true)
                 log("answered the \(asked.rawValue) end: turns a corner")
+                if case .markNextWall = engine.state.guidance {
+                    // A replay has no live wall round the corner to mark, so it doesn't follow
+                    // the corner, as a homeowner who can't get round it wouldn't.
+                    await pause(hold)
+                    engine.cannotAccessArea()
+                    log("can't get round the \(asked.rawValue) corner on a replay; the end stays unexplored")
+                }
             }
             await pause(0.6)
         }

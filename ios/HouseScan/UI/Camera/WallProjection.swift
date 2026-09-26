@@ -61,9 +61,10 @@ struct WallProjection {
         return focal * projection.scale(in: size) / CGFloat(-local.z)
     }
 
-    /// The camera's position along the wall, in meters of s.
+    /// The camera's position along the wall, in meters of s: the nearest point of the wall,
+    /// round a corner when the walk followed one.
     var cameraS: Float {
-        simd_dot(projection.cameraPosition - wall.meter, wall.along)
+        wall.s(nearest: projection.cameraPosition)
     }
 }
 
