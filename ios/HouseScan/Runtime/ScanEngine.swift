@@ -103,11 +103,11 @@ final class ScanEngine {
     // Tilt-up step and overhead requests
     /// Set once the tilt-up step is answered or skipped: the walk asks it once per scan.
     var tiltUpSettled = false
-    /// The tilted-up view the overhead question is about. "Open sky or nothing overhead" keeps it
-    /// as a keyframe and in the coverage map (`keepOverheadView`), which the export sends as the
-    /// overhead band; "A roof edge, porch or stairs" keeps nothing, so the server treats that
-    /// stretch as unseen.
-    private var pendingOverhead: SourceFrame?
+    /// The tilted-up view the overhead question is about, with the walked-path segment it was
+    /// captured in. "Open sky or nothing overhead" keeps it as a keyframe and in the coverage map
+    /// (`keepOverheadView`), which the export sends as the overhead band; "A roof edge, porch or
+    /// stairs" keeps nothing, so the server treats that stretch as unseen.
+    private var pendingOverhead: (frame: SourceFrame, segment: Int?)?
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -592,15 +592,16 @@ final class ScanEngine {
     /// Stores a kept frame; coverage and the capture count move only once its photo is on disk,
     /// so the strip never claims a view the bundle lacks. The photo, pose and tracking all come
     /// from the one `SourceFrame`, so what is credited is the pose of the stored image. With
-    /// `overhead`, the stored view is also kept as a clear overhead view.
-    private func keep(_ frame: SourceFrame, overhead: Bool = false) {
+    /// `overhead`, the stored view is also kept as a clear overhead view. `segment` is the
+    /// walked-path segment the frame was captured in, when it was captured before now.
+    private func keep(_ frame: SourceFrame, overhead: Bool = false, capturedIn segment: Int? = nil) {
         let kind: CaptureEvent.Kind = state.phase == .gapRequest ? .gap : .walk
         let index = store.nextKeyframeIndex()
         let scan = generation
         let store = store
         // The walked-path segment the frame was captured in: a break while its photo stores must
         // not join it to frames captured after the break.
-        let segment = coverage?.pathSegment
+        let segment = segment ?? coverage?.pathSegment
         pendingSaves[scan, default: 0] += 1
         Task {
             // Every exit drains this generation's count, so the upload never waits on a write
@@ -816,7 +817,8 @@ final class ScanEngine {
         let seen = Self.tiltedUp(frame.camera, map)
         guard seen.contains(where: { $0.overlaps(wanted) }) else { return }
         if state.phase == .gapRequest, let plan = gapPlan, !gapPlanner.overheadViewSettles(plan, map, camera: frame.camera) { return }
-        pendingOverhead = frame
+        // The segment now: the answer can come after a tracking break.
+        pendingOverhead = (frame, coverage?.pathSegment)
         state.overheadQuestion = true
         RuntimeLog.engine.info("tilt-up view over s \(seen.first?.lowerBound ?? 0)...\(seen.last?.upperBound ?? 0): asking what is overhead")
     }
@@ -825,12 +827,12 @@ final class ScanEngine {
     /// keeps the view the question was about; false for "A roof edge, porch or stairs", "Can't
     /// get there" or leaving the walk, which keep nothing.
     func settleTiltUp(clear: Bool) {
-        let frame = pendingOverhead
+        let pending = pendingOverhead
         pendingOverhead = nil
         state.overheadQuestion = false
         tiltUpSettled = true
         // After settling, so the guidance recomputed once it is stored moves past the tilt-up step.
-        let storing = clear && frame.map { keepOverheadView($0) } == true
+        let storing = clear && pending.map { keepOverheadView($0.frame, capturedIn: $0.segment) } == true
         RuntimeLog.engine.info("tilt-up step settled: \(storing ? "storing the clear overhead view" : "nothing recorded", privacy: .public)")
     }
 
@@ -839,14 +841,14 @@ final class ScanEngine {
     /// the request closes through `updateGap`. Something overhead means no view can settle it:
     /// the request goes to installer review and the gap loop moves on to the upload.
     func settleOverheadGap(clear: Bool) {
-        let frame = pendingOverhead
+        let pending = pendingOverhead
         pendingOverhead = nil
         state.overheadQuestion = false
         guard clear else {
             skipCurrentGap(because: "something is overhead", refused: false)
             return
         }
-        if frame.map({ keepOverheadView($0) }) != true {
+        if pending.map({ keepOverheadView($0.frame, capturedIn: $0.segment) }) != true {
             RuntimeLog.engine.error("overhead answer: the view asked about could not be kept")
         }
     }
@@ -1263,10 +1265,11 @@ final class ScanEngine {
     /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
     /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
     /// view doesn't show the wall from the top of the wall band (7.5 ft, `wallCaptureHeight`) upward.
-    func keepOverheadView(_ frame: SourceFrame) -> Bool {
+    /// `segment` is the walked-path segment the view was captured in.
+    func keepOverheadView(_ frame: SourceFrame, capturedIn segment: Int?) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
               !map.overheadReach(from: frame.camera).isEmpty else { return false }
-        keep(frame, overhead: true)
+        keep(frame, overhead: true, capturedIn: segment)
         return true
     }
 
