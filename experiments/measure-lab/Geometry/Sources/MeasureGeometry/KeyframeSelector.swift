@@ -1,6 +1,6 @@
 /// Decides when a moving camera has changed enough to save another keyframe: after it moves
-/// `minimumTranslation` meters or turns `minimumRotation` degrees (docs/02-implementation-plan.md,
-/// Lane A step 3: about every 0.5 m or 15°).
+/// `minimumTranslation` meters or turns `minimumRotation` degrees (docs/00-overview.md,
+/// Conventions the code relies on: 0.5 m or 15°).
 ///
 /// Spacing is measured from the newest keyframe that is saved or still being written. A write
 /// is a reservation until the caller commits it; a cancelled reservation leaves spacing measured

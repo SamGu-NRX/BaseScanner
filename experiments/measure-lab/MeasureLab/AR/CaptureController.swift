@@ -63,22 +63,23 @@ final class CaptureController {
 
     /// Ends the session and opens a new one with its own world frame.
     ///
-    /// Order matters: the recorder stops before the old session closes, and restarts only for
-    /// frames newer than the last one the old map delivered, so no old-map frame is written into
-    /// the new session. The restart is queued behind any delegate callback already in flight.
+    /// The recorder stops before the old session closes. It waits for a new tracking cycle and
+    /// frames captured after the reset before saving in the new world frame.
     func startNewSession(sceneDepth: Bool) {
-        let lastOldFrame = arView?.session.currentFrame?.timestamp ?? 0
         let closing = session.recorder.stop()
         frozen = nil
         let destination = session.startNewSession(sceneDepth: sceneDepth, closingReserved: closing?.reserved ?? 0)
         session.arSessionRestarted()
         clearMarkers()
-        run(reset: true)
-        guard var destination else { return }
-        destination.acceptsFramesAfter = lastOldFrame
-        delegateQueue.async { [recorder = session.recorder, destination] in
-            recorder.start(destination)
+        // Install the gate behind callbacks already queued from the old map. The cutoff uses the
+        // frame clock, not the timestamp of the last frame delivered before this reset.
+        let resetUptime = ProcessInfo.processInfo.systemUptime
+        if var destination {
+            destination.resetGate = FrameResetGate(resetUptime: resetUptime)
+            let gatedDestination = destination
+            delegateQueue.sync { [recorder = session.recorder] in recorder.start(gatedDestination) }
         }
+        run(reset: true)
     }
 
     // MARK: - Freezing
