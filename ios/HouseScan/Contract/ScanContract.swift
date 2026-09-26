@@ -425,7 +425,7 @@ enum GroundType: String, CaseIterable, Identifiable, Sendable {
 /// The homeowner's answer to what the ground along the wall is, asked once after the walk. The
 /// camera can't tell mulch from soil, so this is the only source of the ground's type.
 enum GroundAnswer: Equatable, Sendable {
-    /// Exported as one patch of this type over the ground the coverage saw, and nowhere else.
+    /// Exported as patches of this type over the ground the coverage saw, and nowhere else.
     case type(GroundType)
     /// "Not sure": no patch is sent and the server reports the surface as unknown.
     case notSure

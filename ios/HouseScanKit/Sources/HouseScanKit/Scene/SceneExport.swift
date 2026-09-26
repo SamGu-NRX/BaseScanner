@@ -24,19 +24,28 @@ public struct SceneWall: Sendable, Equatable {
     public var outward: SIMD3<Float>
     /// World y of the ground in front of the wall, meters.
     public var groundY: Float
-    /// Corners the walk followed, nearest the meter first (`WallFrame.leftCorners`).
+    /// Corners the walk followed, nearest the meter first (`WallFrame.leftCorners`). Each carries
+    /// how the line of the piece past it was found.
     public var leftCorners: [WallCorner]
     public var rightCorners: [WallCorner]
+    /// How the line of the meter's piece was found.
+    public var source: WallLineSource
 
     public init(
         meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float,
-        leftCorners: [WallCorner] = [], rightCorners: [WallCorner] = []
+        leftCorners: [WallCorner] = [], rightCorners: [WallCorner] = [], source: WallLineSource = .tap
     ) {
         self.meter = meter
         self.outward = outward
         self.groundY = groundY
         self.leftCorners = leftCorners
         self.rightCorners = rightCorners
+        self.source = source
+    }
+
+    /// How the line of each piece of `chain.segments` was found, in the same order.
+    var segmentSources: [WallLineSource] {
+        leftCorners.reversed().map(\.source) + [source] + rightCorners.map(\.source)
     }
 
     /// Unit vector toward +s on the meter's wall: cross(-outward, up). For outward (0, 0, 1) this
@@ -75,6 +84,29 @@ public struct SceneWall: Sendable, Equatable {
             Float(point.x / SceneUnits.feetPerMeter), meter.y, Float(point.y / SceneUnits.feetPerMeter))
         let c = wallCoordinates(of: world)
         return (c.s, c.out)
+    }
+
+    /// s along the chain, meters, of a polyline given as plan offsets from the meter ([dx, dz]
+    /// feet in the scene frame's axes), with the s of every corner the line passes between two of
+    /// its points added in between. Each point maps to the piece nearest it (`wallCoordinates`).
+    ///
+    /// Drawn as straight lines between wall points, a route from one piece to the next with no
+    /// vertex at the corner would cut across it; with the corner's s as a vertex every drawn
+    /// stretch lies on one piece and the line bends where the wall does. A corner within 0.1 mm
+    /// of a point is that point already and is not added again.
+    public func chainS(ofPlanOffsetsFeet offsets: [SIMD2<Double>]) -> [Float] {
+        let corners = chain.segments.dropLast().map(\.span.upperBound)
+        let base = SIMD2<Double>(Double(meter.x), Double(meter.z)) * SceneUnits.feetPerMeter
+        var path: [Float] = []
+        for offset in offsets {
+            let s = wallCoordinates(ofPlanPointFeet: base + offset).s
+            if let last = path.last {
+                let between = corners.filter { min(last, s) + 1e-4 < $0 && $0 < max(last, s) - 1e-4 }
+                path += s >= last ? between : between.reversed()
+            }
+            path.append(s)
+        }
+        return path
     }
 }
 
@@ -205,12 +237,16 @@ public struct SceneInput: Sendable {
     /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
     /// written as `overheads` entries.
     public var meshOverheads: [ObservedSpan]
+    /// What the homeowner said the ground along the wall is. With a type, the ground the ground
+    /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
+    /// and the server treats the surface as unknown.
+    public var groundType: SceneGroundType?
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
-        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = []
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -225,6 +261,7 @@ public struct SceneInput: Sendable {
         self.stills = stills
         self.meshFacing = meshFacing
         self.meshOverheads = meshOverheads
+        self.groundType = groundType
     }
 }
 
@@ -301,6 +338,8 @@ public enum SceneExport {
     static let maxObserved = 500
     /// scene.schema.json's `facing` and `overheads` maxItems.
     static let maxMeasured = 500
+    /// scene.schema.json's `ground` maxItems, shared by driveway strips and ground patches.
+    static let maxGround = 200
 
     /// How many `coverage.observed` entries each of the three bands with a reach (ground, facing,
     /// overhead) may use. Wall stretches are few (one per unbroken run); the budget they leave
@@ -418,6 +457,10 @@ public enum SceneExport {
         for (band, spans) in reaches {
             observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
         }
+        if let type = input.groundType {
+            let seen = reaches.first { $0.band == "ground" }?.spans ?? []
+            ground += groundPatches(type, over: seen, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
+        }
 
         // Mesh measurements, split where the chain turns a corner so each entry names the wall it
         // is in front of. Coarsening first leaves room for one more entry per corner.
@@ -445,7 +488,7 @@ public enum SceneExport {
         return SceneDocument(
             schema_version: "1.0",
             meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
-            walls: walls(chain.segments, ids: wallIDs, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
+            walls: walls(chain.segments, ids: wallIDs, sources: wall.segmentSources, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
             objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(
                 ends: .init(
@@ -460,18 +503,41 @@ public enum SceneExport {
     /// previous one ends (the same numbers, computed once), so the server reads the chain as
     /// continuous and each corner as a corner.
     private static func walls(
-        _ segments: [WallSegment], ids: [String], baselineS: ClosedRange<Float>, height: Float?,
+        _ segments: [WallSegment], ids: [String], sources: [WallLineSource], baselineS: ClosedRange<Float>, height: Float?,
         plan: (Float, Float) -> [Double]
     ) -> [SceneDocument.Wall] {
-        let pieces = segments.indices.compactMap { index -> (id: String, span: ClosedRange<Float>)? in
+        let pieces = segments.indices.compactMap { index -> (id: String, source: WallLineSource, span: ClosedRange<Float>)? in
             let low = max(segments[index].span.lowerBound, baselineS.lowerBound)
             let high = min(segments[index].span.upperBound, baselineS.upperBound)
-            return low < high ? (ids[index], low...high) : nil
+            return low < high ? (ids[index], sources[index], low...high) : nil
         }
         let points = ([pieces.first?.span.lowerBound] + pieces.map(\.span.upperBound)).compactMap { $0 }.map { plan($0, 0) }
+        // The source is always written, also `tap`, so the scene says how every line was found.
         return pieces.enumerated().map { index, piece in
-            SceneDocument.Wall(id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet))
+            SceneDocument.Wall(
+                id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet), source: piece.source.rawValue)
         }
+    }
+
+    /// Patches of `type` over the ground `spans` saw (`SceneWall.groundPatchPolygons`), at most
+    /// `room` of them, without `plus_minus_ft` (the server's tap default). A span gives one patch
+    /// per piece it overlaps, so at most one more than the corners inside it. The spans are first
+    /// joined to leave room for that, as `coverage.observed` is (`ObservedSpan.coarsened`), which
+    /// only ever gives ground up.
+    private static func groundPatches(
+        _ type: SceneGroundType, over spans: [ObservedSpan], wall: SceneWall, extent: ClosedRange<Float>, room: Int
+    ) -> [SceneDocument.Ground] {
+        let limit = room - (wall.chain.segments.count - 1)
+        guard limit >= 1 else { return [] }
+        let polygons = wall.groundPatchPolygons(over: ObservedSpan.coarsened(spans, toAtMost: limit), within: extent)
+        let patches = polygons.compactMap { polygon -> SceneDocument.Ground? in
+            var points: [[Double]] = []
+            for p in polygon.map({ [feet($0.x), feet($0.y)] }) where p != points.last { points.append(p) }
+            if points.count > 1, points.first == points.last { points.removeLast() }
+            return points.count >= 3 ? SceneDocument.Ground(type: type.rawValue, polygon: points) : nil
+        }
+        // Spans that overlap each other (never from CoverageMap) could still give more.
+        return Array(patches.prefix(room))
     }
 
     /// A strip `drivewayStripFeet` wide on the far side of the tapped edge from the wall. The offset
@@ -559,6 +625,7 @@ private struct SceneDocument: Encodable {
         var id: String
         var baseline: [[Double]]
         var height_ft: Double?
+        var source: String
     }
     struct Attrs: Encodable {
         var operable: Bool

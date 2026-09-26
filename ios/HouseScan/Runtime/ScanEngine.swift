@@ -40,6 +40,9 @@ final class ScanEngine {
     private var closeUpRetake: (problem: CloseUpProblem, since: Double)?
     /// The reader's answer for the close-up on screen, for the advice after "None of these".
     private var meterReadout: MeterReadout?
+    /// Camera and depth of the frame the close-up photo on disk was taken from, when its tracking
+    /// was normal: coverage takes it when the close-up step ends (`observeCloseUpView`).
+    var closeUpView: (camera: CameraFrame, depth: DepthImage?)?
     /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
     /// for its own generation's. Keyed so a write finishing after a reset can't count against
     /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
@@ -214,6 +217,7 @@ final class ScanEngine {
             closeUpPending = false
             closeUpRetake = nil
             meterReadout = nil
+            closeUpView = nil
             state.meterNumber = nil
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
@@ -458,6 +462,7 @@ final class ScanEngine {
                 retakeCloseUp(.blurry)
                 return
             }
+            closeUpView = frame.tracking == .normal ? (frame.camera, frame.depth) : nil
             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             state.closeUp = .captured(thumbnail)
@@ -1406,6 +1411,7 @@ final class ScanEngine {
         state.wall = nil
         state.coverage = .empty
         state.features = []
+        state.groundAnswer = nil
         state.marking = nil
         state.gap = nil
         state.result = nil
