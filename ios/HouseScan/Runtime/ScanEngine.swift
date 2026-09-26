@@ -1349,7 +1349,7 @@ final class ScanEngine {
             guard scan == generation, serial == bundleSerial else { return }
             do {
                 let written = try await Task.detached(priority: .userInitiated) { try Self.writePacket(inputs) }.value
-                RuntimeLog.engine.info("bundle \(written.url.path, privacy: .public): packet 1.0 with \(written.summary, privacy: .public) (kept on the phone)")
+                RuntimeLog.engine.info("bundle \(written.url.path, privacy: .public): packet \(PacketManifest.version, privacy: .public) with \(written.summary, privacy: .public) (kept on the phone)")
                 guard scan == generation, serial == bundleSerial else { return }
                 state.shareableScan = written.url
             } catch {

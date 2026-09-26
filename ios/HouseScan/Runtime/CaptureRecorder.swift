@@ -6,7 +6,8 @@ import simd
 import Synchronization
 
 /// The packet's sensor streams, written to disk as they arrive: the camera trajectory at every
-/// ARFrame (from the AR delegate queue) and Core Motion's samples (from `MotionSource`'s queue).
+/// ARFrame (from the AR delegate queue), Core Motion's samples (from `MotionSource`'s queue), and
+/// on LiDAR phones depth frames, one file pair each, a few a second (`DepthFrameBudget`).
 /// Nothing here runs on the main actor or holds an ARFrame; each sample is copied into a fixed
 /// row of Doubles and appended to one raw file per stream, in 64 KB writes.
 ///
@@ -56,6 +57,21 @@ final class CaptureRecorder: Sendable {
         var lastUptime: Double?
     }
 
+    /// A LiDAR depth map recorded between photos (`recordDepthFrame`). Its map and confidence are
+    /// on disk; this is what the packet needs to find and place them.
+    struct DepthFrame: Sendable {
+        var t: Double
+        var tracking: TrackingCode
+        var cameraToWorld: simd_float4x4
+        /// [fx, fy, cx, cy] in pixels of the depth map.
+        var intrinsics: SIMD4<Float>
+        var width: Int
+        var height: Int
+        /// Float32 meters and UInt8 confidence, relative to `directory`.
+        var map: String
+        var confidence: String
+    }
+
     private struct State {
         var sessionID = UUID().uuidString
         var recording = true
@@ -68,12 +84,17 @@ final class CaptureRecorder: Sendable {
         var buffers: [Data] = Array(repeating: Data(), count: Stream.allCases.count)
         var lastT: [Double] = Array(repeating: -.infinity, count: Stream.allCases.count)
         var failed = false
+        var depthBudget = DepthFrameBudget()
+        var depthFrames: [DepthFrame] = []
+        /// A failed depth-frame write stops depth frames only; the streams go on.
+        var depthFailed = false
     }
 
     let directory: URL
     private let state = Mutex(State())
     /// 64 KB: about 450 trajectory rows (7 s at 60 Hz) or 2000 accelerometer rows per write.
     private static let flushBytes = 1 << 16
+    private static let depthFolder = "depth_frames"
 
     init(directory: URL) {
         self.directory = directory
@@ -126,6 +147,61 @@ final class CaptureRecorder: Sendable {
         }
     }
 
+    /// Whether a depth frame at `t` would be recorded now: the AR delegate asks before copying the
+    /// depth map, so a frame the budget would drop costs nothing.
+    func wantsDepthFrame(at t: Double) -> Bool {
+        state.withLock { state in
+            state.recording && !state.depthFailed && t >= state.since && state.depthBudget.wants(t: t)
+        }
+    }
+
+    /// Writes one LiDAR depth map with its confidence to `depth_frames/` as it arrives, so the
+    /// maps are never held in memory, and remembers where. At most `DepthFrameBudget.rateHz` a
+    /// second and `DepthFrameBudget.maxFrames` in a session; frames past either are dropped.
+    /// Called from the AR delegate queue: two 50 to 200 KB writes, twice a second at most.
+    func recordDepthFrame(t: Double, tracking: TrackingCode, cameraToWorld: simd_float4x4, intrinsics: SIMD4<Float>, depth: DepthPacket) {
+        guard let confidence = depth.confidence, depth.meters.count == depth.width * depth.height, confidence.count == depth.meters.count else { return }
+        state.withLock { state in
+            guard state.recording, !state.depthFailed, t >= state.since, state.depthBudget.admit(t: t) else { return }
+            let stem = "\(Self.depthFolder)/\(PacketDepthFrame.id(number: state.depthBudget.admitted))"
+            let frame = DepthFrame(
+                t: t, tracking: tracking, cameraToWorld: cameraToWorld, intrinsics: intrinsics, width: depth.width, height: depth.height,
+                map: "\(stem).f32", confidence: "\(stem).conf.u8"
+            )
+            do {
+                try PacketFiles.depthData(meters: depth.meters).write(to: directory.appending(path: frame.map))
+                try Data(confidence).write(to: directory.appending(path: frame.confidence))
+                state.depthFrames.append(frame)
+            } catch {
+                state.depthFailed = true
+                RuntimeLog.capture.error("depth frames not recorded from here on: \(String(describing: error), privacy: .public)")
+                return
+            }
+            if state.depthBudget.isFull {
+                let limit = state.depthBudget.limit
+                RuntimeLog.capture.info("depth frames: the limit of \(limit) was reached at t=\(t); no more are recorded")
+            }
+        }
+    }
+
+    /// Every depth frame recorded in this session, in time order.
+    func depthFrames() -> [DepthFrame] {
+        state.withLock { $0.depthFrames }
+    }
+
+    /// A recorded depth frame's map and confidence, read back for the packet: ARKit's scene depth.
+    /// Nil when the files are gone or the wrong size. Call off the main actor.
+    func loadDepth(_ frame: DepthFrame) -> DepthPacket? {
+        let count = frame.width * frame.height
+        guard let map = try? Data(contentsOf: directory.appending(path: frame.map)), map.count == count * 4,
+              let confidence = try? Data(contentsOf: directory.appending(path: frame.confidence)), confidence.count == count
+        else { return nil }
+        return DepthPacket(
+            meters: PacketFiles.floats(littleEndian: map), width: frame.width, height: frame.height, confidence: [UInt8](confidence),
+            source: .arkitSceneDepth
+        )
+    }
+
     /// Writes every buffered row and returns the session as it stands.
     func flush() -> Snapshot {
         state.withLock { state in
@@ -167,6 +243,9 @@ final class CaptureRecorder: Sendable {
         for stream in Stream.allCases {
             files.createFile(atPath: directory.appending(path: stream.fileName).path, contents: Data())
         }
+        let depth = directory.appending(path: depthFolder, directoryHint: .isDirectory)
+        try? files.removeItem(at: depth)
+        try? files.createDirectory(at: depth, withIntermediateDirectories: true)
     }
 }
 
