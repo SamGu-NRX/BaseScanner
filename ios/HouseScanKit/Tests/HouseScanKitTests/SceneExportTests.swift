@@ -228,4 +228,32 @@ import simd
         input.keyframes[0].intrinsics.x = .nan
         #expect(throws: SceneExportError.self) { try SceneExport.jsonData(input) }
     }
+
+    /// scene.schema.json allows 500 observed entries. Too many spans are joined with their
+    /// neighbours, keeping the smaller reach, and spans with a gap between them are never joined.
+    @Test func tooManySpansAreJoinedConservativelyToFitTheSchema() throws {
+        // 600 touching 1 cm spans alternating 1.0 and 1.2 m, then two separated by a gap.
+        var facing = (0..<600).map { i in
+            ObservedSpan(span: (Float(i) * 0.01)...(Float(i + 1) * 0.01), out: i.isMultiple(of: 2) ? 1.0 : 1.2)
+        }
+        facing += [ObservedSpan(span: 7...7.5, out: 2), ObservedSpan(span: 8...8.5, out: 2)]
+        var input = Self.input()
+        input.coverage = SceneCoverage(leftEndMarked: false, rightEndMarked: false, wall: [-3...5], ground: [], facing: facing)
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let entries = (try Value.parse(data)["coverage"]?["observed"]?.array ?? []).filter { $0["band"]?.string == "facing" }
+        #expect(entries.count <= 499)
+        // No entry reaches farther than the least of the spans it covers.
+        for entry in entries {
+            let span = try #require(entry["span_ft"]?.numbers)
+            let covered = facing.filter {
+                Double($0.span.upperBound) * SceneUnits.feetPerMeter > span[0] + 1e-3
+                    && Double($0.span.lowerBound) * SceneUnits.feetPerMeter < span[1] - 1e-3
+            }
+            let least = try #require(covered.map(\.out).min())
+            #expect(try #require(entry["out_ft"]?.number) <= Double(least) * SceneUnits.feetPerMeter + 1e-6)
+        }
+        // The two separated spans stay two.
+        #expect(entries.filter { ($0["span_ft"]?.numbers?.first ?? 0) > 22 }.count == 2)
+    }
 }
