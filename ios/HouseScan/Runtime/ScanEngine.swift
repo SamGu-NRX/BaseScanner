@@ -23,6 +23,12 @@ final class ScanEngine {
 
     // Capture logic (HouseScanKit)
     private(set) var coverage: CoverageMap?
+    /// The 3D map under `-coverage map3d`; nil under `legacy`.
+    private(set) var map3D: Map3DSession?
+    /// The wall the last scene.json described (`exportGeometry()`): the server's s runs along it.
+    /// Under `-coverage map3d` it can be the measured chain rather than `coverage.wall`. It stays
+    /// as exported: later moves of the meter anchor move `coverage.wall`, not the answer's wall.
+    private(set) var exportedWall: WallFrame?
     private var autoCapture = AutoCapture()
     private var closeUpGate = CloseUpGate()
     private var planner = GuidancePlanner()
@@ -160,6 +166,9 @@ final class ScanEngine {
         state.isAutopilot = options.autopilot
         state.isReplay = options.replayFolder != nil
         state.usesSampleResult = resultClient.isSample
+        if options.coverage == .map3d {
+            map3D = Map3DSession { [weak self] snapshot in self?.applyMap3D(snapshot) }
+        }
     }
 
     // MARK: Start
@@ -276,7 +285,8 @@ final class ScanEngine {
         guard replay == nil, live == nil, state.failure == nil else { return }
         let capture = LiveCapture(
             onFrame: { [weak self] frame in self?.ingest(frame) },
-            onEvent: { [weak self] event in self?.handle(event) }
+            onEvent: { [weak self] event in self?.handle(event) },
+            map3D: map3D
         )
         live = capture
         state.feed = .live
@@ -323,6 +333,11 @@ final class ScanEngine {
             refineGround()
         }
         refreshMeterFromAnchor(frame)
+        // Live frames reach the 3D map on the AR delegate queue, straight from ARKit. A replay's
+        // frames count only on the walk and in a gap request: for the close-up a replay plays its
+        // whole recording, and counting those frames would put the ones held back for the gap
+        // loop (`ReplayPlanning.heldBackWindow`) in the map before the walk.
+        if replay != nil, state.phase == .wallWalk || state.phase == .gapRequest { map3D?.ingest(frame) }
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else {
@@ -1013,6 +1028,9 @@ final class ScanEngine {
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
         live?.restart()
         coverage = nil
+        map3D?.reset(forgetAnchors: true)
+        state.map3D = nil
+        exportedWall = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
@@ -1048,6 +1066,10 @@ final class ScanEngine {
     func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
+        exportedWall = nil
+        map3D?.start(wall: frame)
+        // With depth the 3D map decides what is covered from the start (`applyMap3D`).
+        if map3D != nil, state.depthAvailable { coverage?.setMeasuredCovered([:]) }
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
@@ -1062,9 +1084,31 @@ final class ScanEngine {
     func publishWall() {
         guard let map = coverage else { state.wall = nil; return }
         let wall = map.wall
-        state.wall = WallGeometry(
+        state.wall = Self.geometry(wall, leftEnd: map.leftEnd, rightEnd: map.rightEnd)
+        // Every change to the walk's wall passes here; the map ignores an unchanged one.
+        map3D?.update(wall: wall)
+    }
+
+    /// A 3D map snapshot, about twice a second while the map changes. Its fog goes to the overlay.
+    /// With depth, its seen cells become the coverage map's covered cells, so the strip and the
+    /// planners ask for what the export, which reads the 3D map, will send. Without depth the map
+    /// has only feature points (or nothing, on a replay), too sparse to walk by (ios/README.md
+    /// "3D map"), so the camera sightings keep deciding and the export may report less.
+    private func applyMap3D(_ snapshot: Map3DSnapshot) {
+        // Read along an older wall: the wall change has already queued a newer snapshot.
+        guard var map = coverage, snapshot.wall == map.wall else { return }
+        state.map3D = Map3DFog(fog: snapshot.fog, nextView: snapshot.nextView, frame: snapshot.frame)
+        guard state.depthAvailable else { return }
+        map.setMeasuredCovered(map.cells(seenIn: snapshot.coverage))
+        guard map.revision != coverage?.revision else { return }
+        coverage = map
+        afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? 0)
+    }
+
+    static func geometry(_ wall: WallFrame, leftEnd: Float?, rightEnd: Float?) -> WallGeometry {
+        WallGeometry(
             meter: wall.meter, along: wall.along, outward: wall.outward, groundY: wall.groundY,
-            leftEnd: map.leftEnd, rightEnd: map.rightEnd,
+            leftEnd: leftEnd, rightEnd: rightEnd,
             cornerSegments: wall.segments.indices.filter { $0 != wall.meterSegmentIndex }.map { index in
                 let piece = wall.segments[index]
                 return WallGeometry.Segment(span: piece.span, along: piece.along, outward: piece.outward, anchor: piece.anchor, anchorS: piece.anchorS)
@@ -1246,25 +1290,38 @@ final class ScanEngine {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
+        let geometry: ExportGeometry
+        do {
+            geometry = try await exportGeometry()
+        } catch {
+            guard scan == generation else { return }
+            RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
+            state.upload = UploadFailure.packaging(error)
+            return
+        }
+        guard scan == generation else { return }
         // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
-        // overhead, off the main actor since ray casts over a whole mesh take a while.
+        // overhead, off the main actor since ray casts over a whole mesh take a while. Measured
+        // along the wall the scene describes, so its s agrees with the scene's.
         let meshSnapshot = live?.meshSnapshot()
         var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh, let map = coverage {
-            let wall = map.wall
-            let span = Self.exportSpan(map)
+        if let mesh = meshSnapshot?.mesh {
+            let wall = geometry.wall
+            let span = geometry.baselineS
             measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
             guard scan == generation else { return }
             RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data
         do {
-            scene = try sceneJSON(mesh: measured)
+            scene = try sceneJSON(mesh: measured, geometry: geometry)
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
             return
         }
+        // The answer's s runs along this wall; `presentation(of:)` places the result on it.
+        exportedWall = geometry.wall
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1367,7 +1424,7 @@ final class ScanEngine {
 
     /// The replay frame that sees the chosen spot best, for the AR result on a replay.
     private func bestFrameForResult() -> Int? {
-        guard let replay, let wall = coverage?.wall else { return nil }
+        guard let replay, let wall = exportedWall ?? coverage?.wall else { return nil }
         let spot = state.result?.spot
         let s = spot.map { ($0.span.lowerBound + $0.span.upperBound) / 2 } ?? 0
         let point = wall.world(s: s, height: 0.5, out: 0.3)
@@ -1381,6 +1438,10 @@ final class ScanEngine {
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
+        // The AR session and its anchors go on, so the mesh ARKit built stays with the map.
+        map3D?.reset(forgetAnchors: false)
+        state.map3D = nil
+        exportedWall = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane

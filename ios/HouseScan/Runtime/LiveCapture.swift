@@ -50,9 +50,13 @@ final class LiveCapture {
     /// which the packet's mesh records.
     static var supportsClassifiedMesh: Bool { ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) }
 
-    init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
+    /// `map3D` gets every sampled frame and every mesh and plane anchor; nil under `-coverage legacy`.
+    init(
+        onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void,
+        map3D: Map3DSession?
+    ) {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-        delegate = LiveSessionDelegate(onFrame: onFrame, onEvent: onEvent)
+        delegate = LiveSessionDelegate(onFrame: onFrame, onEvent: onEvent, map3D: map3D)
         arView.session.delegateQueue = DispatchQueue(label: "dev.housescanning.housescan.ar-delegate", qos: .userInitiated)
         arView.session.delegate = delegate
         arView.renderOptions.insert(.disableMotionBlur)
@@ -268,6 +272,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     let shared = Mutex(LiveShared())
     private let onFrame: @MainActor @Sendable (SourceFrame) -> Void
     private let onEvent: @MainActor @Sendable (LiveEvent) -> Void
+    private let map3D: Map3DSession?
     private let queueState = Mutex(QueueState())
     private let context = CIContext(options: [.cacheIntermediates: false])
     /// Serial. Every sampled frame is delivered through it, so frames reach the main actor in order
@@ -302,9 +307,13 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     /// standing still costs little; not measured on a phone.
     private static let encodeStill = 1.0
 
-    init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
+    init(
+        onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void,
+        map3D: Map3DSession?
+    ) {
         self.onFrame = onFrame
         self.onEvent = onEvent
+        self.map3D = map3D
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -333,6 +342,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             Task { @MainActor [onFrame] in onFrame(pose) }
             return
         }
+        // The map takes the sampled frames: about 10 a second, and it drops any it can't keep up with.
+        map3D?.ingest(frame, trackingNormal: tracking == .normal)
         let quality = Self.quality(frame.capturedImage)
         let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.alignment == .horizontal }
@@ -489,6 +500,20 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             @unknown default: .limited(.unknown)
             }
         }
+    }
+
+    // MARK: Anchors
+
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+        map3D?.ingest(updated: anchors)
+    }
+
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        map3D?.ingest(updated: anchors)
+    }
+
+    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        map3D?.ingest(removed: anchors)
     }
 
     // MARK: Session events

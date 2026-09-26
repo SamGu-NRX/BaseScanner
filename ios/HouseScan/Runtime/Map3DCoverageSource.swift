@@ -4,25 +4,21 @@ import simd
 
 /// What scene.json says about the wall and what was seen, when the 3D map is the coverage model.
 struct Map3DExport: Sendable {
-    /// The wall scene.json describes: the measured chain, or the walk's tapped wall.
+    /// The wall scene.json describes: the measured chain, or the walk's tapped wall. Its corners
+    /// carry their pieces' sources.
     var wall: WallFrame
+    /// How the meter's piece was found (`SceneWall.source`): the measured piece's, or the walk's.
+    var meterSource: WallLineSource
     /// The described stretch in s of `wall`; contains 0, the meter.
     var baselineS: ClosedRange<Float>
-    /// Measured along `wall` and clipped to `baselineS`.
+    /// Measured along `wall` and clipped to `baselineS`, the wall band with the height each
+    /// stretch was seen to.
     var coverage: SceneCoverage
-    /// One per `wall.segments` piece, left to right.
-    var pieces: [Piece]
+    /// Position error of each piece's line, meters, per `wall.segments` piece
+    /// (`SceneInput.wallPlusMinus`); empty for the tapped wall, which takes the server's default.
+    var plusMinus: [Float?]
     /// Why the tapped wall was written instead of the measured chain; nil when the chain was.
     var tappedBecause: String?
-
-    struct Piece: Sendable, Equatable {
-        /// How the piece's line was found; nil when it was tapped.
-        var source: WallSource?
-        /// Position error of the line, meters; nil leaves the server's default for the source.
-        var plusMinus: Float?
-    }
-
-    var isMeasured: Bool { tappedBecause == nil }
 }
 
 enum Map3DCoverageError: Error, CustomStringConvertible {
@@ -75,26 +71,27 @@ enum Map3DCoverageSource {
     /// and the server reads a ground span past a limit end as covering both sides of the wall's
     /// continued line, so reporting it would claim ground nobody saw.
     ///
-    /// `tapWall` and `baselineS` are the walk's (`CoverageMap.wall`, `ScanEngine.exportSpan`).
+    /// `tapWall`, `tapMeterSource` and `baselineS` are the walk's (`CoverageMap.wall`,
+    /// `ScanEngine.meterLineSource`, `ScanEngine.exportSpan`).
     static func export(
-        _ snapshot: Map3DSnapshot, tapWall: WallFrame, baselineS: ClosedRange<Float>, leftEndMarked: Bool, rightEndMarked: Bool,
-        walkedFacing: [ObservedSpan], confirmedOverhead: [ObservedSpan]
+        _ snapshot: Map3DSnapshot, tapWall: WallFrame, tapMeterSource: WallLineSource, baselineS: ClosedRange<Float>,
+        leftEndMarked: Bool, rightEndMarked: Bool, walkedFacing: [ObservedSpan], confirmedOverhead: [ObservedSpan]
     ) throws(Map3DCoverageError) -> Map3DExport {
         guard snapshot.wall == tapWall else { throw .wallMismatch }
         switch measuredExport(snapshot, tapWall: tapWall, baselineS: baselineS) {
         case .success(let measured):
             return Map3DExport(
-                wall: measured.wall, baselineS: measured.baselineS,
+                wall: measured.wall, meterSource: measured.meterSource, baselineS: measured.baselineS,
                 coverage: sceneCoverage(measured.coverage, within: measured.baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
-                pieces: measured.pieces, tappedBecause: nil)
+                plusMinus: measured.plusMinus, tappedBecause: nil)
         case .failure(let refusal):
             var coverage = snapshot.coverage
             coverage.facing = largerReach(coverage.facing, walkedFacing)
             coverage.overhead = largerReach(coverage.overhead, confirmedOverhead)
             return Map3DExport(
-                wall: tapWall, baselineS: baselineS,
+                wall: tapWall, meterSource: tapMeterSource, baselineS: baselineS,
                 coverage: sceneCoverage(coverage, within: baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
-                pieces: tapWall.segments.map { _ in Map3DExport.Piece(source: nil, plusMinus: nil) }, tappedBecause: refusal.reason)
+                plusMinus: [], tappedBecause: refusal.reason)
         }
     }
 
@@ -105,7 +102,7 @@ enum Map3DCoverageSource {
 
     private static func measuredExport(
         _ snapshot: Map3DSnapshot, tapWall: WallFrame, baselineS: ClosedRange<Float>
-    ) -> Result<(wall: WallFrame, baselineS: ClosedRange<Float>, coverage: Map3DCoverage, pieces: [Map3DExport.Piece]), Refusal> {
+    ) -> Result<(wall: WallFrame, meterSource: WallLineSource, baselineS: ClosedRange<Float>, coverage: Map3DCoverage, plusMinus: [Float?]), Refusal> {
         guard let chain = snapshot.chain, chain.meterIndex < chain.walls.count else { return .failure(Refusal(reason: "no measured wall passes the meter")) }
         guard let measured = snapshot.measured, measured.wall.segments.count == chain.walls.count else {
             return .failure(Refusal(reason: "the snapshot has no measured wall frame"))
@@ -148,8 +145,7 @@ enum Map3DCoverageSource {
             return .failure(Refusal(reason: "the measured chain spans s=\(leftEnd)...\(rightEnd) m, short of the baseline \(low)...\(high) m"))
         }
 
-        let pieces = chain.walls.map { Map3DExport.Piece(source: $0.source, plusMinus: plusMinus(of: $0)) }
-        return .success((measured.wall, low...high, measured.coverage, pieces))
+        return .success((measured.wall, meterPiece.source, low...high, measured.coverage, chain.walls.map(plusMinus(of:))))
     }
 
     /// The line's position error, meters: the fit's two standard errors (`MeasuredWall.plusMinus`),
@@ -185,29 +181,13 @@ enum Map3DCoverageSource {
         func clip(_ spans: [ObservedSpan]) -> [ObservedSpan] {
             spans.compactMap { item in clip(item.span).map { ObservedSpan(span: $0, out: item.out) } }
         }
+        // Each stretch of face with the height it was seen to (`Map3DCoverage.wallHeight`), not
+        // only the stretches seen to headroom (`Map3DCoverage.wall`): the server credits each
+        // entry against the height its check needs.
+        let wall = clip(coverage.wallHeight)
         return SceneCoverage(
-            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: coverage.wall.compactMap(clip),
-            ground: clip(coverage.ground), facing: clip(coverage.facing), overhead: clip(coverage.overhead))
-    }
-
-    /// The cells of `map` the 3D map saw, for `CoverageMap`'s covered state under the 3D map: a
-    /// wall cell whose whole s range lies in a seen wall stretch, and a ground cell whose whole
-    /// range lies in a ground stretch seen out to at least the ground band's depth. `coverage`
-    /// must be read along `map.wall`.
-    static func coveredCells(_ coverage: Map3DCoverage, in map: CoverageMap) -> [SurfaceBand: Set<Int>] {
-        // Spans are built from the same cell edges, so this only absorbs Float rounding.
-        let tolerance = map.config.cellWidth * 1e-3
-        func cells(within spans: [ClosedRange<Float>]) -> Set<Int> {
-            var result: Set<Int> = []
-            for span in spans {
-                for index in map.indices(overlapping: span) {
-                    let cell = map.cellRange(index)
-                    if cell.lowerBound >= span.lowerBound - tolerance, cell.upperBound <= span.upperBound + tolerance { result.insert(index) }
-                }
-            }
-            return result
-        }
-        let deepGround = coverage.ground.filter { $0.out + 1e-4 >= map.config.groundBandDepth }.map(\.span)
-        return [.wall: cells(within: coverage.wall), .ground: cells(within: deepGround)]
+            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: wall.map(\.span),
+            ground: clip(coverage.ground), facing: clip(coverage.facing), overhead: clip(coverage.overhead),
+            wallSeenHeight: wall.map(\.out))
     }
 }

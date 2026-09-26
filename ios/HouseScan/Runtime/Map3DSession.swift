@@ -192,6 +192,16 @@ final class Map3DSession: Sendable {
         }
     }
 
+    /// True while inputs wait to be integrated or a change to the map has not yet reached the
+    /// main actor as a snapshot. The autopilot waits for it before acting on coverage; a person
+    /// never needs to. Blocks while an integration runs.
+    var isCatchingUp: Bool {
+        if inbox.withLock({ $0.drainScheduled || $0.frame != nil || $0.command != nil || $0.reset != nil }) { return true }
+        return core.withLock { core in
+            core.map != nil && (core.revision != core.publishedRevision || core.snapshotRunning || core.publishScheduled)
+        }
+    }
+
     // MARK: Export
 
     /// A snapshot of everything received so far, with `measured` filled, computed on the calling
@@ -346,7 +356,7 @@ final class Map3DSession: Sendable {
                 }
                 map.integrate(features)
             case .replay(let depth, let camera):
-                map.integrate(Map3DFeed.depthFrame(depth, pose: camera))
+                map.integrate(DepthFrame(image: depth, pose: camera))
             }
             core.map = map
             changed = true
@@ -435,12 +445,12 @@ final class Map3DSession: Sendable {
         let onSnapshot = onSnapshot
         snapshotQueue.async { [self] in
             let snapshot = Self.snapshot(job.map, wall: job.wall, revision: job.revision)
-            core.withLock { $0.snapshotRunning = false }
-            queue.async { [self] in publishIfDue() }
             Task { @MainActor [self] in
                 // A snapshot of a map dropped since (a reset or a new start) must not reach the UI.
-                guard inbox.withLock({ $0.generation }) == job.generation else { return }
-                onSnapshot(snapshot)
+                if inbox.withLock({ $0.generation }) == job.generation { onSnapshot(snapshot) }
+                // Only now, so `isCatchingUp` stays true until the snapshot is applied.
+                core.withLock { $0.snapshotRunning = false }
+                queue.async { [self] in publishIfDue() }
             }
         }
     }

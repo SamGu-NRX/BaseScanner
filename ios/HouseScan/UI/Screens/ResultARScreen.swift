@@ -13,7 +13,7 @@ struct ResultARScreen: View {
 
     var body: some View {
         ZStack {
-            if state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
+            if state.tracking == .normal, let projection = state.projection, let result = state.result, let wall = result.wall ?? state.wall {
                 BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
                     .ignoresSafeArea()
                     .accessibilityHidden(true)

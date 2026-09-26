@@ -15,13 +15,23 @@ import OSLog
 /// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
 ///   that phase exists in the folder. UI tests write it once they have screenshotted and audited
 ///   the screen, so a slow audit can never miss a screen.
+/// - `-coverage map3d|legacy`: where coverage comes from (default `map3d`). `map3d` is the 3D
+///   occupancy map (`Map3DSession`): scene.json's coverage and walls, the fog overlay, and on a
+///   phone with depth the strip's and planners' covered cells. `legacy` is the camera-sighting
+///   `CoverageMap` alone. Any other value stops the app: a mistyped flag must not run the other model.
 struct LaunchOptions: Equatable {
+    enum CoverageModel: String {
+        case map3d
+        case legacy
+    }
+
     var replayFolder: URL?
     var autopilot = false
     var serverURL: URL?
     var sampleResult = false
     var autopilotHold: Double = 1.2
     var autopilotGate: URL?
+    var coverage: CoverageModel = .map3d
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -39,6 +49,10 @@ struct LaunchOptions: Equatable {
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+        if let model = value(after: "-coverage") {
+            guard let parsed = CoverageModel(rawValue: model) else { preconditionFailure("-coverage takes map3d or legacy, not \(model)") }
+            coverage = parsed
+        }
     }
 
     /// An http(s) URL with a host, or nil. An empty build setting leaves the plist value empty,
