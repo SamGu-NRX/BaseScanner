@@ -4,9 +4,11 @@ name: TestFlight
 # Admin App Store Connect key that can sign and upload builds for the whole team. The testflight
 # environment only admits main and waits for a required reviewer before any secret is released.
 #
-# Key handling: secrets reach only the steps that use them, through step-level env. The decoded
-# .p8 lives in a private temporary directory, only its path is passed on, nothing prints it, and
-# the last step deletes the directory. No step uploads artifacts, caches or logs.
+# Key handling: secrets reach only the steps that use them, through step-level env. Each step
+# that runs xcodebuild with the key decodes it into its own private directory and deletes it on
+# exit, so no key exists between steps and no key path crosses a step boundary. Nothing prints
+# the key, and no step uploads artifacts, caches or logs. Before any key exists, "Check build
+# inputs" refuses projects that could run repository code during the signed build.
 on:
   workflow_dispatch:
     inputs:
@@ -84,8 +86,8 @@ jobs:
       - name: Select project
         run: |
           case "$APP" in
-            house-scan)  dir=ios;                     name=HouseScan ;;
-            measure-lab) dir=experiments/measure-lab; name=MeasureLab ;;
+            house-scan)  dir=ios;                     name=HouseScan;  packages="" ;;
+            measure-lab) dir=experiments/measure-lab; name=MeasureLab; packages="Geometry" ;;
             *) echo "::error::Unknown app '$APP'."; exit 1 ;;
           esac
           if [ ! -f "$dir/project.yml" ]; then
@@ -95,6 +97,7 @@ jobs:
           {
             echo "PROJECT_DIR=$dir"
             echo "PROJECT_NAME=$name"
+            echo "ALLOWED_LOCAL_PACKAGES=$packages"
           } >> "$GITHUB_ENV"
 
       - name: Show toolchain
@@ -118,42 +121,99 @@ jobs:
       - name: Generate project
         run: xcodegen generate --spec "$PROJECT_DIR/project.yml"
 
-      # GitHub masks the base64 secret in logs but not the decoded key, so no command here may
-      # print the file: base64 and grep -q write nothing to the log.
-      - name: Write App Store Connect key
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      # Code from the repository must not run while the key is on disk. Build-script phases, build
+      # rules, scheme pre/post actions, package plugins, macros and compiler plugins all run during
+      # xcodebuild, so any of them fails the run here. The only package allowed is an in-repo one
+      # named in ALLOWED_LOCAL_PACKAGES (set in "Select project") whose manifest declares no
+      # dependencies, plugins, macros, binary targets or unsafe flags. SwiftPM still evaluates that
+      # manifest in its macOS sandbox, which is why its contents are checked too.
+      - name: Check build inputs
         run: |
-          umask 077
-          dir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
-          echo "ASC_KEY_DIR=$dir" >> "$GITHUB_ENV"
-          key="$dir/AuthKey_${ASC_KEY_ID}.p8"
-          if ! printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key" 2>/dev/null \
-            || ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$key"; then
-            echo "::error::ASC_KEY_P8 is not a base64-encoded .p8 file. Store the output of: base64 -i AuthKey_<KEY_ID>.p8"
-            exit 1
+          spec="$PROJECT_DIR/project.yml"
+          pbx="$PROJECT_DIR/$PROJECT_NAME.xcodeproj/project.pbxproj"
+          failed=0
+          refuse() {
+            echo "::error file=$1::$2 The TestFlight job refuses anything that runs repository code while the signing key exists. See CONTRIBUTING.md > Distribution."
+            failed=1
+          }
+          flag() { # flag <file> <extended regex> <description>; an unreadable file also fails
+            local rc=0
+            grep -nE -- "$2" "$1" > "$RUNNER_TEMP/guard-hits" || rc=$?
+            case "$rc" in
+              0) refuse "$1" "$3 found at line(s) $(cut -d: -f1 "$RUNNER_TEMP/guard-hits" | paste -sd, -)." ;;
+              1) ;;
+              *) refuse "$1" "Could not read this file to check it." ;;
+            esac
+          }
+          flag "$spec" '^[[:space:]]*(preBuildScripts|postCompileScripts|postBuildScripts|buildToolPlugins|buildRules|preActions|postActions|projectReferences):' "Build script, build rule, scheme action, plugin or project reference"
+          flag "$pbx" 'PBXShellScriptBuildPhase|PBXBuildRule|XCRemoteSwiftPackageReference|wrapper\.pb-project|productName = "?plugin:' "Shell script phase, build rule, remote package, plugin or nested project"
+          if [ -z "$ALLOWED_LOCAL_PACKAGES" ]; then
+            flag "$spec" '^packages:' "Swift package section"
+            flag "$pbx" 'XCLocalSwiftPackageReference|XCSwiftPackageProductDependency' "Swift package dependency"
+          else
+            declared="$(grep -c 'isa = XCLocalSwiftPackageReference;' "$pbx" || true)"
+            refs="$(sed -nE 's/^[[:space:]]*relativePath = "?([^";]*)"?;/\1/p' "$pbx")"
+            if [ "$declared" -ne "$(printf '%s' "$refs" | grep -c . || true)" ]; then
+              refuse "$pbx" "Could not match every local package reference to a relativePath."
+            fi
+            for ref in $refs; do
+              case " $ALLOWED_LOCAL_PACKAGES " in
+                *" $ref "*) ;;
+                *) refuse "$pbx" "Local package '$ref' is not in ALLOWED_LOCAL_PACKAGES." ;;
+              esac
+            done
+            for pkg in $ALLOWED_LOCAL_PACKAGES; do
+              flag "$PROJECT_DIR/$pkg/Package.swift" '\.package\(|\.plugin\(|plugins:|\.macro\(|CompilerPluginSupport|\.binaryTarget\(|unsafeFlags' "Package dependency, plugin, macro, binary target or unsafe flag in $pkg/Package.swift"
+            done
           fi
-          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+          while IFS= read -r file; do
+            flag "$file" 'load-plugin|plugin-path' "Swift compiler plugin flag"
+          done < <(find "$PROJECT_DIR" -name '*.xcconfig' -o -name project.yml -o -name project.pbxproj)
+          while IFS= read -r scheme; do
+            flag "$scheme" 'ExecutionAction' "Scheme pre- or post-action"
+          done < <(find "$PROJECT_DIR/$PROJECT_NAME.xcodeproj" -name '*.xcscheme')
+          while IFS= read -r resolved; do
+            refuse "$resolved" "Package.resolved means the project pins external packages."
+          done < <(find "$PROJECT_DIR" -name Package.resolved)
+          rm -f "$RUNNER_TEMP/guard-hits"
+          [ "$failed" -eq 0 ] || exit 1
+          echo "No build scripts, build rules, scheme actions, plugins, macros or external packages in $PROJECT_DIR."
 
       - name: Archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-        run: >-
-          xcodebuild archive
-          -project "$PROJECT_DIR/$PROJECT_NAME.xcodeproj"
-          -scheme "$PROJECT_NAME"
-          -configuration Release
-          -destination "generic/platform=iOS"
-          -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive"
-          -allowProvisioningUpdates
-          -authenticationKeyPath "$ASC_KEY_PATH"
-          -authenticationKeyID "$ASC_KEY_ID"
-          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
-          BUNDLE_ID_PREFIX="$BUNDLE_ID_PREFIX"
-          CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          # The key lives only in this step. GitHub masks the base64 secret in logs but not the
+          # decoded file, so nothing may print it; base64 and grep -q write nothing to the log.
+          umask 077
+          keydir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
+          # EXIT deletes the key on success and failure. INT and TERM exit through it, so a cancelled
+          # step also fails instead of resuming after the handler.
+          trap 'rm -rf "$keydir"' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          key="$keydir/AuthKey_${ASC_KEY_ID}.p8"
+          if ! printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key" 2>/dev/null \
+            || ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$key"; then
+            echo "::error::ASC_KEY_P8 is not a base64-encoded .p8 file. See CONTRIBUTING.md > Distribution."
+            exit 1
+          fi
+          umask 022
+          xcodebuild archive \
+            -project "$PROJECT_DIR/$PROJECT_NAME.xcodeproj" \
+            -scheme "$PROJECT_NAME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$key" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            BUNDLE_ID_PREFIX="$BUNDLE_ID_PREFIX" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
       # destination=upload makes -exportArchive send the signed build to App Store Connect instead
       # of writing an .ipa. manageAppVersionAndBuildNumber=false keeps the run number as the build.
@@ -161,6 +221,7 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           plist="$RUNNER_TEMP/ExportOptions.plist"
           cat > "$plist" <<EOF
@@ -184,19 +245,34 @@ jobs:
           </plist>
           EOF
           plutil -lint "$plist"
+          # The key lives only in this step. GitHub masks the base64 secret in logs but not the
+          # decoded file, so nothing may print it; base64 and grep -q write nothing to the log.
+          umask 077
+          keydir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
+          # EXIT deletes the key on success and failure. INT and TERM exit through it, so a cancelled
+          # step also fails instead of resuming after the handler.
+          trap 'rm -rf "$keydir"' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          key="$keydir/AuthKey_${ASC_KEY_ID}.p8"
+          if ! printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key" 2>/dev/null \
+            || ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$key"; then
+            echo "::error::ASC_KEY_P8 is not a base64-encoded .p8 file. See CONTRIBUTING.md > Distribution."
+            exit 1
+          fi
+          umask 022
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive" \
             -exportOptionsPlist "$plist" \
             -exportPath "$RUNNER_TEMP/export" \
             -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyPath "$key" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           echo "Uploaded $PROJECT_NAME build $BUILD_NUMBER. It appears in TestFlight after App Store Connect finishes processing." >> "$GITHUB_STEP_SUMMARY"
 
+      # Fallback only: each key step's trap already removed its directory. A runner killed without
+      # a chance to run steps leaves cleanup to GitHub destroying the hosted runner.
       - name: Remove App Store Connect key
         if: always()
-        run: |
-          if [ -n "${ASC_KEY_DIR:-}" ]; then
-            rm -rf -- "$ASC_KEY_DIR"
-          fi
+        run: rm -rf -- "$RUNNER_TEMP"/asc-key.*
