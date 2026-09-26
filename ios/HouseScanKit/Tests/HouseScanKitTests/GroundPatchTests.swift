@@ -158,14 +158,15 @@ import simd
         // The driveway strip stays first and unchanged; one mulch patch per piece of the chain.
         #expect(ground.map { $0["type"]?.string } == ["drive", "mulch", "mulch", "mulch"])
         #expect(ground.allSatisfy { $0["plus_minus_ft"] == nil })
-        // The meter's piece, s = -2...3 m, out to 1.2 m (3.937 ft): the entry as written,
-        // [-6.5616, 9.8425] (-6.56168 and 9.84252 rounded inward), pulled in 0.0001 ft, from
-        // 0.001 ft behind the wall line.
+        // The meter's piece, s = -2...3 m, out to 1.2 m (3.937 ft). The server's corners are at
+        // the written baseline points, -6.5617 and 9.8425 ft; the entry stops 0.002 ft short of
+        // each, [-6.5597, 9.8405], and the patch is pulled in 0.0001 ft from 0.001 ft behind the
+        // wall line.
         let patches = try Self.polygons(data, type: "mulch")
-        Self.expectBox(patches[1], x: -6.5615...9.8424, z: -0.001...3.9369)
+        Self.expectBox(patches[1], x: -6.5596...9.8404, z: -0.001...3.9369)
         // The right piece past the convex corner, s = 3...6 m, runs from (3, 0) to (3, -3) m:
-        // written [9.8426, 19.685], so z from -(9.8427 - 9.84252) to -(19.6849 - 9.84252).
-        Self.expectBox(patches[2], x: 9.8415...13.7794, z: -9.8424...(-0.0002))
+        // written [9.8445, 19.685], so z from -(9.8446 - 9.84252) to -(19.6849 - 9.84252).
+        Self.expectBox(patches[2], x: 9.8415...13.7794, z: -9.8424...(-0.0021))
     }
 
     /// The patch's extent in plan feet, within one rounding step of `x` and `z`.

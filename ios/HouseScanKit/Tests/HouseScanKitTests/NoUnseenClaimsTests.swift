@@ -238,3 +238,171 @@ import Testing
         }
     }
 }
+
+/// The server finds each corner's s from the walls as written, which can differ from the phone's
+/// by the rounding of the baseline points. No ground entry may cross a corner by the server's
+/// arithmetic, ported here from server/scene.py `parse_scene` (t3/server 930e8e5).
+@Suite struct GroundEntriesStopAtTheServersCornersTests {
+    typealias Value = JSONSchemaValidator.Value
+
+    /// The corners' s as the server computes it: walls end to end from the chain's left end, each
+    /// as long as its written baseline, shifted so the meter's projection onto its wall is 0.
+    static func serverCorners(_ scene: Value) throws -> [Double] {
+        let walls = try #require(scene["walls"]?.array)
+        var s = 0.0
+        var pieces: [(id: String, a: SIMD2<Double>, along: SIMD2<Double>, s0: Double, s1: Double)] = []
+        for wall in walls {
+            let points = (wall["baseline"]?.array ?? []).compactMap(\.numbers)
+            try #require(points.count == 2)
+            let a = SIMD2(points[0][0], points[0][1]), b = SIMD2(points[1][0], points[1][1])
+            let length = simd_length(b - a)
+            let id = try #require(wall["id"]?.string)
+            pieces.append((id, a, (b - a) / length, s, s + length))
+            s += length
+        }
+        let pos = try #require(scene["meter"]?["pos"]?.numbers)
+        let meterID = try #require(scene["meter"]?["wall_id"]?.string)
+        let m = SIMD2(pos[0], pos[2])
+        let placed = pieces.filter { $0.id == meterID }.map { p -> (Double, Double) in
+            let local = min(max(p.s0 + simd_dot(m - p.a, p.along), p.s0), p.s1)
+            return (simd_length(m - (p.a + p.along * (local - p.s0))), local)
+        }
+        let shift = try #require(placed.min { $0.0 < $1.0 }).1
+        return pieces.dropLast().map { $0.s1 - shift }
+    }
+
+    /// Exports ground seen over `span` on a wall through the origin turned `degrees` from +x,
+    /// with one corner at `corner` (convex or concave), and returns the ground entries with the
+    /// server's corners.
+    static func export(degrees: Float, corner: Float, convex: Bool, span: ClosedRange<Float>) throws -> (ground: [[Double]], corners: [Double]) {
+        let a = degrees * .pi / 180
+        let along = SIMD3<Float>(cos(a), 0, sin(a))
+        let outward = SIMD3<Float>(-along.z, 0, along.x)
+        // Convex: the next piece faces the old along; concave: the old along reversed.
+        let next = corner > 0 ? (convex ? along : -along) : (convex ? -along : along)
+        let wall = SceneWall(
+            meter: SIMD3(0, 1.2, 0), outward: outward, groundY: 0,
+            leftCorners: corner < 0 ? [WallCorner(s: corner, outward: next)] : [],
+            rightCorners: corner > 0 ? [WallCorner(s: corner, outward: next)] : [])
+        let input = SceneInput(
+            wall: wall, baselineS: -3...3,
+            coverage: SceneCoverage(leftEndMarked: false, rightEndMarked: false, wall: [], ground: [ObservedSpan(span: span, out: 1)]))
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let value = try Value.parse(data)
+        let ground = (value["coverage"]?["observed"]?.array ?? []).filter { $0["band"]?.string == "ground" }.compactMap { $0["span_ft"]?.numbers }
+        return (ground, try serverCorners(value))
+    }
+
+    /// The reviewer's case: at 45 degrees the corner at 0.9144 m (3 ft) is written as
+    /// [2.1213, 2.1213] ft, which the server places 2.999971 ft from the meter.
+    @Test func theReviewersCase() throws {
+        let (ground, corners) = try Self.export(degrees: 45, corner: 0.9144, convex: true, span: 0...2)
+        #expect(abs(corners[0] - 2.999971) < 1e-6)
+        for span in ground { #expect(!(span[0] < corners[0] - 1e-9 && span[1] > corners[0] + 1e-9), "\(span) crosses \(corners[0])") }
+    }
+
+    /// Rotations, corner positions and both kinds of corner on either side of the meter.
+    @Test func noRotationCrossesTheServersCorner() throws {
+        for degrees in stride(from: Float(3), to: 90, by: 7) {
+            for corner: Float in [0.9144, 1.2345, -0.8765, -1.7] {
+                for convex in [true, false] {
+                    let span: ClosedRange<Float> = corner > 0 ? 0...2.5 : -2.5...0
+                    let (ground, corners) = try Self.export(degrees: degrees, corner: corner, convex: convex, span: span)
+                    let c = try #require(corners.first)
+                    #expect(ground.count == 2, "\(degrees) \(corner) \(convex): \(ground)")
+                    for entry in ground {
+                        #expect(!(entry[0] < c - 1e-9 && entry[1] > c + 1e-9), "\(degrees) \(corner) \(convex): \(entry) crosses \(c)")
+                    }
+                    // The two sides meet across under the server's 0.01 ft tolerance.
+                    let sorted = ground.sorted { $0[0] < $1[0] }
+                    if sorted.count == 2 { #expect(sorted[1][0] - sorted[0][1] < 0.01) }
+                }
+            }
+        }
+    }
+}
+
+/// A sighting depth didn't confirm is dropped once depth shows the row hidden; the rebuild after
+/// a wall change replays the frames in the order they were captured.
+@Suite struct UnverifiedSightingsTests {
+    static let scene = CoverageDepthTests.boxScene
+    static let target = SIMD3<Float>(0.08, 1.0, 0)
+
+    /// A view without depth credits cell 0's rows, then a depth view finds the box in front of
+    /// them. One clear view with depth later must not make two positions with the first.
+    @Test func anUnverifiedSightingGoesOnceDepthShowsTheRowHidden() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        CoverageDepthTests.observe(&map, wallCamera(s: 0.3), scene: Self.scene)
+        #expect(map.level(.wall, 0) == .hidden)
+        CoverageDepthTests.observe(&map, portraitCamera(at: SIMD3(2.2, 1.2, 2.0), lookingAt: Self.target), scene: Self.scene)
+        #expect(map.level(.wall, 0) == .hidden)
+        #expect(map.wallSeenHeight(at: 0) == nil)
+    }
+
+    /// The same five frames, their photos stored in another order: after a rebuild both maps
+    /// agree, as the frames were captured. Captured: a clear view with depth, two views without
+    /// depth, a depth view showing the box, another clear view with depth.
+    @Test func theRebuildReplaysInCaptureOrder() {
+        enum Shot { case clear(Float), plain(Float), blocked }
+        let shots: [(Shot, Double)] = [(.clear(2.2), 1), (.plain(0), 2), (.plain(0.3), 3), (.blocked, 4), (.clear(2.5), 5)]
+        func observe(_ order: [Int]) -> CoverageMap {
+            var map = CoverageMap(wall: standardWall())
+            for index in order {
+                let (shot, time) = shots[index]
+                switch shot {
+                case .clear(let x):
+                    let camera = portraitCamera(at: SIMD3(x, 1.2, 2.0), lookingAt: Self.target)
+                    map.observe(camera, trackingNormal: true, time: time, depth: renderDepth(Self.scene, from: camera))
+                case .plain(let s):
+                    map.observe(wallCamera(s: s), trackingNormal: true, time: time)
+                case .blocked:
+                    map.observe(wallCamera(s: 0.3), trackingNormal: true, time: time, depth: renderDepth(Self.scene, from: wallCamera(s: 0.3)))
+                }
+            }
+            var moved = map.wall
+            moved.meter.y += 0.05
+            map.updateWall(moved)
+            return map
+        }
+        let captured = observe([0, 1, 2, 3, 4])
+        let stored = observe([1, 2, 0, 3, 4])
+        #expect(captured.level(.wall, 0) == .covered)
+        #expect(stored.level(.wall, 0) == captured.level(.wall, 0))
+        #expect(stored.wallSeenHeight(at: 0) == captured.wallSeenHeight(at: 0))
+    }
+}
+
+/// While the ground is a guess, a seen height needs the wall from the guess less its error: a
+/// ground guessed too high would otherwise leave the real foot of the wall unseen.
+@Suite struct GuessedGroundFootTests {
+    /// The ground guessed 0.3 m above the real one at y = 0. `highWallCamera` shows the wall only
+    /// from y = 0.2968 up, so the foot below that, which the guess hides, is never seen.
+    @Test func aGuessTooHighLeavesTheFootToBeSeen() {
+        var guessed = standardWall()
+        guessed.groundY = 0.3
+        var map = CoverageMap(wall: guessed)
+        map.heightError = 0.3
+        map.observe(CoverageMapTests.highWallCamera(s: 0), trackingNormal: true)
+        map.observe(CoverageMapTests.highWallCamera(s: 0.3), trackingNormal: true)
+        // The band from the guessed ground up is covered, so the walk moves on; no height is sent.
+        #expect(map.level(.wall, 0) == .covered)
+        #expect(map.wallSeenHeight(at: 0) == nil)
+        // Level views from 1.2 m show the wall from y = -0.003: the foot rows down to the guess
+        // less 0.3 m (y = 0) are seen now, and the band above them already was, to its top row.
+        // The height is reported less the error.
+        map.observe(wallCamera(s: -0.3), trackingNormal: true)
+        map.observe(wallCamera(s: 0.6), trackingNormal: true)
+        #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, 2.286 - 0.3))
+    }
+
+    @Test func aMeasuredGroundHasNoFootRows() {
+        var map = CoverageMap(wall: standardWall())
+        #expect(map.wallRows.first == 0)
+        map.heightError = 0.3
+        #expect(map.wallRows.prefix(3).map { $0 } == [-0.3, -0.1524, 0])
+        map.heightError = 0
+        #expect(map.wallRows.first == 0)
+    }
+}
