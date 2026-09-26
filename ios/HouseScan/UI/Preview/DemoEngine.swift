@@ -11,6 +11,7 @@ final class DemoEngine: ScanActions {
     private let noFeed: Bool
     private let offline: Bool
     private let passResult: Bool
+    private let rejectUpload: Bool
     private var script: Task<Void, Never>?
     private var nextCaptureID = 1
     /// How far the walk has seen to each side of the meter, meters.
@@ -19,6 +20,7 @@ final class DemoEngine: ScanActions {
     private var skippedSpan: ClosedRange<Float>?
     private var returnToReview = false
     private var failedUploads = 0
+    private var rejectedUploads = 0
 
     private static let cellWidth: Float = 0.1524
     private static let leftEnd: Float = -2.9
@@ -33,6 +35,7 @@ final class DemoEngine: ScanActions {
         noFeed = arguments.contains("-uiDemoNoFeed")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
+        rejectUpload = arguments.contains("-uiDemoRejected")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.isReplay = true
         state.tracking = .normal
@@ -74,6 +77,18 @@ final class DemoEngine: ScanActions {
         if arguments.contains("-uiDemoCloseUpFailed") {
             state.closeUpFailedAttempts = 2
             state.closeUp = .aiming(hold: 0.2, problem: .tooBright)
+        }
+        if arguments.contains("-uiDemoMeterChoose") {
+            state.closeUp = .captured(DemoScene.meterThumbnail)
+            state.meterNumber = .choose(Self.demoCandidates)
+        }
+        // Frozen, the upload script never runs, so show where it would end.
+        if freeze, state.phase == .uploading {
+            if rejectUpload {
+                state.upload = .rejected(message: Self.rejection)
+            } else if offline {
+                state.upload = .failed(message: "No internet connection.", offline: true)
+            }
         }
     }
 
@@ -143,6 +158,7 @@ final class DemoEngine: ScanActions {
         state.phase = .meterCloseUp
         state.guidance = .holdOnMeter
         state.closeUp = .aiming(hold: 0, problem: nil)
+        state.meterNumber = nil
         run { engine in await engine.closeUpScript() }
     }
 
@@ -228,10 +244,10 @@ final class DemoEngine: ScanActions {
         }
         capture(.closeUp, thumbnail: DemoScene.meterThumbnail)
         state.closeUp = .captured(DemoScene.meterThumbnail)
-        guard await pause(1.5) else { return }
-        reachedLeft = 0.3
-        reachedRight = 0.3
-        enterWalk()
+        state.meterNumber = .reading
+        guard await pause(1.2) else { return }
+        // Waits here for the homeowner's pick (`chooseMeterNumber`).
+        state.meterNumber = .choose(Self.demoCandidates)
     }
 
     private func walkScript() async {
@@ -280,6 +296,12 @@ final class DemoEngine: ScanActions {
         }
         state.upload = .analyzing
         guard await pause(1.8) else { return }
+        // Refused once; after the review the same scan goes through.
+        if rejectUpload, rejectedUploads == 0 {
+            rejectedUploads += 1
+            state.upload = .rejected(message: Self.rejection)
+            return
+        }
         showResult()
     }
 
@@ -390,7 +412,27 @@ final class DemoEngine: ScanActions {
 
     func skipCloseUp() {
         state.closeUp = .skipped
+        state.meterNumber = .skipped
         enterWalk()
+    }
+
+    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {
+        guard case .choose = state.meterNumber else { return }
+        guard let candidate else {
+            // "None of these": another photo, with the advice the reader gives for small text.
+            state.meterNumber = nil
+            state.closeUpFailedAttempts += 1
+            state.closeUp = .aiming(hold: 0, problem: .numberTooSmall)
+            run { engine in await engine.closeUpScript() }
+            return
+        }
+        state.meterNumber = .confirmed(candidate.text)
+        run { engine in
+            guard await engine.pause(1.0) else { return }
+            engine.reachedLeft = 0.3
+            engine.reachedRight = 0.3
+            engine.enterWalk()
+        }
     }
 
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
@@ -483,6 +525,12 @@ final class DemoEngine: ScanActions {
         enterUpload()
     }
 
+    func backToReview() {
+        script?.cancel()
+        state.upload = .idle
+        state.phase = .markFeatures
+    }
+
     func captureMissing(_ id: String) {
         state.result = nil
         enterGap()
@@ -507,6 +555,7 @@ final class DemoEngine: ScanActions {
         state.captureCount = 0
         state.lastCapture = nil
         state.closeUpFailedAttempts = 0
+        state.meterNumber = nil
         state.upload = .idle
         state.marking = nil
         reachedLeft = 0.3
@@ -519,6 +568,17 @@ final class DemoEngine: ScanActions {
     }
 
     // MARK: Sample data
+
+    /// Made-up readings of a made-up meter: the barcode-confirmed one first, then two near
+    /// misses the way a reader confuses 8 with 6 and 3 with 8.
+    static let demoCandidates = [
+        MeterNumberCandidate(id: 0, text: "80417362", barcodeConfirmed: true),
+        MeterNumberCandidate(id: 1, text: "60417362", barcodeConfirmed: false),
+        MeterNumberCandidate(id: 2, text: "80417862", barcodeConfirmed: false),
+    ]
+
+    /// A refusal in the homeowner's words, as the engine sends it.
+    static let rejection = "Some of the wall's measurements were missing. Check what you marked, then send it again."
 
     private static func coaching(_ raw: String) -> Coaching? {
         switch raw {
@@ -608,10 +668,4 @@ final class DemoEngine: ScanActions {
         }
         return sample
     }()
-}
-
-// Placeholders for contract 1cc297f so the app compiles; the UI lane replaces both.
-extension DemoEngine {
-    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {}
-    func backToReview() {}
 }

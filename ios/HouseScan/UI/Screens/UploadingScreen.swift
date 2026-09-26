@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// "Checking your wall": a calm wait. Three steps tick off in order; progress is shown
-/// separately from how complete the scan was (docs/05 section 2). Offline, the scan is saved on
-/// the phone and one button tries again.
+/// separately from how complete the scan was (docs/05 section 2). A failure that sending again
+/// can fix (offline, a server error) offers "Try again". A refused scan can't be fixed by sending
+/// the same thing again, so it offers the review and a fresh start instead.
 struct UploadingScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -29,11 +30,23 @@ struct UploadingScreen: View {
                 }
                 .animation(Motion.text, value: copy)
 
-                if isFailed {
+                switch state.upload {
+                case .failed:
                     Button("Try again") { actions.retryUpload() }
                         .buttonStyle(.primary)
                         .accessibilityIdentifier("action.retryUpload")
-                } else {
+                case .rejected:
+                    VStack(spacing: 12) {
+                        Button("Back to review") { actions.backToReview() }
+                            .buttonStyle(.primary)
+                            .accessibilityHint("Your scan is kept. Check what you marked, then send it again.")
+                            .accessibilityIdentifier("action.backToReview")
+                        Button("Start over") { actions.startOver() }
+                            .buttonStyle(.quiet)
+                            .accessibilityHint("Deletes this scan and its photos.")
+                            .accessibilityIdentifier("action.startOver")
+                    }
+                default:
                     UploadSteps(upload: state.upload, sample: state.usesSampleResult)
                 }
             }
@@ -45,11 +58,6 @@ struct UploadingScreen: View {
                 .padding(.horizontal, 24)
         }
         .background(Palette.canvas.ignoresSafeArea())
-    }
-
-    private var isFailed: Bool {
-        if case .failed = state.upload { return true }
-        return false
     }
 }
 
@@ -73,14 +81,14 @@ private struct UploadEmblem: View {
 
     private var isWorking: Bool {
         switch upload {
-        case .failed, .done: false
-        default: true
+        case .failed, .rejected, .done: false
+        case .idle, .packaging, .uploading, .analyzing: true
         }
     }
 
     private var symbol: String {
         switch upload {
-        case .idle, .packaging: "photo.stack"
+        case .idle, .packaging: "list.bullet.rectangle"
         case .uploading: "arrow.up.circle"
         case .analyzing: "ruler"
         case .failed(_, let offline): offline ? "wifi.slash" : "exclamationmark.triangle"
@@ -90,8 +98,10 @@ private struct UploadEmblem: View {
     }
 
     private var tint: Color {
-        if case .failed = upload { return Palette.caution }
-        return Palette.signal
+        switch upload {
+        case .failed, .rejected: Palette.caution
+        case .idle, .packaging, .uploading, .analyzing, .done: Palette.signal
+        }
     }
 }
 
@@ -127,14 +137,14 @@ private struct UploadSteps: View {
     private func title(_ index: Int) -> String {
         switch index {
         case 0:
-            return index < current ? "Photos ready" : "Get photos ready"
+            return index < current ? "Measurements ready" : "Get measurements ready"
         case 1 where sample:
             return index < current ? "Sample loaded" : "Load the sample result"
         case 1:
             if case .uploading(let fraction) = upload {
-                return "Sending photos, \(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
+                return "Sending measurements, \(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
             }
-            return index < current ? "Photos sent" : "Send photos"
+            return index < current ? "Measurements sent" : "Send measurements"
         default:
             if sample { return index < current ? "Sample ready" : "Show the example" }
             return index < current ? "Clearances checked" : "Check clearances"
