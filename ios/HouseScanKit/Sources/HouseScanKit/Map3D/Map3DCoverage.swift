@@ -215,15 +215,60 @@ extension Map3D {
     /// Mesh classes that are never part of the facade (`Voxel.meshLabel` values).
     private static let clutterClasses: Set<UInt8> = Set([MeshClass.none, .floor, .ceiling, .table, .seat].map { $0.rawValue + 1 })
 
-    /// Whether the relief rows at s are attached structure: no free voxel was seen between the
-    /// relief and the wall at any of them (a gap would make it something standing in front of
-    /// the wall).
+    /// Whether the relief rows at s are attached structure. No measured free voxel may lie
+    /// between the relief and the wall at any of them (a gap makes it something standing in
+    /// front of the wall), and there must be positive evidence of attachment: at one of the
+    /// relief's lateral edges, found within `maxReliefWidth` either way, its side face shows as
+    /// well-seen surface from its front back to the facade face over every row. An unseen gap
+    /// is not evidence: the review of 2f17d67 had a freestanding slab 0.3 m out, whose gap no
+    /// view reached, pass as relief and the wall behind it counted as seen.
     private func attachedRelief(_ wall: WallFrame, s: Float, rows: [FaceSample], facade: Float) -> Bool {
-        for row in rows where !row.face {
+        let relief = rows.filter { !$0.face }
+        for row in relief {
             guard let front = row.relief else { return false }
             for out in stride(from: facade + faceTolerance, to: facade + front, by: config.voxelSize / 2) {
                 if coordinate(wall, s: s, height: row.height, out: out).map({ grid.isMeasuredFree($0, config: config) }) == true { return false }
             }
+        }
+        guard !relief.isEmpty else { return true }
+        let probe = relief[relief.count / 2]
+        for direction: Float in [-1, 1] {
+            guard let edge = reliefEdge(wall, from: s, direction: direction, at: probe.height, facade: facade) else { continue }
+            if relief.allSatisfy({ sideFaceShows(wall, edge: edge, row: $0, facade: facade) }) { return true }
+        }
+        return false
+    }
+
+    /// Where the relief at s runs out going `direction` along the wall at `height`: halfway
+    /// between its last sample and the first without it. Nil when it runs on past
+    /// `maxReliefWidth`, which makes it a wall of its own rather than relief.
+    private func reliefEdge(_ wall: WallFrame, from s: Float, direction: Float, at height: Float, facade: Float) -> Float? {
+        let step = config.voxelSize / 2
+        for d in stride(from: step, through: config.maxReliefWidth, by: step) {
+            let sample = faceSample(wall, s: s + direction * d, height: height, facade: facade)
+            if sample.face || sample.relief == nil { return s + direction * (d - step / 2) }
+        }
+        return nil
+    }
+
+    /// Whether the relief's side face at `edge` shows at a row: at every half voxel from the
+    /// facade face out to a voxel short of the relief's front, a well-seen surface within half a
+    /// voxel of the edge, facing along the wall within 45 degrees. The voxel at the front corner
+    /// holds the front face too, and its normal turns halfway between them (on the synthetic
+    /// pilasters, 37 to 60 degrees from the side). Relief whose front stands less than a voxel
+    /// past `faceTolerance` has no sample left to check and passes: a gap that thin can't be
+    /// told from contact at 10 cm voxels.
+    private func sideFaceShows(_ wall: WallFrame, edge: Float, row: FaceSample, facade: Float) -> Bool {
+        guard let front = row.relief else { return false }
+        let step = config.voxelSize / 2
+        let along = frame.mapDirection(wall.segment(atS: edge).along)
+        for out in stride(from: facade + faceTolerance, through: facade + front - config.voxelSize, by: step) {
+            let shows = [edge - step, edge, edge + step].contains { s in
+                guard let g = coordinate(wall, s: s, height: row.height, out: out), grid.isWellSeenSurface(g, config: config),
+                      let normal = grid.voxel(g)?.normal else { return false }
+                return abs(simd_dot(normal, along)) >= cos(Float.pi / 4)
+            }
+            if !shows { return false }
         }
         return true
     }

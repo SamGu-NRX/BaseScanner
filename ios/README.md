@@ -31,7 +31,7 @@ Outputs, all against a `WallFrame` (the walk's, or one built from the map's own 
 - `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`.
   - A span is seen only where rays reached it. A voxel is free only where a ray crossed it completely and ended beyond it.
   - The wall is judged against where the facade was measured around each cell, not the chain's line. Its face counts within 7.5 cm, and a recessed face up to 0.5 m behind also counts.
-  - Attached relief up to 0.5 m proud, such as a pilaster, counts as the facade, because nothing can be mounted behind it. It must reach headroom, and no gap may have been seen behind it.
+  - Attached relief up to 0.5 m proud, such as a pilaster, counts as the facade, because nothing can be mounted behind it. It must reach headroom, no gap may have been seen behind it, and one of its side faces must show from its front back to the wall: an unseen gap is not evidence it is attached.
   - Anything else standing in front hides the wall: a box, a shrub, or the meter itself, so the few cells behind the meter stay unseen.
   - Facing reaches shorter than the battery's depth are not reported.
 - `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners.
