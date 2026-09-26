@@ -166,6 +166,9 @@ public struct CoverageMap: Sendable {
         return first...max(first, last)
     }
 
+    /// Whether any of a cell lies between the marked ends. Cells beyond them are never observed.
+    public func isWithinEnds(_ index: Int) -> Bool { allows(index) }
+
     /// The s range allowed by the marked ends; unbounded sides are nil.
     private func allows(_ index: Int) -> Bool {
         let range = cellRange(index)
@@ -496,6 +499,7 @@ public struct CoverageMap: Sendable {
     /// Height seen clear above a cell, meters: the highest any recorded tilt-up view reached
     /// there. Nil when none reached it.
     public func overheadHeight(at index: Int) -> Float? {
+        guard allows(index) else { return nil }
         let middle = (cellRange(index).lowerBound + cellRange(index).upperBound) / 2
         return overheadCameras.compactMap { camera in
             overheadReach(from: camera).first { $0.span.contains(middle) }?.out

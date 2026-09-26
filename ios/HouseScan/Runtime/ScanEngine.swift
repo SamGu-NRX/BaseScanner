@@ -504,12 +504,11 @@ final class ScanEngine {
         let satisfied = gapPlanner.isSatisfied(plan, map) && store.keyframes.count > keyframesAtGapStart
         state.guidance = .gap
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
-        state.target = plan.band == .ground
-            ? map.wall.world(s: center, height: 0, out: map.config.groundBandDepth / 2)
-            : map.wall.world(s: center, height: 1.2)
+        let cue = gapCue(plan, map, center: center)
+        state.target = cue.target
         if let camera {
             let from = map.wall.wallPoint(camera.position).s
-            state.path = [from, center].map { map.wall.world(s: $0, height: 0, out: 1.5) }
+            state.path = [from, center].map { map.wall.world(s: $0, height: 0, out: cue.standOut) }
         }
         logGuidance()
         if satisfied, !request.isSatisfied {
@@ -527,6 +526,32 @@ final class ScanEngine {
             }
         } else if !request.isSatisfied {
             state.gap = request
+        }
+    }
+
+    /// Where a gap request points the camera, and how far out from the wall to walk for it.
+    private func gapCue(_ plan: GapPlan, _ map: CoverageMap, center: Float) -> (target: SIMD3<Float>, standOut: Float) {
+        let standOff = planner.config.standOff
+        switch plan.need {
+        case .cells:
+            let target = plan.band == .ground
+                ? map.wall.world(s: center, height: 0, out: map.config.groundBandDepth / 2)
+                : map.wall.world(s: center, height: 1.2)
+            return (target, standOff)
+        case .groundOut(let out):
+            // 1 m beyond the requested depth: a phone at chest height (about 1.4 m) tilted down
+            // there sees the ground from about 2 m nearer the wall out to that depth, within the
+            // 65 degree view limit. Geometry only; not tried on a device.
+            return (map.wall.world(s: center, height: 0, out: out), max(standOff, out + 1))
+        case .walkOut(let out):
+            // The walk has to pass `out` plus the position error at the span's far edge; 0.3 m
+            // more leaves room for drifting toward the wall. The 0.3 m is a guess.
+            let farEdge = max(abs(plan.span.lowerBound), abs(plan.span.upperBound))
+            return (map.wall.world(s: center, height: 1.2), max(standOff, out + CoverageMap.positionError(atS: farEdge) + 0.3))
+        case .overhead(let height):
+            // Aim above the wall band, at the height asked for when there is one.
+            let aim = max(map.config.overheadFrom + 1, height ?? 0)
+            return (map.wall.world(s: center, height: aim), standOff)
         }
     }
 
@@ -696,6 +721,13 @@ final class ScanEngine {
     }
 
     func beginGap(_ plan: GapPlan, origin: GapRequest.Origin, reason: GapRequest.Reason) {
+        // A request with a reach says what to do in its own terms, whatever the caller passed.
+        let reason: GapRequest.Reason = switch plan.need {
+        case .cells: reason
+        case .groundOut(let out): .groundOut(out: out)
+        case .walkOut(let out): .walkOut(out: out)
+        case .overhead: .overhead
+        }
         gapCounter += 1
         gapPlan = plan
         keyframesAtGapStart = store.keyframes.count
@@ -751,7 +783,9 @@ final class ScanEngine {
 
     func skipCurrentGap() {
         guard let plan = gapPlan else { return }
-        coverage?.markSkipped(plan.band, plan.span)
+        // Only a cell request marks cells: skipping a deeper, walked or overhead view says
+        // nothing about the band the strip draws.
+        if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
         skippedGaps.append(plan)
         publishCoverage()
         RuntimeLog.engine.info("gap \(self.gapCounter) skipped")

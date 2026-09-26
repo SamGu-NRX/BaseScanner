@@ -173,10 +173,9 @@ extension ScanEngine {
         let missing = result.missingEvidence.enumerated().map { index, item in
             MissingEvidence(
                 id: "missing-\(index)", text: item.message,
-                // A band of wall or ground, or the far side of an end, is something another
-                // walk can show; overhead and facing bands need a person with a tape.
-                // Only when a gap request can actually be built from it (a band item needs its
-                // span, a past_end item its side); otherwise the button would do nothing.
+                // Only when a gap request can be built from it: a band item needs its span (and
+                // a facing item its out_ft, which a walk can reach), a past_end item its side.
+                // Otherwise the button would do nothing.
                 capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd) != nil
             )
         }

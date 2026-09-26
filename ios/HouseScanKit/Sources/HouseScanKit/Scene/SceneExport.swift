@@ -429,7 +429,7 @@ public enum SceneExport {
     /// A reach in feet, rounded down to 4 decimals: the server takes every `out_ft` as exact, so
     /// rounding must never report more than was seen. The 1e-7 ft allowance keeps Float noise in a
     /// whole number of 6 in rows (1.4999999 ft for 3 rows) from dropping a full 0.0001 ft.
-    private static func feetDown(_ meters: Float) -> Double {
+    static func feetDown(_ meters: Float) -> Double {
         let value = Double(meters) * SceneUnits.feetPerMeter
         let down = ((value + 1e-7) * 10_000).rounded(.down) / 10_000
         return down == 0 ? 0 : down
@@ -443,7 +443,7 @@ public enum SceneExport {
 
     /// Four decimals of a foot is 0.03 mm, far below AR tap error; it only keeps the JSON readable.
     /// Non-finite values pass through so the encoder reports them.
-    private static func round4(_ x: Double) -> Double {
+    static func round4(_ x: Double) -> Double {
         guard x.isFinite else { return x }
         let r = (x * 10_000).rounded() / 10_000
         return r == 0 ? 0 : r  // drop negative zero
