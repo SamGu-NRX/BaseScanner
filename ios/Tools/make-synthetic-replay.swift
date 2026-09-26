@@ -254,8 +254,9 @@ func render(_ cam: Camera) -> [UInt8] {
     return pixels
 }
 
-/// ARKit's depth map size. The 41 maps take 8 MB on disk but compress about 12 to 1 in git,
-/// because noise-free depth of flat surfaces is smooth; confidence compresses further still.
+/// ARKit's depth map size. The 41 maps take 8 MB on disk but zlib, which git stores objects
+/// with, packs them about 14 to 1 (measured on this fixture), because noise-free depth of flat
+/// surfaces is smooth; confidence packs about 400 to 1.
 let depthWidth = 256, depthHeight = 192
 
 /// One ray per depth pixel, through its center, with no noise: the value is the exact distance
