@@ -79,10 +79,12 @@ struct MarkFeaturesScreen: View {
             .padding(.top, 8)
             .padding(.bottom, 12)
         }
-        .background(Palette.surface, in: .rect(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous))
+        .background {
+            UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
+                .fill(Palette.surface)
+                .ignoresSafeArea(edges: .bottom)
+        }
         .environment(\.colorScheme, .light)
-        .ignoresSafeArea(edges: .bottom)
-        .safeAreaPadding(.bottom, 0)
     }
 }
 

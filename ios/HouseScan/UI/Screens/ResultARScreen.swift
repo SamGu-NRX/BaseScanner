@@ -1,3 +1,4 @@
+import simd
 import SwiftUI
 
 /// "See it on your wall": the battery drawn onto the live camera at the chosen spot, with the
@@ -42,11 +43,17 @@ struct ResultARScreen: View {
 
 /// Canvas drawing of the battery box, cable and footprint. `rise` 0...1 lifts the box out of the
 /// ground for the entrance.
-struct BatteryOverlay: View {
+struct BatteryOverlay: View, Animatable {
     var projection: CameraProjection
     var wall: WallGeometry
     var result: ResultPresentation
     var rise: Double
+
+    /// Lets `withAnimation` interpolate the rise; a Canvas alone would jump to the end value.
+    var animatableData: Double {
+        get { rise }
+        set { rise = newValue }
+    }
 
     var body: some View {
         Canvas { context, size in
@@ -98,22 +105,30 @@ struct BatteryOverlay: View {
 
         struct Face {
             var corners: [SIMD3<Float>]
+            /// Outward normal in world space.
+            var normal: SIMD3<Float>
             var shade: Double
             var isFront: Bool
         }
+        let up = SIMD3<Float>(0, 1, 0)
         let faces = [
-            Face(corners: [corner(s0, 0, o1), corner(s1, 0, o1), corner(s1, height, o1), corner(s0, height, o1)], shade: 1.0, isFront: true),
-            Face(corners: [corner(s0, height, o0), corner(s1, height, o0), corner(s1, height, o1), corner(s0, height, o1)], shade: 0.93, isFront: false),
-            Face(corners: [corner(s0, 0, o0), corner(s0, 0, o1), corner(s0, height, o1), corner(s0, height, o0)], shade: 0.8, isFront: false),
-            Face(corners: [corner(s1, 0, o0), corner(s1, 0, o1), corner(s1, height, o1), corner(s1, height, o0)], shade: 0.8, isFront: false),
-            Face(corners: [corner(s0, 0, o0), corner(s1, 0, o0), corner(s1, height, o0), corner(s0, height, o0)], shade: 0.7, isFront: false),
+            Face(corners: [corner(s0, 0, o1), corner(s1, 0, o1), corner(s1, height, o1), corner(s0, height, o1)],
+                 normal: wall.outward, shade: 1.0, isFront: true),
+            Face(corners: [corner(s0, height, o0), corner(s1, height, o0), corner(s1, height, o1), corner(s0, height, o1)],
+                 normal: up, shade: 0.93, isFront: false),
+            Face(corners: [corner(s0, 0, o0), corner(s0, 0, o1), corner(s0, height, o1), corner(s0, height, o0)],
+                 normal: -wall.along, shade: 0.8, isFront: false),
+            Face(corners: [corner(s1, 0, o0), corner(s1, 0, o1), corner(s1, height, o1), corner(s1, height, o0)],
+                 normal: wall.along, shade: 0.8, isFront: false),
+            Face(corners: [corner(s0, 0, o0), corner(s1, 0, o0), corner(s1, height, o0), corner(s0, height, o0)],
+                 normal: -wall.outward, shade: 0.7, isFront: false),
         ]
-        // Painter's order: farthest face first, measured at each face's center.
-        let sorted = faces.sorted { a, b in
-            depth(of: a.corners) > depth(of: b.corners)
-        }
-        for face in sorted {
-            guard let path = geometry.polygon(face.corners) else { continue }
+        // The box is convex, so drawing only the faces that point at the camera needs no depth
+        // sorting (sorting by face centers can paint a hidden face over a visible one).
+        for face in faces {
+            let center = face.corners.reduce(SIMD3<Float>.zero, +) / Float(face.corners.count)
+            guard simd_dot(projection.cameraPosition - center, face.normal) > 0,
+                  let path = geometry.polygon(face.corners) else { continue }
             let base = Color(white: 0.97 * face.shade)
             context.fill(path, with: .color(base.opacity(0.96)))
             context.stroke(path, with: .color(.black.opacity(0.18)), lineWidth: 1)
@@ -128,10 +143,5 @@ struct BatteryOverlay: View {
                 }
             }
         }
-    }
-
-    private func depth(of corners: [SIMD3<Float>]) -> Float {
-        let center = corners.reduce(SIMD3<Float>.zero, +) / Float(corners.count)
-        return -projection.cameraSpace(center).z
     }
 }

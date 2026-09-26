@@ -9,7 +9,7 @@ struct MeterCloseUpScreen: View {
     let actions: any ScanActions
 
     @State private var lockedOn = false
-    @State private var flash = false
+    @State private var flashes = 0
     @State private var flyingThumbnail: CGImage?
     @State private var thumbnailLanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -49,9 +49,15 @@ struct MeterCloseUpScreen: View {
                 .animation(Motion.text, value: problem)
                 .animation(Motion.screen, value: offerSkip)
             }
-            if flash {
-                Color.white.opacity(0.7).ignoresSafeArea().allowsHitTesting(false).transition(.opacity)
-            }
+            Color.white
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .phaseAnimator([0.0, 0.7, 0.0], trigger: flashes) { flash, opacity in
+                    flash.opacity(opacity)
+                } animation: { opacity in
+                    opacity > 0 ? .easeOut(duration: 0.06) : .easeOut(duration: 0.3)
+                }
             if let flyingThumbnail {
                 GeometryReader { proxy in
                     Image(decorative: flyingThumbnail, scale: 1)
@@ -65,6 +71,10 @@ struct MeterCloseUpScreen: View {
                                   ? CGPoint(x: proxy.size.width - 48, y: proxy.safeAreaInsets.top + 22)
                                   : CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2))
                         .opacity(thumbnailLanded ? 0 : 1)
+                        .onAppear {
+                            // Inserted at the center first; landing starts once it is on screen.
+                            withAnimation(.spring(duration: 0.55, bounce: 0).delay(0.25)) { thumbnailLanded = true }
+                        }
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
@@ -143,14 +153,12 @@ struct MeterCloseUpScreen: View {
     }
 
     private func acknowledgeCapture() {
-        withAnimation(.easeOut(duration: 0.06)) { flash = true }
-        withAnimation(.easeOut(duration: 0.3).delay(0.08)) { flash = false }
+        flashes += 1
         guard !reduceMotion else { return }
         var image: CGImage?
         if case .captured(let captured) = state.closeUp { image = captured }
         guard let thumbnail = image ?? state.lastCapture?.thumbnail else { return }
         thumbnailLanded = false
         flyingThumbnail = thumbnail
-        withAnimation(.spring(duration: 0.55, bounce: 0).delay(0.25)) { thumbnailLanded = true }
     }
 }

@@ -13,7 +13,14 @@ struct ResultScreen: View {
         if let result = state.result {
             content(result)
         } else {
-            ContentUnavailableView("No result yet", systemImage: "hourglass", description: Text("Your scan is still being checked."))
+            ContentUnavailableView {
+                Label("No result yet", systemImage: "hourglass")
+            } description: {
+                Text("Your scan is still being checked.")
+            } actions: {
+                Button("Start over") { actions.startOver() }
+                    .accessibilityIdentifier("action.startOver")
+            }
         }
     }
 

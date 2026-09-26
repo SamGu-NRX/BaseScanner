@@ -97,7 +97,8 @@ struct WallTape: View {
             let row = band == .wall ? wallRow : groundRow
             for (index, state) in coverage.cells(band).enumerated() {
                 let range = coverage.cellRange(index)
-                guard range.overlaps(map.extent), isInsideEnds(range) else { continue }
+                // Cells outside the engine's visible range are neither fog nor evidence.
+                guard FogMemory.interiorsOverlap(range, coverage.visibleRange), isInsideEnds(range) else { continue }
                 let x0 = map.x(range.lowerBound)
                 let x1 = map.x(range.upperBound)
                 let rect = CGRect(x: x0 + 0.5, y: row.minY, width: max(1, x1 - x0 - 1), height: row.height)

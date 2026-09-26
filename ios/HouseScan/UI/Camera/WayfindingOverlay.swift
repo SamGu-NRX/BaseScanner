@@ -76,9 +76,12 @@ struct WayfindingOverlay: View {
         guard let direction = projection.screenDirection(toward: target) else {
             return .hidden
         }
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let halfWidth = bounds.width / 2
-        let halfHeight = bounds.height / 2
+        // Chevrons stay clear of the instruction card above and the buttons and map below,
+        // which are drawn over this layer.
+        let lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 260 - 300, 80))
+        let center = CGPoint(x: lane.midX, y: lane.midY)
+        let halfWidth = lane.width / 2
+        let halfHeight = lane.height / 2
         let tx = direction.dx == 0 ? CGFloat.infinity : halfWidth / abs(direction.dx)
         let ty = direction.dy == 0 ? CGFloat.infinity : halfHeight / abs(direction.dy)
         let t = min(tx, ty)

@@ -49,7 +49,7 @@ struct FogOverlay: View {
         .accessibilityHidden(true)
         .onAppear { memory.seed(coverage) }
         .onChange(of: coverage.revision) { _, _ in
-            if memory.update(to: coverage, at: .now) {
+            if memory.update(to: coverage, at: .now, highlight: highlight) {
                 liftDeadline = Date.now.addingTimeInterval(Motion.fogLift)
             }
         }
@@ -58,7 +58,9 @@ struct FogOverlay: View {
             // stops redrawing.
             let remaining = liftDeadline.timeIntervalSinceNow
             guard remaining > 0 else { return }
-            try? await Task.sleep(for: .seconds(remaining + 0.05))
+            // A newer revision replaces this task; it must not pause the timeline for the lifts
+            // that revision started, so cancellation ends it here.
+            do { try await Task.sleep(for: .seconds(remaining + 0.05)) } catch { return }
             memory.prune(at: .now)
             liftDeadline = .distantPast
         }
@@ -107,11 +109,11 @@ private struct FogFrame {
             let states = coverage.cells(band)
             for index in states.indices {
                 let range = coverage.cellRange(index)
-                guard range.overlaps(visible) else { continue }
+                guard FogMemory.interiorsOverlap(range, visible) else { continue }
                 let clipped = max(range.lowerBound, visible.lowerBound)...min(range.upperBound, visible.upperBound)
                 guard let quad = quad(band, clipped, geometry) else { continue }
                 let state = states[index]
-                if let gap = highlight, gap.band == band, gap.span.overlaps(range), state != .covered {
+                if let gap = highlight, gap.band == band, FogMemory.interiorsOverlap(gap.span, range), state != .covered {
                     amber.append(quad)
                     continue
                 }
@@ -205,7 +207,8 @@ final class FogMemory {
     }
 
     /// Records a lift for every cell whose haze went down. Returns true when any lift started.
-    func update(to coverage: CoverageStrip, at now: Date) -> Bool {
+    /// Cells inside `highlight` are drawn amber, not fogged, so they get no lift.
+    func update(to coverage: CoverageStrip, at now: Date, highlight: GapRequest?) -> Bool {
         // The strip can grow to the left, which shifts every index; realign by s.
         let shift = Int(((firstCellS - coverage.firstCellS) / coverage.cellWidth).rounded())
         let next = Self.snapshot(coverage)
@@ -216,6 +219,10 @@ final class FogMemory {
         for (key, state) in next {
             let oldKey = Key(band: key.band, index: key.index - shift)
             let old = states[oldKey] ?? .unseen
+            if let highlight, highlight.band == key.band,
+               Self.interiorsOverlap(highlight.span, coverage.cellRange(key.index)) {
+                continue
+            }
             if FogOverlay.haze(state) < FogOverlay.haze(old) {
                 lifts[key] = Lift(from: FogOverlay.haze(old), start: now)
                 started = true
@@ -224,6 +231,12 @@ final class FogMemory {
         states = next
         firstCellS = coverage.firstCellS
         return started
+    }
+
+    /// True when the ranges share more than an endpoint. `ClosedRange.overlaps` is also true
+    /// for ranges that only touch, which would tint the cells either side of a gap.
+    nonisolated static func interiorsOverlap(_ a: ClosedRange<Float>, _ b: ClosedRange<Float>) -> Bool {
+        a.lowerBound < b.upperBound && b.lowerBound < a.upperBound
     }
 
     func prune(at now: Date) {

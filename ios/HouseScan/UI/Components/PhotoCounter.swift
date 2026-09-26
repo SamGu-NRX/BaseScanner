@@ -6,15 +6,19 @@ struct PhotoCounter: View {
     var count: Int
     var lastCaptureID: Int?
 
-    @State private var flash = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: "camera.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(flash ? Palette.covered : Palette.chalk)
-                .scaleEffect(flash && !reduceMotion ? 1.18 : 1)
+                .phaseAnimator([false, true, false], trigger: lastCaptureID) { icon, lit in
+                    icon
+                        .foregroundStyle(lit ? Palette.covered : Palette.chalk)
+                        .scaleEffect(lit && !reduceMotion ? 1.18 : 1)
+                } animation: { lit in
+                    lit ? .easeOut(duration: 0.08) : .easeOut(duration: 0.35)
+                }
             Text("\(count)")
                 .font(Typeface.caption.monospacedDigit())
                 .foregroundStyle(Palette.chalk)
@@ -24,11 +28,6 @@ struct PhotoCounter: View {
         .frame(minWidth: Metrics.minTarget, minHeight: 36)
         .background(ScrimShape.capsule)
         .animation(.easeOut(duration: 0.18), value: count)
-        .onChange(of: lastCaptureID) { _, newValue in
-            guard newValue != nil else { return }
-            withAnimation(.easeOut(duration: 0.08)) { flash = true }
-            withAnimation(.easeOut(duration: 0.35).delay(0.12)) { flash = false }
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(count == 1 ? "1 photo taken" : "\(count) photos taken")
         .accessibilityIdentifier("photoCount")
