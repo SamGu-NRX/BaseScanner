@@ -24,8 +24,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     container:
-      # Swift 6.2 matches the Xcode 26 toolchain the app job uses. Pinned by digest so a retag
-      # can't change the compiler under the tests.
+      # Swift 6.2 is the oldest toolchain the tests compile with (their raw-identifier names need
+      # it); the app job's Xcode 26.6 ships Swift 6.3. Pinned by digest so a retag can't change
+      # the compiler under the tests.
       image: swift:6.2-noble@sha256:9bea530093ffff8cf6c259991715ee843fe4d0f932e612f7f4b79cca6e00db87
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
