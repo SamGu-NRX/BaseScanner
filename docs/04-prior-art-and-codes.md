@@ -49,7 +49,7 @@ The demo's `server/rules.yaml` (PR #11) uses these values, except the 1 ft wall 
 
 Prior measurements: iPhone 12 Pro Max LiDAR on facades lands within about ±6 to 8 cm of a total station, and iPad Pro LiDAR reaches about 5 m. A YOLOv5 meter-reading study read the counters 97% of the time and serial numbers only 63%.
 
-Nobody else runs the whole loop outdoors, from metric AR capture through a solver that cites a code for each clearance to an AR preview. The heat-pump AR tools are visual only, and Fraunhofer's solver works indoors.
+None of the products above runs the whole loop outdoors, from metric AR capture through a solver that cites a code for each clearance to an AR preview.
 
 ## Licenses and terms
 
