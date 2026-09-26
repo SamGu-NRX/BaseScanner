@@ -120,9 +120,11 @@ import Testing
         #expect(!planner.isSatisfied(gap, map))
 
         // Over cells 6 ... 10, 4 of 5 are covered: exactly 80 %.
-        let wider = GapPlan(band: .ground, span: 0.95...1.65, reason: .server)
+        let wider = GapPlan(band: .ground, span: 0.95...1.65, reason: .groundNearMeter)
         #expect(planner.progress(of: wider, map) == 0.8)
         #expect(planner.isSatisfied(wider, map))
+        // The server's request for the same span needs all of it (ServerGapTests).
+        #expect(!planner.isSatisfied(GapPlan(band: .ground, span: 0.95...1.65, reason: .server), map))
 
         // 1.5 is 0.3 from 1.8 and lies in cell 10's window: 4 of 4.
         map.observe(groundCamera(s: 1.5), trackingNormal: true)

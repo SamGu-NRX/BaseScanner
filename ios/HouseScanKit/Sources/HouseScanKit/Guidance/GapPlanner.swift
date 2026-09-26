@@ -13,7 +13,8 @@ public struct GapPlan: Sendable, Equatable {
 
     /// What settles the request.
     public enum Need: Sendable, Equatable {
-        /// `GapPlannerConfig.satisfiedFraction` of the band's cells over the span covered.
+        /// The band covered over the span: `GapPlannerConfig.satisfiedFraction` of its cells for
+        /// the phone's own request, all of the span as exported for a server request.
         case cells
         /// The ground seen out to this many meters from the wall over the whole span
         /// (`CoverageMap.groundDepth(at:)`).
@@ -46,8 +47,9 @@ public struct GapPlannerConfig: Sendable, Equatable {
     /// A gap narrower than 0.45 m (three 6 in cells) can't hide a battery footprint, so it is not
     /// worth a second walk.
     public var minRun: Float = 0.45
-    /// A request counts as satisfied at 80 % of its cells covered, allowing a cell or two at the
-    /// edges that a real camera never quite reaches.
+    /// The phone's own request counts as satisfied at 80 % of its cells covered, allowing a cell
+    /// or two at the edges that a real camera never quite reaches. A guess, not measured. Server
+    /// requests need their whole span (`isSatisfied`).
     public var satisfiedFraction: Double = 0.8
 
     public init() {}
@@ -105,7 +107,8 @@ public struct GapPlanner: Sendable {
         return runs.filter { $0.upperBound - $0.lowerBound >= config.minRun - 1e-4 }
     }
 
-    /// The fraction of the request's cells that meet its need.
+    /// The fraction of the request met so far: of its cells for a phone request or a reach, of
+    /// its span as the exported scene will report it for a server cell request.
     public func progress(of gap: GapPlan, _ coverage: CoverageMap) -> Double {
         // A reach meets a request in feet as the export will report it (rounded down), so the
         // phone never calls a request met that the uploaded scene falls short of.
@@ -115,6 +118,8 @@ public struct GapPlanner: Sendable {
         }
         let met: (Int) -> Bool
         switch gap.need {
+        case .cells where gap.reason == .server:
+            return Self.fraction(of: gap.span, coveredBy: Self.exportedSpans(gap.band, coverage))
         case .cells:
             return coverage.coveredFraction(gap.band, in: gap.span)
         case .groundOut(let out):
@@ -129,12 +134,14 @@ public struct GapPlanner: Sendable {
         return Double(cells.filter(met).count) / Double(cells.count)
     }
 
-    /// A cell-coverage request is met at `satisfiedFraction`. A request with a reach is met only
-    /// over its whole span: the server settles it only when observed entries cover all of it
-    /// (server/README.md, "What settles each check").
+    /// A server request is met only over its whole span: the server settles it only when observed
+    /// entries cover all of it (server/README.md, "What settles each check"). The phone's own
+    /// cell request is met at `satisfiedFraction`: it is this planner's guess at what the server
+    /// will want, not a span the server named, and the upload it leads to asks for exactly what
+    /// is still missing, so holding the homeowner there for the last edge cell buys nothing.
     public func isSatisfied(_ gap: GapPlan, _ coverage: CoverageMap) -> Bool {
         let progress = progress(of: gap, coverage)
-        return gap.need == .cells ? progress >= config.satisfiedFraction : progress >= 1
+        return gap.need == .cells && gap.reason != .server ? progress >= config.satisfiedFraction : progress >= 1
     }
 
     /// Whether a tilt-up view settles an overhead request once the homeowner says nothing is
@@ -146,6 +153,37 @@ public struct GapPlanner: Sendable {
         var trial = coverage
         guard !trial.recordOverhead(camera, trackingNormal: true).isEmpty else { return false }
         return isSatisfied(gap, trial)
+    }
+
+    /// The stretches scene.json will list as observed in `band`, meters (`SceneCoverage`): the
+    /// wall band's covered runs, and every ground entry whatever its depth.
+    static func exportedSpans(_ band: SurfaceBand, _ coverage: CoverageMap) -> [ClosedRange<Float>] {
+        switch band {
+        case .wall: coverage.coveredIntervals(.wall)
+        case .ground: coverage.groundDepthSpans().map(\.span)
+        }
+    }
+
+    /// The fraction of `span` that `spans` cover, measured the way the server reads the uploaded
+    /// scene: both in feet at the export's four decimals, joined where they touch within 1e-9 ft
+    /// (server/scene.py `missing` on origin/t3/server). Rounding the request as well absorbs the
+    /// Float round trip of its feet through meters.
+    static func fraction(of span: ClosedRange<Float>, coveredBy spans: [ClosedRange<Float>]) -> Double {
+        let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
+        let low = feet(span.lowerBound)
+        let high = feet(span.upperBound)
+        guard high > low else { return 0 }
+        let eps = 1e-9
+        var cursor = low
+        var missing = 0.0
+        for (a, b) in spans.map({ (feet($0.lowerBound), feet($0.upperBound)) }).sorted(by: { $0 < $1 }) {
+            if b <= cursor + eps { continue }
+            if a >= high - eps { break }
+            if a > cursor + eps { missing += min(a, high) - cursor }
+            cursor = max(cursor, b)
+        }
+        if cursor < high - eps { missing += high - cursor }
+        return max(0, 1 - missing / (high - low))
     }
 
     private func distanceToMeter(_ run: ClosedRange<Float>) -> Float {

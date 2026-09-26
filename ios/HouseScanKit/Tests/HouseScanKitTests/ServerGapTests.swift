@@ -87,6 +87,51 @@ import Testing
         #expect(!planner.isSatisfied(GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(5.1)), map))
     }
 
+    /// wallCamera(s: c) sees a wall cell with lower edge L exactly when c is in [L - 0.7881,
+    /// L + 0.9405], and cameras 0.3 m apart are far enough apart to cover it. Views at -1.5 ...
+    /// 0 cover cells up to 3 (L = 0.4572; cell 4 at 0.6096 has only the view at 0).
+    static func walkedWall(to last: Float) -> CoverageMap {
+        var map = CoverageMap(wall: standardWall())
+        for c in stride(from: Float(-1.5), through: last + 1e-3, by: 0.3) { map.observe(wallCamera(s: c), trackingNormal: true) }
+        return map
+    }
+
+    @Test func aServerWallRequestNeedsItsWholeSpanAsExported() {
+        let planner = GapPlanner()
+        var map = Self.walkedWall(to: 0)
+        #expect((0...3).allSatisfy { map.level(.wall, $0) == .covered } && map.level(.wall, 4) == .seen)
+        // Cells 0 ... 4 lie over 0.05 ... 0.7: 4 of 5 covered, enough for the phone's own request.
+        #expect(planner.isSatisfied(GapPlan(band: .wall, span: 0.05...0.7, reason: .wallNearMeter), map))
+        // The export lists the wall up to 0.6096 m (2 ft) of the requested 0.1640 ... 2.2966 ft.
+        let server = GapPlan(band: .wall, span: 0.05...0.7, reason: .server)
+        #expect(abs(planner.progress(of: server, map) - (2 - 0.164) / (2.2966 - 0.164)) < 1e-3)
+        #expect(!planner.isSatisfied(server, map))
+        // A view at 0.3 covers cell 4 as well.
+        map.observe(wallCamera(s: 0.3), trackingNormal: true)
+        #expect(planner.progress(of: server, map) == 1)
+        #expect(planner.isSatisfied(server, map))
+    }
+
+    /// The export stops at a marked end, so a request reaching past it stays open whatever is
+    /// covered; counting only the cells inside the ends called it met.
+    @Test func aServerRequestPastAMarkedEndIsNotMet() {
+        let planner = GapPlanner()
+        var map = Self.walkedWall(to: 0.3)
+        map.setEnd(.right, at: 0.5)
+        #expect(planner.isSatisfied(GapPlan(band: .wall, span: 0.05...0.7, reason: .wallNearMeter), map))
+        #expect(!planner.isSatisfied(GapPlan(band: .wall, span: 0.05...0.7, reason: .server), map))
+    }
+
+    /// A request in feet that ends exactly at a marked end is met once covered, although its
+    /// span went through Float meters on the way.
+    @Test func aServerRequestEndingAtTheEndIsMetInFeet() throws {
+        let planner = GapPlanner()
+        var map = Self.walkedWall(to: 0.3)
+        map.setEnd(.right, at: 2 * 0.3048)
+        let plan = try #require(planner.plan(for: item(#"{"kind":"band","band":"wall","span_ft":[0.5,2.0],"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        #expect(planner.isSatisfied(plan, map))
+    }
+
     @Test func pastEndAsksForTheGroundBeyondThatEnd() throws {
         // Left end at s = -3 m: ask for -5...-3. Right end at 4 m: ask for 4...6.
         let left = try #require(GapPlanner().plan(for: item(#"{"kind":"past_end","side":"left","message":"m"}"#), leftEnd: -3, rightEnd: 4))
