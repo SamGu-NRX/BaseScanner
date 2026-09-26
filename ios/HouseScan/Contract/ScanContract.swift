@@ -540,6 +540,13 @@ enum CheckOutcome: String, Equatable, Sendable {
     case unsure
 }
 
+/// Which side of a rule's limit passes: a clearance the spot must keep (at least) or a length it
+/// must stay within (at most).
+enum RuleComparison: Equatable, Sendable {
+    case atLeast
+    case atMost
+}
+
 struct CheckRow: Identifiable, Equatable, Sendable {
     let id: String
     var title: String
@@ -552,10 +559,12 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var needsPerson: Bool = false
     /// The deciding measurement, the rule's limit and the measurement's error, in meters, when the
     /// server gave them. A borderline result shows all three ("3 ft 2 in from the gas meter; the
-    /// rule is 3 ft and our measurement can be off by about 4 in").
+    /// rule is at least 3 ft and our measurement can be off by about 4 in").
     var measured: Float? = nil
     var threshold: Float? = nil
     var plusMinus: Float? = nil
+    /// Whether `threshold` is a minimum or a maximum, when the server said which.
+    var comparison: RuleComparison? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
