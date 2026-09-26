@@ -19,7 +19,7 @@ make smoke URL=https://house-scanning-server.vercel.app
 make smoke URL=https://house-scanning-server-private.vercel.app KEY_FILE=server/.env.private.local
 ```
 
-`make smoke` runs `server/examples/smoke.py`, which needs only Python 3. It exits 1 when any request fails.
+`make smoke` runs `server/examples/smoke.py`, which needs only Python 3. It exits 1 when any request fails. With a key it sends only to an `https://` URL (or `http://localhost`) and doesn't follow redirects, so the key can't travel in the clear or to another server.
 
 ## One call
 

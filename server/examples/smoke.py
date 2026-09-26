@@ -11,6 +11,7 @@ import argparse
 import json
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -25,15 +26,45 @@ def read_key(path: Path) -> str:
     raise SystemExit(f"{path}: no HOUSESCAN_API_KEY=<key> line")
 
 
+# Plain http may carry the key only to this machine, where it never crosses a network.
+LOOPBACK = {"localhost", "127.0.0.1", "::1"}
+
+
+def check_keyed_url(url: str) -> None:
+    """Refuse to send the key where someone on the network could read it."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" and not (parts.scheme == "http" and parts.hostname in LOOPBACK):
+        raise SystemExit(f"{url}: the key is only sent over https (or to localhost)")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """urllib copies Authorization onto a followed redirect, even to another server; a keyed
+    request reports the redirect instead of following it."""
+
+    def redirect_request(self, *args: object) -> None:
+        return None
+
+
+_KEYED = urllib.request.build_opener(_NoRedirect)
+
+
 def post(url: str, body: bytes, key: str | None) -> tuple[int, dict]:
     headers = {"Content-Type": "application/json"}
+    opener = urllib.request.urlopen
     if key:
+        check_keyed_url(url)
         headers["Authorization"] = f"Bearer {key}"
+        opener = _KEYED.open
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with opener(request, timeout=30) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as error:
+        if key and 300 <= error.code < 400:
+            where = error.headers.get("Location")
+            return error.code, {
+                "error": {"code": "redirect_refused", "message": f"not following to {where}"}
+            }
         text = error.read().decode(errors="replace")
         try:
             return error.code, json.loads(text)
@@ -50,6 +81,8 @@ def main() -> int:
     parser.add_argument("--key-file", type=Path, help="file with HOUSESCAN_API_KEY=<key>")
     args = parser.parse_args()
     key = read_key(args.key_file) if args.key_file else None
+    if key:
+        check_keyed_url(args.url)
     endpoint = args.url.rstrip("/") + "/v1/placements"
     failed = False
     for scene in sorted(EXAMPLES.glob("*.json")):
