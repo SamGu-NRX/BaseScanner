@@ -144,9 +144,12 @@ public struct CoverageMap: Sendable {
 
     public func cellIndex(forS s: Float) -> Int { Int((s / config.cellWidth).rounded(.down)) }
 
+    /// A cell's s range. Each edge is computed from its own index, so neighbouring cells share a
+    /// bit-identical edge: exported spans of neighbouring cells then meet exactly, where
+    /// `start + width` could leave an ulp between them that the server (which joins spans only
+    /// within 1e-9 ft) would read as an unobserved sliver.
     public func cellRange(_ index: Int) -> ClosedRange<Float> {
-        let start = Float(index) * config.cellWidth
-        return start...(start + config.cellWidth)
+        (Float(index) * config.cellWidth)...(Float(index + 1) * config.cellWidth)
     }
 
     public func level(_ band: SurfaceBand, _ index: Int) -> CoverageLevel {
