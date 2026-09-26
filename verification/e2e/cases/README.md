@@ -137,64 +137,60 @@ move.
 - `errors.drift_per_ft` 0.16 is added per foot walked along the walls from the meter to the
   default error of walls, tap and vlm objects and ground patches. It is not added to tape, the
   meter itself or an explicit `plus_minus_ft`.
-- A battery position comes from the wall, so a point of the battery at walked distance x carries
-  0.3 + 0.16x.
+- A battery position comes from the wall and carries the drift of its edge further from the
+  meter: 0.3 + 0.16x, where x is that edge's walked distance. S2's 70ab0b0 states this ("checks
+  take it at the far edge"), and 26d2870's reach cutoff, which took the near edge instead, is the
+  defect these cases were written to catch.
 - A gap or a route sums the errors of its two ends (linear, as the C5 margin rule and g10's
   derived row use).
-- A route's ends are the meter and the battery's near edge. A gas gap's ends are the gas meter
-  and the battery edge nearest it.
+- A route runs from the meter to the battery's near edge. A gas gap runs from the gas meter to
+  the battery edge nearest it.
 
 ### d-reach-drift-right: cable reach, `at_most` 20 with review line 15
 
 Wall s = [−1, 29], meter at 0. For a start a > 0 the route is a (straight wall, no corners) and its
-error is 0.3 (meter) + 0.3 + 0.16a (wall at the near edge) = 0.6 + 0.16a.
+error is 0.3 (meter) + 0.3 + 0.16(a + W) (wall at the far edge) = 0.6 + 0.16(a + W).
 
 | Line | Condition | Start |
 | --- | --- | --- |
-| pass / unsure | a + 0.6 + 0.16a < 15 | a < 14.4 / 1.16 = 12.4138 |
-| unsure / fail | a − 0.6 − 0.16a > 20 | a > 20.6 / 0.84 = 24.5238 |
+| pass / unsure | a + 0.6 + 0.16(a + W) < 15 | a < (14.4 − 0.16W) / 1.16 = 12.0575 |
+| unsure / fail | a − 0.6 − 0.16(a + W) > 20 | a > (20.6 + 0.16W) / 0.84 = 25.0159 |
 
-Asserted starts: pass at 5 and 12.2138. Unsure at 12.6138, 18 and 24.3238. Fail at 24.7238 and
+Asserted starts: pass at 5 and 11.8575. Unsure at 12.2575, 18 and 24.8159. Fail at 25.2159 and
 25.5. Each boundary is bracketed 0.2 ft inside on both sides, which is more than one 2 in sweep
-step, so each point falls inside a run rather than between two. Using the far edge (a + W) for the
-wall term would move both lines by 0.16W / 1.16 = 0.356 and 0.16W / 0.84 = 0.492, which the points
-0.2 ft inside catch. So would any cutoff that is off by 0.16W = 0.413.
+step, so each point falls inside a run rather than between two. A cutoff that takes drift at the
+near edge sits 0.16W / 0.84 = 0.492 ft lower, at 24.5238, and fails the start at 24.8159.
 
 ### d-reach-drift-left: the same, left of the meter
 
-Wall s = [−29, 1]. Left of the meter the near edge is the battery's right edge b = a + W, and
-the route is −b. The table above holds for −b, so each asserted start is a = −(right-case start) −
-W: pass at −7.5833 and −14.7971, unsure at −15.1971, −20.5833 and −26.9071, fail at −27.3071 and
-−28.0833. The lines sit at a = −12.4138 − W = −14.9971 and a = −24.5238 − W = −27.1071.
+Wall s = [−29, 1]. Left of the meter the near edge is the battery's right edge b = a + W and the
+far edge is a. The table above holds for −b, so each asserted start is a = −(right-case start) −
+W: pass at −7.5833 and −14.4408, unsure at −14.8408, −20.5833 and −27.3992, fail at −27.7992 and
+−28.0833. The lines sit at a = −12.0575 − W = −14.6408 and a = −25.0159 − W = −27.5992.
 
 ### d-gas-drift: gas clearance, `at_least` 3
 
 Wall s = [−1, 20]. A tapped gas meter on the wall line at s = 4 (span [4, 4], no footprint)
 carries 0.3 + 0.16 × 4 = 0.94. For a start a > 4 the gap is d = a − 4 and its error is 0.94 +
-(0.3 + 0.16a) = 1.24 + 0.16a.
+0.3 + 0.16(a + W) = 1.24 + 0.16(a + W).
 
 | Line | Condition | Start |
 | --- | --- | --- |
-| fail / unsure | (a − 4) + 1.24 + 0.16a < 3 | a < 5.76 / 1.16 = 4.9655 |
-| unsure / pass | (a − 4) − 1.24 − 0.16a > 3 | a > 8.24 / 0.84 = 9.8095 |
+| fail / unsure | (a − 4) + 1.24 + 0.16(a + W) < 3 | a < (5.76 − 0.16W) / 1.16 = 4.6092 |
+| unsure / pass | (a − 4) − 1.24 − 0.16(a + W) > 3 | a > (8.24 + 0.16W) / 0.84 = 10.3016 |
 
 Asserted starts:
 
-- **Fail:** 3, where the battery [3, 5.583] covers the gas meter: gap 0, and 0 + 1.88 < 3. Also
-  4.7655.
-- **Unsure:** 5.1655, 7.5 and 9.6095.
-- **Pass:** 10.0095 and 11. Both routes also pass: 11 + 0.6 + 1.76 = 13.36 < 15.
+- **Fail:** 3, where the battery [3, 5.583] covers the gas meter: gap 0, and 0 + 2.13 < 3. Also
+  4.4092.
+- **Unsure:** 4.8092, 7.5 and 10.1016.
+- **Pass:** 10.5016 and 11. Both routes also pass: 11 + 0.6 + 2.17 = 13.77 < 15.
 
 All starts sit right of the working space. The route to them crosses the gas meter, which
 detours; a gas meter with no heights added no extra length at 2c9348f.
 
 ### What rules.yaml and the README leave open
 
-- **Which battery point carries the drift.** The model gives drift for "AR-placed positions".
-  The battery is placed from the wall, not tapped, and it spans W, over which drift changes by
-  0.16W = 0.413 ft. These cases take the point the measurement ends at: the near edge for the
-  route, the edge nearest the gas for a gas gap. The far edge or the centre is an equally literal
-  reading and moves every line (see the reach arithmetic above).
 - **Walked distance for an object with a span.** For a tapped object spanning [s0, s1], it could
   be s0, s1 or the nearest end. d-gas-drift uses a zero-length span to avoid the question.
 - **Whether the meter's error enters the route.** The README says drift is not added to the

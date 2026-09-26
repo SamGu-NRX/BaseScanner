@@ -1,7 +1,7 @@
 {
   "id": "d-gas-drift",
   "source": "rules.yaml errors.tap_ft, wall_ft, drift_per_ft and clearances.gas_ft at origin/t3/server f2705dd; C5 margin rule",
-  "description": "A tapped gas meter at s = 4 on a wall with default errors. For a start a right of it the gap is (a - 4) +/- (1.24 + 0.16a): fail below a = 4.966, pass above a = 9.810, unsure between.",
+  "description": "A tapped gas meter at s = 4 on a wall with default errors. For a start a right of it the gap is (a - 4) +/- (1.24 + 0.16(a + W)): fail below a = 4.609, pass above a = 10.302, unsure between.",
   "scene": {
     "schema_version": "1.0",
     "meter": {
@@ -125,17 +125,17 @@
         "wall_id": "w1",
         "start_ft": 3.0,
         "outcome": "fail",
-        "why": "battery [3, 5.58] covers the gas meter: gap 0 + 1.88 < 3"
+        "why": "battery [3, 5.58] covers the gas meter: gap 0 + 2.13 < 3"
       },
       {
         "wall_id": "w1",
-        "start_ft": 4.7655,
+        "start_ft": 4.4092,
         "outcome": "fail",
-        "why": "just inside (a - 4) + 1.24 + 0.16a < 3"
+        "why": "just inside (a - 4) + 1.24 + 0.16(a + W) < 3"
       },
       {
         "wall_id": "w1",
-        "start_ft": 5.1655,
+        "start_ft": 4.8092,
         "outcome": "unsure",
         "why": "just past the fail line"
       },
@@ -143,25 +143,25 @@
         "wall_id": "w1",
         "start_ft": 7.5,
         "outcome": "unsure",
-        "why": "gap 3.5 +/- 2.44"
+        "why": "gap 3.5 +/- 2.85"
       },
       {
         "wall_id": "w1",
-        "start_ft": 9.6095,
+        "start_ft": 10.1016,
         "outcome": "unsure",
-        "why": "just inside (a - 4) - 1.24 - 0.16a <= 3"
+        "why": "just inside (a - 4) - 1.24 - 0.16(a + W) <= 3"
       },
       {
         "wall_id": "w1",
-        "start_ft": 10.0095,
+        "start_ft": 10.5016,
         "outcome": "pass",
-        "why": "just past (a - 4) - 1.24 - 0.16a > 3"
+        "why": "just past (a - 4) - 1.24 - 0.16(a + W) > 3"
       },
       {
         "wall_id": "w1",
         "start_ft": 11.0,
         "outcome": "pass",
-        "why": "gap 7 - 3.0 = 4 > 3; route 11 + 2.36 < 15"
+        "why": "gap 7 - 3.41 = 3.59 > 3; route 11 + 2.77 < 15"
       }
     ]
   }

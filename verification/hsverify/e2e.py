@@ -29,11 +29,13 @@ import io
 import json
 import os
 import re
+import signal
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import zipfile
@@ -41,12 +43,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from hsverify import gitref
+from hsverify import gitref, memory
 from hsverify.memory import peak_rss_mb
 from hsverify.resultcheck import (
     RuleSet,
     assumption_mismatches,
     comparable,
+    coverage_blocks,
     expectation_problems,
     invariant_problems,
     less_coverage_problems,
@@ -89,6 +92,7 @@ class SceneInput:
     app_export: bool = False  # exported by the iOS app (from a replay), the S4 end-to-end path
     app_sha: str | None = None  # the app commit that exported it, when known
     hostile: bool = False  # judged by judge_hostile: refused or answered within a budget
+    bundle: bytes | None = None  # a prebuilt upload, sent as is (the compressed-scene input)
 
 
 def load_app_export(path: Path) -> SceneInput:
@@ -173,9 +177,14 @@ def find_app(server_dir: Path) -> str:
     return found[0]
 
 
+# A server under test that passes this is killed and the run says so: the Mac is shared, and a
+# careless server can parse a small hostile input into gigabytes.
+SERVER_LIMIT_MB = 3500
+
+
 @contextlib.contextmanager
-def server_from_ref(sha: str, log_path: Path) -> Iterator[str]:
-    """The server at `sha` running its own FastAPI app on a free port."""
+def server_from_ref(sha: str, log_path: Path) -> Iterator[tuple[str, memory.TreeLimit]]:
+    """The server at `sha` running its own FastAPI app on a free port, under a memory limit."""
     with gitref.detached_worktree(sha) as tree:
         server_dir = tree / "server"
         subprocess.run(["uv", "sync", "--locked", "--quiet"], cwd=server_dir, check=True)
@@ -188,13 +197,22 @@ def server_from_ref(sha: str, log_path: Path) -> Iterator[str]:
                 cwd=server_dir,
                 stdout=log,
                 stderr=subprocess.STDOUT,
+                start_new_session=True,
             )
             try:
-                wait_until_up(url, proc)
-                yield url
+                with memory.TreeLimit(proc, SERVER_LIMIT_MB, interval_s=0.2) as limit:
+                    wait_until_up(url, proc)
+                    yield url, limit
             finally:
-                proc.terminate()
-                proc.wait(timeout=10)
+                # SIGTERM lets uvicorn finish in-flight requests, and a server still solving a
+                # hostile input would run on for minutes: kill it after 10 s.
+                if proc.poll() is None:
+                    os.killpg(proc.pid, signal.SIGTERM)
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
 
 
 def wait_until_up(url: str, proc: subprocess.Popen, timeout_s: float = 60) -> None:
@@ -277,6 +295,8 @@ def resolve_ref(openapi: dict, schema: dict) -> dict:
 
 
 def bundle_zip(item: SceneInput) -> bytes:
+    if item.bundle is not None:
+        return item.bundle
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("scene.json", item.raw)
@@ -337,7 +357,14 @@ def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None,
     return json.loads(payload), None
 
 
-def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict, rules: RuleSet) -> dict:
+def judge(
+    url: str,
+    endpoint: Endpoint,
+    item: SceneInput,
+    schemas: dict,
+    rules: RuleSet,
+    limit: memory.TreeLimit | None = None,
+) -> dict:
     record: dict = {
         "name": item.name,
         "source": item.source,
@@ -348,7 +375,7 @@ def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict, rules: 
     if item.skip_reason:
         return record | {"status": "skipped", "problems": [], "skip_reason": item.skip_reason}
     if item.hostile:
-        return record | judge_hostile(url, endpoint, item, schemas)
+        return record | judge_hostile(url, endpoint, item, schemas, limit)
     input_errors = schema_errors(item.scene, schemas["scene"])
     if input_errors:
         return record | {"status": "bad input", "problems": input_errors[:20]}
@@ -450,7 +477,7 @@ def property_problems(
     # because an area was unobserved (the chosen spot may move; three rounds at most).
     scene, current = item.scene, result
     for round_ in range(1, 4):
-        if not unobserved_checks(current):
+        if not coverage_blocks(current):
             break
         scene = with_requests_captured(scene, current)
         if scene is None:
@@ -459,7 +486,7 @@ def property_problems(
         if current is None:
             break
     else:
-        if unobserved_checks(current):
+        if coverage_blocks(current):
             problems.append(
                 "after capturing every requested view three times, checks are still unsure "
                 f"for coverage: {unobserved_checks(current)}"
@@ -475,27 +502,38 @@ HOSTILE_BUDGET_MS = 10_000.0
 
 
 def hostile_inputs() -> list[SceneInput]:
-    """Small requests that cost a careless server a lot: many objects, huge numbers, deep
-    nesting and a very long wall. Built here, not stored, so the repository carries no blobs."""
-    wall = {"id": "w1", "baseline": [[-15.0, 0.0], [15.0, 0.0]]}
-    base = {"meter": {"pos": [0.0, 4.5, 0.0], "wall_id": "w1"}, "walls": [wall]}
-    many = base | {
+    """Small requests that cost a careless server a lot. Built here, not stored, so the
+    repository carries no blobs; none takes the harness more than a few MB to build."""
+    base = {"meter": {"pos": [0.0, 4.5, 0.0], "wall_id": "w1"}}
+    # Every object and coverage fragment adds boundaries, and each object its own error: a
+    # solver that pairs every boundary with every error offset grows quadratically.
+    crowded = base | {
+        "walls": [{"id": "w1", "baseline": [[-60.0, 0.0], [60.0, 0.0]]}],
         "objects": [
             {
-                "type": "window",
+                "type": "elec_box",
                 "wall_id": "w1",
-                "span_ft": [i * 0.001, i * 0.001 + 0.5],
+                "span_ft": [-55 + 0.75 * i, -54.85 + 0.75 * i],
+                "bottom_ft": 3.5,
+                "top_ft": 4.5,
                 "source": "tap",
+                "plus_minus_ft": round(0.02 + 0.0013 * i, 4),
             }
-            for i in range(20_000)
-        ]
+            for i in range(150)
+        ],
+        "coverage": {
+            "observed": [
+                {"band": "wall", "span_ft": [-55.6 + 0.75 * i, -55.2 + 0.75 * i]}
+                for i in range(150)
+            ]
+            + [{"band": "ground", "span_ft": [-60, 60], "out_ft": 15}]
+        },
     }
     huge = {
         "meter": {"pos": [1e300, 4.5, 0.0], "wall_id": "w1"},
         "walls": [{"id": "w1", "baseline": [[-1e300, 0.0], [1e300, 0.0]]}],
     }
-    long_wall = {
-        "meter": {"pos": [0.0, 4.5, 0.0], "wall_id": "w1"},
+    long_wall = base | {
         "walls": [{"id": "w1", "baseline": [[-2500.0, 0.0], [2500.0, 0.0]]}],
         "coverage": {
             "observed": [
@@ -504,32 +542,59 @@ def hostile_inputs() -> list[SceneInput]:
             ]
         },
     }
-    depth = 20_000
-    nested = (
-        json.dumps(base)[:-1]
-        + ', "objects": [{"type": "door", "wall_id": "w1", "span_ft": [1, 2], "source": "tap", '
-        + '"attrs": {"note": '
-        + "[" * depth
-        + "]" * depth
-        + "}}]}"
-    ).encode()
+    nested = ('{"meter": ' + "[" * 5000 + "]" * 5000 + "}").encode()
     items = [
-        SceneInput("hostile: 20 000 objects", many, json.dumps(many).encode()),
+        SceneInput(
+            "hostile: 150 objects, each its own error", crowded, json.dumps(crowded).encode()
+        ),
         SceneInput("hostile: coordinates of 1e300 ft", huge, json.dumps(huge).encode()),
         SceneInput("hostile: a 5000 ft wall", long_wall, json.dumps(long_wall).encode()),
-        SceneInput("hostile: attrs nested 20 000 deep", {}, nested),
+        SceneInput("hostile: nested 5000 deep", {}, nested),
+        SceneInput("hostile: 400 MB scene.json in a small zip", {}, b"", bundle=zip_bomb(400)),
     ]
     for item in items:
         item.hostile = True
     return items
 
 
-def judge_hostile(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict:
-    """A refusal (400, 413, 422) or a valid result, either within the budget. A crash, a hang or
-    a slow answer is a failure."""
+def zip_bomb(megabytes: int) -> bytes:
+    """A zip whose scene.json is `megabytes` of spaces around a number: under 1 MB to send,
+    written in chunks so the harness never holds the expanded text."""
+    buf = io.BytesIO()
+    chunk = b" " * 2**20
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z, z.open("scene.json", "w") as f:
+        f.write(b'{"meter": ')
+        for _ in range(megabytes):
+            f.write(chunk)
+        f.write(b"1}")
+    return buf.getvalue()
+
+
+# A hostile input may cost the server this much memory above what it held before the request.
+HOSTILE_MEMORY_MB = 500
+
+
+def judge_hostile(
+    url: str,
+    endpoint: Endpoint,
+    item: SceneInput,
+    schemas: dict,
+    limit: memory.TreeLimit | None = None,
+) -> dict:
+    """A refusal (400, 413, 422) or a valid result, either within the time budget and, for a
+    server started here, the memory budget. A crash, a hang, a slow answer or a large
+    allocation is a failure."""
+    if item.bundle is not None and endpoint.content_type == "application/json":
+        return {"status": "skipped", "skip_reason": "the endpoint takes JSON, not a zip"}
+    before = limit.reset() if limit else 0.0
     status, payload, ms = post(url, endpoint, item, timeout_s=HOSTILE_BUDGET_MS / 1000 + 5)
     record = {"http_status": status, "latency_ms": round(ms, 1)}
-    if status is None:
+    grew = limit.peak_mb - before if limit else 0.0
+    if limit:
+        record["server_growth_mb"] = round(grew, 1)
+    if grew > HOSTILE_MEMORY_MB:
+        failure = f"the server grew by {grew:.0f} MB, budget {HOSTILE_MEMORY_MB} MB"
+    elif status is None:
         failure = f"no answer within {HOSTILE_BUDGET_MS / 1000 + 5:.0f} s"
     elif ms > HOSTILE_BUDGET_MS:
         failure = f"answered HTTP {status} after {ms:.0f} ms, budget {HOSTILE_BUDGET_MS:.0f}"
@@ -559,7 +624,9 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     exported = [r for r in records if r.get("app_export")]
     report = meta | {
         "counts": counts,
-        "all_passed": all(r["status"] in ("pass", "skipped") for r in records) and bool(records),
+        "all_passed": all(r["status"] in ("pass", "skipped") for r in records)
+        and bool(records)
+        and not meta["peak_memory"].get("server_killed"),
         "latency_ms": max(real) if real else None,
         "scenes_answered": sum(1 for r in records if "decision" in r),
         # Invariants and properties broken, summed over every answered scene. Case
@@ -588,6 +655,14 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
         f"Load average {meta['load_average_1_5_15']} on {os.cpu_count()} cores. "
         + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())),
         "",
+    ]
+    if meta["peak_memory"].get("server_killed"):
+        lines += [
+            f"**The server passed {SERVER_LIMIT_MB} MB and was killed**; every scene after that "
+            "failed to connect.",
+            "",
+        ]
+    lines += [
         "| Scene | Status | Decision | ms | Problems |",
         "| --- | --- | --- | --- | --- |",
     ]
@@ -666,19 +741,22 @@ def main(argv: list[str] | None = None) -> int:
 
     server_sha = "(running server)" if args.server_url else gitref.resolve(args.server_ref)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    out = (args.out or DEFAULT_REPORTS / f"{stamp}-{server_sha[:8]}").expanduser()
+    label = urllib.parse.urlsplit(args.server_url).hostname if args.server_url else server_sha[:8]
+    out = (args.out or DEFAULT_REPORTS / f"{stamp}-{label}").expanduser()
     out.mkdir(parents=True, exist_ok=True)
 
+    limit = None
     with contextlib.ExitStack() as stack:
-        url = args.server_url or stack.enter_context(
-            server_from_ref(server_sha, out / "server.log")
-        )
+        if args.server_url:
+            url = args.server_url
+        else:
+            url, limit = stack.enter_context(server_from_ref(server_sha, out / "server.log"))
         openapi = json.loads(urllib.request.urlopen(f"{url}/openapi.json", timeout=10).read())
         endpoint = discover_endpoint(openapi, args.endpoint)
         print(f"Server {url}, endpoint POST {endpoint.path} ({endpoint.content_type})")
         records = []
         for item in items:
-            record = judge(url, endpoint, item, schemas, rules)
+            record = judge(url, endpoint, item, schemas, rules, limit)
             records.append(record)
             print(
                 f"  {record['status']:<20} {item.name}"
@@ -702,7 +780,8 @@ def main(argv: list[str] | None = None) -> int:
         "command": " ".join([sys.executable, "-m", "hsverify.e2e", *(argv or sys.argv[1:])]),
         # Latency on this shared Mac depends on what else runs; keep the load with the numbers.
         "load_average_1_5_15": [round(x, 1) for x in os.getloadavg()],
-        "peak_memory": peak_rss_mb(),
+        "peak_memory": peak_rss_mb()
+        | ({"server_mb": round(limit.peak_mb, 1), "server_killed": limit.killed} if limit else {}),
         "cases_sha256": hashlib.sha256(b"".join(i.raw for i in items)).hexdigest(),
     }
     report = write_report(out, meta, records)

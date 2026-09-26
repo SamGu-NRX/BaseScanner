@@ -1,8 +1,10 @@
 import hashlib
+import io
 import json
 import re
 import threading
 import time
+import zipfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
@@ -11,20 +13,22 @@ from hsverify import e2e
 from hsverify.e2e import (
     Endpoint,
     SceneInput,
+    bundle_zip,
     discover_endpoint,
     hostile_inputs,
     judge,
     judge_hostile,
     load_app_export,
     load_input,
+    zip_bomb,
 )
 from hsverify.resultcheck import RuleSet
 
 RULES = RuleSet(
     width_ft=31 / 12,
     depth_ft=22 / 12,
-    radii={"ground_surface": ("ground", 0.0), "gas_clearance": ("ground", 1.0)},
-    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3},
+    radii={"ground_surface": (("ground",), 0.0), "gas_clearance": (("ground",), 1.0)},
+    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3, "drift_per_ft": 0.16},
 )
 
 SCENE = {
@@ -250,7 +254,7 @@ def test_server_breaking_coverage_rule_fails(fake_url):
     joined = "\n".join(record["problems"])
     assert "ruled out for this case" in joined
     assert "no coverage: decision pass for a scene with no coverage at all" in joined
-    assert re.search(r"needs ground \[.*\], 2\.83 ft out observed", joined)
+    assert re.search(r"needs ground \[.*\] observed, none seen", joined)
 
 
 def test_a_result_breaking_its_schema_counts_against_the_contract(fake_url):
@@ -293,7 +297,7 @@ def refusing_url():
 
 
 def test_a_quick_refusal_of_a_hostile_input_passes(refusing_url):
-    hostile = hostile_inputs()[1]
+    hostile = hostile_inputs()[3]
     record = judge_hostile(refusing_url, Endpoint("/p", "application/json"), hostile, SCHEMAS)
     assert record["status"] == "pass" and record["http_status"] == 422
 
@@ -301,7 +305,7 @@ def test_a_quick_refusal_of_a_hostile_input_passes(refusing_url):
 def test_a_slow_refusal_or_a_hang_fails(refusing_url, monkeypatch):
     monkeypatch.setattr(e2e, "HOSTILE_BUDGET_MS", 100.0)
     RefusingServer.delay = 0.3
-    hostile = hostile_inputs()[1]
+    hostile = hostile_inputs()[3]
     record = judge_hostile(refusing_url, Endpoint("/p", "application/json"), hostile, SCHEMAS)
     assert record["status"] == "fail" and "budget 100" in record["problems"][0]
     RefusingServer.delay = 6.0  # longer than budget + 5 s: the request times out
@@ -312,13 +316,15 @@ def test_a_slow_refusal_or_a_hang_fails(refusing_url, monkeypatch):
 def test_hostile_inputs_are_small_to_send():
     items = hostile_inputs()
     assert all(i.hostile for i in items)
-    assert max(len(i.raw) for i in items) < 5_000_000  # the harness stays light
+    assert max(len(bundle_zip(i)) for i in items) < 2_000_000  # the harness stays light
+
+
+def test_the_compressed_scene_expands_to_its_size():
+    with zipfile.ZipFile(io.BytesIO(zip_bomb(3))) as z:
+        assert z.getinfo("scene.json").file_size == 3 * 2**20 + len(b'{"meter": 1}')
 
 
 def test_a_sim_report_folder_is_an_app_export_with_its_sha(tmp_path):
-    (tmp_path / "scan.zip").write_bytes(b"")
-    import zipfile
-
     with zipfile.ZipFile(tmp_path / "scan.zip", "w") as z:
         z.writestr("scene.json", json.dumps(SCENE))
     (tmp_path / "report.json").write_text(json.dumps({"sha": "abc123", "app_export": "scan.zip"}))

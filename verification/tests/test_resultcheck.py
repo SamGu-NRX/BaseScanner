@@ -30,16 +30,17 @@ RULES = RuleSet(
     width_ft=31 / 12,
     depth_ft=22 / 12,
     radii={
-        "ground_surface": ("ground", 0.0),
-        "gas_clearance": ("ground", 1.0),
-        "opening_clearance": ("wall", 1.0),
+        "ground_surface": (("ground",), 0.0),
+        "gas_clearance": (("ground",), 1.0),
+        "opening_clearance": (("wall",), 1.0),
     },
-    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3},
+    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3, "drift_per_ft": 0.16},
 )
 
 SCENE = {
     "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"},
-    "walls": [{"id": "w1", "baseline": [[-12.0, 0.0], [12.0, 0.0]]}],
+    # An explicit zero error keeps the reach arithmetic in these tests to the radii alone.
+    "walls": [{"id": "w1", "baseline": [[-12.0, 0.0], [12.0, 0.0]], "plus_minus_ft": 0.0}],
     "objects": [
         {
             "type": "gas_meter",
@@ -233,14 +234,28 @@ def with_ground(out_ft: float, span: list[float]) -> dict:
 def test_a_pass_needs_ground_out_to_depth_plus_each_radius():
     # Start 1 covers [1, 3.58]. Gas (radius 1) needs ground out to 1.83 + 1 = 2.83 ft.
     msgs = invariant_problems(with_ground(2.5, [-12.0, 10.0]), result(), rules=RULES)
-    assert any("gas_clearance needs ground [0.00, 4.58], 2.83 ft out observed" in m for m in msgs)
+    needs = "gas_clearance needs ground [1.00, 3.58] observed out to 2.83 ft, seen 2.50 ft"
+    assert any(needs in m for m in msgs)
     assert invariant_problems(with_ground(2.84, [-12.0, 10.0]), result(), rules=RULES) == []
+
+
+def test_past_the_battery_the_ground_needed_shrinks_with_distance():
+    # d past the battery's left end at 1, gas needs ground out to 1 - d: 0.5 for [0, 0.5].
+    scene = with_ground(2.84, [1.0, 10.0])
+    scene["coverage"]["observed"] += [
+        {"band": "ground", "span_ft": [0.0, 0.5], "out_ft": 0.55},
+        {"band": "ground", "span_ft": [0.5, 1.0], "out_ft": 1.0},
+    ]
+    assert invariant_problems(scene, result(), rules=RULES) == []
+    scene["coverage"]["observed"][-1]["out_ft"] = 0.9
+    msgs = invariant_problems(scene, result(), rules=RULES)
+    assert any("ground [0.50, 1.00] observed out to 1.00 ft, seen 0.90 ft" in m for m in msgs)
 
 
 def test_a_pass_needs_ground_along_the_wall_to_each_radius_without_slack():
     # Ground from 0.1: the 1 ft gas radius around [1, 3.58] reaches back to 0.
     msgs = invariant_problems(with_ground(3.0, [0.1, 10.0]), result(), rules=RULES)
-    assert any("gas_clearance needs ground [0.00, 4.58]" in m for m in msgs)
+    assert any("gas_clearance needs ground [0.00, 0.10] observed, none seen" in m for m in msgs)
 
 
 def test_a_passing_opening_check_needs_the_wall_to_its_radius():
@@ -253,7 +268,8 @@ def test_a_passing_opening_check_needs_the_wall_to_its_radius():
         ]
     )
     msgs = invariant_problems(scene, r, rules=RULES)
-    assert any("check opening_clearance passes but needs wall [0.00, 4.58]" in m for m in msgs)
+    needs = "check opening_clearance passes but needs wall [0.00, 4.58] observed"
+    assert any(needs in m for m in msgs)
 
 
 def test_pass_whose_route_crosses_unobserved_wall_is_flagged():
@@ -280,10 +296,17 @@ def test_photo_request_for_an_observed_area_is_flagged():
 def test_every_unobserved_check_needs_a_request_naming_it():
     unseen = check("unsure", None, cause="unobserved")
     r = result(checks=[unseen])
+    # No unobserved_area reason: every position fails anyway, so no photo is owed.
+    assert missing_evidence_problems(SCENE, r) == []
     r["reasons"] = [{"code": "unobserved_area", "message": ""}]
-    assert missing_evidence_problems(r) == [
-        "check gas_clearance is unsure (unobserved) but no missing_evidence entry names it",
-        "reason unobserved_area but missing_evidence is empty",
+    assert missing_evidence_problems(SCENE, r) == [
+        "reason unobserved_area but missing_evidence is empty"
+    ]
+    r["missing_evidence"] = [
+        {"kind": "band", "band": "wall", "span_ft": [11, 12], "checks": ["x"], "message": ""}
+    ]
+    assert missing_evidence_problems(SCENE, r) == [
+        "check gas_clearance is unsure (unobserved) but no missing_evidence entry names it"
     ]
     r["missing_evidence"] = [
         {
@@ -294,20 +317,53 @@ def test_every_unobserved_check_needs_a_request_naming_it():
             "message": "",
         }
     ]
-    assert missing_evidence_problems(r) == []
+    assert missing_evidence_problems(SCENE, r) == []
+
+
+def test_the_reach_widens_by_the_battery_position_error():
+    # Default wall error at the far edge 3.58: 0.3 + 0.16 x 3.58 = 0.87; gas reach 1.87 ft, so
+    # ground out to 1.83 + 1.87 = 3.71 ft in front.
+    scene = with_ground(3.6, [-12.0, 10.0])
+    del scene["walls"][0]["plus_minus_ft"]
+    msgs = invariant_problems(scene, result(), rules=RULES)
+    assert any("gas_clearance needs ground [1.00, 3.58] observed out to 3.71 ft" in m for m in msgs)
+    scene["coverage"]["observed"][1]["out_ft"] = 3.72
+    assert invariant_problems(scene, result(), rules=RULES) == []
+
+
+def test_a_clearance_is_named_under_each_band_it_lacks():
+    two_band = RuleSet(
+        RULES.width_ft,
+        RULES.depth_ft,
+        RULES.radii | {"gas_clearance": (("ground", "wall"), 1.0)},
+        RULES.errors,
+    )
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"] = []  # nothing seen: both bands missing around the spot
+    r = result(checks=[check("unsure", None, cause="unobserved")])
+    r["reasons"] = [{"code": "unobserved_area", "message": ""}]
+    ground_only = {"kind": "band", "band": "ground", "span_ft": [0, 5], "checks": ["gas_clearance"]}
+    r["missing_evidence"] = [ground_only | {"message": ""}]
+    assert missing_evidence_problems(scene, r, two_band) == [
+        "check gas_clearance is unsure and needs wall [0.00, 4.58] observed, but no wall request "
+        "names it"
+    ]
+    r["missing_evidence"].append(ground_only | {"band": "wall", "message": ""})
+    assert missing_evidence_problems(scene, r, two_band) == []
 
 
 def test_rules_come_from_rules_yaml_and_a_missing_one_is_loud():
     text = """
 battery: {width_ft: {value: 2.5}, depth_ft: {value: 1.5}}
 errors: {tap_ft: {value: 0.3}, vlm_ft: {value: 1.5}, tape_ft: {value: 0.05},
-         wall_ft: {value: 0.3}, meter_ft: {value: 0.3}}
+         wall_ft: {value: 0.3}, meter_ft: {value: 0.3}, drift_per_ft: {value: 0.16}}
 clearances: {gas_ft: {value: 3}, ac_ft: {value: 3}, drive_ft: {value: 5},
              pool_ft: {value: 10}, opening_ft: {value: 3}}
 """
     rules = RuleSet.from_yaml(text)
-    assert rules.radii["pool_clearance"] == ("ground", 10.0)
-    assert rules.radii["opening_clearance"] == ("wall", 3.0)
+    assert rules.radii["pool_clearance"] == (("ground",), 10.0)
+    assert rules.radii["gas_clearance"] == (("ground", "wall"), 3.0)
+    assert rules.radii["opening_clearance"] == (("wall",), 3.0)
     assert (rules.width_ft, rules.errors["tape"]) == (2.5, 0.05)
     with pytest.raises(ValueError, match=r"rules\.yaml has no clearances\.pool_ft"):
         RuleSet.from_yaml(text.replace("pool_ft: {value: 10}, ", ""))
@@ -503,8 +559,13 @@ def test_transforms():
     scene = copy.deepcopy(SCENE)
     scene["objects"].append({"type": "ac", "wall_id": "w1", "span_ft": [5, 6], "source": "tape"})
     more = with_more_error(scene, RULES)
-    assert [o["plus_minus_ft"] for o in more["objects"]] == [0.8, 0.55]
-    assert more["walls"][0]["plus_minus_ft"] == 0.8 and more["meter"]["plus_minus_ft"] == 0.8
+    # A 24 ft chain: a tap default can drift to 0.3 + 0.16 * 24 = 4.14; tape does not drift.
+    assert [o["plus_minus_ft"] for o in more["objects"]] == pytest.approx([4.64, 0.55])
+    assert more["walls"][0]["plus_minus_ft"] == 0.5
+    default_wall = copy.deepcopy(scene)
+    del default_wall["walls"][0]["plus_minus_ft"]
+    assert with_more_error(default_wall, RULES)["walls"][0]["plus_minus_ft"] == pytest.approx(4.64)
+    assert more["meter"]["plus_minus_ft"] == 0.8
     assert [o["source"] for o in tape_to_tap(scene)["objects"]] == ["tap", "tap"]
     assert tape_to_tap(SCENE) is None
     less = with_less_coverage(scene)

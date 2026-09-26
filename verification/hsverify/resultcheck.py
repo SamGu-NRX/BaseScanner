@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import itertools
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -34,12 +36,15 @@ OFFSET_TOL_FT = 0.01
 # Check ids whose PASS depends on seeing an area around the footprint, the band that area lies
 # in, and the rules.yaml clearance that sets its radius. ground_surface needs only the ground
 # under the battery.
+# Clearance check -> the bands an unseen hazard could hide in, and its rules.yaml radius. C1: a
+# gas meter hangs on the wall face (wall band) and its regulator stands on the ground (ground
+# band); openings are on the wall face; AC units, drives and pools are on the ground.
 CLEARANCE_CHECKS = {
-    "gas_clearance": ("ground", "gas_ft"),
-    "ac_clearance": ("ground", "ac_ft"),
-    "drive_clearance": ("ground", "drive_ft"),
-    "pool_clearance": ("ground", "pool_ft"),
-    "opening_clearance": ("wall", "opening_ft"),
+    "gas_clearance": (("ground", "wall"), "gas_ft"),
+    "ac_clearance": (("ground",), "ac_ft"),
+    "drive_clearance": (("ground",), "drive_ft"),
+    "pool_clearance": (("ground",), "pool_ft"),
+    "opening_clearance": (("wall",), "opening_ft"),
 }
 
 
@@ -49,9 +54,9 @@ class RuleSet:
 
     width_ft: float
     depth_ft: float
-    # check id -> (band, radius in feet around the battery footprint that must be observed)
-    radii: dict[str, tuple[str, float]]
-    # default error by object source, and for walls and the meter
+    # check id -> (bands, radius in feet around the battery footprint that must be observed)
+    radii: dict[str, tuple[tuple[str, ...], float]]
+    # default error by object source, for walls and the meter, and drift_per_ft
     errors: dict[str, float]
 
     @classmethod
@@ -67,13 +72,14 @@ class RuleSet:
             return float(node["value"] if isinstance(node, dict) else node)
 
         radii = {
-            check: (band, value("clearances", key))
-            for check, (band, key) in CLEARANCE_CHECKS.items()
+            check: (bands, value("clearances", key))
+            for check, (bands, key) in CLEARANCE_CHECKS.items()
         }
-        radii["ground_surface"] = ("ground", 0.0)
+        radii["ground_surface"] = (("ground",), 0.0)
         errors = {
             name: value("errors", f"{name}_ft") for name in ("tap", "vlm", "tape", "wall", "meter")
         }
+        errors["drift_per_ft"] = value("errors", "drift_per_ft")
         return cls(value("battery", "width_ft"), value("battery", "depth_ft"), radii, errors)
 
 
@@ -208,7 +214,7 @@ def invariant_problems(
         if max(abs(want[0] - got[0]), abs(want[1] - got[1])) > OFFSET_TOL_FT:
             problems.append(f"spot.meter_offset_ft {got} != centre - meter {want}")
 
-    problems += missing_evidence_problems(result)
+    problems += missing_evidence_problems(scene, result, rules)
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
     return problems
@@ -224,45 +230,72 @@ def required_span(lo: float, hi: float, radius: float) -> tuple[float, float]:
     return lo - radius, hi + radius
 
 
-def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
-    """Missing coverage is never a pass (C5), to the radius each check's rule looks out to.
+def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: float) -> float:
+    """Position error of a battery over [lo, hi] on `wall_id`: the wall's explicit error, or its
+    default plus drift at the battery's edge further from the meter (S2 70ab0b0)."""
+    wall = next((w for w in scene["walls"] if w["id"] == wall_id), None)
+    if wall is None:
+        raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
+    if "plus_minus_ft" in wall:
+        return wall["plus_minus_ft"]
+    return rules.errors["wall"] + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
 
-    A PASS for a check at a battery covering [lo, hi] along the wall needs that check's band
-    observed over [lo - R, hi + R], and for the ground band out to the battery depth plus R. A
-    sweep run that passes needs every check's area. The wall and cable route back to the meter
-    must be observed too. No slack: runs list exactly the starts that were evaluated.
+
+def reach_gaps(
+    scene: dict, rules: RuleSet, check: str, wall_id: str, lo: float, hi: float
+) -> list[tuple[str, str]]:
+    """(band, what is missing) for each band `check` needs observed around a battery over
+    [lo, hi] and does not have.
+
+    Only points within the check's radius R of the battery whatever the wall's shape are
+    required, so a correct server is never flagged. R is widened by the battery's position
+    error e (C5: a pass needs the margin to exceed the error, and an unseen hazard just past the
+    seen area is a margin of zero).
+
+    - wall band: [lo - R - e, hi + R + e] along the wall, since distance along the wall is
+      never shorter than straight-line distance;
+    - ground band: out to depth + R + e in front of the battery (a battery sits flush on one
+      straight segment), and at distance d past either end out to R + e - d. The ground point
+      there is at most d along the wall plus R + e - d out from the battery's end.
     """
+    bands, radius = rules.radii[check]
+    reach = radius + battery_error(scene, rules, wall_id, lo, hi)
+    gaps = []
+    for band in bands:
+        if band == "ground":
+            gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
+        else:
+            a, b = required_span(lo, hi, reach)
+            seen = covers(observed(scene, band), a, b)
+            gap = None if seen else f"{band} [{a:.2f}, {b:.2f}] observed"
+        if gap:
+            gaps.append((band, gap))
+    return gaps
+
+
+def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    """Missing coverage is never a pass (C5), to the reach each check's rule looks out to (see
+    reach_gaps). A sweep run that passes needs every check's area for every start in it, and the
+    wall and cable route back to the meter. No slack: runs list exactly the starts that were
+    evaluated."""
     problems: list[str] = []
-    width, depth = rules.width_ft, rules.depth_ft
     wall = observed(scene, "wall")
-
-    def unobserved(band: str, radius: float, lo: float, hi: float) -> str | None:
-        a, b = required_span(lo, hi, radius)
-        seen = observed(scene, band, min_out_ft=depth + radius if band == "ground" else 0.0)
-        if covers(seen, a, b):
-            return None
-        out = f", {depth + radius:.2f} ft out" if band == "ground" else ""
-        return f"{band} [{a:.2f}, {b:.2f}]{out}"
-
     if "coverage" not in scene and result["decision"] == "pass":
         problems.append("decision pass for a scene with no coverage at all")
 
     for run in result.get("sweep", []):
         if run["outcome"] != "pass":
             continue
-        lo, hi = run["start_ft"][0], run["start_ft"][1] + width
+        lo, hi = run["start_ft"][0], run["start_ft"][1] + rules.width_ft
         route_lo, route_hi = min(0.0, lo), max(0.0, hi)
         if not covers(wall, route_lo, route_hi):
             problems.append(
                 f"sweep pass for starts {run['start_ft']} but the wall and cable route "
                 f"[{route_lo:.2f}, {route_hi:.2f}] were not all observed"
             )
-        for check, (band, radius) in sorted(rules.radii.items()):
-            gap = unobserved(band, radius, lo, hi)
-            if gap:
-                problems.append(
-                    f"sweep pass for starts {run['start_ft']} but {check} needs {gap} observed"
-                )
+        for check in sorted(rules.radii):
+            for _, gap in reach_gaps(scene, rules, check, run["wall_id"], lo, hi):
+                problems.append(f"sweep pass for starts {run['start_ft']} but {check} needs {gap}")
 
     spot = result.get("spot")
     if spot is not None:
@@ -270,16 +303,17 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         for check in result.get("checks", []):
             if check["outcome"] != "pass" or check["id"] not in rules.radii:
                 continue
-            band, radius = rules.radii[check["id"]]
-            gap = unobserved(band, radius, lo, hi)
-            if gap:
-                problems.append(f"check {check['id']} passes but needs {gap} observed")
+            for _, gap in reach_gaps(scene, rules, check["id"], spot["wall_id"], lo, hi):
+                problems.append(f"check {check['id']} passes but needs {gap}")
 
     for request in result.get("missing_evidence", []):
         if request["kind"] != "band" or "span_ft" not in request or "band" not in request:
             continue
         a, b = sorted(request["span_ft"])
-        if b - a > EPS and covers(observed(scene, request["band"]), a, b):
+        # A ground request carries no distance out, so it may want deeper ground over a span
+        # already seen; only ground seen out to GROUND_FAR_FT makes it redundant.
+        far = GROUND_FAR_FT if request["band"] == "ground" else 0.0
+        if b - a > EPS and covers(observed(scene, request["band"], min_out_ft=far), a, b):
             problems.append(
                 f"missing_evidence asks for {request['band']} {request['span_ft']}, "
                 "which the scene lists as observed"
@@ -287,21 +321,60 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     return problems
 
 
-def missing_evidence_problems(result: dict) -> list[str]:
-    """Every check left unsure because an area was unobserved has a request naming it."""
-    listed = {
-        c for request in result.get("missing_evidence", []) for c in request.get("checks", [])
-    }
-    problems = [
-        f"check {c['id']} is unsure (unobserved) but no missing_evidence entry names it"
-        for c in result.get("checks", [])
-        if c["outcome"] == "unsure"
-        and c.get("unsure_cause") == "unobserved"
-        and c["id"] not in listed
+def ground_gap(scene: dict, lo: float, hi: float, depth: float, radius: float) -> str | None:
+    """The first stretch of ground seen less far out than a battery over [lo, hi] needs (see
+    coverage_problems), or None."""
+    entries = [
+        (*sorted(e["span_ft"]), e.get("out_ft", 0.0))
+        for e in scene.get("coverage", {}).get("observed", [])
+        if e["band"] == "ground"
     ]
+    a, b = lo - radius, hi + radius
+    cuts = sorted({a, lo, hi, b} | {x for e in entries for x in e[:2] if a < x < b})
+    for p, q in itertools.pairwise(cuts):
+        if q - p <= EPS:
+            continue
+        inside = lo - EPS <= p and q <= hi + EPS
+        need = depth + radius if inside else radius - min(abs(lo - q), abs(p - hi))
+        seen = max((out for x, y, out in entries if x <= p + EPS and q - EPS <= y), default=None)
+        if seen is None or seen + EPS < need:
+            where = f"ground [{p:.2f}, {q:.2f}] observed"
+            if seen is None:
+                return f"{where}, none seen"
+            return f"{where} out to {need:.2f} ft, seen {seen:.2f} ft"
+    return None
+
+
+def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None = None) -> list[str]:
+    """When coverage is what stands in the way (reason unobserved_area), every check left unsure
+    for an unobserved area is named by a request, and a clearance check by a request of each
+    band it lacks around the chosen spot: a check that forgets one band leaves the next capture
+    still unsure. Otherwise no photo would change the answer, and C2 lets missing_evidence stay
+    empty."""
     codes = {r["code"] for r in result.get("reasons", [])}
-    if "unobserved_area" in codes and not result.get("missing_evidence"):
-        problems.append("reason unobserved_area but missing_evidence is empty")
+    if "unobserved_area" not in codes:
+        return []
+    requests = result.get("missing_evidence", [])
+    if not requests:
+        return ["reason unobserved_area but missing_evidence is empty"]
+    named = {(r.get("band"), c) for r in requests for c in r.get("checks", [])}
+    problems = [
+        f"check {c} is unsure (unobserved) but no missing_evidence entry names it"
+        for c in unobserved_checks(result)
+        if not any(check == c for _, check in named)
+    ]
+    spot = result.get("spot")
+    if rules is None or spot is None:
+        return problems
+    lo, hi = spot["span_ft"]
+    for c in unobserved_checks(result):
+        if c not in rules.radii:
+            continue
+        for band, gap in reach_gaps(scene, rules, c, spot["wall_id"], lo, hi):
+            if (band, c) not in named:
+                problems.append(
+                    f"check {c} is unsure and needs {gap}, but no {band} request names it"
+                )
     return problems
 
 
@@ -524,15 +597,30 @@ def less_coverage_problems(before: dict, after: dict, change: str) -> list[str]:
     return problems
 
 
+def chain_length_ft(scene: dict) -> float:
+    """Length of the wall chain, gaps between walls included: no point on it is further than
+    this from the meter along the walls."""
+    points = [tuple(p) for wall in scene["walls"] for p in wall["baseline"]]
+    return sum(math.dist(p, q) for p, q in itertools.pairwise(points))
+
+
 def with_more_error(scene: dict, rules: RuleSet, extra_ft: float = 0.5) -> dict:
-    """Every object, wall and the meter measured `extra_ft` less precisely than stated (or than
-    its source's default)."""
+    """Every object, wall and the meter measured `extra_ft` less precisely than before.
+
+    An explicit error replaces the default, and the default for walls and for tap and vlm
+    objects grows by drift_per_ft with distance from the meter. So an item left on its default
+    gets that default at the far end of the chain, plus `extra_ft`: at least as much as before
+    everywhere.
+    """
     m = copy.deepcopy(scene)
+    drift = rules.errors["drift_per_ft"] * chain_length_ft(scene)
     for obj in m.get("objects", []):
-        base = obj.get("plus_minus_ft", rules.errors[obj["source"]])
-        obj["plus_minus_ft"] = base + extra_ft
+        if "plus_minus_ft" not in obj:
+            grows = obj["source"] in ("tap", "vlm")
+            obj["plus_minus_ft"] = rules.errors[obj["source"]] + (drift if grows else 0.0)
+        obj["plus_minus_ft"] += extra_ft
     for wall in m["walls"]:
-        wall["plus_minus_ft"] = wall.get("plus_minus_ft", rules.errors["wall"]) + extra_ft
+        wall["plus_minus_ft"] = wall.get("plus_minus_ft", rules.errors["wall"] + drift) + extra_ft
     meter = m["meter"]
     meter["plus_minus_ft"] = meter.get("plus_minus_ft", rules.errors["meter"]) + extra_ft
     return m
@@ -570,7 +658,7 @@ def with_less_coverage(scene: dict, trim_ft: float = 0.5) -> dict | None:
 def with_ground_short_of(scene: dict, rules: RuleSet, margin_ft: float = 0.1) -> dict | None:
     """Ground seen out to just short of the largest clearance radius, where any correct server
     must stop passing the check that needs it."""
-    radius = max(r for band, r in rules.radii.values() if band == "ground")
+    radius = max(r for bands, r in rules.radii.values() if "ground" in bands)
     reach = rules.depth_ft + radius - margin_ft
     grounds = [e for e in scene.get("coverage", {}).get("observed", []) if e["band"] == "ground"]
     if not any(e.get("out_ft", 0.0) > reach for e in grounds):
@@ -582,7 +670,13 @@ def with_ground_short_of(scene: dict, rules: RuleSet, margin_ft: float = 0.1) ->
     return m
 
 
-def with_requests_captured(scene: dict, result: dict, out_ft: float = 40.0) -> dict | None:
+# Further out than any clearance looks: the largest in rules.yaml is 10 ft, plus a 1.8 ft
+# battery and its position error. Requested ground is added out to here, and ground seen this
+# far never needs asking for again.
+GROUND_FAR_FT = 40.0
+
+
+def with_requests_captured(scene: dict, result: dict, out_ft: float = GROUND_FAR_FT) -> dict | None:
     """The scene as if the homeowner had shown every band the result asked for."""
     added = [
         {"band": r["band"], "span_ft": sorted(r["span_ft"])}
@@ -595,6 +689,11 @@ def with_requests_captured(scene: dict, result: dict, out_ft: float = 40.0) -> d
     m = copy.deepcopy(scene)
     m.setdefault("coverage", {}).setdefault("observed", []).extend(added)
     return m
+
+
+def coverage_blocks(result: dict) -> bool:
+    """The result names an unobserved area as a reason, so photos could change it."""
+    return any(r["code"] == "unobserved_area" for r in result.get("reasons", []))
 
 
 def unobserved_checks(result: dict) -> list[str]:

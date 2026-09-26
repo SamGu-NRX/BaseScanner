@@ -1,7 +1,7 @@
 {
   "id": "d-reach-drift-right",
   "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
-  "description": "Straight wall with default (drifting) errors. The route to a start a right of the meter is a +/- (0.6 + 0.16a): pass below a = 12.414, fail above a = 24.524, unsure between.",
+  "description": "Straight wall with default (drifting) errors. The route to a start a right of the meter is a +/- (0.6 + 0.16(a + W)): pass below a = 12.058, fail above a = 25.016, unsure between.",
   "scene": {
     "schema_version": "1.0",
     "meter": {
@@ -114,17 +114,17 @@
         "wall_id": "w1",
         "start_ft": 5.0,
         "outcome": "pass",
-        "why": "route 5 + 1.4 = 6.4 < 15"
+        "why": "route 5 + 1.81 = 6.81 < 15"
       },
       {
         "wall_id": "w1",
-        "start_ft": 12.2138,
+        "start_ft": 11.8575,
         "outcome": "pass",
-        "why": "just inside a + 0.6 + 0.16a < 15"
+        "why": "just inside a + 0.6 + 0.16(a + W) < 15"
       },
       {
         "wall_id": "w1",
-        "start_ft": 12.6138,
+        "start_ft": 12.2575,
         "outcome": "unsure",
         "why": "just past the 15 ft review line"
       },
@@ -132,25 +132,25 @@
         "wall_id": "w1",
         "start_ft": 18.0,
         "outcome": "unsure",
-        "why": "18 + 3.48 > 15; 18 - 3.48 < 20"
+        "why": "18 + 3.89 > 15; 18 - 3.89 < 20"
       },
       {
         "wall_id": "w1",
-        "start_ft": 24.3238,
+        "start_ft": 24.8159,
         "outcome": "unsure",
-        "why": "just inside a - 0.6 - 0.16a <= 20"
+        "why": "just inside a - 0.6 - 0.16(a + W) <= 20"
       },
       {
         "wall_id": "w1",
-        "start_ft": 24.7238,
+        "start_ft": 25.2159,
         "outcome": "fail",
-        "why": "just past a - 0.6 - 0.16a > 20"
+        "why": "just past a - 0.6 - 0.16(a + W) > 20"
       },
       {
         "wall_id": "w1",
         "start_ft": 25.5,
         "outcome": "fail",
-        "why": "25.5 - 4.68 = 20.82 > 20"
+        "why": "25.5 - 5.09 = 20.41 > 20"
       }
     ],
     "decision_not": [
