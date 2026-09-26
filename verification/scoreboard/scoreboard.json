@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-26T03:40:54-05:00",
+  "generated_at": "2026-09-26T03:51:15-05:00",
   "command": "uv run python -m hsverify.scoreboard",
   "slow": false,
   "prs": [
@@ -25,9 +25,9 @@
       "number": 13,
       "title": "verification: independent end-to-end checks (S4)",
       "branch": "t3/verification",
-      "head": "6cf8692ee26f3474e12a1f08fb6a8a6780e91652",
+      "head": "820ac912ef0b9f15d0b07991d41dd2683c7d75cb",
       "draft": true,
-      "updated": "2026-09-26T08:40:06Z",
+      "updated": "2026-09-26T08:50:35Z",
       "ci": {
         "counts": {
           "success": 4,
@@ -43,18 +43,18 @@
       "number": 12,
       "title": "feat(evals): real-data accuracy evals, starting with an ADVIO replay session",
       "branch": "t3/evals",
-      "head": "df4cce678b3b133b56e34f6c0cb910142a08f662",
+      "head": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
       "draft": true,
-      "updated": "2026-09-26T08:32:28Z",
+      "updated": "2026-09-26T08:50:55Z",
       "ci": {
         "counts": {
-          "success": 5,
+          "success": 4,
           "failure": 0,
-          "pending": 0,
+          "pending": 1,
           "skipped": 0
         },
         "failing": [],
-        "text": "5 success"
+        "text": "4 success, 1 pending"
       }
     },
     {
@@ -192,7 +192,7 @@
       "refs": [
         {
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662"
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad"
         }
       ],
       "metrics": [
@@ -200,7 +200,7 @@
           "id": "S1-1",
           "text": "One command regenerates every number from a clean checkout",
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662",
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
           "status": "gap",
           "evidence": "not yet reviewed",
           "links": []
@@ -209,13 +209,13 @@
           "id": "S1-2",
           "text": "Dataset URLs and sha256 recorded",
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662",
-          "status": "partial",
-          "evidence": "found ADVIO; missing ETH3D",
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
+          "status": "met",
+          "evidence": "all 2 found",
           "links": [
             [
               "experiments/evals/README.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/df4cce678b3b133b56e34f6c0cb910142a08f662/experiments/evals/README.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/86e3b3decffc2a08cd9ec5de540a514c0d35d7ad/experiments/evals/README.md"
             ]
           ]
         },
@@ -223,7 +223,7 @@
           "id": "S1-3",
           "text": "Metric code tested on hand-computed cases",
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662",
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
           "status": "not run",
           "evidence": "slow; run with --slow",
           "links": []
@@ -232,13 +232,21 @@
           "id": "S1-4",
           "text": "ADVIO drift report, median and p90 inches after 3, 10, 20 and 30 ft",
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662",
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
           "status": "met",
           "evidence": "all 5 found",
           "links": [
             [
+              "experiments/evals/README.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/86e3b3decffc2a08cd9ec5de540a514c0d35d7ad/experiments/evals/README.md"
+            ],
+            [
               "experiments/evals/results/advio_drift.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/df4cce678b3b133b56e34f6c0cb910142a08f662/experiments/evals/results/advio_drift.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/86e3b3decffc2a08cd9ec5de540a514c0d35d7ad/experiments/evals/results/advio_drift.md"
+            ],
+            [
+              "experiments/evals/results/eth3d_recon.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/86e3b3decffc2a08cd9ec5de540a514c0d35d7ad/experiments/evals/results/eth3d_recon.md"
             ]
           ]
         },
@@ -246,10 +254,15 @@
           "id": "S1-5",
           "text": "ETH3D errors per model (median and p90 inches for 1-3 m and 3-10 m pairs, scale error %) with a verdict per question",
           "ref": "origin/t3/evals",
-          "sha": "df4cce678b3b133b56e34f6c0cb910142a08f662",
-          "status": "gap",
-          "evidence": "none found in 2 files; missing 1-3 m row, 3-10 m row, scale error, verdict",
-          "links": []
+          "sha": "86e3b3decffc2a08cd9ec5de540a514c0d35d7ad",
+          "status": "partial",
+          "evidence": "found 1-3 m row, 3-10 m row, scale error; missing verdict",
+          "links": [
+            [
+              "experiments/evals/results/eth3d_recon.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/86e3b3decffc2a08cd9ec5de540a514c0d35d7ad/experiments/evals/results/eth3d_recon.md"
+            ]
+          ]
         }
       ]
     },
@@ -346,7 +359,7 @@
           "ref": "origin/t3/server",
           "sha": "44607e04e4f851944c47cb535c9c4b13bbad1c5b",
           "status": "met",
-          "evidence": "latency_ms = 733.5 (want < 1000): ~/house-scanning-data/reports/e2e/20260926-034015-44607e04/report.json",
+          "evidence": "latency_ms = 596.7 (want < 1000): ~/house-scanning-data/reports/e2e/20260926-035100-44607e04/report.json",
           "links": []
         },
         {
@@ -363,8 +376,8 @@
           "text": "Black-box (verification e2e): every answer valid under C2, consistent with its decision and the C5 margin rule, never passing unobserved ground or wall, deterministic, symmetric when mirrored, and never passing without coverage",
           "ref": "origin/t3/server",
           "sha": "44607e04e4f851944c47cb535c9c4b13bbad1c5b",
-          "status": "met",
-          "evidence": "contract_problem_count = 0 (want 0): ~/house-scanning-data/reports/e2e/20260926-034015-44607e04/report.json",
+          "status": "gap",
+          "evidence": "contract_problem_count = 3 (want 0): ~/house-scanning-data/reports/e2e/20260926-035100-44607e04/report.json",
           "links": []
         }
       ]
@@ -472,7 +485,7 @@
           "ref": "origin/t3/ios-mvf",
           "sha": "6885b7b5ad872df7f73a6b915e5837cd38a2034d",
           "status": "no evidence yet",
-          "evidence": "no app_export_scene_valid in ~/house-scanning-data/reports/e2e/20260926-034015-44607e04/report.json",
+          "evidence": "no app_export_scene_valid in ~/house-scanning-data/reports/e2e/20260926-035100-44607e04/report.json",
           "links": []
         },
         {
@@ -492,7 +505,7 @@
       "refs": [
         {
           "ref": "origin/t3/verification",
-          "sha": "6cf8692ee26f3474e12a1f08fb6a8a6780e91652"
+          "sha": "820ac912ef0b9f15d0b07991d41dd2683c7d75cb"
         },
         {
           "ref": "origin/t3/ios-mvf",
@@ -504,9 +517,9 @@
           "id": "S4-1",
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/verification",
-          "sha": "6cf8692ee26f3474e12a1f08fb6a8a6780e91652",
+          "sha": "820ac912ef0b9f15d0b07991d41dd2683c7d75cb",
           "status": "no evidence yet",
-          "evidence": "no app_export_passed in ~/house-scanning-data/reports/e2e/20260926-034015-44607e04/report.json",
+          "evidence": "no app_export_passed in ~/house-scanning-data/reports/e2e/20260926-035100-44607e04/report.json",
           "links": []
         },
         {
@@ -522,7 +535,7 @@
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "6cf8692ee26f3474e12a1f08fb6a8a6780e91652",
+          "sha": "820ac912ef0b9f15d0b07991d41dd2683c7d75cb",
           "status": "gap",
           "evidence": "not yet reviewed",
           "links": []
@@ -531,13 +544,13 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "6cf8692ee26f3474e12a1f08fb6a8a6780e91652",
+          "sha": "820ac912ef0b9f15d0b07991d41dd2683c7d75cb",
           "status": "met",
-          "evidence": "present at 6cf8692e",
+          "evidence": "present at 820ac912",
           "links": [
             [
               "verification/SCOREBOARD.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/6cf8692ee26f3474e12a1f08fb6a8a6780e91652/verification/SCOREBOARD.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/820ac912ef0b9f15d0b07991d41dd2683c7d75cb/verification/SCOREBOARD.md"
             ]
           ]
         }
