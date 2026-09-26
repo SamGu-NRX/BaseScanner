@@ -2,7 +2,8 @@
 `make field-dryrun` proves the team's exact command, templates and map on this machine.
 
 Scene (true meters, y up): a textured wall in the plane z = 0 facing +z and textured ground at
-y = 0. Twelve keyframes 4.5 m out at chest height look straight at the wall. The session's AR world
+y = 0. Twelve keyframes 6 m out at chest height look straight at the wall, with every tapped point
+in frame. The session's AR world
 is the true one shrunk by `AR_SCALE` (poses, points and every rig value), so the report should find
 the rig reading 1.5% short; the tape readings are the true lengths to the nearest 1/16 in. The
 learned rows run real MoGe-2 on rendered images and mean nothing beyond proving the plumbing.
@@ -24,7 +25,7 @@ FIELD_KIT = Path(__file__).resolve().parents[1] / "field"
 FT = 0.3048
 AR_SCALE = 0.985
 W, H, F = 640, 480, 500.0
-CAMERAS = [np.array([x, 1.5, 4.5]) for x in np.arange(-1.0, 11.0)]
+CAMERAS = [np.array([x, 1.5, 6.0]) for x in np.arange(-1.0, 11.0)]
 
 # Point id -> (true position, tool, keyframes tapped). Order and ids follow FIELD_SHEET.md.
 X = np.array([4.0, 0.0, 2.0])
