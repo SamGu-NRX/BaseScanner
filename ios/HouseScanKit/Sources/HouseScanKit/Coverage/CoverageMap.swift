@@ -492,12 +492,12 @@ public struct CoverageMap: Sendable {
     /// nothing is overhead there (ScanActions.answerOverhead(clear: true)): the camera cannot
     /// tell a clear view from an eave. Returns what the view showed (`overheadReach`); nothing
     /// is kept when tracking was not normal or the view showed no wall at `overheadFrom`.
-    @discardableResult
     /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
     /// was lost, or the capture paused): walked-path facing must not join the poses on either side.
     /// Placeholder until the package lane implements path continuity; the engine already calls it.
     public mutating func breakWalkedPath() {}
 
+    @discardableResult
     public mutating func recordOverhead(_ camera: CameraFrame, trackingNormal: Bool) -> [ObservedSpan] {
         guard trackingNormal else { return [] }
         let reach = overheadReach(from: camera)
