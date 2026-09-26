@@ -1,0 +1,21 @@
+# Drift anatomy
+
+## Question
+
+The server allows 0.16 ft of error per foot along the wall. That allowance dominates a check's error bar beyond a few feet, so which part of ARKit's error is worth attacking? The data is MARViN (iPhone 14 Pro Max, bar and church, walks within 10% of the reference's scale) and ADVIO 20–22 (iPhone 6s), using the evals' windows.
+
+- **A1, return to the meter.** When a walk comes back within 0.3 m of an earlier point more than 30 s later, ARKit's closure residual r is the error in the displacement between the two visits. Does r bound the largest error between the visits?
+- **A2, scale.** Is ARKit's scale one number per walk? This measures the spread of scale over sliding 5 m windows within a walk.
+- **A3, the wall plane.** What share of the error runs across the direction of travel, which a wall plane would remove, compared with along it?
+- **A4, a range to the meter.** A second phone left at the meter ranges the walking phone by UWB (σ 10 cm, simulated) at every window end. What is the p90 left over?
+
+## Pass criteria, fixed before the run
+
+- **A1.** Across loops, the largest error between visits is at most max(2r, 2 in) in at least 90% of loops, so r can set a per-session error bar. Needs at least 8 loops.
+- **A2.** One reference object near the meter is enough if the within-walk spread is under 1% (1 SD). Drop that idea if it is over 3%.
+- **A3.** A wall-plane constraint is worth building if the along-travel p90 is at most 60% of the total p90 at 20 ft.
+- **A4.** The p90 at 20 and 30 ft is at most 6 in.
+
+## Result
+
+Not run yet.
