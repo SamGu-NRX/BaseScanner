@@ -9,7 +9,14 @@ Every reported number comes from real data. Synthetic data appears only in the u
 
 ## Answers
 
-<!-- ANSWERS -->
+Plain answers first; the evidence and limits follow in sections 1 and 2.
+
+1. **ARKit drift: much worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, a distance walked comes out a median 2.8 in off after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3), and 25.7 in after 30 ft (p90 60.1). It is mostly one steady error: ARKit read distances about 7% short against ARCore (5% to 17% short against GPS). The 0.3 ft guess holds in the median only for spans of about 3 ft, and never at p90. One of the four walks lost tracking entirely. ADVIO's own ground truth could not score this: its scale is 20% off in two walks and its random error is larger than ARKit's, so ARKit is scored against ARCore on the same rig, with GPS confirming the scale.
+2. **Photos alone: no.** Without anything measured by hand, every model's scale is off. At phone range (points within 6 m of a camera), MoGe-2 reads +4% to +12% long, Depth Anything 3 metric −7% to −11% short, and MapAnything −9% to −24% short, giving median errors of 5 to 20 in on 1 to 3 m spans and 12 to 42 in on 3 to 10 m spans.
+3. **Photos plus one taped distance: good in the median, loose in the tail.** Scaling by one taped 1 to 3 m distance, a single photo through MoGe-2 is off a median 1.6 in on 1 to 3 m spans and 3.0 in on 3 to 10 m spans (electro, within 6 m). But one span in ten is off by more than 8 in and 15 in. Under the strict decision rule (PASS only when the margin beats the error), the usable bound is about ±8 in for 1 to 3 m and ±15 in for 3 to 10 m: enough for clear-cut placements, not for anything near a threshold.
+4. **More photos, or depth per photo placed with AR poses ("the phone imitates LiDAR"): no gain.** Per-photo depth placed with the true camera poses is no better than one photo, and with a taped distance it gets worse as views are added (MoGe-2 median 1.6 to 4.6 in on 1 to 3 m spans, 1 to 8 views): each photo has its own scale error, and one scale factor cannot fix all of them. MapAnything's joint reconstruction corrects part of its scale error with more views (−21% alone, about −10% with 2 to 8), but not enough to skip the tape.
+
+What it means for the capture: without LiDAR, ask for one taped reference distance (or a known-size object) and use single-photo depth scaled by it, with an error bound set from the p90, not the median. Walking long distances with AR tracking to measure a span adds its own 7% bias on the phone measured here; a current phone must be checked with the Measure Lab tape protocol before that number is trusted.
 
 ## Reproduce
 
@@ -75,7 +82,38 @@ Per sequence against ARCore, the 30 ft median is 42.2 in (sequence 20), 23.1 in 
 
 ## 2. Reconstruction accuracy on building walls (ETH3D)
 
-<!-- RECON -->
+`make recon` (or `uv run python -m evals.recon prepare` then `score` once the model outputs exist) writes [results/eth3d_recon.md](results/eth3d_recon.md), every method at 1, 2, 4 and 8 views for both scenes, both scale sources, and two ranges.
+
+**Data.** ETH3D's facade (76 photos) and electro (45 photos) scenes: building walls photographed with a 24 MP DSLR, camera poses registered to terrestrial laser scans of the same walls. The photos are resized to 1024 px wide and fed to each model with their known intrinsics (a phone knows its own).
+
+**What is scored.** The error in the distance between two points on the wall, against the laser scan's distance between the same two points, for pairs 1 to 3 m and 3 to 10 m apart. Distances do not change under rotation or translation, so no alignment step can hide error: only scale and shape count. Scale error is the median of predicted over true length, minus one.
+
+**How ground truth is matched to pixels** (`evals/eth3d.py`). ETH3D's rendered depth maps belong to the original distorted photos, whose camera model is not published with the undistorted set, so the laser scan points are projected into each undistorted view directly. A point counts as visible when it is within 4% of the nearest depth in a z-buffer built from all scan points plus ETH3D's occlusion splats. Points on depth edges and in ETH3D's masked regions (glass, and objects missing from the scan such as trees and a tram; mapped from the distorted frame and dilated 13 px) are dropped. The scan's depth agrees with ETH3D's own sparse 3-D points to a median 0.2 to 0.4% where both exist. Scoring the scan's own rendered depth through the same pipeline gives 0.2 to 0.8 in median error on 1 to 3 m spans (p90 under 3 in): the evaluation's floor, far below every model's error.
+
+**Methods.**
+
+- One photo: MoGe-2 and Depth Anything 3 metric, each photo alone.
+- Per-photo depth placed with the true camera poses, standing in for AR poses: each scan point's position averaged over the photos of a group that see it. Groups are 8 seed photos spread through each capture, each with its 1, 3 or 7 nearest cameras that face the same way.
+- MapAnything, Apache checkpoint: one joint reconstruction per group, in its own frame and scale.
+- Scale source: the model's own metric output, or one taped distance, simulated by rescaling so one random 1 to 3 m pair has its true length (25 different pairs per group, pooled, so an unlucky reference counts).
+
+**Results at phone range: electro, points within 6 m of a camera** (41% of electro's points; facade's scored points lie 10 to 23 m from its cameras, and its few near points agree). |length error|, inches, median / p90:
+
+| Method | Views | Model scale: 1-3 m | 3-10 m | Scale error | One taped distance: 1-3 m | 3-10 m |
+| --- | --- | --- | --- | --- | --- | --- |
+| MoGe-2, one photo | 1 | 6.8 / 18.7 | 14.9 / 39.5 | +4.4% | 1.6 / 8.3 | 3.0 / 14.6 |
+| Depth Anything 3 metric, one photo | 1 | 5.9 / 17.2 | 13.5 / 36.5 | −7.2% | 2.7 / 16.5 | 5.7 / 31.6 |
+| MoGe-2 per photo + true poses | 2 | 5.4 / 15.2 | 12.6 / 30.6 | +2.4% | 2.9 / 13.8 | 5.5 / 23.3 |
+| MoGe-2 per photo + true poses | 8 | 5.2 / 12.8 | 12.3 / 26.3 | +3.0% | 4.6 / 18.1 | 9.8 / 41.9 |
+| Depth Anything 3 metric per photo + true poses | 8 | 5.4 / 14.5 | 15.5 / 34.9 | −6.8% | 4.1 / 15.8 | 8.9 / 36.1 |
+| MapAnything | 1 | 20.0 / 40.4 | 42.1 / 77.0 | −21.4% | 2.0 / 15.2 | 4.2 / 25.3 |
+| MapAnything | 2 | 10.3 / 31.9 | 21.4 / 68.4 | −8.5% | 2.1 / 12.0 | 4.6 / 22.8 |
+| MapAnything | 8 | 8.8 / 22.2 | 21.6 / 60.5 | −10.6% | 2.9 / 9.5 | 6.8 / 22.0 |
+| Scan rendered as depth (evaluation floor) | 1 | 0.7 / 1.6 | 1.3 / 2.4 | −0.8% | 0.5 / 1.5 | 1.0 / 2.5 |
+
+Over all points (4 to 23 m from the cameras) errors are larger and the model scale errors wider: MoGe-2 −8% on facade and +0.5% on electro, Depth Anything 3 metric −10% to −15%, MapAnything −10% to −33%. With a taped distance, one MoGe-2 photo is off a median 2.5 to 3.0 in on 1 to 3 m spans and 6 to 9 in on 3 to 10 m spans at that range.
+
+**Limits.** Two scenes, both institutional buildings rather than houses, photographed with a DSLR that is sharper and lower-noise than a phone camera; phone photos should score the same or worse. The true poses are exact; real AR poses add the drift measured in section 1. The taped distance is simulated as exact. MapAnything was given intrinsics but not poses; giving it AR poses is untested here.
 
 ## Replay session from a real walk
 
