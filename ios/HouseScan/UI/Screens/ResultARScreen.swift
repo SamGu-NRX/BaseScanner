@@ -40,7 +40,12 @@ struct ResultARScreen: View {
         guard let result = state.result, result.spot != nil else {
             return Instruction(title: "Point at your meter", detail: nil)
         }
-        return Instruction(title: "Your battery could go here", detail: ScanCopy.placement(result))
+        // Only a pass under approved rules may sound settled; a spot an installer still has to
+        // check says so, as the result screen does.
+        let title = result.decision == .pass && result.policyApproved
+            ? "Your battery could go here"
+            : "The spot an installer will check"
+        return Instruction(title: title, detail: ScanCopy.placement(result))
     }
 }
 
