@@ -84,12 +84,10 @@ final class ScanEngine {
     init(options: LaunchOptions) {
         self.options = options
         store = KeyframeStore()
-        if options.sampleResult || options.serverURL == nil {
-            resultClient = SampleResultClient(pace: options.autopilot ? options.autopilotHold : 1.2)
-        } else if let url = options.serverURL {
+        if let url = options.serverURL, !options.sampleResult {
             resultClient = HTTPResultClient(serverURL: url)
         } else {
-            resultClient = SampleResultClient(pace: 1.2)
+            resultClient = SampleResultClient(pace: options.autopilot ? options.autopilotHold : 1.2)
         }
         state.isAutopilot = options.autopilot
         state.isReplay = options.replayFolder != nil
