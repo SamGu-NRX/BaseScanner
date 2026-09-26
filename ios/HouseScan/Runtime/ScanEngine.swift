@@ -40,7 +40,6 @@ final class ScanEngine {
     private var gapPlan: GapPlan?
     private var gapCounter = 0
     private var skippedGaps: [GapPlan] = []
-    private var serverMissingPending: [String] = []
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -444,14 +443,11 @@ final class ScanEngine {
         updateGap(camera: lastFrame?.camera)
     }
 
+    /// A closed or skipped gap goes straight to the upload, which re-runs the server's checks
+    /// with the new evidence (the closed loop: gap, instruction, capture, updated result).
     private func afterGapResolved() {
         gapPlan = nil
         state.gap = nil
-        if let next = serverMissingPending.first {
-            serverMissingPending.removeFirst()
-            captureMissing(next)
-            return
-        }
         startUpload()
     }
 
@@ -532,7 +528,6 @@ final class ScanEngine {
         closeUpGate = CloseUpGate()
         gapPlan = nil
         skippedGaps = []
-        serverMissingPending = []
         endKinds = [:]
         placement = nil
         state.wall = nil
@@ -562,8 +557,6 @@ final class ScanEngine {
 
     func setMeterAnchor(_ id: UUID?) { meterAnchorID = id }
     var detectedGroundY: Float? { groundPlaneY }
-
-    func queueServerMissing(_ ids: [String]) { serverMissingPending = ids }
 
     func updateCoverage(_ body: (inout CoverageMap) -> Void) {
         guard var map = coverage else { return }

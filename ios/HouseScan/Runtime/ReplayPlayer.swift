@@ -150,9 +150,9 @@ final class ReplayPlayer {
 
     /// The frame that shows `point` best: in front of the camera, inside the image with the
     /// largest margin, preferring nearer cameras.
-    func bestFrame(showing point: SIMD3<Float>, among indices: [Int]? = nil) -> Int? {
+    func bestFrame(showing point: SIMD3<Float>) -> Int? {
         var best: (index: Int, score: Float)?
-        for index in indices ?? Array(planned.indices) {
+        for index in planned.indices {
             let camera = planned[index].camera
             guard let pixel = camera.pixel(of: point), camera.contains(pixel: pixel, margin: 0.1) else { continue }
             let centered = simd_length((pixel - camera.imageSize / 2) / camera.imageSize)
