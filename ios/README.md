@@ -16,7 +16,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 The 3D map is the coverage model by default (`-coverage map3d`); `-coverage legacy` keeps the camera coverage map alone. Under map3d:
 
-- scene.json's coverage, walls and wall sources come from the map. The walk's own facing (the walked path) and overhead (tilt-up views confirmed clear) are merged in, taking the larger reach, only when the tapped wall is written, since their s is that wall's.
+- scene.json's coverage, walls and wall sources come from the map. The walk's own facing (the walked path) and overhead (tilt-up views confirmed clear) are merged in, taking the larger reach. When the measured chain is written they are first restated along it, on the meter's piece only (`ObservedSpan.carried`).
 - On a phone or replay with depth, the strip and the gap planner count a cell covered only where the map saw it (`CoverageMap.setMeasuredCovered`). Without depth the map is too sparse to walk by, and the camera sightings keep deciding.
 - The result is placed along the wall the scene described, which can be the measured chain.
 - A replay's frames go into the map only on the walk and in a gap request: for the close-up a replay plays its whole recording.

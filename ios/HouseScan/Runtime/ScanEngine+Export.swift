@@ -127,7 +127,7 @@ extension ScanEngine {
             let why = if let reason = export.tappedBecause {
                 "tapped wall (\(reason)); walked facing and confirmed overhead merged in"
             } else {
-                "measured wall; walked facing and confirmed overhead left out, being in the tapped wall's s"
+                "measured wall; walked facing and confirmed overhead carried onto its meter piece"
             }
             RuntimeLog.engine.info("export: 3D map revision \(snapshot.revision), \(why, privacy: .public), \(export.wall.segments.count) pieces, s \(export.baselineS.lowerBound)...\(export.baselineS.upperBound)")
             return ExportGeometry(

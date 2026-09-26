@@ -61,9 +61,10 @@ enum Map3DCoverageSource {
     ///
     /// `walkedFacing` (`CoverageMap.facingSpans()`: where the phone was carried, less its position
     /// error) and `confirmedOverhead` (`CoverageMap.overheadSpans()`: tilt-up views the homeowner
-    /// said are clear) are in the tapped wall's s. When the tapped wall is written, each is merged
-    /// into the map's band of the same name, taking the larger reach wherever either has one. When
-    /// the measured chain is written they are left out: their s is not the chain's.
+    /// said are clear) are in the tapped wall's s. Each is merged into the map's band of the same
+    /// name, taking the larger reach wherever either has one. When the measured chain is written
+    /// they are first restated along it (`ObservedSpan.carried`), on the meter's piece only:
+    /// past a corner of either wall one straight stretch of the other can face two ways.
     ///
     /// Every band is clipped to the baseline. The map sees ground in front of the chain only,
     /// and the server reads a ground span past a limit end as covering both sides of the wall's
@@ -77,9 +78,16 @@ enum Map3DCoverageSource {
         guard snapshot.wall == tapWall else { throw .wallMismatch }
         switch measuredExport(snapshot, tapWall: tapWall, baselineS: baselineS) {
         case .success(let measured):
+            var coverage = measured.coverage
+            coverage.facing = largerReach(coverage.facing, ObservedSpan.carried(walkedFacing, depth: nil, from: tapWall, to: measured.wall))
+            // The session's map runs with the default config, whose battery depth the map's own
+            // overhead band is judged over.
+            let batteryDepth = Map3DConfig().overheadDepth
+            coverage.overhead = largerReach(
+                coverage.overhead, ObservedSpan.carried(confirmedOverhead, depth: batteryDepth, from: tapWall, to: measured.wall))
             return Map3DExport(
                 wall: measured.wall, baselineS: measured.baselineS,
-                coverage: sceneCoverage(measured.coverage, within: measured.baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
+                coverage: sceneCoverage(coverage, within: measured.baselineS, leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked),
                 plusMinus: measured.plusMinus, tappedBecause: nil)
         case .failure(let refusal):
             var coverage = snapshot.coverage
