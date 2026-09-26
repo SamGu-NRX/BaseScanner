@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field
 
 test:
 	uv run ruff check .
@@ -61,3 +61,22 @@ pose-priors:
 	  done; \
 	done
 	uv run python -m evals.pose_priors score
+
+# One Measure Lab field session. SESSION is the zip shared from the app; with TRUTH, MAP and RULES
+# (the tape survey, the team's map for `score import-measure-lab`, the rules file) it also writes
+# the learned-depth results files, imports the rig's own row with the scoring harness at SCORING
+# (experiments/scoring, PR #4) and scores every row in one table.
+FIELD_OUT ?= $(DATA)/evals/field/results
+SCORING ?= ../scoring
+field:
+	uv sync --project models
+	W=$$(uv run python -m evals.field prepare $(SESSION)) && \
+	$(MODELS) models.run --model moge2 --images $$W/images.txt --intrinsics $$W/intrinsics.json \
+	  --out $$W/moge2 && \
+	uv run python -m evals.field score $(SESSION) --out-dir $(FIELD_OUT) \
+	  $(if $(TRUTH),--truth $(TRUTH) --map $(MAP) --rules $(RULES))
+	$(if $(TRUTH),cd $(SCORING) && \
+	  uv run score import-measure-lab $(abspath $(SESSION)) --map $(abspath $(MAP)) \
+	    --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) --out $(abspath $(FIELD_OUT))/measure-lab.json && \
+	  uv run score --rules $(abspath $(RULES)) --truth $(abspath $(TRUTH)) \
+	    --results $(abspath $(FIELD_OUT))/*.json --out $(abspath $(FIELD_OUT))/scored)

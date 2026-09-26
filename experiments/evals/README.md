@@ -6,6 +6,7 @@
 2. How accurately can phone photos reconstruct a real building wall, with the model's own scale or with one taped distance, from one photo or several?
 3. Can the phone's AR poses fix the learned models' scale, well enough for about 4 in at p90 on 1 to 3 m spans, the error that decides a 3 ft clearance?
 4. Which photos are worth keeping?
+5. On a real field session with a tape survey, how do the phone's AR taps and the learned-depth methods compare, and what is the phone's AR scale error?
 
 Every number comes from real data. Synthetic data appears only in the unit tests of the metric code.
 
@@ -26,6 +27,7 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
 
    **Verdict:** neither way reaches about 4 in at p90 with the pose error measured on the one phone we have. Triangulation-rescaled depth reaches it on walls only if a current phone's AR scale error is about 2% or less. That is an assumption, and the Measure Lab tape protocol can check it on a real phone in an hour.
 6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.5 to 6.8 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
+7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
 
 ## Reproduce
 
@@ -41,6 +43,7 @@ make recon         # ETH3D download (about 2.4 GB), MoGe-2 and Depth Anything 3 
 make sensitivity   # after recon -> results/eth3d_visibility_sensitivity.md
 make pose-priors   # after recon -> results/pose_priors.md
 make frames        # after recon -> results/frames.md
+make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a field session, section 5
 ```
 
 Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -172,6 +175,40 @@ On facade over all points, (b) with 8 photos gives 1.9 / 8.2 in with exact poses
 | wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.7 | 7.1 / 32.9 |
 
 No photo here is closer to head-on than 26 degrees, so a head-on shot is untested, and all 15 photos within 6 m are from electro.
+
+## 5. A field session against the tape
+
+`make field SESSION=session.zip TRUTH=survey.json MAP=map.json RULES=rules.json SCORING=../scoring` turns one Measure Lab session (PR #7's one-hour tape protocol) and its tape survey into one table of every method, scored by the scoring harness (PR #4, `experiments/scoring`). The map is the same file `score import-measure-lab` reads. The command runs these steps (`evals/field.py`):
+
+1. It turns each keyframe upright and runs MoGe-2 on it. Session images are sideways sensor images, and the model expects upright photos. Peak memory is 4.13 GB.
+2. It gives every point the rig made from taps a second position: MoGe-2's depth at the tapped pixel, placed with that keyframe's AR pose. It then recomputes walls and every session measurement with Measure Lab's own formulas (`Wall.swift`, `Measurements.swift`).
+3. It writes three scoring-harness results files:
+   - `moge2`: the model's own scale;
+   - `moge2-triangulated`: method (b) of section 3, each keyframe rescaled to features triangulated with the session's AR poses across it and its 7 nearest keyframes;
+   - `moge2-tape`: one scale for the session, from the survey's scale reference, when the map ties that reference to a session measurement.
+
+   They state no uncertainty and make no decisions: none of them has a validated error bar.
+4. It imports the rig's own row with `score import-measure-lab` and scores every row with `score`.
+5. It writes `field_report.md` with the phone's AR scale error: the rig's values over the tape, as a median over mapped spans of 10 ft or more. That is the number section 3's verdict hinges on.
+
+MapAnything is left out. In section 3, given poses, it was worse than (b) everywhere. It left 10% to 20% of pairs without a prediction and did not fix its scale on facade. It also cannot take a phone's full keyframe set within the 4 GB limit.
+
+**Checked.** A hand-computed synthetic session (`tests/test_field.py`) gets all four rows through PR #4's own `score`, including its import of the rig's row, in one table:
+- The rig row reads 2% short, as planted.
+- MoGe-2 with depth 10% long gives every length 10% long.
+- The tape row comes out exact.
+- The triangulated row reports every value as failed: one keyframe has no neighbours to triangulate against.
+
+**On the real ADVIO replay** ([results/field-replay/field_report.md](results/field-replay/field_report.md)), the pipeline runs through MoGe-2 and triangulation. All 79 keyframes get a scale, and MoGe-2 needs a median ×0.774 (0.66 to 1.03) to agree with the iPhone 6s's ARKit poses; ARKit itself read about 16% short on this walk. Nothing more comes out, because the replay has no taps, measurements, survey or map.
+
+**Field checklist**, on top of the one-hour protocol, so every row has inputs:
+
+- **Two long spans for the AR scale error.** Tape the 30 ft span and one more straight span of at least 10 ft, for example along the facing fence. Measure both in the rig and map both.
+- **A scale reference for the tape row.** Mark two painter's-tape crosses 1 to 3 m apart on the wall and tape the distance. Tap both crosses with On wall, measure them (straight), and name that measurement the survey's `scale_reference` in the map.
+- **Every surveyed endpoint as a rig tap.** The learned rows only recompute measurements the rig made. Tap the window edges, the meter's bottom edge, the fence foot and the overhead, on frozen frames and on the near surface (the frame, not the glass).
+- **Neighbours for triangulation.** At each tapped feature, walk about 2 m sideways, slowly, 2 to 6 m from the wall, keeping the feature and some textured surface in view. That gives at least 8 keyframes of it, facing within 60° of the same way. Don't point at the sky.
+- **The fence and the wall together.** Take the fence-foot tap from where the wall's base is also in view.
+- **Share the zip as Measure Lab makes it.** Put its sha256 in the survey's `captures`, and write down the phone model and iOS version.
 
 ## Replay session from a real walk
 
