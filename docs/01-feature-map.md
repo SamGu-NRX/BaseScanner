@@ -60,7 +60,7 @@ Every lane reads or writes this, so lock it first. Then all four people can work
 
 | # | Feature | Pri | Notes |
 |---|---|---|---|
-| C1 | `rules.yaml`: every number, per-utility overrides (ComEd), a code citation per rule | P0 | No hardcoded distances in the code |
+| C1 | `rules.yaml`: every number, per-utility overrides (ComEd), a source per rule: code citation, Base's public help page, or a labeled demo placeholder | P0 | No hardcoded distances in the code |
 | C2 | Sweep the 31″ × 22″ footprint along the unrolled wall, 2″ steps | P0 | |
 | C3 | Clearance checks: gas, driveway, pool, openings, box above, vent, AC, passage width, headroom, ground | P0 | PASS / FAIL / UNSURE with error bars |
 | C4 | Cable route along the wall: blocked by door, garage or a stretch with no wall; length ≤ max | P0 | |

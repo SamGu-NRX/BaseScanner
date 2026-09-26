@@ -42,7 +42,7 @@ PHONE: RealityKit box attached to the meter's anchor + cable line
 | Apple Vision on the phone + zxing | meter number, CL320 | Instant retake; serial-number OCR is the weak spot (63% vs 97%) |
 | Overture + osmnx | which wall faces the street (flag for homeowner approval of the look) | The compass alone can't tell |
 | samgeo on StratMap/NAIP | pool, driveway | OSM tags them on < 5% of homes; imagery ML is allowed to run on |
-| rules.yaml + citations | all rules | Each "no" cites NEC / IRC / Austin Energy / Texas Gas Service |
+| rules.yaml + citations | all rules | Each "no" cites its source: NEC / IRC / Austin Energy / Texas Gas Service, Base's public help page, or a labeled demo placeholder |
 | Rerun | debugging | Capture + solver reasoning in one timeline |
 | Depth Anything 3 | pitch | The "AR beats photos" comparison |
 

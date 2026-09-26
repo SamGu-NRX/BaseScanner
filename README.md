@@ -29,8 +29,8 @@ Plain code makes the placement decision. Vision models only recognize things, su
 The plan targets iPhones, and a LiDAR iPhone makes some measurements easier. Most homeowners don't have one, so the experiments ask how far an ordinary phone gets:
 
 - Can AR taps on the ground and the wall measure the wall line, the room overhead, and the gap to a fence without LiDAR?
-- Can learned 3D models build accurate geometry from ordinary photos? We measure MapAnything, Depth Anything 3 and MoGe against laser-scanned building walls, with and without one known distance.
-- How far does phone AR tracking drift during a walk? We measure it on real outdoor iPhone walks with ground truth, then tape-measure one real house and compare every method against the tape.
+- Can learned 3D models build accurate geometry from ordinary photos? We measure MapAnything, Depth Anything 3 and MoGe against the laser-scanned buildings in the ETH3D dataset, with and without one known distance.
+- How far does phone AR tracking drift during a walk? We measure it on the ADVIO dataset's iPhone walks, which have a ground-truth track, then tape-measure one real house and compare every method against the tape.
 
 A convincing 3D view can still miss an obstacle or get a distance wrong, so every result keeps its original photos beside it.
 

@@ -22,7 +22,7 @@ The repository baseline is documented in [the overview](00-overview.md), [featur
 | **Product alignment** | Analyze the live view to understand relevant objects, observed areas, and missing evidence. |
 | **Product alignment** | Show the customer where to move and where to aim, updating guidance during capture. |
 | **Product alignment** | Upload selected images during the session and progressively update reconstruction and assessment. |
-| **Proposed** | Use native AR for stable spatial guidance, with LiDAR optional and a simpler camera-guidance fallback. |
+| **Proposed** | Use native AR for stable spatial guidance, with a simpler camera-guidance fallback. |
 | **Proposed** | Keep immediate tracking and feedback on the phone; run heavier analysis and reconstruction asynchronously. |
 | **Experiment proposal** | Compare periodic MapAnything and stateful LingBot-Map reconstruction alongside the native AR geometry baseline. |
 | **Decided** | Native Swift capture in `ios/`; LiDAR optional. |
@@ -31,7 +31,7 @@ The repository baseline is documented in [the overview](00-overview.md), [featur
 
 ### Relationship to the existing repository plan
 
-The current plan targets an iPhone demo with native Swift, ARKit/RealityKit, and LiDAR geometry where supported. It uses native AR measurements and a deterministic server-side placement solver, retaining tap-to-mark capture as a dependable fallback. Its Swift-versus-Expo integration question remains open in [AGENTS.md](../AGENTS.md). The existing implementation plan remains the baseline until the team adopts a change.
+The current plan targets an iPhone demo with native Swift, ARKit/RealityKit, and LiDAR geometry where supported. It uses native AR measurements and a deterministic server-side placement solver, retaining tap-to-mark capture as a dependable fallback. Capture is native Swift in `ios/`, and LiDAR is optional. The existing implementation plan remains the baseline until the team adopts a change.
 
 | Existing baseline | Proposal in this HLD |
 |---|---|
@@ -298,7 +298,7 @@ Perception extracts observable facts. Geometry supplies measured or estimated sp
 
 | Responsibility | Contract |
 |---|---|
-| Rule configuration | Keep every clearance and equipment dimension in `rules.yaml`, with the required code citation and applicability metadata; never hardcode them in capture logic. |
+| Rule configuration | Keep every clearance and equipment dimension in `rules.yaml`, with its source (a code citation, Base's public help page, or a labeled demo placeholder) and applicability metadata; never hardcode them in capture logic. |
 | Perception | Associate recognized objects and text with original images and an uncertainty estimate. |
 | Geometry | Keep coordinate frame, units, scale provenance, error bounds, and evidence references with each measurement. |
 | Solver | Evaluate the configured rules using the repository's wall-line and polygon approach; expose which observations support each check. |
