@@ -7,7 +7,7 @@ PRED := $(DATA)/evals/predictions
 SCENES := facade electro
 MODELS := uv run --project models python -m
 
-.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage coverage-options field-dryrun
+.PHONY: test drift replay recon recon-data recon-models recon-score frames sensitivity pose-priors field modern-arkit coverage coverage-options field-dryrun map3d
 
 test:
 	uv run ruff check .
@@ -107,3 +107,9 @@ coverage:
 coverage-options:
 	uv run python -m evals.coverage prepare
 	uv run python -m evals.coverage_options
+
+# After coverage. The app's Map3D (ios/HouseScanKit, owned by the app lane) is checked out
+# read-only at the commit pinned in evals/map3d.py, outside the repo, and never edited.
+map3d:
+	uv run python -m evals.map3d prepare
+	uv run python -m evals.map3d

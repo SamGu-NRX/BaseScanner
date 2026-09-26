@@ -169,3 +169,18 @@ def test_photo_truth_relief_allowance():
     assert photo_truth(*args, hide_abs=0.2).hidden[0]
     assert not photo_truth(*args, hide_abs=0.4).hidden[0]
     assert photo_truth(*args, hide_abs=0.4).saw[0]
+
+
+def test_laser_depth_scales_a_3_by_2_photo_to_256_by_192():
+    from evals.map3d import laser_depth
+
+    # A 600 x 400 photo (3:2); a point 4 m straight ahead lands at photo pixel (300, 200), which is
+    # depth pixel (128, 96) once x scales by 256/600 and y by 192/400.
+    K = np.array([[500.0, 0, 299.5], [0, 500.0, 199.5], [0, 0, 1]])
+    view = View("v", None, 600, 400, K, np.eye(3), np.zeros(3))
+    d = laser_depth(view, np.array([[0.0, 0.0, 4.0]], np.float32), np.zeros((400, 600), bool))
+    assert d.shape == (192, 256)
+    assert d[96, 128] == 4.0
+    assert (d > 0).sum() == 9  # the 3 x 3 minimum filter spreads the one return
+    masked = laser_depth(view, np.array([[0.0, 0.0, 4.0]], np.float32), np.ones((400, 600), bool))
+    assert (masked == 0).all()  # an object the scanner missed gives no measurement

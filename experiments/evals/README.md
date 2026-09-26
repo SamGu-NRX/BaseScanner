@@ -34,6 +34,8 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
 
 9. **Does the app's coverage map claim surface no photo saw? Yes, on the one wall tested: 1.1 ft of 19.3 ft claimed (6%), against a bar of 0.5 ft.** All of it sits behind equipment standing in front of the wall (a scaffold's footings and cables), because the coverage code checks range, angle and image bounds but not occlusion (`CoverageMap.swift` lines 241 to 248 at beede15). The ground band and facade could not be tested: ETH3D's photographers stood too far from the walls for the app to credit any ground, or any of facade (section 7). Requiring views farther apart or at wider angles does not fix it without discarding good wall (6 to 8.5 ft here). A depth test against true depth does, which needs LiDAR (section 7b).
 
+10. **The app's 3D map (Map3D), LiDAR path, ideal depth: no wall claimed that no photo saw, where `CoverageMap` claimed 1.1 ft.** It misses 8.9 ft, 5.5 ft of it behind pilasters that stand out past its 10 cm face window. Its wall line runs 1.76° off and 4.8 in out at the meter. The non-LiDAR path, ground and overhead are untested, and its one facing claim sits below the truth's resolution (section 7c).
+
 ## Reproduce
 
 From a clean checkout (macOS with Apple silicon, or Linux for everything but the models):
@@ -379,6 +381,24 @@ Tightening the baseline or angle would only ask for more photos: 6 to 8.5 extra 
 - **False-observed** (claimed columns where at least 10 cm of what the band claims was seen by no photo) must be at most **0.5 ft** per band, as in section 7, where `CoverageMap` claimed 1.1 ft of wall.
 - **Missed** (wall and ground band seen from two positions 0.25 m apart but not claimed) is reported without a bar.
 - **Wall chain:** the measured wall piece through the meter against the laser's wall line (angle, offset at the meter, length), reported without a bar.
+
+**Results** (ideal depth: exact, dense, no sensor noise). Feet along the wall.
+
+| Band | Claimed | False-observed | Pass | Missed |
+| --- | --- | --- | --- | --- |
+| Wall, `CoverageMap` (section 7's 19.3 ft stretch) | 19.3 | 1.1 | no | 0.0 |
+| Wall, Map3D, same stretch | 11.1 | 0.0 | yes | 6.9 (6.1 with a 5 m truth) |
+| Wall, Map3D, everything it claims (s −9.7 to +21 ft) | 19.4 | 0.0 | yes | 8.9 of 25.2 seen, 5.5 of it on pilaster faces |
+| Ground | 0.0 | 0.0 | untested | 18.1 |
+| Facing | 0.5 | 0.5 (see below) | unresolved | n/a |
+| Overhead | 0.0 | 0.0 | untested | n/a |
+
+- **Wall: Map3D claims no wall that no photo saw, where `CoverageMap` claimed 1.1 ft.** The 1.1 ft behind the scaffold's footings is left unclaimed, as the depth test of section 7b predicted.
+- **The cost is missed wall.** 5.5 ft of the 8.9 ft missed is behind pilasters 0.36 m proud of the wall line. Map3D counts the face only within 0.10 m in front of the line (`faceFront`, `Map3DConfig.swift` line 85 at 66cdcba, used in `Map3DCoverage.swift` lines 73 to 86), so a pilaster hides the wall behind it. That is conservative, not an over-claim. It asks for views that cannot exist, so the gap loop could ask forever for a pilaster-backed stretch.
+- **Ground and overhead: untested.** Map3D claims no ground: reach 0 everywhere, the same grazing-view limit as section 7.
+- **Facing: unresolved.** Map3D's one claim is a single 6 in cell seen clear 0.1 m out from a door face. By the pre-registered metric it reads 0.52 ft, just over the bar. The truth, however, cannot resolve space that close to a surface: it needs the laser surface to lie beyond a point by 4% of the distance, 12 to 20 cm here. So the claim is neither confirmed nor refuted, and a 0.1 m reach settles no check (the server needs more than 4.83 ft).
+- **Wall chain:** one piece through the meter, 28.4 ft long, where the laser's wall face (pilasters included) runs 30.8 ft. The left end is 0.3 ft short and the right 2.2 ft short. The line is 1.76° off the laser face and 4.8 in outside it at the meter, more than the server's 3.6 in default meter error. The cause is not established.
+- **Not measured:** the non-LiDAR path, real LiDAR noise and dropouts, and coverage along Map3D's own chain instead of section 7's wall line. An independent review of the method also flagged a rule to check: `VoxelGrid.swift` lines 376 to 378 and 409 to 412 at 66cdcba take the nearest view distance and the best view angle from possibly different views, so a surface can pass the 5 m and 65° tests with no single view meeting both. It caused no false-observed wall here.
 
 ## Replay session from a real walk
 
