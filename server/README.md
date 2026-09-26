@@ -61,6 +61,37 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 - Give an object a plan `footprint` when it stands off the wall (a regulator, an AC unit), or clearances are measured to its stretch of wall line.
 - Omit `plus_minus_ft` and AR-placed positions get `rules.yaml`'s default error for their source plus 0.16 ft per foot along the walls from the meter, from measured ARKit drift. Send your own when you know better.
 
+## What settles each check
+
+A check is settled when everything it depends on is observed and measured; then it passes or fails on the numbers. What follows is the coverage (`coverage.observed`) and the measurements each check needs, so a capture that supplies exactly this gets a decision on the first upload. Values in brackets are the public rules (`rules.yaml`); private rules may differ, and a request always names the exact span and depth.
+
+Notation, all in feet: the battery stands at s from `s0` to `s1` (width W = 2.58, depth D = 1.83). `e` is the wall's position error at the battery's far edge from the meter: the wall's `plus_minus_ft`, or the default 0.3 plus 0.16 per foot along the walls from the meter. `r` is a check's rule value. A ground band "over [a, b] out to d" means an observed `{"band": "ground", "span_ft": [a, b], "out_ft": d}` (or several that together cover it).
+
+| Check | Reads | Coverage that settles it |
+| --- | --- | --- |
+| `wall_backing` | `walls` | wall band over [s0, s1] |
+| `ground_surface` | `ground` patches | ground over [s0 − e, s1 + e] out to D + e, and a patch of an allowed type under the whole footprint |
+| `meter_working_space` | `meter` | nothing to observe |
+| `gas_clearance` (r = 3) | `objects` of type `gas_meter`, with `footprint` when it stands off the wall | ground over [s0 − r − e, s1 + r + e] out to D + r + e, and wall band over the same span |
+| `ac_clearance` (r = 3), `pool_clearance` (r = 10) | `objects` of type `ac`, `pool` | ground over [s0 − r − e, s1 + r + e] out to D + r + e |
+| `drive_clearance` (r = 5) | `ground` patches of type `drive` | as above |
+| `opening_clearance` (r = 3) | `objects` of type `door`, `window`, `garage_door`; `attrs.operable` and `attrs.well` for windows | wall band over [s0 − r − e, s1 + r + e] |
+| `wall_equipment_above` (r = 0) | `objects` of type `elec_box`, `vent` | wall band over [s0 − r, s1 + r] |
+| `facing_gap` (r = 3, from the battery's front) | `facing` measurements | facing band over [s0, s1]. Where no `facing` entry covers it, the band's `out_ft` must exceed D + r (4.83): a walked path proves the space clear out to where the homeowner walked. No `out_ft` means the view reached whatever faces the wall, and it is in `facing` |
+| `headroom` (r = 6.5) | `overheads` measurements | overhead band over [s0, s1]. Where no `overheads` entry covers it, the band's `out_ft` (height seen clear) must exceed r. No `out_ft` means seen clear all the way up, as from a tilt-up view of open sky |
+| `route_path` | `walls`, openings on the route | wall band from the meter to the battery's near edge |
+| `route_length` | `walls`, `meter` | nothing to observe |
+
+Errors: a measured value passes only when it clears the rule by more than its error. Objects take the default error for their `source` (tape 0.05, tap 0.3, vlm 1.5, plus 0.16 per foot along the walls for tap and vlm) unless they carry `plus_minus_ft`; `facing` and `overheads` entries default to the mesh error, 0.5. Every `out_ft` is taken as exact, so report the distance you are sure of (for a walked path, the distance from the wall less your position error).
+
+Ends and corners:
+
+- A corner the walk follows is the next wall in `walls`, starting at the corner point; the chain is then continuous and the corner raises nothing. Keep walking until the answer's `ends.<side>.beyond_reach` is true or the wall really ends.
+- `unexplored` means the wall continues. Within cable reach it raises a `past_end` request when no spot passes, because a spot may be round it; nothing else settles it.
+- `limit` means no usable wall past it. Ground past a limit end still counts for clearances (a pool behind a fence is still a pool): show it by pointing the camera past the end, reported as a ground span beyond the chain's end, which covers both sides of the wall's continued line.
+
+Supplying exactly what a request in `missing_evidence` names settles it: a `coverage.observed` entry with its `band` and `span_ft`, and an `out_ft` at least the request's `out_ft` (ground, facing and overhead requests carry one).
+
 ## Reading a result
 
 `decision` is `pass`, `manual_review` or `reject`. `spot` gives the battery's plan footprint and `meter_offset_ft`, its offset from the meter for AR; `route` is the cable run. Each entry in `checks` has an outcome, a reason, the measurement, its error and the rule it was held to:

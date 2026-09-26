@@ -292,6 +292,34 @@ class Scene:
         known = unary_union([seen_in_front, behind])
         return [d.difference(known) for d in discs]
 
+    def seen_to(self, band: str, s_lo: float, s_hi: float) -> float:
+        """How far out (or up) the band was seen over all of [s_lo, s_hi]: at each s the
+        deepest view covering it, and over the stretch the shallowest of those. A view without
+        `out_ft` saw all the way (infinite); a stretch no view covers gives 0."""
+        spans = [
+            (a, b, math.inf if out is None else out) for a, b, out in self.observed.get(band, [])
+        ]
+        cuts = sorted({s_lo, s_hi} | {x for a, b, _ in spans for x in (a, b) if s_lo < x < s_hi})
+        least = math.inf
+        for p, q in itertools.pairwise(cuts):
+            if q - p <= EPS:
+                continue
+            here = max((out for a, b, out in spans if a <= p + EPS and q - EPS <= b), default=0.0)
+            least = min(least, here)
+        return least
+
+    def farthest_out(self, region: Geometry) -> float:
+        """The largest distance from the chain's line (walls and their continuations past the
+        ends) of any point of `region`: how far out a ground view must reach to cover it."""
+        line = LineString(self.polyline(self.pieces[0].s0, self.pieces[-1].s1))
+        points = [
+            Point(x, z)
+            for part in getattr(region, "geoms", [region])
+            if not part.is_empty
+            for x, z in (part.exterior.coords if hasattr(part, "exterior") else part.coords)
+        ]
+        return max((line.distance(p) for p in points), default=0.0)
+
     def coverable(self, band: str) -> Geometry:
         """Where observing `band` can settle what is unseen: in front of the scanned walls, and
         past a limit end. Past an unexplored end the walls may turn any way, so no view settles

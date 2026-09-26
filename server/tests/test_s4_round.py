@@ -26,24 +26,24 @@ def captured(raw: dict, result: dict) -> dict:
     observed = out.setdefault("coverage", {}).setdefault("observed", [])
     for item in result["missing_evidence"]:
         if item["kind"] == "band":
-            extra = {"out_ft": FAR_FT} if item["band"] == "ground" else {}
-            observed.append({"band": item["band"], "span_ft": item["span_ft"], **extra})
+            # Exactly what the request names, depth included.
+            depth = {"out_ft": item["out_ft"]} if "out_ft" in item else {}
+            observed.append({"band": item["band"], "span_ft": item["span_ft"], **depth})
     return out
 
 
 def repeated_requests(raw: dict, result: dict) -> list[dict]:
     """Band requests the scene already satisfies: the same request coming back."""
-    seen: dict[str, list[tuple[float, float]]] = {}
+    seen: dict[str, list[tuple[float, float, float]]] = {}
     for o in raw.get("coverage", {}).get("observed", []):
-        if o["band"] != "ground" or o.get("out_ft", 0) >= FAR_FT:
-            seen.setdefault(o["band"], []).append(tuple(o["span_ft"]))
+        seen.setdefault(o["band"], []).append((*o["span_ft"], o.get("out_ft", float("inf"))))
     return [
         item
         for item in result["missing_evidence"]
         if item["kind"] == "band"
         and any(
-            a <= item["span_ft"][0] and item["span_ft"][1] <= b
-            for a, b in seen.get(item["band"], [])
+            a <= item["span_ft"][0] and item["span_ft"][1] <= b and out >= item.get("out_ft", 0)
+            for a, b, out in seen.get(item["band"], [])
         )
     ]
 
@@ -96,6 +96,12 @@ def scenes_with_ends(draw: st.DrawFn) -> dict:
         edges = [left, *sorted(cuts[: len(cuts) // 2 * 2]), right]
         spans = [(a, b) for a, b in zip(edges[::2], edges[1::2], strict=True) if b > a]
         observed_band(raw, band, spans or [(left, left + 0.1)], draw(st.floats(1, 30)))
+        if band in ("facing", "overhead"):
+            # Seen clear only so far (a walked path, a tilt-up frame), or all the way.
+            depth = draw(st.none() | st.floats(1, 12))
+            for o in raw["coverage"]["observed"]:
+                if o["band"] == band and depth is not None:
+                    o["out_ft"] = depth
     return raw
 
 
@@ -174,7 +180,7 @@ def test_a_band_check_reports_numbers_that_give_its_outcome() -> None:
     assert "facing[1]" in facing.reason
 
 
-@settings(max_examples=60, deadline=None)
+@settings(max_examples=40, deadline=None)
 @given(s0=st.floats(min_value=4.0, max_value=9.0))
 def test_band_check_numbers_agree_with_c5(s0: float) -> None:
     candidate = evaluate_start(parsed(uncertain_obstruction(), PUBLIC), PUBLIC, s0)

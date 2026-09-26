@@ -29,7 +29,7 @@ def test_a_check_reports_every_band_it_did_not_see() -> None:
     # ground left it UNSURE on the wall.
     gas = at_start(both_bands_unseen(), 6.0, "gas_clearance")
     assert (gas.outcome, gas.unsure_cause) == (UNSURE, "unobserved")
-    assert {band for band, _, _ in gas.all_missing()} == {"ground", "wall"}
+    assert {view.band for view in gas.all_missing()} == {"ground", "wall"}
 
 
 def test_missing_evidence_lists_the_check_under_each_band() -> None:
@@ -66,6 +66,10 @@ def partly_seen_scenes(draw: st.DrawFn) -> dict:
         spans = [(a, b) for a, b in zip(edges[::2], edges[1::2], strict=True) if b > a]
         out = draw(st.floats(min_value=1, max_value=30))
         observed_band(raw, band, spans or [(-40.0, -39.0)], out)
+        if band in ("facing", "overhead") and draw(st.booleans()):
+            for o in raw["coverage"]["observed"]:
+                if o["band"] == band:
+                    o["out_ft"] = draw(st.floats(1, 12))
     return raw
 
 
@@ -81,14 +85,13 @@ def test_capturing_what_missing_evidence_asks_for_settles_coverage(raw: dict) ->
     spot = result["spot"]
     if result["decision"] != "manual_review" or spot is None:
         return
-    # The capture shows each listed stretch; for ground, out as far as the checks reach.
-    reach = parsed(raw, rules).reach_ft
+    # The capture shows exactly what each request names, depth included.
     captured = copy.deepcopy(raw)
     for item in result["missing_evidence"]:
         if item["kind"] == "band":
-            extra = {"out_ft": reach} if item["band"] == "ground" else {}
+            depth = {"out_ft": item["out_ft"]} if "out_ft" in item else {}
             captured["coverage"]["observed"].append(
-                {"band": item["band"], "span_ft": item["span_ft"], **extra}
+                {"band": item["band"], "span_ft": item["span_ft"], **depth}
             )
     # The answer rounds the spot to 6 decimals; evaluate the exact start the solver chose, since
     # a start rounded down can reach a sliver of a stretch that was never missing.
