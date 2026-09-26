@@ -15,9 +15,12 @@ struct OnboardingScreen: View {
             body: "Walk along the wall by your electric meter for about 2 minutes. Your phone measures as you go.",
             art: .walk
         ),
+        // What leaves the phone is said before the camera is asked for: uploads carry the wall's
+        // measurements; the photos stay in the app until the scan is started over.
         OnboardingPage(
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
+            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
             art: .fog
         ),
         OnboardingPage(
@@ -91,6 +94,8 @@ private struct OnboardingPage {
     enum Art { case walk, fog, safety }
     var title: String
     var body: String?
+    /// A quieter line under the body, set apart with an icon.
+    var note: String?
     var art: Art
 }
 
@@ -137,6 +142,14 @@ private struct OnboardingPageView: View {
                     .font(.system(.title3, design: .rounded, weight: .regular))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let note = page.note {
+                Label(note, systemImage: "lock.fill")
+                    .font(Typeface.hint)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("onboarding.privacy")
             }
         }
     }
