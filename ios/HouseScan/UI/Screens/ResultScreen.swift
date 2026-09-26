@@ -29,8 +29,10 @@ struct ResultScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 22) {
+                    // The answer rises into place at full strength. Fading it in from transparent
+                    // left the headline and summary under 4.5:1 on the light background for
+                    // the length of the fade, which the audit caught.
                     headline(result)
-                        .opacity(revealed ? 1 : 0)
                         .offset(y: revealed || reduceMotion ? 0 : 12)
                     if result.spot != nil {
                         // Right under the answer: seeing it on the real wall is the next thing
@@ -78,7 +80,7 @@ struct ResultScreen: View {
                 .accessibilityHidden(true)
         }
         .onAppear {
-            withAnimation(reduceMotion ? .easeOut(duration: 0.2) : Motion.settle.delay(0.35)) { revealed = true }
+            withAnimation(reduceMotion ? nil : Motion.settle) { revealed = true }
         }
     }
 
@@ -127,7 +129,7 @@ struct ResultScreen: View {
             if let placement = ScanCopy.placement(result) {
                 Text(placement)
                     .font(Typeface.sectionTitle)
-                    .foregroundStyle(Palette.signal)
+                    .foregroundStyle(Palette.signalText)
                     .accessibilityIdentifier("result.placement")
             }
             if !result.summary.isEmpty {

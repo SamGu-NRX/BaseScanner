@@ -30,9 +30,12 @@ struct ScanRootView: View {
                     .transition(.opacity)
                 CameraEdgeShade()
             }
+            // Camera screens crossfade over the live feed. The light screens cut: a crossfade
+            // between two light screens leaves the incoming text half-transparent on a light
+            // background, under 4.5:1 until it lands (the audit caught it on the result).
             screen
                 .id(state.phase)
-                .transition(.opacity)
+                .transition(Self.showsCamera(state.phase) ? .opacity : .identity)
         }
     }
 

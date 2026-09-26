@@ -5,11 +5,31 @@ import SwiftUI
 ///
 /// A panel over the dimmed camera rather than a new page: the homeowner is still standing at
 /// the wall, and the list refers to things they can see.
+///
+/// "Add something" starts a mark without leaving this phase (the engine keeps `.markFeatures`
+/// and sets `state.marking`), so while a mark is open the panel gives way to the walk's marking
+/// view: the camera, the prompt, the circle and Mark. When the mark is placed or cancelled,
+/// `marking` clears and the list comes back with the new item in it.
 struct MarkFeaturesScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
+        ZStack {
+            if state.marking != nil {
+                WallWalkScreen(state: state, actions: actions)
+                    .transition(.opacity)
+            } else {
+                review
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen, value: state.marking == nil)
+    }
+
+    private var review: some View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(0.45)
                 .ignoresSafeArea()

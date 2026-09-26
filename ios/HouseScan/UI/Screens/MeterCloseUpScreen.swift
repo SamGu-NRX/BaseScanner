@@ -60,7 +60,9 @@ struct MeterCloseUpScreen: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                             .background(ScrimShape.capsule)
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                            // Swapped, not faded or scaled: a shrinking, half-faded line is
+                            // what the audit reported as clipped text on this screen.
+                            .transition(.identity)
                             .id(problem)
                             .accessibilityIdentifier("closeUp.problem")
                     }
@@ -69,7 +71,7 @@ struct MeterCloseUpScreen: View {
                             .buttonStyle(.secondaryProminent)
                             .accessibilityHint("Skips the close-up. An installer will read the meter instead.")
                             .accessibilityIdentifier("action.skipCloseUp")
-                            .transition(.opacity)
+                            .transition(.identity)
                     }
                 }
                 .animation(Motion.text, value: problem)
