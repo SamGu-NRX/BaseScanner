@@ -11,7 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from scoring.inputs import Study
-from scoring.metrics import AT_THRESHOLD, CheckScore, MeasurementScore, RunScore
+from scoring.metrics import AtThreshold, CheckScore, MeasurementScore, RunScore
 
 MEASUREMENT_COLUMNS = (
     "house",
@@ -116,10 +116,10 @@ def inches(value: Decimal | None) -> str:
     return fixed(value, 2)
 
 
-def ratio(value: Decimal | str | None) -> str:
-    if isinstance(value, Decimal):
-        return fixed(value, 2)
-    return AT_THRESHOLD if value == AT_THRESHOLD else ""
+def ratio(value: Decimal | AtThreshold | None) -> str:
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else fixed(value, 2)
 
 
 def flag(value: bool | None) -> str:
@@ -284,7 +284,7 @@ def markdown(study: Study, runs: list[RunScore]) -> str:
             lines += ["", "No pipeline runs for this house."]
             continue
         lines += _distances(house_runs) + _checks(house_runs) + _timing(house_runs)
-        lines += _unsafe(house_runs)
+        lines += _named_lists(house_runs)
     lines += [
         "",
         "These are paired results at the listed spots, a case series. They are not an accuracy "
@@ -376,19 +376,17 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "",
         "### Checks",
         "",
-        f"{total} checks, {judged} with a survey outcome. The survey passes a check when its "
-        "value clears the pass line by more than its ± and fails it when it misses the fail "
-        "line by more than its ±. For most checks the two lines are one threshold, and anything "
-        "between, including a value exactly on a line, is borderline. A check with a review "
-        "band (such as route length between review_route_ft "
-        "and max_route_ft) is review in between. Borderline and review both call for unsure. "
-        "An unsafe pass is a run's pass where the survey fails. A missed review is a pass "
-        "where the survey is borderline or review. Over-cautious counts unsure or fail "
-        "where the survey passes; false rejections are the fails among them. Decided without its "
-        "measurement counts a pass or fail where the run's own measurement is missing as "
-        "failed or unsupported, whatever the survey says; each is also scored as usual. An "
-        "unsure is justified when the survey is borderline or review, or the run has no value. "
-        "The error could flip a check when it is at least as large as both the survey's "
+        f"{total} checks, {judged} with a survey outcome. The survey passes a check when it "
+        "clears the pass line by more than its ± and fails it when it misses the fail line by "
+        "more than its ±. Anything between, including a value exactly on a line, is borderline "
+        "(one threshold) or review (a band such as review_route_ft to max_route_ft), where the "
+        "right answer is unsure. Unsafe pass: a pass where the survey fails. Missed review: a "
+        "pass where the survey is borderline or review. Over-cautious: unsure or fail where the "
+        "survey passes; false rejections are the fails among them. Decided without its "
+        "measurement: a pass or fail with the run's measurement missing as failed or "
+        "unsupported, or missing as absent on an at_most check; it is also scored as usual. "
+        "An unsure is justified when the survey is borderline or review, or the run has no "
+        "value. The error could flip a check when it is at least as large as both the survey's "
         "distance to the nearest threshold and its ±.",
         "",
         *_table(header, rows),
@@ -431,7 +429,7 @@ def _wrong_pass(run: RunScore, score: CheckScore) -> str:
     )
 
 
-def _blind_decision(run: RunScore, score: CheckScore) -> str:
+def _decision_without_measurement(run: RunScore, score: CheckScore) -> str:
     reported = score.measurement.reported
     assert reported is not None and reported.missing is not None
     return (
@@ -441,19 +439,19 @@ def _blind_decision(run: RunScore, score: CheckScore) -> str:
     )
 
 
-def _unsafe(runs: list[RunScore]) -> list[str]:
-    """List every unsafe pass, missed review and decision made without its measurement."""
+def _named_lists(runs: list[RunScore]) -> list[str]:
+    """Every unsafe pass, missed review and decision made without its measurement, by name."""
     lines = []
-    for title, picked, line in (
-        ("Unsafe passes", lambda score: score.unsafe_pass, _wrong_pass),
-        ("Missed reviews", lambda score: score.missed_review, _wrong_pass),
+    for title, empty, picked, line in (
+        ("Unsafe passes", "No unsafe passes.", lambda s: s.unsafe_pass, _wrong_pass),
+        ("Missed reviews", "No missed reviews.", lambda s: s.missed_review, _wrong_pass),
         (
             "Decided without its measurement",
-            lambda score: score.decided_without_measurement,
-            _blind_decision,
+            "No such decisions.",
+            lambda s: s.decided_without_measurement,
+            _decision_without_measurement,
         ),
     ):
         found = [line(run, score) for run in runs for score in run.checks if picked(score)]
-        empty = "No such decisions." if title.startswith("Decided") else f"No {title.lower()}."
         lines += ["", f"### {title}", "", *found] if found else ["", empty]
     return lines

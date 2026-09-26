@@ -38,8 +38,9 @@ MeasurementStatus = Literal[
 # check's review band. unknown: the survey could not measure the deciding distance.
 TruthOutcome = Literal["pass", "fail", "borderline", "review", "unknown"]
 Abstention = Literal["justified", "avoidable"]
-
-AT_THRESHOLD = "at_threshold"
+# The error ratio when the survey sits exactly on a threshold with no uncertainty: no denominator.
+AtThreshold = Literal["at_threshold"]
+AT_THRESHOLD: AtThreshold = "at_threshold"
 
 
 @dataclass(frozen=True)
@@ -161,13 +162,11 @@ def expected_outcome(truth: TruthOutcome) -> Outcome | None:
 
 def error_to_margin(
     abs_error_ft: Decimal, margins_ft: tuple[Decimal, ...], survey_plus_minus_ft: Decimal
-) -> Decimal | str:
+) -> Decimal | AtThreshold:
     """error / max(m, survey uncertainty). At 1 or above, the run's error could flip the check.
 
     m is the survey value's distance to the nearest threshold in `margins_ft`: the one threshold,
-    or either edge of a review band, since crossing either edge changes the outcome. Returns
-    AT_THRESHOLD when the survey value sits exactly on a threshold with no uncertainty, where the
-    ratio has no denominator.
+    or either edge of a review band, since crossing either edge changes the outcome.
     """
     scale = max(min(abs(margin) for margin in margins_ft), survey_plus_minus_ft)
     if scale == 0:
@@ -175,12 +174,11 @@ def error_to_margin(
     return abs_error_ft / scale
 
 
-def could_flip(ratio: Decimal | str, abs_error_ft: Decimal) -> bool:
-    """An error equal to the margin can put the run exactly on a line, where it no longer passes
-    or fails under the strict rule, so a ratio of exactly 1 can flip the check."""
-    if ratio == AT_THRESHOLD:
+def could_flip(ratio: Decimal | AtThreshold, abs_error_ft: Decimal) -> bool:
+    """An error equal to the margin can put the run exactly on a line, where the strict rule
+    neither passes nor fails it, so a ratio of exactly 1 can flip the check."""
+    if isinstance(ratio, str):
         return abs_error_ft > 0
-    assert isinstance(ratio, Decimal)
     return ratio >= 1
 
 
@@ -195,7 +193,7 @@ class CheckScore:
     # Signed survey margins to the fail threshold and to the review threshold; positive passes.
     margin_ft: Decimal | None
     review_margin_ft: Decimal | None
-    error_to_margin: Decimal | str | None
+    error_to_margin: Decimal | AtThreshold | None
     could_flip: bool | None
     reported: Outcome | None
     expected: Outcome | None
@@ -209,10 +207,20 @@ class CheckScore:
     # An unsure or fail where the survey passes.
     over_caution: bool | None
     false_rejection: bool | None
-    # A pass or fail without a deciding distance. Absence only supports at_least clearances,
-    # not at_most limits. Counted whatever the survey outcome, including unknown.
+    # A pass or fail without a deciding distance. Counted whatever the survey outcome.
     decided_without_measurement: bool | None
     abstention: Abstention | None
+
+
+def _decided_without_measurement(
+    reported: Outcome, measurement: MeasurementScore, threshold: Threshold
+) -> bool:
+    """A claimed absence decides an at_least clearance, but not an at_most limit."""
+    missing = measurement.reported.missing if measurement.reported else None
+    return reported in ("pass", "fail") and (
+        missing in ("failed", "unsupported")
+        or (missing == "absent" and threshold.pass_when == "at_most")
+    )
 
 
 def score_check(
@@ -227,7 +235,7 @@ def score_check(
     margin = passing_margin_ft(survey, threshold)
     review_margin = None if review is None else passing_margin_ft(survey, review)
 
-    ratio: Decimal | str | None = None
+    ratio: Decimal | AtThreshold | None = None
     flip: bool | None = None
     if measurement.error_ft is not None:
         assert margin is not None and survey.plus_minus_ft is not None
@@ -237,20 +245,15 @@ def score_check(
         flip = could_flip(ratio, abs_error_ft)
 
     expected = expected_outcome(truth)
-    agrees = unsafe = missed = cautious = rejection = None
+    agrees = unsafe = missed = over_caution = rejection = without_measurement = None
     abstention: Abstention | None = None
-    blind = None
     if reported is not None:
-        run_missing = measurement.reported.missing if measurement.reported else None
-        blind = reported in ("pass", "fail") and (
-            run_missing in ("failed", "unsupported")
-            or (run_missing == "absent" and threshold.pass_when == "at_most")
-        )
+        without_measurement = _decided_without_measurement(reported, measurement, threshold)
     if reported is not None and truth != "unknown":
         agrees = reported == expected
         unsafe = reported == "pass" and truth == "fail"
         missed = reported == "pass" and truth in ("borderline", "review")
-        cautious = reported in ("unsure", "fail") and truth == "pass"
+        over_caution = reported in ("unsure", "fail") and truth == "pass"
         rejection = reported == "fail" and truth == "pass"
         if reported == "unsure":
             evidence_missing = measurement.status in ("missing_unsupported", "missing_failed")
@@ -273,9 +276,9 @@ def score_check(
         agrees=agrees,
         unsafe_pass=unsafe,
         missed_review=missed,
-        over_caution=cautious,
+        over_caution=over_caution,
         false_rejection=rejection,
-        decided_without_measurement=blind,
+        decided_without_measurement=without_measurement,
         abstention=abstention,
     )
 

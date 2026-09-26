@@ -98,7 +98,7 @@ class TestErrorToMargin:
         assert error_to_margin(D("0"), (D("0"),), D("0")) == AT_THRESHOLD
 
     def test_ratio_of_exactly_one_can_flip(self):
-        # The run could land exactly on the line, which no longer passes under the strict rule.
+        # The run could land exactly on the line, which the strict rule does not pass.
         assert could_flip(D("0.9999"), D("0.5")) is False
         assert could_flip(D("1"), D("0.5")) is True
 

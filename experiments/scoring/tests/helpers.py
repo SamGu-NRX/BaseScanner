@@ -154,9 +154,9 @@ class Files:
         path.write_text(json.dumps(data, indent=2))
         return path
 
-    def write_all(self, *, fill_hash: bool = True) -> tuple[Path, Path, Path]:
+    def write_all(self) -> tuple[Path, Path, Path]:
         rules = self.write("rules.json", self.rules)
-        if fill_hash and not self.results["rules_sha256"]:
+        if not self.results["rules_sha256"]:
             self.results["rules_sha256"] = hashlib.sha256(rules.read_bytes()).hexdigest()
         return rules, self.write("truth.json", self.truth), self.write("results.json", self.results)
 

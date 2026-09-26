@@ -146,8 +146,8 @@ def _describe(value: Any) -> str:
     return f"{value!r}"
 
 
-class _Fields:
-    """One JSON object being read. `path` locates it inside `file` for error messages."""
+class Fields:
+    """One JSON object being validated. `path` locates it inside `file` for error messages."""
 
     def __init__(self, data: Any, file: Path, path: str, allowed: Iterable[str]):
         self.file = file
@@ -215,8 +215,8 @@ class _Fields:
             raise self.error(f"expected a non-empty list, got {_describe(value)}", key)
         return value
 
-    def child(self, value: Any, path: str, allowed: Iterable[str]) -> "_Fields":
-        return _Fields(value, self.file, path, allowed)
+    def child(self, value: Any, path: str, allowed: Iterable[str]) -> "Fields":
+        return Fields(value, self.file, path, allowed)
 
     def text_list(self, key: str) -> tuple[str, ...]:
         values = self.items(key)
@@ -243,15 +243,15 @@ class _Fields:
             )
 
 
-def _read_json(path: Path) -> tuple[Any, bytes]:
+def read_json(path: Path) -> tuple[Any, bytes]:
     try:
         raw = path.read_bytes()
     except OSError as error:
         raise InputError(f"{path}: cannot read ({error.strerror})") from None
-    return _parse_json(raw, str(path)), raw
+    return parse_json(raw, str(path)), raw
 
 
-def _parse_json(raw: bytes, path: str) -> Any:
+def parse_json(raw: bytes, path: str) -> Any:
     """Parse JSON with every float as an exact Decimal, rejecting duplicate keys and NaN.
 
     `path` names the source in error messages, which may be a member inside a zip.
@@ -286,7 +286,7 @@ def _parse_json(raw: bytes, path: str) -> Any:
         raise InputError(f"{path}: not UTF-8 text") from None
 
 
-def _unique_id(fields: _Fields, seen: Container[str], kind: str) -> str:
+def _unique_id(fields: Fields, seen: Container[str], kind: str) -> str:
     value = fields.text("id")
     if value in seen:
         raise fields.error(f"{kind} {value!r} is listed twice", "id")
@@ -294,8 +294,8 @@ def _unique_id(fields: _Fields, seen: Container[str], kind: str) -> str:
 
 
 def load_rules(path: Path) -> Rules:
-    data, raw = _read_json(path)
-    top = _Fields(data, path, "", {"format", "unit", "name", "thresholds"})
+    data, raw = read_json(path)
+    top = Fields(data, path, "", {"format", "unit", "name", "thresholds"})
     top.header()
     name = top.text("name")
     table = top.raw("thresholds")
@@ -331,7 +331,7 @@ SURVEY_MEASUREMENT_FIELDS = (
 )
 
 
-def _load_survey_measurement(fields: _Fields, seen: Container[str]) -> SurveyMeasurement:
+def _load_survey_measurement(fields: Fields, seen: Container[str]) -> SurveyMeasurement:
     measurement_id = _unique_id(fields, seen, "measurement")
     fields.path += f" ({measurement_id})"
     status = fields.choice("status", SURVEY_STATUSES)
@@ -360,8 +360,8 @@ def _load_survey_measurement(fields: _Fields, seen: Container[str]) -> SurveyMea
 
 
 def load_truth(path: Path, rules: Rules) -> Truth:
-    data, _ = _read_json(path)
-    top = _Fields(
+    data, _ = read_json(path)
+    top = Fields(
         data,
         path,
         "",
@@ -441,14 +441,14 @@ def load_truth(path: Path, rules: Rules) -> Truth:
 
 
 def _require_same_checks_at_every_spot(
-    top: _Fields, candidates: dict[str, Candidate], checks: list[Check]
+    top: Fields, candidates: dict[str, Candidate], checks: list[Check]
 ) -> None:
-    """The protocol applies every distance to every spot, so the denominator is fixed.
+    """Every spot needs the same check names, each with the same thresholds.
 
-    A survey that leaves a hard check out at one spot would otherwise score with a smaller
-    denominator and nobody would notice.
+    The protocol applies every distance to every spot, so the denominator is fixed. A survey that
+    left a hard check out at one spot would otherwise score with a smaller denominator unnoticed.
     """
-    names = {candidate: set() for candidate in candidates}
+    names: dict[str, set[str]] = {candidate: set() for candidate in candidates}
     policies: dict[str, tuple[str, str | None]] = {}
     for check in checks:
         names[check.candidate].add(check.check)
@@ -473,7 +473,7 @@ def _require_same_checks_at_every_spot(
 
 
 def _validate_check(
-    fields: _Fields,
+    fields: Fields,
     check: Check,
     candidates: dict[str, Candidate],
     measurements: dict[str, SurveyMeasurement],
@@ -506,14 +506,14 @@ def _validate_check(
             "exist"
         )
     if check.review_threshold is not None:
-        _validate_review_band(fields, check, threshold, rules)
+        _validate_review_band(fields, check.review_threshold, threshold, rules)
 
 
-def _validate_review_band(fields: _Fields, check: Check, fail: Threshold, rules: Rules) -> None:
+def _validate_review_band(fields: Fields, review_name: str, fail: Threshold, rules: Rules) -> None:
     """The review line must sit on the passing side of the fail line, in the same direction."""
-    review = rules.thresholds.get(check.review_threshold or "")
+    review = rules.thresholds.get(review_name)
     if review is None:
-        raise fields.error(f"{check.review_threshold!r} is not in {rules.path}", "review_threshold")
+        raise fields.error(f"{review_name!r} is not in {rules.path}", "review_threshold")
     if review.name == fail.name:
         raise fields.error("must differ from threshold", "review_threshold")
     if review.pass_when != fail.pass_when:
@@ -535,7 +535,7 @@ def _validate_review_band(fields: _Fields, check: Check, fail: Threshold, rules:
         )
 
 
-def _load_pipeline_measurement(fields: _Fields, seen: Container[str]) -> PipelineMeasurement:
+def _load_pipeline_measurement(fields: Fields, seen: Container[str]) -> PipelineMeasurement:
     measurement_id = _unique_id(fields, seen, "measurement")
     fields.path += f" ({measurement_id})"
     value = fields.optional_length("value_ft")
@@ -551,8 +551,8 @@ def _load_pipeline_measurement(fields: _Fields, seen: Container[str]) -> Pipelin
 
 
 def load_results(path: Path) -> Results:
-    data, _ = _read_json(path)
-    top = _Fields(
+    data, _ = read_json(path)
+    top = Fields(
         data,
         path,
         "",
@@ -611,7 +611,7 @@ def _checks_list(keys: Iterable[tuple[str, str]]) -> str:
     return ", ".join(f"{check} at {candidate}" for candidate, check in sorted(keys))
 
 
-def _match(results: Results, truth: Truth, rules: Rules) -> None:
+def _require_run_matches_survey(results: Results, truth: Truth, rules: Rules) -> None:
     """Reject a run that does not answer exactly the survey's questions under the same rules."""
     path = results.path
     if results.rules_sha256 != rules.sha256:
@@ -647,9 +647,6 @@ def _match(results: Results, truth: Truth, rules: Rules) -> None:
             f'{path}: no outcome for {_checks_list(absent)}; report "unsure" when the run '
             "cannot decide, or set outcomes to null for a run that makes no decisions"
         )
-    # A pass or fail whose measurement is missing as failed or unsupported is accepted and
-    # scored: the scorer measures what pipelines do, and metrics.py counts it as a decision
-    # made without its measurement.
 
 
 def _require_same_capture_time(results: Results, earlier: list[Results]) -> None:
@@ -705,7 +702,7 @@ def load_study(rules_path: Path, truth_paths: list[Path], results_paths: list[Pa
                 f"already scored from {seen_runs[key]}"
             )
         seen_runs[key] = path
-        _match(results, truth, rules)
+        _require_run_matches_survey(results, truth, rules)
         _require_same_capture_time(results, runs[truth.house])
         runs[truth.house].append(results)
 

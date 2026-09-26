@@ -1,13 +1,9 @@
 """Turn a Measure Lab session zip into a results file the scorer reads.
 
 The rig's measurements carry app-generated ids and meter values. A map file, written by hand after
-the walk, says which session measurement and which `values` key answers each survey measurement,
-and with what uncertainty. The importer converts meters to feet, writes one results file, and
-loads that file through the scorer before saving it, so an import that would not score is never
-written.
-
-The session format is Measure Lab's formatVersion 2, documented in experiments/measure-lab/README.md
-("Session format") on branch t3/measure-lab. Only the fields used here are validated.
+the walk, says which session measurement and `values` key answers each survey measurement, and with
+what uncertainty. The session format is Measure Lab's formatVersion 2, documented in
+experiments/measure-lab/README.md ("Session format"). Only the fields used here are validated.
 """
 
 import argparse
@@ -24,16 +20,19 @@ from typing import Any
 from scoring.inputs import (
     FORMAT,
     UNIT,
+    Fields,
     InputError,
     MissingReason,
+    Outcome,
+    PipelineMeasurement,
     Rules,
+    Threshold,
     Truth,
-    _Fields,
-    _parse_json,
-    _read_json,
     load_rules,
     load_study,
     load_truth,
+    parse_json,
+    read_json,
 )
 from scoring.metrics import decide
 
@@ -43,18 +42,15 @@ VALUE_KEYS = ("straight", "horizontal", "vertical", "alongWall", "gapToWall", "h
 
 # Exact by definition (international yard and pound agreement, 1959).
 METERS_PER_FOOT = Decimal("0.3048")
-# Feet are rounded to 6 decimal places (a millionth of a foot, about 0.3 micrometers). The rig's
-# values are ARKit estimates good to centimeters at best, so this rounding changes nothing a tape
-# could see, and it keeps every written value inside the scorer's 12-decimal-place limit. Division
-# by 0.3048 rarely terminates (1 m is 3.28083989501312... ft), so some rounding is unavoidable.
+# Division by 0.3048 rarely terminates (1 m is 3.28083989501312... ft), so feet are rounded to a
+# millionth of a foot. ARKit is good to centimeters at best, so the rounding is invisible, and it
+# keeps every value inside the scorer's 12-decimal-place limit.
 FEET_PLACES = Decimal("0.000001")
-# Capture time comes from the device-uptime clock, a Double of seconds. Milliseconds are finer
-# than any walk timing needs and keep the value inside the same 12-decimal limit.
+# Capture time comes from the device-uptime clock, a Double of seconds; milliseconds are enough.
 SECONDS_PLACES = Decimal("0.001")
-# ARKit world tracking supplies metric scale from visual-inertial odometry; the rig uses no
-# scale reference and no depth model, so every imported row declares AR camera poses.
+# ARKit world tracking supplies metric scale; the rig uses no scale reference or depth model.
 SCALE_SOURCE = "ar_poses"
-# Suffix for a row whose outcomes this importer computed with the survey's rule.
+# Marks a row whose outcomes the importer computed with the survey's rule.
 RULE_SUFFIX = "+rule"
 
 MAP_ENTRY_FIELDS = {"session_measurement", "key", "plus_minus_ft", "refusal"}
@@ -136,7 +132,7 @@ def load_session(path: Path) -> Session:
     except zipfile.BadZipFile:
         raise InputError(f"{path}: not a zip file") from None
     where = f"{path}!{member}"
-    data = _parse_json(raw, where)
+    data = parse_json(raw, where)
     if not isinstance(data, dict):
         raise InputError(f"{where}: expected a JSON object")
 
@@ -221,8 +217,8 @@ class Map:
 
 
 def load_map(path: Path) -> Map:
-    data, _ = _read_json(path)
-    top = _Fields(
+    data, _ = read_json(path)
+    top = Fields(
         data,
         path,
         "",
@@ -230,7 +226,7 @@ def load_map(path: Path) -> Map:
     )
     top.header()
     if top.has("notes"):
-        top.text("notes")  # free text for people, such as where an uncertainty comes from
+        top.text("notes")
     by_key: dict[str, Decimal] = {}
     if top.has("plus_minus_ft_by_key"):
         table = top.raw("plus_minus_ft_by_key")
@@ -320,42 +316,54 @@ def _check_map(mapping: Map, session: Session, truth: Truth) -> None:
             )
 
 
-def _measurement_entry(
+def _imported_measurement(
     survey_id: str, entry: FromSession | FromRefusal | MissingReason, session: Session
-) -> dict[str, Any]:
+) -> PipelineMeasurement:
     if isinstance(entry, str):
-        return {"id": survey_id, "value_ft": None, "missing": entry}
+        return PipelineMeasurement(survey_id, None, None, entry)
     if isinstance(entry, FromRefusal):
-        return {"id": survey_id, "value_ft": None, "missing": "failed"}
+        return PipelineMeasurement(survey_id, None, None, "failed")
     measurement = session.measurements[entry.measurement]
     if not measurement.accepted:
         # The rig's own abstention: a value with warnings that its scoring counts as no answer.
-        return {"id": survey_id, "value_ft": None, "missing": "failed"}
+        return PipelineMeasurement(survey_id, None, None, "failed")
+    value_ft = meters_to_feet(measurement.values[entry.key])
+    return PipelineMeasurement(survey_id, value_ft, entry.plus_minus_ft, None)
+
+
+def _measurement_json(measurement: PipelineMeasurement) -> dict[str, Any]:
+    if measurement.value_ft is None:
+        return {"id": measurement.id, "value_ft": None, "missing": measurement.missing}
     return {
-        "id": survey_id,
-        "value_ft": meters_to_feet(measurement.values[entry.key]),
-        "plus_minus_ft": entry.plus_minus_ft,
+        "id": measurement.id,
+        "value_ft": measurement.value_ft,
+        "plus_minus_ft": measurement.plus_minus_ft,
     }
 
 
+def _rule_outcome(
+    measurement: PipelineMeasurement, threshold: Threshold, review: Threshold | None
+) -> Outcome:
+    """The survey's strict rule applied to the run's own value. Without a value it never decides,
+    except that a feature the operator marked absent clears an at_least check, as in the survey."""
+    if measurement.value_ft is None:
+        absent_clearance = measurement.missing == "absent" and threshold.pass_when == "at_least"
+        return "pass" if absent_clearance else "unsure"
+    assert measurement.plus_minus_ft is not None  # the map always states an uncertainty
+    result = decide(measurement.value_ft, measurement.plus_minus_ft, threshold, review)
+    return "unsure" if result == "borderline" or result == "review" else result
+
+
 def _outcomes(
-    truth: Truth, rules: Rules, measurements: dict[str, dict[str, Any]]
-) -> list[dict[str, Any]]:
-    """Apply the survey's strict rule to the run's own value and uncertainty for every check."""
+    truth: Truth, rules: Rules, measurements: dict[str, PipelineMeasurement]
+) -> list[dict[str, str]]:
     outcomes = []
     for check in truth.checks:
         threshold = rules.thresholds[check.threshold]
         review = (
             None if check.review_threshold is None else rules.thresholds[check.review_threshold]
         )
-        entry = measurements[check.measurement]
-        if entry["value_ft"] is not None:
-            result = decide(entry["value_ft"], entry["plus_minus_ft"], threshold, review)
-            outcome = {"pass": "pass", "fail": "fail"}.get(result, "unsure")
-        elif entry["missing"] == "absent" and threshold.pass_when == "at_least":
-            outcome = "pass"  # a feature that is not there clears a clearance, as in the survey
-        else:
-            outcome = "unsure"  # no evidence: the rule never decides without a value
+        outcome = _rule_outcome(measurements[check.measurement], threshold, review)
         outcomes.append({"candidate": check.candidate, "check": check.check, "outcome": outcome})
     return outcomes
 
@@ -370,7 +378,7 @@ def build_results(
             f"{session.zip_path}; add it so this run is scored against this survey"
         )
     measurements = {
-        survey_id: _measurement_entry(survey_id, mapping.entries[survey_id], session)
+        survey_id: _imported_measurement(survey_id, mapping.entries[survey_id], session)
         for survey_id in truth.measurements
         if survey_id in mapping.entries
     }
@@ -389,12 +397,10 @@ def build_results(
         "capture": session.zip_sha256,
         "rules_sha256": rules.sha256,
         "scale_source": SCALE_SOURCE,
-        "measurements": list(measurements.values()),
+        "measurements": [_measurement_json(m) for m in measurements.values()],
         "outcomes": _outcomes(truth, rules, measurements) if decide_outcomes else None,
-        # capture_s: session start to its last measurement, on the rig's uptime clock.
-        # processing_s: null. The rig shows each value when it is tapped, so there is no
-        # processing stage after the walk, and session.json records no time for one; writing 0
-        # would claim a measurement nobody took. The importer's own run time is not the rig's.
+        # The rig shows each value as it is tapped and records no processing time, so
+        # processing_s is null; 0 would claim a measurement nobody took.
         "timing": {"capture_s": capture_s, "processing_s": None},
     }
 
@@ -444,7 +450,7 @@ def import_session(
         session, load_map(map_path), rules, truth, decide_outcomes=decide_outcomes
     )
     text = dumps(results) + "\n"
-    # Score the output before saving it, so a file that would not load is never written.
+    # Load the output through the scorer first, so a file that would not score is never written.
     with tempfile.TemporaryDirectory() as scratch:
         candidate = Path(scratch) / "results.json"
         candidate.write_text(text, encoding="utf-8")
