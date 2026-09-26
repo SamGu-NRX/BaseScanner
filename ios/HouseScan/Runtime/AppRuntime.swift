@@ -1,10 +1,29 @@
 import SwiftUI
 
-/// Placeholder until the engine lane lands: builds the engine from the launch arguments and
-/// returns `ScanRootView` bound to it.
+/// Builds the engine from the launch arguments and returns `ScanRootView` bound to it.
+@MainActor
 enum AppRuntime {
-    @MainActor
+    /// One engine per process: the scene body can be re-evaluated, the scan must not restart.
+    static let engine = ScanEngine(options: LaunchOptions())
+
     static func makeRoot() -> some View {
-        CaptureScreen()
+        RuntimeRoot(engine: engine)
+    }
+}
+
+private struct RuntimeRoot: View {
+    let engine: ScanEngine
+    @State private var started = false
+
+    var body: some View {
+        ScanRootView(state: engine.state, actions: engine)
+            .task {
+                guard !started else { return }
+                started = true
+                engine.start()
+                if engine.options.autopilot {
+                    await Autopilot(engine: engine).run()
+                }
+            }
     }
 }
