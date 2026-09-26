@@ -159,6 +159,24 @@ CASES: list[tuple[str, Callable[[Files], Any], str]] = [
         ],
         "the check is at candidate 'c2' but measurement 'c1-gas' belongs to 'c1'",
     ),
+    (
+        "spot missing a check",
+        lambda f: [
+            f.truth["candidates"].append({"id": "c2", "marker": "chalk", "location": "wall"}),
+            f.truth["measurements"].append(
+                dict(surveyed(f, "c1-gas"), id="c2-gas", candidate="c2")
+            ),
+            f.truth["checks"].append(
+                {
+                    "candidate": "c2",
+                    "check": "gas",
+                    "measurement": "c2-gas",
+                    "threshold": "gas_clearance_ft",
+                }
+            ),
+        ],
+        "candidate 'c2' has no route check; every spot needs the same checks",
+    ),
     ("absent at_most", make_route_absent, "only a clearance (at_least) passes"),
     (
         "duplicate check",
@@ -282,6 +300,19 @@ def test_same_run_twice(tmp_path: Path):
     again = files.write("results-2.json", files.results)
     with pytest.raises(InputError, match="pipeline 'p1' on capture 'cap-1' is already scored"):
         load_study(rules, [truth], [results, again])
+
+
+def test_runs_on_one_recording_share_its_capture_time(tmp_path: Path):
+    files = Files(tmp_path)
+    rules, truth, results = files.write_all()
+    files.results["pipeline"] = "p2"
+    files.results["timing"]["capture_s"] = 120
+    shorter = files.write("results-2.json", files.results)
+    with pytest.raises(InputError, match="120 s differs from 300 s"):
+        load_study(rules, [truth], [results, shorter])
+    files.results["timing"]["capture_s"] = None
+    unrecorded = files.write("results-3.json", files.results)
+    assert len(load_study(rules, [truth], [results, unrecorded]).houses[0].runs) == 2
 
 
 def test_unreadable_file(tmp_path: Path):

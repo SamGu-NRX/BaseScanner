@@ -408,6 +408,7 @@ def load_truth(path: Path, rules: Rules) -> Truth:
             raise fields.error(f"check {check.check!r} at {check.candidate!r} is listed twice")
         _validate_check(fields, check, candidates, measurements, scale_reference, rules)
         checks.append(check)
+    _require_same_checks_at_every_spot(top, candidates, checks)
 
     return Truth(
         path=path,
@@ -418,6 +419,27 @@ def load_truth(path: Path, rules: Rules) -> Truth:
         measurements=measurements,
         checks=tuple(checks),
     )
+
+
+def _require_same_checks_at_every_spot(
+    top: _Fields, candidates: dict[str, Candidate], checks: list[Check]
+) -> None:
+    """The protocol applies every distance to every spot, so the denominator is fixed.
+
+    A survey that leaves a hard check out at one spot would otherwise score with a smaller
+    denominator and nobody would notice.
+    """
+    names = {candidate: set() for candidate in candidates}
+    for check in checks:
+        names[check.candidate].add(check.check)
+    every = set().union(*names.values())
+    for candidate, found in names.items():
+        if found != every:
+            raise top.error(
+                f"candidate {candidate!r} has no {', '.join(sorted(every - found))} check; "
+                "every spot needs the same checks. Survey the distance, or record it as "
+                "absent or not_measured"
+            )
 
 
 def _validate_check(
@@ -569,6 +591,22 @@ def _match(results: Results, truth: Truth, rules: Rules) -> None:
         )
 
 
+def _require_same_capture_time(results: Results, earlier: list[Results]) -> None:
+    """Every row scored on one recording shares its walk time; none can claim a shorter one."""
+    if results.capture_seconds is None:
+        return
+    for other in earlier:
+        if other.capture == results.capture and other.capture_seconds not in (
+            None,
+            results.capture_seconds,
+        ):
+            raise InputError(
+                f"{results.path}: timing.capture_s: {results.capture_seconds} s differs from "
+                f"{other.capture_seconds} s in {other.path} for the same capture "
+                f"{results.capture!r}; runs on one recording share its capture time"
+            )
+
+
 def load_study(rules_path: Path, truth_paths: list[Path], results_paths: list[Path]) -> Study:
     """Load every file and pair each run with the survey of the house it captured."""
     rules = load_rules(rules_path)
@@ -607,6 +645,7 @@ def load_study(rules_path: Path, truth_paths: list[Path], results_paths: list[Pa
             )
         seen_runs[key] = path
         _match(results, truth, rules)
+        _require_same_capture_time(results, runs[truth.house])
         runs[truth.house].append(results)
 
     return Study(

@@ -77,7 +77,7 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | Field | Meaning |
 |---|---|
 | `house` | Unique across the study. |
-| `captures` | The recording ids this survey applies to. A LiDAR recording of the same house is a second id here. Each id belongs to one house. |
+| `captures` | The recording ids this survey applies to. Use each recording's sha256 as its id, so a run on a re-exported or different recording cannot claim the same capture; the scorer never sees the recording, so it can only compare ids. A LiDAR recording of the same house is a second id here. Each id belongs to one house. |
 | `scale_reference` | The id of the one measurement some pipelines may use to set their scale. It must be measured, cannot decide a check, and is never scored. |
 | `candidates[]` | `id`, the physical `marker` on the ground, and its `location` as tape offsets from permanent corners. |
 | `measurements[].candidate` | The spot it belongs to, or null for house-level distances such as wall length. |
@@ -85,7 +85,7 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | `measurements[].status` | `measured`, `absent` (the feature does not exist, such as no pool) or `not_measured` (unreachable). Only `measured` has `value_ft` and `plus_minus_ft`. |
 | `measurements[].plus_minus_ft` | The survey's own uncertainty, u. |
 | `measurements[].method`, `measured_by` | How and by whom. |
-| `checks[]` | One pass/fail decision: the spot, a check name, the measurement that decides it and the threshold it is compared with. A measurement can decide more than one check. An absent feature may only decide an `at_least` check, which it passes. |
+| `checks[]` | One pass/fail decision: the spot, a check name, the measurement that decides it and the threshold it is compared with. A measurement can decide more than one check. An absent feature may only decide an `at_least` check, which it passes. Every candidate must have the same check names, so leaving a hard check out at one spot cannot shrink the denominator. |
 
 ### Results file (one per pipeline run)
 
@@ -110,7 +110,7 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | `scale_source` | `native_metric`, `scale_reference` or `ar_poses`. |
 | `measurements[]` | One entry for every survey measurement id. The scale reference is optional. `value_ft` is a number or null. With a number, `plus_minus_ft` is the run's reported uncertainty, or null if it reports none. With null, `missing` says why: `unsupported` (the pipeline cannot produce this distance), `failed` (it tried and got nothing) or `absent` (it says the feature is not there). |
 | `outcomes` | One entry per survey check: `pass`, `unsure` or `fail`. Set the whole field to null for a run that measures distances but makes no decisions. |
-| `timing.capture_s`, `processing_s` | Seconds, or null if not recorded. |
+| `timing.capture_s`, `processing_s` | Seconds, or null if not recorded. Runs on the same capture must report the same `capture_s` or null. |
 
 ## What the scorer reports
 
