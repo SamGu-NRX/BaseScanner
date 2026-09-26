@@ -2,9 +2,11 @@
 # ~/house-scanning-data/reports/ (outside git) because runs can show dataset frames.
 
 REF ?= origin/t3/ios-mvf
+SERVER_REF ?= origin/t3/server
+REPLAY ?= $(HOME)/house-scanning-data/replays/advio-20-0040-0075
 ARGS ?=
 
-.PHONY: test sim sim-probe e2e scoreboard
+.PHONY: test sim sim-app sim-probe e2e scoreboard
 
 test:
 	uv run ruff check .
@@ -15,6 +17,18 @@ test:
 # screenshot every STATE.
 sim:
 	uv run python -m hsverify.simrun --ref $(REF) $(ARGS)
+
+# The app at REF on the real ADVIO replay (C3), driven by its autopilot, uploading to the server
+# started from SERVER_REF: a screenshot per STATE in ~/house-scanning-data/reports/sim/.
+sim-app:
+	uv run python -m hsverify.simrun --ref $(REF) --replay $(REPLAY) --autopilot \
+		--server-ref $(SERVER_REF) --extra-arg=-autopilotHold --extra-arg=3 \
+		--idle 60 --timeout 900 --label replay $(ARGS)
+
+# Every case in e2e/cases/ plus the ETH3D facade scene through the server's API at SERVER_REF;
+# each result is validated against server/schemas/result.schema.json at the same ref.
+e2e:
+	uv run python -m hsverify.e2e --server-ref $(SERVER_REF) --scene scenes/eth3d-facade/case.json $(ARGS)
 
 # Self-test of the runner against a fixture app that logs a known STATE sequence.
 sim-probe:

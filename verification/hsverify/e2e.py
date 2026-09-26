@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from hsverify import gitref
+from hsverify.memory import peak_rss_mb
 from hsverify.resultcheck import (
     assumption_mismatches,
     comparable,
@@ -529,6 +530,7 @@ def main(argv: list[str] | None = None) -> int:
         "command": " ".join([sys.executable, "-m", "hsverify.e2e", *(argv or sys.argv[1:])]),
         # Latency on this shared Mac depends on what else runs; keep the load with the numbers.
         "load_average_1_5_15": [round(x, 1) for x in os.getloadavg()],
+        "peak_memory": peak_rss_mb(),
         "cases_sha256": hashlib.sha256(b"".join(i.raw for i in items)).hexdigest(),
     }
     report = write_report(out, meta, records)

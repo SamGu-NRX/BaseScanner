@@ -15,6 +15,7 @@ replay can put dataset frames on screen.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import fcntl
 import json
@@ -31,6 +32,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from hsverify import gitref, report
+from hsverify.e2e import server_from_ref
+from hsverify.memory import peak_rss_mb
 from hsverify.statelog import LOG_PREDICATE, RedactedStateError, parse_ndjson_line
 
 DEVICE_NAME = "HouseScan Verify"
@@ -65,6 +68,8 @@ class RunReport:
     problems: list[str] = field(default_factory=list)
     crash_reports: list[str] = field(default_factory=list)
     final_screenshot: str | None = None
+    server: dict | None = None
+    peak_memory: dict | None = None
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -420,7 +425,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scheme", default="HouseScan", help="also the .app name")
     parser.add_argument("--replay", type=Path, help="replay session folder (contract C3)")
     parser.add_argument("--autopilot", action="store_true")
-    parser.add_argument("--server-url")
+    server = parser.add_mutually_exclusive_group()
+    server.add_argument("--server-url", help="a running placement server")
+    server.add_argument(
+        "--server-ref", help="start the placement server from this ref for the run (S2 API)"
+    )
     parser.add_argument("--extra-arg", action="append", default=[], help="more launch args")
     parser.add_argument("--until", action="append", default=[], help="state that ends the run")
     parser.add_argument("--settle", type=float, default=1.2, help="seconds before a screenshot")
@@ -481,11 +490,18 @@ def main(argv: list[str] | None = None) -> int:
         static_c4=static,
     )
     started = time.time()
+    services = contextlib.ExitStack()
     try:
         if app is None:
             rep.end_reason = "build failed"
             rep.problems.append("The app did not build; see build.log.")
         else:
+            if args.server_ref:
+                server_sha = gitref.resolve(args.server_ref)
+                url = services.enter_context(server_from_ref(server_sha, out / "server.log"))
+                launch_args += ["-serverURL", url]
+                rep.server = {"ref": args.server_ref, "sha": server_sha, "url": url}
+                print(f"Server {args.server_ref} at {server_sha[:12]} on {url}", flush=True)
             bundle_id = bundle_id_of(app)
             rep.device["bundle_id"] = bundle_id
             udid = device["udid"]
@@ -504,6 +520,8 @@ def main(argv: list[str] | None = None) -> int:
         if rep.crash_reports:
             rep.problems.append(f"Crash reports: {', '.join(rep.crash_reports)}")
     finally:
+        services.close()
+        rep.peak_memory = peak_rss_mb()
         if not args.keep_booted:
             subprocess.run(["xcrun", "simctl", "shutdown", device["udid"]], capture_output=True)
         data = asdict(rep)
