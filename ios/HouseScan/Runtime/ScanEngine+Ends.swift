@@ -92,6 +92,15 @@ extension ScanEngine {
         let covered = GuidancePlanner().reach(side.walk, coverage: map)
         RuntimeLog.engine.info("\(action, privacy: .public) on the \(side.rawValue, privacy: .public): end at s=\(s) (phone at s=\(phone), walked \(walked) m, covered reach \(covered) m)")
     }
+
+    /// `ScanViewState.featuresPastEnds`, refreshed when the ends move (`publishWall`), the spans
+    /// follow the wall (`reprojectFeatures`) and a mark is added.
+    func publishFeaturesPastEnds() {
+        let left = coverage?.leftEnd
+        let right = coverage?.rightEnd
+        let past = Set(state.features.filter { WalkedEnd.liesPastAnEnd($0.span, leftEnd: left, rightEnd: right) }.map(\.id))
+        if past != state.featuresPastEnds { state.featuresPastEnds = past }
+    }
 }
 
 extension WallSide {

@@ -379,6 +379,7 @@ final class ScanEngine {
         var features = state.features
         for index in features.indices { Self.project(&features[index], onto: wall) }
         if features != state.features { state.features = features }
+        publishFeaturesPastEnds()
     }
 
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
@@ -1141,6 +1142,7 @@ final class ScanEngine {
                 return WallGeometry.Segment(span: piece.span, along: piece.along, outward: piece.outward, anchor: piece.anchor, anchorS: piece.anchorS)
             }
         )
+        publishFeaturesPastEnds()
     }
 
     func publishCoverage() {

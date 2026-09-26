@@ -65,3 +65,14 @@ extension CoverageMap {
         return visibleCells(from: camera).isEmpty ? side : nil
     }
 }
+
+extension WalkedEnd {
+    /// Whether a mark's span (meters of s) lies wholly past a marked end. The scan doesn't cover
+    /// it there: the wall may turn or stop at that end, so the review says so (issue #42). A mark
+    /// reaching an end, or with any of it between the ends, is on the scanned wall.
+    public static func liesPastAnEnd(_ span: ClosedRange<Float>, leftEnd: Float?, rightEnd: Float?) -> Bool {
+        if let leftEnd, span.upperBound < leftEnd { return true }
+        if let rightEnd, span.lowerBound > rightEnd { return true }
+        return false
+    }
+}

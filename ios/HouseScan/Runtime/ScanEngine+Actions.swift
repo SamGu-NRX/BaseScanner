@@ -256,6 +256,7 @@ extension ScanEngine: ScanActions {
         let marked = feature(marking.kind, taps: pendingTaps, wall: wall)
         markTimes[MarkKey.feature(marked.id)] = captureClock
         state.features.append(marked)
+        publishFeaturesPastEnds()
         state.marking = nil
         pendingTaps = []
     }

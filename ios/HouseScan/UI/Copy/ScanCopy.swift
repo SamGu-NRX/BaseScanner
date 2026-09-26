@@ -173,6 +173,9 @@ enum ScanCopy {
         }
     }
 
+    /// Under a reviewed mark that lies wholly past a marked end (`ScanViewState.featuresPastEnds`).
+    static let featurePastEnd = "Past the end of your scan"
+
     static func markingPrompt(_ marking: MarkingState) -> Instruction {
         let item = noun(marking.kind)
         switch (marking.kind, marking.step) {
