@@ -915,11 +915,15 @@ public struct CoverageMap: Sendable {
     /// facing `outward` (toward the homeowner). The corner is where the two walls' lines meet on
     /// the ground (`WallFrame.corner(on:meeting:outward:)`). The end on that side is cleared, so
     /// the walk goes on along the new wall, and every kept camera is replayed against the new
-    /// chain: cells past the corner were measured on the old wall's line. Changes nothing when
-    /// it throws.
+    /// chain: cells past the corner were measured on the old wall's line. `source` is how the
+    /// marked wall's line was found, kept on the corner for the export. Changes nothing when it
+    /// throws.
     @discardableResult
-    public mutating func turnCorner(_ side: WalkSide, meeting point: SIMD3<Float>, outward: SIMD3<Float>) throws(CornerRefusal) -> WallCorner {
-        let corner = try wall.corner(on: side, meeting: point, outward: outward)
+    public mutating func turnCorner(
+        _ side: WalkSide, meeting point: SIMD3<Float>, outward: SIMD3<Float>, source: WallLineSource
+    ) throws(CornerRefusal) -> WallCorner {
+        var corner = try wall.corner(on: side, meeting: point, outward: outward)
+        corner.source = source
         let seenEdge = seenExtent.map { side == .left ? $0.lowerBound : $0.upperBound }
         let reference = (side == .left ? leftEnd : rightEnd) ?? seenEdge ?? 0
         guard abs(corner.s - reference) <= Self.maxCornerFromEnd else { throw .implausible(s: corner.s) }

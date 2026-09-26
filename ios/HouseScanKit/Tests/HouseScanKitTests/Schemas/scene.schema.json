@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/SamGu-NRX/house-scanning/server/schemas/scene.schema.json",
   "title": "House scan scene",
-  "description": "What the phone measured around the electric meter (contract C1, docs/01-feature-map.md). Every length is in feet. Plan coordinates [x, z] are the horizontal axes of one gravity-aligned scene frame (ARKit .gravity world alignment: +y up), so [x, z] ignores height. `s` is the distance along the unrolled wall chain from the meter, negative to the left as seen by someone outside facing the wall. Unknown fields are rejected so a misspelled field fails loudly instead of being ignored.",
+  "description": "What the phone measured around the electric meter (the scene contract; server/README.md, \"Writing a scene\"). Every length is in feet. Plan coordinates [x, z] are the horizontal axes of one gravity-aligned scene frame (ARKit .gravity world alignment: +y up), so [x, z] ignores height. `s` is the distance along the unrolled wall chain from the meter, negative to the left as seen by someone outside facing the wall. Unknown fields are rejected so a misspelled field fails loudly instead of being ignored.",
   "type": "object",
   "additionalProperties": false,
   "required": ["meter", "walls"],
@@ -41,7 +41,8 @@
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' wall default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
+          "source": {"enum": ["tap", "mesh", "plane"], "description": "How the wall's line was found: AR taps, the LiDAR mesh, or ARKit's detected planes. Sets the default error when plus_minus_ft is absent (errors.wall_ft, mesh_ft, plane_ft in rules.yaml). Absent means tap."},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' default for the wall's source, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
@@ -149,10 +150,10 @@
             "properties": {
               "band": {
                 "enum": ["wall", "ground", "overhead", "facing"],
-                "description": "wall: the wall face from the ground up to headroom height (boxes and vents above the battery, openings), which also covers the cable route. ground: the ground in front of the wall out to `out_ft`. overhead: the space above the ground strip up to headroom height. facing: the gap straight out from the wall to whatever faces it."
+                "description": "wall: the wall face from the ground up to `out_ft` (absent: up to headroom height), for the battery's back, the cable route, and boxes, vents, gas and openings above the battery. ground: the ground in front of the wall out to `out_ft`. overhead: the space above the ground strip up to headroom height. facing: the gap straight out from the wall to whatever faces it."
               },
               "span_ft": {"$ref": "#/$defs/span", "description": "Observed stretch in s. May extend past the chain's ends, continuing the end segments' lines. Past an end marked limit, observed ground covers both sides of that line."},
-              "out_ft": {"type": "number", "minimum": 0, "description": "How far the view reached, as a distance it is sure of. ground (required): how far out from the wall the ground was seen. facing: how far out from the wall the space was seen clear, for example the homeowner's walked path; absent means the view reached whatever faces the wall, so anything there is in `facing`. overhead: how high above the ground the space was seen clear; absent means it was seen all the way up, so anything above is in `overheads`."}
+              "out_ft": {"type": "number", "minimum": 0, "description": "How far the view reached, as a distance it is sure of. ground (required): how far out from the wall the ground was seen. facing: how far out from the wall the space was seen clear, for example the homeowner's walked path; absent means the view reached whatever faces the wall, so anything there is in `facing`. overhead: how high above the ground the space was seen clear; absent means it was seen all the way up, so anything above is in `overheads`. wall: how high above the ground the wall face was seen; absent means up to headroom height (headroom.min_ft), enough for every check. Each check that reads the wall band credits an entry only where its out_ft exceeds the height the check needs (server/README.md, \"What settles each check\")."}
             },
             "if": {"properties": {"band": {"const": "ground"}}},
             "then": {"required": ["out_ft"]}

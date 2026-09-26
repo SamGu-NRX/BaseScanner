@@ -71,8 +71,8 @@ import simd
             try Self.sample(replacing: #""key": "sample_window_clearance_ft""#, with: #""key": "sample_window_clearance_ft", "bogus": 1"#))
     }
 
-    /// A real answer from the server branch (origin/t3/server at 6fdb440) to the synthetic replay's
-    /// scene, carrying fields newer than the first published schema.
+    /// A real answer from the hosted server (deployed from origin/t3/server at 737bf75) to the
+    /// synthetic replay's scene, carrying fields newer than the first published schema.
     @Test func decodesARealServerAnswer() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Schemas/server-answer-synthetic-wall.json")
