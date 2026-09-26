@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 641" width="960" height="641" role="img" aria-labelledby="t d">
+<title id="t">Battery site plan: manual_review</title>
+<desc id="d">More views are needed around the best spot, 2 ft 9 in right of the meter: 2 checks depend on areas the scan did not see.</desc>
+<style>
+.paper{fill:#F2F4F3}
+.ink{stroke:#1D262B;fill:none}
+.wall{stroke:#1D262B;stroke-width:5;stroke-linecap:square;fill:none}
+.poche{fill:url(#poche)}
+.gap{stroke:#1D262B;stroke-width:1.5;stroke-dasharray:4 5;fill:none}
+.lawn{fill:#D3E4C8}.mulch{fill:#DDCDB4}.gravel{fill:#D8DAD6}.concrete{fill:#DCDEDC}
+.deck{fill:#C9B08C}.drive{fill:#AEB4B9}
+.fog{fill:url(#fog)}.fog-line{stroke:#1D262B;stroke-opacity:.22;stroke-width:2}
+.poche-line{stroke:#1D262B;stroke-opacity:.35;stroke-width:1}
+.opening{stroke:#F2F4F3;stroke-width:5;fill:none}
+.opening-mark{stroke:#1D262B;stroke-width:1.2;fill:none}
+.object{fill:#FFFFFF;stroke:#1D262B;stroke-width:1.2}
+.gas{fill:#F2C200;stroke:#1D262B;stroke-width:1.2}
+.gas-ring{fill:none;stroke:#B89200;stroke-width:1.2;stroke-dasharray:3 4}
+.pool{fill:#BFE0E8;stroke:#1D262B;stroke-width:1}
+.meter-area{fill:#2F6FDB;fill-opacity:.16;stroke:#2F6FDB;stroke-width:1}
+.meter{fill:#2F6FDB;stroke:#FFFFFF;stroke-width:2}
+.sweep-pass{stroke:#1D262B;stroke-width:3;stroke-opacity:.55}
+.sweep-unsure{stroke:#1D262B;stroke-width:3;stroke-opacity:.3;stroke-dasharray:2 3}
+.cable{stroke:#7B3FC4;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.battery{fill:#D7263D;stroke:#7A0F1E;stroke-width:1.5}
+.battery.unsure{fill:#D7263D;fill-opacity:.35;stroke-dasharray:5 3}
+.battery-ring{fill:none;stroke:#D7263D;stroke-width:1.3;stroke-dasharray:6 4}
+.dim{stroke:#1D262B;stroke-width:1}
+text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
+.label{font-size:12px}.small{font-size:11px;fill:#4A565C}
+.dim-text{font-size:12px;font-weight:600;paint-order:stroke;stroke:#F2F4F3;stroke-width:4px}
+.cable-text{font-size:12px;font-weight:600;fill:#5E2A9E;paint-order:stroke;stroke:#F2F4F3;stroke-width:4px}
+@media (prefers-color-scheme:dark){
+.paper{fill:#141A1D}.wall,.ink,.gap,.opening-mark,.dim{stroke:#E4E9EB}
+.opening{stroke:#141A1D}text{fill:#E4E9EB}.small{fill:#A9B4B9}
+.dim-text,.cable-text{stroke:#141A1D}.cable-text{fill:#C9A8F2}
+.lawn{fill:#2C3B28}.mulch{fill:#3A3226}.gravel,.concrete{fill:#30363A}.deck{fill:#4A3C29}
+.drive{fill:#40474C}.object{fill:#20282C;stroke:#E4E9EB}.pool{fill:#1F3D45}
+.sweep-pass,.sweep-unsure{stroke:#E4E9EB}.fog-line,.poche-line{stroke:#E4E9EB}}
+</style><defs>
+<pattern id="fog" width="8" height="8" patternUnits="userSpaceOnUse"
+ patternTransform="rotate(45)">
+<line class="fog-line" x1="0" y1="0" x2="0" y2="8"/></pattern>
+<pattern id="poche" width="6" height="6" patternUnits="userSpaceOnUse"
+ patternTransform="rotate(-45)">
+<line class="poche-line" x1="0" y1="0" x2="0" y2="6"/></pattern>
+</defs>
+<rect class="paper" width="960" height="641"/>
+<path class="mulch" d="M28.0,254.0 L28.0,404.7 L932.0,404.7 L932.0,254.0 L28.0,254.0 Z"/>
+<path class="lawn" d="M28.0,404.7 L28.0,549.1 L932.0,549.1 L932.0,404.7 L28.0,404.7 Z"/>
+<path class="fog" d="M224.9,206.6 L222.6,254.0 L224.9,301.4 L231.9,348.3 L243.4,394.3 L254.0,423.9 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,254.0 L254.0,84.1 L243.4,113.7 L231.9,159.7 L224.9,206.6 Z M706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,254.0 L706.0,549.1 L932.0,549.1 L932.0,28.0 L706.0,28.0 L706.0,254.0 Z"/>
+<path class="meter-area" d="M319.9,367.0 L414.1,367.0 L414.1,254.0 L319.9,254.0 L319.9,367.0 Z"/>
+<path class="poche" d="M254.0,254.0 L706.0,254.0 L706.0,220.1 L254.0,220.1 L254.0,254.0 Z"/>
+<path class="sweep-unsure" d="M406.6,237.0 L518.9,237.0"/>
+<path class="sweep-unsure" d="M423.3,237.0 L588.3,237.0"/>
+<path class="sweep-unsure" d="M494.1,237.0 L701.4,237.0"/>
+<path class="sweep-unsure" d="M607.1,237.0 L706.0,237.0 L706.0,237.0"/>
+<path class="wall" d="M254.0,254.0 L706.0,254.0"/>
+<path class="cable" d="M367.0,254.0 L423.3,254.0"/>
+<text class="cable-text" x="395.2" y="163.6" text-anchor="middle" dominant-baseline="middle">Cable 1 ft 6 in</text>
+<path class="battery-ring" d="M310.3,436.1 L633.6,436.1 L633.6,141.0 L310.3,141.0 L310.3,436.1 Z"/>
+<path class="battery unsure" d="M423.3,323.1 L520.6,323.1 L520.6,254.0 L423.3,254.0 L423.3,323.1 Z"/>
+<circle class="meter" cx="367.0" cy="254.0" r="7"/>
+<text class="label" x="367.0" y="193.7" text-anchor="middle" dominant-baseline="middle">Meter</text>
+<line class="ink" x1="28" y1="603.055543" x2="216.3" y2="603.055543" stroke-width="2"/>
+<line class="ink" x1="28.0" y1="599.055543" x2="28.0" y2="607.055543"/>
+<line class="ink" x1="122.2" y1="599.055543" x2="122.2" y2="607.055543"/>
+<line class="ink" x1="216.3" y1="599.055543" x2="216.3" y2="607.055543"/>
+<text class="small" x="224.3" y="607.055543">5 ft</text>
+<rect class="battery" x="280.3333333333333" y="596.055543" width="18" height="14"/>
+<text class="small" x="304.3333333333333" y="607.055543">Battery</text>
+<line class="cable" x1="362.73333333333335" y1="603.055543" x2="380.73333333333335" y2="603.055543"/>
+<text class="small" x="386.73333333333335" y="607.055543">Cable</text>
+<rect class="meter-area" x="430.73333333333335" y="596.055543" width="18" height="14"/>
+<text class="small" x="454.73333333333335" y="607.055543">Meter working space</text>
+<rect class="gas" x="599.5333333333333" y="596.055543" width="18" height="14"/>
+<text class="small" x="623.5333333333333" y="607.055543">Gas</text>
+<rect class="fog" x="653.1333333333333" y="596.055543" width="18" height="14"/>
+<text class="small" x="677.1333333333333" y="607.055543">Not seen</text>
+<text class="label" x="932" y="607.055543" text-anchor="end" font-weight="600">Needs review</text>
+</svg>

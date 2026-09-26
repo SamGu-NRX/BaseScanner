@@ -1,0 +1,744 @@
+/* Placement review: an inspector's field sheet on drafting film. The palette matches the site
+   plan the server draws (paper, ink, blue meter area, purple cable, red battery). */
+
+:root {
+  --paper: #f2f4f3;
+  --sheet: #fbfcfb;
+  --ink: #1d262b;
+  --ink-2: #4a565c;
+  --rule: #cbd2d5;
+  --rule-soft: #e3e8ea;
+  --grid: rgb(29 38 43 / 0.05);
+  --fits: #1e6b45;
+  --review: #92560a;
+  --no-spot: #a12622;
+  --focus: #2f6fdb;
+
+  --font-display: "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Public Sans Variable", "Public Sans", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  color-scheme: light dark;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141a1d;
+    --sheet: #1a2225;
+    --ink: #e4e9eb;
+    --ink-2: #a9b4b9;
+    --rule: #34403f;
+    --rule-soft: #243033;
+    --grid: rgb(228 233 235 / 0.04);
+    --fits: #5fc592;
+    --review: #e7a64a;
+    --no-spot: #f07a6f;
+    --focus: #7aa7f5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  /* Faint drafting grid behind the sheet. */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2,
+p,
+dl,
+dd,
+ol,
+ul,
+figure {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+}
+
+code {
+  font-family: var(--font-data);
+  font-size: 0.9em;
+  background: var(--rule-soft);
+  padding: 0.05em 0.35em;
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- page ------------------------------------------------------------------------------------ */
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 20px 48px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: 0.01em;
+}
+
+.brand-sub {
+  margin-left: 8px;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+  padding-top: 24px;
+}
+
+@media (min-width: 900px) {
+  .layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+  }
+
+  .aside {
+    position: sticky;
+    top: 24px;
+  }
+}
+
+/* --- controls -------------------------------------------------------------------------------- */
+
+.button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--sheet);
+  font: 600 0.95rem var(--font-body);
+  cursor: pointer;
+  transition: transform 160ms var(--ease-out);
+}
+
+.button.quiet {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule);
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.server {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--rule);
+}
+
+.status-dot[data-status="up"] {
+  background: var(--fits);
+}
+
+.status-dot[data-status="down"] {
+  background: var(--no-spot);
+}
+
+.server-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.server-url {
+  font-family: var(--font-data);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-status {
+  font-size: 0.8rem;
+  color: var(--ink-2);
+}
+
+.server-form {
+  flex-wrap: wrap;
+}
+
+.server-form label {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.server-form input {
+  min-height: 44px;
+  min-width: 0;
+  width: 18rem;
+  max-width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--sheet);
+  color: var(--ink);
+  font: 0.9rem var(--font-data);
+}
+
+/* --- scene panel ----------------------------------------------------------------------------- */
+
+.panel-title,
+.block h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.scene-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.samples {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+}
+
+.sample {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--sheet);
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 160ms var(--ease-out),
+    border-color 160ms ease;
+}
+
+.sample:active {
+  transform: scale(0.98);
+}
+
+.sample[aria-pressed="true"] {
+  border-color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--ink);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sample:hover {
+    border-color: var(--ink-2);
+  }
+}
+
+.sample-title {
+  font-weight: 650;
+}
+
+.sample-about {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+/* On a phone the list sits above the answer: titles only, so the answer stays close. */
+@media (max-width: 899px) {
+  .sample-about {
+    display: none;
+  }
+
+  .sample {
+    padding: 10px 14px;
+  }
+}
+
+.drop {
+  display: grid;
+  gap: 2px;
+  padding: 14px;
+  border: 1.5px dashed var(--rule);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 160ms ease;
+}
+
+.drop[data-dragging="true"] {
+  border-color: var(--ink);
+  background: var(--rule-soft);
+}
+
+.drop:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.drop-title {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.drop-hint {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+/* --- sheet ----------------------------------------------------------------------------------- */
+
+.sheet {
+  position: relative;
+  min-height: 360px;
+  padding: 24px;
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--sheet);
+  overflow: hidden;
+}
+
+@media (max-width: 599px) {
+  .sheet {
+    padding: 18px 16px;
+  }
+}
+
+.empty,
+.failure {
+  display: grid;
+  gap: 12px;
+  max-width: 36rem;
+}
+
+.empty h1,
+.failure h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.failure .detail {
+  font-family: var(--font-data);
+  font-size: 0.85rem;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.waiting {
+  color: var(--ink-2);
+}
+
+/* Shown only when an answer takes longer than 150ms; most arrive before it would flash. */
+.progress {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  overflow: hidden;
+  opacity: 0;
+  animation: appear 0s linear 150ms forwards;
+}
+
+.progress::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: var(--ink);
+  animation: sweep 1.1s linear infinite;
+}
+
+@keyframes appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.answer {
+  transition: opacity 160ms ease 150ms;
+}
+
+.answer[data-stale="true"] {
+  opacity: 0.45;
+}
+
+/* --- result ---------------------------------------------------------------------------------- */
+
+.result {
+  display: grid;
+  gap: 24px;
+}
+
+.verdict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 24px;
+}
+
+/* The inspector's stamp: the one mark the page is remembered by. */
+.stamp {
+  flex: none;
+  padding: 0.15em 0.6em 0.1em;
+  border: 3px solid currentColor;
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 0 2px var(--sheet),
+    inset 0 0 0 3.5px currentColor;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 4vw, 2.1rem);
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  transform: rotate(-3deg);
+  animation: stamp 220ms var(--ease-out) both;
+}
+
+.stamp[data-decision="pass"] {
+  color: var(--fits);
+}
+
+.stamp[data-decision="manual_review"] {
+  color: var(--review);
+}
+
+.stamp[data-decision="reject"] {
+  color: var(--no-spot);
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: rotate(-3deg) scale(1.12);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-3deg) scale(1);
+  }
+}
+
+.verdict-text {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 18rem;
+}
+
+.summary {
+  font-size: 1.15rem;
+  font-weight: 550;
+  line-height: 1.4;
+  text-wrap: pretty;
+}
+
+.source {
+  font-size: 0.85rem;
+  color: var(--ink-2);
+}
+
+.facts {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-block: 1px solid var(--rule);
+}
+
+@media (min-width: 600px) {
+  .facts {
+    /* The battery's place is the longest fact. */
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(0, 0.8fr);
+    gap: 16px;
+  }
+}
+
+.facts dt {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.facts dd {
+  font-family: var(--font-data);
+  font-size: 1.02rem;
+}
+
+.plan img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+}
+
+.plan-missing {
+  padding: 24px;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  color: var(--ink-2);
+}
+
+.block {
+  display: grid;
+  gap: 10px;
+}
+
+.checks {
+  display: grid;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.check:first-child {
+  border-top: 0;
+}
+
+.outcome::before {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font: 700 0.8rem / 1 var(--font-body);
+  color: var(--sheet);
+}
+
+.check[data-outcome="pass"] .outcome::before {
+  content: "✓";
+  background: var(--fits);
+}
+
+.check[data-outcome="unsure"] .outcome::before {
+  content: "?";
+  background: var(--review);
+}
+
+.check[data-outcome="fail"] .outcome::before {
+  content: "✕";
+  background: var(--no-spot);
+}
+
+.check-body {
+  display: grid;
+  gap: 2px;
+}
+
+.check-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+
+.check-label {
+  font-weight: 650;
+}
+
+.cause {
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--review);
+}
+
+.figure {
+  font-family: var(--font-data);
+  font-size: 0.9rem;
+}
+
+.limit {
+  color: var(--ink-2);
+}
+
+.reason {
+  font-size: 0.92rem;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.views {
+  display: grid;
+  gap: 8px;
+  padding-left: 1.4em;
+}
+
+.views li::marker {
+  font-family: var(--font-data);
+  color: var(--ink-2);
+}
+
+.all-checks summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.all-checks summary::-webkit-details-marker {
+  display: none;
+}
+
+.all-checks summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--ink-2);
+  border-bottom: 2px solid var(--ink-2);
+  transform: rotate(-45deg);
+  transition: transform 160ms var(--ease-out);
+}
+
+.all-checks[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.all-checks summary h2 {
+  display: inline;
+}
+
+/* Sections rise in after the stamp lands, 40ms apart. */
+.reveal {
+  animation: rise 240ms var(--ease-out) both;
+}
+
+.result > .reveal:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.result > .reveal:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.result > .reveal:nth-child(4) {
+  animation-delay: 120ms;
+}
+
+.result > .reveal:nth-child(n + 5) {
+  animation-delay: 160ms;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp,
+  .reveal {
+    animation: fade 160ms ease both;
+  }
+
+  .progress::before {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+
+  .button:active,
+  .sample:active {
+    transform: none;
+  }
+}
