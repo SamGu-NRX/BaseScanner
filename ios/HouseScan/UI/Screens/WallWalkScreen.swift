@@ -159,26 +159,8 @@ struct WallWalkScreen: View {
             }
             .transition(.opacity)
         case .overheadQuestion:
-            // Same shape as the end question: one question, two equal full-width answers.
-            VStack(spacing: 8) {
-                Button {
-                    actions.answerOverhead(clear: true)
-                } label: {
-                    Label(ScanCopy.overheadClear, systemImage: "sun.max")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.secondaryProminent)
-                .accessibilityIdentifier("action.overheadClear")
-                Button {
-                    actions.answerOverhead(clear: false)
-                } label: {
-                    Label(ScanCopy.overheadCovered, systemImage: "house")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.secondaryProminent)
-                .accessibilityIdentifier("action.overheadCovered")
-            }
-            .transition(.opacity)
+            OverheadAnswers(actions: actions)
+                .transition(.opacity)
         case .tray:
             FeatureTray(
                 onPick: { kind in actions.beginMarking(kind) },

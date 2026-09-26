@@ -66,7 +66,9 @@ final class ScanEngine {
     /// Tilt-up views kept when the current gap request began: an overhead request is closed by a
     /// new one (`recordOverheadClear`), which keeps no keyframe.
     private var overheadViewsAtGapStart = 0
-    private var skippedGaps: [GapPlan] = []
+    /// Requests the homeowner skipped or answered with something overhead: they go to installer
+    /// review, and the result doesn't offer them as captures again.
+    private(set) var skippedGaps: [GapPlan] = []
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
     var pastEndSide: WallSide?
@@ -178,9 +180,15 @@ final class ScanEngine {
         case .gapRequest:
             live?.setMode(.walk)
             if let replay {
-                let range = replay.heldBack.map { ReplayPlanning.gapReplayRange($0.frames) } ?? 0..<replay.frames.count
                 autoCapture.reset()
-                replay.play(range: range, speed: replaySpeed)
+                // An overhead request is answered by tilting up, which the tilt-up frames show;
+                // other requests by the frames held back from the walk.
+                if case .overhead = gapPlan?.need, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
+                    replay.play(range: Self.tiltUpFrames(in: replay, map: map), speed: replaySpeed)
+                } else {
+                    let range = replay.heldBack.map { ReplayPlanning.gapReplayRange($0.frames) } ?? 0..<replay.frames.count
+                    replay.play(range: range, speed: replaySpeed)
+                }
             }
         case .markFeatures, .uploading, .result:
             live?.setMode(.idle)
@@ -555,15 +563,28 @@ final class ScanEngine {
         return map.overheadReach(from: camera).filter { $0.out >= height }.map(\.span)
     }
 
-    /// Raises the overhead question when a frame with normal tracking during the tilt-up step is
-    /// tilted up over any of its stretch. Only the homeowner can say whether what is above is
-    /// open sky or an eave. Every frame counts, not only kept keyframes: the view is evidence
-    /// through the answer, not through a photo.
+    /// Raises the overhead question when a frame with normal tracking is tilted up where the scan
+    /// needs it: over any of the tilt-up step's stretch during the walk, or, for an overhead gap
+    /// request, over enough of the requested span that recording it settles the request
+    /// (`GapPlanner.overheadViewSettles`), so "nothing overhead" always closes it. Only the
+    /// homeowner can say whether what is above is open sky or an eave. Every frame counts, not
+    /// only kept keyframes: the view is evidence through the answer, not through a photo.
     private func askOverheadIfTiltedUp(_ frame: SourceFrame) {
-        guard !state.overheadQuestion, frame.tracking == .normal, let map = coverage,
-              state.phase == .wallWalk, case .tiltUp(let wanted) = state.guidance else { return }
+        guard !state.overheadQuestion, frame.tracking == .normal, let map = coverage else { return }
+        let wanted: ClosedRange<Float>
+        switch state.phase {
+        case .wallWalk:
+            guard case .tiltUp(let span) = state.guidance else { return }
+            wanted = span
+        case .gapRequest:
+            guard let plan = gapPlan, case .overhead = plan.need, state.gap?.isSatisfied == false else { return }
+            wanted = plan.span
+        default:
+            return
+        }
         let seen = Self.tiltedUp(frame.camera, map)
         guard seen.contains(where: { $0.overlaps(wanted) }) else { return }
+        if state.phase == .gapRequest, let plan = gapPlan, !gapPlanner.overheadViewSettles(plan, map, camera: frame.camera) { return }
         pendingOverhead = frame
         state.overheadQuestion = true
         RuntimeLog.engine.info("tilt-up view over s \(seen.first?.lowerBound ?? 0)...\(seen.last?.upperBound ?? 0): asking what is overhead")
@@ -582,8 +603,27 @@ final class ScanEngine {
         RuntimeLog.engine.info("tilt-up step settled: \(recorded ? "clear overhead recorded" : "nothing recorded", privacy: .public)")
     }
 
-    /// The replay's closing run of tilted-up frames (`tiltedUp`): the walk leaves them out and the
-    /// tilt-up step plays them (`playReplayTiltUp`). Empty at the end when the recording has none.
+    /// The answer to the overhead question during an overhead gap request. "Nothing overhead"
+    /// keeps the view, which was checked to settle the request when the question was raised, so
+    /// the request closes through `updateGap`. Something overhead means no view can settle it:
+    /// the request goes to installer review and the gap loop moves on to the upload.
+    func settleOverheadGap(clear: Bool) {
+        let frame = pendingOverhead
+        pendingOverhead = nil
+        state.overheadQuestion = false
+        guard clear else {
+            skipCurrentGap(because: "something is overhead")
+            return
+        }
+        guard let frame, recordOverheadClear(from: frame) else {
+            RuntimeLog.engine.error("overhead answer: the view asked about could not be recorded")
+            return
+        }
+    }
+
+    /// The replay's closing run of tilted-up frames (`tiltedUp`): the walk leaves them out, and
+    /// the tilt-up step and overhead gap requests play them (`playReplayTiltUp`). Empty at the end
+    /// when the recording has none.
     static func tiltUpFrames(in replay: ReplayPlayer, map: CoverageMap) -> Range<Int> {
         var start = replay.frames.count
         while start > 0, !tiltedUp(replay.camera(at: start - 1), map).isEmpty { start -= 1 }
@@ -859,6 +899,8 @@ final class ScanEngine {
     private func afterGapResolved() {
         gapPlan = nil
         pastEndSide = nil
+        pendingOverhead = nil
+        state.overheadQuestion = false
         state.gap = nil
         startUpload()
     }
@@ -897,14 +939,16 @@ final class ScanEngine {
         return true
     }
 
-    func skipCurrentGap() {
+    /// Ends the current request without the view it asked for ("I can't get there", or something
+    /// overhead): recorded for installer review, then on to the upload.
+    func skipCurrentGap(because reason: String = "the homeowner can't get there") {
         guard let plan = gapPlan else { return }
         // Only a cell request marks cells: skipping a deeper, walked or overhead view says
         // nothing about the band the strip draws.
         if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
         skippedGaps.append(plan)
         publishCoverage()
-        RuntimeLog.engine.info("gap \(self.gapCounter) skipped")
+        RuntimeLog.engine.info("gap \(self.gapCounter) left for installer review: \(reason, privacy: .public)")
         afterGapResolved()
     }
 

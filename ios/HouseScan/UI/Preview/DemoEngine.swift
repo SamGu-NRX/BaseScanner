@@ -74,7 +74,11 @@ final class DemoEngine: ScanActions {
         if arguments.contains("-uiDemoEndQuestion") {
             state.endQuestion = .left
         }
-        if arguments.contains("-uiDemoTiltUp") || arguments.contains("-uiDemoOverheadQuestion") {
+        if arguments.contains("-uiDemoOverheadQuestion"), state.phase == .gapRequest {
+            // An overhead request whose tilted-up view just came in.
+            script?.cancel()
+            state.overheadQuestion = true
+        } else if arguments.contains("-uiDemoTiltUp") || arguments.contains("-uiDemoOverheadQuestion") {
             enterTiltUp()
             state.overheadQuestion = arguments.contains("-uiDemoOverheadQuestion")
         }
@@ -243,7 +247,11 @@ final class DemoEngine: ScanActions {
         default:
             break
         }
-        run { engine in await engine.gapScript(span: span) }
+        if gapKind == "overhead" {
+            run { engine in await engine.overheadGapScript() }
+        } else {
+            run { engine in await engine.gapScript(span: span) }
+        }
     }
 
     private func enterUpload() {
@@ -336,6 +344,13 @@ final class DemoEngine: ScanActions {
         state.gap?.isSatisfied = true
         guard await pause(1.6) else { return }
         enterUpload()
+    }
+
+    /// About two seconds of tilting up, then the view covers the request and the question comes up.
+    private func overheadGapScript() async {
+        guard await pause(2.4) else { return }
+        capture(.gap)
+        state.overheadQuestion = true
     }
 
     private func uploadScript() async {
@@ -738,6 +753,17 @@ extension DemoEngine {
     func answerOverhead(clear: Bool) {
         guard state.overheadQuestion else { return }
         state.overheadQuestion = false
+        if state.phase == .gapRequest {
+            // "Nothing overhead" closes the request; anything overhead leaves it to the installer.
+            guard clear else { return enterUpload() }
+            state.gap?.progress = 1
+            state.gap?.isSatisfied = true
+            run { engine in
+                guard await engine.pause(1.6) else { return }
+                engine.enterUpload()
+            }
+            return
+        }
         tiltUpSettled = true
         refreshGuidance()
     }

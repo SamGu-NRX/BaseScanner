@@ -66,6 +66,33 @@ import Testing
         #expect(spans.allSatisfy { $0.out > 2.5 })
     }
 
+    /// The overhead question during an overhead request comes up only for a view that settles it
+    /// once recorded, alone or with the views already kept; the check itself records nothing.
+    @Test func aViewSettlesAnOverheadRequestOnlyOverItsWholeSpan() {
+        let planner = GapPlanner()
+        let map = CoverageMap(wall: standardWall())
+        let view = Self.tiltUp(pitch: 30)  // 5.01 m up over -0.9144 ... 0.9144
+        let headroom: Float = 6.5 * 0.3048
+        #expect(planner.overheadViewSettles(GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(headroom)), map, camera: view))
+        #expect(planner.overheadViewSettles(GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(nil)), map, camera: view))
+        // Past the view's side, or higher than it reaches.
+        #expect(!planner.overheadViewSettles(GapPlan(band: .wall, span: 0.5...1.3, reason: .server, need: .overhead(headroom)), map, camera: view))
+        #expect(!planner.overheadViewSettles(GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(5.1)), map, camera: view))
+        // Only overhead requests.
+        #expect(!planner.overheadViewSettles(GapPlan(band: .wall, span: 0...0.786, reason: .server), map, camera: view))
+        // Pitched down, the view shows nothing above the wall band.
+        #expect(!planner.overheadViewSettles(GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(nil)), map, camera: Self.tiltUp(pitch: -20)))
+
+        // -1.5 ... 0.5 is wider than one view; with a view from s = -0.8 kept, this one completes it.
+        let wide = GapPlan(band: .wall, span: -1.5...0.5, reason: .server, need: .overhead(headroom))
+        #expect(!planner.overheadViewSettles(wide, map, camera: view))
+        var kept = map
+        kept.recordOverhead(Self.tiltUp(s: -0.8, pitch: 30), trackingNormal: true)
+        #expect(!planner.isSatisfied(wide, kept))
+        #expect(planner.overheadViewSettles(wide, kept, camera: view))
+        #expect(kept.overheadCameras.count == 1 && map.overheadCameras.isEmpty)
+    }
+
     @Test func exportSendsTheHeightSeen() throws {
         var map = CoverageMap(wall: standardWall())
         map.recordOverhead(Self.tiltUp(pitch: 30), trackingNormal: true)

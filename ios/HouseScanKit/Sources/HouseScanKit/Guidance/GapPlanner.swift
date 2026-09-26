@@ -137,6 +137,17 @@ public struct GapPlanner: Sendable {
         return gap.need == .cells ? progress >= config.satisfiedFraction : progress >= 1
     }
 
+    /// Whether a tilt-up view settles an overhead request once the homeowner says nothing is
+    /// overhead: recorded with the views already kept, it meets the request over the whole span.
+    /// False for any other request. The engine asks the overhead question only when this holds,
+    /// so the answer "nothing overhead" always closes the request.
+    public func overheadViewSettles(_ gap: GapPlan, _ coverage: CoverageMap, camera: CameraFrame) -> Bool {
+        guard case .overhead = gap.need else { return false }
+        var trial = coverage
+        guard !trial.recordOverhead(camera, trackingNormal: true).isEmpty else { return false }
+        return isSatisfied(gap, trial)
+    }
+
     private func distanceToMeter(_ run: ClosedRange<Float>) -> Float {
         run.contains(0) ? 0 : min(abs(run.lowerBound), abs(run.upperBound))
     }

@@ -109,12 +109,20 @@ extension ScanEngine: ScanActions {
     }
 
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
-    /// porch or stairs" records nothing, so the server treats the stretch as unseen.
+    /// porch or stairs" records nothing, so the server treats the stretch as unseen. During an
+    /// overhead gap request the answer settles the request either way (`settleOverheadGap`).
     func answerOverhead(clear: Bool) {
-        guard state.overheadQuestion, state.phase == .wallWalk else { return }
-        settleTiltUp(clear: clear)
-        if let frame = currentFrame {
-            resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
+        guard state.overheadQuestion else { return }
+        switch state.phase {
+        case .wallWalk:
+            settleTiltUp(clear: clear)
+            if let frame = currentFrame {
+                resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
+            }
+        case .gapRequest:
+            settleOverheadGap(clear: clear)
+        default:
+            return
         }
     }
 

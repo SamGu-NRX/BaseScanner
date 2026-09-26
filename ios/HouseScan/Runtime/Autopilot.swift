@@ -65,7 +65,9 @@ final class Autopilot {
         engine.confirmFeatures()
         await pause(0.3)
         if engine.state.phase == .gapRequest {
-            if replay.heldBack == nil {
+            if engine.state.gap?.reason == .overhead {
+                await answerOverheadGap()
+            } else if replay.heldBack == nil {
                 await pause(hold)
                 log("skipping the gap: no held-back frames to show it")
                 await engine.waitForGate(.gapRequest)
@@ -230,6 +232,23 @@ final class Autopilot {
         await pause(hold)
         engine.answerOverhead(clear: true)
         log("answered the overhead question: open sky; \(overheadSummary)")
+    }
+
+    /// An overhead gap request: the engine plays the recording's tilt-up frames for it, and the
+    /// question comes up only when one of them settles the request. The synthetic fixture shows
+    /// open sky above its wall, so the answer is "Open sky or nothing overhead". When no tilt-up
+    /// frame covers the requested span, "I can't get there", as a homeowner would.
+    private func answerOverheadGap() async {
+        guard await waitUntil(timeout: 20, { self.engine.state.overheadQuestion || self.engine.state.phase != .gapRequest }),
+              engine.state.overheadQuestion else {
+            log("no tilt-up frame covers the overhead request; skipping it")
+            await engine.waitForGate(.gapRequest)
+            engine.skipGap()
+            return
+        }
+        await pause(hold)
+        engine.answerOverhead(clear: true)
+        log("answered the overhead request: open sky; \(overheadSummary)")
     }
 
     /// The overhead views kept and the stretches they show clear, as the export will send them.
