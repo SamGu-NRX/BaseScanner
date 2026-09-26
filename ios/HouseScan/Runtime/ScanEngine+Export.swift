@@ -75,11 +75,7 @@ extension ScanEngine {
             objectPlusMinus: groundError,
             features: features,
             coverage: SceneCoverage(
-                leftEndMarked: wallEndKinds[.left] == .limit,
-                rightEndMarked: wallEndKinds[.right] == .limit,
-                wall: map.coveredIntervals(.wall),
-                ground: map.coveredIntervals(.ground),
-                groundOut: map.config.groundBandDepth
+                map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
             ),
             keyframes: keyframes,
             stills: store.stills

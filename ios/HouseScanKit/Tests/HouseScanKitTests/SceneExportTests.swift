@@ -28,7 +28,7 @@ import simd
                 .fence(foot: [w.world(s: -1, height: 0, out: 2.0), w.world(s: 2, height: 0, out: 2.4)]),
                 .driveway(edge: [w.world(s: 4, height: 0, out: 1), w.world(s: 5, height: 0, out: 1)]),
             ],
-            coverage: SceneCoverage(leftEndMarked: true, rightEndMarked: false, wall: [-3...5], ground: [-3...4], groundOut: 3),
+            coverage: SceneCoverage(leftEndMarked: true, rightEndMarked: false, wall: [-3...5], ground: [ObservedSpan(span: -3...4, out: 3)]),
             keyframes: [
                 SceneKeyframe(id: "k1", cameraToWorld: pose, intrinsics: SIMD4(1450, 1450, 960, 720), w: 1920, h: 1440, img: "k1.jpg"),
                 SceneKeyframe(id: "k2", cameraToWorld: matrix_identity_float4x4, intrinsics: SIMD4(1450, 1450, 960, 720), w: 1920, h: 1440, img: "k2.jpg"),

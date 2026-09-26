@@ -83,20 +83,22 @@ public struct SceneCoverage: Sendable {
     public var rightEndMarked: Bool
     /// Stretches of wall face seen, in s meters.
     public var wall: [ClosedRange<Float>]
-    /// Stretches of ground seen in front of the wall, in s meters, each out to `groundOut`.
-    public var ground: [ClosedRange<Float>]
-    /// How far out from the wall the ground was seen, meters.
-    public var groundOut: Float
+    /// Stretches of ground seen in front of the wall, each with how far out it was seen
+    /// (`CoverageMap.groundDepthSpans()`).
+    public var ground: [ObservedSpan]
 
-    public init(
-        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>],
-        ground: [ClosedRange<Float>], groundOut: Float
-    ) {
+    public init(leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan]) {
         self.leftEndMarked = leftEndMarked
         self.rightEndMarked = rightEndMarked
         self.wall = wall
         self.ground = ground
-        self.groundOut = groundOut
+    }
+
+    /// Everything `map` observed, with the ends' kinds from the homeowner's answers.
+    public init(_ map: CoverageMap, leftEndMarked: Bool, rightEndMarked: Bool) {
+        self.init(
+            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked,
+            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans())
     }
 }
 
@@ -208,6 +210,29 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     }
 }
 
+extension ObservedSpan {
+    /// At most `limit` spans (`limit` >= 1), made by joining the touching neighbours whose reaches
+    /// differ least, each join keeping the smaller reach, so nothing reports more than was seen.
+    /// Spans that do not touch are never joined: that would claim the gap between them. If more
+    /// than `limit` separate runs remain, the shortest are dropped, which only ever under-reports.
+    static func coarsened(_ spans: [ObservedSpan], toAtMost limit: Int) -> [ObservedSpan] {
+        var spans = spans.sorted { $0.span.lowerBound < $1.span.lowerBound }
+        let touching: Float = 1e-4
+        while spans.count > limit {
+            let joinable = spans.indices.dropLast().filter { abs(spans[$0].span.upperBound - spans[$0 + 1].span.lowerBound) < touching }
+            let difference = { (i: Int) in abs(spans[i].out - spans[i + 1].out) }
+            let length = { (i: Int) in spans[i].span.upperBound - spans[i].span.lowerBound }
+            guard let best = joinable.min(by: { difference($0) < difference($1) }) else {
+                if let shortest = spans.indices.min(by: { length($0) < length($1) }) { spans.remove(at: shortest) }
+                continue
+            }
+            spans[best] = ObservedSpan(span: spans[best].span.lowerBound...spans[best + 1].span.upperBound, out: min(spans[best].out, spans[best + 1].out))
+            spans.remove(at: best + 1)
+        }
+        return spans
+    }
+}
+
 public enum SceneExport {
     /// Half the plan width of a tapped point object. The tap gives one point, not a size, so the
     /// object is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
@@ -221,6 +246,8 @@ public enum SceneExport {
     /// Tolerance for "unit horizontal" on the wall's outward vector. Float round-off from ARKit
     /// transforms is ~1e-6; 1e-3 rejects a caller passing an unnormalized or tilted vector.
     static let unitTolerance: Float = 1e-3
+    /// scene.schema.json's `coverage.observed` maxItems.
+    static let maxObserved = 500
 
     /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
     public static func jsonData(_ input: SceneInput) throws -> Data {
@@ -307,10 +334,17 @@ public enum SceneExport {
         }
 
         let coverage = input.coverage
+        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground)]
+        for (band, spans) in reaches {
+            for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
+        }
+        // scene.schema.json allows at most `maxObserved` entries. Wall stretches are few (one per
+        // unbroken run); the budget left is shared by the bands that carry a reach.
+        let budget = max(reaches.count, maxObserved - coverage.wall.count)
+        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: budget / reaches.count)) }
         var observed: [SceneDocument.Observed] = coverage.wall.map { .init(band: "wall", span_ft: spanFeet($0), out_ft: nil) }
-        if !coverage.ground.isEmpty {
-            try requireNonNegative(coverage.groundOut, "coverage.groundOut")
-            observed += coverage.ground.map { .init(band: "ground", span_ft: spanFeet($0), out_ft: feet(coverage.groundOut)) }
+        for (band, spans) in reaches {
+            observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
         }
 
         let keyframes = try input.keyframes.map(keyframe)
@@ -378,6 +412,15 @@ public enum SceneExport {
     }
 
     private static func feet(_ meters: Float) -> Double { round4(Double(meters) * SceneUnits.feetPerMeter) }
+
+    /// A reach in feet, rounded down to 4 decimals: the server takes every `out_ft` as exact, so
+    /// rounding must never report more than was seen. The 1e-7 ft allowance keeps Float noise in a
+    /// whole number of 6 in rows (1.4999999 ft for 3 rows) from dropping a full 0.0001 ft.
+    private static func feetDown(_ meters: Float) -> Double {
+        let value = Double(meters) * SceneUnits.feetPerMeter
+        let down = ((value + 1e-7) * 10_000).rounded(.down) / 10_000
+        return down == 0 ? 0 : down
+    }
 
     private static func spanFeet(_ span: ClosedRange<Float>) -> [Double] { [feet(span.lowerBound), feet(span.upperBound)] }
 
