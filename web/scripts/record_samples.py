@@ -6,25 +6,21 @@ the result schema changes:
 
     cd server && PYTHONPATH=. uv run python ../web/scripts/record_samples.py
 
-The answers use the public rules with automatic decisions turned on (policy "sample-demo"), so
-the samples can show a pass and a reject; the public rules alone send both to manual review.
+The answers use the public rules alone, as the hosted server does, so a saved answer says what the
+live server says. Those rules are not approved for automatic decisions, so every sample is
+recorded as manual review; the reasons and checks still differ.
 """
 
 import json
 from pathlib import Path
 
-from rules import deep_merge, public_rules_dict, rules_from_dict
+from rules import public_rules_dict, rules_from_dict
 from scene import parse_scene
 from siteplan import render
 from solver import solve
 
 OUT = Path(__file__).resolve().parents[1] / "src" / "samples"
-RULES = rules_from_dict(
-    deep_merge(
-        public_rules_dict(),
-        {"policy": {"id": "sample-demo", "version": "1", "auto_approve": True}},
-    )
-)
+RULES = rules_from_dict(public_rules_dict())
 
 
 def rect(x0, x1, z0, z1):

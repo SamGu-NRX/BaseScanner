@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ResultView, STAMP } from "./components/ResultView.tsx";
+import { type PlanState, ResultView, STAMP } from "./components/ResultView.tsx";
 import { ScenePanel } from "./components/ScenePanel.tsx";
 import { ServerSetting } from "./components/ServerSetting.tsx";
 import {
   checkHealth,
   type Failure,
   type Health,
-  type Placement,
+  isMixedContent,
   PlacementError,
   parseResult,
+  type Result,
   requestPlacement,
+  requestPlan,
 } from "./lib/api.ts";
+import { shownDecision } from "./lib/format.ts";
 import { type SceneInput, sceneFromFile, sceneFromSample } from "./lib/scene-input.ts";
 import { SAMPLES, type Sample } from "./samples/index.ts";
 
@@ -26,7 +29,9 @@ type View =
   /** input is null for a file refused in the browser, which there is no point resending. */
   | { status: "failed"; input: SceneInput | null; name: string; failure: Failure };
 
-interface Shown extends Placement {
+interface Shown {
+  result: Result;
+  plan: PlanState;
   saved: boolean;
   /** Changes for every new answer, so its entrance plays again. */
   key: number;
@@ -34,8 +39,15 @@ interface Shown extends Placement {
   replacing: boolean;
 }
 
-function savedAnswer(sample: Sample): Placement {
-  return { result: parseResult(JSON.parse(sample.savedResult)), plan: sample.savedPlan };
+/** Puts a site plan that arrived after its answer into whichever view still holds that answer. */
+function withPlan(view: View, key: number, plan: PlanState): View {
+  if (view.status === "shown" && view.shown.key === key) {
+    return { ...view, shown: { ...view.shown, plan } };
+  }
+  if (view.status === "loading" && view.previous?.key === key) {
+    return { ...view, previous: { ...view.previous, plan } };
+  }
+  return view;
 }
 
 // Storage can be blocked (a sandboxed frame, strict privacy settings); the page still works.
@@ -80,6 +92,8 @@ function failureOf(error: unknown): Failure {
 const FAILURE_TITLE: Record<Failure["kind"], string> = {
   unreachable: "Can't reach the placement server",
   refused: "The server refused this scene",
+  http_error: "The server answered with an error",
+  too_large: "Too large to send",
   unexpected: "That didn't work",
 };
 
@@ -90,6 +104,8 @@ export function App() {
   const [view, setView] = useState<View>({ status: "empty" });
   const serverRef = useRef(server);
   const inFlight = useRef<AbortController | null>(null);
+  // Separate, so changing servers stops a pending answer without dropping a plan on its way.
+  const planInFlight = useRef<AbortController | null>(null);
   const answers = useRef(0);
   const sheet = useRef<HTMLElement>(null);
 
@@ -107,6 +123,7 @@ export function App() {
 
   const solve = useCallback(async (input: SceneInput) => {
     inFlight.current?.abort();
+    planInFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
     setView((current) => ({
@@ -114,21 +131,9 @@ export function App() {
       input,
       previous: current.status === "shown" ? current.shown : null,
     }));
+    let result: Result;
     try {
-      const placement = await requestPlacement(serverRef.current, input, controller.signal);
-      answers.current += 1;
-      setView((current) => ({
-        status: "shown",
-        input,
-        shown: {
-          ...placement,
-          saved: false,
-          key: answers.current,
-          replacing: current.status === "loading" && current.previous !== null,
-        },
-      }));
-      // The answer proves the server is up and names its rules.
-      setHealth({ ok: true, policy: placement.result.policy.id ?? "none" });
+      result = await requestPlacement(serverRef.current, input, controller.signal);
     } catch (error) {
       if (controller.signal.aborted) {
         return;
@@ -138,6 +143,33 @@ export function App() {
       if (failure.kind === "unreachable") {
         setHealth({ ok: false });
       }
+      return;
+    }
+    answers.current += 1;
+    const key = answers.current;
+    setView((current) => ({
+      status: "shown",
+      input,
+      shown: {
+        result,
+        plan: { status: "drawing" },
+        saved: false,
+        key,
+        replacing: current.status === "loading" && current.previous !== null,
+      },
+    }));
+    // The answer proves the server is up and names its rules.
+    setHealth({ ok: true, policy: result.policy.id ?? "none" });
+
+    // The plan is a second upload, so it is asked for only once the scene has an answer.
+    const planController = new AbortController();
+    planInFlight.current = planController;
+    try {
+      const svg = await requestPlan(serverRef.current, input, planController.signal);
+      const plan: PlanState = svg === null ? { status: "missing" } : { status: "ready", svg };
+      setView((current) => withPlan(current, key, plan));
+    } catch {
+      // Aborted: a newer scene replaced this answer.
     }
   }, []);
 
@@ -172,7 +204,13 @@ export function App() {
     setView({
       status: "shown",
       input,
-      shown: { ...savedAnswer(sample), saved: true, key: answers.current, replacing: false },
+      shown: {
+        result: parseResult(JSON.parse(sample.savedResult)),
+        plan: { status: "ready", svg: sample.savedPlan },
+        saved: true,
+        key: answers.current,
+        replacing: false,
+      },
     });
   }
 
@@ -220,7 +258,7 @@ export function App() {
     view.status === "loading"
       ? `Checking ${view.input.name}…`
       : view.status === "shown"
-        ? `${STAMP[view.shown.result.decision]}: ${view.shown.result.summary}`
+        ? `${STAMP[shownDecision(view.shown.result)]}: ${view.shown.result.summary}`
         : view.status === "failed"
           ? FAILURE_TITLE[view.failure.kind]
           : "";
@@ -300,16 +338,36 @@ function FailureView({ failure, sample, onRetry, onSaved }: FailureProps) {
   return (
     <div className="failure">
       <h2>{FAILURE_TITLE[failure.kind]}</h2>
-      {failure.kind === "unreachable" && (
+      {failure.kind === "unreachable" &&
+        (isMixedContent(failure.server, window.location.protocol) ? (
+          <p>
+            This page was loaded over https, so the browser blocks calls to the http address{" "}
+            <code className="address">{failure.server}</code>. Give the server an https address, or
+            run this page locally with <code>pnpm dev</code>.
+          </p>
+        ) : (
+          <>
+            <p>
+              Nothing answered at <code className="address">{failure.server}</code>. Start the
+              server from <code>server/</code> with <code>uv run uvicorn api:app</code>, or point
+              this page at another one with Change above.
+            </p>
+            <p className="detail">{failure.detail}</p>
+          </>
+        ))}
+      {failure.kind === "http_error" && (
         <>
           <p>
-            Nothing answered at <code className="address">{failure.server}</code>. Start the server
-            from <code>server/</code> with <code>uv run uvicorn api:app</code>, or point this page
-            at another one with Change above.
+            {failure.status >= 500
+              ? "The server or its host failed before answering, or took too long. Try again; a scene that keeps failing may be too large for the hosted server."
+              : "The answer isn't in the placement server's format, so this address may be another site. Check it with Change above."}
           </p>
-          <p className="detail">{failure.detail}</p>
+          <p className="detail">
+            HTTP {failure.status} from <code className="address">{failure.server}</code>
+          </p>
         </>
       )}
+      {failure.kind === "too_large" && <p>{failure.message}</p>}
       {failure.kind === "refused" && (
         <>
           <p>{failure.message}</p>

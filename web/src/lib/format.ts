@@ -1,3 +1,4 @@
+import type { Result } from "./api.ts";
 import { feetToMeters, formatFeetInches } from "./units.ts";
 
 // The placement server reports feet. These read them the way a person says them.
@@ -25,4 +26,10 @@ export function fromMeter(s: number): string {
     return "at the meter";
   }
   return `${feet(s)} ${s < 0 ? "left" : "right"} of the meter`;
+}
+
+/** The decision to show. Under rules not approved for automatic decisions a person decides, even
+ * if a server says pass or reject. */
+export function shownDecision(result: Pick<Result, "decision" | "policy">): Result["decision"] {
+  return result.policy.auto_approve ? result.decision : "manual_review";
 }

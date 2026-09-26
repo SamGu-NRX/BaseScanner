@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 343" width="960" height="343" role="img" aria-labelledby="t d">
-<title id="t">Battery site plan: pass</title>
-<desc id="d">The battery fits 2 ft 9 in right of the meter with a 1 ft 6 in cable run: every check passes.</desc>
+<title id="t">Battery site plan: manual_review</title>
+<desc id="d">The battery fits 2 ft 9 in right of the meter with a 1 ft 6 in cable run; a person must confirm under these rules.</desc>
 <style>
 .paper{fill:#F2F4F3}
 .ink{stroke:#1D262B;fill:none}
@@ -51,10 +51,10 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <path class="fog" d="M124.9,124.9 L28.0,124.9 L28.0,251.3 L124.9,251.3 L124.9,124.9 Z"/>
 <path class="meter-area" d="M427.5,173.3 L467.9,173.3 L467.9,124.9 L427.5,124.9 L427.5,173.3 Z"/>
 <path class="poche" d="M124.9,124.9 L835.1,124.9 L835.1,110.3 L124.9,110.3 L124.9,124.9 Z"/>
-<path class="sweep-unsure" d="M124.9,117.6 L167.2,117.6"/>
-<path class="sweep-unsure" d="M126.8,117.6 L176.5,117.6"/>
-<path class="sweep-unsure" d="M464.7,117.6 L512.8,117.6"/>
-<path class="sweep-pass" d="M471.9,117.6 L727.6,117.6"/>
+<path class="sweep-unsure" d="M124.9,117.6 L167.7,117.6"/>
+<path class="sweep-unsure" d="M126.5,117.6 L176.5,117.6"/>
+<path class="sweep-unsure" d="M465.4,117.6 L511.6,117.6"/>
+<path class="sweep-pass" d="M471.3,117.6 L727.6,117.6"/>
 <path class="sweep-unsure" d="M686.6,117.6 L768.6,117.6"/>
 <path class="sweep-unsure" d="M728.2,117.6 L815.5,117.6"/>
 <path class="wall" d="M124.9,124.9 L835.1,124.9"/>
@@ -65,10 +65,10 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <path class="opening-mark" d="M221.7,120.8 L270.1,120.8"/>
 <path class="opening-mark" d="M221.7,128.9 L270.1,128.9"/>
 <text class="small" x="245.9" y="99.0" text-anchor="middle" dominant-baseline="middle">Window</text>
-<path class="cable" d="M447.7,124.9 L471.9,124.9"/>
-<text class="cable-text" x="459.8" y="86.1" text-anchor="middle" dominant-baseline="middle">Cable 1 ft 6 in</text>
-<path class="battery-ring" d="M423.4,202.9 L562.0,202.9 L562.0,76.4 L423.4,76.4 L423.4,202.9 Z"/>
-<path class="battery" d="M471.9,154.5 L513.6,154.5 L513.6,124.9 L471.9,124.9 L471.9,154.5 Z"/>
+<path class="cable" d="M447.7,124.9 L471.3,124.9"/>
+<text class="cable-text" x="459.5" y="86.1" text-anchor="middle" dominant-baseline="middle">Cable 1 ft 5 in</text>
+<path class="battery-ring" d="M422.8,202.9 L561.4,202.9 L561.4,76.4 L422.8,76.4 L422.8,202.9 Z"/>
+<path class="battery" d="M471.3,154.5 L513.0,154.5 L513.0,124.9 L471.3,124.9 L471.3,154.5 Z"/>
 <circle class="meter" cx="447.7" cy="124.9" r="7"/>
 <text class="label" x="447.7" y="99.0" text-anchor="middle" dominant-baseline="middle">Meter</text>
 <line class="ink" x1="28" y1="305.30951842857144" x2="108.7" y2="305.30951842857144" stroke-width="2"/>
@@ -86,5 +86,5 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <text class="small" x="515.9142857142858" y="309.30951842857144">Gas</text>
 <rect class="fog" x="545.5142857142857" y="298.30951842857144" width="18" height="14"/>
 <text class="small" x="569.5142857142857" y="309.30951842857144">Not seen</text>
-<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">Fits</text>
+<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">Needs review</text>
 </svg>

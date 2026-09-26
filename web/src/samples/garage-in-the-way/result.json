@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "decision": "reject",
-  "summary": "No spot within reach works: every spot fails opening clearance, gas clearance, route path.",
+  "decision": "manual_review",
+  "summary": "No spot on the scanned walls works; a person must confirm before rejecting.",
   "reasons": [
     {
       "code": "all_spots_fail",
@@ -13,16 +13,20 @@
         "route_length"
       ],
       "message": "Every spot on the walls scanned fails at least one check by a clear margin."
+    },
+    {
+      "code": "policy_not_approved",
+      "message": "The rules in use are not approved for automatic decisions (no policy selected, or placeholder values), so a person must confirm."
     }
   ],
   "policy": {
-    "id": "sample-demo",
-    "version": "1",
-    "auto_approve": true,
+    "id": "public-demo",
+    "version": "2026-09-26",
+    "auto_approve": false,
     "sources": [
       "public"
     ],
-    "rules_sha256": "e9764985ed220c96bc9397f749ed4efdd84ce7ce424d4a0e989b7f81e162114b"
+    "rules_sha256": "e1120bf1ed615e0bbd65516883792c65a507378584a4128df916343dc47eaab3"
   },
   "spot": null,
   "route": null,
@@ -64,7 +68,7 @@
       "label": "Clear of the meter's working space",
       "outcome": "pass",
       "reason": "The battery is 0 ft 3 in clear of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
-      "measured_ft": 0.225,
+      "measured_ft": 0.25,
       "plus_minus_ft": 0.2,
       "threshold_ft": 0.0,
       "comparison": "at_least",
@@ -80,7 +84,7 @@
       "label": "Distance from gas equipment",
       "outcome": "pass",
       "reason": "Nearest gas meter or pipe is 6 ft 6 in (\u00b1 0 ft 2 in) away, clear of the 3 ft 0 in rule, and the area around the battery was seen.",
-      "measured_ft": 6.475,
+      "measured_ft": 6.5,
       "plus_minus_ft": 0.2,
       "threshold_ft": 3.0,
       "comparison": "at_least",
@@ -224,7 +228,7 @@
       "label": "Cable run length",
       "outcome": "pass",
       "reason": "The cable run is 1 ft 6 in (\u00b1 0 ft 2 in), within the 15 ft 0 in confident reach.",
-      "measured_ft": 1.475,
+      "measured_ft": 1.5,
       "plus_minus_ft": 0.2,
       "threshold_ft": 20.0,
       "comparison": "at_most",
@@ -242,32 +246,32 @@
     "wall_id": "side",
     "segment": 0,
     "span_ft": [
-      1.475,
-      4.058333
+      1.5,
+      4.083333
     ],
     "width_ft": 2.583333,
     "depth_ft": 1.833333,
     "height_ft": 3.291667,
     "footprint": [
       [
-        1.475,
+        1.5,
         0.0
       ],
       [
-        4.058333,
+        4.083333,
         0.0
       ],
       [
-        4.058333,
+        4.083333,
         1.833333
       ],
       [
-        1.475,
+        1.5,
         1.833333
       ]
     ],
     "center": [
-      2.766667,
+      2.791667,
       0.916667
     ],
     "along": [
@@ -279,10 +283,10 @@
       1.0
     ],
     "meter_offset_ft": [
-      2.766667,
+      2.791667,
       0.916667
     ],
-    "route_length_ft": 1.475
+    "route_length_ft": 1.5
   },
   "missing_evidence": [],
   "ends": {
@@ -311,7 +315,7 @@
       "segment": 0,
       "start_ft": [
         -20.0,
-        -19.920833
+        -19.929167
       ],
       "outcome": "fail",
       "failing": [
@@ -330,7 +334,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -19.883333,
+        -19.9,
         -19.383333
       ],
       "outcome": "fail",
@@ -350,7 +354,7 @@
       "segment": 0,
       "start_ft": [
         -19.3375,
-        -16.911248
+        -16.905624
       ],
       "outcome": "fail",
       "failing": [
@@ -368,8 +372,8 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -16.897291,
-        -16.204167
+        -16.9,
+        -16.208333
       ],
       "outcome": "fail",
       "failing": [
@@ -466,7 +470,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -11.341667,
+        -11.3375,
         -9.958333
       ],
       "outcome": "fail",
@@ -483,7 +487,7 @@
       "segment": 0,
       "start_ft": [
         -9.875,
-        -8.241667
+        -8.245833
       ],
       "outcome": "fail",
       "failing": [
@@ -525,7 +529,7 @@
       "segment": 0,
       "start_ft": [
         -4.283333,
-        -4.058333
+        -4.083333
       ],
       "outcome": "fail",
       "failing": [
@@ -539,7 +543,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -4.033333,
+        -4.020833,
         -3.883333
       ],
       "outcome": "fail",
@@ -556,7 +560,7 @@
       "segment": 0,
       "start_ft": [
         -3.858333,
-        -3.633333
+        -3.663934
       ],
       "outcome": "fail",
       "failing": [
@@ -571,8 +575,8 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -3.629167,
-        -2.241667
+        -3.625,
+        -2.245833
       ],
       "outcome": "fail",
       "failing": [
@@ -603,7 +607,7 @@
       "segment": 0,
       "start_ft": [
         -1.795833,
-        1.045833
+        1.041667
       ],
       "outcome": "fail",
       "failing": [
@@ -616,7 +620,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        1.05,
+        1.095833,
         1.45
       ],
       "outcome": "fail",
@@ -631,7 +635,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        1.475,
+        1.5,
         1.5
       ],
       "outcome": "fail",
@@ -692,7 +696,7 @@
       "segment": 0,
       "start_ft": [
         20.204167,
-        21.0
+        21.000001
       ],
       "outcome": "fail",
       "failing": [
@@ -708,7 +712,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        21.0,
+        21.000001,
         21.416667
       ],
       "outcome": "fail",
@@ -719,10 +723,10 @@
     }
   ],
   "stats": {
-    "candidates": 827,
+    "candidates": 801,
     "pass": 0,
     "unsure": 0,
-    "fail": 827,
+    "fail": 801,
     "elapsed_ms": 0,
     "input_sha256": "78ed52b548f21222c7b6eab84b217aefee265010f99c918485fc1a7a1b469de7"
   }

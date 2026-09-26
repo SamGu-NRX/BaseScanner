@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 343" width="960" height="343" role="img" aria-labelledby="t d">
-<title id="t">Battery site plan: reject</title>
-<desc id="d">No spot within reach works: every spot fails opening clearance, gas clearance, route path.</desc>
+<title id="t">Battery site plan: manual_review</title>
+<desc id="d">No spot on the scanned walls works; a person must confirm before rejecting.</desc>
 <style>
 .paper{fill:#F2F4F3}
 .ink{stroke:#1D262B;fill:none}
@@ -66,8 +66,8 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <path class="gas-ring" d="M108.7,141.0 L108.9,145.7 L109.6,150.4 L110.8,155.1 L112.4,159.5 L114.4,163.8 L116.9,167.9 L119.7,171.7 L122.9,175.2 L126.4,178.4 L130.2,181.3 L134.3,183.7 L138.6,185.7 L143.1,187.3 L147.7,188.5 L152.4,189.2 L157.1,189.4 L173.3,189.4 L178.0,189.2 L182.7,188.5 L187.3,187.3 L191.8,185.7 L196.1,183.7 L200.2,181.3 L204.0,178.4 L207.5,175.2 L210.7,171.7 L213.6,167.9 L216.0,163.8 L218.0,159.5 L219.6,155.1 L220.8,150.4 L221.5,145.7 L221.7,141.0 L221.7,124.9 L221.5,120.1 L220.8,115.4 L219.6,110.8 L218.0,106.3 L216.0,102.0 L213.6,98.0 L210.7,94.1 L207.5,90.6 L204.0,87.4 L200.2,84.6 L196.1,82.1 L191.8,80.1 L187.3,78.5 L182.7,77.4 L178.0,76.7 L173.3,76.4 L157.1,76.4 L152.4,76.7 L147.7,77.4 L143.1,78.5 L138.6,80.1 L134.3,82.1 L130.2,84.6 L126.4,87.4 L122.9,90.6 L119.7,94.1 L116.9,98.0 L114.4,102.0 L112.4,106.3 L110.8,110.8 L109.6,115.4 L108.9,120.1 L108.7,124.9 L108.7,141.0 Z"/>
 <path class="gas" d="M157.1,141.0 L173.3,141.0 L173.3,124.9 L157.1,124.9 L157.1,141.0 Z"/>
 <text class="label" x="165.2" y="99.0" text-anchor="middle" dominant-baseline="middle">Gas</text>
-<path class="battery-ring" d="M423.1,202.9 L561.7,202.9 L561.7,76.4 L423.1,76.4 L423.1,202.9 Z"/>
-<path class="battery unsure" d="M471.5,154.5 L513.2,154.5 L513.2,124.9 L471.5,124.9 L471.5,154.5 Z"/>
+<path class="battery-ring" d="M423.5,202.9 L562.1,202.9 L562.1,76.4 L423.5,76.4 L423.5,202.9 Z"/>
+<path class="battery unsure" d="M471.9,154.5 L513.6,154.5 L513.6,124.9 L471.9,124.9 L471.9,154.5 Z"/>
 <circle class="meter" cx="447.7" cy="124.9" r="7"/>
 <text class="label" x="447.7" y="99.0" text-anchor="middle" dominant-baseline="middle">Meter</text>
 <line class="ink" x1="28" y1="305.30951842857144" x2="108.7" y2="305.30951842857144" stroke-width="2"/>
@@ -85,5 +85,5 @@ text{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#1D262B}
 <text class="small" x="515.9142857142858" y="309.30951842857144">Gas</text>
 <rect class="fog" x="545.5142857142857" y="298.30951842857144" width="18" height="14"/>
 <text class="small" x="569.5142857142857" y="309.30951842857144">Not seen</text>
-<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">No spot</text>
+<text class="label" x="932" y="309.30951842857144" text-anchor="end" font-weight="600">Needs review</text>
 </svg>

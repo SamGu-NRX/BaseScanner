@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Result } from "../lib/api.ts";
-import { feet, fromMeter, measured } from "../lib/format.ts";
+import { feet, fromMeter, measured, shownDecision } from "../lib/format.ts";
 
 type Check = Result["checks"][number];
 
@@ -23,9 +23,15 @@ const OUTCOME_WORD: Record<Check["outcome"], string> = {
   fail: "Fail",
 };
 
+/** The site plan arrives after the answer (a second request), or not at all. */
+export type PlanState =
+  | { status: "drawing" }
+  | { status: "ready"; svg: string }
+  | { status: "missing" };
+
 interface Props {
   result: Result;
-  plan: string | null;
+  plan: PlanState;
   saved: boolean;
   /** "full" when an answer appears; "stamp" when it replaces another, so only the stamp lands. */
   entrance: "full" | "stamp";
@@ -49,17 +55,19 @@ function planAlt(result: Result): string {
 }
 
 export function ResultView({ result, plan, saved, entrance }: Props) {
+  const decision = shownDecision(result);
   const spot = result.spot ?? result.nearest_considered ?? null;
   const attention = result.checks.filter((c) => c.outcome !== "pass");
   const passing = result.checks.length - attention.length;
   const views = result.missing_evidence;
-  const size = useMemo(() => (plan ? planSize(plan) : null), [plan]);
+  const svg = plan.status === "ready" ? plan.svg : null;
+  const size = useMemo(() => (svg ? planSize(svg) : null), [svg]);
 
   return (
     <article className="result" data-entrance={entrance}>
       <header className="verdict">
-        <h2 className="stamp" data-decision={result.decision}>
-          {STAMP[result.decision]}
+        <h2 className="stamp" data-decision={decision}>
+          {STAMP[decision]}
         </h2>
         <div className="verdict-text">
           <p className="summary">{result.summary}</p>
@@ -95,13 +103,15 @@ export function ResultView({ result, plan, saved, entrance }: Props) {
       </dl>
 
       <figure className="plan reveal">
-        {plan ? (
+        {svg ? (
           <img
-            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(plan)}`}
+            src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`}
             alt={planAlt(result)}
             width={size?.width}
             height={size?.height}
           />
+        ) : plan.status === "drawing" ? (
+          <p className="plan-missing plan-drawing">Drawing the site plan…</p>
         ) : (
           <p className="plan-missing">The server did not send a site plan for this answer.</p>
         )}

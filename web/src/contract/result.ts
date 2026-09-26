@@ -51,7 +51,7 @@ export type Span2 = [number, number];
  * The placement server's answer for one scene (contract C2). Lengths are in feet; plan coordinates [x, z] and s follow scene.schema.json. The result settles placement only, never the whole installation: electrical checks (panel, meter) are outside it.
  */
 export interface BatteryPlacementResult {
-  schema_version: "1.0";
+  schema_version: string;
   /**
    * pass: a fully observed spot passes every check under an approved policy. manual_review: a person must decide, because the best spot has an UNSURE check, the policy is not approved for automatic decisions, or an area that could hold a valid spot was not seen. reject: every spot within reach fails by a clear margin, and both ends of the walk are known.
    */

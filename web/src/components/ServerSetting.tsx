@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import type { Health } from "../lib/api.ts";
+import { type Health, isMixedContent } from "../lib/api.ts";
 
 interface Props {
   server: string;
@@ -27,13 +27,17 @@ export function ServerSetting({ server, health, onChange }: Props) {
     setEditing(false);
   }
 
+  const pageProtocol = window.location.protocol;
+  const draftBlocked = isMixedContent(draft, pageProtocol);
   const status = health === null ? "checking" : health.ok ? "up" : "down";
   const statusText =
     health === null
       ? "Checking…"
       : health.ok
         ? `Connected · rules ${health.policy}`
-        : "Not reachable";
+        : isMixedContent(server, pageProtocol)
+          ? "Blocked: an http server from this https page"
+          : "Not reachable";
 
   if (editing) {
     return (
@@ -60,6 +64,7 @@ export function ServerSetting({ server, health, onChange }: Props) {
           autoCorrect="off"
           inputMode="url"
           enterKeyHint="done"
+          aria-describedby={draftBlocked ? "server-url-warning" : undefined}
         />
         <button type="submit" className="button">
           Use
@@ -67,6 +72,12 @@ export function ServerSetting({ server, health, onChange }: Props) {
         <button type="button" className="button quiet" onClick={() => setEditing(false)}>
           Cancel
         </button>
+        {draftBlocked && (
+          <p id="server-url-warning" className="server-warning">
+            This page is loaded over https, so the browser will block an http:// server. Use an
+            https address.
+          </p>
+        )}
       </form>
     );
   }

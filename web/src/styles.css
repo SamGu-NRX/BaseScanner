@@ -239,6 +239,12 @@ code {
   color: var(--ink-2);
 }
 
+.server-warning {
+  flex-basis: 100%;
+  font-size: 0.85rem;
+  color: var(--review);
+}
+
 .server-form input {
   min-height: 44px;
   min-width: 0;
@@ -580,6 +586,14 @@ code.address {
   border: 1px dashed var(--rule);
   border-radius: 6px;
   color: var(--ink-2);
+}
+
+/* Holds roughly a plan's shape (the server draws them 960 wide, about 340 tall), so the sections
+   below move less when it arrives. */
+.plan-drawing {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 960 / 340;
 }
 
 .block {

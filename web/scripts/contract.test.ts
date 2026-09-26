@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   compileResultTypes,
@@ -20,9 +20,8 @@ describe("result contract", () => {
     expect(readFileSync(RESULT_VALIDATOR, "utf8")).toBe(compileResultValidator(schema));
   });
 
-  // server/ only exists once the placement server has merged; until then the vendored copy
-  // records which server commit it came from (see README).
-  it.runIf(existsSync(SERVER_SCHEMA))("vendored schema matches server/schemas", () => {
+  // #15 is stacked on #11, so server/schemas is always here; a missing file fails the test.
+  it("vendored schema matches server/schemas", () => {
     expect(readFileSync(VENDORED_SCHEMA, "utf8")).toBe(readFileSync(SERVER_SCHEMA, "utf8"));
   });
 });

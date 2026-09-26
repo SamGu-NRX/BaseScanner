@@ -25,45 +25,45 @@
     }
   ],
   "policy": {
-    "id": "sample-demo",
-    "version": "1",
-    "auto_approve": true,
+    "id": "public-demo",
+    "version": "2026-09-26",
+    "auto_approve": false,
     "sources": [
       "public"
     ],
-    "rules_sha256": "e9764985ed220c96bc9397f749ed4efdd84ce7ce424d4a0e989b7f81e162114b"
+    "rules_sha256": "e1120bf1ed615e0bbd65516883792c65a507378584a4128df916343dc47eaab3"
   },
   "spot": {
     "outcome": "unsure",
     "wall_id": "side",
     "segment": 0,
     "span_ft": [
-      1.495833,
-      4.079167
+      1.458333,
+      4.041667
     ],
     "width_ft": 2.583333,
     "depth_ft": 1.833333,
     "height_ft": 3.291667,
     "footprint": [
       [
-        1.495833,
+        1.458333,
         0.0
       ],
       [
-        4.079167,
+        4.041667,
         0.0
       ],
       [
-        4.079167,
+        4.041667,
         1.833333
       ],
       [
-        1.495833,
+        1.458333,
         1.833333
       ]
     ],
     "center": [
-      2.7875,
+      2.75,
       0.916667
     ],
     "along": [
@@ -75,14 +75,14 @@
       1.0
     ],
     "meter_offset_ft": [
-      2.7875,
+      2.75,
       0.916667
     ],
-    "route_length_ft": 1.495833
+    "route_length_ft": 1.458333
   },
   "route": {
     "outcome": "pass",
-    "length_ft": 1.495833,
+    "length_ft": 1.458333,
     "plus_minus_ft": 0.2,
     "height_ft": 1.0,
     "polyline": [
@@ -91,7 +91,7 @@
         0.0
       ],
       [
-        1.495833,
+        1.458333,
         0.0
       ]
     ],
@@ -136,7 +136,7 @@
       "label": "Clear of the meter's working space",
       "outcome": "pass",
       "reason": "The battery is 0 ft 3 in clear of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
-      "measured_ft": 0.245833,
+      "measured_ft": 0.208333,
       "plus_minus_ft": 0.2,
       "threshold_ft": 0.0,
       "comparison": "at_least",
@@ -298,7 +298,7 @@
       "label": "Cable run length",
       "outcome": "pass",
       "reason": "The cable run is 1 ft 6 in (\u00b1 0 ft 2 in), within the 15 ft 0 in confident reach.",
-      "measured_ft": 1.495833,
+      "measured_ft": 1.458333,
       "plus_minus_ft": 0.2,
       "threshold_ft": 20.0,
       "comparison": "at_most",
@@ -317,14 +317,14 @@
       "kind": "band",
       "band": "ground",
       "span_ft": [
-        -3.833333,
-        14.179167
+        -3.933333,
+        14.141667
       ],
       "checks": [
         "drive_clearance",
         "pool_clearance"
       ],
-      "message": "Show the ground in front of the wall from 3 ft 10 in left of the meter to 14 ft 2 in right of the meter."
+      "message": "Show the ground in front of the wall from 3 ft 11 in left of the meter to 14 ft 2 in right of the meter."
     },
     {
       "kind": "past_end",
@@ -362,7 +362,7 @@
       "segment": 0,
       "start_ft": [
         -3.0,
-        -2.920833
+        -2.929167
       ],
       "outcome": "fail",
       "failing": [
@@ -381,8 +381,8 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        -2.883333,
-        0.041667
+        -2.9,
+        0.070833
       ],
       "outcome": "fail",
       "failing": [
@@ -400,8 +400,8 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        0.120833,
-        1.045833
+        0.1,
+        1.041667
       ],
       "outcome": "fail",
       "failing": [
@@ -416,8 +416,8 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        1.05,
-        1.45
+        1.095833,
+        1.375
       ],
       "outcome": "unsure",
       "failing": [],
@@ -431,7 +431,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        1.495833,
+        1.458333,
         3.291667
       ],
       "outcome": "unsure",
@@ -446,7 +446,7 @@
       "segment": 0,
       "start_ft": [
         3.375,
-        6.295833
+        6.316667
       ],
       "outcome": "unsure",
       "failing": [],
@@ -462,7 +462,7 @@
       "wall_id": "side",
       "segment": 0,
       "start_ft": [
-        6.375,
+        6.345833,
         6.416667
       ],
       "outcome": "unsure",
@@ -478,10 +478,10 @@
     }
   ],
   "stats": {
-    "candidates": 175,
+    "candidates": 151,
     "pass": 0,
-    "unsure": 77,
-    "fail": 98,
+    "unsure": 74,
+    "fail": 77,
     "elapsed_ms": 0,
     "input_sha256": "8381e865208e0f984bcef83fd3f42294b49d40dcc3e81fde2f74fea35eab5bdd"
   }

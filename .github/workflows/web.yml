@@ -5,10 +5,14 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      # The page's copy of the result schema is tested against the server's.
+      - "server/schemas/**"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "web/**"
+      # The page's copy of the result schema is tested against the server's.
+      - "server/schemas/**"
       - ".github/workflows/web.yml"
 
 permissions:

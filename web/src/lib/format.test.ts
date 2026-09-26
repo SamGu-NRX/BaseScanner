@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { feet, fromMeter, measured } from "./format.ts";
+import type { Result } from "./api.ts";
+import { feet, fromMeter, measured, shownDecision } from "./format.ts";
 
 describe("feet", () => {
   it.each([
@@ -29,5 +30,19 @@ describe("fromMeter", () => {
     expect(fromMeter(-10)).toBe("10 ft left of the meter");
     expect(fromMeter(2.75)).toBe("2 ft 9 in right of the meter");
     expect(fromMeter(0.01)).toBe("at the meter");
+  });
+});
+
+describe("shownDecision", () => {
+  const answer = (decision: Result["decision"], autoApprove: boolean) =>
+    ({ decision, policy: { auto_approve: autoApprove } }) as Pick<Result, "decision" | "policy">;
+
+  it("shows a pass under rules approved for automatic decisions", () => {
+    expect(shownDecision(answer("pass", true))).toBe("pass");
+  });
+
+  // The rules decide whether a pass stands; under unapproved rules a person decides.
+  it.each(["pass", "reject"] as const)("sends a %s under unapproved rules to review", (d) => {
+    expect(shownDecision(answer(d, false))).toBe("manual_review");
   });
 });
