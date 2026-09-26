@@ -6,16 +6,22 @@ agreed when one of reader 2's numbers equals reader 1's number after normalizati
 contains the other and the shorter has at least 6 characters (a barcode line such as
 ACG012345678 printing the plate number 12 345 678), and neither reader doubted a character.
 Plaintext labels stay in the data directory; the manifest keeps only digests (see match.py).
+
+A person's answers from the review page (`review.py`), when present, decide: a kept number
+counts as agreed, and a corrected one replaces the AI readers' number.
 """
 
+import argparse
 import csv
 import re
+import subprocess
 
 from meter_eval.match import core, digest, lenient_digest, normalize, normalize_class
-from meter_eval.paths import DATA_DIR, MANIFEST
+from meter_eval.paths import DATA_DIR, EXPERIMENT_DIR, MANIFEST
 
 READER1 = DATA_DIR / "labels_reader1.csv"
 READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
+HUMAN = DATA_DIR / "labels_human.csv"
 SOURCES = DATA_DIR / "shortlist.csv"
 # Reader 2 marked these "unsure" for a reason other than the characters of reader 1's number,
 # per its notes: which of two printed numbers is the meter's ID (m25, m30, m33, m38), or a
@@ -37,6 +43,7 @@ FIELDS = [
     "number_core_sha256",
     "number_core_len",
     "number_agreed",
+    "human_check",
     "class_label",
     "class_kind",
     "class_agreed",
@@ -75,6 +82,7 @@ def scrub(note: str) -> str:
 def build() -> list[dict]:
     first, sources = read_csv(READER1), read_csv(SOURCES)
     second = {k: v for path in READER2 for k, v in read_csv(path).items()}
+    human = read_csv(HUMAN) if HUMAN.exists() else {}
     rows = []
     for image_id, r1 in first.items():
         r2 = second[image_id]
@@ -89,6 +97,9 @@ def build() -> list[dict]:
             "usable": usable,
             "notes": scrub(r1["notes"]),
         }
+        verdict = human.get(image_id, {}).get("verdict", "")
+        if verdict == "fix":
+            number = human[image_id]["number"]
         if number not in ("EXCLUDE", "NONE"):
             r2_sure = r2["number_sure"] == "sure" or image_id in DOUBT_NOT_ABOUT_CHARACTERS
             agreed = (
@@ -102,7 +113,8 @@ def build() -> list[dict]:
                 "number_len": len(normalize(number)),
                 "number_core_sha256": digest(core(number)),
                 "number_core_len": len(core(number)),
-                "number_agreed": "yes" if agreed else "no",
+                "number_agreed": "yes" if agreed or verdict else "no",
+                "human_check": verdict,
             }
         label = r1["class_label"]
         if usable == "yes" and label and label != "NONE":
@@ -120,7 +132,61 @@ def build() -> list[dict]:
     return rows
 
 
+def known_numbers() -> set[str]:
+    """Every identifier either reader transcribed, normalized, with and without its prefix."""
+    first = read_csv(READER1)
+    second = {k: v for path in READER2 for k, v in read_csv(path).items()}
+    found = set()
+    for row in [*first.values(), *second.values()]:
+        for value in numbers_of(row):
+            for form in (value, core(value)):
+                if len(form) >= 5 and sum(ch.isdigit() for ch in form) >= 5:
+                    found.add(form)
+    return found
+
+
+def check_leaks() -> None:
+    """Fail if any transcribed identifier appears in a tracked file of this experiment.
+
+    SHA-256 digests in the CSVs are skipped. Needs the plaintext labels, so it runs locally.
+    """
+    numbers = known_numbers()
+    tracked = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "."],
+        cwd=EXPERIMENT_DIR,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    leaks = []
+    for name in tracked:
+        if name.endswith(".lock"):
+            continue
+        text = (EXPERIMENT_DIR / name).read_text(errors="ignore")
+        text = re.sub(r"\b[0-9a-f]{64}\b", "", text)
+        if name.endswith(".csv"):
+            # Cell by cell; decimal measurements such as 62.5152 are not identifiers.
+            cells = [c for row in csv.reader(text.splitlines()) for c in row]
+            pieces = [c for c in cells if not re.fullmatch(r"-?\d+\.\d+", c)]
+        else:
+            pieces = re.findall(r"[A-Za-z0-9][A-Za-z0-9 .\-]*", text)
+        tokens = {normalize(t) for t in pieces}
+        leaks += [(name, n) for n in numbers if any(n in t for t in tokens)]
+    for name, number in sorted(leaks):
+        print(f"{name}: a transcribed identifier ({len(number)} characters)")
+    if leaks:
+        raise SystemExit(
+            f"{len(leaks)} meter numbers in tracked files; replace them with synthetic ones"
+        )
+    print(f"no transcribed identifier in {len(tracked)} files")
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-leaks", action="store_true", help="scan tracked files instead")
+    if parser.parse_args().check_leaks:
+        check_leaks()
+        return
     rows = build()
     with MANIFEST.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS, restval="")

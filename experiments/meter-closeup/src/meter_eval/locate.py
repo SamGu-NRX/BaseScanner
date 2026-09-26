@@ -20,7 +20,7 @@ import re
 from meter_eval.match import core, digest, number_read
 from meter_eval.ocr import Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
-from meter_eval.stats import wilson
+from meter_eval.stats import share
 
 # A label word in front of the number: No., Nr., №, #, S/N, Serial.
 # "#:" is how Vision renders the Taiwanese label 電號: in front of the number.
@@ -204,7 +204,11 @@ def barcode_stats(row: dict, result: dict) -> dict:
 
 
 def evaluate(row: dict, result: dict) -> dict:
-    out = {"id": row["id"], "split": "dev" if int(row["id"][1:]) % 2 else "test"}
+    out = {
+        "id": row["id"],
+        "split": "dev" if int(row["id"][1:]) % 2 else "test",
+        "us_style": int(row["class_kind"] == "ansi_class"),
+    }
     out |= barcode_stats(row, result)
     if row["number_agreed"] != "yes":
         return out
@@ -222,13 +226,6 @@ def evaluate(row: dict, result: dict) -> dict:
     return out
 
 
-def share(hits: int, n: int) -> str:
-    if n == 0:
-        return "–"
-    low, high = wilson(hits, n)
-    return f"{hits}/{n} = {hits / n:.0%} ({low:.0%}–{high:.0%})"
-
-
 def barcode_table(rows: list[dict]) -> str:
     found = [r for r in rows if r["barcode_found"]]
     decoded = [r for r in found if r["barcode_decoded"]]
@@ -244,11 +241,19 @@ def barcode_table(rows: list[dict]) -> str:
 
 def rule_table(rows: list[dict], names: list[str]) -> str:
     out = []
-    splits = sorted({r["split"] for r in rows}) + ["all"]
-    for split in splits if len(splits) > 2 else ["all"]:
-        subset = [r for r in rows if "read" in r and (split == "all" or r["split"] == split)]
+    groups = {
+        "odd-numbered photos, used to write the rules": lambda r: r["split"] == "dev",
+        "even-numbered photos, held out": lambda r: r["split"] == "test",
+        "all photos": lambda r: True,
+        # Chosen after the held-out scoring, as a description of Base's market.
+        "US-style meters (CL class label), all photos": lambda r: r["us_style"],
+    }
+    if {r["split"] for r in rows} == {"dev"}:
+        groups = {"odd-numbered photos, used to write the rules": groups["all photos"]}
+    for title, keep in groups.items():
+        subset = [r for r in rows if "read" in r and keep(r)]
         read = [r for r in subset if r["read"]]
-        out.append(f"**{split} photos: {len(subset)} with an agreed number, {len(read)} read**\n")
+        out.append(f"**{title}: {len(subset)} with an agreed number, {len(read)} read**\n")
         out.append("| Rule | Picks | Precision | Recall over read photos |")
         out.append("|---|---|---|---|")
         for name in names:
@@ -279,7 +284,7 @@ def main() -> None:
         manifest = [r for r in manifest if int(r["id"][1:]) % 2]
     results = scan(manifest)
     rows = [evaluate(row, results[row["id"]]) for row in manifest]
-    names = list(rules([], []))
+    names = list(rules([], []))  # rule names, in table order
     text = "\n".join(
         [
             "### Barcodes\n",

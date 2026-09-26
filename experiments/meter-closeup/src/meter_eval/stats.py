@@ -13,6 +13,14 @@ def wilson(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return (max(0.0, centre - half), min(1.0, centre + half))
 
 
+def share(hits: int, n: int) -> str:
+    """ "hits/n = rate (95% Wilson interval)", or a dash when there is nothing to count."""
+    if n == 0:
+        return "–"
+    low, high = wilson(hits, n)
+    return f"{hits}/{n} = {hits / n:.0%} ({low:.0%}–{high:.0%})"
+
+
 def auc(scores: Sequence[float], labels: Sequence[bool]) -> float | None:
     """Probability that a random positive scores above a random negative (ties count half)."""
     pos = [s for s, y in zip(scores, labels, strict=True) if y]

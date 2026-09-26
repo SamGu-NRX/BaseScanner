@@ -3,7 +3,8 @@ import pytest
 from PIL import Image
 
 from meter_eval.degrade import downscale, edge_crop, glare
-from meter_eval.sweep import crop_around, edge_margin
+from meter_eval.retake import edge_gap
+from meter_eval.sweep import crop_around
 
 BOX = [0.25, 0.4, 0.5, 0.1]  # on a 200 x 100 image: x 50-150, y 40-50, line height 10 px
 
@@ -46,9 +47,9 @@ def test_edge_crop_needs_room_in_the_photo():
     assert edge_crop(grey_image(), BOX, 6.0) is None  # 150 + 60 > 200
 
 
-def test_edge_margin_in_line_heights():
+def test_edge_gap_in_line_heights():
     # Gaps: left 50, top 40, right 50, bottom 50 px; nearest is 40 px = 4 line heights.
-    assert edge_margin(BOX, 200, 100) == pytest.approx(4.0)
+    assert edge_gap(BOX, 200, 100) == pytest.approx(4.0)
 
 
 def test_crop_around_pads_one_line_height():

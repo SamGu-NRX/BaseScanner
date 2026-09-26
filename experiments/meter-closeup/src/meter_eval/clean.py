@@ -13,7 +13,7 @@ from meter_eval.match import class_read, number_boxes
 from meter_eval.ocr import CONFIGS, PRIMARY, Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
 from meter_eval.quality import device_checks, gray, region_checks, tallest_digit_line, union_box
-from meter_eval.stats import wilson
+from meter_eval.stats import share
 
 
 def usable_rows() -> list[dict]:
@@ -65,12 +65,8 @@ def run() -> list[dict]:
 
 
 def rate(rows: list[dict], key: str) -> str:
-    values = [r[key] for r in rows if r.get(key, "") != ""]
-    if not values:
-        return "n/a"
-    hits = sum(int(v) for v in values)
-    low, high = wilson(hits, len(values))
-    return f"{hits}/{len(values)} = {hits / len(values):.0%} ({low:.0%}–{high:.0%})"
+    values = [int(r[key]) for r in rows if r.get(key, "") != ""]
+    return share(sum(values), len(values))
 
 
 def table(rows: list[dict]) -> str:

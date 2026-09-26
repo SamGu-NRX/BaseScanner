@@ -22,20 +22,9 @@ from meter_eval.match import number_read
 from meter_eval.ocr import Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
 from meter_eval.quality import device_checks, gray, region_checks, tallest_digit_line
+from meter_eval.retake import edge_gap
 
 SWEEP_DIR = DATA_DIR / "sweep"
-
-
-def edge_margin(box: list[float], width: int, height: int) -> float:
-    """Distance from the box to the nearest frame edge, in line heights (negative if cut)."""
-    line_px = box[3] * height
-    gaps = [
-        box[0] * width,
-        box[1] * height,
-        (1 - box[0] - box[2]) * width,
-        (1 - box[1] - box[3]) * height,
-    ]
-    return min(gaps) / line_px if line_px > 0 else 0.0
 
 
 def crop_around(box: list[float], width: int, height: int) -> list[float]:
@@ -97,13 +86,13 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
                 "ok": int(ok),
                 "width": image.width,
                 "height": image.height,
-                "label_edge_margin": edge_margin(label_box, image.width, image.height),
+                "label_edge_margin": edge_gap(label_box, image.width, image.height),
             }
             record |= {f"label_{k}": v for k, v in region_checks(g, label_box).items()}
             record |= device_checks(g, result["lines"])
             tallest = tallest_digit_line(result["lines"])
             if tallest is not None:
-                record["edge_margin"] = edge_margin(tallest["box"], image.width, image.height)
+                record["edge_margin"] = edge_gap(tallest["box"], image.width, image.height)
             if not ok:
                 record |= second_pass(reader, work_path, image, result["lines"], digest, length)
             records.append(

@@ -27,6 +27,8 @@ For question 2, the 71 photos whose agreed number read correctly undegraded were
 
 For question 3, every failed degraded read was retried on a crop around the tallest detected digit line, and on that crop upscaled 2x.
 
+For questions 4 and 5, `meterocr` also runs `VNDetectBarcodesRequest` (revision 4, all symbologies). Candidates for the meter number are the digit-bearing tokens of every recognized line: runs of digit groups merge, so `12 345 678` is one token, and a line of two to four groups is also offered whole. A candidate is right when it equals the labelled number after dropping separators and any letters before the first digit, so `NO. 12345678` and `ABC 123456` count, but a barcode line that merely contains the number does not. A text token is barcode-confirmed when it equals a part of a decoded payload. When it sits inside a longer payload part, it takes the payload's full string, which repairs reads that dropped a digit. The ranking scores each candidate as 8 × barcode-confirmed + 3 × after a `No.`/`Nr.`/`#:` label + 2 × alone on its line + 1 × 6–14 characters with 5 or more digits − 6 × on a specification line (voltages, ratings, `Kh`, `CL200`, `FORM`…) − 4 × rotated text − 6 × all zeros, with ties broken toward taller print.
+
 ## Results
 
 ### 1. On-device reading works on these photos
@@ -60,6 +62,67 @@ Verdict: size, focus, glare and framing each have a check that meets the criteri
 
 Re-reading a crop around the detected digit line recovered 2–3% of failed reads for blur, motion, glare and framing. For labels made too small it recovered 6% as cut and 12% when the crop was upscaled 2x. Verdict: a retake beats a second pass; upscaling a small label is the only case worth adding. Combining two frames was not tested.
 
+### 4. Barcodes confirm the number when there is one
+
+| Photos | Barcode found | Decoded | Decode contains the meter number |
+|---|---|---|---|
+| 80 | 25 | 25 | 20 of 24 with a labelled number |
+
+Every barcode Vision found also decoded, and 20 of the 24 decodes on photos with a labelled number contain it, well above the one-third bar. Vision found a barcode on 9 of the 22 US-style meters, and 8 of those decode to the meter number. The four misses encode a different identifier: a Hydro-Québec barcode carrying a second utility number, and QR codes on two Taiwanese smart meters and a Japanese meter carrying the maker serial or a product record.
+
+### 5. Finding the number: a tap-to-confirm screen does not yet clear the bar
+
+| Rule | Held-out photos: precision | Held-out: recall | All 71 read photos: precision | All: recall |
+|---|---|---|---|---|
+| Tallest digit line (phase 1 guess) | 30% | 30% | 28% | 28% |
+| A barcode confirms a text line | 6/8 = 75% | 18% | 17/20 = 85% | 24% |
+| Line nearest a decoded barcode | 6/9 = 67% | 18% | 13/20 = 65% | 18% |
+| After a `No.`/`Nr.`/`#:` label | 5/10 = 50% | 15% | 11/20 = 55% | 15% |
+| Alone on its line, 6–14 characters, not a specification line | 23/33 = 70% | 70% | 45/70 = 64% | 63% |
+| Barcode, else label word | 11/17 = 65% | 33% | 27/36 = 75% | 38% |
+| Ranking, number is first | – | 21/33 = 64% | – | 48/71 = 68% |
+| Ranking, number in the top three | – | 28/33 = 85% (69%–93%) | – | 64/71 = 90% (81%–95%) |
+| Number is any candidate at all | – | 29/33 = 88% | – | 66/71 = 93% |
+
+Held-out photos are the 33 even-numbered photos whose number Vision read; the rules were committed before they were scored. Verdict: both criteria fail. No rule reaches 95% precision, so the app cannot fill in the number unasked. The top three hold the number on 85% of held-out photos, short of 95%, so a tap-to-confirm screen alone would still send about one homeowner in seven back for a retake or a typed entry.
+
+Ten photos went wrong: on seven the top three missed the number, and on three the barcode rule picked the wrong identifier. They split evenly between two causes:
+
+- **Several real identifiers on one plate.** The rule picked another identifier that is printed on the meter: a maker serial next to a utility plate, a second barcode, or a `SERIAL#` line. On these photos the question is which identifier Base needs, and a homeowner tapping a list cannot answer that either. Base should say which identifier it uses for each utility, or accept any printed identifier.
+- **Vision split the number or merged a neighbour into it.** A prefix or digits landed in a separate observation (a number printed like `S12 A345 678` read as `12A345` and `678`), or a neighbouring character joined it, so the exact number never appears as a candidate.
+
+On the 19 read US-style meters, the barcode rule was right on all 8 of its picks (68%–100%). That is the one case where filling in the number without asking is supported, though on few photos. The ranking's top three held the number on 16 of the 19.
+
+## For the app: checks to port
+
+Every check runs on the full-resolution photo after applying its EXIF orientation. "Luma" is the 8-bit image L = 0.299 R + 0.587 G + 0.114 B. The number's box is Vision's normalized `boundingBox` of the chosen line (the union of the observations if the number spans several), converted to a top-left origin. `src/meter_eval/retake.py` implements the same definitions, and `tests/test_retake.py` holds hand-computed cases.
+
+| Check | Input | Formula | Retake when |
+|---|---|---|---|
+| Number too small | number's box | box height × photo height in pixels | 12 px or less |
+| Out of focus | whole photo, luma | resize so the long side is 1024 px (bilinear with antialiasing, as PIL); convolve with the 4-neighbour Laplacian [[0,1,0],[1,−4,1],[0,1,0]] over interior pixels; population variance | 6.63 or less |
+| Glare | number's box padded by 0.25 × line height on every side, clipped to the photo | share of luma pixels ≥ 250 | 0.0729 or more |
+| Cut off | number's box | smallest gap to the four photo edges ÷ line height | 0 or less |
+| No number | ranking below | no candidate at all | always |
+
+Finding the number: read with `VNRecognizeTextRequest` revision 3, `.accurate`, `en-US`, language correction off, `minimumTextHeight` 0, and run `VNDetectBarcodesRequest` revision 4 on the same image. On US meters, fill in a barcode-confirmed candidate without asking (8 of 8 here). Otherwise show the three best candidates by the score in the method section, with a "none of these" choice that asks the homeowner to type the number while at the meter. `src/meter_eval/locate.py` is the reference for the candidate tokens, features and score.
+
+## Field test before trusting the thresholds
+
+Commons photos are processed JPEGs from many cameras, not frames from the app's camera pipeline. Sharpening, noise reduction and tone mapping change the sharpness and saturation values, so the focus and glare thresholds may move in the app; the size and framing thresholds depend only on geometry and should hold. Take these close-ups of one real meter with the app's own capture path (or the iPhone camera if the app is not ready), then run `uv run python -m meter_eval.fieldtest PHOTO_DIR --number "<number as printed>"`. It prints each photo's read result and check values, and counts retakes asked for photos that read and photos accepted that did not.
+
+| Threshold | Photos to take | It holds if |
+|---|---|---|
+| Number too small | square to the meter from 15, 30, 50, 80 and 120 cm | photos read down to about 15 px of line height and fail at 12 px or less |
+| Out of focus | three with focus locked on a distant background, one from 5 cm (inside the minimum focus distance), three sharp | blurred photos score 6.63 or less and fail to read; sharp photos score far above |
+| Glare | the flashlight of a second phone held beside the camera at 0°, 20° and 45°, or direct sun, with the reflection on the number | photos with 7.3% or more saturated pixels on the number fail to read; the rest read |
+| Cut off | the frame edge cutting a quarter digit, half a digit and one whole digit | every cut photo is flagged |
+| Hand shake (no check yet) | three in shade while sweeping the phone sideways during capture | records how often shake alone breaks reading; if it does, gate capture on gyroscope motion instead of an image score |
+
+## Checking the labels by hand
+
+Running `make review` builds `~/house-scanning-data/meter-closeup/review.html` outside git, because it shows the plaintext meter numbers. Open the file in a browser. Each photo appears cropped to its number, beside the number the AI readers settled on. Press K to keep it, or F to type a correction and Enter to save it. Progress stays in the browser, so the page can be closed and reopened. "Download answers" saves a CSV. `uv run python -m meter_eval.review ingest <csv>` stores it for `python -m meter_eval.labels`, which then treats kept numbers as agreed and corrected ones as the label; rerun the tables after that.
+
 ## Rerun
 
 Needs macOS with Xcode 26 (Swift 6) and uv. From this folder:
@@ -69,6 +132,8 @@ make images   # download the 83 photos to ~/house-scanning-data/meter (set METER
 make q1       # results/clean.md and results/clean_per_image.csv, about a minute
 make sweep    # the degraded reads, two processes of up to 2 GB, about 15 minutes
 make q2       # results/sweep.md and results/sweep_rows.csv
+make q45      # results/locate.md and results/locate_per_image.csv, about a minute
+make review   # the label review page, outside git
 make check    # lint and unit tests
 ```
 
@@ -82,3 +147,5 @@ make check    # lint and unit tests
 - The class-label matching rule was loosened after the first run, to ignore separators and read `×` as `x`; every first-run miss was one of those. The meter-number rule was not changed.
 - Sharpness values are in grey levels squared on 0–255 images and depend on the camera's processing. Recheck the thresholds on iPhone captures before shipping them.
 - macOS Vision stands in for iOS Vision: same API and revision, not verified on a phone.
+- The number-finding rules were written on half of the photos after the author had read every photo while labelling, so the held-out half limits but does not remove fitting to this set. Its 33 photos give wide intervals.
+- Which identifier counts as "the meter number" was the AI readers' call. Utility-assigned plates were preferred over maker serials, which decides five of the number-finding misses.
