@@ -306,6 +306,18 @@ extension ScanEngine: ScanActions {
 
     func finishWalk() {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
+        if let map = coverage, map.endsTooClose, let left = map.leftEnd, let right = map.rightEnd {
+            // Ends closer than a battery is wide (`WallFrame.minWallLength`): both sides ended
+            // without walking, as "Wall ends here" or "Can't get there" at the meter does.
+            // Nothing between them to scan, and an end can't be moved, so both go and the walk
+            // goes on; the card says why.
+            RuntimeLog.engine.info("finish refused: ends at s=\(left) and s=\(right) are closer than \(WallFrame.minWallLength) m")
+            clearEnd(.left)
+            clearEnd(.right)
+            state.wallTooShort = true
+            if let frame = currentFrame { resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp) }
+            return
+        }
         // Done while a request is still up passes it by.
         resolveGuidance(.superseded)
         state.marking = nil

@@ -82,6 +82,7 @@ struct WallWalkScreen: View {
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
+        if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
         return ScanCopy.guidance(state.guidance)
     }
 
@@ -91,6 +92,7 @@ struct WallWalkScreen: View {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
+        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.wallTooShort { return .refusal }
         return .normal
     }
 
