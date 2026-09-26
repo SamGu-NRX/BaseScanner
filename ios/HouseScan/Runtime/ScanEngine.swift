@@ -351,6 +351,7 @@ final class ScanEngine {
         RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
         wall.groundY = y
         groundMeasured = true
+        coverage?.heightError = 0
         // Rebuilds coverage from the kept cameras: the rows now sit at other heights.
         coverage?.updateWall(wall)
         publishWall()
@@ -754,15 +755,16 @@ final class ScanEngine {
         return low < high ? low...high : nil
     }
 
-    /// How far above the top of the wall band a view must reach to count as tilted up: 1 m, so
-    /// about 9.8 ft above the ground, past a one-storey eave, where the view shows whether one is
-    /// there. It is a height, not a pitch: a level view from 2 m out reaches about 8.5 ft and
-    /// does not count, one from 2.6 m out reaches about 10 ft and does, and it shows what is
-    /// overhead as well as a tilted one. A guess to try on a phone, not measured.
-    static let tiltUpAbove: Float = 1
+    /// How far above the top of the wall band (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a
+    /// view must reach to count as tilted up: 0.7 m, so about 9.8 ft above the ground, past a
+    /// one-storey eave, where the view shows whether one is there. It is a height, not a pitch: a
+    /// level view from 2 m out reaches about 8.5 ft and does not count, one from 2.6 m out
+    /// reaches about 10 ft and does, and it shows what is overhead as well as a tilted one. A
+    /// guess to try on a phone, not measured.
+    static let tiltUpAbove: Float = 0.7
 
     /// The height the tilt-up step and an overhead request aim at, meters above the ground.
-    static func tiltUpHeight(_ map: CoverageMap) -> Float { map.config.overheadFrom + tiltUpAbove }
+    static func tiltUpHeight(_ map: CoverageMap) -> Float { map.config.wallCaptureHeight + tiltUpAbove }
 
     /// The stretches a view shows at least `tiltUpHeight` up the wall (`CoverageMap.overheadReach`):
     /// empty unless the camera is tilted up at the wall.
@@ -913,6 +915,10 @@ final class ScanEngine {
             // Aim where a tilted-up view reaches, or at the height asked for when that is higher.
             let aim = max(Self.tiltUpHeight(map), height ?? 0)
             return (map.wall.world(s: center, height: aim), standOff)
+        case .wallUp(let height):
+            // At the height the view must pass, walked along the whole span like a cell request:
+            // each stretch needs it from two places.
+            return (map.wall.world(s: center, height: height), standOff)
         }
     }
 
@@ -1048,6 +1054,7 @@ final class ScanEngine {
     func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
+        coverage?.heightError = groundMeasured ? 0 : Self.estimatedGroundError
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
@@ -1082,7 +1089,7 @@ final class ScanEngine {
             firstCellS: map.cellRange(indices.lowerBound).lowerBound,
             wall: indices.map { Self.cell(map.level(.wall, $0)) },
             ground: indices.map { Self.cell(map.level(.ground, $0)) },
-            wallBandHeight: map.config.wallBandHeight,
+            wallBandHeight: map.config.wallCaptureHeight,
             groundBandDepth: map.config.groundBandDepth,
             visibleRange: range,
             revision: map.revision
@@ -1144,6 +1151,8 @@ final class ScanEngine {
         case .groundOut(let out): .groundOut(out: out)
         case .walkOut(let out): .walkOut(out: out)
         case .overhead: .overhead
+        // The server's own words name the height ("seen at least 6 ft 6 in up the wall").
+        case .wallUp: reason
         }
         gapCounter += 1
         gapPlan = plan
@@ -1191,7 +1200,7 @@ final class ScanEngine {
     /// the camera can't tell open sky from an eave. The view's photo is stored as a keyframe
     /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
     /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
-    /// view doesn't show the wall from the top of the wall band (6.5 ft) upward.
+    /// view doesn't show the wall from the top of the wall band (7.5 ft, `wallCaptureHeight`) upward.
     func keepOverheadView(_ frame: SourceFrame) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
               !map.overheadReach(from: frame.camera).isEmpty else { return false }

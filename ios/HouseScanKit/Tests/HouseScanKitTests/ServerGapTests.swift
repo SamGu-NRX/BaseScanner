@@ -151,7 +151,7 @@ import Testing
     }
 
     @Test func overheadIsMetByARecordedViewHighEnough() {
-        var map = CoverageMap(wall: standardWall())
+        var map = OverheadTests.walkedWall()
         let planner = GapPlanner()
         let gap = GapPlan(band: .wall, span: 0...0.786, reason: .server, need: .overhead(6.5 * 0.3048))
         #expect(!planner.isSatisfied(gap, map))

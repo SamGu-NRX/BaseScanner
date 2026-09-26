@@ -138,12 +138,12 @@ final class Autopilot {
         }
     }
 
-    /// A gas meter (one tap) and a window (two diagonal corners) on covered wall. The synthetic
-    /// fixture paints them at s = -1.2 m and s = 2.0...3.0 m; on other replays the nearest covered
-    /// wall stands in for them.
+    /// A gas meter (one tap) and a window (two diagonal corners) on wall seen at least as high as
+    /// the highest tap, 1.85 m. The synthetic fixture paints them at s = -1.2 m and s = 2.0...3.0
+    /// m; on other replays the nearest such wall stands in for them.
     private func markFeatures(_ replay: ReplayPlayer) async {
         guard let map = engine.coverage else { return }
-        let covered = map.coveredIntervals(.wall)
+        let covered = map.wallSeenSpans().filter { $0.out >= 1.85 }.map(\.span)
         guard !covered.isEmpty else {
             log("no covered wall to mark features on")
             return
@@ -179,7 +179,7 @@ final class Autopilot {
     /// Ends at the covered extremes (the held-back window's plan, or the walk's coverage).
     private func markEnds(_ replay: ReplayPlayer) async {
         guard let map = engine.coverage else { return }
-        let intervals = map.coveredIntervals(.wall) + map.coveredIntervals(.ground)
+        let intervals = map.wallSeenSpans().map(\.span) + map.coveredIntervals(.ground)
         guard let low = intervals.map(\.lowerBound).min(), let high = intervals.map(\.upperBound).max() else {
             log("nothing covered; marking ends 1 m either side of the meter")
             engine.setEnd(.left, at: -1, kind: .limit)
