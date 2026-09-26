@@ -1,0 +1,10 @@
+// Build settings shared by Debug and Release. project.yml attaches this file to the HouseScan target.
+//
+// A bundle identifier can be registered by only one Apple Developer team, so each person
+// signing on a device sets their own BUNDLE_ID_PREFIX and DEVELOPMENT_TEAM in Local.xcconfig
+// (gitignored; copy Local.xcconfig.example). Keeping them here instead of in the project file
+// stops signing changes from showing up as project.pbxproj diffs.
+
+BUNDLE_ID_PREFIX = dev.housescanning
+
+#include? "Local.xcconfig"

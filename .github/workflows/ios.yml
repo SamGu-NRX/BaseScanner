@@ -1,0 +1,75 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios-build:
+    name: iOS build
+    # macos-26 (arm64) is the newest GA macOS image. The xcode-27 image is still a preview.
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      # Newest stable Xcode on macos-26 per images/macos/macos-26-arm64-Readme.md (image 20260907).
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      # Homebrew only installs the latest XcodeGen. The release zip gives an exact version,
+      # and the drift check below needs the same version the committed project was made with.
+      XCODEGEN_VERSION: 2.46.0
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not on this runner image. Pick an installed Xcode from the image readme."
+            exit 1
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: xcodegen generate --spec ios/project.yml
+
+      - name: Check committed project matches project.yml
+        run: |
+          if ! git diff --exit-code -- ios; then
+            echo "::error::HouseScan.xcodeproj differs from project.yml. Run 'make ios-project' (XcodeGen ${XCODEGEN_VERSION}) and commit the result."
+            exit 1
+          fi
+          untracked="$(git ls-files --others --exclude-standard -- ios)"
+          if [ -n "$untracked" ]; then
+            echo "::error::xcodegen generate wrote files that are not committed. Run 'make ios-project' and commit them."
+            echo "$untracked"
+            exit 1
+          fi
+
+      - name: Build
+        run: >-
+          xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
+          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build

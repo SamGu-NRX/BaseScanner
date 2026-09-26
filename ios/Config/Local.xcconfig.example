@@ -1,0 +1,6 @@
+// Copy to Local.xcconfig (gitignored) to sign for a device.
+// DEVELOPMENT_TEAM: the 10-character Team ID from developer.apple.com > Membership.
+// BUNDLE_ID_PREFIX: a reverse-DNS prefix your team can register; the app id becomes <prefix>.housescan.
+
+DEVELOPMENT_TEAM = ABCDE12345
+BUNDLE_ID_PREFIX = com.example.yourname
