@@ -4,7 +4,7 @@ import OSLog
 import simd
 import UIKit
 
-/// The capture packet (packet/README.md on t3/packet, version 1.0): what Share scan hands over.
+/// The capture packet (packet/README.md on t3/packet, version 1.1): what Share scan hands over.
 /// Everything in it is in meters, seconds of device uptime and the meter frame, except
 /// scene.json, which travels inside unchanged. Nothing uploads it: photos leave the phone only
 /// when the homeowner shares the scan.
@@ -18,6 +18,9 @@ extension ScanEngine {
         var recorder: CaptureRecorder
         /// A replay's own frames, which stand in for the live trajectory: nil live.
         var replayTrajectory: [ReplayPose]?
+        /// A replay's frames that recorded depth, the source of its depth frames: nil live, where
+        /// the recorder holds them.
+        var replayDepth: ReplayDepth?
         var producer: PacketManifest.Producer
         var device: PacketManifest.Device
         var meterFrame: MeterFrame
@@ -41,6 +44,11 @@ extension ScanEngine {
         var cameraToWorld: simd_float4x4
     }
 
+    struct ReplayDepth: Sendable {
+        var folder: URL
+        var frames: [ReplayFrame]
+    }
+
     /// Nil before there is a wall: the meter frame is built from it.
     func packetInputs(scene: Data, mesh: LiveCapture.MeshSnapshot?) -> PacketInputs? {
         guard let map = coverage else { return nil }
@@ -59,6 +67,7 @@ extension ScanEngine {
             replayTrajectory: replay.map { player in
                 player.frames.map { ReplayPose(t: $0.timestamp, normal: $0.trackingNormal, cameraToWorld: $0.cameraToWorld) }
             },
+            replayDepth: replay.map { ReplayDepth(folder: $0.folder, frames: $0.frames.filter { $0.depth != nil }) },
             producer: PacketManifest.Producer(
                 kind: .app, name: info["CFBundleName"] as? String ?? "HouseScan",
                 version: version.count == 2 ? "\(version[0]) (\(version[1]))" : version.first ?? "unknown",
@@ -67,8 +76,9 @@ extension ScanEngine {
             ),
             device: PacketManifest.Device(
                 model: Self.hardwareModel(), iosVersion: UIDevice.current.systemVersion, lidar: LiveCapture.supportsDepth,
-                // A replay runs no ARKit session, so neither ran.
-                sceneDepthEnabled: settings?.sceneDepth ?? false, meshEnabled: settings?.mesh ?? false
+                // A replay runs no ARKit session, so none of them ran.
+                sceneDepthEnabled: settings?.sceneDepth ?? false, meshEnabled: settings?.mesh ?? false,
+                meshClassificationEnabled: settings?.meshClassification ?? false
             ),
             meterFrame: frame,
             groundWorldY: wall.groundY,
@@ -77,7 +87,8 @@ extension ScanEngine {
             planes: (liveCapture?.planeSnapshot() ?? []).map { plane in
                 PacketPlane(
                     id: plane.id, alignment: plane.vertical ? .vertical : .horizontal, classification: plane.classification,
-                    pose: frame.pose(plane.pose), extent: plane.extent
+                    anchorToMeter: frame.pose(plane.anchorToWorld), center: plane.center, rotationOnYAxis: plane.rotationOnYAxis,
+                    extent: plane.extent, boundaryVertices: plane.boundary
                 )
             },
             marks: packetMarks(map, wall: sceneWall, frame: frame),
@@ -167,9 +178,9 @@ extension ScanEngine {
     /// and a one-line summary for the log. Off the main actor: it copies every photo and hashes
     /// every file.
     ///
-    /// A photo, a trajectory row or a section the writer refuses is left out and logged, so one
-    /// bad input doesn't cost the homeowner the whole packet; the writer's checks are the
-    /// validator's, so what is written validates.
+    /// A photo, a depth map, a trajectory row, a plane or a section the writer refuses is left
+    /// out and logged, so one bad input doesn't cost the homeowner the whole packet; the writer's
+    /// checks are the validator's, so what is written validates.
     nonisolated static func writePacket(_ inputs: PacketInputs) throws -> (url: URL, summary: String) {
         let frame = inputs.meterFrame
         let trajectory = trajectoryRows(inputs)
@@ -187,7 +198,8 @@ extension ScanEngine {
         var packetID: [String: String] = [:]
         var last: (t: Double, id: String)?
         var added = 0
-        var withDepth = 0
+        // Times of photos written with depth: a depth frame at one of them would repeat it.
+        var photoDepthTimes: Set<Double> = []
         for stored in inputs.photos.sorted(by: { $0.t < $1.t }) {
             if let last, last.t == stored.t {
                 // The same frame kept twice (a close-up that was also a walk frame, or a view kept
@@ -201,12 +213,19 @@ extension ScanEngine {
             }
             let id = PacketPhoto.id(number: added + 1)
             do {
-                let depth = stored.depth.flatMap { KeyframeStore.loadDepth($0, in: inputs.storeDirectory) }.flatMap(Self.measured)
-                try writer.addPhoto(Self.photo(stored, id: id, sharpness: sharpness, depth: depth, inputs: inputs))
+                var depth = stored.depth.flatMap { KeyframeStore.loadDepth($0, in: inputs.storeDirectory) }.flatMap(Self.measured)
+                do {
+                    try writer.addPhoto(Self.photo(stored, id: id, sharpness: sharpness, depth: depth, inputs: inputs))
+                } catch PacketError.invalidDepth(_, let reason) {
+                    // The photo is worth more than its depth.
+                    RuntimeLog.engine.error("packet: \(stored.id, privacy: .public) depth left out: \(reason, privacy: .public)")
+                    depth = nil
+                    try writer.addPhoto(Self.photo(stored, id: id, sharpness: sharpness, depth: nil, inputs: inputs))
+                }
                 packetID[stored.id] = id
                 last = (stored.t, id)
                 added += 1
-                if depth != nil { withDepth += 1 }
+                if depth != nil { photoDepthTimes.insert(stored.t) }
             } catch {
                 RuntimeLog.engine.error("packet: \(stored.id, privacy: .public) left out: \(String(describing: error), privacy: .public)")
             }
@@ -220,11 +239,30 @@ extension ScanEngine {
         skippedRows += writeMotion(inputs, window: started...ended, into: &writer)
         if skippedRows > 0 { RuntimeLog.engine.error("packet: \(skippedRows) stream rows refused and left out") }
 
+        let depthFrames = writeDepthFrames(inputs, window: started...ended, skipping: photoDepthTimes, into: &writer)
+
         if let mesh = inputs.mesh {
             do { try writer.setMesh(frame.mesh(mesh.mesh), classification: mesh.classification) } catch { Self.logLeftOut("mesh", error) }
         }
-        if !inputs.planes.isEmpty {
-            do { try writer.setPlanes(inputs.planes) } catch { Self.logLeftOut("planes", error) }
+        var planes = 0
+        for plane in inputs.planes {
+            do {
+                try writer.addPlane(plane)
+                planes += 1
+            } catch let error where plane.boundary != nil {
+                // A boundary outside its extent means the two disagree; the extent still holds.
+                Self.logLeftOut("plane \(plane.id) boundary", error)
+                var bare = plane
+                bare.boundary = nil
+                do {
+                    try writer.addPlane(bare)
+                    planes += 1
+                } catch {
+                    Self.logLeftOut("plane \(plane.id)", error)
+                }
+            } catch {
+                Self.logLeftOut("plane \(plane.id)", error)
+            }
         }
         let clamp = { (t: Double) in min(max(t, started), ended) }
         do {
@@ -247,8 +285,9 @@ extension ScanEngine {
         try writer.setScene(inputs.scene)
         let folder = try writer.finish()
         try KeyframeStore.zipPacket(folder, to: inputs.zip)
-        let summary = "\(added) photos (\(withDepth) with depth), \(trajectory.rows.count) trajectory rows over \(String(format: "%.1f", ended - started)) s, "
-            + "\(inputs.motionStreams.count) motion streams, \(inputs.mesh == nil ? "no mesh" : "mesh"), \(inputs.planes.count) planes, "
+        let summary = "\(added) photos (\(photoDepthTimes.count) with depth), \(depthFrames) depth frames, "
+            + "\(trajectory.rows.count) trajectory rows over \(String(format: "%.1f", ended - started)) s, "
+            + "\(inputs.motionStreams.count) motion streams, \(inputs.mesh == nil ? "no mesh" : "mesh"), \(planes) planes, "
             + "\(inputs.marks.count) marks, \(inputs.guidance.count) guidance entries"
         return (inputs.zip, summary)
     }
@@ -309,6 +348,69 @@ extension ScanEngine {
     private nonisolated static func measured(_ depth: DepthPacket) -> DepthPacket? {
         let count = depth.meters.reduce(0) { $0 + ($1.isFinite && $1 > 0 ? 1 : 0) }
         return Double(count) >= 0.01 * Double(depth.meters.count) ? depth : nil
+    }
+
+    /// Depth recorded between photos, inside the capture: the live recorder's LiDAR frames, or a
+    /// replay's recorded depth under the same `DepthFrameBudget` and the same rule of normal
+    /// tracking. A frame at the time of a photo written with depth would repeat it and is left
+    /// out. Each map is read, written and dropped in turn, so memory holds one at a time. Returns
+    /// how many were written.
+    private nonisolated static func writeDepthFrames(
+        _ inputs: PacketInputs, window: ClosedRange<Double>, skipping photoDepthTimes: Set<Double>, into writer: inout PacketWriter
+    ) -> Int {
+        var written = 0
+        var refused: [String] = []
+        func add(t: Double, tracking: PacketTracking, cameraToWorld: simd_float4x4, intrinsics: SIMD4<Float>, depth: DepthPacket?) {
+            guard let depth else {
+                refused.append("t=\(t): its files are missing or the wrong size")
+                return
+            }
+            do {
+                try writer.addDepthFrame(PacketDepthFrame(
+                    id: PacketDepthFrame.id(number: written + 1), t: t, pose: inputs.meterFrame.pose(cameraToWorld), intrinsics: intrinsics,
+                    tracking: tracking, depth: depth
+                ))
+                written += 1
+            } catch {
+                refused.append(String(describing: error))
+            }
+        }
+        if let replay = inputs.replayDepth {
+            var budget = DepthFrameBudget()
+            for frame in replay.frames where frame.trackingNormal && window.contains(frame.timestamp) && budget.admit(t: frame.timestamp) {
+                guard !photoDepthTimes.contains(frame.timestamp), let file = frame.depth else { continue }
+                let intrinsics = DepthImage.intrinsics(
+                    scaling: frame.intrinsics, from: SIMD2(Float(frame.width), Float(frame.height)), toWidth: file.width, height: file.height
+                )
+                add(t: frame.timestamp, tracking: .normal, cameraToWorld: frame.cameraToWorld, intrinsics: intrinsics, depth: replayDepth(file, in: replay.folder))
+            }
+        } else {
+            for frame in inputs.recorder.depthFrames() where window.contains(frame.t) && !photoDepthTimes.contains(frame.t) {
+                add(
+                    t: frame.t, tracking: frame.tracking.packetTracking, cameraToWorld: frame.cameraToWorld, intrinsics: frame.intrinsics,
+                    depth: inputs.recorder.loadDepth(frame)
+                )
+            }
+        }
+        if let first = refused.first {
+            RuntimeLog.engine.error("packet: \(refused.count) depth frames left out; the first: \(first, privacy: .public)")
+        }
+        return written
+    }
+
+    /// A replay frame's recorded depth as the packet takes it: meters and, when recorded,
+    /// confidence, with no source, since the recording says neither which ARKit depth it saved
+    /// nor whether it was rendered (the synthetic fixtures' is). Nil when the files are missing
+    /// or the wrong size.
+    private nonisolated static func replayDepth(_ file: ReplayDepthFile, in folder: URL) -> DepthPacket? {
+        let count = file.width * file.height
+        guard let map = try? Data(contentsOf: folder.appending(path: file.file)), map.count == count * 4 else { return nil }
+        var confidence: [UInt8]?
+        if let path = file.confidenceFile {
+            guard let data = try? Data(contentsOf: folder.appending(path: path)), data.count == count else { return nil }
+            confidence = [UInt8](data)
+        }
+        return DepthPacket(meters: PacketFiles.floats(littleEndian: map), width: file.width, height: file.height, confidence: confidence, source: nil)
     }
 
     /// Core Motion's streams, rows inside the capture only. Returns how many rows were refused.

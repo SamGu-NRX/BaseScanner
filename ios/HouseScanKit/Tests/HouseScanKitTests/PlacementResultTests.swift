@@ -71,8 +71,8 @@ import simd
             try Self.sample(replacing: #""key": "sample_window_clearance_ft""#, with: #""key": "sample_window_clearance_ft", "bogus": 1"#))
     }
 
-    /// A real answer from the server branch (origin/t3/server at 6fdb440) to the synthetic replay's
-    /// scene, carrying fields newer than the first published schema.
+    /// A real answer from the hosted server (deployed from origin/t3/server at 737bf75) to the
+    /// synthetic replay's scene, carrying fields newer than the first published schema.
     @Test func decodesARealServerAnswer() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
             .appendingPathComponent("Schemas/server-answer-synthetic-wall.json")
@@ -104,6 +104,49 @@ import simd
         let crossing = try PlacementResult.decode(
             try Self.sample(replacing: #""crossings": []"#, with: #""crossings": [{"subject": "gate", "span_ft": [1, 2], "effect": "bridge"}]"#))
         #expect(crossing.route?.crossings.first?.effect == "bridge")
+    }
+
+    /// A missing-evidence kind or band the server adds later decodes as unknown, and no capture
+    /// can settle it, so the result offers it for installer review; the rest of the answer
+    /// still shows. The keys stay required and must be strings.
+    @Test func unknownMissingEvidenceIsKeptForInstallerReview() throws {
+        let kind = try PlacementResult.decode(
+            try Self.sample(replacing: #""kind": "past_end""#, with: #""kind": "roof_line""#))
+        #expect(kind.missingEvidence.map(\.kind) == [.band, .unknown("roof_line")])
+        #expect(kind.decision == .manualReview && kind.checks.count == 4)
+        let band = try PlacementResult.decode(
+            try Self.sample(replacing: #""band": "ground""#, with: #""band": "attic""#))
+        #expect(band.missingEvidence[0].band == .unknown("attic"))
+
+        let planner = GapPlanner()
+        #expect(planner.plan(for: kind.missingEvidence[1], leftEnd: -2, rightEnd: 2) == nil)
+        #expect(planner.plan(for: band.missingEvidence[0], leftEnd: -2, rightEnd: 2) == nil)
+        #expect(!planner.isBeyondCapture(band.missingEvidence[0]))
+        // The known item beside the unknown one keeps its request.
+        #expect(planner.plan(for: kind.missingEvidence[0], leftEnd: -2, rightEnd: 2) != nil)
+
+        // Unknown values survive a round trip as the server wrote them.
+        let encoded = try JSONEncoder().encode(kind)
+        #expect(try PlacementResult.decode(encoded) == kind)
+        #expect(String(decoding: encoded, as: UTF8.self).contains(#""roof_line""#))
+
+        // Still strict on presence and type.
+        expectError(.missingKey(path: "missing_evidence[1].kind"),
+                    try Self.sample(replacing: #""kind": "past_end","#, with: ""))
+        let number = try Self.sample(replacing: #""kind": "past_end""#, with: #""kind": 7"#)
+        do {
+            _ = try PlacementResult.decode(number)
+            Issue.record("a kind that is not a string must fail")
+        } catch PlacementDecodingError.malformed(let path, _) {
+            #expect(path == "missing_evidence[1].kind")
+        }
+        let list = try Self.sample(replacing: #""band": "ground""#, with: #""band": ["ground"]"#)
+        do {
+            _ = try PlacementResult.decode(list)
+            Issue.record("a band that is not a string must fail")
+        } catch PlacementDecodingError.malformed(let path, _) {
+            #expect(path == "missing_evidence[0].band")
+        }
     }
 
     @Test func rejectsOtherSchemaVersions() throws {

@@ -35,7 +35,7 @@ extension ScanEngine {
             case .overhead: .overhead
             case .walkOut: .facing
             case .groundOut: .ground
-            case .cells: plan.band == .ground ? .ground : .wall
+            case .cells, .wallUp: plan.band == .ground ? .ground : .wall
             }
             return GuidanceLog.Request(
                 topic: .gap(id: gap.id), kind: pastEndSide == nil ? .gapBand : .gapPastEnd, origin: gap.origin == .server ? .server : .phone,

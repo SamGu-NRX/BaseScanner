@@ -15,6 +15,9 @@ struct MeterReadout: Sendable, Equatable {
     /// The top candidate's characters are small in the photo, so after "None of these" the right
     /// advice is "move closer" (`.numberTooSmall`) rather than a plain retake.
     var numberTooSmall: Bool
+    /// The photo decoded and passed the focus check, whether or not a number was read in it. Only
+    /// such a photo's view goes into coverage (`CloseUpCredit`).
+    var photoPassedChecks: Bool
 }
 
 /// Reads the meter number from the close-up JPEG. Runs off the main actor.
@@ -26,7 +29,8 @@ protocol MeterNumberReader: Sendable {
 /// reader lands.
 struct UnavailableMeterNumberReader: MeterNumberReader {
     func read(jpeg: Data) async -> MeterReadout {
-        MeterReadout(candidates: [], retake: .noNumber, numberTooSmall: false)
+        // No check ran, so nothing vouches for the photo.
+        MeterReadout(candidates: [], retake: .noNumber, numberTooSmall: false, photoPassedChecks: false)
     }
 }
 

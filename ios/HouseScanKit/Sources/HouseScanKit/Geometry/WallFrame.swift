@@ -15,6 +15,18 @@ public struct WallPoint: Sendable, Equatable {
     }
 }
 
+/// How the line of a piece of wall was found: scene.json's `walls[].source`, which sets the
+/// server's default error for the wall (tap 0.3 ft, mesh 0.5, plane 0.75, each plus its drift).
+public enum WallLineSource: String, Sendable, Equatable {
+    /// Through tapped points: the line's position and direction come from where taps landed.
+    case tap
+    /// Fitted to the LiDAR mesh.
+    case mesh
+    /// Taken from an ARKit detected plane (an ARPlaneAnchor): its direction and its distance
+    /// from the camera are the plane's.
+    case plane
+}
+
 /// A corner the walk followed. At `s` the wall turns; beyond it, away from the meter, it faces
 /// `outward`.
 public struct WallCorner: Sendable, Equatable {
@@ -22,10 +34,14 @@ public struct WallCorner: Sendable, Equatable {
     public var s: Float
     /// Unit, horizontal, from the wall past the corner toward the homeowner.
     public var outward: SIMD3<Float>
+    /// How the line of the wall past the corner was found. `.tap` by default, which is also what
+    /// scene.json means when a wall has no source.
+    public var source: WallLineSource
 
-    public init(s: Float, outward: SIMD3<Float>) {
+    public init(s: Float, outward: SIMD3<Float>, source: WallLineSource = .tap) {
         self.s = s
         self.outward = outward
+        self.source = source
     }
 }
 
@@ -42,6 +58,8 @@ public struct WallSegment: Sendable, Equatable {
     /// zero for the meter's piece, the corner nearer the meter for the others.
     public let anchor: SIMD3<Float>
     public let anchorS: Float
+    /// How this piece's line was found: the meter piece's `WallFrame.source`, or its corner's.
+    public let source: WallLineSource
 
     /// s and out of a point given as its offset from the meter (or the meter's foot: only the
     /// horizontal part counts). s is not clamped to `span`.
@@ -61,12 +79,15 @@ public struct WallSegment: Sendable, Equatable {
     /// The pieces of a chain, left to right, and the index of the meter's piece. The meter's
     /// piece faces `outward`; each corner starts (right side) or ends (left side) a new piece
     /// facing the corner's outward, whose line passes through the previous piece's point at the
-    /// corner's s, so the chain is continuous and s is distance along it.
-    static func chain(outward: SIMD3<Float>, left: [WallCorner], right: [WallCorner]) -> (segments: [WallSegment], meter: Int) {
+    /// corner's s, so the chain is continuous and s is distance along it. `source` is the meter
+    /// piece's line source; the others carry their corner's.
+    static func chain(
+        outward: SIMD3<Float>, source: WallLineSource, left: [WallCorner], right: [WallCorner]
+    ) -> (segments: [WallSegment], meter: Int) {
         func along(_ outward: SIMD3<Float>) -> SIMD3<Float> { simd_normalize(simd_cross(-outward, WallFrame.up)) }
         let meterPiece = WallSegment(
             span: (left.first?.s ?? -.infinity)...(right.first?.s ?? .infinity),
-            along: along(outward), outward: outward, anchor: .zero, anchorS: 0)
+            along: along(outward), outward: outward, anchor: .zero, anchorS: 0, source: source)
         func pieces(_ corners: [WallCorner], rightward: Bool) -> [WallSegment] {
             var previous = meterPiece
             var result: [WallSegment] = []
@@ -75,7 +96,8 @@ public struct WallSegment: Sendable, Equatable {
                 let piece = WallSegment(
                     span: rightward ? corner.s...far : far...corner.s,
                     along: along(corner.outward), outward: corner.outward,
-                    anchor: previous.anchor + previous.along * (corner.s - previous.anchorS), anchorS: corner.s)
+                    anchor: previous.anchor + previous.along * (corner.s - previous.anchorS), anchorS: corner.s,
+                    source: corner.source)
                 result.append(piece)
                 previous = piece
             }
@@ -150,6 +172,11 @@ public struct WallFrame: Sendable, Equatable {
     public private(set) var segments: [WallSegment]
     /// Index of the meter's piece in `segments`.
     public private(set) var meterSegmentIndex: Int
+    /// How the meter piece's line was found. `.tap`, scene.json's reading of no source, until the
+    /// capture says otherwise; the pieces past corners carry their own (`WallCorner.source`).
+    public var source: WallLineSource = .tap {
+        didSet { rebuildChain() }
+    }
 
     /// Returns nil when `outward` has no horizontal component to speak of (a floor or ceiling hit).
     public init?(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float) {
@@ -158,7 +185,11 @@ public struct WallFrame: Sendable, Equatable {
         self.meter = meter
         self.outward = simd_normalize(flat)
         self.groundY = groundY
-        (segments, meterSegmentIndex) = WallSegment.chain(outward: self.outward, left: [], right: [])
+        (segments, meterSegmentIndex) = WallSegment.chain(outward: self.outward, source: source, left: [], right: [])
+    }
+
+    private mutating func rebuildChain() {
+        (segments, meterSegmentIndex) = WallSegment.chain(outward: outward, source: source, left: leftCorners, right: rightCorners)
     }
 
     public var along: SIMD3<Float> { simd_normalize(simd_cross(-outward, Self.up)) }
@@ -256,7 +287,7 @@ public struct WallFrame: Sendable, Equatable {
         case .left: leftCorners.append(corner)
         case .right: rightCorners.append(corner)
         }
-        (segments, meterSegmentIndex) = WallSegment.chain(outward: outward, left: leftCorners, right: rightCorners)
+        rebuildChain()
     }
 
     /// Moves every corner by `delta` meters of s, as the marked ends move when the meter does
@@ -265,6 +296,6 @@ public struct WallFrame: Sendable, Equatable {
         guard !leftCorners.isEmpty || !rightCorners.isEmpty else { return }
         for index in leftCorners.indices { leftCorners[index].s += delta }
         for index in rightCorners.indices { rightCorners[index].s += delta }
-        (segments, meterSegmentIndex) = WallSegment.chain(outward: outward, left: leftCorners, right: rightCorners)
+        rebuildChain()
     }
 }

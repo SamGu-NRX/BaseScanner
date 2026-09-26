@@ -182,10 +182,11 @@ struct ReplaySessionTests {
     }
 
     /// The app plays the fixture's closing run of tilted-up frames for the tilt-up step and for
-    /// overhead requests: views reaching at least 1 m above the wall band (ScanEngine.tiltUpAbove).
-    /// The three closing frames do, over the stretch by the meter. The walk before them (frames
-    /// 7 to 37, pitched 20 degrees down) reaches about 2.0 m, just past the wall band, so the run
-    /// is exactly those three. The level views of the meter before the walk may reach it.
+    /// overhead requests: views reaching at least 0.7 m above the wall band's 2.286 m top
+    /// (ScanEngine.tiltUpAbove). The three closing frames do, over the stretch by the meter. The
+    /// walk before them (frames 7 to 37, pitched 20 degrees down) reaches about 2.0 m, short of
+    /// the band's top, so the run is exactly those three. The level views of the meter before the
+    /// walk may reach it.
     @Test func syntheticWallFixtureEndsWithTiltUpViews() throws {
         let folder = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -199,7 +200,7 @@ struct ReplaySessionTests {
                 cameraToWorld: frame.cameraToWorld, intrinsics: frame.intrinsics,
                 imageSize: SIMD2(Float(frame.width), Float(frame.height))))
         }
-        let tilted = map.config.overheadFrom + 1
+        let tilted = map.config.wallCaptureHeight + 0.7
         let walkIsNotTiltedUp = reaches[7..<38].allSatisfy { reach in reach.allSatisfy { $0.out < tilted } }
         #expect(walkIsNotTiltedUp)
         for reach in reaches.suffix(3) {

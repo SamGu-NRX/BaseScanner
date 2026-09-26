@@ -46,6 +46,9 @@ extension ScanEngine: ScanActions {
             state.guidance = .aimAtWallForMeter
             return
         }
+        // The map carries the line's source: the export writes it and the walked clearance
+        // takes the server's error for it.
+        updateCoverage { $0.setWallLineSource(meterLineSource) }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform))
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
@@ -67,6 +70,7 @@ extension ScanEngine: ScanActions {
         state.closeUp = .skipped
         state.meterNumber = .skipped
         RuntimeLog.engine.info("close-up skipped after \(self.state.closeUpFailedAttempts) failed attempts")
+        observeCloseUpView()
         go(.wallWalk)
     }
 
@@ -83,7 +87,27 @@ extension ScanEngine: ScanActions {
         guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
         state.meterNumber = .confirmed(chosen.text)
         RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public))")
+        observeCloseUpView()
         finishCloseUp()
+    }
+
+    /// Puts the close-up photo's view into coverage, under the same rules as a walk keyframe: a
+    /// cell counts once seen from two positions at least 0.25 m apart, and the view is replayed
+    /// with the kept keyframes whenever the wall moves (`CoverageMap.observedCameras`).
+    ///
+    /// Only when the close-up step ends (number confirmed, or skipped), because the photo on disk
+    /// is final then, and only the view `closeUpCredit` holds: the shot whose photo is on disk,
+    /// after the reader found it decodable and in focus. A skip after a photo the reader
+    /// rejected as blurry, or while a retake's photo is still saving or being read, adds nothing.
+    /// A photo in focus where only the number couldn't be read still counts. The map always
+    /// exists here: the close-up follows the meter mark, which sets the wall (`setWall`). No time
+    /// is passed, so the pose never joins the walked path: nothing is kept between the close-up
+    /// and the walk's first frame.
+    private func observeCloseUpView() {
+        guard let view = closeUpCredit.take() else { return }
+        var delta: CoverageMap.Delta?
+        updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
+        RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
     }
 
     /// Marks a wall end during the walk, or, during a server past_end request, marks that
@@ -133,8 +157,13 @@ extension ScanEngine: ScanActions {
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
         var turned: Result<WallCorner, CornerRefusal> = .failure(.notAWall)
+        // The new piece's line runs through the hit point facing the hit plane's normal, as the
+        // meter's does, so its source follows the same rule (`meterLineSource`).
+        let source = Self.lineSource(of: hit.source)
         updateCoverage { map in
-            turned = Result { () throws(CornerRefusal) in try map.turnCorner(side == .left ? .left : .right, meeting: hit.position, outward: outward) }
+            turned = Result { () throws(CornerRefusal) in
+                try map.turnCorner(side == .left ? .left : .right, meeting: hit.position, outward: outward, source: source)
+            }
         }
         let corner: WallCorner
         switch turned {
@@ -151,6 +180,14 @@ extension ScanEngine: ScanActions {
         // Features tapped past the corner were placed on the old wall's line.
         reprojectFeatures()
         resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
+    }
+
+    /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no
+    /// patch (`sceneJSON`). Every upload reads the latest answer.
+    func answerGround(_ answer: GroundAnswer) {
+        guard state.phase == .markFeatures else { return }
+        state.groundAnswer = answer
+        RuntimeLog.engine.info("ground answered: \(String(describing: answer), privacy: .public)")
     }
 
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
@@ -175,6 +212,9 @@ extension ScanEngine: ScanActions {
 
     func beginMarking(_ kind: FeatureKind) {
         guard state.phase == .wallWalk || state.phase == .markFeatures else { return }
+        // A mark is a tap into the world frame. The review hides "Add something" while the phone
+        // has lost its place; this holds if a tap races the change.
+        guard state.phase != .markFeatures || !state.tracking.hasLostItsPlace else { return }
         state.marking = MarkingState(kind: kind, step: 0, refusal: nil)
         pendingTaps = []
     }

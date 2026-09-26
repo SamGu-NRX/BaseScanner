@@ -24,20 +24,25 @@ public struct SceneWall: Sendable, Equatable {
     public var outward: SIMD3<Float>
     /// World y of the ground in front of the wall, meters.
     public var groundY: Float
-    /// Corners the walk followed, nearest the meter first (`WallFrame.leftCorners`).
+    /// Corners the walk followed, nearest the meter first (`WallFrame.leftCorners`). Each carries
+    /// how the line of the piece past it was found.
     public var leftCorners: [WallCorner]
     public var rightCorners: [WallCorner]
+    /// How the line of the meter's piece was found.
+    public var source: WallLineSource
 
     public init(
         meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float,
-        leftCorners: [WallCorner] = [], rightCorners: [WallCorner] = []
+        leftCorners: [WallCorner] = [], rightCorners: [WallCorner] = [], source: WallLineSource = .tap
     ) {
         self.meter = meter
         self.outward = outward
         self.groundY = groundY
         self.leftCorners = leftCorners
         self.rightCorners = rightCorners
+        self.source = source
     }
+
 
     /// Unit vector toward +s on the meter's wall: cross(-outward, up). For outward (0, 0, 1) this
     /// is (1, 0, 0), which is the scene schema's rule that outward is the baseline direction
@@ -48,7 +53,7 @@ public struct SceneWall: Sendable, Equatable {
 
     /// The straight pieces, left to right, and the index of the meter's.
     public var chain: (segments: [WallSegment], meter: Int) {
-        WallSegment.chain(outward: outward, left: leftCorners, right: rightCorners)
+        WallSegment.chain(outward: outward, source: source, left: leftCorners, right: rightCorners)
     }
 
     public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
@@ -75,6 +80,29 @@ public struct SceneWall: Sendable, Equatable {
             Float(point.x / SceneUnits.feetPerMeter), meter.y, Float(point.y / SceneUnits.feetPerMeter))
         let c = wallCoordinates(of: world)
         return (c.s, c.out)
+    }
+
+    /// s along the chain, meters, of a polyline given as plan offsets from the meter ([dx, dz]
+    /// feet in the scene frame's axes), with the s of every corner the line passes between two of
+    /// its points added in between. Each point maps to the piece nearest it (`wallCoordinates`).
+    ///
+    /// Drawn as straight lines between wall points, a route from one piece to the next with no
+    /// vertex at the corner would cut across it; with the corner's s as a vertex every drawn
+    /// stretch lies on one piece and the line bends where the wall does. A corner within 0.1 mm
+    /// of a point is that point already and is not added again.
+    public func chainS(ofPlanOffsetsFeet offsets: [SIMD2<Double>]) -> [Float] {
+        let corners = chain.segments.dropLast().map(\.span.upperBound)
+        let base = SIMD2<Double>(Double(meter.x), Double(meter.z)) * SceneUnits.feetPerMeter
+        var path: [Float] = []
+        for offset in offsets {
+            let s = wallCoordinates(ofPlanPointFeet: base + offset).s
+            if let last = path.last {
+                let between = corners.filter { min(last, s) + 1e-4 < $0 && $0 < max(last, s) - 1e-4 }
+                path += s >= last ? between : between.reversed()
+            }
+            path.append(s)
+        }
+        return path
     }
 }
 
@@ -104,8 +132,10 @@ public struct SceneCoverage: Sendable {
     /// True when the homeowner marked the left end as a real limit (fence, property line).
     public var leftEndMarked: Bool
     public var rightEndMarked: Bool
-    /// Stretches of wall face seen, in s meters.
-    public var wall: [ClosedRange<Float>]
+    /// Stretches of wall face seen, each with how high up it was seen, meters above the ground
+    /// (`CoverageMap.wallSeenSpans()`). Always sent as `out_ft`: scene.json's "no out_ft" means
+    /// seen up to headroom height, which would claim more than a phone's view shows.
+    public var wall: [ObservedSpan]
     /// Stretches of ground seen in front of the wall, each with how far out it was seen
     /// (`CoverageMap.groundDepthSpans()`).
     public var ground: [ObservedSpan]
@@ -118,7 +148,7 @@ public struct SceneCoverage: Sendable {
     public var overhead: [ObservedSpan]
 
     public init(
-        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan],
+        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ObservedSpan], ground: [ObservedSpan],
         facing: [ObservedSpan] = [], overhead: [ObservedSpan] = []
     ) {
         self.leftEndMarked = leftEndMarked
@@ -133,7 +163,7 @@ public struct SceneCoverage: Sendable {
     public init(_ map: CoverageMap, leftEndMarked: Bool, rightEndMarked: Bool) {
         self.init(
             leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked,
-            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans(), facing: map.facingSpans(),
+            wall: map.wallSeenSpans(), ground: map.groundDepthSpans(), facing: map.facingSpans(),
             overhead: map.overheadSpans())
     }
 }
@@ -171,10 +201,6 @@ public enum MeterPlaneSource: Sendable, Equatable {
     /// It is there so the server treats a meter placed on a guessed surface as less certain than
     /// one on a detected wall.
     public static let estimatedPlaneExtraError: Float = 0.15
-    /// The server's meter error when scene.json leaves it out: 0.3 ft (rules.yaml errors.meter_ft
-    /// on origin/t3/server at 739fb6f). Mirrored here so the extra error adds to it; if the rules
-    /// change, this goes stale.
-    public static let serverDefaultMeterError: Float = 0.3 * 0.3048
 }
 
 public struct SceneInput: Sendable {
@@ -205,12 +231,16 @@ public struct SceneInput: Sendable {
     /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
     /// written as `overheads` entries.
     public var meshOverheads: [ObservedSpan]
+    /// What the homeowner said the ground along the wall is. With a type, the ground the ground
+    /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
+    /// and the server treats the surface as unknown.
+    public var groundType: SceneGroundType?
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
-        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = []
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -225,6 +255,7 @@ public struct SceneInput: Sendable {
         self.stills = stills
         self.meshFacing = meshFacing
         self.meshOverheads = meshOverheads
+        self.groundType = groundType
     }
 }
 
@@ -301,13 +332,13 @@ public enum SceneExport {
     static let maxObserved = 500
     /// scene.schema.json's `facing` and `overheads` maxItems.
     static let maxMeasured = 500
+    /// scene.schema.json's `ground` maxItems, shared by driveway strips and ground patches.
+    static let maxGround = 200
 
-    /// How many `coverage.observed` entries each of the three bands with a reach (ground, facing,
-    /// overhead) may use. Wall stretches are few (one per unbroken run); the budget they leave
-    /// is shared equally.
-    static func reachBudget(wallEntries: Int) -> Int {
-        max(3, maxObserved - wallEntries) / 3
-    }
+    /// How many `coverage.observed` entries each band (wall, ground, facing, overhead) may use:
+    /// the schema's limit shared equally. Every band carries a reach, which changes from cell to
+    /// cell, so any of them can run to many entries.
+    static let bandBudget = maxObserved / 4
 
     /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
     public static func jsonData(_ input: SceneInput) throws -> Data {
@@ -348,7 +379,7 @@ public enum SceneExport {
         let objectError = input.objectPlusMinus.map(feet)
         let meterError: Float? = switch input.meterPlane {
         case .detectedPlane: input.meterPlusMinus
-        case .estimatedPlane: (input.meterPlusMinus ?? MeterPlaneSource.serverDefaultMeterError) + MeterPlaneSource.estimatedPlaneExtraError
+        case .estimatedPlane: (input.meterPlusMinus ?? ServerErrorDefaults.meter) + MeterPlaneSource.estimatedPlaneExtraError
         }
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
@@ -408,29 +439,51 @@ public enum SceneExport {
         }
 
         let coverage = input.coverage
-        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground), ("facing", coverage.facing), ("overhead", coverage.overhead)]
+        var reaches: [(band: String, spans: [ObservedSpan])] = [
+            ("wall", coverage.wall), ("ground", coverage.ground), ("facing", coverage.facing), ("overhead", coverage.overhead),
+        ]
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
-        let budget = reachBudget(wallEntries: coverage.wall.count)
-        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: budget)) }
-        var observed: [SceneDocument.Observed] = coverage.wall.map { .init(band: "wall", span_ft: spanFeet($0), out_ft: nil) }
+        let corners = chain.segments.dropLast().map(\.span.upperBound)
+        // Ground entries are split at every corner, after all joining. The server draws a ground
+        // entry as the strip in front of the chain over its span and, where the span crosses a
+        // corner, fills the sector between the two pieces' strips (server/scene.py
+        // `band_polygon`, t3/server 930e8e5); no coverage sample lies in that sector. Entries
+        // that meet at a corner are drawn separately and unioned, which adds no sector. The wall,
+        // facing and overhead bands are read only as stretches of s (`missing`, `seen_to`), so
+        // crossing a corner claims nothing extra there. Joining first leaves room for one more
+        // entry per corner.
+        reaches = reaches.map { band, spans in
+            let joined = ObservedSpan.coarsened(spans, toAtMost: band == "ground" ? max(1, bandBudget - corners.count) : bandBudget)
+            return (band, band == "ground" ? Self.split(joined, at: corners) : joined)
+        }
+        var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {
-            observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
+            observed += spans.compactMap { item in
+                spanInward(item.span).map { .init(band: band, span_ft: $0, out_ft: feetDown(item.out)) }
+            }
+        }
+        if let type = input.groundType {
+            // Patches from the ground entries as written, not the meters before rounding.
+            let written = observed.filter { $0.band == "ground" }.compactMap { entry in
+                entry.out_ft.map { out in
+                    ObservedSpan(
+                        span: Float(entry.span_ft[0] / SceneUnits.feetPerMeter)...Float(entry.span_ft[1] / SceneUnits.feetPerMeter),
+                        out: Float(out / SceneUnits.feetPerMeter))
+                }
+            }
+            ground += groundPatches(type, over: written, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
         }
 
         // Mesh measurements, split where the chain turns a corner so each entry names the wall it
         // is in front of. Coarsening first leaves room for one more entry per corner.
-        let corners = chain.segments.dropLast().map(\.span.upperBound)
         func measured(_ spans: [ObservedSpan], _ field: String, room: Int) throws -> [(id: String, span: [Double], value: Double)] {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "\(field)[\(index)].out") }
             let limit = room - corners.count
             guard limit >= 1 else { return [] }
-            return ObservedSpan.coarsened(spans, toAtMost: limit).flatMap { item in
-                let cuts = [item.span.lowerBound] + corners.filter { item.span.contains($0) && $0 != item.span.lowerBound && $0 != item.span.upperBound } + [item.span.upperBound]
-                return zip(cuts, cuts.dropFirst()).map { low, high in
-                    (wallIDAt((low + high) / 2), spanFeet(low...high), feetDown(item.out))
-                }
+            return Self.split(ObservedSpan.coarsened(spans, toAtMost: limit), at: corners).compactMap { item in
+                spanInward(item.span).map { (wallIDAt((item.span.lowerBound + item.span.upperBound) / 2), $0, feetDown(item.out)) }
             }
         }
         facing += try measured(input.meshFacing, "meshFacing", room: maxMeasured - facing.count).map {
@@ -445,7 +498,7 @@ public enum SceneExport {
         return SceneDocument(
             schema_version: "1.0",
             meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
-            walls: walls(chain.segments, ids: wallIDs, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
+            walls: walls(chain.segments, ids: wallIDs, sources: chain.segments.map(\.source), baselineS: input.baselineS, height: input.wallHeight, plan: plan),
             objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(
                 ends: .init(
@@ -460,18 +513,67 @@ public enum SceneExport {
     /// previous one ends (the same numbers, computed once), so the server reads the chain as
     /// continuous and each corner as a corner.
     private static func walls(
-        _ segments: [WallSegment], ids: [String], baselineS: ClosedRange<Float>, height: Float?,
+        _ segments: [WallSegment], ids: [String], sources: [WallLineSource], baselineS: ClosedRange<Float>, height: Float?,
         plan: (Float, Float) -> [Double]
     ) -> [SceneDocument.Wall] {
-        let pieces = segments.indices.compactMap { index -> (id: String, span: ClosedRange<Float>)? in
+        let pieces = segments.indices.compactMap { index -> (id: String, source: WallLineSource, span: ClosedRange<Float>)? in
             let low = max(segments[index].span.lowerBound, baselineS.lowerBound)
             let high = min(segments[index].span.upperBound, baselineS.upperBound)
-            return low < high ? (ids[index], low...high) : nil
+            return low < high ? (ids[index], sources[index], low...high) : nil
         }
         let points = ([pieces.first?.span.lowerBound] + pieces.map(\.span.upperBound)).compactMap { $0 }.map { plan($0, 0) }
+        // The source is always written, also `tap`, so the scene says how every line was found.
         return pieces.enumerated().map { index, piece in
-            SceneDocument.Wall(id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet))
+            SceneDocument.Wall(
+                id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet), source: piece.source.rawValue)
         }
+    }
+
+    /// Spans cut at every one of `cuts` that lies strictly inside them.
+    static func split(_ spans: [ObservedSpan], at cuts: [Float]) -> [ObservedSpan] {
+        spans.flatMap { item in
+            let edges = [item.span.lowerBound] + cuts.filter { item.span.lowerBound < $0 && $0 < item.span.upperBound }.sorted()
+                + [item.span.upperBound]
+            return zip(edges, edges.dropFirst()).map { ObservedSpan(span: $0...$1, out: item.out) }
+        }
+    }
+
+    /// Ground entries closer than this are one stretch to the server, which reads gaps under its
+    /// COVERAGE_TOLERANCE_FT (0.01 ft, server/scene.py at 930e8e5) as rounding and grows what was
+    /// seen by half of it; a patch may run across such a gap at the lower reach.
+    static let patchJoinGapFeet: Double = 0.01
+    /// How far every seen edge of a patch is pulled in before its vertices are rounded to the
+    /// nearest 0.0001 ft, which moves a point at most 0.71e-4 ft.
+    static let patchInsetFeet: Double = 1e-4
+    /// How far behind the wall line a patch starts. The server's wall line runs through the
+    /// baseline as written, rounded like the patch; a patch starting exactly on the phone's line
+    /// could round to a sliver short of the server's, which leaves that sliver an unrecorded
+    /// surface along the whole wall and the footprint's back edge off the patch. 0.001 ft is ten
+    /// rounding steps; behind the line is the house, where the server models no ground.
+    static let patchBehindWallFeet: Double = 0.001
+
+    /// Patches of `type` over the ground entries as written (`SceneWall.groundPatchPolygons`), at
+    /// most `room` of them, without `plus_minus_ft` (the server's tap default). The entries are
+    /// already split at corners and joined to their budget, so there is at most one patch per
+    /// entry.
+    private static func groundPatches(
+        _ type: SceneGroundType, over spans: [ObservedSpan], wall: SceneWall, extent: ClosedRange<Float>, room: Int
+    ) -> [SceneDocument.Ground] {
+        guard room >= 1 else { return [] }
+        let meters = { (feet: Double) in Float(feet / SceneUnits.feetPerMeter) }
+        let polygons = wall.groundPatchPolygons(
+            over: spans, within: extent, joinGap: meters(patchJoinGapFeet), inset: meters(patchInsetFeet), behind: meters(patchBehindWallFeet))
+        let patches = polygons.compactMap { polygon -> SceneDocument.Ground? in
+            var points: [[Double]] = []
+            for p in polygon.map({ [feet($0.x), feet($0.y)] }) where p != points.last { points.append(p) }
+            if points.count > 1, points.first == points.last { points.removeLast() }
+            return points.count >= 3 ? SceneDocument.Ground(type: type.rawValue, polygon: points) : nil
+        }
+        // At most one polygon per written ground entry (125 at most, `bandBudget`), each of at
+        // most 2 + 2 x 125 points plus two from a corner's cut, under the schema's 500. With so
+        // many driveway strips that the entries outnumber the room, the last patches go: less
+        // ground, never more.
+        return Array(patches.prefix(room))
     }
 
     /// A strip `drivewayStripFeet` wide on the far side of the tapped edge from the wall. The offset
@@ -535,6 +637,20 @@ public enum SceneExport {
 
     private static func spanFeet(_ span: ClosedRange<Float>) -> [Double] { [feet(span.lowerBound), feet(span.upperBound)] }
 
+    /// A span of what was seen in feet, each end rounded to 4 decimals toward the other, so the
+    /// written stretch never claims more than was seen. An end within 1e-5 ft of a 4-decimal
+    /// value is taken as that value: cell edges are whole 6 in steps, and their Float noise
+    /// (about 2e-6 ft at 30 ft from the meter) must not move them a full step inward. Otherwise
+    /// every edge between neighbouring entries would open a 0.0001 ft gap, which the server's
+    /// `seen_to` reads as unseen. 1e-5 ft is 3 micrometres. Nil when nothing is left.
+    static func spanInward(_ span: ClosedRange<Float>) -> [Double]? {
+        let noise = 1e-5
+        let low = ((Double(span.lowerBound) * SceneUnits.feetPerMeter - noise) * 10_000).rounded(.up) / 10_000
+        let high = ((Double(span.upperBound) * SceneUnits.feetPerMeter + noise) * 10_000).rounded(.down) / 10_000
+        guard low < high else { return nil }
+        return [low == 0 ? 0 : low, high == 0 ? 0 : high]
+    }
+
     private static func planFeet(_ p: SIMD3<Float>) -> [Double] { [feet(p.x), feet(p.z)] }
 
     private static func point3Feet(_ p: SIMD3<Float>) -> [Double] { [feet(p.x), feet(p.y), feet(p.z)] }
@@ -559,6 +675,7 @@ private struct SceneDocument: Encodable {
         var id: String
         var baseline: [[Double]]
         var height_ft: Double?
+        var source: String
     }
     struct Attrs: Encodable {
         var operable: Bool

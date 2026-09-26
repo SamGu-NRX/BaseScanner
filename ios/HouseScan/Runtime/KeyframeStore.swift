@@ -29,7 +29,8 @@ struct StoredDepth: Sendable {
     let confidenceFile: String?
     let width: Int
     let height: Int
-    let source: DepthPacket.Source
+    /// Nil when the depth's origin is unknown (`DepthPacket.source`); live frames say ARKit's.
+    let source: DepthPacket.Source?
 }
 
 /// Keyframe JPEGs and close-up stills of one scan, in Caches/Scans/<id>/. File work runs off the
@@ -141,15 +142,12 @@ final class KeyframeStore {
     /// size.
     nonisolated static func loadDepth(_ depth: StoredDepth, in directory: URL) -> DepthPacket? {
         guard let map = try? Data(contentsOf: directory.appending(path: depth.file)), map.count == depth.width * depth.height * 4 else { return nil }
-        let meters = map.withUnsafeBytes { raw in
-            (0..<(depth.width * depth.height)).map { Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
-        }
         var confidence: [UInt8]?
         if let file = depth.confidenceFile {
             guard let data = try? Data(contentsOf: directory.appending(path: file)), data.count == depth.width * depth.height else { return nil }
             confidence = [UInt8](data)
         }
-        return DepthPacket(meters: meters, width: depth.width, height: depth.height, confidence: confidence, source: depth.source)
+        return DepthPacket(meters: PacketFiles.floats(littleEndian: map), width: depth.width, height: depth.height, confidence: confidence, source: depth.source)
     }
 
     enum KeyframeWriteFailure: String, Error {
@@ -163,11 +161,19 @@ final class KeyframeStore {
     func saveStill(_ frame: SourceFrame, name: String) async -> Bool {
         let directory = directory
         let id = Self.purpose(of: name)
+        let startedIn = epoch
         let written = await Task.detached(priority: .utility) { () -> StoredKeyframe? in
             guard let data = Self.data(of: frame.jpeg), (try? data.write(to: directory.appending(path: name), options: .atomic)) != nil else { return nil }
             return Self.stored(frame, id: id, jpeg: data, in: directory)
         }.value
         guard let written else { return false }
+        // Taken in a world frame that was discarded while the file was being written. The file is
+        // left alone: a close-up in the new frame may already have written the same name, and
+        // nothing reads a still that `stills` doesn't list.
+        guard startedIn == epoch else {
+            RuntimeLog.capture.info("still \(name, privacy: .public) not kept: its world frame was discarded")
+            return false
+        }
         stills[id] = name
         stillFrames[id] = written
         return true
@@ -181,11 +187,19 @@ final class KeyframeStore {
         }.value
     }
 
-    /// Forgets keyframes taken in a world frame that no longer exists (after a failed
-    /// relocalization). Their files stay until the scan is discarded.
+    /// Forgets keyframes and stills taken in a world frame that no longer exists (after a failed
+    /// relocalization), the meter close-up included: export and the packet read only what
+    /// `keyframes` and `stills` list, so a close-up skipped in the new frame exports none. Keyframe
+    /// files stay until the scan is discarded; still files go now, since the next close-up
+    /// reuses the name (`meter_close.jpg`).
     func discardKeyframes() {
         epoch += 1
         keyframes = []
+        for name in stills.values {
+            try? FileManager.default.removeItem(at: directory.appending(path: name))
+        }
+        stills = [:]
+        stillFrames = [:]
     }
 
     /// Where the packet is assembled, and the zip Share scan offers.

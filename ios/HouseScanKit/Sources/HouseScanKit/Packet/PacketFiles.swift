@@ -15,6 +15,7 @@ public enum PacketError: Error, Equatable, CustomStringConvertible {
     case notRigid(String)
     case invalidPhoto(id: String, reason: String)
     case invalidDepth(id: String, reason: String)
+    case invalidDepthFrame(id: String, reason: String)
     case invalidMesh(String)
     case invalidMark(id: String, reason: String)
     case invalidGuidance(id: String, reason: String)
@@ -35,6 +36,7 @@ public enum PacketError: Error, Equatable, CustomStringConvertible {
         case .notRigid(let place): "\(place): pose is not a rotation plus a translation"
         case .invalidPhoto(let id, let reason): "photo \(id): \(reason)"
         case .invalidDepth(let id, let reason): "photo \(id) depth: \(reason)"
+        case .invalidDepthFrame(let id, let reason): "depth frame \(id): \(reason)"
         case .invalidMesh(let reason): "lidar.mesh: \(reason)"
         case .invalidMark(let id, let reason): "mark \(id): \(reason)"
         case .invalidGuidance(let id, let reason): "guidance \(id): \(reason)"
@@ -78,6 +80,14 @@ public enum PacketFiles {
             withUnsafeBytes(of: value.bitPattern.littleEndian) { data.append(contentsOf: $0) }
         }
         return data
+    }
+
+    /// The inverse of `depthData(meters:)`: float32 little-endian values, any trailing partial
+    /// value ignored.
+    public static func floats(littleEndian data: Data) -> [Float] {
+        data.withUnsafeBytes { raw in
+            (0..<(raw.count / 4)).map { Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
+        }
     }
 
     /// The mesh as binary little-endian PLY with exactly the header packet/README.md fixes (a

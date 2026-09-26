@@ -48,6 +48,16 @@ enum TrackingQuality: Equatable, Sendable {
         case relocalizing
         case unknown
     }
+
+    /// The phone doesn't know where it is in the world frame the scan was measured in: ARKit is
+    /// relocalizing, or not tracking at all. Anything tapped into the scene has to wait. The
+    /// other limited states (moving fast, a plain surface) still keep the frame.
+    var hasLostItsPlace: Bool {
+        switch self {
+        case .notAvailable, .limited(.relocalizing): true
+        case .normal, .limited: false
+        }
+    }
 }
 
 /// What the screen shows behind the overlays.
@@ -415,6 +425,22 @@ struct MarkingState: Equatable, Sendable {
 }
 
 /// Why a mark of the next wall round a corner was refused.
+/// The ground types a scene can record (scene.schema.json `ground[].type`), in the order the
+/// question lists them.
+enum GroundType: String, CaseIterable, Identifiable, Sendable {
+    case lawn, mulch, gravel, concrete, drive, deck
+    var id: String { rawValue }
+}
+
+/// The homeowner's answer to what the ground along the wall is, asked once after the walk. The
+/// camera can't tell mulch from soil, so this is the only source of the ground's type.
+enum GroundAnswer: Equatable, Sendable {
+    /// Exported as patches of this type over the ground the coverage saw, and nowhere else.
+    case type(GroundType)
+    /// "Not sure": no patch is sent and the server reports the surface as unknown.
+    case notSure
+}
+
 enum NextWallRefusal: Equatable, Sendable {
     /// No wall under the circle.
     case noSurface
@@ -601,6 +627,9 @@ final class ScanViewState {
     /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
     /// camera can't tell open sky from an eave, so the homeowner answers.
     var overheadQuestion = false
+    /// The answer to the ground question on the feature review. Nil until the homeowner answers;
+    /// an unanswered question exports like `.notSure`.
+    var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
 
@@ -650,6 +679,8 @@ protocol ScanActions: AnyObject {
     func markNextWall(at point: CGPoint?, viewSize: CGSize)
     /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
     func answerOverhead(clear: Bool)
+    /// The answer to the ground question during `.markFeatures`; can be changed until upload.
+    func answerGround(_ answer: GroundAnswer)
     func beginMarking(_ kind: FeatureKind)
     func markFeaturePoint(at point: CGPoint?, viewSize: CGSize)
     func cancelMarking()

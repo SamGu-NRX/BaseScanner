@@ -2,17 +2,18 @@ import CryptoKit
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at e0ee8d3
-/// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). That revision
-/// added `out_ft` to missing_evidence requests and defined `out_ft` for facing and overhead
-/// coverage. `vendoredCopiesMatchServer` fails if the server's files change and these are not
+/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 930e8e5
+/// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). Since e0ee8d3
+/// requests carry `out_ft` and facing and overhead coverage may too; 737bf75 adds
+/// `walls[].source`; 930e8e5 defines a wall entry's `out_ft` as the height seen above the
+/// ground. `vendoredCopiesMatchServer` fails if the server's files change and these are not
 /// refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
     static let vendored: [(name: String, serverPath: String, sha256: String)] = [
         ("scene.schema.json", "server/schemas/scene.schema.json",
-         "e47dd28ad55dd415159ea61f0cca285f71c01e93a489cf646460f47858b27aec"),
+         "e07f20f0487c9c9f890842230ea87114b4b385a43744c7144d881b4bdd6cbf26"),
         ("result.schema.json", "server/schemas/result.schema.json",
-         "f5efaf372eb00426798af8e1b60bdd580af4bf04601af3e7ee3fca5261dd047f"),
+         "ddc7cc486945e18eaae714b4a6c29249cbd86f24960fa5df640bb5bbc340049c"),
         ("example-scene.json", "server/tests/fixtures/example-scene.json",
          "07bda024c682be365f0f7a6ad7a83fb44c0726344193e7a8b2d8d79499b4bef0"),
     ]
@@ -26,6 +27,37 @@ enum SceneSchemas {
 
     static func scene() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: data("scene.schema.json")) }
     static func result() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: data("result.schema.json")) }
+
+    /// The server branch the vendored copies come from.
+    static let serverBranch = "origin/t3/server"
+
+    /// The upstream copy of a vendored file: the repository's own tree once `branch` is merged
+    /// into it, otherwise `git show <branch>:<path>`. Nil when neither is there: no repository,
+    /// no git, or no such ref. CI checks out one commit of one branch (actions/checkout's default
+    /// depth 1), so there it is nil and the drift tests show as skipped, not passed.
+    static func upstream(_ path: String, branch: String) -> Data? {
+        guard let root = repoRoot() else { return nil }
+        let file = root.appendingPathComponent(path)
+        if FileManager.default.fileExists(atPath: file.path) { return try? Data(contentsOf: file) }
+        return gitShow("\(branch):\(path)", in: root)
+    }
+
+    private static func gitShow(_ object: String, in root: URL) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["-C", root.path, "show", object]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? data : nil
+    }
 
     /// Walks up from this file to the first directory holding `server/schemas` or `.git`.
     static func repoRoot(from file: String = #filePath) -> URL? {
@@ -141,24 +173,25 @@ enum SceneSchemas {
         #expect(try SceneSchemas.scene().validate(SceneSchemas.data("example-scene.json")) == [])
     }
 
-    @Test func vendoredCopiesMatchServer() throws {
-        // Without the server tree (before the server branch is merged) there is nothing to compare;
-        // the vendored copies then stand as taken from origin/t3/server e0ee8d3.
-        guard let root = SceneSchemas.repoRoot() else { return }
+    /// Each vendored copy against the server's current one: the tree's `server/` once merged,
+    /// else origin/t3/server through git. Skipped, not passed, where neither can be read.
+    @Test(.enabled(
+        if: SceneSchemas.upstream(SceneSchemas.vendored[0].serverPath, branch: SceneSchemas.serverBranch) != nil,
+        "neither server/ nor \(SceneSchemas.serverBranch) is available to compare against"))
+    func vendoredCopiesMatchServer() throws {
         for (name, serverPath, _) in SceneSchemas.vendored {
-            let serverFile = root.appendingPathComponent(serverPath)
-            guard FileManager.default.fileExists(atPath: serverFile.path) else { continue }
-            let vendored = try SceneSchemas.data(name)
-            #expect(try Data(contentsOf: serverFile) == vendored, "Tests/HouseScanKitTests/Schemas/\(name) differs from \(serverPath); copy the server's file over it")
+            let server = try #require(
+                SceneSchemas.upstream(serverPath, branch: SceneSchemas.serverBranch), "\(serverPath) is not on \(SceneSchemas.serverBranch)")
+            #expect(server == (try SceneSchemas.data(name)), "Tests/HouseScanKitTests/Schemas/\(name) differs from \(serverPath); copy the server's file over it")
         }
     }
 
-    /// The hashes are of `git show e0ee8d3:<serverPath>`, so a copy edited by hand (or refreshed
+    /// The hashes are of `git show 930e8e5:<serverPath>`, so a copy edited by hand (or refreshed
     /// without updating the provenance above) fails here even where the server tree is absent.
     @Test func vendoredCopiesAreTheRecordedRevision() throws {
         for (name, _, sha256) in SceneSchemas.vendored {
             let digest = SHA256.hash(data: try SceneSchemas.data(name)).map { String(format: "%02x", $0) }.joined()
-            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server e0ee8d3")
+            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 930e8e5")
         }
     }
 

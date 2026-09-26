@@ -2,20 +2,21 @@ import HouseScanKit
 import simd
 import Testing
 
-// Cells are 0.1524 m wide: cell -1 is [-0.1524, 0], cell 0 is [0, 0.1524]. Wall rows sit at heights
-// 0, 0.9906 and 1.9812; ground rows 0, 0.6 and 1.2 out. A row counts when both its samples (a quarter
-// and three quarters along the cell) are in view; a cell is covered when every row is seen from two
-// positions 0.25 m apart.
+// Cells are 0.1524 m wide: cell -1 is [-0.1524, 0], cell 0 is [0, 0.1524]. Wall rows sit every
+// 0.1524 m from 0 to 2.286 (rows 0 to 15); ground rows 0, 0.6 and 1.2 out. A row counts when both
+// its samples (a quarter and three quarters along the cell) are in view; a cell is covered when
+// every row is seen from two positions 0.25 m apart.
 //
 // The front camera stands 2.6 m out at height 1.4, pitched down 16 degrees. With the 3 % margin the
 // image spans atan(300.8 / 500) = 31.03 degrees above and below the view axis. Looking at s = 0:
 //   wall h 0:      atan(-1.4 / 2.6) = -28.3, so 12.3 below the axis   -> in
-//   wall h 0.99:   atan(-0.41 / 2.6) = -9.0, so 7.0 above              -> in
-//   wall h 1.98:   atan(0.58 / 2.6) = 12.6, so 28.6 above              -> in
+//   wall h 1.98:   atan(0.58 / 2.6) = 12.6, so 28.6 above              -> in (row 13)
+//   wall h 2.13:   atan(0.73 / 2.6) = 15.7, so 31.7 above              -> out (row 14)
 //   ground out 0 / 0.6 / 1.2: -28.3 / -35.0 / -45.0, so 12.3 / 19.0 / 29.0 below -> in
 // The shallowest ground view (out 0) is acos(1.4 / 2.95) = 61.7 degrees from the normal, under 65.
-// So cells -1 and 0 see every row of both bands. At the 20 degree pitch a walking phone often has,
-// the top wall row is 32.6 degrees above the axis and out of view (see wallTopNeedsItsOwnView).
+// So cells -1 and 0 see every ground row and the wall up to row 13 (1.9812 m), never its top two
+// rows: from here the wall is seen 1.9812 m up but never covered. At the 20 degree pitch a
+// walking phone often has, the view's top meets the wall at 2.0 m (see wallTopNeedsItsOwnView).
 @Suite struct CoverageMapTests {
     static let front = SIMD3<Float>(0, 1.4, 2.6)
     static func frontCamera(x: Float = 0, pitch: Float = 16) -> CameraFrame {
@@ -72,16 +73,34 @@ import Testing
     @Test func secondPositionCoversTheOverlap() {
         var map = CoverageMap(wall: standardWall())
         map.observe(Self.frontCamera(), trackingNormal: true)
+        #expect(map.wallSeenHeight(at: 0) == nil)
         // 0.3 m to the side: cells -1 and 0 are at most 0.41 m sideways, about 9 degrees off axis.
         let delta = map.observe(Self.frontCamera(x: 0.3), trackingNormal: true)
         #expect(delta.newlyCovered > 0)
         #expect(map.revision == 2)
-        for band in SurfaceBand.allCases {
-            for index in [-1, 0] {
-                #expect(map.level(band, index) == .covered, "\(band) \(index)")
-            }
+        for index in [-1, 0] {
+            #expect(map.level(.ground, index) == .covered, "ground \(index)")
+            // Every wall row up to 1.9812 m now has two positions; the two above it none.
+            #expect(map.level(.wall, index) == .seen, "wall \(index)")
+            #expect(nearlyEqual(map.wallSeenHeight(at: index) ?? .nan, 1.9812), "wall \(index)")
         }
         #expect(map.coveredCount == delta.newlyCovered)
+    }
+
+    /// The reported height is the covered rows' own, less the error of a guessed ground, and
+    /// nothing when the error leaves none.
+    @Test func aGuessedGroundComesOffTheSeenHeight() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(Self.frontCamera(), trackingNormal: true)
+        map.observe(Self.frontCamera(x: 0.3), trackingNormal: true)
+        let revision = map.revision
+        map.heightError = 0.3
+        #expect(map.revision == revision + 1)
+        #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, 1.6812))
+        #expect(map.level(.wall, 0) == .seen)
+        map.heightError = 2
+        #expect(map.wallSeenHeight(at: 0) == nil)
+        #expect(map.wallSeenSpans().isEmpty)
     }
 
     @Test func limitedTrackingChangesNothing() {
@@ -178,17 +197,36 @@ import Testing
         #expect(map.coveredFraction(.ground, in: 2.95...3.0) == 0)
     }
 
-    @Test func coveredIntervalsMergeAdjacentCells() throws {
+    @Test func wallSeenSpansMergeCellsOfEqualHeight() throws {
         var map = CoverageMap(wall: standardWall())
         map.observe(Self.frontCamera(), trackingNormal: true)
         map.observe(Self.frontCamera(x: 0.3), trackingNormal: true)
-        let intervals = map.coveredIntervals(.wall)
-        #expect(intervals.count == 1)
-        let run = try #require(intervals.first)
-        #expect(run.contains(-0.1524) && run.contains(0.1524))
-        // One run of whole cells: its length is the covered wall cells times the width.
-        let wallCovered = (-40...40).filter { map.level(.wall, $0) == .covered }.count
-        #expect(nearlyEqual(run.upperBound - run.lowerBound, Float(wallCovered) * 0.1524, 1e-3))
+        // Around the meter both views reach row 13; toward the image's sides, whose edges lean in
+        // on the wall under the pitch, the top rows drop out first and the height steps down.
+        let spans = map.wallSeenSpans()
+        let middle = try #require(spans.first { $0.span.contains(-0.1524) && $0.span.contains(0.1524) })
+        #expect(nearlyEqual(middle.out, 1.9812))
+        #expect(spans.count > 1)
+        // Joined exactly where neighbouring cells reach the same height.
+        for (a, b) in zip(spans, spans.dropFirst()) {
+            #expect(a.out != b.out || b.span.lowerBound - a.span.upperBound > 1e-3, "\(a) \(b)")
+        }
+        for span in spans {
+            for index in map.indices(overlapping: span.span) {
+                #expect(map.wallSeenHeight(at: index) == span.out, "cell \(index)")
+            }
+        }
+        #expect(map.coveredIntervals(.wall).isEmpty)
+    }
+
+    /// Views that reach the top wall row cover the cell, and the height reported is that row's.
+    @Test func coveredWallIsSeenToTheCaptureHeight() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        map.observe(wallCamera(s: 0.3), trackingNormal: true)
+        #expect(map.level(.wall, 0) == .covered)
+        #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, map.config.wallCaptureHeight))
+        #expect(map.wallRows.count == 16 && nearlyEqual(map.wallRows.last ?? 0, 2.286))
     }
 
     /// The meter anchor refined 0.3048 m (two cells) to the left: every seen cell and marked end
@@ -239,9 +277,11 @@ import Testing
         #expect(map.revision > revision)
         #expect(map.coveredIntervals(.wall).isEmpty)
         #expect(map.coveredCount == 0)
-        // The two upper rows are still seen from both positions; only the bottom row is unseen.
+        // Rows from 0.3048 m up are still seen from both positions; the two below are not, so
+        // nothing is seen from the foot up.
         #expect(map.level(.wall, 0) == .seen)
-        #expect(map.visibleRows(.wall, 0, from: Self.highWallCamera(s: 0)) == [1, 2])
+        #expect(map.visibleRows(.wall, 0, from: Self.highWallCamera(s: 0)) == Set(2...15))
+        #expect(map.wallSeenHeight(at: 0) == nil)
     }
 
     @Test func rebuildingKeepsSkippedCellsAndEnds() {

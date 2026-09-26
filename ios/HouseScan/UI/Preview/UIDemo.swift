@@ -10,6 +10,9 @@ import SwiftUI
 /// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
 /// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
+/// - `-uiDemoGroundQuestion`: open the feature review with the ground question unanswered.
+/// - `-uiDemoGroundAnswer <GroundType raw value|notSure>`: open the feature review with the ground
+///   question answered, so it shows as the folded row with Change.
 /// - `-uiDemoOffline`: uploads fail offline.
 /// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
 /// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the

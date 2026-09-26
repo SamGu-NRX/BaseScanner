@@ -6,14 +6,15 @@ import ImageIO
 import simd
 import Testing
 
-/// The capture packet's manifest schema, byte for byte from origin/t3/packet at d82a903
+/// The capture packet's manifest schema, version 1.1, byte for byte from t3/packet at d5439cf
 /// (packet/manifest.schema.json). `vendoredManifestSchemaIsTheRecordedRevision` fails if the copy
 /// is edited by hand; `vendoredManifestSchemaMatchesThePacketTree` compares it with the repo's
-/// packet/ folder once that branch is merged.
+/// packet/ folder once that branch is merged, and with origin/t3/packet through git until then.
 enum PacketSchema {
     static let name = "manifest.schema.json"
     static let repoPath = "packet/manifest.schema.json"
-    static let sha256 = "30a1140fa56f1d30126027e5eb5b85a377eab8fc909c47f3676535c028ffe5aa"
+    static let branch = "origin/t3/packet"
+    static let sha256 = "44c9c9beb1a95b85d069d9abc52c193008a50aa75e1dff52f5d47431f10c5c75"
 
     static func validator() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: SceneSchemas.data(name)) }
 }
@@ -62,7 +63,9 @@ private func temporaryFolder(_ name: String) -> URL {
 
 /// A synthetic scan: the standard wall (meter (0, 1.5, 0), outward +z, ground 0) seen from a
 /// camera walking left to right 2.5 m out, 60 Hz for 2 s from uptime 100, three photos on the
-/// trajectory, IMU at 100 Hz, a barometer, a two-triangle mesh, two planes, marks and guidance.
+/// trajectory (two with ARKit depth, one with estimated depth), two depth frames between them (one
+/// ARKit, one estimated), IMU at 100 Hz, a barometer, a two-triangle mesh, two planes, marks and
+/// guidance.
 struct SyntheticPacket {
     static let start = 100.0
     let wall = SceneWall(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), groundY: 0)
@@ -73,7 +76,9 @@ struct SyntheticPacket {
         frame = try #require(MeterFrame(wall: wall))
         session = PacketSessionInfo(
             id: "synthetic-swift", producer: .init(kind: .app, name: "HouseScanKit tests", version: "0"),
-            device: .init(model: "synthetic", iosVersion: "26.0", lidar: true, sceneDepthEnabled: true, meshEnabled: true),
+            device: .init(
+                model: "synthetic", iosVersion: "26.0", lidar: true, sceneDepthEnabled: true, meshEnabled: true,
+                meshClassificationEnabled: true),
             startedAt: Date(timeIntervalSince1970: 1_790_000_000), startedAtUptime: Self.start, meterFrame: frame, groundWorldY: 0)
     }
 
@@ -116,24 +121,52 @@ struct SyntheticPacket {
             var meters = [Float](repeating: 2.5, count: 24 * 18)
             meters[0] = .nan
             meters[1] = -1
-            let depth = DepthPacket(
-                meters: meters, width: 24, height: 18, confidence: [UInt8](repeating: 2, count: 24 * 18), source: .arkitSceneDepth)
+            let depth = number == 3
+                ? DepthPacket.estimated(meters: meters, sigma: [Float](repeating: 0.1, count: 24 * 18), width: 24, height: 18)
+                : DepthPacket(
+                    meters: meters, width: 24, height: 18, confidence: [UInt8](repeating: 2, count: 24 * 18), source: .arkitSceneDepth)
             try writer.addPhoto(PacketPhoto(
                 id: id, jpeg: jpeg, width: 96, height: 72, t: t(i), pose: frame.pose(worldCamera(i)),
                 intrinsics: SIMD4(80, 80, 48, 36), tracking: .normal,
                 exposure: PacketExposure(durationS: 0.002, iso: 50), lens: PacketLens(focalLengthMM: 5.1, fNumber: 1.8, camera: "wide"),
                 sharpness: PacketSharpness.laplacianVarianceLuma640(luma: luma.luma, width: luma.width, height: luma.height),
-                depth: number == 3 ? nil : depth))
+                depth: depth))
+        }
+
+        // Depth frames at frames 45 and 30, added out of order: a 32 x 24 grid over the photos'
+        // field of view, so the photos' intrinsics scaled by a third.
+        for (number, i) in [(2, 45), (1, 30)] {
+            let meters = [Float](repeating: 2.5, count: 32 * 24)
+            let depth = number == 1
+                ? DepthPacket(meters: meters, width: 32, height: 24, confidence: [UInt8](repeating: 1, count: 32 * 24), source: .arkitSceneDepth)
+                : DepthPacket.estimated(meters: meters, sigma: [Float](repeating: 0.2, count: 32 * 24), width: 32, height: 24)
+            try writer.addDepthFrame(PacketDepthFrame(
+                id: PacketDepthFrame.id(number: number), t: t(i), pose: frame.pose(worldCamera(i)),
+                intrinsics: DepthImage.intrinsics(scaling: SIMD4(80, 80, 48, 36), from: SIMD2(96, 72), toWidth: 32, height: 24),
+                tracking: .normal, depth: depth))
         }
 
         let worldMesh = TriangleMesh(
             vertices: [SIMD3(-3, 0, 0), SIMD3(3, 0, 0), SIMD3(3, 2.5, 0), SIMD3(-3, 2.5, 0)], indices: [0, 1, 2, 0, 2, 3])
         try writer.setMesh(frame.mesh(worldMesh), classification: [1, 1])
-        let wallPlane = simd_float4x4(SIMD4(1, 0, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0, -1, 0, 0), SIMD4(0, 1.25, 0, 1))
-        try writer.setPlanes([
-            PacketPlane(id: "wall", alignment: .vertical, classification: .wall, pose: frame.pose(wallPlane), extent: SIMD2(6, 2.4)),
-            PacketPlane(id: "ground", alignment: .horizontal, classification: nil, pose: frame.pose(matrix_identity_float4x4), extent: SIMD2(6, 3)),
-        ])
+        // The wall's anchor: its +y (the plane's normal) is world +z, out of the wall, and its -z is
+        // world up. ARKit put the anchor 0.5 m left of the extent's centre, and the extent is
+        // turned a quarter turn in the anchor's x-z plane: its x runs up the wall (2.4 m) and its z
+        // along it (6 m). The boundary traces an L, the extent's rectangle less its upper right
+        // quarter.
+        let wallAnchor = simd_float4x4(SIMD4(1, 0, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0, -1, 0, 0), SIMD4(-0.5, 1.25, 0, 1))
+        let center = SIMD3<Float>(0.5, 0, 0)
+        let outline: [SIMD2<Float>] = [SIMD2(-1.2, -3), SIMD2(1.2, -3), SIMD2(1.2, 1), SIMD2(0, 1), SIMD2(0, 3), SIMD2(-1.2, 3)]
+        let extentFrame = PacketPlane.extentInAnchor(center: center, rotationOnYAxis: .pi / 2)
+        let boundary = outline.map { xz -> SIMD3<Float> in
+            let p = extentFrame * SIMD4(xz.x, 0, xz.y, 1)
+            return SIMD3(p.x, p.y, p.z)
+        }
+        try writer.addPlane(PacketPlane(
+            id: "wall", alignment: .vertical, classification: .wall, anchorToMeter: frame.pose(wallAnchor), center: center,
+            rotationOnYAxis: .pi / 2, extent: SIMD2(2.4, 6), boundaryVertices: boundary))
+        try writer.addPlane(PacketPlane(
+            id: "ground", alignment: .horizontal, classification: nil, pose: frame.pose(matrix_identity_float4x4), extent: SIMD2(6, 3)))
         try writer.setMarks([
             .meter(id: "m1", t: 100.1, photoIDs: ["p00001"]),
             .wallEnd(id: "m2", side: .left, endKind: .unexplored, s: -3, wall: wall, frame: frame, t: 100.2),
@@ -161,7 +194,8 @@ struct SyntheticPacket {
 
     /// Every file named in the manifest, with where it is named.
     private func files(_ m: PacketManifest) -> [PacketManifest.File] {
-        var out = m.photos.flatMap { p in [p.image] + [p.depth?.map, p.depth?.confidence].compactMap { $0 } }
+        var out = m.photos.flatMap { p in [p.image] + [p.depth?.map, p.depth?.confidence, p.depth?.sigma].compactMap { $0 } }
+        out += (m.depthFrames ?? []).flatMap { f in [f.map] + [f.confidence, f.sigma].compactMap { $0 } }
         let streams = [m.streams?.trajectory, m.streams?.accelerometer, m.streams?.gyroscope, m.streams?.magnetometer, m.streams?.deviceMotion, m.streams?.barometer]
         out += streams.compactMap { $0.map { PacketManifest.File(path: $0.path, bytes: $0.bytes, sha256: $0.sha256) } }
         out += [m.lidar?.mesh].compactMap { $0 }
@@ -211,7 +245,8 @@ struct SyntheticPacket {
 
         // Session.
         let s = manifest.session
-        #expect(manifest.packetVersion == "1.0" && s.worldAlignment == "gravity" && s.consent == nil)
+        #expect(manifest.packetVersion == "1.1" && s.worldAlignment == "gravity" && s.consent == nil)
+        #expect(s.device.meshClassificationEnabled == true)
         #expect(s.capture.startedAt == "2026-09-21T14:13:20.000Z")
         #expect(s.capture.startedAtUptime == 100 && s.capture.endedAtUptime == synthetic.t(120))
         #expect(s.meterAnchor.poseInWorld == [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.5, 0, 1])
@@ -229,10 +264,31 @@ struct SyntheticPacket {
         #expect(first.tracking?.state == "normal" && first.tracking?.reason == nil)
         #expect(first.sharpness?.method == "laplacian_variance_luma_640")
         #expect(first.depth?.map.path == "depth/p00001.f32" && first.depth?.confidence?.path == "depth/p00001.conf.u8")
-        #expect(first.depth?.width == 24 && first.depth?.source == .arkitSceneDepth && manifest.photos[2].depth == nil)
+        #expect(first.depth?.width == 24 && first.depth?.source == .arkitSceneDepth && first.depth?.sigma == nil)
         let depth = try Data(contentsOf: folder.appendingPathComponent("depth/p00001.f32"))
         let noMeasurement = [UInt8](repeating: 0, count: 8)
         #expect([UInt8](depth.prefix(8)) == noMeasurement)
+        // Estimated depth: sigma, no confidence, and sigma 0 where the depth has no measurement.
+        let estimated = try #require(manifest.photos[2].depth)
+        #expect(estimated.source == .estimated && estimated.confidence == nil && estimated.sigma?.path == "depth/p00003.sigma.f32")
+        let sigma = try Data(contentsOf: folder.appendingPathComponent("depth/p00003.sigma.f32"))
+        #expect(sigma.count == 24 * 18 * 4 && [UInt8](sigma.prefix(8)) == noMeasurement)
+        #expect(sigma.subdata(in: 8..<12) == PacketFiles.depthData(meters: [0.1]))
+
+        // Depth frames: sorted by t, on the trajectory, intrinsics of their own grid.
+        let frames = try #require(manifest.depthFrames)
+        #expect(frames.map(\.id) == ["d00001", "d00002"] && frames.map(\.t) == [synthetic.t(30), synthetic.t(45)])
+        #expect(frames[0].pose == PacketPose.columnMajor(synthetic.frame.pose(synthetic.worldCamera(30))))
+        // The photos' intrinsics scaled by a third, each Float written as its shortest decimal.
+        let grid = DepthImage.intrinsics(scaling: SIMD4(80, 80, 48, 36), from: SIMD2(96, 72), toWidth: 32, height: 24)
+        let gridValues: [Float] = [grid.x, grid.y, grid.z, grid.w]
+        let gridNumbers: [Double] = gridValues.map { (value: Float) -> Double in Double(value.description) ?? .nan }
+        #expect(frames[0].intrinsics == gridNumbers)
+        #expect(abs(frames[0].intrinsics[0] - 80.0 / 3) < 1e-5 && frames[0].intrinsics[2] == 16 && frames[0].intrinsics[3] == 12)
+        #expect(frames[0].width == 32 && frames[0].height == 24 && frames[0].tracking?.state == "normal")
+        #expect(frames[0].source == .arkitSceneDepth && frames[0].confidence?.path == "depth_frames/d00001.conf.u8" && frames[0].sigma == nil)
+        #expect(frames[1].source == .estimated && frames[1].sigma?.path == "depth_frames/d00002.sigma.f32" && frames[1].confidence == nil)
+        #expect(frames[0].map.bytes == 32 * 24 * 4 && frames[0].confidence?.bytes == 32 * 24)
 
         // Streams: rows, rates, trajectory values at the photo.
         let streams = try #require(manifest.streams)
@@ -249,9 +305,19 @@ struct SyntheticPacket {
         let corners: [SIMD3<Float>] = [SIMD3(-3, -1.5, 0), SIMD3(3, -1.5, 0), SIMD3(3, 1, 0), SIMD3(-3, 1, 0)]
         #expect(mesh.vertices == corners)
         #expect(mesh.faces.map(\.classification) == [1, 1])
-        let planes = try #require(manifest.lidar?.planes)
-        #expect(PacketPose.columnMajor(planes[0].pose) == [1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, -0.25, 0, 1])
-        #expect(planes[1].classification == nil)
+        #expect(manifest.lidar?.planes == nil)
+        let planes = try #require(manifest.planes)
+        // Worked by hand: the extent's centre is 0.5 m right of the anchor, at the meter's x and
+        // 0.25 m below it; its x axis runs up the wall (anchor -z, world +y), its y out (anchor y)
+        // and its z along the wall (anchor x).
+        let wallPose = PacketPose.columnMajor(planes[0].pose)
+        let expectedPose: [Double] = [0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, -0.25, 0, 1]
+        #expect(zip(wallPose, expectedPose).allSatisfy { abs($0 - $1) < 1e-6 }, "\(wallPose)")
+        let wallBoundary = try #require(planes[0].boundary)
+        #expect(wallBoundary.count == 6)
+        #expect(zip(wallBoundary, [SIMD2<Float>(-1.2, -3), SIMD2(1.2, -3), SIMD2(1.2, 1), SIMD2(0, 1), SIMD2(0, 3), SIMD2(-1.2, 3)])
+            .allSatisfy { simd_distance($0, $1) < 1e-5 }, "\(wallBoundary)")
+        #expect(planes[1].classification == nil && planes[1].boundary == nil)
 
         // Marks and guidance come back as written.
         let marks = try #require(manifest.marks)
@@ -278,16 +344,24 @@ struct SyntheticPacket {
         #expect(!text.contains("null"))
         #expect(!text.contains("\\/"))
         let json = try #require(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
-        #expect(Set(json.keys) == ["packet_version", "session", "photos", "streams", "lidar", "marks", "guidance", "scene"])
+        #expect(Set(json.keys) == ["packet_version", "session", "photos", "depth_frames", "streams", "planes", "lidar", "marks", "guidance", "scene"])
+        #expect(Set(try #require(json["lidar"] as? [String: Any]).keys) == ["mesh"])
         let session = try #require(json["session"] as? [String: Any])
         #expect(Set(session.keys) == ["id", "producer", "device", "capture", "world_alignment", "meter_anchor"])
         let device = try #require(session["device"] as? [String: Any])
-        #expect(Set(device.keys) == ["model", "ios_version", "lidar", "scene_depth_enabled", "mesh_enabled"])
+        #expect(Set(device.keys) == ["model", "ios_version", "lidar", "scene_depth_enabled", "mesh_enabled", "mesh_classification_enabled"])
         let capture = try #require(session["capture"] as? [String: Any])
         #expect(Set(capture.keys) == ["started_at", "started_at_uptime", "ended_at_uptime", "distance_walked_m"])
         let photo = try #require((json["photos"] as? [[String: Any]])?.first)
         #expect(Set(photo.keys) == ["id", "image", "width", "height", "t", "pose", "intrinsics", "tracking", "exposure", "lens", "sharpness", "depth"])
         #expect(Set(try #require(photo["exposure"] as? [String: Any]).keys) == ["duration_s", "iso"])
+        #expect(Set(try #require(photo["depth"] as? [String: Any]).keys) == ["map", "confidence", "width", "height", "source"])
+        let frames = try #require(json["depth_frames"] as? [[String: Any]])
+        #expect(Set(frames[0].keys) == ["id", "t", "pose", "intrinsics", "tracking", "map", "confidence", "width", "height", "source"])
+        #expect(Set(frames[1].keys) == ["id", "t", "pose", "intrinsics", "tracking", "map", "sigma", "width", "height", "source"])
+        let planes = try #require(json["planes"] as? [[String: Any]])
+        #expect(Set(planes[0].keys) == ["id", "alignment", "classification", "pose", "extent_m", "boundary_m"])
+        #expect(Set(planes[1].keys) == ["id", "alignment", "pose", "extent_m"])
         let marks = try #require(json["marks"] as? [[String: Any]])
         #expect(Set(marks[0].keys) == ["id", "kind", "points", "t", "photo_ids"])
         #expect(Set(marks[1].keys) == ["id", "kind", "points", "t", "side", "end_kind"])
@@ -334,10 +408,23 @@ struct SyntheticPacket {
         #expect(throws: PacketError.invalidPhoto(id: "p00001", reason: "EXIF orientation 6; store the unrotated sensor image")) {
             try writer.addPhoto(photo(jpeg: turned))
         }
-        let square = DepthPacket(meters: [Float](repeating: 1, count: 24 * 24), width: 24, height: 24, confidence: nil, source: .arkitSceneDepth)
-        #expect(throws: PacketError.self) { try writer.addPhoto(photo(depth: square)) }
-        let empty = DepthPacket(meters: [Float](repeating: 0, count: 24 * 18), width: 24, height: 18, confidence: nil, source: .arkitSceneDepth)
-        #expect(throws: PacketError.self) { try writer.addPhoto(photo(depth: empty)) }
+        let square = DepthPacket(
+            meters: [Float](repeating: 1, count: 24 * 24), width: 24, height: 24, confidence: [UInt8](repeating: 2, count: 24 * 24),
+            source: .arkitSceneDepth)
+        #expect(throws: PacketError.invalidDepth(id: "p00001", reason: "24x24 does not have the 96x72 photo's aspect")) {
+            try writer.addPhoto(photo(depth: square))
+        }
+        let empty = DepthPacket(
+            meters: [Float](repeating: 0, count: 24 * 18), width: 24, height: 18, confidence: [UInt8](repeating: 2, count: 24 * 18),
+            source: .arkitSceneDepth)
+        #expect(throws: PacketError.invalidDepth(id: "p00001", reason: "0 of 432 pixels measured; under 1% is empty, leave the depth out")) {
+            try writer.addPhoto(photo(depth: empty))
+        }
+        // From 1.1 ARKit's depth needs its confidence.
+        let unsure = DepthPacket(meters: [Float](repeating: 1, count: 24 * 18), width: 24, height: 18, confidence: nil, source: .arkitSmoothedSceneDepth)
+        #expect(throws: PacketError.invalidDepth(id: "p00001", reason: "ARKit depth (arkit_smoothed_scene_depth) needs its confidence (packet 1.1)")) {
+            try writer.addPhoto(photo(depth: unsure))
+        }
         let badConfidence = DepthPacket(
             meters: [Float](repeating: 1, count: 24 * 18), width: 24, height: 18, confidence: [UInt8](repeating: 3, count: 24 * 18),
             source: .arkitSceneDepth)
@@ -361,6 +448,27 @@ struct SyntheticPacket {
         #expect(throws: PacketError.invalidScene("not a JSON object")) { try writer.setScene(Data("[1]".utf8)) }
     }
 
+    /// A mesh needs the session to say whether ARKit classified it, and an unclassified mesh has
+    /// every class 0.
+    @Test func meshNeedsTheClassificationFlag() throws {
+        let synthetic = try SyntheticPacket()
+        let mesh = TriangleMesh(vertices: [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0)], indices: [0, 1, 2])
+        let cases: [(flag: Bool?, classes: [UInt8], refusal: String)] = [
+            (nil, [1], "session.device.mesh_classification_enabled must say whether ARKit classified the mesh"),
+            (false, [1], "classification was off, but face 0 has class 1; every class must be 0"),
+        ]
+        for (flag, classes, refusal) in cases {
+            var session = synthetic.session
+            session.device.meshClassificationEnabled = flag
+            let folder = temporaryFolder("packet-mesh")
+            defer { try? FileManager.default.removeItem(at: folder) }
+            var writer = try PacketWriter(folder: folder, session: session)
+            #expect(throws: PacketError.invalidMesh(refusal)) { try writer.setMesh(mesh, classification: classes) }
+            #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
+            if flag == false { try writer.setMesh(mesh, classification: [0]) }
+        }
+    }
+
     @Test func refusesAFolderThatHoldsFiles() throws {
         let folder = temporaryFolder("packet-busy")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -373,6 +481,268 @@ struct SyntheticPacket {
         #expect(PacketPhoto.id(number: 1) == "p00001")
         #expect(PacketPhoto.id(number: 12345) == "p12345")
         #expect(PacketPhoto.id(number: 123456) == "p123456")
+        #expect(PacketDepthFrame.id(number: 7) == "d00007")
+    }
+}
+
+@Suite struct PacketDepthFrameTests {
+    private let grid = SIMD4<Float>(80.0 / 3, 80.0 / 3, 16, 12)
+
+    private func arkit(_ meters: [Float] = [Float](repeating: 2, count: 32 * 24), confidence: [UInt8]? = [UInt8](repeating: 2, count: 32 * 24)) -> DepthPacket {
+        DepthPacket(meters: meters, width: 32, height: 24, confidence: confidence, source: .arkitSceneDepth)
+    }
+
+    @Test func refusesFramesTheValidatorWouldReject() throws {
+        let synthetic = try SyntheticPacket()
+        let folder = temporaryFolder("packet-frames")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var writer = try PacketWriter(folder: folder, session: synthetic.session)
+        let pose = synthetic.frame.pose(synthetic.worldCamera(30))
+        func frame(id: String = "d00001", t: Double = 100.5, intrinsics: SIMD4<Float>? = nil, depth: DepthPacket? = nil) -> PacketDepthFrame {
+            PacketDepthFrame(id: id, t: t, pose: pose, intrinsics: intrinsics ?? grid, tracking: .normal, depth: depth ?? arkit())
+        }
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00001", reason: "ARKit depth (arkit_scene_depth) needs its confidence (packet 1.1)")) {
+            try writer.addDepthFrame(frame(depth: arkit(confidence: nil)))
+        }
+        // Intrinsics must fit the depth map's own grid: the camera image's do not.
+        #expect(throws: PacketError.self) { try writer.addDepthFrame(frame(intrinsics: SIMD4(80, 80, 48, 36))) }
+        let portrait = DepthPacket(
+            meters: [Float](repeating: 2, count: 24 * 32), width: 24, height: 32, confidence: [UInt8](repeating: 2, count: 24 * 32),
+            source: .arkitSceneDepth)
+        #expect(throws: PacketError.invalidDepthFrame(
+            id: "d00001", reason: "intrinsics for the 24x32 depth map: 24x32 is not landscape; store the unrotated sensor image")) {
+            try writer.addDepthFrame(frame(intrinsics: SIMD4(26.7, 26.7, 12, 16), depth: portrait))
+        }
+        #expect(throws: PacketError.timeBeforeStart(where: "depth frame d00001", t: 99, start: 100)) { try writer.addDepthFrame(frame(t: 99)) }
+        #expect(throws: PacketError.notRigid("depth frame d00001")) {
+            try writer.addDepthFrame(PacketDepthFrame(
+                id: "d00001", t: 100.5, pose: simd_float4x4(diagonal: SIMD4(2, 1, 1, 1)), intrinsics: grid, tracking: nil, depth: arkit()))
+        }
+        // Nothing refused left a file behind.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
+
+        try writer.addDepthFrame(frame())
+        #expect(throws: PacketError.duplicateID("d00001")) { try writer.addDepthFrame(frame(t: 101)) }
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00002", reason: "another depth frame has the same t 100.5")) {
+            try writer.addDepthFrame(frame(id: "d00002"))
+        }
+        let files = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("depth_frames").path).sorted()
+        #expect(files == ["d00001.conf.u8", "d00001.f32"])
+    }
+
+    /// A depth frame with no source (a replay's, which says nothing of where it came from) needs
+    /// neither confidence nor sigma, and keeps what it has.
+    @Test func unlabelledDepthKeepsWhatItHas() throws {
+        let synthetic = try SyntheticPacket()
+        let folder = temporaryFolder("packet-unlabelled")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var writer = try PacketWriter(folder: folder, session: synthetic.session)
+        let pose = synthetic.frame.pose(synthetic.worldCamera(30))
+        let bare = DepthPacket(meters: [Float](repeating: 2, count: 32 * 24), width: 32, height: 24, confidence: nil, source: nil)
+        try writer.addDepthFrame(PacketDepthFrame(id: "d00001", t: 100.5, pose: pose, intrinsics: grid, tracking: nil, depth: bare))
+        var sure = bare
+        sure.confidence = [UInt8](repeating: 1, count: 32 * 24)
+        try writer.addDepthFrame(PacketDepthFrame(id: "d00002", t: 101, pose: pose, intrinsics: grid, tracking: nil, depth: sure))
+        try writer.addPhoto(PacketPhoto(
+            id: "p00001", jpeg: try photoJPEG(), width: 96, height: 72, t: 100.25, pose: pose,
+            intrinsics: SIMD4(80, 80, 48, 36), tracking: .normal, sharpness: 1))
+        let frames = try #require(try writer.manifest().depthFrames)
+        #expect(frames.map(\.source) == [nil, nil] && frames[0].confidence == nil && frames[1].confidence != nil && frames[0].tracking == nil)
+    }
+}
+
+/// A 96 x 72 JPEG in its own temporary folder, which the caller need not remove: the writer
+/// copies it, and the system clears the temporary directory.
+private func photoJPEG() throws -> URL {
+    let folder = temporaryFolder("packet-photo")
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let url = folder.appendingPathComponent("photo.jpg")
+    try makeJPEG(width: 96, height: 72, at: url)
+    return url
+}
+
+/// The entry point S6's on-device depth model calls: `DepthPacket.estimated`, on a photo or a
+/// depth frame.
+@Suite struct EstimatedDepthTests {
+    @Test func estimatedDepthNeedsSigmaAndNoConfidence() throws {
+        let synthetic = try SyntheticPacket()
+        let folder = temporaryFolder("packet-estimated")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var writer = try PacketWriter(folder: folder, session: synthetic.session)
+        let pose = synthetic.frame.pose(synthetic.worldCamera(30))
+        let grid = SIMD4<Float>(80.0 / 3, 80.0 / 3, 16, 12)
+        let count = 32 * 24
+        func frame(_ depth: DepthPacket) -> PacketDepthFrame {
+            PacketDepthFrame(id: "d00001", t: 100.5, pose: pose, intrinsics: grid, tracking: .normal, depth: depth)
+        }
+        var noSigma = DepthPacket.estimated(meters: [Float](repeating: 3, count: count), sigma: [], width: 32, height: 24)
+        noSigma.sigma = nil
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00001", reason: "estimated depth needs sigma")) { try writer.addDepthFrame(frame(noSigma)) }
+        var withConfidence = DepthPacket.estimated(meters: [Float](repeating: 3, count: count), sigma: [Float](repeating: 0.3, count: count), width: 32, height: 24)
+        withConfidence.confidence = [UInt8](repeating: 2, count: count)
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00001", reason: "estimated depth carries sigma, not ARKit's confidence")) {
+            try writer.addDepthFrame(frame(withConfidence))
+        }
+        let short = DepthPacket.estimated(meters: [Float](repeating: 3, count: count), sigma: [0.3], width: 32, height: 24)
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00001", reason: "1 sigma values for 32x24")) { try writer.addDepthFrame(frame(short)) }
+        var badSigma = [Float](repeating: 0.3, count: count)
+        badSigma[5] = .nan
+        #expect(throws: PacketError.invalidDepthFrame(id: "d00001", reason: "sigma nan at pixel 5, which has depth; it must be finite and >= 0")) {
+            try writer.addDepthFrame(frame(.estimated(meters: [Float](repeating: 3, count: count), sigma: badSigma, width: 32, height: 24)))
+        }
+
+        // Where the model gave no depth, sigma is written as 0 whatever it was.
+        var meters = [Float](repeating: 3, count: count)
+        meters[5] = .infinity
+        try writer.addDepthFrame(frame(.estimated(meters: meters, sigma: badSigma, width: 32, height: 24)))
+        try writer.addPhoto(PacketPhoto(
+            id: "p00001", jpeg: try photoJPEG(), width: 96, height: 72, t: 100.25, pose: pose, intrinsics: SIMD4(80, 80, 48, 36),
+            tracking: .normal, sharpness: 1))
+        let entry = try #require(try writer.manifest().depthFrames?.first)
+        #expect(entry.source == .estimated && entry.confidence == nil && entry.sigma?.bytes == count * 4)
+        let sigma = try Data(contentsOf: folder.appendingPathComponent("depth_frames/d00001.sigma.f32"))
+        #expect(sigma.subdata(in: 20..<24) == PacketFiles.depthData(meters: [0]))
+        #expect(sigma.subdata(in: 0..<4) == PacketFiles.depthData(meters: [0.3]))
+    }
+}
+
+@Suite struct DepthFrameBudgetTests {
+    /// Every ARFrame of 10 s at 60 Hz offered: 2 Hz keeps one every 30 frames, 20 in all, each
+    /// at least the interval less the slack after the last.
+    @Test func keepsTwoAFrameSecondFromSixtyHertz() {
+        var budget = DepthFrameBudget()
+        var kept: [Double] = []
+        for i in 0..<600 {
+            let t = 100 + Double(i) / 60
+            if budget.admit(t: t) { kept.append(t) }
+        }
+        #expect(DepthFrameBudget.rateHz == 2 && DepthFrameBudget.maxFrames == 300)
+        #expect(kept.count == 20 && budget.admitted == 20)
+        #expect(zip(kept, kept.dropFirst()).allSatisfy { abs(($1 - $0) - 0.5) < 1e-9 })
+    }
+
+    /// A replay stepping exactly 0.5 s loses no frame to rounding (125.4 - 124.9 is 0.49999...).
+    @Test func roundingDoesNotThinAnIntervalStream() {
+        var budget = DepthFrameBudget()
+        let times = [124.4, 124.9, 125.4, 125.9]
+        #expect(times.allSatisfy { budget.admit(t: $0) })
+        #expect(!budget.admit(t: 126.2) && !budget.admit(t: 125.9) && !budget.admit(t: .nan))
+    }
+
+    /// Past the limit nothing is admitted, and `wants` says so before any copy is made.
+    @Test func stopsAtTheLimit() {
+        var budget = DepthFrameBudget(rateHz: 10, limit: 3)
+        #expect((0..<10).filter { budget.admit(t: Double($0)) }.count == 3)
+        #expect(budget.isFull && !budget.wants(t: 100))
+    }
+}
+
+@Suite struct PacketPlaneTests {
+    private func near(_ a: simd_float4x4, _ b: simd_float4x4) -> Bool {
+        [(a.columns.0, b.columns.0), (a.columns.1, b.columns.1), (a.columns.2, b.columns.2), (a.columns.3, b.columns.3)]
+            .allSatisfy { simd_distance($0.0, $0.1) <= 1e-6 }
+    }
+
+    /// An anchor at (1, 2, 3) in the meter frame, unrotated, with its extent's centre at
+    /// (0.5, 0, -0.25) and turned 30 degrees: worked by hand, the pose's translation is
+    /// (1.5, 2, 2.75) and its x and z axes are (cos 30°, 0, -sin 30°) and (sin 30°, 0, cos 30°).
+    @Test func poseIncludesTheExtentCentreAndRotation() {
+        var anchor = matrix_identity_float4x4
+        anchor.columns.3 = SIMD4(1, 2, 3, 1)
+        let plane = PacketPlane(
+            id: "p", alignment: .horizontal, classification: .floor, anchorToMeter: anchor, center: SIMD3(0.5, 0, -0.25),
+            rotationOnYAxis: .pi / 6, extent: SIMD2(2, 1), boundaryVertices: [])
+        let expected = simd_float4x4(
+            SIMD4(0.8660254, 0, -0.5, 0), SIMD4(0, 1, 0, 0), SIMD4(0.5, 0, 0.8660254, 0), SIMD4(1.5, 2, 2.75, 1))
+        #expect(near(plane.pose, expected), "\(plane.pose)")
+        #expect(plane.boundary == nil && PacketPose.isRigid(plane.pose))
+        // The last row is exact, as the validator checks it to 1e-9.
+        #expect(plane.pose.columns.3.w == 1 && plane.pose.columns.0.w == 0)
+    }
+
+    /// The extent's rotation turns the same way as `simd_quatf(angle:axis:)` about +y, the
+    /// convention of the existing plane snapshot this replaces.
+    @Test func rotationMatchesSimdQuaternions() {
+        for angle in stride(from: Float(-3), through: 3, by: 0.5) {
+            let turned = PacketPlane.extentInAnchor(center: .zero, rotationOnYAxis: angle)
+            #expect(near(turned, simd_float4x4(simd_quatf(angle: angle, axis: SIMD3(0, 1, 0)))), "\(angle)")
+        }
+    }
+
+    /// The extent's corners, given in the anchor's coordinates as ARKit gives boundary vertices,
+    /// come back as (±width/2, ±height/2), for any centre and rotation.
+    @Test func boundaryComesBackInTheExtentFrame() throws {
+        let extent = SIMD2<Float>(3, 1.2)
+        for angle in stride(from: Float(-3), through: 3, by: 0.75) {
+            let center = SIMD3<Float>(0.7, 0, -1.9)
+            let frame = PacketPlane.extentInAnchor(center: center, rotationOnYAxis: angle)
+            let corners: [SIMD2<Float>] = [SIMD2(-1.5, -0.6), SIMD2(1.5, -0.6), SIMD2(1.5, 0.6), SIMD2(-1.5, 0.6)]
+            let inAnchor = corners.map { xz -> SIMD3<Float> in
+                let p = frame * SIMD4(xz.x, 0, xz.y, 1)
+                return SIMD3(p.x, p.y, p.z)
+            }
+            let plane = PacketPlane(
+                id: "p", alignment: .vertical, classification: .wall, anchorToMeter: matrix_identity_float4x4, center: center,
+                rotationOnYAxis: angle, extent: extent, boundaryVertices: inAnchor)
+            let boundary = try #require(plane.boundary)
+            #expect(zip(boundary, corners).allSatisfy { simd_distance($0, $1) < 1e-5 }, "\(angle): \(boundary)")
+            // The same vertices in the meter frame are the pose applied to (x, 0, z).
+            for (xz, anchorPoint) in zip(boundary, inAnchor) {
+                let meter = plane.pose * SIMD4(xz.x, 0, xz.y, 1)
+                #expect(simd_distance(SIMD3(meter.x, meter.y, meter.z), anchorPoint) < 1e-5)
+            }
+        }
+    }
+
+    /// A boundary left in the anchor's coordinates is off by the centre (here 1.5 m) and leaves
+    /// the extent; the writer refuses the plane, and takes it again without the boundary. A
+    /// vertex up to 1 cm past the edge passes, as the validator allows.
+    @Test func boundaryOutsideTheExtentIsRefused() throws {
+        let folder = temporaryFolder("packet-planes")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var writer = try PacketWriter(folder: folder, session: SyntheticPacket().session)
+        let extent = SIMD2<Float>(2, 1)
+        let rectangle: [SIMD3<Float>] = [SIMD3(0.5, 0, 0), SIMD3(2.5, 0, 0), SIMD3(2.5, 0, 1), SIMD3(0.5, 0, 1)]
+        let wrong = PacketPlane(
+            id: "wrong", alignment: .horizontal, classification: nil, pose: matrix_identity_float4x4, extent: extent,
+            boundary: rectangle.map { SIMD2($0.x, $0.z) })
+        #expect(throws: PacketError.invalidPlane(
+            id: "wrong",
+            reason: "boundary vertex (2.5, 0.0) leaves the 2.0 x 1.0 m extent centred on the pose; is it still in the anchor's coordinates?")) {
+            try writer.addPlane(wrong)
+        }
+        let right = PacketPlane(
+            id: "right", alignment: .horizontal, classification: nil, anchorToMeter: matrix_identity_float4x4, center: SIMD3(1.5, 0, 0.5),
+            rotationOnYAxis: 0, extent: extent, boundaryVertices: rectangle)
+        try writer.addPlane(right)
+        var bare = wrong
+        bare.boundary = nil
+        bare.id = "bare"
+        try writer.addPlane(bare)
+
+        let edge: (Float) -> PacketPlane = { past in
+            PacketPlane(
+                id: "edge\(past)", alignment: .horizontal, classification: nil, pose: matrix_identity_float4x4, extent: extent,
+                boundary: [SIMD2(-1 - past, 0), SIMD2(1, -0.5), SIMD2(1, 0.5)])
+        }
+        try writer.addPlane(edge(0.009))
+        #expect(throws: PacketError.self) { try writer.addPlane(edge(0.02)) }
+        #expect(throws: PacketError.invalidPlane(id: "few", reason: "boundary has 2 vertices; an outline needs at least 3")) {
+            try writer.addPlane(PacketPlane(
+                id: "few", alignment: .vertical, classification: nil, pose: matrix_identity_float4x4, extent: extent,
+                boundary: [.zero, SIMD2(0.1, 0)]))
+        }
+        #expect(throws: PacketError.duplicateID("right")) { try writer.addPlane(right) }
+    }
+
+    @Test func planesRoundTripThroughJSON() throws {
+        let plane = PacketPlane(
+            id: "p", alignment: .vertical, classification: .door, anchorToMeter: matrix_identity_float4x4, center: SIMD3(0.25, 0, 0),
+            rotationOnYAxis: 0.3, extent: SIMD2(1, 2), boundaryVertices: [SIMD3(0, 0, 0), SIMD3(0.5, 0, 0), SIMD3(0.25, 0, 0.5)])
+        let data = try JSONEncoder().encode([plane])
+        #expect(try JSONDecoder().decode([PacketPlane].self, from: data) == [plane])
+        let json = try #require(try JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect((json[0]["boundary_m"] as? [[Double]])?.count == 3)
     }
 }
 
@@ -428,14 +798,16 @@ struct SyntheticPacket {
 @Suite struct PacketSchemaTests {
     @Test func vendoredManifestSchemaIsTheRecordedRevision() throws {
         let digest = SHA256.hash(data: try SceneSchemas.data(PacketSchema.name)).map { String(format: "%02x", $0) }.joined()
-        #expect(digest == PacketSchema.sha256, "Schemas/\(PacketSchema.name) is not the copy taken from origin/t3/packet d82a903")
+        #expect(digest == PacketSchema.sha256, "Schemas/\(PacketSchema.name) is not the copy taken from t3/packet d5439cf")
     }
 
-    @Test func vendoredManifestSchemaMatchesThePacketTree() throws {
-        guard let root = SceneSchemas.repoRoot() else { return }
-        let file = root.appendingPathComponent(PacketSchema.repoPath)
-        guard FileManager.default.fileExists(atPath: file.path) else { return }
-        #expect(try Data(contentsOf: file) == SceneSchemas.data(PacketSchema.name), "copy \(PacketSchema.repoPath) over Tests/HouseScanKitTests/Schemas/\(PacketSchema.name)")
+    /// Skipped, not passed, where neither packet/ nor origin/t3/packet can be read (CI).
+    @Test(.enabled(
+        if: SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch) != nil,
+        "neither packet/ nor \(PacketSchema.branch) is available to compare against"))
+    func vendoredManifestSchemaMatchesThePacketTree() throws {
+        let upstream = try #require(SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch))
+        #expect(upstream == (try SceneSchemas.data(PacketSchema.name)), "copy \(PacketSchema.repoPath) over Tests/HouseScanKitTests/Schemas/\(PacketSchema.name)")
     }
 
     /// The schema is not a rubber stamp: a manifest missing required fields or breaking a pattern

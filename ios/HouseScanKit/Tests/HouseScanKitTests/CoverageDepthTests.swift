@@ -3,8 +3,8 @@ import simd
 import Testing
 
 // Coverage with LiDAR depth on the standard wall (face z = 0, s = x, ground y = 0). Cell 0 spans
-// s [0, 0.1524]; its samples sit at s = 0.0381 and 0.1143. Wall rows are at heights 0, 0.9906 and
-// 1.9812; ground rows at 0, 0.6 and 1.2 out. Depth images are rendered from the scene mesh
+// s [0, 0.1524]; its samples sit at s = 0.0381 and 0.1143. Wall rows are every 0.1524 m from 0 to
+// 2.286; ground rows at 0, 0.6 and 1.2 out. Depth images are rendered from the scene mesh
 // (`renderDepth`), 128 x 96, so a pixel is 0.01 rad: every margin below is several pixels wide.
 @Suite struct CoverageDepthTests {
     /// A box standing in front of the wall: s in [-0.5, 0.5], 0.5 to 1.0 m out, 1.5 m tall.
@@ -59,7 +59,7 @@ import Testing
     ///   o = 1.2: 0.70 at the bin's front (z = 1.9), under its 0.75 top: hidden.
     ///   o = 0.6: 0.75 at z = 1.67, over the bin's top (z 1.5 to 1.9): hidden.
     ///   o = 0 (the wall's foot): 0.81 at z = 1.5, still above the top when it leaves the bin: seen.
-    /// The wall rows' sight lines are higher still, so the wall is covered and the ground hidden.
+    /// The wall rows' sight lines are higher still, so the wall is seen and the ground hidden.
     /// The ground depth rows stop at the bin as well: every row from 0.3048 m out is hidden
     /// (0.73 m high at z = 1.5), where without depth both views reach row 8, 1.2192 m (row 9 is
     /// 32.7 degrees below the view axis, past the image's 31).
@@ -76,7 +76,8 @@ import Testing
             noDepth.observe(CoverageMapTests.frontCamera(x: x), trackingNormal: true)
         }
         #expect(map.level(.ground, 0) == .hidden)
-        #expect(map.level(.wall, 0) == .covered)
+        // The front views never reach the top wall rows, but every row up to 1.9812 m is seen.
+        #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, 1.9812))
         #expect(noDepth.level(.ground, 0) == .covered)
         // Row 1 (0.1524 m) clears the bin's top by 2 cm, too close to call at this resolution:
         // the reach is row 1 or nothing.

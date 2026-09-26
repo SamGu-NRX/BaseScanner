@@ -79,13 +79,22 @@ public struct PacketPhoto: Sendable {
     }
 }
 
-/// A depth map aligned to its photo: same field of view, lower resolution, the photo's aspect to
-/// 1%. Meters along the camera's -z (z-depth, as ARKit's `sceneDepth`), row by row from the top.
+/// A depth map: meters along the camera's -z (z-depth, as ARKit's `sceneDepth`), row by row from
+/// the top. A photo's depth covers the photo's field of view at lower resolution and the photo's
+/// aspect to 1%; a depth frame's has its own intrinsics.
+///
+/// What comes with the map depends on its source, and the writer refuses any other mix: ARKit's
+/// depth carries ARKit's `confidence` (required from packet 1.1); `estimated` depth carries
+/// `sigma` and no confidence (`estimated(meters:sigma:width:height:)`).
 public struct DepthPacket: Sendable {
     public enum Source: String, Codable, Sendable {
         case arkitSceneDepth = "arkit_scene_depth"
         case arkitSmoothedSceneDepth = "arkit_smoothed_scene_depth"
+        /// Metric depth inferred from the image on a phone without LiDAR (packet 1.1).
+        case estimated
         case renderedFromLaserScan = "rendered_from_laser_scan"
+
+        var isARKit: Bool { self == .arkitSceneDepth || self == .arkitSmoothedSceneDepth }
     }
 
     /// A value that is not finite or is negative is written as 0, the packet's "no measurement",
@@ -95,20 +104,36 @@ public struct DepthPacket: Sendable {
     public var height: Int
     /// ARConfidenceLevel per pixel: 0 low, 1 medium, 2 high.
     public var confidence: [UInt8]?
-    public var source: Source
+    /// One standard deviation per pixel, meters. Where `meters` has no measurement it is written
+    /// as 0; elsewhere it must be finite and >= 0.
+    public var sigma: [Float]?
+    /// Nil when the producer cannot say where the depth came from: a replay's recording says
+    /// neither which ARKit depth it saved nor whether it was rendered, so the packet claims none.
+    public var source: Source?
 
-    public init(meters: [Float], width: Int, height: Int, confidence: [UInt8]?, source: Source) {
+    public init(meters: [Float], width: Int, height: Int, confidence: [UInt8]?, sigma: [Float]? = nil, source: Source?) {
         self.meters = meters
         self.width = width
         self.height = height
         self.confidence = confidence
+        self.sigma = sigma
         self.source = source
+    }
+
+    /// Metric depth a model inferred from the camera image on a phone without LiDAR, with its
+    /// per-pixel standard deviation in meters, both `width` × `height` row by row from the top.
+    /// The uncertainty decides what the server counts as a surface, so it is required, and
+    /// ARKit's confidence has no meaning here. Attach it to a photo (`PacketPhoto.depth`, the
+    /// photo's aspect) or a depth frame (`PacketDepthFrame.depth`, with intrinsics for this grid).
+    public static func estimated(meters: [Float], sigma: [Float], width: Int, height: Int) -> DepthPacket {
+        DepthPacket(meters: meters, width: width, height: height, confidence: nil, sigma: sigma, source: .estimated)
     }
 }
 
-/// Writes a capture packet 1.0 folder (packet/README.md on t3/packet): photos, depth and the mesh
-/// go to disk as they are added; streams are held as CSV text; `finish()` writes the streams,
-/// scene.json's entry and manifest.json with every file's size and SHA-256.
+/// Writes a capture packet 1.1 folder (packet/README.md on t3/packet): photos, depth, depth
+/// frames and the mesh go to disk as they are added, so a long capture's depth is never held in
+/// memory; streams are held as CSV text; `finish()` writes the streams, scene.json's entry and
+/// manifest.json with every file's size and SHA-256.
 ///
 /// Each input is checked against the rules packet/validate.py applies to it, and refused with a
 /// `PacketError` naming the field, so a finished packet validates. Nothing here sends the packet
@@ -117,11 +142,12 @@ public struct PacketWriter: Sendable {
     public let folder: URL
     public let session: PacketSessionInfo
     private var photos: [PacketManifest.Photo] = []
+    private var depthFrames: [PacketManifest.DepthFrame] = []
     private var streams: [PacketStream: PacketCSV] = [:]
     private var nominalRates: [PacketStream: Double] = [:]
     private var trajectoryPositions: [SIMD3<Float>] = []
     private var mesh: PacketManifest.File?
-    private var planes: [PacketPlane]?
+    private var planes: [PacketPlane] = []
     private var marks: [PacketMark]?
     private var guidance: [PacketGuidanceEntry]?
     private var scene: PacketManifest.SceneFile?
@@ -145,8 +171,9 @@ public struct PacketWriter: Sendable {
 
     // MARK: Photos
 
-    /// Copies the JPEG to photos/<id>.jpg and, with depth, writes depth/<id>.f32 and
-    /// depth/<id>.conf.u8. Photos may be added in any order; the manifest lists them by `t`.
+    /// Copies the JPEG to photos/<id>.jpg and, with depth, writes depth/<id>.f32 with
+    /// depth/<id>.conf.u8 or depth/<id>.sigma.f32. Photos may be added in any order; the manifest
+    /// lists them by `t`.
     public mutating func addPhoto(_ photo: PacketPhoto) throws {
         let id = photo.id
         guard Self.isValidID(id) else { throw PacketError.invalidID(id) }
@@ -177,15 +204,56 @@ public struct PacketWriter: Sendable {
         var entry = PacketManifest.Photo(
             id: id, image: image, width: photo.width, height: photo.height, t: photo.t,
             pose: PacketPose.columnMajor(photo.pose),
-            intrinsics: [photo.intrinsics.x, photo.intrinsics.y, photo.intrinsics.z, photo.intrinsics.w].map(PacketNumber.double),
+            intrinsics: Self.manifestIntrinsics(photo.intrinsics),
             tracking: photo.tracking.manifest, exposure: photo.exposure, lens: photo.lens,
             sharpness: .init(method: PacketSharpness.method, value: photo.sharpness), depth: nil)
         if let depth {
-            let map = try PacketFiles.write(PacketFiles.depthData(meters: depth.meters), to: "depth/\(id).f32", in: folder)
-            let confidence = try depth.confidence.map { try PacketFiles.write(Data($0), to: "depth/\(id).conf.u8", in: folder) }
-            entry.depth = .init(map: map, confidence: confidence, width: depth.width, height: depth.height, source: depth.source)
+            let files = try writeDepth(depth, stem: "depth/\(id)")
+            entry.depth = .init(
+                map: files.map, confidence: files.confidence, sigma: files.sigma, width: depth.width, height: depth.height,
+                source: depth.source)
         }
         photos.append(entry)
+    }
+
+    // MARK: Depth frames
+
+    /// Writes depth_frames/<id>.f32 with depth_frames/<id>.conf.u8 or depth_frames/<id>.sigma.f32
+    /// at once, so the caller can drop the map: a capture's depth frames are never all in memory.
+    /// Frames may be added in any order; the manifest lists them by `t`.
+    public mutating func addDepthFrame(_ frame: PacketDepthFrame) throws {
+        let id = frame.id
+        guard Self.isValidID(id) else { throw PacketError.invalidID(id) }
+        guard !depthFrames.contains(where: { $0.id == id }) else { throw PacketError.duplicateID(id) }
+        try checkTime(frame.t, "depth frame \(id)")
+        if depthFrames.contains(where: { $0.t == frame.t }) {
+            throw PacketError.invalidDepthFrame(id: id, reason: "another depth frame has the same t \(frame.t)")
+        }
+        guard PacketPose.isRigid(frame.pose) else { throw PacketError.notRigid("depth frame \(id)") }
+        let depth: DepthPacket
+        do {
+            depth = try Self.cleanedDepth(frame.depth)
+        } catch {
+            throw PacketError.invalidDepthFrame(id: id, reason: error.reason)
+        }
+        if let problem = Self.intrinsicsProblem(frame.intrinsics, width: depth.width, height: depth.height) {
+            throw PacketError.invalidDepthFrame(id: id, reason: "intrinsics for the \(depth.width)x\(depth.height) depth map: \(problem)")
+        }
+        let files = try writeDepth(depth, stem: "depth_frames/\(id)")
+        depthFrames.append(PacketManifest.DepthFrame(
+            id: id, t: frame.t, pose: PacketPose.columnMajor(frame.pose), intrinsics: Self.manifestIntrinsics(frame.intrinsics),
+            tracking: frame.tracking?.manifest, map: files.map, confidence: files.confidence, sigma: files.sigma,
+            width: depth.width, height: depth.height, source: depth.source))
+    }
+
+    /// `<stem>.f32`, and `<stem>.conf.u8` or `<stem>.sigma.f32` when the depth has them.
+    private func writeDepth(
+        _ depth: DepthPacket, stem: String
+    ) throws -> (map: PacketManifest.File, confidence: PacketManifest.File?, sigma: PacketManifest.File?) {
+        let map = try PacketFiles.write(PacketFiles.depthData(meters: depth.meters), to: "\(stem).f32", in: folder)
+        let confidence = try depth.confidence.map { try PacketFiles.write(Data($0), to: "\(stem).conf.u8", in: folder) }
+        let sigma = try depth.sigma.map { try PacketFiles.write(PacketFiles.depthData(meters: $0), to: "\(stem).sigma.f32", in: folder) }
+        return (map, confidence, sigma)
     }
 
     // MARK: Streams
@@ -247,18 +315,27 @@ public struct PacketWriter: Sendable {
     // MARK: LiDAR, marks, guidance, scene
 
     /// Writes lidar/mesh.ply. `mesh` must be in the meter frame (`MeterFrame.mesh(_:)`), with one
-    /// ARMeshClassification raw value per triangle.
+    /// ARMeshClassification raw value per triangle. The session's device must say whether the
+    /// mesh was classified (`mesh_classification_enabled`, required with a mesh from 1.1), and an
+    /// unclassified mesh has every class 0.
     public mutating func setMesh(_ mesh: TriangleMesh, classification: [UInt8]) throws {
+        guard let classified = session.device.meshClassificationEnabled else {
+            throw PacketError.invalidMesh("session.device.mesh_classification_enabled must say whether ARKit classified the mesh")
+        }
+        if !classified, let face = classification.firstIndex(where: { $0 != 0 }) {
+            throw PacketError.invalidMesh("classification was off, but face \(face) has class \(classification[face]); every class must be 0")
+        }
         let data = try PacketFiles.meshPLY(mesh, classification: classification)
         self.mesh = try PacketFiles.write(data, to: "lidar/mesh.ply", in: folder)
     }
 
-    public mutating func setPlanes(_ planes: [PacketPlane]) throws {
-        try Self.checkUnique(planes.map(\.id))
-        for plane in planes {
-            if let problem = plane.problem() { throw PacketError.invalidPlane(id: plane.id, reason: problem) }
-        }
-        self.planes = planes
+    /// One `ARPlaneAnchor`, listed in the manifest's top-level `planes` in the order added. A
+    /// plane whose boundary leaves its extent is refused whole; the caller may add it again
+    /// without the boundary.
+    public mutating func addPlane(_ plane: PacketPlane) throws {
+        guard !planes.contains(where: { $0.id == plane.id }) else { throw PacketError.duplicateID(plane.id) }
+        if let problem = plane.problem() { throw PacketError.invalidPlane(id: plane.id, reason: problem) }
+        planes.append(plane)
     }
 
     /// Marks' `photo_ids` must name photos in the packet by the time of `finish()`.
@@ -293,8 +370,8 @@ public struct PacketWriter: Sendable {
     // MARK: Finish
 
     /// The manifest of everything added so far. `ended_at_uptime` is the latest time the packet
-    /// holds (the last trajectory row, photo, mark or guidance time), and `distance_walked_m` the
-    /// trajectory's horizontal length.
+    /// holds (the last trajectory row, photo, depth frame, mark or guidance time), and
+    /// `distance_walked_m` the trajectory's horizontal length.
     public func manifest() throws -> PacketManifest {
         guard !photos.isEmpty else { throw PacketError.noPhotos }
         let photoIDs = Set(photos.map(\.id))
@@ -303,7 +380,7 @@ public struct PacketWriter: Sendable {
                 throw PacketError.invalidMark(id: mark.id, reason: "photo_ids names \(missing), which is not a photo in the packet")
             }
         }
-        var times = photos.map(\.t) + (marks ?? []).compactMap(\.t)
+        var times = photos.map(\.t) + depthFrames.map(\.t) + (marks ?? []).compactMap(\.t)
         times += (guidance ?? []).flatMap { [$0.tShown] + [$0.tResolved].compactMap { $0 } }
         if let last = streams[.trajectory]?.lastT { times.append(last) }
         let start = session.startedAtUptime
@@ -320,7 +397,8 @@ public struct PacketWriter: Sendable {
                 nominalRateHz: nominalRates[stream])
         }
         let anchorY = session.meterFrame.meterInWorld.columns.3.y
-        let lidar = mesh == nil && planes == nil ? nil : PacketManifest.Lidar(mesh: mesh, planes: planes)
+        // Planes go at the top level only: 1.1 may not also list them in lidar.planes.
+        let lidar = mesh.map { PacketManifest.Lidar(mesh: $0, planes: nil) }
         return PacketManifest(
             packetVersion: PacketManifest.version,
             session: .init(
@@ -334,7 +412,9 @@ public struct PacketWriter: Sendable {
                     groundYM: session.groundWorldY.map { PacketNumber.double($0 - anchorY) }),
                 consent: nil),
             photos: photos.sorted { $0.t < $1.t },
+            depthFrames: depthFrames.isEmpty ? nil : depthFrames.sorted { $0.t < $1.t },
             streams: streamRefs == PacketManifest.Streams() ? nil : streamRefs,
+            planes: planes.isEmpty ? nil : planes,
             lidar: lidar, marks: marks, guidance: guidance, scene: scene, provenance: nil)
     }
 
@@ -411,32 +491,72 @@ public struct PacketWriter: Sendable {
         return nil
     }
 
-    /// validate.py's `depth_problems`, with non-finite and negative values made 0.
+    /// validate.py's `photo_depth_problems` (the photo's aspect, no larger than it) and
+    /// `depth_data_problems`.
     static func checkedDepth(_ depth: DepthPacket, photo: PacketPhoto) throws(PacketError) -> DepthPacket {
         let id = photo.id
         let (w, h) = (depth.width, depth.height)
-        guard w > 0, h > 0, depth.meters.count == w * h else {
-            throw .invalidDepth(id: id, reason: "\(depth.meters.count) values for \(w)x\(h)")
-        }
         guard w <= photo.width, h <= photo.height else {
             throw .invalidDepth(id: id, reason: "\(w)x\(h) is larger than the \(photo.width)x\(photo.height) photo")
         }
         let aspect = (Double(w) / Double(h)) / (Double(photo.width) / Double(photo.height))
-        guard abs(aspect - 1) <= 0.01 else {
+        guard w > 0, h > 0, abs(aspect - 1) <= 0.01 else {
             throw .invalidDepth(id: id, reason: "\(w)x\(h) does not have the \(photo.width)x\(photo.height) photo's aspect")
         }
+        do {
+            return try cleanedDepth(depth)
+        } catch {
+            throw .invalidDepth(id: id, reason: error.reason)
+        }
+    }
+
+    /// Why `cleanedDepth` refused a map.
+    struct DepthRefusal: Error {
+        let reason: String
+    }
+
+    /// validate.py's `depth_data_problems`: sizes, the confidence or sigma its source needs, and
+    /// values. Depth that is not finite or not positive becomes 0 ("no measurement"), and so does
+    /// sigma at those pixels, where it describes nothing.
+    static func cleanedDepth(_ depth: DepthPacket) throws(DepthRefusal) -> DepthPacket {
+        let (w, h) = (depth.width, depth.height)
+        guard w > 0, h > 0, depth.meters.count == w * h else { throw DepthRefusal(reason: "\(depth.meters.count) values for \(w)x\(h)") }
+        switch depth.source {
+        case let source? where source.isARKit:
+            guard depth.confidence != nil else { throw DepthRefusal(reason: "ARKit depth (\(source.rawValue)) needs its confidence (packet 1.1)") }
+        case .estimated?:
+            guard depth.sigma != nil else { throw DepthRefusal(reason: "estimated depth needs sigma") }
+            guard depth.confidence == nil else { throw DepthRefusal(reason: "estimated depth carries sigma, not ARKit's confidence") }
+        default:
+            break
+        }
         if let confidence = depth.confidence {
-            guard confidence.count == w * h else { throw .invalidDepth(id: id, reason: "\(confidence.count) confidence values for \(w)x\(h)") }
-            guard confidence.allSatisfy({ $0 <= 2 }) else { throw .invalidDepth(id: id, reason: "confidence must be 0, 1 or 2") }
+            guard confidence.count == w * h else { throw DepthRefusal(reason: "\(confidence.count) confidence values for \(w)x\(h)") }
+            guard confidence.allSatisfy({ $0 <= 2 }) else { throw DepthRefusal(reason: "confidence must be 0, 1 or 2") }
         }
         var cleaned = depth
         cleaned.meters = depth.meters.map { $0.isFinite && $0 > 0 ? $0 : 0 }
         // The validator calls a map with under 1% of pixels measured empty.
         let measured = cleaned.meters.reduce(0) { $0 + ($1 > 0 ? 1 : 0) }
         guard Double(measured) >= 0.01 * Double(w * h) else {
-            throw .invalidDepth(id: id, reason: "\(measured) of \(w * h) pixels measured; under 1% is empty, leave the depth out")
+            throw DepthRefusal(reason: "\(measured) of \(w * h) pixels measured; under 1% is empty, leave the depth out")
+        }
+        if let sigma = depth.sigma {
+            guard sigma.count == w * h else { throw DepthRefusal(reason: "\(sigma.count) sigma values for \(w)x\(h)") }
+            var kept = [Float](repeating: 0, count: w * h)
+            for i in 0..<(w * h) where cleaned.meters[i] > 0 {
+                let s = sigma[i]
+                guard s.isFinite, s >= 0 else { throw DepthRefusal(reason: "sigma \(s) at pixel \(i), which has depth; it must be finite and >= 0") }
+                kept[i] = s
+            }
+            cleaned.sigma = kept
         }
         return cleaned
+    }
+
+    /// [fx, fy, cx, cy] as the manifest writes them, each Float as its shortest decimal.
+    static func manifestIntrinsics(_ k: SIMD4<Float>) -> [Double] {
+        [k.x, k.y, k.z, k.w].map(PacketNumber.double)
     }
 
     static func iso8601(_ date: Date) -> String {

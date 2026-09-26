@@ -120,11 +120,12 @@ func rightCornerWall() throws -> WallFrame {
         map.setEnd(.right, at: 3.1)
 
         // A marked wall whose corner is 3.9 m from the marked end is some other wall.
-        #expect(throws: CornerRefusal.implausible(s: 7)) { try map.turnCorner(.right, meeting: SIMD3(7, 1, -2), outward: SIMD3(1, 0, 0)) }
+        #expect(throws: CornerRefusal.implausible(s: 7)) { try map.turnCorner(.right, meeting: SIMD3(7, 1, -2), outward: SIMD3(1, 0, 0), source: .plane) }
         #expect(map.rightEnd == 3.1 && map.wall.rightCorners.isEmpty)
 
-        let corner = try map.turnCorner(.right, meeting: SIMD3(3, 1.2, -2), outward: SIMD3(1, 0, 0))
+        let corner = try map.turnCorner(.right, meeting: SIMD3(3, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)
         #expect(nearlyEqual(corner.s, 3))
+        #expect(corner.source == .plane)
         #expect(map.rightEnd == nil && map.wall.rightCorners == [corner])
         // Past the corner the same views look along the new wall, not at it.
         #expect(map.coveredIntervals(.wall).allSatisfy { $0.upperBound <= 3.05 })
@@ -165,7 +166,7 @@ func rightCornerWall() throws -> WallFrame {
                 .fence(foot: [w.world(s: 0.5, height: 0, out: 2), w.world(s: 1.5, height: 0, out: 2)]),
             ],
             coverage: SceneCoverage(
-                leftEndMarked: false, rightEndMarked: true, wall: [-4...6],
+                leftEndMarked: false, rightEndMarked: true, wall: [ObservedSpan(span: -4...6, out: 2.286)],
                 ground: [ObservedSpan(span: -4...6, out: 1.2)], facing: [ObservedSpan(span: 2...4, out: 1.5)]))
     }
 
