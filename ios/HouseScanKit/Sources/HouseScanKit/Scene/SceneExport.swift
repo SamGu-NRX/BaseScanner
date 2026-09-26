@@ -86,19 +86,26 @@ public struct SceneCoverage: Sendable {
     /// Stretches of ground seen in front of the wall, each with how far out it was seen
     /// (`CoverageMap.groundDepthSpans()`).
     public var ground: [ObservedSpan]
+    /// Stretches known clear in front of the wall, each out to where the homeowner walked less
+    /// the position error (`CoverageMap.facingSpans()`).
+    public var facing: [ObservedSpan]
 
-    public init(leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan]) {
+    public init(
+        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan],
+        facing: [ObservedSpan] = []
+    ) {
         self.leftEndMarked = leftEndMarked
         self.rightEndMarked = rightEndMarked
         self.wall = wall
         self.ground = ground
+        self.facing = facing
     }
 
     /// Everything `map` observed, with the ends' kinds from the homeowner's answers.
     public init(_ map: CoverageMap, leftEndMarked: Bool, rightEndMarked: Bool) {
         self.init(
             leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked,
-            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans())
+            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans(), facing: map.facingSpans())
     }
 }
 
@@ -334,7 +341,7 @@ public enum SceneExport {
         }
 
         let coverage = input.coverage
-        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground)]
+        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground), ("facing", coverage.facing)]
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }

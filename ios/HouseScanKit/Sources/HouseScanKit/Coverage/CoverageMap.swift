@@ -59,6 +59,12 @@ public struct CoverageConfig: Sendable, Equatable {
     public var rowsPerBand = 3
     /// Two views count as separate positions only this far apart, so parallax exists between them.
     public var coveringBaseline: Float = 0.25
+    /// Two kept positions at most this far apart are one stretch of walked path: the homeowner
+    /// went from one to the other, and a straight line between them is assumed. Keyframes are kept
+    /// about every 0.5 m (`AutoCaptureConfig.spacingMeters`); 1 m allows one dropped frame
+    /// between them while staying under two strides, too short to have walked around something.
+    /// A hypothesis, not measured.
+    public var walkStep: Float = 1.0
     /// Fog drawn ahead of what has been seen, so the homeowner sees where to go next.
     public var fogAhead: Float = 2.5
 
@@ -342,6 +348,80 @@ public struct CoverageMap: Sendable {
         ObservedSpan.merge(depthCells.keys.sorted().compactMap { index in
             groundDepth(at: index).map { ObservedSpan(span: cellRange(index), out: $0) }
         }, touching: config.cellWidth * 0.01).map(clippedToEnds)
+    }
+
+    // MARK: Facing space
+
+    /// The server's default position error for something placed in AR, meters, at `s` meters
+    /// along the wall from the meter: 0.3 ft plus 0.16 ft per foot (server/README.md, "Writing
+    /// a scene" and "What settles each check", on origin/t3/server at e0ee8d3). The 0.16 per foot
+    /// is the server's measured ARKit drift; in meters it is 0.16 m per meter.
+    public static func positionError(atS s: Float) -> Float {
+        0.3 * 0.3048 + 0.16 * abs(s)
+    }
+
+    /// How far out from the wall a cell is known clear because the homeowner walked past it,
+    /// meters. A step is the straight line between consecutive kept positions with normal
+    /// tracking, both in front of the wall and at most `walkStep` apart; it shows the space
+    /// between the wall and itself clear, out to its end nearer the wall. The cell is clear out
+    /// to the largest distance d such that steps reaching at least d cover it along the wall.
+    /// That distance less `positionError` at the cell's edge farther from the meter is the
+    /// clearance, which the contract takes as exact ("for a walked path, the distance from the
+    /// wall less your position error"). Nil when no steps cover the cell, nothing is left after
+    /// the error, or the cell lies beyond a marked end.
+    ///
+    /// Only the phone's path is known, so this is the space between the wall and the phone; the
+    /// homeowner's body is behind it, farther out. Something low the phone passed over (a bush
+    /// under chest height) is not seen; occlusion is not modelled here either.
+    public func walkedClearance(at index: Int) -> Float? {
+        walkedClearance(at: index, steps: walkedSteps())
+    }
+
+    private func walkedClearance(at index: Int, steps: [WalkedStep]) -> Float? {
+        guard allows(index) else { return nil }
+        let cell = cellRange(index)
+        let tolerance: Float = 1e-5
+        let over = steps.filter { $0.low < cell.upperBound - tolerance && $0.high > cell.lowerBound + tolerance }
+        // Deepest first: the first depth whose steps join up across the cell is the answer.
+        for depth in Set(over.map(\.nearest)).sorted(by: >) {
+            var reached = cell.lowerBound
+            for step in over.filter({ $0.nearest >= depth }).sorted(by: { $0.low < $1.low }) where step.low <= reached + tolerance {
+                reached = max(reached, step.high)
+            }
+            guard reached >= cell.upperBound - tolerance else { continue }
+            let clear = depth - Self.positionError(atS: max(abs(cell.lowerBound), abs(cell.upperBound)))
+            return clear > 0 ? clear : nil
+        }
+        return nil
+    }
+
+    /// Stretches known clear in front of the wall from the walked path (`walkedClearance(at:)`),
+    /// neighbours of equal clearance merged. The error grows by 0.08 ft a cell, so this is
+    /// nearly one span per walked cell (80 for a walk 6 m either side of the meter).
+    public func facingSpans() -> [ObservedSpan] {
+        let steps = walkedSteps()
+        guard let low = steps.map(\.low).min(), let high = steps.map(\.high).max(), low < high else { return [] }
+        let items = indices(overlapping: low...high).compactMap { index in
+            walkedClearance(at: index, steps: steps).map { ObservedSpan(span: cellRange(index), out: $0) }
+        }
+        return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
+    }
+
+    private struct WalkedStep {
+        var low: Float
+        var high: Float
+        /// Distance from the wall of the step's end nearer to it.
+        var nearest: Float
+    }
+
+    private func walkedSteps() -> [WalkedStep] {
+        zip(observedCameras, observedCameras.dropFirst()).compactMap { first, second in
+            guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
+            let a = wall.wallPoint(first.position)
+            let b = wall.wallPoint(second.position)
+            guard a.out > 0, b.out > 0 else { return nil }
+            return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
+        }
     }
 
     /// A span trimmed to the marked ends. Cells overlapping an end keep only the allowed part.

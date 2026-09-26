@@ -30,8 +30,15 @@ public struct GuidanceConfig: Sendable, Equatable {
     /// A band lagging over at least this much wall near the camera triggers an aim task
     /// (3 cells of 6 in: one missed stride).
     public var lagRun: Float = 0.45
-    /// Where the homeowner should stand: this far out from the wall.
-    public var standOff: Float = 1.5
+    /// Where the homeowner should stand: this far out from the wall. The walked path is also the
+    /// scan's evidence that the space in front of the wall is clear (`CoverageMap.facingSpans()`),
+    /// and the server's facing check needs that clearance to exceed D + r = 1.83 + 3 = 4.83 ft
+    /// under the public rules, after the position error of 0.3 ft plus 0.16 ft per foot from the
+    /// meter is taken off. At the old 1.5 m (4.92 ft) that never happens: 4.92 - 0.3 = 4.62 ft.
+    /// At 2 m (6.56 ft), 6.56 - 0.3 - 0.16 |s| > 4.83 holds within 8.9 ft of the meter; for a
+    /// battery whose far edge is 5 ft out that leaves 0.63 ft (19 cm) for the walk to drift
+    /// closer. Private rules may differ; the server's request names the depth it needs.
+    public var standOff: Float = 2.0
     /// The ground path is drawn at most this long, so it never leads far into unseen ground.
     public var maxPathLength: Float = 3
 
