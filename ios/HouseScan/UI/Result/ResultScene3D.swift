@@ -326,11 +326,11 @@ struct ResultScene3D: View {
 /// in daylight shouldn't change color with the phone's dark mode.
 private enum SceneColor {
     static var signal: UIColor { rgb(0x1F66F2) }
-    static var wall: UIColor { rgb(0xEDE8DE) }
+    static var wall: UIColor { rgb(0xE3D7C3) }
     static var ground: UIColor { rgb(0x6F7F5E) }
     static var meter: UIColor { rgb(0x8E949C) }
     static var battery: UIColor { rgb(0xF4F5F7) }
-    static var opening: UIColor { rgb(0x46546A) }
+    static var opening: UIColor { rgb(0x7F93A8) }
     static var gas: UIColor { rgb(0xD9B84A) }
     static var driveway: UIColor { rgb(0x5A5E63) }
     static var fence: UIColor { rgb(0x9A8466) }

@@ -126,7 +126,6 @@ final class DemoEngine: ScanActions {
     private func enterWalk() {
         state.phase = .wallWalk
         state.closeUp = .captured(DemoScene.meterThumbnail)
-        state.features = state.features.isEmpty ? [] : state.features
         state.captureCount = max(state.captureCount, 6)
         refreshCoverage()
         refreshGuidance()
@@ -315,8 +314,7 @@ final class DemoEngine: ScanActions {
     }
 
     private func refreshGuidance() {
-        guard var wall = state.wall else { return }
-        wall.leftEnd = state.wall?.leftEnd
+        guard let wall = state.wall else { return }
         if wall.rightEnd == nil {
             if reachedRight >= Self.rightEnd - 0.01 {
                 state.guidance = .markEnd(side: .right)
