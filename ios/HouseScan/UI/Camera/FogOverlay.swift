@@ -78,6 +78,8 @@ struct FogOverlay: View {
         case .unseen: 0.75
         case .seen: 0.35
         case .covered, .skipped: 0
+        // Placeholder until round 5's UI lane: hidden reads as unseen.
+        case .hidden: 0.75
         }
     }
 

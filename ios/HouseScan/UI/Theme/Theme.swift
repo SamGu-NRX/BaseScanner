@@ -38,6 +38,8 @@ enum Palette {
         case .seen: seen
         case .covered: covered
         case .skipped: skipped
+        // Placeholder until round 5's UI lane draws hidden cells distinctly.
+        case .hidden: unseen
         }
     }
 

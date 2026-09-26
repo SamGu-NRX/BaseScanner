@@ -1275,6 +1275,7 @@ extension ScanEngine {
         case .tiltUp: "tiltUp"
         case .markNextWall(let side, _): "markNextWall.\(side.rawValue)"
         case .gap: "gap"
+        case .seeBehind: "seeBehind"
         }
     }
 

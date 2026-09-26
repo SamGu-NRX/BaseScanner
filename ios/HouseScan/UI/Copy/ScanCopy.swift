@@ -52,6 +52,9 @@ enum ScanCopy {
             nextWallRefusal(refusal)
         case .walkComplete:
             Instruction(title: "That's the whole wall", detail: "Tap Done when you're ready.")
+        case .seeBehind(let s):
+            // Placeholder wording until round 5's UI lane.
+            Instruction(title: "Something is in the way", detail: "Look at the wall \(Distance.fromMeter(s)) from another angle.")
         case .gap:
             Instruction(title: "One more view", detail: nil)
         }
