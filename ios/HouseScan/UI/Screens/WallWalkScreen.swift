@@ -195,32 +195,6 @@ struct WallWalkScreen: View {
     }
 }
 
-/// The overlays every walking screen draws over the camera, in paint order.
-struct CameraOverlays: View {
-    let state: ScanViewState
-    var highlight: GapRequest?
-
-    var body: some View {
-        if let projection = state.projection, let wall = state.wall {
-            ZStack {
-                FogOverlay(coverage: state.coverage, wall: wall, projection: projection, highlight: highlight)
-                    .ignoresSafeArea()
-                WallMarksOverlay(
-                    projection: projection,
-                    wall: wall,
-                    features: state.features,
-                    wallBandHeight: state.coverage.wallBandHeight
-                )
-                if state.marking == nil {
-                    // While marking, the reticle is the only aim; the path and ring would compete.
-                    WayfindingOverlay(projection: projection, wall: wall, path: state.path, target: state.target)
-                        .transition(.opacity)
-                }
-            }
-        }
-    }
-}
-
 /// The chips for "Mark something": one tap picks what to pin.
 struct FeatureTray: View {
     var onPick: (FeatureKind) -> Void
@@ -273,15 +247,5 @@ struct FeatureTray: View {
         }
         .padding(16)
         .background(ScrimShape.rounded())
-    }
-}
-
-/// Scale-on-press for custom-drawn buttons.
-struct PressableStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
