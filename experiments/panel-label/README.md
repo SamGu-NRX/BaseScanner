@@ -28,12 +28,12 @@ As an anecdote and not a measured rate: on the 8 legible US photos, Vision read 
 
 ## What was searched
 
-Between 2026-09-26 06:00 and 07:30, filtered to CC0, public domain, CC BY and CC BY-SA:
+On 2026-09-26, filtered to CC0, public domain, CC BY and CC BY-SA:
 
 - **Wikimedia Commons.** The file search for each of 20 queries in `src/panel_eval/sources.py` (for example "breaker panel", "load center", "Federal Pacific", "Stab-Lok", "Zinsco", plus maker names with "breaker panel"), and the `Square D` and `Square D circuit breakers` categories. There are no Commons categories for US residential panels, load centers or breaker boxes; the related categories (`Distribution boards`, `Circuit breakers`) hold mostly European DIN-rail boards and industrial gear.
 - **Openverse** (openly licensed images indexed from Flickr, Commons and others): the same 20 queries at up to 100 results each, then every accessible page of 11 core queries, 1,808 results in total. The anonymous API stops at 240 results per query, so the long tails of "electrical panel", "fuse box", "load center", "circuit breaker" and "service panel" were not reachable.
 
-After de-duplication there were about 2,000 unique results. Screening titles and thumbnails left 116 candidates; after removing duplicates and non-panels, 67 were examined at full resolution. Most results are aircraft and ship panels, European consumer units, industrial switchgear, substations, car fuse boxes and diagrams. Most US residential panel photos are wide shots of wiring in which no label text is legible; Flickr copies in Openverse are mostly 1024 px.
+The first pass returned 1,476 unique results and the deeper Openverse pass 1,356 more, about 2,800 in all. Screening titles and about 850 thumbnails left 78 photos to download at full resolution; removing 11 duplicates left 67. Most results are aircraft and ship panels, European consumer units, industrial switchgear, substations, car fuse boxes and diagrams. Most US residential panel photos are wide shots of wiring in which no label text is legible; Flickr copies in Openverse are mostly 1024 px.
 
 ## What would unblock it
 
