@@ -284,7 +284,7 @@ final class ScanEngine {
     /// session and the barometer raise both prompts over "Find your electric meter".
     func leaveOnboarding() {
         let cameraUnasked = AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined
-        guard replay == nil, cameraUnasked || MotionSource.needsPermission else {
+        guard options.replayFolder == nil, cameraUnasked || MotionSource.needsPermission else {
             go(.findMeter)
             return
         }
