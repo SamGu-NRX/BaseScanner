@@ -895,7 +895,7 @@ final class DemoEngine: ScanActions {
                      reason: "The gas meter is well to the left of the spot."),
             CheckRow(id: "window", title: "Distance from the window", outcome: .unsure,
                      reason: "The window is close to the spot's right edge.",
-                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1),
+                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
                      reason: "Part of the ground was only seen from one place.", needsPerson: false),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,

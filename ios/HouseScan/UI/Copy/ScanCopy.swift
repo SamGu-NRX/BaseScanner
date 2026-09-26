@@ -354,18 +354,31 @@ enum ScanCopy {
         row.needsPerson ? "An installer will check this" : "One more photo would settle this"
     }
 
-    /// "Measured 3 ft 2 in. The rule is 3 ft, and the measurement can be off by about 4 in."
+    /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."
+    /// The limit says whether it is a minimum or a maximum: without it, the 20 ft cable limit read
+    /// like a minimum under "Measured 3 ft".
     static func measurement(_ row: CheckRow) -> String? {
         guard let measured = row.measured else { return nil }
         var parts = ["Measured \(Distance.feetAndInches(measured))."]
         if let threshold = row.threshold {
+            let limit = ruleLimit(threshold, row.comparison)
             if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)), and the measurement can be off by about \(Distance.feetAndInches(plusMinus)).")
+                parts.append("The rule is \(limit), and the measurement can be off by about \(Distance.feetAndInches(plusMinus)).")
             } else {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)).")
+                parts.append("The rule is \(limit).")
             }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// "at least 3 ft", "at most 20 ft", or the bare distance when the server didn't say which.
+    static func ruleLimit(_ threshold: Float, _ comparison: RuleComparison?) -> String {
+        let distance = Distance.feetAndInches(threshold)
+        guard let comparison else { return distance }
+        switch comparison {
+        case .atLeast: return "at least \(distance)"
+        case .atMost: return "at most \(distance)"
+        }
     }
 
     static func outcomeWord(_ outcome: CheckOutcome) -> String {
