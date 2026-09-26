@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { Health } from "../lib/api.ts";
 
 interface Props {
@@ -10,6 +10,16 @@ interface Props {
 export function ServerSetting({ server, health, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(server);
+  const changeButton = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+
+  // Closing the form unmounts the focused control; give focus back to Change.
+  useEffect(() => {
+    if (wasEditing.current && !editing) {
+      changeButton.current?.focus();
+    }
+    wasEditing.current = editing;
+  }, [editing]);
 
   function save(event: FormEvent) {
     event.preventDefault();
@@ -27,15 +37,29 @@ export function ServerSetting({ server, health, onChange }: Props) {
 
   if (editing) {
     return (
-      <form className="server server-form" onSubmit={save}>
+      <form
+        className="server server-form"
+        onSubmit={save}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setEditing(false);
+          }
+        }}
+      >
         <label htmlFor="server-url">Placement server</label>
         <input
           id="server-url"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="http://localhost:8000"
+          // biome-ignore lint/a11y/noAutofocus: the field is what Change opened.
+          autoFocus
           spellCheck={false}
           autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          inputMode="url"
+          enterKeyHint="done"
         />
         <button type="submit" className="button">
           Use
@@ -55,6 +79,7 @@ export function ServerSetting({ server, health, onChange }: Props) {
         <span className="server-status">{statusText}</span>
       </span>
       <button
+        ref={changeButton}
         type="button"
         className="button quiet"
         onClick={() => {

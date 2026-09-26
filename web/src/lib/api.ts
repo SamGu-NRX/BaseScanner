@@ -1,6 +1,5 @@
-import { Ajv2020 } from "ajv/dist/2020.js";
-import schemaText from "../contract/result.schema.json?raw";
 import type { BatteryPlacementResult } from "../contract/result.ts";
+import validate from "../contract/validate-result.js";
 import type { SceneInput } from "./scene-input.ts";
 
 export type Result = BatteryPlacementResult;
@@ -25,8 +24,6 @@ export interface Placement {
   /** The site plan SVG, or null when the server gave the result but not the plan. */
   plan: string | null;
 }
-
-const validate = new Ajv2020({ allErrors: false }).compile<Result>(JSON.parse(schemaText));
 
 /** Checks a parsed body against the result schema, so a contract break is a specific error. */
 export function parseResult(body: unknown): Result {

@@ -1,9 +1,10 @@
+import { useMemo } from "react";
 import type { Result } from "../lib/api.ts";
 import { feet, fromMeter, measured } from "../lib/format.ts";
 
 type Check = Result["checks"][number];
 
-const STAMP: Record<Result["decision"], string> = {
+export const STAMP: Record<Result["decision"], string> = {
   pass: "Fits",
   manual_review: "Needs review",
   reject: "No spot",
@@ -22,26 +23,44 @@ const OUTCOME_WORD: Record<Check["outcome"], string> = {
   fail: "Fail",
 };
 
-export function ResultView({
-  result,
-  plan,
-  saved,
-}: {
+interface Props {
   result: Result;
   plan: string | null;
   saved: boolean;
-}) {
+  /** "full" when an answer appears; "stamp" when it replaces another, so only the stamp lands. */
+  entrance: "full" | "stamp";
+}
+
+/** The SVG's own width and height, so the image reserves its space before it decodes. */
+function planSize(svg: string): { width: number; height: number } | null {
+  const root = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
+  const width = Number(root.getAttribute("width"));
+  const height = Number(root.getAttribute("height"));
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+function planAlt(result: Result): string {
+  const spot = result.spot;
+  const where = spot
+    ? `the battery ${fromMeter((spot.span_ft[0] + spot.span_ft[1]) / 2)}`
+    : "no battery spot";
+  const cable = result.route ? `, and a ${feet(result.route.length_ft)} cable run` : "";
+  return `Site plan from above: the scanned wall and the meter, ${where}${cable}.`;
+}
+
+export function ResultView({ result, plan, saved, entrance }: Props) {
   const spot = result.spot ?? result.nearest_considered ?? null;
   const attention = result.checks.filter((c) => c.outcome !== "pass");
   const passing = result.checks.length - attention.length;
   const views = result.missing_evidence;
+  const size = useMemo(() => (plan ? planSize(plan) : null), [plan]);
 
   return (
-    <article className="result" data-decision={result.decision}>
-      <header className="verdict reveal">
-        <p className="stamp" data-decision={result.decision}>
+    <article className="result" data-entrance={entrance}>
+      <header className="verdict">
+        <h2 className="stamp" data-decision={result.decision}>
           {STAMP[result.decision]}
-        </p>
+        </h2>
         <div className="verdict-text">
           <p className="summary">{result.summary}</p>
           <p className="source">
@@ -79,7 +98,9 @@ export function ResultView({
         {plan ? (
           <img
             src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(plan)}`}
-            alt={`Site plan: ${result.summary}`}
+            alt={planAlt(result)}
+            width={size?.width}
+            height={size?.height}
           />
         ) : (
           <p className="plan-missing">The server did not send a site plan for this answer.</p>
@@ -111,9 +132,7 @@ export function ResultView({
       )}
 
       <details className="block all-checks reveal">
-        <summary>
-          <h2>All {result.checks.length} checks</h2>
-        </summary>
+        <summary>All {result.checks.length} checks</summary>
         <ul className="checks">
           {result.checks.map((check) => (
             <CheckRow key={check.id} check={check} />

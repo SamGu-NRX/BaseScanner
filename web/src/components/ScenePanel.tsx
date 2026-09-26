@@ -1,4 +1,4 @@
-import { type DragEvent, useState } from "react";
+import { type DragEvent, useEffect, useState } from "react";
 import { SAMPLES, type Sample } from "../samples/index.ts";
 
 interface Props {
@@ -10,6 +10,17 @@ interface Props {
 
 export function ScenePanel({ activeSampleId, fileName, onSample, onFile }: Props) {
   const [dragging, setDragging] = useState(false);
+
+  // A file dropped anywhere else would make the browser open it and leave the page.
+  useEffect(() => {
+    const ignore = (event: globalThis.DragEvent) => event.preventDefault();
+    window.addEventListener("dragover", ignore);
+    window.addEventListener("drop", ignore);
+    return () => {
+      window.removeEventListener("dragover", ignore);
+      window.removeEventListener("drop", ignore);
+    };
+  }, []);
 
   function drop(event: DragEvent) {
     event.preventDefault();
@@ -29,7 +40,7 @@ export function ScenePanel({ activeSampleId, fileName, onSample, onFile }: Props
             <button
               type="button"
               className="sample"
-              aria-pressed={sample.id === activeSampleId}
+              aria-current={sample.id === activeSampleId ? "true" : undefined}
               onClick={() => onSample(sample)}
             >
               <span className="sample-title">{sample.title}</span>
@@ -45,7 +56,13 @@ export function ScenePanel({ activeSampleId, fileName, onSample, onFile }: Props
           event.preventDefault();
           setDragging(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        onDragLeave={(event) => {
+          // Crossing onto the zone's own text also fires dragleave; only leaving the zone counts.
+          const next = event.relatedTarget;
+          if (!(next instanceof Node && event.currentTarget.contains(next))) {
+            setDragging(false);
+          }
+        }}
         onDrop={drop}
       >
         <input
