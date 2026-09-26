@@ -101,8 +101,8 @@ struct SyntheticScene {
         return hit.t >= distance - 2e-3
     }
 
-    /// A LiDAR depth frame: every pixel's z-depth through its center, full confidence; no
-    /// depth where the ray meets nothing. `noise` adds a uniform error of up to that many
+    /// A LiDAR depth frame: every pixel's z-depth through its center, full confidence; 0 where
+    /// the ray meets nothing. `noise` adds a uniform error of up to that many
     /// meters, the same for a given seed (ARKit's LiDAR is within about 1 cm at 1 m and a few
     /// cm at 5 m; 2 cm everywhere is on the rough side).
     func depthFrame(from camera: CameraFrame, noise: Float = 0, seed: UInt64 = 1) -> DepthFrame {
@@ -113,13 +113,13 @@ struct SyntheticScene {
         }
         let width = Int(camera.imageSize.x)
         let height = Int(camera.imageSize.y)
-        var depth = [Float](repeating: .nan, count: width * height)
+        var depth = [Float](repeating: 0, count: width * height)
         let forward = camera.forward
         for v in 0..<height {
             for u in 0..<width {
                 let ray = camera.ray(throughPixel: SIMD2(Float(u) + 0.5, Float(v) + 0.5))
                 guard let hit = intersect(origin: ray.origin, direction: ray.direction) else { continue }
-                depth[v * width + u] = hit.t * simd_dot(ray.direction, forward) + noise * uniform()
+                depth[v * width + u] = max(0, hit.t * simd_dot(ray.direction, forward) + noise * uniform())
             }
         }
         return DepthFrame(
@@ -143,9 +143,10 @@ struct SyntheticScene {
     }
 }
 
-/// The map frame for these scenes: the world itself (meter's foot at the origin, wall along +x).
+/// The map frame for these scenes, with its anchor at the meter's foot so map and world
+/// coincide: origin on the ground at the wall, wall along +x, facing +z.
 func sceneFrame() -> MapFrame {
-    MapFrame(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), groundY: 0)!
+    MapFrame(meter: .zero, outward: SIMD3(0, 0, 1), worldGroundY: 0)!
 }
 
 /// A straight wall along x from -5 to 6 with a bush in front of it: x 1 to 2, out 0.4 to 1.0,

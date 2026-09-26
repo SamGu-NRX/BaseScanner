@@ -147,4 +147,75 @@ import Testing
         #expect(simd_distance(moved.world(point), SIMD3(expected.x, expected.y, expected.z)) < 1e-4)
         #expect(abs(moved.worldDirection(SIMD3(0, 1, 0)).y - 1) < 1e-5)
     }
+
+    // MARK: Capture packet conventions (packet/README.md on t3/packet)
+
+    /// The map frame is the packet's meter frame: origin at the meter anchor, +y up, +z the
+    /// wall's outward normal, +x = y × z, and the ground's height below the anchor.
+    @Test func mapFrameIsThePacketMeterFrame() throws {
+        let frame = try #require(MapFrame(meter: SIMD3(2, 1.5, -1), outward: SIMD3(1, 0.2, 0), worldGroundY: 0.1))
+        #expect(simd_distance(frame.world(.zero), SIMD3(2, 1.5, -1)) < 1e-5)
+        #expect(abs(frame.groundY - -1.4) < 1e-5)
+        let x = frame.worldDirection(SIMD3(1, 0, 0))
+        let y = frame.worldDirection(SIMD3(0, 1, 0))
+        let z = frame.worldDirection(SIMD3(0, 0, 1))
+        #expect(simd_distance(z, SIMD3(1, 0, 0)) < 1e-5)
+        #expect(simd_distance(y, SIMD3(0, 1, 0)) < 1e-5)
+        #expect(simd_distance(x, simd_cross(y, z)) < 1e-5)
+        // The packet's meter_anchor fields give the same frame back.
+        let packet = MapFrame(poseInWorld: frame.poseInWorld, groundY: frame.groundY)
+        #expect(packet == frame)
+    }
+
+    /// Where the anchor sits changes nothing the map reports along the wall: the bush scene's
+    /// coverage with the anchor on the meter 1.5 m up equals it with the anchor on the ground.
+    @Test func coverageDoesNotDependOnTheAnchorHeight() throws {
+        let scene = bushScene()
+        let raised = try #require(MapFrame(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), worldGroundY: 0))
+        var onMeter = Map3D(frame: raised)
+        var onGround = Map3D(frame: sceneFrame())
+        for camera in bushWalk() {
+            let frame = scene.depthFrame(from: camera)
+            onMeter.integrate(frame)
+            onGround.integrate(frame)
+        }
+        #expect(onMeter.coverage(along: standardWall()) == onGround.coverage(along: standardWall()))
+        #expect(onMeter.state(at: SIMD3(-1, -0.1, 0)) == .surface)
+    }
+
+    /// A depth image aligned to a photo: depth pixel (c, r) covers photo pixels c W / w to
+    /// (c + 1) W / w, so a point lands on the depth pixel under its photo pixel.
+    @Test func depthIntrinsicsFollowThePacketAlignment() {
+        let photo = CameraFrame(
+            cameraToWorld: lidarCamera(at: SIMD3(0, 1.4, 2.5), lookingAt: SIMD3(0.3, 1.1, 0)).cameraToWorld,
+            intrinsics: SIMD4(1450, 1452, 962, 718), imageSize: SIMD2(1920, 1440))
+        let depth = DepthFrame(photo: photo, width: 256, height: 192, depth: [Float](repeating: 0, count: 256 * 192), kind: .lidar(confidence: nil))
+        for point in [SIMD3<Float>(0.3, 1.1, 0), SIMD3(-0.4, 0.2, 0), SIMD3(0.8, 2.0, 0)] {
+            let a = photo.pixel(of: point)!
+            let b = depth.camera.pixel(of: point)!
+            #expect(simd_distance(a / 7.5, b) < 1e-3, "photo \(a), depth \(b)")
+        }
+    }
+
+    /// A packet's merged mesh is in the meter frame: fed as one chunk placed at the anchor, its
+    /// faces label the voxels at their meter-frame positions.
+    @Test func aPacketMeshIsOneChunkInTheMeterFrame() throws {
+        let frame = try #require(MapFrame(meter: SIMD3(3, 1.5, 2), outward: SIMD3(-1, 0, 0), worldGroundY: 0))
+        var map = Map3D(frame: frame)
+        map.update(MeshChunk(
+            id: UUID(), worldFromChunk: frame.poseInWorld,
+            vertices: [SIMD3(-1, -1.5, 0), SIMD3(1, -1.5, 0), SIMD3(1, 0.5, 0), SIMD3(-1, 0.5, 0)],
+            faces: [SIMD3(0, 1, 2), SIMD3(0, 2, 3)], classes: [.wall, .wall]))
+        #expect(map.evidence(at: SIMD3(0.5, -0.5, 0)).meshClass == .wall)
+        #expect(map.evidence(at: SIMD3(0.5, -0.5, 0.3)).meshClass == nil)
+    }
+
+    @Test func lidarDepthWithoutConfidenceIsTakenAsHigh() {
+        let scene = SyntheticScene(walls: [SyntheticScene.Wall(a: SIMD2(-5, 0), b: SIMD2(5, 0))])
+        let camera = lidarCamera(at: SIMD3(0, 1.4, 2.5), lookingAt: SIMD3(0, 1.4, 0))
+        let frame = scene.depthFrame(from: camera)
+        var map = Map3D(frame: sceneFrame())
+        map.integrate(DepthFrame(camera: camera, width: frame.width, height: frame.height, depth: frame.depth, kind: .lidar(confidence: nil)))
+        #expect(map.state(at: SIMD3(0, 1.4, 0)) == .surface)
+    }
 }

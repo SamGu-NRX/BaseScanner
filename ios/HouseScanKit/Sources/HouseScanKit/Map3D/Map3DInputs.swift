@@ -5,18 +5,24 @@ import simd
 // (HouseScan/Runtime/Map3DFeed.swift) fills them on the AR delegate queue. World coordinates
 // are ARKit's gravity-aligned world in meters.
 
-/// A per-pixel depth image with the camera that took it.
+/// A per-pixel depth image with the camera that took it, encoded as a capture packet's `depth`
+/// (packet/README.md, "Depth alignment", on t3/packet).
 ///
-/// `camera` describes the depth image itself: its intrinsics are the color camera's scaled to
-/// the depth resolution, and `camera.imageSize` is (`width`, `height`). A depth value is the
-/// distance along the camera's optical axis (camera -z), not along the pixel's ray, as ARKit's
-/// `sceneDepth` reports it. Pixel (u, v) covers the square from (u, v) to (u + 1, v + 1), row
-/// `v` from the top of the unrotated landscape image; its value is at index v * width + u.
+/// `camera` describes the depth image itself (`camera.imageSize` is (`width`, `height`)); build
+/// it from the photo's camera with `init(photo:...)`. A value is meters along the camera's -z
+/// axis, not along the pixel's ray, as ARKit's `sceneDepth` reports it, and 0 means no
+/// measurement. Pixel (u, v) covers the square from (u, v) to (u + 1, v + 1), row `v` from the
+/// top of the unrotated landscape image; its value is at index v * width + u.
+///
+/// A packet's photo pose maps the camera into the meter frame: integrate it with a `Map3D`
+/// whose `MapFrame` is the packet's `meter_anchor`, and `camera.cameraToWorld` =
+/// `poseInWorld * pose`.
 public struct DepthFrame: Sendable {
     public enum Kind: Sendable {
-        /// LiDAR depth (ARKit `sceneDepth`) with ARKit's confidence per pixel: 0 low, 1 medium,
-        /// 2 high (`ARConfidenceLevel` raw values).
-        case lidar(confidence: [UInt8])
+        /// LiDAR depth (ARKit `sceneDepth`), with ARKit's confidence per pixel when there is one:
+        /// 0 low, 1 medium, 2 high (`ARConfidenceLevel` raw values). Without it every pixel is
+        /// taken as high.
+        case lidar(confidence: [UInt8]?)
         /// Depth estimated from the color image, for example by a monocular depth model, with one
         /// standard deviation per pixel in meters.
         case estimated(sigma: [Float])
@@ -25,15 +31,16 @@ public struct DepthFrame: Sendable {
     public var camera: CameraFrame
     public var width: Int
     public var height: Int
-    /// Meters; NaN, zero or negative where there is no measurement.
+    /// Meters, finite and not negative; 0 where there is no measurement.
     public var depth: [Float]
     public var kind: Kind
 
     public init(camera: CameraFrame, width: Int, height: Int, depth: [Float], kind: Kind) {
         precondition(width > 0 && height > 0 && depth.count == width * height, "depth has \(depth.count) values for \(width) x \(height)")
+        precondition(depth.allSatisfy { $0.isFinite && $0 >= 0 }, "depth holds a negative or non-finite value; 0 marks no measurement")
         switch kind {
         case .lidar(let confidence):
-            precondition(confidence.count == depth.count, "confidence has \(confidence.count) values for \(depth.count) depths")
+            precondition(confidence.map { $0.count == depth.count } ?? true, "confidence has \(confidence?.count ?? 0) values for \(depth.count) depths")
         case .estimated(let sigma):
             precondition(sigma.count == depth.count, "sigma has \(sigma.count) values for \(depth.count) depths")
         }
@@ -42,6 +49,18 @@ public struct DepthFrame: Sendable {
         self.height = height
         self.depth = depth
         self.kind = kind
+    }
+
+    /// A depth image covering the same view as a photo taken by `photo`, at `width` x `height`.
+    /// Depth pixel (u, v) covers photo pixels from u W / w to (u + 1) W / w across and likewise
+    /// down, so the intrinsics scale by w / W and h / H.
+    public init(photo: CameraFrame, width: Int, height: Int, depth: [Float], kind: Kind) {
+        let scale = SIMD2(Float(width), Float(height)) / photo.imageSize
+        let k = photo.intrinsics
+        let camera = CameraFrame(
+            cameraToWorld: photo.cameraToWorld, intrinsics: SIMD4(k.x * scale.x, k.y * scale.y, k.z * scale.x, k.w * scale.y),
+            imageSize: SIMD2(Float(width), Float(height)))
+        self.init(camera: camera, width: width, height: height, depth: depth, kind: kind)
     }
 }
 
@@ -58,7 +77,9 @@ public enum MeshClass: UInt8, Sendable, CaseIterable {
 }
 
 /// One chunk of ARKit's reconstructed mesh (an `ARMeshAnchor`), replaced whole when ARKit
-/// updates it.
+/// updates it. Classes are the packet's `lidar/mesh.ply` `classification` values. A packet's
+/// merged mesh, already in the meter frame, is one chunk with `worldFromChunk` =
+/// `MapFrame.poseInWorld`.
 public struct MeshChunk: Sendable {
     public var id: UUID
     /// Chunk-local to world (the anchor's transform).

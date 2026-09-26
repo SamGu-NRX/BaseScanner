@@ -10,7 +10,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 ## 3D map
 
-`HouseScanKit/Sources/HouseScanKit/Map3D/` keeps a live occupancy map of the space around the meter. A ray from the camera marks the voxels it passes through as free and the voxel it stops in as surface. Voxels no ray reached stay unknown, so a wall behind a bush stays unseen until some view gets past the bush. The map uses 10 cm voxels in 8³ bricks, stored only once a ray reaches them, in the meter-anchored, gravity-aligned `MapFrame`. The default bounds hold at most 32 MB.
+`HouseScanKit/Sources/HouseScanKit/Map3D/` keeps a live occupancy map of the space around the meter. A ray from the camera marks the voxels it passes through as free and the voxel it stops in as surface. Voxels no ray reached stay unknown, so a wall behind a bush stays unseen until some view gets past the bush. The map uses 10 cm voxels in 8³ bricks, stored only once a ray reaches them. The default bounds hold at most 32 MB. `MapFrame` is the capture packet's meter frame (`packet/README.md`): origin at the meter anchor, +z the wall's outward normal, +y up, and the ground's height below the anchor as `groundY`. `DepthFrame` uses the packet's depth encoding, and a packet's mesh is one `MeshChunk` placed at `MapFrame.poseInWorld`.
 
 `Runtime/Map3DFeed.swift` converts ARKit data into the map's inputs on the AR delegate queue. Nothing calls it yet. Integrate only frames with normal tracking.
 

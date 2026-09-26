@@ -110,11 +110,11 @@ struct VoxelGrid {
     private(set) var pool: [Voxel] = []
     private var frameStamp: UInt16 = 0
 
-    /// Covers `bounds` with voxels centred on whole multiples of `voxelSize`, so the meter's
-    /// ground (y = 0) and wall face (z = 0) run through voxel centers rather than along voxel
+    /// Covers `bounds` with voxels one of which is centred on `center`, so the planes through it
+    /// (the meter's ground and wall face) run through voxel centers rather than along voxel
     /// faces, where rounding would split one surface between two layers.
-    init(bounds: MapBounds, voxelSize: Float) {
-        origin = ((bounds.min / voxelSize + 0.5).rounded(.down) - 0.5) * voxelSize
+    init(bounds: MapBounds, voxelSize: Float, center: SIMD3<Float>) {
+        origin = center + (((bounds.min - center) / voxelSize + 0.5).rounded(.down) - 0.5) * voxelSize
         self.voxelSize = voxelSize
         let voxels = SIMD3<Int32>(((bounds.max - origin) / voxelSize).rounded(.up))
         brickDims = (voxels &+ (Self.brickEdge &- 1)) &>> Self.brickShift

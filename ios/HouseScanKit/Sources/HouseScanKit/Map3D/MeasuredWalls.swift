@@ -144,7 +144,7 @@ extension Map3D {
         var columns: [SIMD2<Int32>: Column] = [:]
         grid.forEachStored { g, voxel in
             guard voxel.sources & wallSources != 0, !excluded.contains(voxel.meshLabel) else { return }
-            let height = grid.center(of: g).y
+            let height = grid.center(of: g).y - frame.groundY
             guard height >= config.wallBottom, height <= config.top else { return }
             guard voxel.state(config) == .surface || voxel.sources & VoxelSources.mesh.rawValue != 0 else { return }
             guard let n = voxel.normal, abs(n.y) <= maxVertical else { return }
@@ -210,9 +210,9 @@ extension Map3D {
                 runs.append([item])
             }
         }
-        // The outward side is the one seen free, 0.3 m off the line and 1 m up. Depth normals
-        // already face the camera; mesh normals may not.
-        let middle = SIMD3(line.point.x, 1, line.point.y)
+        // The outward side is the one seen free, 0.3 m off the line and 1 m above the ground.
+        // Depth normals already face the camera; mesh normals may not.
+        let middle = SIMD3(line.point.x, frame.groundY + 1, line.point.y)
         let offset = SIMD3(outward.x, 0, outward.y) * 0.3
         if state(at: middle + offset) != .free, state(at: middle - offset) == .free { outward = -outward }
         let rightward = SIMD2(outward.y, -outward.x)

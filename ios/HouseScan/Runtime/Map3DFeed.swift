@@ -29,20 +29,12 @@ enum Map3DFeed {
         let height = CVPixelBufferGetHeight(depthMap)
         guard width > 0, height > 0,
               CVPixelBufferGetWidth(confidenceMap) == width, CVPixelBufferGetHeight(confidenceMap) == height,
-              let depth = copyPixels(depthMap, as: Float.self, width: width, height: height),
+              var depth = copyPixels(depthMap, as: Float.self, width: width, height: height),
               let confidence = copyPixels(confidenceMap, as: UInt8.self, width: width, height: height)
         else { return nil }
-
-        // The depth image is the color image downscaled, so the intrinsics scale by the same factors.
-        let resolution = frame.camera.imageResolution
-        let scale = SIMD2(Float(width) / Float(resolution.width), Float(height) / Float(resolution.height))
-        let color = colorIntrinsics(frame.camera)
-        let camera = CameraFrame(
-            cameraToWorld: frame.camera.transform,
-            intrinsics: SIMD4(color.x * scale.x, color.y * scale.y, color.z * scale.x, color.w * scale.y),
-            imageSize: SIMD2(Float(width), Float(height))
-        )
-        return DepthFrame(camera: camera, width: width, height: height, depth: depth, kind: .lidar(confidence: confidence))
+        // The packet's encoding: 0, never NaN, where there is no measurement.
+        for index in depth.indices where !(depth[index].isFinite && depth[index] >= 0) { depth[index] = 0 }
+        return DepthFrame(photo: photoCamera(frame), width: width, height: height, depth: depth, kind: .lidar(confidence: confidence))
     }
 
     static func meshChunk(_ anchor: ARMeshAnchor) -> MeshChunk {
@@ -101,23 +93,21 @@ enum Map3DFeed {
     }
 
     static func featureFrame(_ frame: ARFrame) -> FeatureFrame {
-        let resolution = frame.camera.imageResolution
-        let camera = CameraFrame(
-            cameraToWorld: frame.camera.transform,
-            intrinsics: colorIntrinsics(frame.camera),
-            imageSize: SIMD2(Float(resolution.width), Float(resolution.height))
-        )
-        return FeatureFrame(camera: camera, points: frame.rawFeaturePoints?.points ?? [])
+        FeatureFrame(camera: photoCamera(frame), points: frame.rawFeaturePoints?.points ?? [])
     }
 
     static func planes(_ frame: ARFrame) -> [PlaneObservation] {
         frame.anchors.compactMap { $0 as? ARPlaneAnchor }.map(plane)
     }
 
-    /// fx, fy, cx, cy of the color image; `intrinsics` is a column-major 3x3.
-    private static func colorIntrinsics(_ camera: ARCamera) -> SIMD4<Float> {
-        let k = camera.intrinsics
-        return SIMD4(k.columns.0.x, k.columns.1.y, k.columns.2.x, k.columns.2.y)
+    /// The color camera: pose, and intrinsics for the captured image at its native size.
+    private static func photoCamera(_ frame: ARFrame) -> CameraFrame {
+        let k = frame.camera.intrinsics
+        let resolution = frame.camera.imageResolution
+        return CameraFrame(
+            cameraToWorld: frame.camera.transform,
+            intrinsics: SIMD4(k.columns.0.x, k.columns.1.y, k.columns.2.x, k.columns.2.y),
+            imageSize: SIMD2(Float(resolution.width), Float(resolution.height)))
     }
 
     /// Copies a single-plane pixel buffer row by row into a tightly packed array; rows may be padded.

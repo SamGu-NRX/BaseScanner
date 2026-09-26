@@ -29,7 +29,7 @@ public struct ViewSuggestion: Sendable, Equatable {
     /// Box around the region, map frame.
     public var regionMin: SIMD3<Float>
     public var regionMax: SIMD3<Float>
-    /// Where to stand, on the ground (y = 0), map frame.
+    /// Where to stand, on the ground at the meter's height (`MapFrame.groundY`), map frame.
     public var stand: SIMD3<Float>
     /// Camera position and unit aim direction from there, map frame.
     public var eye: SIMD3<Float>
@@ -136,9 +136,9 @@ extension Map3D {
         for distance in config.viewDistances {
             for step in 0..<12 {
                 let angle = Float(step) * .pi / 6
-                let stand = SIMD3(target.x + cos(angle) * distance, 0, target.z + sin(angle) * distance)
+                let stand = SIMD3(target.x + cos(angle) * distance, frame.groundY, target.z + sin(angle) * distance)
                 guard canStand(at: stand, wall: wall) else { continue }
-                let eye = SIMD3(stand.x, config.eyeHeight, stand.z)
+                let eye = stand + SIMD3(0, config.eyeHeight, 0)
                 let seen = probes.count { inSight($0, from: eye, aim: simd_normalize(target - eye)) }
                 if seen > chosen?.seen ?? 0 { chosen = (stand, eye, seen) }
             }
@@ -148,8 +148,8 @@ extension Map3D {
             let world = wall.world(s: point.s, height: 0, out: max(point.out, 0) + config.viewDistances[0])
             return frame.map(SIMD3(world.x, wall.groundY, world.z))
         }()
-        let stand = chosen?.stand ?? SIMD3(fallback.x, 0, fallback.z)
-        let eye = chosen?.eye ?? SIMD3(stand.x, config.eyeHeight, stand.z)
+        let stand = chosen?.stand ?? SIMD3(fallback.x, frame.groundY, fallback.z)
+        let eye = chosen?.eye ?? stand + SIMD3(0, config.eyeHeight, 0)
         return ViewSuggestion(
             target: target, voxels: region.voxels.count, regionMin: lower, regionMax: upper, stand: stand, eye: eye,
             aim: simd_normalize(target - eye), inSight: Float(chosen?.seen ?? 0) / Float(probes.count))
@@ -159,8 +159,8 @@ extension Map3D {
     /// than a battery's depth and not
     /// where the map holds a surface between `groundClearance` and just above eye height.
     private func canStand(at point: SIMD3<Float>, wall: WallFrame) -> Bool {
-        guard bounds.contains(SIMD3(point.x, config.eyeHeight, point.z)), RegionOfInterest.isInFront(self, wall: wall, map: point, minOut: config.overheadDepth) else { return false }
-        for height in Swift.stride(from: config.groundClearance, through: config.eyeHeight + 0.3, by: config.voxelSize / 2) where state(at: SIMD3(point.x, height, point.z)) == .surface {
+        guard bounds.contains(point + SIMD3(0, config.eyeHeight, 0)), RegionOfInterest.isInFront(self, wall: wall, map: point, minOut: config.overheadDepth) else { return false }
+        for height in Swift.stride(from: config.groundClearance, through: config.eyeHeight + 0.3, by: config.voxelSize / 2) where state(at: point + SIMD3(0, height, 0)) == .surface {
             return false
         }
         return true
@@ -199,7 +199,7 @@ struct RegionOfInterest {
         let config = map.config
         // From the layer holding the ground to the layer holding headroom, or the top: the
         // voxels coverage reads (`Map3DCoverage`).
-        let layer = { (height: Float) in min(grid.dims.y - 1, max(0, Int32(((height - grid.origin.y) / grid.voxelSize).rounded(.down)))) }
+        let layer = { (height: Float) in min(grid.dims.y - 1, max(0, Int32(((map.frame.groundY + height - grid.origin.y) / grid.voxelSize).rounded(.down)))) }
         low = layer(0)
         let headroomLayer = layer(config.headroom)
         let topLayer = layer(config.top)

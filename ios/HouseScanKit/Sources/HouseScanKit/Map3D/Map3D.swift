@@ -33,13 +33,15 @@ public struct Map3D: Sendable {
     public init(frame: MapFrame, config: Map3DConfig = Map3DConfig(), bounds: MapBounds? = nil) {
         self.config = config
         self.frame = frame
-        self.bounds = bounds ?? .around(config)
-        grid = VoxelGrid(bounds: self.bounds, voxelSize: config.voxelSize)
+        self.bounds = bounds ?? .around(config, groundY: frame.groundY)
+        grid = VoxelGrid(bounds: self.bounds, voxelSize: config.voxelSize, center: SIMD3(0, frame.groundY, 0))
     }
 
     /// Moves the map with the meter's anchor. What is stored keeps its place relative to the
-    /// meter; frames integrated from now on are placed with the new frame.
+    /// meter; frames integrated from now on are placed with the new frame. The voxels are laid
+    /// out around the ground's height, so the new frame must keep it, as `following` does.
     public mutating func reanchor(_ frame: MapFrame) {
+        precondition(frame.groundY == self.frame.groundY, "reanchoring moves the ground from \(self.frame.groundY) to \(frame.groundY) m")
         self.frame = frame
         revision += 1
     }
@@ -88,7 +90,7 @@ public struct Map3D: Sendable {
                 guard d.isFinite, d >= config.minDepth, d <= config.maxDepth else { continue }
                 switch depth.kind {
                 case .lidar(let confidence):
-                    guard confidence[index] >= config.minConfidence else { continue }
+                    guard (confidence?[index] ?? 2) >= config.minConfidence else { continue }
                 case .estimated(let sigma):
                     guard sigma[index].isFinite, sigma[index] >= 0 else { continue }
                     sigmas[row * columns + column] = sigma[index]
