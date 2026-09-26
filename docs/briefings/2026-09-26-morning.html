@@ -4,751 +4,926 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>8 AM briefing: measure with AR taps, and test the phone against a tape first</title>
+<title>House scanning briefing: what we are building, what works, what is blocked</title>
 <style>
   :root{
-    --paper:#fffdf8; --card:#ffffff; --alt:#f4f9ff; --ink:#1f2340; --muted:#5b6180; --line:#e6e8f2;
-    --head-top:#cfeeff; --accent:#6d3ff0; --on-accent:#ffffff;
-    --s1:#6d3ff0; --s2:#d9651f; --guide:#9aa0bd; --tape:#f5d76e; --tape-ink:#6b5413;
-    --good:#1a9c5e; --warn:#c77c00; --hold:#6b7190;
-    --slot-bg:#fff6e0; --slot-line:#d99a14; --code-bg:#f3f1ff;
-    --wall:#f5e6cc; --meter:#7cc6f2;
-    --radius:20px; --shadow:0 10px 30px rgba(31,35,64,.10);
-    --font:ui-rounded,"SF Pro Rounded","Nunito","Segoe UI Rounded","Segoe UI",system-ui,sans-serif;
+    --bg:#f5f5f2; --card:#ffffff; --ink:#161616; --muted:#5a5954; --line:#d9d8d0; --hair:#e9e8e1; --code-bg:#ecebe4;
+    --sky:#e2edf8; --wall:#e8dcc4; --eave:#6b5a4a; --ground:#c9dcb0;
+    --tape:#f3cf4b; --tape-ink:#3d3106;
+    --phone:#2a78d6; --server:#eb6834; --fog:#8d8d86; --battery:#2f3e4e; --battery-ink:#ffffff;
+    --meterbox:#6f7680; --meter:#a9d3f2; --gas:#b9b3a6; --glass:#bfe0f5;
+    --zone:rgba(208,59,59,.14); --zone-line:#d03b3b;
+    --pass:#107a2a; --pass-ink:#0b6b22; --fail:#b83232; --fail-ink:#a12b2b; --unsure:#fab219; --unsure-ink:#7a4d00;
+    --serif:Charter,"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+    --sans:"Avenir Next",Avenir,"Gill Sans","Segoe UI",system-ui,sans-serif;
     --mono:"SF Mono",Menlo,Consolas,monospace;
   }
   @media (prefers-color-scheme:dark){
     :root{
-      --paper:#12142a; --card:#1b1e38; --alt:#161931; --ink:#eceefb; --muted:#a8aecb; --line:#2c3052;
-      --head-top:#1d2a52; --accent:#9a80ff; --on-accent:#12142a;
-      --s1:#9278ff; --s2:#d4722e; --guide:#6b7194; --tape:#b8962e; --tape-ink:#fff3c4;
-      --good:#3fcf8e; --warn:#f5b54a; --hold:#a8aecb;
-      --slot-bg:#2d2614; --slot-line:#e0a526; --code-bg:#252a4d;
-      --wall:#3a3326; --meter:#4f9fd0;
-      --shadow:0 10px 30px rgba(0,0,0,.35);
+      --bg:#121212; --card:#1c1c1a; --ink:#ececea; --muted:#b3b2ab; --line:#33332f; --hair:#2a2a27; --code-bg:#2a2a27;
+      --sky:#1c2734; --wall:#4a4033; --eave:#8a7562; --ground:#2f4128;
+      --tape:#7a6016; --tape-ink:#fff3c4;
+      --phone:#3987e5; --server:#e8683a; --fog:#6e6e68; --battery:#cfd8e3; --battery-ink:#121212;
+      --meterbox:#8f97a3; --meter:#5c8fb8; --gas:#7d786d; --glass:#6f9fbf;
+      --zone:rgba(230,103,103,.22); --zone-line:#e66767;
+      --pass:#107a2a; --pass-ink:#4ade80; --fail:#b83232; --fail-ink:#f28b8b; --unsure:#fab219; --unsure-ink:#fbbf24;
     }
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
-  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--font);line-height:1.5;font-size:18px}
-  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
-  a{color:var(--accent);text-underline-offset:3px}
-  a:focus-visible,summary:focus-visible,figure:focus-visible{outline:3px solid var(--accent);outline-offset:3px;border-radius:6px}
-  code{font-family:var(--mono);font-size:.84em;background:var(--code-bg);border-radius:6px;padding:1px 6px}
-  pre{font-family:var(--mono);font-size:14px;line-height:1.6;background:var(--code-bg);border-radius:12px;padding:12px 14px;margin:10px 0 0;overflow-x:auto;white-space:pre}
-  pre code{background:none;padding:0;font-size:inherit}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--serif);font-size:17px;line-height:1.55}
+  .wrap{max-width:900px;margin:0 auto;padding:0 18px}
+  h1,h2,h3,h4{font-family:var(--serif);font-weight:700;line-height:1.2;text-wrap:balance;margin:0}
+  h1{font-size:35px;margin:40px 0 10px}
+  h2{font-size:29px;margin:56px 0 14px;padding-top:18px;border-top:1px solid var(--line)}
+  h3{font-size:24px;margin:34px 0 10px}
+  h4{font-size:19px;margin:18px 0 6px}
+  p{margin:0 0 12px;text-wrap:pretty}
+  .prose{max-width:58ch}
+  .meta{font-family:var(--sans);color:var(--muted);font-size:15px}
+  .lede{font-size:20px;line-height:1.45;max-width:60ch}
+  a{color:var(--phone);text-underline-offset:3px}
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--phone);outline-offset:3px;border-radius:2px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+  pre{font-family:var(--mono);font-size:14px;line-height:1.5;background:var(--code-bg);padding:10px 12px;border-radius:4px;overflow-x:auto;white-space:pre;margin:8px 0 14px}
+  ul,ol{padding-left:1.3em}
+  li{margin:4px 0}
+  table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:15px;margin:8px 0 12px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-weight:600;color:var(--muted);font-size:14px}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .scroll-x{overflow-x:auto;max-width:100%}
+  .scroll-x>table{min-width:520px}
+  details{margin:6px 0 12px}
+  summary{cursor:pointer;font-family:var(--sans);font-weight:600;font-size:15px;color:var(--muted)}
 
-  header{background:linear-gradient(180deg,var(--head-top) 0%,var(--paper) 100%);padding:48px 0 12px}
-  h1{font-size:clamp(30px,4.4vw,48px);line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;text-align:center;text-wrap:balance}
-  .lede{font-size:20px;color:var(--muted);max-width:720px;margin:0 auto;text-align:center;text-wrap:pretty}
-  h2{font-size:clamp(26px,3.4vw,34px);line-height:1.2;margin:0 0 8px;letter-spacing:-.01em}
-  h3{font-size:22px;line-height:1.3;margin:0 0 6px}
-  p{margin:0 0 12px}
-  .prose{max-width:740px}
-  .muted{color:var(--muted)}
-  .small{font-size:15px}
-  section{padding:44px 0}
-  section.alt{background:var(--alt)}
-  .step-tag{display:inline-block;background:var(--ink);color:var(--paper);border-radius:999px;padding:3px 12px;font-size:14px;font-weight:800;letter-spacing:.02em;margin-bottom:10px}
-  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px}
-  .grown{font-size:15px;color:var(--muted);border-left:4px solid var(--line);padding:4px 0 4px 12px;margin:14px 0 0}
-  .grown b{color:var(--ink)}
+  /* Contents */
+  nav.toc{font-family:var(--sans);font-size:15px;margin:22px 0 0;border:1px solid var(--line);border-radius:6px;padding:12px 16px;background:var(--card)}
+  nav.toc ol{margin:6px 0 0;padding-left:1.4em}
+  nav.toc li{margin:3px 0}
+  nav.toc a{color:var(--ink)}
 
-  /* answers */
-  .answers{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin:28px 0 0}
-  @media (max-width:860px){.answers{grid-template-columns:1fr}}
-  .answers .card{padding:22px;display:flex;flex-direction:column}
-  .answers h2{font-size:15px;font-weight:800;color:var(--muted);margin:0 0 6px;letter-spacing:.01em}
-  .answers p{font-size:17px;margin:0 0 10px}
-  .answers .more{margin-top:auto;font-weight:800;font-size:16px}
-  nav.steps{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:26px 0 8px}
-  nav.steps a{background:var(--card);border:2px solid var(--line);border-radius:999px;padding:6px 14px;color:var(--ink);text-decoration:none;font-weight:700;font-size:15px;transition:border-color 150ms ease}
-  nav.steps a.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
-  @media (hover:hover) and (pointer:fine){nav.steps a:hover{border-color:var(--accent)}}
-
-  /* product flow */
-  ol.flow{list-style:none;margin:22px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:28px}
-  ol.flow>li{position:relative;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px}
-  ol.flow>li+li::before{content:"";position:absolute;left:-24px;top:58px;width:20px;height:20px;
-    background:var(--accent);clip-path:polygon(0 30%,55% 30%,55% 0,100% 50%,55% 100%,55% 70%,0 70%)}
-  @media (max-width:900px){
-    ol.flow{grid-template-columns:1fr;gap:30px}
-    ol.flow>li+li::before{left:50%;top:-26px;transform:translateX(-50%) rotate(90deg)}
-  }
-  ol.flow svg{display:block;width:100%;max-width:180px;height:auto;margin:0 0 10px}
-  ol.flow h3{font-size:18px}
-  ol.flow p{font-size:15px;color:var(--muted);margin:0}
-  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  .tags a{font-size:13px;font-weight:800;border:2px solid var(--line);border-radius:999px;padding:2px 10px;text-decoration:none;color:var(--ink)}
-
-  /* findings */
-  .finding{margin-top:34px}
-  .finding:first-of-type{margin-top:18px}
-  figure{margin:16px 0 0}
+  /* Figures */
+  figure{margin:14px 0 18px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:12px}
   figure svg{display:block;width:100%;height:auto}
-  figcaption{font-size:15px;color:var(--muted);margin-top:10px;max-width:760px}
-  /* On a phone the charts keep readable labels and scroll sideways inside their card. */
-  figure.card{overflow-x:auto}
-  figure.card>svg{min-width:560px}
-  figure.card>svg.tape{min-width:380px}
-  .card a,.prose a{overflow-wrap:anywhere}
-  .legend{display:flex;flex-wrap:wrap;gap:16px;font-size:14px;color:var(--muted);margin:0 0 6px}
+  figure.wide{overflow-x:auto}
+  figure.wide>svg{min-width:640px}
+  .scrollhint{display:none;font-family:var(--sans);font-size:13.5px;color:var(--muted);margin:8px 0 0;position:sticky;left:0}
+  @media (max-width:720px){figure.wide .scrollhint{display:block}}
+  figcaption{font-family:var(--sans);font-size:15px;color:var(--muted);margin-top:10px;line-height:1.45}
+  figcaption b{color:var(--ink);font-weight:600}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--sans);font-size:14px;color:var(--muted);margin:0 0 8px}
   .legend span{display:inline-flex;align-items:center;gap:6px}
-  .key{display:inline-block;width:22px;height:0;border-top:3px solid}
-  .key.band{height:10px;border:0;border-radius:3px;opacity:.45}
-  .key.box{width:14px;height:14px;border:0;border-radius:4px}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
-  @media (max-width:820px){.two{grid-template-columns:1fr}}
-  .note{background:var(--card);border-radius:16px;padding:16px 18px;border:2px solid var(--line)}
-  .note h4{margin:0 0 6px;font-size:17px}
-  .note p{font-size:16px;margin:0 0 8px}
-  .note p:last-child{margin:0}
-  .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:12px 0 0}
-  .stat{background:var(--alt);border-radius:14px;padding:12px 14px}
-  .stat b{display:block;font-size:26px;line-height:1.1}
-  .stat span{font-size:14px;color:var(--muted)}
-  .verdict{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px;margin-top:18px}
-  .verdict p{margin:0 0 8px}
-  .verdict p:last-child{margin:0}
-  details.data{margin-top:10px;font-size:15px}
-  details.data summary{cursor:pointer;font-weight:800;color:var(--muted)}
-  .tablewrap{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:15px}
-  th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{font-size:13px;color:var(--muted)}
-  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .sw{display:inline-block;width:20px;height:0;border-top:3px solid}
+  .sw.dash{border-top-style:dashed}
+  .sw.box{width:14px;height:14px;border:0;border-radius:3px}
+  .sw.hatch{width:14px;height:14px;border:0;background:repeating-linear-gradient(135deg,var(--muted) 0 2px,transparent 2px 6px)}
 
-  /* chart text */
-  .ax{font-size:13px;fill:var(--muted);font-family:var(--font)}
-  .lbl{font-size:14px;fill:var(--ink);font-family:var(--font);font-weight:700}
-  .lbl-sm{font-size:12.5px;fill:var(--muted);font-family:var(--font)}
-  .grid{stroke:var(--line);stroke-width:1}
+  /* SVG text: sans, halo over drawings */
+  .t{font-family:var(--sans);font-size:18px;fill:var(--ink)}
+  .t.m{fill:var(--muted)}
+  .t.b{font-weight:600}
+  .t.s{font-size:16px}
+  .lab{font-family:var(--sans);font-size:18px;fill:var(--ink);paint-order:stroke;stroke:var(--card);stroke-width:3.5px;stroke-linejoin:round}
+  .lab.s{font-size:16px}
+  .lab.b{font-weight:600}
+  /* Colour utilities come after .lab and .t so they win at equal specificity. */
+  .lab.blue,.t.blue{fill:var(--phone)}
+  .lab.orange,.t.orange{fill:var(--server)}
+  .lab.red,.t.red{fill:var(--fail-ink)}
+  .lab.mu,.t.mu{fill:var(--muted)}
+  .tp{font-family:var(--sans);font-size:15px;fill:var(--tape-ink);font-weight:600}
+  .tp.s{font-size:18px}
+  .grid line{stroke:var(--hair);stroke-width:1}
+  .axis{stroke:var(--line);stroke-width:1.5}
+  .pill{font-family:var(--sans);font-size:17px;font-weight:700}
   .hit{fill:transparent}
 
-  /* placeholders */
-  .slot{border:2px dashed var(--slot-line);background:var(--slot-bg);border-radius:14px;padding:14px 16px}
-  .slot::before{content:"To fill";display:inline-block;font-size:12px;font-weight:900;background:var(--slot-line);color:#1f2340;border-radius:999px;padding:1px 9px;margin-right:8px;vertical-align:1px}
-  span.slot,code.slot{display:inline;padding:2px 8px;border-radius:8px;font-size:.92em}
+  /* Scan strip: six panels, genuinely ordered */
+  ol.strip{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:14px;counter-reset:panel}
+  ol.strip>li{margin:0;display:flex}
+  ol.strip figure{margin:0;flex:1;display:flex;flex-direction:column}
+  ol.strip figcaption{margin-top:auto;padding-top:10px}
+  ol.strip figcaption::before{counter-increment:panel;content:counter(panel) ". ";font-weight:700;color:var(--ink)}
+  @media (max-width:700px){ol.strip{grid-template-columns:1fr}}
 
-  /* PR map */
-  .lanes{display:grid;gap:18px;margin-top:18px}
-  .lane h3{font-size:16px;color:var(--muted);margin:0 0 8px}
-  ol.merge{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:12px 26px}
-  ol.merge>li{position:relative;background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:10px 12px;width:210px;font-size:14px}
-  ol.merge>li+li::before{content:"";position:absolute;left:-20px;top:22px;width:14px;height:14px;background:var(--guide);
-    clip-path:polygon(0 30%,55% 30%,55% 0,100% 50%,55% 100%,55% 70%,0 70%)}
-  @media (max-width:520px){ol.merge>li{width:100%}ol.merge>li+li::before{display:none}}
-  .pr .num{font-weight:900;font-size:17px;margin-right:6px}
-  .pr .what{font-weight:700}
-  .pr .state{display:flex;gap:6px;align-items:flex-start;margin-top:6px;color:var(--muted);font-size:13.5px;line-height:1.35}
-  .ico{flex:none;width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:900;color:#fff;margin-top:1px}
-  .ok .ico{background:var(--good)} .run .ico{background:var(--warn)} .sam .ico{background:var(--warn)} .hold .ico{background:var(--hold)}
-  @media (prefers-color-scheme:dark){.ico{color:#12142a}}
-  .pr.dep{outline:2px solid var(--accent);outline-offset:2px}
-  .pr .dep-note{font-size:13px;color:var(--accent);font-weight:700;margin-top:6px}
-  .status-key{display:flex;flex-wrap:wrap;gap:14px;font-size:14px;color:var(--muted);margin-top:14px}
-  .status-key span{display:inline-flex;gap:6px;align-items:center}
+  /* Status pipeline (HTML picture) */
+  ol.pipe{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;font-family:var(--sans)}
+  ol.pipe>li{margin:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:10px 10px 12px;font-size:14px;line-height:1.35;display:flex;flex-direction:column;gap:6px;position:relative}
+  ol.pipe>li>b{font-size:15px;display:block;line-height:1.25}
+  ol.pipe .marks{display:flex;flex-direction:column;gap:4px;margin-top:auto}
+  .mk{display:inline-flex;align-items:flex-start;gap:6px;font-size:13.5px;color:var(--muted);line-height:1.3}
+  .mk i{flex:none;font-style:normal;font-weight:800;width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font-size:12px;line-height:1}
+  .mk.ok i{background:var(--pass);color:#fff}
+  .mk.fix i{background:var(--unsure);color:#2a1e00}
+  .mk.no i{background:var(--fail);color:#fff}
+  .mk.none i{background:transparent;border:1.5px solid var(--muted);color:var(--muted)}
+  .blocker{margin-top:8px;border:2px dashed var(--zone-line);border-radius:6px;padding:12px 14px;font-family:var(--sans);display:flex;gap:10px;align-items:flex-start;background:var(--zone)}
+  .blocker i{flex:none;font-style:normal;font-weight:800;width:26px;height:26px;border-radius:50%;background:var(--fail);color:#fff;display:inline-grid;place-items:center;font-size:15px}
+  .blocker b{font-size:17px;display:block}
+  .blocker span{font-size:14.5px;color:var(--muted)}
+  .caveats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;font-family:var(--sans);font-size:14px}
+  .caveats>div{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--card);color:var(--muted)}
+  .caveats b{color:var(--ink);font-weight:600;display:block;margin-bottom:2px}
+  @media (max-width:900px){ol.pipe{grid-template-columns:repeat(4,1fr)}}
+  @media (max-width:640px){ol.pipe{grid-template-columns:1fr 1fr}.caveats{grid-template-columns:1fr}}
+  @media (max-width:420px){ol.pipe{grid-template-columns:1fr}}
 
-  /* try it */
-  .try{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
-  @media (max-width:820px){.try{grid-template-columns:1fr}}
-  .try .card p{font-size:16px}
+  /* Q and A */
+  dl.qa{margin:14px 0 0;display:grid;grid-template-columns:1fr;gap:10px}
+  dl.qa>div{border-left:2px solid var(--line);padding:2px 0 2px 14px}
+  dl.qa dt{font-family:var(--sans);font-weight:600;font-size:15px;color:var(--muted);margin:0 0 2px}
+  dl.qa dd{margin:0}
 
-  /* decisions */
-  .decisions{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;counter-reset:d}
-  @media (max-width:820px){.decisions{grid-template-columns:1fr}}
-  .decision{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
-  .decision.first{border:3px solid var(--accent)}
-  .decision h3 .n{color:var(--muted);font-weight:800;margin-right:6px}
-  .decision dl{margin:10px 0 0;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:16px}
-  .decision dt{font-weight:800;font-size:14px;color:var(--muted);padding-top:2px}
-  .decision dd{margin:0}
-  @media (max-width:480px){.decision dl{grid-template-columns:1fr;gap:2px}.decision dd{margin-bottom:8px}}
-  .asks{display:grid;gap:14px;margin-top:16px;max-width:820px}
-  ul.plain{margin:10px 0 0;padding-left:1.2em;max-width:760px}
-  ul.plain li{margin:4px 0}
-  footer{padding:30px 0 60px;text-align:center;color:var(--muted);font-size:14px}
+  /* Findings */
+  .finding{margin-top:34px;padding-top:8px}
+  .finding h3{margin-top:0}
+  .changed{font-family:var(--sans);font-size:15px;border:1px solid var(--line);border-left:3px solid var(--phone);border-radius:4px;padding:8px 12px;margin:0 0 6px;background:var(--card)}
+  .changed b{font-weight:600}
 
-  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+  /* Decisions */
+  ol.decisions{list-style:none;padding:0;margin:14px 0 0;display:grid;grid-template-columns:1fr 1fr;gap:12px;counter-reset:dec}
+  ol.decisions>li{margin:0;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px 16px;font-size:15.5px}
+  ol.decisions>li.first{border-color:var(--phone);border-width:2px}
+  ol.decisions h4{margin:0 0 8px;font-size:18px}
+  ol.decisions h4::before{counter-increment:dec;content:counter(dec) ". ";color:var(--muted)}
+  ol.decisions p{margin:0 0 6px}
+  ol.decisions .rec{font-family:var(--sans);font-weight:600}
+  @media (max-width:700px){ol.decisions{grid-template-columns:1fr}}
+
+  .prs{font-family:var(--sans);font-size:14.5px;columns:2;column-gap:24px;margin:8px 0}
+  .prs li{break-inside:avoid;margin:2px 0}
+  @media (max-width:560px){.prs{columns:1}}
+  footer{margin:60px 0 40px;color:var(--muted);font-family:var(--sans);font-size:14px;border-top:1px solid var(--line);padding-top:14px}
+
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   @media print{
-    header{background:none} nav.steps{display:none}
-    .card,.decision,ol.flow>li,ol.merge>li,.verdict{box-shadow:none;border:1px solid #ccc}
-    section{padding:20px 0;break-inside:avoid-page} details.data{display:none}
+    :root{color-scheme:light}
+    body{font-size:11pt}
+    figure,ol.pipe>li,ol.decisions>li{break-inside:avoid;border-color:#bbb}
+    nav.toc{display:none}
+    h2{break-after:avoid}
   }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="wrap">
-    <h1>8 AM briefing: measure with AR taps, and test the phone against a tape first</h1>
-    <p class="lede">Last night's tests on real data say a current iPhone's own tracking fits the error allowance the server already uses, and that anything a check depends on should be an AR tap, not a depth map. That tracking data came from a LiDAR iPhone, so measuring a current non-LiDAR iPhone with a tape is the first job this morning.</p>
+<!-- Shared drawing parts. Referenced by <use> and url() from the figures below. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="fogpat" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="8" height="8" fill="var(--fog)" opacity=".55"/>
+      <line x1="0" y1="0" x2="0" y2="8" stroke="var(--fog)" stroke-width="3"/>
+    </pattern>
+    <pattern id="zonepat" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="10" stroke="var(--zone-line)" stroke-width="1.2" opacity=".5"/>
+    </pattern>
+    <pattern id="lostpat" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(135)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="var(--muted)" stroke-width="2.5"/>
+    </pattern>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--phone)"/>
+    </marker>
+    <marker id="arr-o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--server)"/>
+    </marker>
+    <marker id="arr-m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"/>
+    </marker>
+    <!-- The wall used by the six scan panels. 1 ft = 12 px, ground at y=200, electric meter at x=216. -->
+    <g id="scene">
+      <rect width="480" height="270" fill="var(--sky)"/>
+      <rect x="0" y="46" width="480" height="8" fill="var(--eave)"/>
+      <rect x="0" y="54" width="480" height="146" fill="var(--wall)"/>
+      <rect x="0" y="200" width="480" height="46" fill="var(--ground)"/>
+      <rect x="312" y="96" width="48" height="54" fill="var(--glass)" stroke="var(--card)" stroke-width="4"/>
+      <line x1="336" y1="98" x2="336" y2="148" stroke="var(--card)" stroke-width="3"/>
+      <rect x="124" y="182" width="6" height="18" fill="var(--gas)"/>
+      <rect x="118" y="160" width="18" height="24" rx="3" fill="var(--gas)"/>
+      <rect x="396" y="170" width="36" height="30" rx="3" fill="var(--gas)"/>
+      <circle cx="414" cy="185" r="9" fill="none" stroke="var(--card)" stroke-width="3"/>
+      <rect x="208" y="118" width="16" height="30" rx="2" fill="var(--meterbox)"/>
+      <circle cx="216" cy="130" r="6" fill="var(--meter)"/>
+    </g>
+    <g id="tape">
+      <rect x="0" y="246" width="480" height="24" fill="var(--tape)"/>
+      <g stroke="var(--tape-ink)" stroke-width="2">
+        <line x1="36" y1="246" x2="36" y2="253"/><line x1="96" y1="246" x2="96" y2="253"/><line x1="156" y1="246" x2="156" y2="253"/>
+        <line x1="216" y1="246" x2="216" y2="256"/><line x1="276" y1="246" x2="276" y2="253"/><line x1="336" y1="246" x2="336" y2="253"/>
+        <line x1="396" y1="246" x2="396" y2="253"/><line x1="456" y1="246" x2="456" y2="253"/>
+      </g>
+      <g class="tp s" text-anchor="middle">
+        <text x="36" y="267">15</text><text x="96" y="267">10</text><text x="156" y="267">5</text><text x="216" y="267">0</text>
+        <text x="276" y="267">5</text><text x="336" y="267">10</text><text x="396" y="267">15</text><text x="456" y="267">20</text>
+      </g>
+    </g>
+    <g id="phone">
+      <rect x="0" y="0" width="14" height="26" rx="3" fill="var(--ink)"/>
+      <rect x="2" y="3" width="10" height="18" rx="1.5" fill="var(--phone)"/>
+    </g>
+    <g id="pin">
+      <line x1="0" y1="0" x2="0" y2="-16" stroke="var(--server)" stroke-width="3"/>
+      <circle cx="0" cy="-20" r="6" fill="var(--server)" stroke="var(--card)" stroke-width="2"/>
+    </g>
+    <g id="file">
+      <path d="M0 0 H14 L20 6 V26 H0 Z" fill="var(--card)" stroke="var(--ink)" stroke-width="1.5"/>
+      <path d="M14 0 V6 H20" fill="none" stroke="var(--ink)" stroke-width="1.5"/>
+      <g stroke="var(--muted)" stroke-width="1.5"><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="16" x2="16" y2="16"/><line x1="4" y1="20" x2="12" y2="20"/></g>
+    </g>
+  </defs>
+</svg>
 
-    <div class="answers">
-      <div class="card">
-        <h2>What the data said</h2>
-        <p>A 2023 iPhone's own tracking stayed inside the server's error allowance: 18.5 in p90 after 30 ft, against 57.6 in allowed. The 2018 phone was 2 to 3 times over. Learned depth gets flat walls to about 5 in p90 at a realistic phone error, and only with perfect feature matching. Edges: 8 in or worse in every test.</p>
-        <a class="more" href="#data">The three findings</a>
-      </div>
-      <div class="card">
-        <h2>What exists now</h2>
-        <p>Server solver, web review page, iOS app, verification and evals, all in open PRs. Nothing is merged. The server is live, with the defects a 05:40 review found in it fixed and redeployed. On a real replay the app talked to the server end to end: a 77-photo scene, answered in 545 ms.</p>
-        <a class="more" href="#exists">PR map and how to try it</a>
-      </div>
-      <div class="card">
-        <h2>What we decide</h2>
-        <p>Take a current iPhone and a tape to a real meter wall first thing, about an hour. Then settle how points get measured (AR taps), how far to walk, loading Base's real rules, who checks what is hidden behind things, what the scan must see versus ask, merge order and lane owners.</p>
-        <a class="more" href="#decisions">Go to the decisions</a>
-      </div>
+<main class="wrap">
+
+<h1>House scanning: what we are building, what works, and what is blocked</h1>
+<p class="meta">Team briefing, 26 September 2026, facts as of 09:10. Readers: Sam, Hunter, Shrey, Aiden. About ten minutes.</p>
+
+<p class="lede">A homeowner walks the outside wall around their electric meter with an iPhone. The phone measures the wall, a server applies the clearance rules in plain code, and the app shows where the battery goes, in AR, on the real wall.</p>
+<p class="lede">Today it runs end to end in the iPhone Simulator on a recorded real walk and gets a real answer from the live server. It has never run on a physical iPhone at a real wall. That is the blocker, and the first job this morning.</p>
+
+<nav class="toc" aria-label="Contents">
+  After one read you should be able to explain:
+  <ol>
+    <li><a href="#problem">the problem and our product, in one sentence</a></li>
+    <li><a href="#scan">how a scan becomes a decision, step by step</a></li>
+    <li><a href="#ideas">why every check answers PASS, FAIL or UNSURE, and why unseen is never clear</a></li>
+    <li><a href="#status">what works today and what isn't proven</a></li>
+    <li><a href="#blocker">the main blocker and what to do this morning</a></li>
+    <li><a href="#findings">what each overnight test changed in the product</a></li>
+  </ol>
+  Then <a href="#decisions">decisions</a>, <a href="#asks">asks</a> and <a href="#reference">reference</a>.
+</nav>
+
+<!-- ================= 1. PROBLEM ================= -->
+<h2 id="problem">1. The problem: a battery has to fit between the rules</h2>
+
+<figure class="wide">
+  <svg viewBox="0 0 800 520" role="img" aria-labelledby="p1t p1d">
+    <title id="p1t">An outside wall with the battery and its clearance rules, drawn to scale</title>
+    <desc id="p1d">Front view of a house wall. From left: an AC unit on the ground, a gas meter, the electric meter, the battery just to its right, a window, a door. Red hatched zones show 3 feet of clearance around the gas meter, AC unit, window and door. A bracket beside the battery shows 6.5 feet of headroom. A blue bracket along the ground shows 20 feet of cable reach either side of the electric meter. A tape along the bottom counts feet from the meter. Below, a view from above shows the battery footprint, 31 by 22 inches, and the 3 feet of clear space needed in front of it.</desc>
+    <!-- Front view. 1 ft = 16 px. Ground y=270. Electric meter x=320. -->
+    <rect width="800" height="270" fill="var(--sky)"/>
+    <rect x="0" y="64" width="800" height="8" fill="var(--eave)"/>
+    <rect x="0" y="72" width="800" height="198" fill="var(--wall)"/>
+    <rect x="0" y="270" width="800" height="34" fill="var(--ground)"/>
+
+    <!-- clearance zones (3 ft = 48 px) -->
+    <g fill="var(--zone)" stroke="var(--zone-line)" stroke-width="1.2" stroke-dasharray="4 3">
+      <rect x="24" y="182" width="152" height="88" rx="12"/>
+      <circle cx="188" cy="236" r="48"/>
+      <rect x="400" y="72" width="160" height="168" rx="12"/>
+      <rect x="560" y="102" width="144" height="168" rx="12"/>
+    </g>
+    <g fill="url(#zonepat)">
+      <rect x="24" y="182" width="152" height="88" rx="12"/>
+      <circle cx="188" cy="236" r="48"/>
+      <rect x="400" y="72" width="160" height="168" rx="12"/>
+      <rect x="560" y="102" width="144" height="168" rx="12"/>
+    </g>
+
+    <!-- objects -->
+    <rect x="72" y="230" width="56" height="40" rx="3" fill="var(--gas)"/>
+    <circle cx="100" cy="250" r="12" fill="none" stroke="var(--card)" stroke-width="3"/>
+    <rect x="185" y="250" width="6" height="20" fill="var(--gas)"/>
+    <rect x="176" y="222" width="24" height="28" rx="3" fill="var(--gas)"/>
+    <rect x="448" y="120" width="64" height="72" fill="var(--glass)" stroke="var(--card)" stroke-width="5"/>
+    <line x1="480" y1="122" x2="480" y2="190" stroke="var(--card)" stroke-width="4"/>
+    <rect x="608" y="150" width="48" height="120" fill="var(--eave)"/>
+    <circle cx="648" cy="214" r="3" fill="var(--tape)"/>
+    <rect x="312" y="176" width="16" height="30" rx="2" fill="var(--meterbox)"/>
+    <circle cx="320" cy="188" r="6" fill="var(--meter)"/>
+
+    <!-- battery: 31 in wide, 39.5 in tall -->
+    <rect x="336" y="217.3" width="41.3" height="52.7" rx="3" fill="var(--battery)"/>
+    <path d="M320 206 V240 H336" fill="none" stroke="var(--phone)" stroke-width="3"/>
+
+    <!-- headroom bracket 6.5 ft = 104 px, left of the battery -->
+    <g stroke="var(--muted)" stroke-width="1.5">
+      <line x1="332" y1="113" x2="332" y2="215"/><line x1="326" y1="113" x2="338" y2="113"/><line x1="326" y1="215" x2="338" y2="215"/>
+    </g>
+
+    <!-- cable reach: 20 ft = 320 px either side of the meter (the left reach ends at the picture's edge) -->
+    <g stroke="var(--phone)" stroke-width="2.5">
+      <line x1="0" y1="298" x2="640" y2="298"/><line x1="0" y1="292" x2="0" y2="304"/><line x1="320" y1="292" x2="320" y2="304"/><line x1="640" y1="292" x2="640" y2="304"/>
+    </g>
+    <rect x="248" y="274" width="304" height="22" rx="4" fill="var(--card)" stroke="var(--line)"/>
+    <text class="t s" x="400" y="290" text-anchor="middle">20 ft of cable, either side of the meter</text>
+
+    <!-- labels -->
+    <g class="lab s">
+      <text x="100" y="222" text-anchor="middle">AC unit</text>
+      <text x="188" y="214" text-anchor="middle">gas meter</text>
+      <text x="306" y="170" text-anchor="end">electric meter</text>
+      <text x="480" y="112" text-anchor="middle">window</text>
+      <text x="632" y="142" text-anchor="middle">door</text>
+      <text x="322" y="130" text-anchor="end">6.5 ft headroom</text>
+      <text x="342" y="212">battery</text>
+    </g>
+    <g class="lab s red">
+      <text x="48" y="200">3 ft</text>
+      <text x="194" y="272">3 ft</text>
+      <text x="408" y="92">3 ft</text>
+      <text x="568" y="122">3 ft</text>
+    </g>
+
+    <!-- tape: feet from the meter, 5 ft = 80 px -->
+    <rect x="0" y="312" width="800" height="24" fill="var(--tape)"/>
+    <g stroke="var(--tape-ink)" stroke-width="2">
+      <line x1="80" y1="312" x2="80" y2="319"/><line x1="160" y1="312" x2="160" y2="319"/><line x1="240" y1="312" x2="240" y2="319"/>
+      <line x1="320" y1="312" x2="320" y2="322"/><line x1="400" y1="312" x2="400" y2="319"/><line x1="480" y1="312" x2="480" y2="319"/>
+      <line x1="560" y1="312" x2="560" y2="319"/><line x1="640" y1="312" x2="640" y2="319"/><line x1="720" y1="312" x2="720" y2="319"/>
+    </g>
+    <g class="tp" text-anchor="middle">
+      <text x="80" y="332">15</text><text x="160" y="332">10</text><text x="240" y="332">5</text><text x="320" y="332">0</text>
+      <text x="400" y="332">5</text><text x="480" y="332">10</text><text x="560" y="332">15</text><text x="640" y="332">20</text><text x="720" y="332">25</text>
+    </g>
+    <text class="t s m" x="8" y="356">feet left and right of the electric meter</text>
+
+    <!-- Plan view, same horizontal scale -->
+    <text class="t s b" x="8" y="388">The same wall from above</text>
+    <rect x="0" y="396" width="800" height="8" fill="var(--eave)"/>
+    <rect x="0" y="404" width="800" height="110" fill="var(--ground)"/>
+    <g fill="var(--zone)" stroke="var(--zone-line)" stroke-width="1.2" stroke-dasharray="4 3">
+      <rect x="24" y="404" width="152" height="84" rx="12"/>
+      <rect x="128" y="404" width="120" height="48" rx="12"/>
+      <rect x="400" y="404" width="160" height="48" rx="12"/>
+      <rect x="560" y="404" width="144" height="48" rx="12"/>
+      <rect x="336" y="433.3" width="41.3" height="48"/>
+    </g>
+    <g fill="url(#zonepat)">
+      <rect x="24" y="404" width="152" height="84" rx="12"/>
+      <rect x="128" y="404" width="120" height="48" rx="12"/>
+      <rect x="400" y="404" width="160" height="48" rx="12"/>
+      <rect x="560" y="404" width="144" height="48" rx="12"/>
+      <rect x="336" y="433.3" width="41.3" height="48"/>
+    </g>
+    <rect x="72" y="404" width="56" height="36" rx="3" fill="var(--gas)"/>
+    <rect x="176" y="404" width="24" height="10" rx="2" fill="var(--gas)"/>
+    <rect x="448" y="394" width="64" height="12" fill="var(--glass)"/>
+    <rect x="608" y="394" width="48" height="12" fill="var(--eave)"/>
+    <rect x="312" y="404" width="16" height="8" fill="var(--meterbox)"/>
+    <rect x="336" y="404" width="41.3" height="29.3" rx="2" fill="var(--battery)"/>
+    <g class="lab s">
+      <text x="386" y="424">battery footprint, 31 by 22 in</text>
+      <text x="386" y="466">3 ft clear in front</text>
+      <text x="100" y="506" text-anchor="middle">AC unit</text>
+      <text x="188" y="430" text-anchor="middle" class="lab s">gas</text>
+    </g>
+  </svg>
+  <p class="scrollhint">Wider than the screen: scroll sideways for the rest of the picture.</p>
+  <figcaption>Everything is drawn at one scale: 5 ft between tape marks. The red hatched areas are places the battery may not go. The battery just fits between the electric meter and the window's zone. <b>Rules shown:</b> 3 ft from the gas meter, from AC units, fences and other batteries, and from doors and windows that enter the home; 3 ft of clear space in front; 6.5 ft of headroom; within 20 ft of cable run from the meter; a flat, seen stretch of wall behind it.</figcaption>
+</figure>
+
+<div class="prose">
+<p>Base Power puts a home battery on the outside wall, close to the electric meter, because a cable runs from the meter to the battery. The battery is 31 in wide, 22 in deep and 39.5 in tall. Whether it fits, and where, depends on the clearance rules in the picture. Today a person has to go to the house and check.</p>
+<p>Our product does that check with the homeowner's iPhone, in a couple of minutes. The app measures the wall. A server applies the rules in plain code. The app shows where the battery goes, in AR, on the real wall.</p>
+<p>The demo's rules come from public sources and live in <code>server/rules.yaml</code>, each with its citation. Two numbers there are placeholders because no public value exists (pool 10 ft, driveway 5 ft). Base's own thresholds are private, load at runtime from a file that is not in git, and do not appear on this page.</p>
+</div>
+<details>
+  <summary>The rules the demo uses, with sources</summary>
+  <div class="scroll-x"><table>
+    <thead><tr><th>Rule</th><th>Value</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Distance from the gas meter</td><td>3 ft</td><td>Base's public help page; Austin Energy; Texas Gas Service</td></tr>
+      <tr><td>Distance from AC units, fences, other batteries</td><td>3 ft</td><td>Base's help page</td></tr>
+      <tr><td>Distance from doors and windows that enter the home</td><td>3 ft</td><td>IRC R328.4</td></tr>
+      <tr><td>Clear space in front of the battery</td><td>3 ft</td><td>Base's help page</td></tr>
+      <tr><td>Cable run from the meter</td><td>within 20 ft</td><td>Base's help page</td></tr>
+      <tr><td>Headroom</td><td>6.5 ft</td><td>NEC 110.26, a demo choice</td></tr>
+      <tr><td>Wall behind the battery</td><td>flat, and seen by the camera</td><td>demo requirement</td></tr>
+      <tr><td>Pool, driveway</td><td>10 ft, 5 ft</td><td>placeholders; no public value exists</td></tr>
+    </tbody>
+  </table></div>
+</details>
+
+<!-- ================= 2. SCAN ================= -->
+<h2 id="scan">2. How a scan becomes a decision</h2>
+<p class="prose">Six pictures. Each one is the last one with one thing added. The tape along the bottom is real: the app shows the wall unrolled like a tape measure, with the electric meter at zero.</p>
+
+<ol class="strip">
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s1t s1d">
+      <title id="s1t">Step 1: tap the electric meter, which becomes zero</title>
+      <desc id="s1d">The wall from the problem picture, smaller, with the electric meter in the middle. A blue ring marks a tap on the meter. A dashed line drops from the meter to the zero mark on a tape along the bottom.</desc>
+      <use href="#scene"/><use href="#tape"/>
+      <line x1="216" y1="150" x2="216" y2="246" stroke="var(--phone)" stroke-width="2" stroke-dasharray="4 4"/>
+      <circle cx="216" cy="130" r="17" fill="none" stroke="var(--phone)" stroke-width="3"/>
+      <circle cx="216" cy="130" r="27" fill="none" stroke="var(--phone)" stroke-width="2" opacity=".45"/>
+      <text class="lab b" x="216" y="86" text-anchor="middle">tap the electric meter</text>
+      <text class="lab" x="216" y="230" text-anchor="middle">it becomes 0 ft; all else is left or right of it</text>
+    </svg>
+    <figcaption>Point at the electric meter and tap. The meter becomes zero. Every position from now on is measured left or right of it, in feet.</figcaption>
+  </figure></li>
+
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s2t s2d">
+      <title id="s2t">Step 2: the phone photographs the meter close up, then walks left, then right</title>
+      <desc id="s2d">Same wall. A dashed frame around the electric meter marks the close-up. A phone stands on the ground below the meter. Blue arrows run left along the wall and then right.</desc>
+      <use href="#scene"/><use href="#tape"/>
+      <rect x="196" y="110" width="40" height="46" rx="4" fill="none" stroke="var(--phone)" stroke-width="2.5" stroke-dasharray="5 3"/>
+      <text class="lab" x="200" y="92" text-anchor="middle">close-up, reads the number</text>
+      <use href="#phone" x="209" y="204"/>
+      <line x1="200" y1="234" x2="60" y2="234" stroke="var(--phone)" stroke-width="3" marker-end="url(#arr)"/>
+      <line x1="232" y1="234" x2="440" y2="234" stroke="var(--phone)" stroke-width="3" marker-end="url(#arr)"/>
+      <text class="lab blue b" x="126" y="226" text-anchor="middle">walk left</text>
+      <text class="lab blue b" x="340" y="226" text-anchor="middle">then right</text>
+    </svg>
+    <figcaption>The phone takes a close-up of the meter by itself when the picture is sharp, to read the meter's number. Then you walk along the wall, left and then right. The phone keeps photos automatically.</figcaption>
+  </figure></li>
+
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s3t s3d">
+      <title id="s3t">Step 3: a haze covers wall and ground the phone has not seen yet</title>
+      <desc id="s3d">Same wall. The phone has walked left to about 8 feet and right to about 9 feet. Those parts of the wall and ground are clear. The rest is covered by a grey hatched haze.</desc>
+      <use href="#scene"/>
+      <rect x="0" y="54" width="120" height="192" fill="url(#fogpat)"/>
+      <rect x="330" y="54" width="150" height="192" fill="url(#fogpat)"/>
+      <use href="#tape"/>
+      <line x1="200" y1="234" x2="126" y2="234" stroke="var(--phone)" stroke-width="3" opacity=".5"/>
+      <line x1="232" y1="234" x2="316" y2="234" stroke="var(--phone)" stroke-width="3" marker-end="url(#arr)"/>
+      <use href="#phone" x="323" y="204"/>
+      <text class="lab b" x="405" y="120" text-anchor="middle">haze:</text>
+      <text class="lab b" x="405" y="142" text-anchor="middle">not seen yet</text>
+      <text class="lab b" x="60" y="120" text-anchor="middle">haze</text>
+      <text class="lab" x="222" y="80" text-anchor="middle">seen: the haze lifts</text>
+    </svg>
+    <figcaption>A haze covers wall and ground the phone has not seen and lifts as it sees them. The team calls this fog of war. The tape strip grows as you walk.</figcaption>
+  </figure></li>
+
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s4t s4d">
+      <title id="s4t">Step 4: mark things as you pass, and answer one request for another view</title>
+      <desc id="s4d">Same wall, almost all seen. Orange pins mark the gas meter, the window and the AC unit. A small hatched patch of ground about 6 feet right of the meter is still unseen. A message at the top reads: Show the ground about 6 ft right of your meter.</desc>
+      <use href="#scene"/>
+      <rect x="0" y="54" width="40" height="192" fill="url(#fogpat)"/>
+      <rect x="458" y="54" width="22" height="192" fill="url(#fogpat)"/>
+      <rect x="276" y="200" width="36" height="46" fill="url(#fogpat)"/>
+      <use href="#tape"/>
+      <use href="#pin" x="127" y="158"/><text class="lab b orange" x="127" y="126" text-anchor="middle">gas</text>
+      <use href="#pin" x="336" y="94"/><text class="lab b orange" x="336" y="62" text-anchor="middle">window</text>
+      <use href="#pin" x="414" y="168"/><text class="lab b orange" x="414" y="136" text-anchor="middle">AC</text>
+      <use href="#phone" x="433" y="204"/>
+      <rect x="20" y="6" width="440" height="38" rx="6" fill="var(--card)" stroke="var(--line)"/>
+      <text class="t" x="240" y="31" text-anchor="middle">Show the ground about 6 ft right of your meter</text>
+    </svg>
+    <figcaption>Mark things as you pass: gas meter, AC unit, door, window, driveway edge, fence. If something a rule needs is still unseen, the app asks for one more view, in one sentence.</figcaption>
+  </figure></li>
+
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s5t s5d">
+      <title id="s5t">Step 5: a small measurement file goes to the server, which tries every spot</title>
+      <desc id="s5d">Same wall, fully seen. A small file icon labelled scene.json, 17 KB, rises from the phone toward a server box at the top. On the wall, dashed battery outlines slide along in small steps.</desc>
+      <use href="#scene"/><use href="#tape"/>
+      <g fill="none" stroke="var(--server)" stroke-width="2" stroke-dasharray="4 3">
+        <rect x="150" y="160" width="31" height="40"/><rect x="190" y="160" width="31" height="40"/><rect x="230" y="160" width="31" height="40"/><rect x="270" y="160" width="31" height="40"/>
+      </g>
+      <line x1="306" y1="180" x2="340" y2="180" stroke="var(--server)" stroke-width="2.5" marker-end="url(#arr-o)"/>
+      <text class="lab s orange" x="12" y="31">tries every spot, 2 in apart</text>
+      <use href="#phone" x="209" y="204"/>
+      <use href="#file" x="238" y="196"/>
+      <text class="lab" x="266" y="216">scene.json, 17 KB</text>
+      <text class="lab s m" x="266" y="238">photos stay on the phone</text>
+      <path d="M248 192 C 250 120, 320 70, 360 46" fill="none" stroke="var(--phone)" stroke-width="2.5" marker-end="url(#arr)"/>
+      <rect x="250" y="6" width="222" height="36" rx="6" fill="var(--card)" stroke="var(--server)" stroke-width="2"/>
+      <text class="t s b" x="361" y="30" text-anchor="middle">server: checks every rule</text>
+    </svg>
+    <figcaption>The phone sends a small file of measurements, about 17 KB for a real walk. The server slides the battery's footprint along the wall in 2-inch steps and checks every rule at every position.</figcaption>
+  </figure></li>
+
+  <li><figure>
+    <svg viewBox="0 0 480 270" role="img" aria-labelledby="s6t s6d">
+      <title id="s6t">Step 6: the answer comes back and the battery is shown on the wall in AR</title>
+      <desc id="s6d">Same wall. The server box at the top sends an arrow back down to the phone. The battery is drawn on the wall just right of the electric meter with an orange outline, and a cable runs from the meter to it. A label reads: best spot, shortest cable.</desc>
+      <use href="#scene"/><use href="#tape"/>
+      <rect x="250" y="6" width="222" height="36" rx="6" fill="var(--card)" stroke="var(--server)" stroke-width="2"/>
+      <text class="t s b" x="361" y="30" text-anchor="middle">server answers</text>
+      <path d="M330 44 C 300 80, 270 120, 262 156" fill="none" stroke="var(--server)" stroke-width="2.5" marker-end="url(#arr-o)"/>
+      <rect x="240" y="160.5" width="31" height="39.5" rx="2" fill="var(--battery)"/>
+      <rect x="236" y="156.5" width="39" height="47.5" rx="4" fill="none" stroke="var(--server)" stroke-width="3"/>
+      <path d="M224 148 L 232 158 L 240 168" fill="none" stroke="var(--phone)" stroke-width="3"/>
+      <use href="#phone" x="440" y="204"/>
+      <text class="lab b orange" x="120" y="176" text-anchor="middle">best spot,</text>
+      <text class="lab b orange" x="120" y="196" text-anchor="middle">shortest cable</text>
+      <text class="lab" x="220" y="234" text-anchor="middle">shown in 3D and in AR, placed from the meter</text>
+    </svg>
+    <figcaption>The server answers with the best spot (shortest cable run first), the cable route, and every check's outcome and reason. The phone draws the battery on the wall, placed relative to the meter, in 3D and in AR.</figcaption>
+  </figure></li>
+</ol>
+
+<figure>
+  <svg viewBox="0 0 480 140" role="img" aria-labelledby="lt ld">
+    <title id="lt">The whole loop: phone to server and back</title>
+    <desc id="ld">Two boxes. Left: the phone, which taps, walks, marks and shows. Right: the server, with the rules file and plain code. An arrow from phone to server carries scene.json. An arrow from server to phone carries the spot, the cable route and every check's outcome.</desc>
+    <rect x="10" y="20" width="150" height="100" rx="8" fill="var(--card)" stroke="var(--phone)" stroke-width="2.5"/>
+    <text class="t b" x="85" y="50" text-anchor="middle">Phone</text>
+    <text class="t s m" x="85" y="76" text-anchor="middle">tap, walk, mark</text>
+    <text class="t s m" x="85" y="98" text-anchor="middle">show the spot in AR</text>
+    <rect x="320" y="20" width="150" height="100" rx="8" fill="var(--card)" stroke="var(--server)" stroke-width="2.5"/>
+    <text class="t b" x="395" y="50" text-anchor="middle">Server</text>
+    <text class="t s m" x="395" y="76" text-anchor="middle">rules in a file</text>
+    <text class="t s m" x="395" y="98" text-anchor="middle">plain code, no AI</text>
+    <line x1="164" y1="50" x2="314" y2="50" stroke="var(--phone)" stroke-width="2.5" marker-end="url(#arr)"/>
+    <text class="lab s" x="240" y="42" text-anchor="middle">scene.json</text>
+    <line x1="316" y1="94" x2="166" y2="94" stroke="var(--server)" stroke-width="2.5" marker-end="url(#arr-o)"/>
+    <text class="lab s" x="240" y="118" text-anchor="middle">spot, cable, checks</text>
+  </svg>
+  <figcaption>The recap. AI is used only to recognise things: it reads the meter's text and finds objects. The placement decision is ordinary code with the rules in a file, so every answer traces back to a rule and a measurement.</figcaption>
+</figure>
+
+<!-- ================= 3. IDEAS ================= -->
+<h2 id="ideas">3. Three ideas that make the answer honest</h2>
+
+<h3>The phone counts its own steps, so error grows with distance</h3>
+<figure>
+  <svg viewBox="0 0 480 250" role="img" aria-labelledby="d1t d1d">
+    <title id="d1t">Error bars widen the farther you walk from the meter</title>
+    <desc id="d1d">A tape along the top counts feet from the meter at 0, 5, 10, 15 and 20. Below it, four positions carry horizontal error bars that get wider with distance: plus or minus 0.3 feet at the meter, 1.1 feet at 5 feet, 1.9 feet at 10 feet and 3.5 feet at 20 feet. Footprints lead away from the meter.</desc>
+    <!-- 1 ft = 17 px, meter at x=60 -->
+    <rect x="20" y="20" width="450" height="24" fill="var(--tape)"/>
+    <g stroke="var(--tape-ink)" stroke-width="2">
+      <line x1="60" y1="20" x2="60" y2="30"/><line x1="145" y1="20" x2="145" y2="27"/><line x1="230" y1="20" x2="230" y2="27"/><line x1="315" y1="20" x2="315" y2="27"/><line x1="400" y1="20" x2="400" y2="27"/>
+    </g>
+    <g class="tp s" text-anchor="middle">
+      <text x="60" y="41">0</text><text x="145" y="41">5</text><text x="230" y="41">10</text><text x="315" y="41">15</text><text x="400" y="41">20 ft</text>
+    </g>
+    <rect x="52" y="46" width="16" height="30" rx="2" fill="var(--meterbox)"/><circle cx="60" cy="58" r="6" fill="var(--meter)"/>
+    <text class="t s m" x="60" y="98" text-anchor="middle">meter</text>
+    <!-- footprints -->
+    <g fill="var(--muted)" opacity=".6">
+      <ellipse cx="96" cy="90" rx="5" ry="8"/><ellipse cx="120" cy="100" rx="5" ry="8"/><ellipse cx="180" cy="90" rx="5" ry="8"/><ellipse cx="204" cy="100" rx="5" ry="8"/>
+      <ellipse cx="264" cy="90" rx="5" ry="8"/><ellipse cx="288" cy="100" rx="5" ry="8"/><ellipse cx="348" cy="90" rx="5" ry="8"/><ellipse cx="372" cy="100" rx="5" ry="8"/>
+    </g>
+    <!-- error bars: ±0.3, ±1.1, ±1.9, ±3.5 ft (5.1, 18.7, 32.3, 59.5 px) -->
+    <g stroke="var(--phone)" stroke-width="3" stroke-linecap="round">
+      <line x1="55" y1="130" x2="65" y2="130"/><line x1="55" y1="124" x2="55" y2="136"/><line x1="65" y1="124" x2="65" y2="136"/>
+      <line x1="126" y1="160" x2="164" y2="160"/><line x1="126" y1="154" x2="126" y2="166"/><line x1="164" y1="154" x2="164" y2="166"/>
+      <line x1="198" y1="190" x2="262" y2="190"/><line x1="198" y1="184" x2="198" y2="196"/><line x1="262" y1="184" x2="262" y2="196"/>
+      <line x1="340" y1="220" x2="460" y2="220"/><line x1="340" y1="214" x2="340" y2="226"/><line x1="460" y1="214" x2="460" y2="226"/>
+    </g>
+    <g fill="var(--phone)"><circle cx="60" cy="130" r="5"/><circle cx="145" cy="160" r="5"/><circle cx="230" cy="190" r="5"/><circle cx="400" cy="220" r="5"/></g>
+    <g class="lab s">
+      <text x="76" y="135">± 0.3 ft at the meter</text>
+      <text x="174" y="165">± 1.1 ft at 5 ft</text>
+      <text x="272" y="195">± 1.9 ft at 10 ft</text>
+      <text x="330" y="225" text-anchor="end">± 3.5 ft at 20 ft</text>
+    </g>
+    <text class="t s m" x="20" y="242">error bar = 0.3 ft + 0.16 ft for every foot from the meter</text>
+  </svg>
+  <figcaption>AR tracking is dead reckoning: the phone estimates how far it moved from the camera and motion sensors, like counting your own steps from a doorway. Small errors add up, so the farther from the meter, the less sure a position is. The server widens every AR measurement's error bar by 0.3 ft plus 0.16 ft per foot along the wall. <b>Where the analogy breaks:</b> a miscounted step is only a stretch along the wall, while the phone's error also drifts sideways.</figcaption>
+</figure>
+
+<h3>The error bar decides: PASS, FAIL or UNSURE</h3>
+<figure>
+  <svg viewBox="0 0 480 300" role="img" aria-labelledby="d2t d2d">
+    <title id="d2t">Three measurements against the 3 foot gas meter rule</title>
+    <desc id="d2d">A number line from 0 to 6 feet with a vertical rule at 3 feet. Row one: 4.5 feet plus or minus 0.8, the whole bar sits right of 3, PASS. Row two: 2.0 feet plus or minus 0.8, the whole bar sits left of 3, FAIL. Row three: 3.4 feet plus or minus 0.8, the bar straddles 3, UNSURE.</desc>
+    <!-- axis: x = 40 + ft*70 -->
+    <g class="grid"><line x1="40" y1="60" x2="40" y2="262"/><line x1="110" y1="60" x2="110" y2="262"/><line x1="180" y1="60" x2="180" y2="262"/><line x1="320" y1="60" x2="320" y2="262"/><line x1="390" y1="60" x2="390" y2="262"/><line x1="460" y1="60" x2="460" y2="262"/></g>
+    <line x1="40" y1="262" x2="460" y2="262" class="axis"/>
+    <g class="t s m" text-anchor="middle">
+      <text x="40" y="284">0</text><text x="110" y="284">1</text><text x="180" y="284">2</text><text x="250" y="284">3</text><text x="320" y="284">4</text><text x="390" y="284">5</text><text x="460" y="284">6 ft</text>
+    </g>
+    <line x1="250" y1="44" x2="250" y2="262" stroke="var(--fail-ink)" stroke-width="2.5"/>
+    <text class="lab b red" x="250" y="36" text-anchor="middle">3 ft rule (gas meter)</text>
+    <text class="t s m" x="244" y="60" text-anchor="end">too close</text>
+    <text class="t s m" x="256" y="60">clear</text>
+
+    <!-- row 1: 4.5 ± 0.8 -> 299..411 -->
+    <line x1="299" y1="100" x2="411" y2="100" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="299" y1="93" x2="299" y2="107" stroke="var(--ink)" stroke-width="3"/><line x1="411" y1="93" x2="411" y2="107" stroke="var(--ink)" stroke-width="3"/>
+    <circle cx="355" cy="100" r="6" fill="var(--card)" stroke="var(--ink)" stroke-width="3"/>
+    <rect x="152" y="72" width="314" height="21" rx="3" fill="var(--card)" stroke="var(--line)"/>
+    <text class="lab s" x="460" y="87" text-anchor="end">4.5 ft ± 0.8: clear by 1.5, more than 0.8</text>
+    <rect x="44" y="86" width="86" height="26" rx="13" fill="var(--pass)"/>
+    <text class="pill" x="87" y="104" text-anchor="middle" fill="#fff">✓ PASS</text>
+
+    <!-- row 2: 2.0 ± 0.8 -> 124..236 -->
+    <line x1="124" y1="170" x2="236" y2="170" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="124" y1="163" x2="124" y2="177" stroke="var(--ink)" stroke-width="3"/><line x1="236" y1="163" x2="236" y2="177" stroke="var(--ink)" stroke-width="3"/>
+    <circle cx="180" cy="170" r="6" fill="var(--card)" stroke="var(--ink)" stroke-width="3"/>
+    <rect x="118" y="135" width="314" height="21" rx="3" fill="var(--card)" stroke="var(--line)"/>
+    <text class="lab s" x="124" y="150">2.0 ft ± 0.8: short by 1.0, more than 0.8</text>
+    <rect x="374" y="158" width="86" height="26" rx="13" fill="var(--fail)"/>
+    <text class="pill" x="417" y="176" text-anchor="middle" fill="#fff">✕ FAIL</text>
+
+    <!-- row 3: 3.4 ± 0.8 -> 222..334 -->
+    <line x1="222" y1="240" x2="334" y2="240" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+    <line x1="222" y1="233" x2="222" y2="247" stroke="var(--ink)" stroke-width="3"/><line x1="334" y1="233" x2="334" y2="247" stroke="var(--ink)" stroke-width="3"/>
+    <circle cx="278" cy="240" r="6" fill="var(--card)" stroke="var(--ink)" stroke-width="3"/>
+    <rect x="118" y="207" width="240" height="21" rx="3" fill="var(--card)" stroke="var(--line)"/>
+    <text class="lab s" x="124" y="222">3.4 ft ± 0.8: clear by only 0.4</text>
+    <rect x="364" y="228" width="100" height="26" rx="13" fill="var(--unsure)"/>
+    <text class="pill" x="414" y="246" text-anchor="middle" fill="#2a1e00">? UNSURE</text>
+  </svg>
+  <figcaption>Every measurement carries an error bar. A check passes only when the margin beats the error, fails only when it is past the rule by more than the error, and is UNSURE otherwise. Equal is UNSURE. <b>UNSURE means a person checks it, or the app asks for a better view.</b> The three examples are the dossier's, for the 3 ft gas meter rule with ± 0.8 ft.</figcaption>
+</figure>
+
+<h3>Unseen is not clear</h3>
+<figure>
+  <svg viewBox="0 0 480 236" role="img" aria-labelledby="d3t d3d">
+    <title id="d3t">A check whose ground was never seen stays UNSURE and names the missing view</title>
+    <desc id="d3d">A candidate battery spot on the wall. The ground beside it is covered by grey haze. Beside it a check reads: ground near the spot, checks need 6 to 13 ft of seen ground, UNSURE, missing evidence: show the ground about 6 ft right of your meter.</desc>
+    <rect width="480" height="236" fill="var(--sky)"/>
+    <rect x="0" y="30" width="480" height="8" fill="var(--eave)"/>
+    <rect x="0" y="38" width="480" height="132" fill="var(--wall)"/>
+    <rect x="0" y="170" width="480" height="66" fill="var(--ground)"/>
+    <rect x="40" y="90" width="16" height="30" rx="2" fill="var(--meterbox)"/><circle cx="48" cy="102" r="6" fill="var(--meter)"/>
+    <text class="lab s" x="48" y="138" text-anchor="middle">meter</text>
+    <rect x="112" y="130.5" width="31" height="39.5" rx="2" fill="var(--battery)"/>
+    <rect x="108" y="126.5" width="39" height="47.5" rx="4" fill="none" stroke="var(--server)" stroke-width="3"/>
+    <text class="lab s" x="128" y="118" text-anchor="middle">candidate spot</text>
+    <rect x="104" y="170" width="76" height="66" fill="url(#fogpat)"/>
+    <text class="lab b" x="142" y="212" text-anchor="middle">never seen</text>
+    <rect x="200" y="50" width="270" height="140" rx="8" fill="var(--card)" stroke="var(--line)"/>
+    <text class="t b" x="212" y="76">Ground near the spot</text>
+    <text class="t s m" x="212" y="96">checks need 6 to 13 ft of ground</text>
+    <rect x="212" y="106" width="100" height="26" rx="13" fill="var(--unsure)"/>
+    <text class="pill" x="262" y="124" text-anchor="middle" fill="#2a1e00">? UNSURE</text>
+    <text class="t s m" x="212" y="156">missing evidence: show the</text>
+    <text class="t s m" x="212" y="176">ground 6 ft right of your meter</text>
+  </svg>
+  <figcaption>If the camera never saw part of the area a rule depends on, that check cannot pass. It stays UNSURE, and the server names the view that would settle it. Here the ground beside the spot was never seen, and the checks that use ground need 6 to 13 ft of it. A blank on the map is never treated as empty ground.</figcaption>
+</figure>
+
+<!-- ================= 4. STATUS ================= -->
+<h2 id="status">4. Where it stands this morning</h2>
+<div class="legend">
+  <span><i class="mk ok" style="display:inline-flex"><i>✓</i></i> proven in the Simulator on a recorded real walk</span>
+  <span><i class="mk fix" style="display:inline-flex"><i>!</i></i> fixed this morning</span>
+  <span><i class="mk none" style="display:inline-flex"><i>?</i></i> not yet proven on a real phone</span>
+</div>
+<ol class="pipe" aria-label="Scan pipeline and status of each stage">
+  <li><b>Tap the meter</b><span>It becomes zero.</span><div class="marks"><span class="mk ok"><i>✓</i>Simulator</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+  <li><b>Read the meter's number</b><span>Close-up; three candidates to tap.</span><div class="marks"><span class="mk ok"><i>✓</i>Simulator</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+  <li><b>Walk the wall</b><span>Haze lifts; tape strip grows.</span><div class="marks"><span class="mk ok"><i>✓</i>Simulator</span><span class="mk fix"><i>!</i>Now reports ground depth, clear space in front, and a tilt-up view for headroom</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+  <li><b>Mark things, one more view</b><span>Gas, AC, door, window, fence.</span><div class="marks"><span class="mk ok"><i>✓</i>Simulator</span><span class="mk fix"><i>!</i>Server now publishes exactly what settles each check</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+  <li><b>Upload scene.json</b><span>Measurements only.</span><div class="marks"><span class="mk fix"><i>!</i>17 KB, not 16.5 MB of photos; answer in 0.5 s</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+  <li><b>Server decides</b><span>Live on Vercel.</span><div class="marks"><span class="mk ok"><i>✓</i>252 tests; independent checker 50 of 50</span></div></li>
+  <li><b>Show the spot in AR</b><span>Placed from the meter.</span><div class="marks"><span class="mk ok"><i>✓</i>Simulator, 3D and AR</span><span class="mk none"><i>?</i>Real phone</span></div></li>
+</ol>
+<div class="blocker"><i>✕</i><div><b>Never run on a physical iPhone at a real wall.</b><span>Every stage marked "?" above shares this one gap. Everything that decides accuracy is waiting on that data.</span></div></div>
+<div class="caveats">
+  <div><b>Placeholder rules</b>With the public placeholder rules, automatic approval is off, so every real result says "An installer will take a look."</div>
+  <div><b>Hidden wall</b>Things standing in front of the wall can hide it, and nobody owns checking that yet (decision 7).</div>
+  <div><b>Parked: web review page (#15)</b>It shows the server's answer in a browser. It helped check the server before the app could upload. It is not the product.</div>
+</div>
+
+<dl class="qa">
+  <div><dt>Does what we built work, and is it part of the app we'd ship?</dt><dd>In the Simulator on a recorded real walk, yes: meter to result, with a real answer from the live server. The app and the server are the product. The web review page is not, and it is parked.</dd></div>
+  <div><dt>Are the overnight tests doing anything?</dt><dd>Each of the five changed the app or the server (section 6 lists what). Three other pieces of overnight work changed nothing: the panel-label search, finer statistics on the modern-phone data, and the research notes.</dd></div>
+  <div><dt>What is done that achieves the goal?</dt><dd>The server, live with 252 tests. The whole app flow in the Simulator. Uploads fixed to 17 KB. The first-try fixes, merging now while the build is repaired.</dd></div>
+  <div><dt>What is the main blocker?</dt><dd>A real-phone session. See the next section.</dd></div>
+</dl>
+
+<!-- ================= 5. BLOCKER ================= -->
+<h2 id="blocker">5. The main blocker, and what to do this morning</h2>
+<figure>
+  <svg viewBox="0 0 480 190" role="img" aria-labelledby="f0t f0d">
+    <title id="f0t">The field test: the phone's reading against a tape on the same wall</title>
+    <desc id="f0d">A wall with the electric meter. A yellow tape runs along the wall with marks at 5, 10, 15 and 20 feet. A phone stands in front. Blue dots show where the phone thinks the same marks are; the gap between dot and mark grows with distance. A label reads: the gap is the phone's scale error.</desc>
+    <rect width="480" height="190" fill="var(--sky)"/>
+    <rect x="0" y="26" width="480" height="8" fill="var(--eave)"/>
+    <rect x="0" y="34" width="480" height="106" fill="var(--wall)"/>
+    <rect x="0" y="140" width="480" height="50" fill="var(--ground)"/>
+    <rect x="32" y="70" width="16" height="30" rx="2" fill="var(--meterbox)"/><circle cx="40" cy="82" r="6" fill="var(--meter)"/>
+    <!-- tape: 1 ft = 20 px from x=40 -->
+    <rect x="40" y="104" width="420" height="22" fill="var(--tape)"/>
+    <g stroke="var(--tape-ink)" stroke-width="2">
+      <line x1="140" y1="104" x2="140" y2="112"/><line x1="240" y1="104" x2="240" y2="112"/><line x1="340" y1="104" x2="340" y2="112"/><line x1="440" y1="104" x2="440" y2="112"/>
+    </g>
+    <g class="tp s" text-anchor="middle"><text x="140" y="123">5</text><text x="240" y="123">10</text><text x="340" y="123">15</text><text x="440" y="123">20 ft</text></g>
+    <!-- phone's readings, a little short and growing -->
+    <g fill="var(--phone)" stroke="var(--card)" stroke-width="2">
+      <circle cx="137" cy="98" r="6"/><circle cx="234" cy="98" r="6"/><circle cx="331" cy="98" r="6"/><circle cx="428" cy="98" r="6"/>
+    </g>
+    <g stroke="var(--fail-ink)" stroke-width="2"><line x1="428" y1="88" x2="440" y2="88"/><line x1="428" y1="84" x2="428" y2="92"/><line x1="440" y1="84" x2="440" y2="92"/></g>
+    <text class="lab s blue" x="240" y="60" text-anchor="middle">blue dots: where the phone says the tape marks are</text>
+    <text class="lab s red" x="434" y="78" text-anchor="end">the gap is the scale error</text>
+    <use href="#phone" x="76" y="146"/>
+    <text class="lab s" x="100" y="166">a current iPhone, no LiDAR</text>
+  </svg>
+  <figcaption>Nothing decides accuracy until this runs. Hunter's research handoff (PR #18) reaches the same conclusion.</figcaption>
+</figure>
+<div class="prose">
+<p><b>Run the field test first, about an hour.</b> You need a current non-LiDAR iPhone, the Measure Lab build, a 30 ft tape and a real meter wall. Follow <code>experiments/evals/field/FIELD_SHEET.md</code>: type the tape readings into the prepared templates, and one command turns them into a score and the phone's real scale error. A dry run recovered a planted 1.5% error exactly, so the scoring end is ready.</p>
+<p>The overnight tracking numbers (finding 1) come from a 2023 iPhone with LiDAR and a dataset whose reference may itself be scaled to the phone's tracking. Most homeowners' phones lack LiDAR. The field test measures our own phone on our own wall, which is the only direct measurement.</p>
+</div>
+
+<!-- ================= 6. FINDINGS ================= -->
+<h2 id="findings">6. What the overnight tests found, and what each changed</h2>
+<p class="prose">All five ran on public real-world datasets with laser-measured ground truth. Dataset images are never in git. Each finding below ends with the line that answers "did this test do anything".</p>
+
+<div class="finding" id="finding-1">
+  <h3>Finding 1. How far off is the phone's own tracking?</h3>
+  <figure>
+    <div class="legend">
+      <span><i class="sw" style="border-color:var(--server)"></i>2018 iPhone 6s (ADVIO)</span>
+      <span><i class="sw" style="border-color:var(--phone)"></i>2023 iPhone 14 Pro Max (MARViN)</span>
+      <span><i class="sw dash" style="border-color:var(--muted)"></i>server's allowance</span>
     </div>
-
-    <nav class="steps" aria-label="Sections">
-      <a href="#product">The product</a><a href="#data">The data</a><a href="#exists">What exists</a><a href="#try">Try it</a>
-      <a class="primary" href="#decisions">Decisions</a><a href="#asks">Asks for Sam</a><a href="#today">Today</a>
-    </nav>
-  </div>
-</header>
-
-<main>
-<section class="alt" id="status">
-  <div class="wrap">
-    <span class="step-tag">Where we really are</span>
-    <h2>Works end to end in the Simulator; never run on a real iPhone</h2>
-    <div class="asks">
-      <div class="card"><h3>Works</h3><p style="margin:0">The iOS app runs the whole scan (meter, close-up, guided walk with coverage, one more view, upload, result in 3D and AR) in the Simulator on a recorded real walk, and gets a real answer from the placement server, which is live and tested.</p></div>
-      <div class="card"><h3>Not proven</h3><p style="margin:0">Nothing has run on a physical iPhone at a real wall. Until this morning's fixes land, no scan could finish on the first try (the app under-reported what it saw), and with placeholder rules every answer is "an installer will take a look".</p></div>
-      <div class="card"><h3>The main blocker</h3><p style="margin:0">A real-phone session: the app and Measure Lab on a current iPhone, at a real meter wall, with a tape. Hunter's research handoff (#18) reaches the same conclusion. Everything else is waiting on that data.</p></div>
-      <div class="card"><h3>Side work to park</h3><p style="margin:0">The web review page (#15) shows the server's answer in a browser. It helped check the server before the app could, but it isn't the product. Don't spend more on it now.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ================= PRODUCT ================= -->
-<section id="product">
-  <div class="wrap">
-    <span class="step-tag">The product</span>
-    <h2>Where last night's findings land</h2>
-    <p class="prose">A homeowner walks the outside wall around their electric meter with an iPhone. The findings below all hit the second step, where the phone measures.</p>
-    <ol class="flow">
-      <li>
-        <svg viewBox="0 0 120 80" aria-hidden="true">
-          <rect x="4" y="8" width="112" height="54" rx="4" fill="var(--wall)"/>
-          <rect x="52" y="20" width="14" height="22" rx="3" fill="#9aa3b2"/><circle cx="59" cy="30" r="5" fill="var(--meter)"/>
-          <path d="M14 72 H106" stroke="var(--accent)" stroke-width="3" stroke-dasharray="6 6" fill="none"/>
-          <path d="M100 66 L108 72 L100 78" stroke="var(--accent)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <h3>1. Walk the wall</h3>
-        <p>The homeowner walks along the wall on both sides of the meter.</p>
-      </li>
-      <li>
-        <svg viewBox="0 0 120 80" aria-hidden="true">
-          <rect x="40" y="4" width="40" height="72" rx="8" fill="var(--ink)"/><rect x="45" y="12" width="30" height="54" rx="3" fill="var(--meter)"/>
-          <g fill="var(--s2)"><circle cx="18" cy="20" r="3"/><circle cx="12" cy="44" r="3"/><circle cx="24" cy="62" r="3"/><circle cx="100" cy="18" r="3"/><circle cx="106" cy="42" r="3"/><circle cx="98" cy="64" r="3"/></g>
-        </svg>
-        <h3>2. Phone measures and photographs</h3>
-        <p>ARKit tracks where the phone is. The app takes photos of the wall and a close-up of the meter.</p>
-        <div class="tags"><a href="#finding-1">Finding 1: drift</a><a href="#finding-2">Finding 2: depth</a><a href="#finding-3">Finding 3: meter read</a></div>
-      </li>
-      <li>
-        <svg viewBox="0 0 120 80" aria-hidden="true">
-          <rect x="22" y="6" width="76" height="68" rx="10" fill="var(--card)" stroke="var(--ink)" stroke-width="3"/>
-          <g stroke="var(--good)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M32 24 l4 4 l7 -8"/><path d="M32 42 l4 4 l7 -8"/><path d="M32 60 l4 4 l7 -8"/></g>
-          <g stroke="var(--muted)" stroke-width="3" stroke-linecap="round"><path d="M52 24 H86"/><path d="M52 42 H80"/><path d="M52 60 H84"/></g>
-        </svg>
-        <h3>3. Server applies the rules in plain code</h3>
-        <p>Placement rules live in <code>rules.yaml</code> with citations. No model makes the call.</p>
-        <div class="tags"><a href="#exists">PR #11</a></div>
-      </li>
-      <li>
-        <svg viewBox="0 0 120 80" aria-hidden="true">
-          <rect x="4" y="4" width="112" height="72" rx="10" fill="var(--ink)"/><rect x="10" y="10" width="100" height="60" rx="5" fill="var(--wall)"/>
-          <rect x="30" y="22" width="10" height="16" rx="2" fill="#9aa3b2"/><circle cx="35" cy="29" r="3.5" fill="var(--meter)"/>
-          <rect x="58" y="30" width="30" height="34" rx="4" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="5 4"/>
-        </svg>
-        <h3>4. Spot shown in AR</h3>
-        <p>The app shows the battery spot on the real wall, placed relative to the meter.</p>
-        <div class="tags"><a href="#exists">PR #10</a></div>
-      </li>
-    </ol>
-    <p class="grown"><b>Sam's priorities, in order:</b> (1) the scan is easy and works first try, (2) the 3D is accurate, (3) the model appears live in the app.</p>
-  </div>
-</section>
-
-<!-- ================= DATA ================= -->
-<section id="data" class="alt">
-  <div class="wrap">
-    <span class="step-tag">What the data said</span>
-    <h2>Three findings from real data</h2>
-
-    <!-- Finding 1 -->
-    <div class="finding" id="finding-1">
-      <h3>Finding 1. A current iPhone's tracking stays inside the server's allowance</h3>
-      <p class="prose">Position error is the distance between where the phone thinks it is and where it really is, sideways drift included. We measured it after walks of 3 to 30 ft on two public datasets, with the same code for both (<code>make drift</code> and <code>make modern-arkit</code> in PR #12).</p>
-
-      <figure class="card" tabindex="0">
-        <div class="legend" aria-hidden="true">
-          <span><i class="key" style="border-color:var(--s2)"></i>2018 iPhone 6s (ADVIO)</span>
-          <span><i class="key" style="border-color:var(--s1)"></i>2023 iPhone 14 Pro Max (MARViN, trusted walks)</span>
-          <span><i class="key band" style="background:var(--guide)"></i>Server's allowance (shaded: inside it)</span>
-        </div>
-        <svg viewBox="0 0 690 390" role="img" aria-labelledby="c1t c1d">
-          <title id="c1t">p90 position error against feet walked, with the server's allowance</title>
-          <desc id="c1d">p90 position error in inches at 3, 10, 20 and 30 ft walked. 2018 iPhone 6s: 18.6, 55.7, 94.6, 132.6. 2023 iPhone 14 Pro Max, trusted walks: 4.0, 8.6, 13.4, 18.5. Server's allowance: 5.8, 19.2, 38.4, 57.6. The current iPhone stays under the allowance at every distance; the 2018 phone is 2 to 3 times over it. The vertical axis is broken above 60 in; the band from 80 to 140 in uses a smaller scale.</desc>
-          <g class="grid">
-            <line x1="70" y1="270" x2="540" y2="270"/><line x1="70" y1="200" x2="540" y2="200"/><line x1="70" y1="130" x2="540" y2="130"/>
-            <line x1="70" y1="80" x2="540" y2="80"/><line x1="70" y1="40" x2="540" y2="40"/>
-          </g>
-          <line x1="70" y1="340" x2="540" y2="340" stroke="var(--muted)"/>
-          <g class="ax" text-anchor="end">
-            <text x="62" y="344">0</text><text x="62" y="274">20 in</text><text x="62" y="204">40 in</text><text x="62" y="134">60 in</text>
-            <text x="62" y="84">100 in</text><text x="62" y="44">140 in</text>
-          </g>
-          <g class="ax" text-anchor="middle">
-            <text x="117" y="360">3 ft</text><text x="226.7" y="360">10 ft</text><text x="383.3" y="360">20 ft</text><text x="540" y="360">30 ft</text>
-            <text x="305" y="384">Distance walked</text>
-          </g>
-          <text class="ax" transform="translate(14 200) rotate(-90)" text-anchor="middle">Position error, p90</text>
-
-          <polygon points="117,340 117,319.7 540,138.4 540,340" fill="var(--guide)" opacity=".16"/>
-          <line x1="117" y1="319.7" x2="540" y2="138.4" stroke="var(--guide)" stroke-width="3" stroke-linecap="round"/>
-          <text class="lbl-sm" x="400" y="326">inside the allowance</text>
-
-          <polyline points="117,274.9 226.7,145 383.3,85.4 540,47.4" fill="none" stroke="var(--s2)" stroke-width="2.5" stroke-linejoin="round"/>
-          <polyline points="117,326 226.7,309.9 383.3,293.1 540,275.2" fill="none" stroke="var(--s1)" stroke-width="2.5" stroke-linejoin="round"/>
-          <g stroke="var(--card)" stroke-width="2">
-            <circle cx="117" cy="274.9" r="5" fill="var(--s2)"/><circle cx="226.7" cy="145" r="5" fill="var(--s2)"/><circle cx="383.3" cy="85.4" r="5" fill="var(--s2)"/><circle cx="540" cy="47.4" r="5" fill="var(--s2)"/>
-            <circle cx="117" cy="326" r="5" fill="var(--s1)"/><circle cx="226.7" cy="309.9" r="5" fill="var(--s1)"/><circle cx="383.3" cy="293.1" r="5" fill="var(--s1)"/><circle cx="540" cy="275.2" r="5" fill="var(--s1)"/>
-          </g>
-
-          <!-- axis break: the band above 60 in uses 1 px per inch instead of 3.5 -->
-          <rect x="64" y="104" width="482" height="22" fill="var(--card)"/>
-          <path d="M60 111 l20 -6 M60 123 l20 -6" stroke="var(--muted)" stroke-width="2" fill="none"/>
-          <text class="lbl-sm" x="88" y="119">axis break: the band above uses a smaller scale</text>
-
-          <text class="lbl" x="550" y="52">2018 phone 132.6 in</text>
-          <text class="lbl" x="550" y="142">allowance 57.6 in</text>
-          <text class="lbl" x="550" y="280">2023 phone 18.5 in</text>
-          <g>
-            <g><title>3 ft walked: 2018 phone 18.6 in, 2023 phone 4.0 in, allowance 5.8 in</title><rect class="hit" x="93" y="30" width="48" height="315"/></g>
-            <g><title>10 ft walked: 2018 phone 55.7 in, 2023 phone 8.6 in, allowance 19.2 in</title><rect class="hit" x="202.7" y="30" width="48" height="315"/></g>
-            <g><title>20 ft walked: 2018 phone 94.6 in, 2023 phone 13.4 in, allowance 38.4 in</title><rect class="hit" x="359.3" y="30" width="48" height="315"/></g>
-            <g><title>30 ft walked: 2018 phone 132.6 in, 2023 phone 18.5 in, allowance 57.6 in</title><rect class="hit" x="516" y="30" width="48" height="315"/></g>
-          </g>
-        </svg>
-        <figcaption>p90 position error in inches: 9 in 10 cases are better. The allowance is the server's 0.16 ft per ft plus its source default. Counting three doubtful MARViN walks, the current iPhone's p90 is 6.9 / 18.7 / 37.5 / 50.0 in, just over the allowance at 3 ft only. The 2018 phone is 2 to 3 times over it, though that dataset's own reference is noisy and inflates the number, and one of its four walks lost tracking entirely. Hover a column for its values.</figcaption>
-        <details class="data"><summary>Data table</summary>
-          <div class="tablewrap"><table>
-            <thead><tr><th>Walked</th><th class="num">2018 iPhone 6s (in)</th><th class="num">2023 iPhone, trusted walks (in)</th><th class="num">2023 iPhone, incl. 3 doubtful walks (in)</th><th class="num">Server's allowance (in)</th></tr></thead>
-            <tbody>
-              <tr><td>3 ft</td><td class="num">18.6</td><td class="num">4.0</td><td class="num">6.9</td><td class="num">5.8</td></tr>
-              <tr><td>10 ft</td><td class="num">55.7</td><td class="num">8.6</td><td class="num">18.7</td><td class="num">19.2</td></tr>
-              <tr><td>20 ft</td><td class="num">94.6</td><td class="num">13.4</td><td class="num">37.5</td><td class="num">38.4</td></tr>
-              <tr><td>30 ft</td><td class="num">132.6</td><td class="num">18.5</td><td class="num">50.0</td><td class="num">57.6</td></tr>
-            </tbody>
-          </table></div>
-        </details>
-      </figure>
-
-      <div class="two" style="margin-top:18px">
-        <figure class="card" tabindex="0" style="margin:0">
-          <svg class="tape" viewBox="0 0 440 146" role="img" aria-labelledby="c2t c2d">
-            <title id="c2t">A tape measure printed too small</title>
-            <desc id="c2d">Two rulers. The top one is the real distance walked, marked at 3, 10, 20 and 30 feet. The bottom one is what a phone with a scale error counts: every mark lands a little short, and the gap between the rulers grows the farther you walk.</desc>
-            <defs>
-              <pattern id="ft-true" x="20" y="40" width="12" height="22" patternUnits="userSpaceOnUse"><rect width="1.5" height="7" fill="var(--tape-ink)"/></pattern>
-              <pattern id="ft-phone" x="20" y="94" width="11.16" height="22" patternUnits="userSpaceOnUse"><rect width="1.5" height="7" fill="var(--tape-ink)"/></pattern>
-            </defs>
-            <text class="lbl" x="20" y="14">How far you really walked</text>
-            <rect x="20" y="40" width="360" height="22" rx="4" fill="var(--tape)"/>
-            <rect x="20" y="40" width="360" height="22" fill="url(#ft-true)"/>
-            <g stroke="var(--tape-ink)" stroke-width="2"><line x1="56" y1="40" x2="56" y2="54"/><line x1="140" y1="40" x2="140" y2="54"/><line x1="260" y1="40" x2="260" y2="54"/><line x1="380" y1="40" x2="380" y2="62"/></g>
-            <g class="ax" text-anchor="middle"><text x="56" y="34">3 ft</text><text x="140" y="34">10 ft</text><text x="260" y="34">20 ft</text><text x="380" y="34">30 ft</text></g>
-            <g stroke="var(--s2)" stroke-width="2.5" stroke-linecap="round">
-              <line x1="56" y1="64" x2="53.5" y2="92"/><line x1="140" y1="64" x2="131.6" y2="92"/><line x1="260" y1="64" x2="243.2" y2="92"/><line x1="380" y1="64" x2="354.8" y2="92"/>
-            </g>
-            <rect x="20" y="94" width="334.8" height="22" rx="4" fill="var(--tape)"/>
-            <rect x="20" y="94" width="334.8" height="22" fill="url(#ft-phone)"/>
-            <path d="M357 105 H380 M380 96 V114" stroke="var(--s2)" stroke-width="3" fill="none"/>
-            <text class="lbl-sm" x="385" y="110">the gap</text>
-            <text class="lbl" x="20" y="138">What the phone counts</text>
-          </svg>
-        </figure>
-        <div class="note">
-          <h4>Scale error works like a tape printed too small</h4>
-          <p>Every reading comes up short, and the longer the reading, the more inches you lose. On the 2018 phone, ARKit read distances 5% to 17% short against GPS. On the current iPhone, its scale matched the dataset's reference within 2% on 30 of 35 outdoor walks.</p>
-          <p><b>Where the picture breaks.</b> A misprinted tape is off by the same amount every time, while the 2018 phone's shortfall changed from walk to walk. And a tape only measures along the walk; position error also counts sideways drift.</p>
-        </div>
-      </div>
-
-      <p class="grown"><b>Two caveats on the current iPhone.</b> MARViN doesn't say how its reference got its meters, so it may have been scaled to ARKit itself. And that phone has LiDAR, which the phones we target mostly lack.</p>
-      <p class="grown"><b>What it means.</b> The server widens every AR and photo measurement's error bar by 0.16 ft for each foot away from the meter, so a far-away measurement comes back "not sure" instead of passing wrongly. That allowance is right for current phones. A tape test on a current, non-LiDAR iPhone is still the only direct measurement.</p>
-    </div>
-
-    <!-- Finding 2 -->
-    <div class="finding" id="finding-2">
-      <h3>Finding 2. Learned 3D from photos gets flat walls to about 5 in at best, never edges</h3>
-      <p class="prose">We tested on ETH3D: real building scans with laser ground truth, points within 6 m of the camera, 1 to 3 m spans. Each model turns a photo into depth. On its own, each one gets the size of the scene wrong.</p>
-
-      <figure class="card" tabindex="0">
-        <svg viewBox="0 0 680 190" role="img" aria-labelledby="c3t c3d">
-          <title id="c3t">Scale error range of each model on its own</title>
-          <desc id="c3d">MoGe-2 reads distances 4 to 12 percent long. Depth Anything 3 reads them 7 to 11 percent short.</desc>
-          <g class="grid"><line x1="256.7" y1="38" x2="256.7" y2="144"/><line x1="352.5" y1="38" x2="352.5" y2="144"/><line x1="544.2" y1="38" x2="544.2" y2="144"/></g>
-          <line x1="448.3" y1="30" x2="448.3" y2="144" stroke="var(--muted)" stroke-width="2"/>
-          <text class="lbl-sm" x="440" y="24" text-anchor="end">reads short</text>
-          <text class="lbl-sm" x="456" y="24">reads long</text>
-          <g class="lbl"><text x="16" y="69">MoGe-2</text><text x="16" y="117">Depth Anything 3</text></g>
-          <g fill="var(--s1)">
-            <g><title>MoGe-2: 4% to 12% long</title><rect x="486.7" y="57" width="76.6" height="14" rx="7"/></g>
-            <g><title>Depth Anything 3: 7% to 11% short</title><rect x="343.2" y="105" width="38.1" height="14" rx="7"/></g>
-          </g>
-          <g class="lbl">
-            <text x="482" y="69" text-anchor="end" font-size="13">+4%</text><text x="571" y="69">+12%</text>
-            <text x="336" y="117" text-anchor="end">−11%</text><text x="388" y="117">−7%</text>
-          </g>
-          <g class="ax" text-anchor="middle"><text x="256.7" y="164">−20%</text><text x="352.5" y="164">−10%</text><text x="448.3" y="164">0</text><text x="544.2" y="164">+10%</text></g>
-          <text class="ax" x="448.3" y="184" text-anchor="middle">Scale error, each model alone</text>
-        </svg>
-        <figcaption>Each bar spans the range of scale errors we saw for that model. That leaves a median error of 6 to 8 in, and a p90 of about 20 in.</figcaption>
-        <details class="data"><summary>Data table</summary>
-          <div class="tablewrap"><table>
-            <thead><tr><th>Model, alone</th><th>Scale error</th></tr></thead>
-            <tbody><tr><td>MoGe-2</td><td>4% to 12% long</td></tr><tr><td>Depth Anything 3</td><td>7% to 11% short</td></tr></tbody>
-          </table></div>
-        </details>
-      </figure>
-
-      <div class="two" style="margin-top:18px">
-        <div class="note">
-          <h4>One taped distance fixes the typical case, not the bad ones</h4>
-          <p>One photo plus one taped distance:</p>
-          <div class="stats">
-            <div class="stat"><b>1.6 in</b><span>median</span></div>
-            <div class="stat"><b>9.6 in</b><span>p90 on surfaces</span></div>
-            <div class="stat"><b>15.1 in</b><span>p90 on walls</span></div>
-            <div class="stat"><b>26.9 in</b><span>p90 at edges</span></div>
-          </div>
-        </div>
-        <div class="note">
-          <h4>The best recipe: let the phone's poses set the scale</h4>
-          <p>A pose is where the phone stood and which way it pointed for a photo. ARKit records one for every photo. We take MoGe-2's depth and rescale it with the phone's own poses over 8 photos.</p>
-          <p>The chart below changes one thing between rows: how wrong the phone is about scale. Each whisker is a 95% interval, from resampling camera positions and 5 draws of pose noise.</p>
-        </div>
-      </div>
-
-      <figure class="card" tabindex="0">
-        <div class="legend" aria-hidden="true">
-          <span><i class="key box" style="background:var(--s1)"></i>Overall</span>
-          <span><i class="key box" style="background:var(--s2)"></i>Walls</span>
-          <span><i class="key" style="border-color:var(--ink);width:18px"></i>95% interval</span>
-        </div>
-        <svg viewBox="0 0 680 300" role="img" aria-labelledby="c4t c4d">
-          <title id="c4t">p90 error under three pose settings, with 95% intervals</title>
-          <desc id="c4d">MoGe-2 depth rescaled with the phone's poses over 8 photos, points within 6 m, spans 1 to 3 m, p90 error in inches with 95% intervals. Exact poses: overall 4.0 (3.3 to 4.8), walls 2.8 (2.0 to 4.4). A current phone with 2 percent scale error: overall 5.6 (4.6 to 6.7), walls 5.0 (3.8 to 6.8). The 2018 phone's error: overall 14.6 (10.6 to 18.7), walls 10.8 (8.6 to 13.1). Edges are 8 in or worse in every setting.</desc>
-          <defs>
-            <pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="8" fill="var(--guide)"/></pattern>
-          </defs>
-          <rect x="410" y="42" width="240" height="194" fill="url(#hatch)" opacity=".35"/>
-          <text class="lbl-sm" x="416" y="20">Edges land here:</text>
-          <text class="lbl-sm" x="416" y="36">8 in or worse, every setting</text>
-          <g class="grid"><line x1="330" y1="42" x2="330" y2="236"/><line x1="410" y1="42" x2="410" y2="236"/><line x1="490" y1="42" x2="490" y2="236"/><line x1="570" y1="42" x2="570" y2="236"/><line x1="650" y1="42" x2="650" y2="236"/></g>
-          <line x1="250" y1="42" x2="250" y2="236" stroke="var(--muted)"/>
-          <g class="lbl"><text x="16" y="68">Exact poses</text><text x="16" y="138">A current phone</text><text x="16" y="208">The 2018 phone's error</text></g>
-          <g class="lbl-sm"><text x="16" y="86">no scale error</text><text x="16" y="156">2% scale error</text><text x="16" y="226">ADVIO iPhone 6s</text></g>
-          <g>
-            <g><title>Exact poses, overall: 4.0 in (95% interval 3.3 to 4.8)</title><rect x="250" y="55" width="80" height="14" rx="4" fill="var(--s1)"/></g>
-            <g><title>Exact poses, walls: 2.8 in (95% interval 2.0 to 4.4)</title><rect x="250" y="71" width="56" height="14" rx="4" fill="var(--s2)"/></g>
-            <g><title>A current phone, overall: 5.6 in (95% interval 4.6 to 6.7)</title><rect x="250" y="125" width="112" height="14" rx="4" fill="var(--s1)"/></g>
-            <g><title>A current phone, walls: 5.0 in (95% interval 3.8 to 6.8)</title><rect x="250" y="141" width="100" height="14" rx="4" fill="var(--s2)"/></g>
-            <g><title>The 2018 phone's error, overall: 14.6 in (95% interval 10.6 to 18.7)</title><rect x="250" y="195" width="292" height="14" rx="4" fill="var(--s1)"/></g>
-            <g><title>The 2018 phone's error, walls: 10.8 in (95% interval 8.6 to 13.1)</title><rect x="250" y="211" width="216" height="14" rx="4" fill="var(--s2)"/></g>
-          </g>
-          <g stroke="var(--ink)" stroke-width="2" fill="none" aria-hidden="true">
-            <path d="M316 62 H346 M316 57 V67 M346 57 V67"/>
-            <path d="M290 78 H338 M290 73 V83 M338 73 V83"/>
-            <path d="M342 132 H384 M342 127 V137 M384 127 V137"/>
-            <path d="M326 148 H386 M326 143 V153 M386 143 V153"/>
-            <path d="M462 202 H624 M462 197 V207 M624 197 V207"/>
-            <path d="M422 218 H512 M422 213 V223 M512 213 V223"/>
-          </g>
-          <g class="lbl" font-size="13">
-            <text x="352" y="67">4.0 in</text><text x="344" y="83">2.8 in</text>
-            <text x="390" y="137">5.6 in</text><text x="392" y="153">5.0 in</text>
-            <text x="630" y="207">14.6 in</text><text x="518" y="223">10.8 in</text>
-          </g>
-          <g class="ax" text-anchor="middle"><text x="250" y="256">0</text><text x="330" y="256">4 in</text><text x="410" y="256">8 in</text><text x="490" y="256">12 in</text><text x="570" y="256">16 in</text><text x="650" y="256">20 in</text></g>
-          <text class="ax" x="450" y="282" text-anchor="middle">p90 error, spans 1-3 m, points within 6 m (lower is better)</text>
-        </svg>
-        <figcaption>Only the phone's scale error changes between rows, and the error follows it. With a current phone's 2% error, walls land at 5.0 in p90 (95% interval 3.8 to 6.8). All three rows assume perfect feature matching between photos; without it, walls reach 6.3 in even with exact poses. The earlier "walls at 4 in" figure came from a single noise draw, the lucky end of the spread.</figcaption>
-        <details class="data"><summary>Data table</summary>
-          <div class="tablewrap"><table>
-            <thead><tr><th>Poses</th><th class="num">Overall, p90 (in) [95% interval]</th><th class="num">Walls, p90 (in) [95% interval]</th></tr></thead>
-            <tbody>
-              <tr><td>Exact poses</td><td class="num">4.0 [3.3, 4.8]</td><td class="num">2.8 [2.0, 4.4]</td></tr>
-              <tr><td>A current phone (2% scale error)</td><td class="num">5.6 [4.6, 6.7]</td><td class="num">5.0 [3.8, 6.8]</td></tr>
-              <tr><td>The 2018 phone's error</td><td class="num">14.6 [10.6, 18.7]</td><td class="num">10.8 [8.6, 13.1]</td></tr>
-            </tbody>
-          </table></div>
-        </details>
-      </figure>
-
-      <div class="verdict">
-        <p><b>Verdict.</b> At a realistic phone error, learned depth gets flat walls to about 5 in p90, and only with perfect feature matching between photos. Edges (window and door frames, equipment) stay at 8 in or worse in every setting.</p>
-        <p><b>For the app.</b> Measurements that decide a check should come from AR taps, which carry the phone's own tracking error from Finding 1, not from depth maps. Learned depth is useful for coverage and the 3D picture, not for clearances near a threshold.</p>
-      </div>
-    </div>
-
-    <!-- Finding 3 -->
-    <div class="finding" id="finding-3">
-      <h3>Finding 3. Meter close-up: reading works, finding the number doesn't yet</h3>
-      <p class="prose">The question: how often does Apple's on-device text recognition read the meter number and class from real, openly licensed meter photos (Wikimedia Commons)? And which cheap photo checks (blur, glare, size) predict a failed read?</p>
-      <div data-slot="s5-results">
-        <p>We read 80 such photos in the accurate mode. The reference labels come from two AI readers, not a person yet.</p>
-        <ul>
-          <li><b>Reading works.</b> The full meter number came out right on 71 of 73 photos (97%). The US class label (CL200 and similar) read on 20 of 22. The fast mode reads only 75% of numbers, so the app uses the accurate mode.</li>
-          <li><b>Finding the number doesn't, yet.</b> A nameplate carries serials, model codes and seal numbers too. "Take the tallest line of digits" picked the meter number on only 21 of 75 photos, and no text-only rule did better than 29. Barcodes help: one was decoded on 25 of the 80 photos, and it held the meter number on 20 of 24. No rule reached 95% precision on held-out photos, and a tap-to-confirm list of three contained the number on 85% of them, short of the 95% bar. Half the misses are plates with several real identifiers, so Base has to say which one it needs. Recommendation: always show the candidates and let the homeowner tap the right one, with a barcode match listed first.</li>
-          <li><b>When to ask for a retake.</b> Two checks work from what the phone can see: blur (a sharpness score) and a number that is too small (its line 34 px tall or less, so "move closer"). Glare, framing and hand shake have no reliable signal yet, so those prompts can only be general advice.</li>
-          <li><b>Caveat.</b> These are deliberate, well-lit close-ups. A homeowner's photos will be worse, so 97% is an upper bound, and the thresholds need checking on live camera frames on field day.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ================= EXISTS ================= -->
-<section id="exists">
-  <div class="wrap">
-    <span class="step-tag">What exists now</span>
-    <h2>Every PR is still open; nothing is merged</h2>
-    <p class="prose">The cards run in the recommended merge order (<a href="#d5">decision 5</a>). The app, the web page and the docs PR's rules sentence all depend on #11, so it goes first.</p>
-
-    <div class="lanes">
-      <div class="lane">
-        <h3>Merge first</h3>
-        <ol class="merge">
-          <li class="pr run dep"><span class="num">#11</span><span class="what">Server: placement solver in plain code, <code>POST /v1/placements</code>, schemas</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Ready for review. Tests pass; independent lane 40 of 40. The six defects a 05:40 review found are fixed test-first and redeployed</span>
-            <div class="dep-note">#14, #15 and #10 depend on it</div></li>
-          <li class="pr ok"><span class="num">#14</span><span class="what">AGENTS.md trimmed; stale docs fixed</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Ready</span></li>
-          <li class="pr ok"><span class="num">#15</span><span class="what">Web review page</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Checks green; Lighthouse mobile 94/100/96</span></li>
-          <li class="pr hold"><span class="num">#10</span><span class="what">iOS app: scan, upload, result in 3D and AR</span>
-            <span class="state"><i class="ico" aria-hidden="true">…</i><span data-slot="ios-state">Draft, CI green. The whole flow runs in the Simulator on the real replay; UI tests audit every screen. A 06:45 review found the upload would exceed the hosted server's 4.5 MB limit and a coverage bug when the ground height changes; fixes are queued for the app agent.</span></span></li>
-          <li class="pr ok"><span class="num">#13</span><span class="what">Verification: end-to-end replay to placement</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Harness rebuilt; catches the old defects; found 4 new server issues (being fixed)</span></li>
-          <li class="pr ok"><span class="num">#12</span><span class="what">Evals: findings 1 and 2, one command each</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>CI green</span></li>
-        </ol>
-      </div>
-      <div class="lane">
-        <h3>Then</h3>
-        <ol class="merge">
-          <li class="pr ok"><span class="num">#7</span><span class="what">Measure Lab: no-LiDAR measurement rig</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Ready</span></li>
-          <li class="pr ok"><span class="num">#4</span><span class="what">Scoring harness vs a tape survey</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Ready</span></li>
-          <li class="pr sam"><span class="num">#8</span><span class="what">TestFlight upload workflow</span>
-            <span class="state"><i class="ico" aria-hidden="true">!</i>Ready; needs Sam's one-time App Store Connect key setup</span></li>
-          <li class="pr ok"><span class="num">#6</span><span class="what">Research notes</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Ready; will be trimmed</span></li>
-          <li class="pr run"><span class="num">#16</span><span class="what">Meter close-up eval</span>
-            <span class="state"><i class="ico" aria-hidden="true">…</i>97% read; finding the number: barcodes help, 85% top-3</span></li>
-        </ol>
-      </div>
-      <div class="lane">
-        <h3>Not in the merge order</h3>
-        <ol class="merge">
-          <li class="pr hold"><span class="num">#9</span><span class="what">Hunter's capture-contract probe (draft)</span>
-            <span class="state"><i class="ico" aria-hidden="true">✓</i>Reviewed, no defects</span></li>
-        </ol>
-      </div>
-    </div>
-    <div class="status-key">
-      <span class="ok"><i class="ico" aria-hidden="true">✓</i>Ready or passing</span>
-      <span class="run"><i class="ico" aria-hidden="true">…</i>Running or being fixed</span>
-      <span class="sam"><i class="ico" aria-hidden="true">!</i>Needs Sam</span>
-      <span class="hold"><i class="ico" aria-hidden="true">?</i>Pending or draft</span>
-    </div>
-
-    <p class="prose" style="margin-top:22px"><b>Server deploy.</b> Live at <a href="https://house-scanning-server.vercel.app/health">house-scanning-server.vercel.app</a> with public rules only; <code>/health</code> shows the rule source. It answers a sample scene in about 1 s, and the web review page's preview talks to it live. Vercel caps uploads at 4.5 MB, so the app sends <code>scene.json</code> alone; photos stay on the phone for now.</p>
-
-    <details class="data">
-      <summary>Every PR in full</summary>
-      <div class="tablewrap"><table>
-        <thead><tr><th>PR</th><th>What</th><th>State</th></tr></thead>
+    <svg viewBox="0 0 520 330" role="img" aria-labelledby="c1t c1d">
+      <title id="c1t">p90 position error in inches against feet walked, two phones and the server's allowance</title>
+      <desc id="c1d">At 3, 10, 20 and 30 feet walked: 2018 iPhone 6s 18.6, 55.7, 94.6, 132.6 inches. 2023 iPhone 14 Pro Max 4.0, 8.6, 13.4, 18.5 inches. Server's allowance 5.8, 19.2, 38.4, 57.6 inches. The 2023 phone stays under the allowance at every distance. The 2018 phone is over it at every distance.</desc>
+      <!-- x = 90 + (ft-3)/27*380 ; y = 270 - in*1.643 -->
+      <g class="grid"><line x1="90" y1="204.3" x2="470" y2="204.3"/><line x1="90" y1="138.6" x2="470" y2="138.6"/><line x1="90" y1="72.9" x2="470" y2="72.9"/></g>
+      <line x1="90" y1="270" x2="470" y2="270" class="axis"/>
+      <g class="t s m" text-anchor="end"><text x="80" y="275">0</text><text x="80" y="209">40 in</text><text x="80" y="143">80 in</text><text x="80" y="77">120 in</text></g>
+      <g class="t s m" text-anchor="middle"><text x="90" y="294">3 ft</text><text x="188.5" y="294">10 ft</text><text x="329.3" y="294">20 ft</text><text x="470" y="294">30 ft</text><text x="280" y="320">distance walked</text></g>
+      <polygon points="90,270 90,260.5 188.5,238.5 329.3,206.9 470,175.4 470,270" fill="var(--muted)" opacity=".12"/>
+      <polyline points="90,260.5 188.5,238.5 329.3,206.9 470,175.4" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <polyline points="90,239.4 188.5,178.5 329.3,114.6 470,52.2" fill="none" stroke="var(--server)" stroke-width="2.5" stroke-linejoin="round"/>
+      <polyline points="90,263.4 188.5,255.9 329.3,248 470,239.6" fill="none" stroke="var(--phone)" stroke-width="2.5" stroke-linejoin="round"/>
+      <g stroke="var(--card)" stroke-width="2">
+        <circle cx="90" cy="239.4" r="5" fill="var(--server)"/><circle cx="188.5" cy="178.5" r="5" fill="var(--server)"/><circle cx="329.3" cy="114.6" r="5" fill="var(--server)"/><circle cx="470" cy="52.2" r="5" fill="var(--server)"/>
+        <circle cx="90" cy="263.4" r="5" fill="var(--phone)"/><circle cx="188.5" cy="255.9" r="5" fill="var(--phone)"/><circle cx="329.3" cy="248" r="5" fill="var(--phone)"/><circle cx="470" cy="239.6" r="5" fill="var(--phone)"/>
+      </g>
+      <text class="lab s b orange" x="464" y="44" text-anchor="end">2018 phone, 132.6 in</text>
+      <text class="lab s b mu" x="464" y="168" text-anchor="end">allowance, 57.6 in</text>
+      <text class="lab s b blue" x="464" y="232" text-anchor="end">2023 phone, 18.5 in</text>
+      <g>
+        <g><title>3 ft walked: 2018 phone 18.6 in, 2023 phone 4.0 in, allowance 5.8 in</title><rect class="hit" x="66" y="30" width="60" height="250"/></g>
+        <g><title>10 ft walked: 2018 phone 55.7 in, 2023 phone 8.6 in, allowance 19.2 in</title><rect class="hit" x="158" y="30" width="60" height="250"/></g>
+        <g><title>20 ft walked: 2018 phone 94.6 in, 2023 phone 13.4 in, allowance 38.4 in</title><rect class="hit" x="299" y="30" width="60" height="250"/></g>
+        <g><title>30 ft walked: 2018 phone 132.6 in, 2023 phone 18.5 in, allowance 57.6 in</title><rect class="hit" x="440" y="30" width="60" height="250"/></g>
+      </g>
+    </svg>
+    <figcaption>Position error after walking, p90 (9 in 10 cases are better). A current iPhone's own tracking stays inside the server's allowance at every distance; the 2018 phone is far over it. The allowance line is the 0.16 ft per foot part of the server's error bar. <b>Caveats:</b> the MARViN reference may itself be scaled to the phone's tracking, and that phone has LiDAR, which most homeowners' phones lack.</figcaption>
+    <details><summary>Data table</summary>
+      <div class="scroll-x"><table>
+        <thead><tr><th>Walked</th><th class="n">2018 iPhone 6s (ADVIO), in</th><th class="n">2023 iPhone 14 Pro Max (MARViN), in</th><th class="n">Server's allowance, in</th></tr></thead>
         <tbody>
-          <tr><td>#14</td><td>AGENTS.md trimmed; stale Swift/Expo and LiDAR facts fixed in docs</td><td>Ready</td></tr>
-          <tr><td>#11</td><td>Server: placement solver in plain code, rules.yaml with citations or labeled demo placeholders, private override, FastAPI <code>POST /v1/placements</code>, site-plan SVG, scene and result schemas</td><td>204 tests incl. 14 public golden cases and property tests (equality is "not sure", left/right mirror); independent lane: 40 of 40 cases pass. A fresh review at 05:40 found one path where unseen ground could still pass a check, two ways a small upload could stall the server, and a cable-length edge case reported as fail instead of not sure. All six are fixed, each with a test that failed first, and the hosted API is redeployed (05:31).</td></tr>
-          <tr><td>#15</td><td>Web review page: decision stamp, spot, cable route, site plan, checks needing a look, missing views</td><td>Checks green; Lighthouse mobile 94/100/96</td></tr>
-          <tr><td>#10</td><td>iOS app: onboarding, meter anchor and close-up, guided wall walk with live coverage ("fog of war"), feature marking, one gap loop, scene export and upload, result in 3D and AR, replay mode for the Simulator, demo mode</td><td>Draft, CI green; runs end to end in the Simulator on the real replay. Review fixes queued (upload size, coverage rebuild, error exits)</td></tr>
-          <tr><td>#13</td><td>Verification: end-to-end replay to placement, Simulator screenshots per screen, accessibility audit, product description and bug triage, scoreboard</td><td>Rebuilt after a review showed it had missed four server defects; it now catches all four on the old server. At the current server it found four more (a gap request that never settles, ground past a marked wall end, a mislabelled error, slow hosted answers); the server agent is fixing them. The app reaches the server's answer on the real replay.</td></tr>
-          <tr><td>#12</td><td>Evals: findings 1 and 2, each from one command</td><td>CI green</td></tr>
-          <tr><td>#16</td><td>Meter close-up eval</td><td>97% of meter numbers read; blur and too-small checks are ready; glare has no signal yet. Which line is the number: barcode holds it on 20 of 24; tap-to-confirm top 3 finds it on 85% (draft)</td></tr>
-          <tr><td>#17</td><td>Panel label eval</td><td>Stopped at its gate: only 7 distinct openly licensed US panel photos exist, too few to measure. Needs our own photos.</td></tr>
-          <tr><td>#4</td><td>Scoring harness: compare capture pipelines against a tape survey</td><td>Ready</td></tr>
-          <tr><td>#6</td><td>Research notes</td><td>Ready; will be trimmed</td></tr>
-          <tr><td>#7</td><td>Measure Lab: no-LiDAR measurement rig and session format</td><td>Ready</td></tr>
-          <tr><td>#8</td><td>TestFlight upload workflow (manual, Sam approves, main only)</td><td>Ready; needs Sam's one-time App Store Connect key setup</td></tr>
-          <tr><td>#9</td><td>Hunter's capture-contract probe (draft)</td><td>Reviewed, no defects</td></tr>
+          <tr><td>3 ft</td><td class="n">18.6</td><td class="n">4.0</td><td class="n">5.8</td></tr>
+          <tr><td>10 ft</td><td class="n">55.7</td><td class="n">8.6</td><td class="n">19.2</td></tr>
+          <tr><td>20 ft</td><td class="n">94.6</td><td class="n">13.4</td><td class="n">38.4</td></tr>
+          <tr><td>30 ft</td><td class="n">132.6</td><td class="n">18.5</td><td class="n">57.6</td></tr>
         </tbody>
       </table></div>
     </details>
-  </div>
-</section>
+  </figure>
+  <p class="changed"><b>What it changed:</b> the server's error allowance comes from this. The field test measures our own phone.</p>
+</div>
 
-<!-- ================= TRY IT ================= -->
-<section id="try" class="alt">
-  <div class="wrap">
-    <span class="step-tag">How to try it</span>
-    <h2>Four ways in, easiest first</h2>
-    <div class="try">
-      <div class="card">
-        <h3>Web review page</h3>
-        <p>Nothing to install. It loads synthetic samples.</p>
-        <p><a href="https://house-scanning-web-git-t3-web-review-sam-gus-projects-7a4b6082.vercel.app">Open the PR #15 preview</a></p>
-      </div>
-      <div class="card">
-        <h3>Server</h3>
-        <p>The live one: <a href="https://house-scanning-server.vercel.app/health">https://house-scanning-server.vercel.app/health</a></p>
-        <p class="small muted">To run it locally, check out PR #11 (the server isn't on main yet) and use the command in its <code>server/README.md</code>:</p>
-<pre><code>gh pr checkout 11
-cd server &amp;&amp; uv run uvicorn api:app --port 8000
-curl http://localhost:8000/health</code></pre>
-      </div>
-      <div class="card">
-        <h3>iOS app in the Simulator</h3>
-        <p>Check out PR #10 and build <code>ios/HouseScan.xcodeproj</code>. Set the launch arguments in the scheme; for <code>&lt;url&gt;</code>, the live server works:</p>
-<pre><code>-replay &lt;folder&gt; -autopilot -serverURL &lt;url&gt;</code></pre>
-        <p class="small muted" style="margin-top:10px"><code>-uiDemo</code> runs the scripted screens. With no server given, the app falls back to <code>-sampleResult</code>, and the result screen labels it a sample.</p>
-      </div>
-      <div class="card">
-        <h3>Replay file</h3>
-        <p>Not in git, because of the dataset license. Unzip it; <code>-replay</code> takes the folder inside.</p>
-<pre><code>~/house-scanning-data/replays/advio-20-0040-0075.zip</code></pre>
-      </div>
+<div class="finding" id="finding-2">
+  <h3>Finding 2. Can photos alone give 3D measurements?</h3>
+  <figure>
+    <svg viewBox="0 0 480 170" role="img" aria-labelledby="c2t c2d">
+      <title id="c2t">Error of learned depth from photos: flat walls and edges</title>
+      <desc id="c2d">A horizontal scale from 0 to 10 inches. Flat walls: 5.0 inches at p90, with a 95 percent interval from 3.8 to 6.8. Window and door edges: 8 inches or worse in every setting, drawn as a bar starting at 8 and running off the right edge.</desc>
+      <!-- x = 150 + in*30 -->
+      <g class="grid"><line x1="150" y1="30" x2="150" y2="122"/><line x1="210" y1="30" x2="210" y2="122"/><line x1="270" y1="30" x2="270" y2="122"/><line x1="330" y1="30" x2="330" y2="122"/><line x1="390" y1="30" x2="390" y2="122"/><line x1="450" y1="30" x2="450" y2="122"/></g>
+      <line x1="150" y1="122" x2="460" y2="122" class="axis"/>
+      <g class="t s m" text-anchor="middle"><text x="150" y="144">0</text><text x="210" y="144">2</text><text x="270" y="144">4</text><text x="330" y="144">6</text><text x="390" y="144">8</text><text x="450" y="144">10 in</text><text x="305" y="166">error, p90</text></g>
+      <text class="t s" x="140" y="58" text-anchor="end">flat wall</text>
+      <line x1="264" y1="54" x2="354" y2="54" stroke="var(--phone)" stroke-width="3" stroke-linecap="round"/>
+      <line x1="264" y1="47" x2="264" y2="61" stroke="var(--phone)" stroke-width="3"/><line x1="354" y1="47" x2="354" y2="61" stroke="var(--phone)" stroke-width="3"/>
+      <circle cx="300" cy="54" r="6" fill="var(--card)" stroke="var(--phone)" stroke-width="3"/>
+      <text class="lab s" x="300" y="38" text-anchor="middle">5.0 in (3.8 to 6.8)</text>
+      <text class="t s" x="140" y="100" text-anchor="end">edges</text>
+      <rect x="390" y="90" width="80" height="16" rx="4" fill="var(--server)"/>
+      <path d="M470 84 L 480 98 L 470 112" fill="var(--server)"/>
+      <text class="lab s" x="386" y="86" text-anchor="end">8 in or worse, every setting</text>
+    </svg>
+    <figcaption>Learned depth models (MoGe-2, Depth Anything 3), rescaled with the phone's poses. Flat walls come out at about 5 in at best at a realistic phone error. Window and door edges, which are what clearances are measured from, come out at 8 in or worse in every setting.</figcaption>
+  </figure>
+  <p class="changed"><b>What it changed:</b> no photo-to-3D measurement pipeline. Every point a check depends on is an AR tap; learned depth only draws the 3D picture. This saved building the wrong thing.</p>
+</div>
+
+<div class="finding" id="finding-3">
+  <h3>Finding 3. Does the app's coverage map claim wall it never saw?</h3>
+  <figure>
+    <div class="legend">
+      <span><i class="sw box" style="background:var(--phone)"></i>wall a photo saw</span>
+      <span><i class="sw box" style="background:var(--fail)"></i>claimed, never seen</span>
+      <span><i class="sw hatch"></i>good wall thrown away</span>
     </div>
-  </div>
-</section>
+    <svg viewBox="0 0 480 210" role="img" aria-labelledby="c3t c3d">
+      <title id="c3t">A 19.3 foot wall under three versions of the coverage map</title>
+      <desc id="c3d">Three bars, each 19.3 feet long. First, as claimed: 1.1 feet marked as seen that no photo saw, hidden behind scaffold footings. Second, after requiring views from different angles: the false 1.1 feet is gone but 6 to 8.5 feet of good wall is also thrown away. Third, after a depth test on LiDAR phones: the false part is removed cleanly and the rest is kept.</desc>
+      <!-- 19.3 ft = 360 px from x=60; 1 ft = 18.65 px -->
+      <text class="t s" x="60" y="32">as claimed</text>
+      <rect x="60" y="40" width="360" height="18" rx="4" fill="var(--phone)"/>
+      <rect x="238" y="40" width="20.5" height="18" fill="var(--fail)"/>
+      <text class="lab s" x="248" y="76" text-anchor="middle">1.1 ft never seen</text>
+      <text class="t s" x="60" y="104">views from different angles</text>
+      <rect x="60" y="112" width="360" height="18" rx="4" fill="var(--phone)"/>
+      <rect x="180" y="112" width="158.5" height="18" fill="var(--card)"/>
+      <rect x="180" y="112" width="158.5" height="18" fill="url(#lostpat)"/>
+      <text class="lab s" x="259" y="148" text-anchor="middle">6 to 8.5 ft of good wall lost too</text>
+      <text class="t s" x="60" y="176">depth test (LiDAR phones)</text>
+      <rect x="60" y="184" width="360" height="18" rx="4" fill="var(--phone)"/>
+      <rect x="238" y="184" width="20.5" height="18" fill="var(--card)"/>
+      <text class="t s m" x="428" y="198">clean</text>
+    </svg>
+    <figcaption>Run on real photos of a laser-scanned building. The map claimed 1.1 ft of a 19.3 ft wall that no photo saw, hidden behind scaffold footings. Requiring views from different angles removed it only by also discarding 6 to 8.5 ft of good wall. A depth test, available on LiDAR phones, removed it cleanly. The hatched span is drawn at 8.5 ft, the larger end of the range.</figcaption>
+  </figure>
+  <p class="changed"><b>What it changed:</b> decision 7 (who checks what is hidden). A wrong claim in the app's code, "the server rechecks from the images", was corrected: the server never sees images.</p>
+</div>
 
-<!-- ================= DECISIONS ================= -->
-<section id="decisions">
-  <div class="wrap">
-    <span class="step-tag">Decide this morning</span>
-    <h2>Eight decisions, with the manager's recommendation</h2>
-    <div class="decisions">
-      <article class="decision first" id="d1">
-        <h3><span class="n">1</span>Run the field test first today?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>Yes, first thing this morning, about an hour. Take a current iPhone to a real meter wall and run Measure Lab's one-hour tape protocol (PR #7) plus the field checklist in <code>experiments/evals/README.md</code> section 5 (PR #12): two long taped spans, one taped scale reference, a rig tap at every surveyed point. Follow <code>experiments/evals/field/FIELD_SHEET.md</code> (PR #12): it fixes the tap order so Measure Lab's M1-M10 match the pre-named templates, and you only type tape readings. <code>make field SESSION=… TRUTH=… MAP=…</code> then gives one scored table with the phone's scale error; a dry run on synthetic data recovered a planted 1.5% error exactly.</dd>
-          <dt>Why</dt><dd>This one number, the phone's scale error, decides how accurate the whole product can be.</dd>
-          <dt>If not</dt><dd>Every accuracy claim keeps resting on public data from a LiDAR iPhone, checked against a reference that may have been scaled to ARKit itself. A tape test on a current, non-LiDAR iPhone is the only direct measurement.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d2">
-        <h3><span class="n">2</span>Measure with AR taps, not depth maps?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>Every point a check depends on (window, door and wall edges, the meter, obstacles) is an AR tap the homeowner makes or confirms. Learned depth fills the 3D picture and coverage only.</dd>
-          <dt>Why</dt><dd>Depth edges were 8 in or worse in every test, and even flat walls only reached about 5 in p90 at a realistic phone error.</dd>
-          <dt>If not</dt><dd>A clearance check near its threshold passes or fails on depth-map error, which at edges is 8 in or worse.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d3">
-        <h3><span class="n">3</span>Walk both ends or stop early?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>Walk outward from the meter on both sides, and stop once the nearest spot that fits has all its evidence and everything closer has been seen. Reaching both wall ends is not required.</dd>
-          <dt>Why</dt><dd>The solver ranks spots by shortest cable run, then by distance from the meter, so once everything closer is seen on both sides, walking farther cannot find a better spot. A shorter walk also drifts less (Finding 1).</dd>
-          <dt>If not</dt><dd>Walking to both ends costs the homeowner time and adds far-away measurements the answer rarely needs. Stopping at the first spot that fits on one side can miss a closer spot on the other. Either way, unseen ground is never clear: the 05:40 review found one path in #11 where it could still pass; that is fixed and tested now.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d4">
-        <h3><span class="n">4</span>Load Base's real rules</h3>
-        <dl>
-          <dt>Recommend</dt><dd>Put Base's actual values into <code>private/rules.yaml</code> (git-ignored; the server merges it over the public file), and confirm with Base which rules the demo follows and which identifier on the meter plate they need. Plates often carry several.</dd>
-          <dt>Why</dt><dd>With the public placeholder rules, automatic approval is off, so every real scan ends in "An installer will take a look", even when all checks pass.</dd>
-          <dt>If not</dt><dd>The demo can never show a real "fits here" answer.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d5">
-        <h3><span class="n">5</span>Merge order</h3>
-        <dl>
-          <dt>Recommend</dt><dd>#11, #14, #15, #10, #13, #12, then #7, #4, #8, #6, #16.</dd>
-          <dt>Why</dt><dd>Server first, because the app, the web page and the docs PR's rules sentence depend on it.</dd>
-          <dt>If not</dt><dd>Whatever lands before #11 describes or calls a server that main doesn't have yet.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d6">
-        <h3><span class="n">6</span>Who owns each lane A-D today?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>No recommendation. The team names an owner per lane.</dd>
-          <dt>Why</dt><dd>Agents need to know whose OK they need before touching a lane's files.</dd>
-          <dt>If not</dt><dd>Agent work on lane files waits for someone to answer.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d7">
-        <h3><span class="n">7</span>Who checks what's hidden behind things?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>The app owns it. On every phone, show the homeowner the photo of the chosen spot before the result and ask whether anything blocks the wall or ground there. On LiDAR phones, also run a depth test: against true depth it removed the hidden stretch cleanly (0.1 ft left, no good wall lost, when 0.4 m of wall relief is allowed). Requiring views from different angles doesn't work: it removed the hidden stretch only by also throwing away 6 to 8.5 ft of good wall.</dd>
-          <dt>Why</dt><dd>Run on real photos of a building with a laser scan, the app's coverage map claimed 1.1 ft of a 19.3 ft wall that no photo saw, hidden behind scaffold footings. The server never sees the photos, so it can't catch this, yet it treats everything the app reports as seen.</dd>
-          <dt>If not</dt><dd>A gas meter or vent hidden behind a bush could sit inside a clearance the server marks as clear.</dd>
-        </dl>
-      </article>
-      <article class="decision" id="d8">
-        <h3><span class="n">8</span>What must the scan see, and what can we just ask?</h3>
-        <dl>
-          <dt>Recommend</dt><dd>The app measures how far out it really saw the ground and asks only as far as the nearest check needs. The path the homeowner walked counts as proof the space in front of the wall is clear, and one "tilt up" view at the chosen spot covers headroom. A corner the homeowner marks ends the wall instead of becoming a request. Rare, far-away hazards (a pool, a driveway) become one yes/no question, labelled as the homeowner's answer.</dd>
-          <dt>Why</dt><dd>The verification agent found that today no scan can finish on the first try, however well it's walked: the app always reports ground 4 ft out while the checks need about 6 to 13 ft, it never reports the space in front of or above the wall, and each corner becomes a "walk past this" request. On the real replay that left 8 checks unsure and 6 follow-up requests.</dd>
-          <dt>If not</dt><dd>Every homeowner gets asked for photos they can't take, the opposite of Sam's first priority.</dd>
-        </dl>
-      </article>
-    </div>
-  </div>
-</section>
+<div class="finding" id="finding-4">
+  <h3>Finding 4. Can the phone read the meter?</h3>
+  <figure>
+    <svg viewBox="0 0 480 230" role="img" aria-labelledby="c4t c4d">
+      <title id="c4t">Meter reading success on real meter photos</title>
+      <desc id="c4d">Four horizontal bars on a 0 to 100 percent scale. Read the full number: 71 of 73, 97 percent. Picked the right line: 21 of 75. Barcode held the number: 20 of 24 photos that had one. A tap list of three candidates contained it: 85 percent of held-out photos.</desc>
+      <!-- x = 190 + pct*2.6 -->
+      <g class="grid"><line x1="190" y1="20" x2="190" y2="188"/><line x1="255" y1="20" x2="255" y2="188"/><line x1="320" y1="20" x2="320" y2="188"/><line x1="385" y1="20" x2="385" y2="188"/><line x1="450" y1="20" x2="450" y2="188"/></g>
+      <line x1="190" y1="188" x2="450" y2="188" class="axis"/>
+      <g class="t s m" text-anchor="middle"><text x="190" y="210">0</text><text x="255" y="210">25</text><text x="320" y="210">50</text><text x="385" y="210">75</text><text x="450" y="210">100%</text></g>
+      <g class="t s" text-anchor="end">
+        <text x="180" y="44">full number read</text><text x="180" y="86">right line picked</text><text x="180" y="128">barcode had it</text><text x="180" y="170">in the tap list of 3</text>
+      </g>
+      <g fill="var(--phone)">
+        <rect x="190" y="34" width="252.9" height="14" rx="4"/><rect x="190" y="76" width="72.8" height="14" rx="4"/><rect x="190" y="118" width="216.7" height="14" rx="4"/><rect x="190" y="160" width="221" height="14" rx="4"/>
+      </g>
+      <g class="lab s">
+        <text x="192" y="29">71 of 73, 97%</text>
+        <text x="192" y="71">21 of 75</text>
+        <text x="192" y="113">20 of 24 photos that had one</text>
+        <text x="192" y="155">85% of held-out photos</text>
+      </g>
+    </svg>
+    <figcaption>Apple's on-device text recognition read the full meter number on 71 of 73 real meter photos, but could not tell which line on the plate was the number (right on 21 of 75). A barcode held the number on 20 of 24 photos that had one. A tap-to-confirm list of three candidates contained it on 85% of held-out photos.</figcaption>
+  </figure>
+  <p class="changed"><b>What it changed:</b> the app shows three candidates to tap, barcode match first, plus two photo checks that trigger a retake (blurry; number too small, "move closer").</p>
+</div>
 
-<!-- ================= ASKS FOR SAM ================= -->
-<section id="asks" class="alt">
-  <div class="wrap">
-    <span class="step-tag">Asks</span>
-    <h2>Things only a person can do</h2>
-    <div class="asks">
-      <div class="card">
-        <h3>Review bots</h3>
-        <p>Only CodeRabbit reviews this repo, and the free open-source plan limits it to about one review per hour. PR #14's review was skipped for the limit. Greptile, Macroscope, Aikido and Codex review are not installed. Codemetrics is installed but not connected to the team.</p>
-        <p style="margin:0"><b>Ask:</b> install or connect the ones you want. Until then, agents queue CodeRabbit on the most important PRs first (#11, #10).</p>
-      </div>
-      <div class="card">
-        <h3>TestFlight</h3>
-        <p style="margin:0">Sam: one-time App Store Connect key setup for PR #8. The steps are in that PR.</p>
-      </div>
-      <div class="card">
-        <h3>Web previews</h3>
-        <p>The free Vercel plan allows 100 deploys a day, and every push to any branch was building a web preview, so at 06:10 four PRs showed a red "rate limited" check. Automatic deploys for the web project are now off; the web page's previews are deployed by hand, and the red checks clear on each PR's next push.</p>
-        <p style="margin:0"><b>Ask (Sam):</b> reconnect it after the hackathon (<code>vercel git connect</code>), or move the project to a paid plan if you want previews on every push.</p>
-      </div>
-      <div class="card">
-        <h3>Check the meter labels (anyone, 5 minutes)</h3>
-        <p style="margin:0">The meter results rest on labels two AI readers made. Open <code>~/house-scanning-data/meter-closeup/review.html</code> on Sam's laptop and mark each photo's number keep or fix.</p>
-      </div>
-    </div>
-  </div>
-</section>
+<div class="finding" id="finding-5">
+  <h3>Finding 5. Can a first-time homeowner finish a scan?</h3>
+  <figure>
+    <svg viewBox="0 0 480 150" role="img" aria-labelledby="c5t c5d">
+      <title id="c5t">Ground depth the app reported against what the checks need</title>
+      <desc id="c5d">A scale from 0 to 14 feet. The app reported ground seen out to 4 feet. The checks need 6 to 13 feet. The two do not overlap, so no scan could finish.</desc>
+      <!-- x = 150 + ft*22 -->
+      <g class="grid"><line x1="150" y1="20" x2="150" y2="108"/><line x1="238" y1="20" x2="238" y2="108"/><line x1="326" y1="20" x2="326" y2="108"/><line x1="414" y1="20" x2="414" y2="108"/></g>
+      <line x1="150" y1="108" x2="458" y2="108" class="axis"/>
+      <g class="t s m" text-anchor="middle"><text x="150" y="130">0</text><text x="238" y="130">4</text><text x="326" y="130">8</text><text x="414" y="130">12 ft</text></g>
+      <text class="t s" x="140" y="46" text-anchor="end">app reported</text>
+      <rect x="150" y="32" width="88" height="18" rx="4" fill="var(--fail)"/>
+      <text class="lab s" x="246" y="46">4 ft of ground seen</text>
+      <text class="t s" x="140" y="90" text-anchor="end">checks need</text>
+      <rect x="282" y="76" width="154" height="18" rx="4" fill="var(--pass)"/>
+      <text class="lab s" x="276" y="90" text-anchor="end">6 to 13 ft</text>
+    </svg>
+    <figcaption>The verification agent's friction audit: no, not before this morning's fixes. However well it was walked, the app said it had seen ground only 4 ft out while checks need 6 to 13 ft, never reported the space in front of or above the wall, and turned corners into "walk past this" requests.</figcaption>
+  </figure>
+  <p class="changed"><b>What it changed:</b> the capture contract, and the app fixes in section 4: the server publishes exactly what settles each check, and the app reports real ground depth, the walked path as clear space in front, and a tilt-up view for headroom.</p>
+</div>
 
-<!-- ================= TODAY ================= -->
-<section id="today">
-  <div class="wrap">
-    <span class="step-tag">Today</span>
-    <h2>What the agents keep doing</h2>
-    <ul class="plain">
-      <li>Run the app against the live server end to end, re-check the product description against the app, and polish the capture UX.</li>
-      <li>Field-day kit: the Measure Lab build, the survey sheet and the importer map (evals agent).</li>
-      <li>Collect and fix bot review findings as PRs leave draft: CodeRabbit now, the others once installed.</li>
-      <li>More experiments: meter close-up, frame selection, and a current iPhone's scale error once the field data exists.</li>
-    </ul>
-  </div>
-</section>
+<p class="prose" style="margin-top:24px">Three pieces of overnight work changed nothing in the product: the panel-label search (too few open photos: 7 US panels against 40 needed), finer statistics on the modern-phone data, and the research notes.</p>
+
+<!-- ================= 7. DECISIONS ================= -->
+<h2 id="decisions">7. Decisions for this morning, recommendation first</h2>
+<ol class="decisions">
+  <li class="first"><h4>Run the field test first</h4><p class="rec">Recommend: about an hour, before anything else.</p><p>A current non-LiDAR iPhone, Measure Lab, a 30 ft tape, a real meter wall. Follow <code>experiments/evals/field/FIELD_SHEET.md</code>. One command turns tape readings into a score and the phone's real scale error.</p></li>
+  <li><h4>How points get measured</h4><p class="rec">Recommend: AR taps, not depth maps.</p><p>Finding 2: learned depth gets edges to 8 in or worse.</p></li>
+  <li><h4>How far to walk</h4><p class="rec">Recommend: outward from the meter on both sides; stop when the nearest spot that fits is fully seen.</p><p>The server prefers the shortest cable, so walking farther cannot find a better spot, and shorter walks drift less.</p></li>
+  <li><h4>Base's real rules</h4><p class="rec">Recommend: load them into the private rules file now.</p><p>Confirm with Base which rules the demo follows and which number on the meter plate they need (plates carry several). Otherwise the demo can never show a real "fits here".</p></li>
+  <li><h4>Merge order</h4><p class="rec">Recommend: #11 server first, since the others depend on its schemas.</p><p>Then #14 docs, #10 app, #13 verification, #12 evals, then #7, #4, #8, #6, #16, #17, #19.</p></li>
+  <li><h4>Lane owners</h4><p class="rec">Recommend: name one owner per lane.</p><p>Capture app, geometry, rules, output. Agents then know whose OK they need.</p></li>
+  <li><h4>Who checks what is hidden behind things?</h4><p class="rec">Recommend: the app.</p><p>Before the result, show the homeowner the photo of the chosen spot and ask if anything blocks the wall or ground there. On LiDAR phones, also run a depth test (finding 3).</p></li>
+  <li><h4>What must the scan see, and what can we just ask?</h4><p class="rec">Recommend: pool and driveway become one yes/no question, labelled as the homeowner's answer.</p><p>Instead of requiring 8 to 13 ft of photographed ground.</p></li>
+</ol>
+
+<!-- ================= 8. ASKS ================= -->
+<h2 id="asks">8. Asks: only a person can do these</h2>
+<ul class="prose">
+  <li><b>Sam:</b> review bots. Only CodeRabbit is installed and it is rate-limited; Greptile, Macroscope, Aikido and Codex review are not installed.</li>
+  <li><b>Sam:</b> a one-time App Store Connect key for TestFlight (PR #8).</li>
+  <li><b>Sam:</b> web previews on Vercel were turned off because the free plan's 100 deploys a day ran out; reconnect later.</li>
+  <li><b>Anyone, 5 minutes:</b> confirm the meter labels on the local review page on Sam's laptop.</li>
+</ul>
+
+<!-- ================= 9. REFERENCE ================= -->
+<h2 id="reference">9. Reference: what exists, and how to try it</h2>
+<p class="prose">Open pull requests. None of these is merged yet. The server (#11) is live.</p>
+<ul class="prs">
+  <li>#4 scoring harness</li>
+  <li>#6 research notes</li>
+  <li>#7 Measure Lab</li>
+  <li>#8 TestFlight upload</li>
+  <li>#9 Hunter's camera-metadata probe</li>
+  <li>#10 iOS app</li>
+  <li>#11 placement server (live)</li>
+  <li>#12 evals</li>
+  <li>#13 independent verification</li>
+  <li>#14 docs cleanup</li>
+  <li>#15 web review page (parked)</li>
+  <li>#16 meter reading</li>
+  <li>#17 panel labels (blocked on photos)</li>
+  <li>#18 Hunter's research handoff</li>
+  <li>#19 this briefing</li>
+</ul>
+
+<h3>How to try it</h3>
+<div class="prose">
+<p>Server health: <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">house-scanning-server.vercel.app/health</a></p>
+<p>App in the Simulator: build <code>ios/HouseScan.xcodeproj</code> and run with</p>
+<pre>-replay &lt;folder&gt; -autopilot -serverURL https://house-scanning-server.vercel.app</pre>
+<p>On a real iPhone: set your team in <code>ios/Config/Local.xcconfig</code> (see <code>ios/README.md</code>), plug in, run.</p>
+</div>
+
+<footer>Facts from the team dossier as of 09:10, 26 September 2026. Base's private thresholds do not appear on this page. The drawings are illustrations at a consistent scale, not a real house.</footer>
+
 </main>
-
-<footer>House scanning team briefing. Local only, never committed. One file, works offline.</footer>
 </body>
 </html>
