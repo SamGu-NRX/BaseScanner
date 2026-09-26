@@ -34,7 +34,7 @@ struct UploadingScreen: View {
                         .buttonStyle(.primary)
                         .accessibilityIdentifier("action.retryUpload")
                 } else {
-                    UploadSteps(upload: state.upload)
+                    UploadSteps(upload: state.upload, sample: state.usesSampleResult)
                 }
             }
             .padding(24)
@@ -96,6 +96,8 @@ private struct UploadEmblem: View {
 
 private struct UploadSteps: View {
     var upload: UploadState
+    /// No server: nothing is sent or checked, so the steps must not claim it.
+    var sample: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -125,12 +127,15 @@ private struct UploadSteps: View {
         switch index {
         case 0:
             return index < current ? "Photos ready" : "Get photos ready"
+        case 1 where sample:
+            return index < current ? "Sample loaded" : "Load the sample result"
         case 1:
             if case .uploading(let fraction) = upload {
                 return "Sending photos, \(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
             }
             return index < current ? "Photos sent" : "Send photos"
         default:
+            if sample { return index < current ? "Sample ready" : "Show the example" }
             return index < current ? "Clearances checked" : "Check clearances"
         }
     }
