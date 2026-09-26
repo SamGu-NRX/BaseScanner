@@ -111,9 +111,9 @@ extension ScanEngine: ScanActions {
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
     /// porch or stairs" records nothing, so the server treats the stretch as unseen.
     func answerOverhead(clear: Bool) {
-        guard state.overheadQuestion else { return }
-        settleTiltUp(recording: clear ? pendingOverhead : nil)
-        if state.phase == .wallWalk, let frame = currentFrame {
+        guard state.overheadQuestion, state.phase == .wallWalk else { return }
+        settleTiltUp(clear: clear)
+        if let frame = currentFrame {
             resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
         }
     }
@@ -211,7 +211,7 @@ extension ScanEngine: ScanActions {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
         state.marking = nil
         // Leaving with the overhead question unanswered records nothing.
-        if !tiltUpSettled { settleTiltUp(recording: nil) }
+        if !tiltUpSettled { settleTiltUp(clear: false) }
         go(.markFeatures)
     }
 
@@ -243,7 +243,7 @@ extension ScanEngine: ScanActions {
                 let s = side == .left ? -reach : reach
                 setEnd(side, at: s, kind: .unexplored)
             case .tiltUp:
-                settleTiltUp(recording: nil)
+                settleTiltUp(clear: false)
             default:
                 return
             }
@@ -312,61 +312,5 @@ extension ScanEngine: ScanActions {
     func wallHit(_ point: CGPoint?, viewSize: CGSize, frame: SourceFrame, wall: WallFrame) -> WallPoint? {
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
-    }
-}
-
-// MARK: - SHIM until lane P's overhead-band API lands in HouseScanKit
-
-/// SHIM (lane G stand-in for lane P's pure overhead-band function and observation type).
-/// To switch: replace `OverheadShim.view(from:wall:)` with P's function and
-/// `OverheadShim.Sighting` with P's observation type (span in meters of s, height reached in
-/// meters above the ground), move `minPitch` and `minHeight` to P's thresholds if P has them,
-/// and hand `ScanEngine.overheadObservations` to P's export. Call sites: `askOverheadIfTiltedUp`,
-/// `tiltUpFrames(in:)` and the tilt-up target in `updateGuidance` (ScanEngine.swift).
-enum OverheadShim {
-    struct Sighting: Equatable, Sendable {
-        /// The stretch of wall the view covered, meters of s.
-        var span: ClosedRange<Float>
-        /// How high up the wall plane the view reached across that whole stretch, meters above
-        /// the ground. Only the homeowner can say whether that was open sky or an eave.
-        var heightReached: Float
-    }
-
-    /// The camera must look at least this far above level to count as tilted up; the walk
-    /// holds the phone level or tilted down. A guess to try on a phone, not measured.
-    static let minPitch: Float = 20 * .pi / 180
-    /// "Well above head height": 3 m (about 10 ft) is past a one-story eave, so the view shows
-    /// whether one is there, and past the 6.5 ft headroom rule with room for error. Not measured.
-    static let minHeight: Float = 3.0
-    /// Hits farther than this along a ray are ignored: a ray nearly parallel to the wall meets
-    /// its plane far up, where the phone sees nothing useful.
-    static let maxRange: Float = 12
-
-    /// The wall span and height a tilted-up view reaches, or nil when the camera isn't tilted up,
-    /// stands behind the wall, or doesn't reach `minHeight` across its whole width. The height is
-    /// the lowest of the per-column highest hits, so every s in the span was seen that high.
-    static func view(from camera: CameraFrame, wall: WallFrame) -> Sighting? {
-        guard camera.forward.y >= sin(minPitch), wall.wallPoint(camera.position).out > 0 else { return nil }
-        let size = camera.imageSize
-        let samples = 8
-        var reached = Float.infinity
-        var ss: [Float] = []
-        // A column of the upright view is a row of the landscape sensor image (constant pixel y);
-        // the top of the view is pixel x = 0.
-        for row in 0...samples {
-            let y = size.y * Float(row) / Float(samples)
-            var top: WallPoint?
-            for step in 0...samples {
-                let pixel = SIMD2(size.x * Float(step) / Float(samples), y)
-                guard let hit = wall.intersectWall(camera.ray(throughPixel: pixel)),
-                      simd_distance(wall.world(hit), camera.position) <= maxRange else { continue }
-                if hit.height > top?.height ?? -.infinity { top = hit }
-            }
-            guard let top else { return nil }
-            reached = min(reached, top.height)
-            ss.append(top.s)
-        }
-        guard reached >= minHeight, let low = ss.min(), let high = ss.max(), low < high else { return nil }
-        return Sighting(span: low...high, heightReached: reached)
     }
 }

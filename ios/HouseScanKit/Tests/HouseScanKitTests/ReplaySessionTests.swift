@@ -155,8 +155,9 @@ struct ReplaySessionTests {
         #expect(try ReplaySession.decode(sessionJSON: Data(json.utf8)).declaredWall == nil)
     }
 
-    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 38 frames, wall on z = 0 facing
-    /// +z, meter at (0, 1.5, 0), and the first frame aimed straight at the meter.
+    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 41 frames (38 for the close-up
+    /// and the walk, 3 tilted up for the tilt-up step), wall on z = 0 facing +z, meter at
+    /// (0, 1.5, 0), and the first frame aimed straight at the meter.
     @Test func decodesSyntheticWallFixture() throws {
         let folder = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -164,7 +165,7 @@ struct ReplaySessionTests {
             .standardizedFileURL
         let session = try ReplaySession.load(folder: folder)
         #expect(session.id == "synthetic-wall")
-        #expect(session.frames.count == 38)
+        #expect(session.frames.count == 41)
         #expect(session.frames.allSatisfy { $0.trackingNormal })
 
         let wall = try #require(session.declaredWall)
@@ -178,5 +179,32 @@ struct ReplaySessionTests {
         let u = k[2] + k[0] * p.x / -p.z
         let v = k[3] - k[1] * p.y / -p.z
         #expect(abs(u - 320) < 2 && abs(v - 240) < 2, "meter projects to (\(u), \(v))")
+    }
+
+    /// The app plays the fixture's closing run of tilted-up frames for the tilt-up step and for
+    /// overhead requests: views reaching at least 1 m above the wall band (ScanEngine.tiltUpAbove).
+    /// The three closing frames do, over the stretch by the meter. The walk before them (frames
+    /// 7 to 37, pitched 20 degrees down) reaches about 2.0 m, just past the wall band, so the run
+    /// is exactly those three. The level views of the meter before the walk may reach it.
+    @Test func syntheticWallFixtureEndsWithTiltUpViews() throws {
+        let folder = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../../../HouseScanUITests/Fixtures/synthetic-wall")
+            .standardizedFileURL
+        let session = try ReplaySession.load(folder: folder)
+        let wall = try #require(session.declaredWall.flatMap { WallFrame(meter: $0.meter, outward: $0.outward, groundY: $0.groundY) })
+        let map = CoverageMap(wall: wall)
+        let reaches = session.frames.map { frame in
+            map.overheadReach(from: CameraFrame(
+                cameraToWorld: frame.cameraToWorld, intrinsics: frame.intrinsics,
+                imageSize: SIMD2(Float(frame.width), Float(frame.height))))
+        }
+        let tilted = map.config.overheadFrom + 1
+        let walkIsNotTiltedUp = reaches[7..<38].allSatisfy { reach in reach.allSatisfy { $0.out < tilted } }
+        #expect(walkIsNotTiltedUp)
+        for reach in reaches.suffix(3) {
+            let overMeter = reach.contains { $0.out >= tilted && $0.span.contains(0) && $0.span.contains(1) }
+            #expect(overMeter, "\(reach)")
+        }
     }
 }

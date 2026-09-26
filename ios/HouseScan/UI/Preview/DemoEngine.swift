@@ -224,12 +224,15 @@ final class DemoEngine: ScanActions {
             state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 1.56)
         case "walkOut":
             let out: Float = 1.47
+            // As the engine draws it: from the homeowner to the stretch's far end, the requested
+            // distance plus the position error there (0.09 m + 0.16 m per meter from the meter)
+            // plus 0.3 m out.
+            let standOut = out + 0.09 + 0.16 * span.upperBound + 0.3
             state.gap?.origin = .server
             state.gap?.reason = .walkOut(out: out)
-            state.target = DemoScene.wall.world(s: 2.1, height: 0, out: out + 0.3)
-            // Along the stretch, 1 ft past the requested distance, as the engine draws it.
-            state.path = stride(from: span.lowerBound, through: span.upperBound, by: 0.2).map {
-                DemoScene.wall.world(s: $0, height: 0, out: out + 0.3)
+            state.target = DemoScene.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: 1.2)
+            state.path = [span.lowerBound - 0.8, span.upperBound].map {
+                DemoScene.wall.world(s: $0, height: 0, out: standOut)
             }
         case "overhead":
             state.gap?.origin = .server

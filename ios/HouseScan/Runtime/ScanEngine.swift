@@ -71,15 +71,13 @@ final class ScanEngine {
     /// it again settles the request (see `markWallEnd`).
     var pastEndSide: WallSide?
 
-    // Tilt-up step
+    // Tilt-up step and overhead requests
     /// Set once the tilt-up step is answered or skipped: the walk asks it once per scan.
     var tiltUpSettled = false
-    /// The tilted-up view waiting for the overhead answer.
-    var pendingOverhead: OverheadShim.Sighting?
-    /// Tilt-up views the homeowner said have nothing overhead. The export turns each into an
-    /// overhead band whose `out_ft` is the height seen clear; "A roof edge, porch or stairs"
-    /// records nothing, so the server treats that stretch as unseen.
-    private(set) var overheadObservations: [OverheadShim.Sighting] = []
+    /// The tilted-up view the overhead question is about. "Open sky or nothing overhead" keeps it
+    /// in the coverage map (`recordOverheadClear`), which the export sends as the overhead band;
+    /// "A roof edge, porch or stairs" keeps nothing, so the server treats that stretch as unseen.
+    private var pendingOverhead: SourceFrame?
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -172,9 +170,9 @@ final class ScanEngine {
         case .wallWalk:
             live?.setMode(.walk)
             planner.reset()
-            if let replay {
+            if let replay, let map = coverage {
                 // The recording's closing tilt-up frames wait for the tilt-up step.
-                let walkEnd = Self.tiltUpFrames(in: replay).lowerBound
+                let walkEnd = Self.tiltUpFrames(in: replay, map: map).lowerBound
                 replay.play(range: 0..<walkEnd, excluding: replay.heldBack?.frames, speed: replaySpeed)
             }
         case .gapRequest:
@@ -410,6 +408,7 @@ final class ScanEngine {
         }
         state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, time: frame.timestamp)
         afterCoverageChange(camera: frame.camera, time: frame.timestamp)
+        askOverheadIfTiltedUp(frame)
     }
 
     /// Tracking problems show at once. A problem the capture gate reports (moving, blurry, too
@@ -475,7 +474,6 @@ final class ScanEngine {
             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
-            if frame.tracking == .normal { askOverheadIfTiltedUp(frame.camera) }
             afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? frame.timestamp)
         }
     }
@@ -492,7 +490,7 @@ final class ScanEngine {
         guard let map = coverage, state.endQuestion == nil, !state.overheadQuestion else { return }
         if let span = tiltUpSpanIfDue(map) {
             state.guidance = .tiltUp(span: span)
-            state.target = map.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: OverheadShim.minHeight)
+            state.target = map.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: Self.tiltUpHeight(map))
             state.path = []
             logGuidance()
             return
@@ -540,59 +538,66 @@ final class ScanEngine {
         return low < high ? low...high : nil
     }
 
-    /// A kept frame during the tilt-up step that looks up past head height over the stretch
-    /// raises the overhead question. Only the homeowner can say whether what is above is open
-    /// sky or an eave.
-    private func askOverheadIfTiltedUp(_ camera: CameraFrame) {
-        guard state.phase == .wallWalk, case .tiltUp(let span) = state.guidance, !state.overheadQuestion,
-              let wall = coverage?.wall, let seen = OverheadShim.view(from: camera, wall: wall),
-              seen.span.overlaps(span) else { return }
-        pendingOverhead = seen
-        state.overheadQuestion = true
-        RuntimeLog.engine.info("tilt-up view: s \(seen.span.lowerBound)...\(seen.span.upperBound), reaches \(seen.heightReached) m")
+    /// How far above the top of the wall band a view must reach to count as tilted up: 1 m, so
+    /// about 9.8 ft above the ground, past a one-storey eave, where the view shows whether one is
+    /// there. It is a height, not a pitch: a level view from 2 m out reaches about 8.5 ft and
+    /// does not count, one from 2.6 m out reaches about 10 ft and does, and it shows what is
+    /// overhead as well as a tilted one. A guess to try on a phone, not measured.
+    static let tiltUpAbove: Float = 1
+
+    /// The height the tilt-up step and an overhead request aim at, meters above the ground.
+    static func tiltUpHeight(_ map: CoverageMap) -> Float { map.config.overheadFrom + tiltUpAbove }
+
+    /// The stretches a view shows at least `tiltUpHeight` up the wall (`CoverageMap.overheadReach`):
+    /// empty unless the camera is tilted up at the wall.
+    static func tiltedUp(_ camera: CameraFrame, _ map: CoverageMap) -> [ClosedRange<Float>] {
+        let height = tiltUpHeight(map)
+        return map.overheadReach(from: camera).filter { $0.out >= height }.map(\.span)
     }
 
-    /// Ends the tilt-up step. `sighting` is the view the homeowner said is clear overhead, or nil
-    /// for "A roof edge, porch or stairs", "Can't get there" or leaving the walk.
-    func settleTiltUp(recording sighting: OverheadShim.Sighting?) {
-        if let sighting { overheadObservations.append(sighting) }
+    /// Raises the overhead question when a frame with normal tracking during the tilt-up step is
+    /// tilted up over any of its stretch. Only the homeowner can say whether what is above is
+    /// open sky or an eave. Every frame counts, not only kept keyframes: the view is evidence
+    /// through the answer, not through a photo.
+    private func askOverheadIfTiltedUp(_ frame: SourceFrame) {
+        guard !state.overheadQuestion, frame.tracking == .normal, let map = coverage,
+              state.phase == .wallWalk, case .tiltUp(let wanted) = state.guidance else { return }
+        let seen = Self.tiltedUp(frame.camera, map)
+        guard seen.contains(where: { $0.overlaps(wanted) }) else { return }
+        pendingOverhead = frame
+        state.overheadQuestion = true
+        RuntimeLog.engine.info("tilt-up view over s \(seen.first?.lowerBound ?? 0)...\(seen.last?.upperBound ?? 0): asking what is overhead")
+    }
+
+    /// Ends the tilt-up step. `clear` is the homeowner's "Open sky or nothing overhead", which
+    /// keeps the view the question was about; false for "A roof edge, porch or stairs", "Can't
+    /// get there" or leaving the walk, which keep nothing.
+    func settleTiltUp(clear: Bool) {
+        let frame = pendingOverhead
         pendingOverhead = nil
         state.overheadQuestion = false
         tiltUpSettled = true
-        RuntimeLog.engine.info("tilt-up step settled: \(sighting == nil ? "nothing recorded" : "clear overhead", privacy: .public)")
+        // After settling, so the guidance this recomputes moves past the tilt-up step.
+        let recorded = clear && frame.map { recordOverheadClear(from: $0) } == true
+        RuntimeLog.engine.info("tilt-up step settled: \(recorded ? "clear overhead recorded" : "nothing recorded", privacy: .public)")
     }
 
-    /// The replay's closing run of tilted-up frames: the walk leaves them out and the tilt-up
-    /// step plays them (`playReplayTiltUp`). Empty at the end when the recording has none.
-    static func tiltUpFrames(in replay: ReplayPlayer) -> Range<Int> {
+    /// The replay's closing run of tilted-up frames (`tiltedUp`): the walk leaves them out and the
+    /// tilt-up step plays them (`playReplayTiltUp`). Empty at the end when the recording has none.
+    static func tiltUpFrames(in replay: ReplayPlayer, map: CoverageMap) -> Range<Int> {
         var start = replay.frames.count
-        while start > 0, OverheadShim.view(from: replay.camera(at: start - 1), wall: replay.wall) != nil { start -= 1 }
+        while start > 0, !tiltedUp(replay.camera(at: start - 1), map).isEmpty { start -= 1 }
         return start..<replay.frames.count
     }
 
     /// Plays the replay's tilt-up frames, as a homeowner tilting up would show them. False when
     /// the recording has none.
     func playReplayTiltUp() -> Bool {
-        guard let replay else { return false }
-        let frames = Self.tiltUpFrames(in: replay)
+        guard let replay, let map = coverage else { return false }
+        let frames = Self.tiltUpFrames(in: replay, map: map)
         guard !frames.isEmpty else { return false }
         replay.play(range: frames, speed: replaySpeed)
         return true
-    }
-
-    /// How much farther out than a `.walkOut` request's distance its dotted line runs: the server
-    /// counts a walked path's distance less its position error, and 0.3 m (1 ft) is the public
-    /// rules' default tap error. Walking on the line then clears the request with that error.
-    static let walkOutMargin: Float = 0.3
-
-    /// The dotted line for a `.walkOut` request: along the requested stretch, `walkOutMargin`
-    /// beyond the requested distance, starting from the end nearer `fromS` (the camera's s).
-    /// SWITCH: lane P's gap guidance sets `state.path` to this for `.walkOut(out:)` requests.
-    static func walkOutPath(span: ClosedRange<Float>, out: Float, fromS: Float?, wall: WallFrame) -> [SIMD3<Float>] {
-        let count = max(2, Int(((span.upperBound - span.lowerBound) / 0.3).rounded(.up)) + 1)
-        var ss = (0..<count).map { span.lowerBound + (span.upperBound - span.lowerBound) * Float($0) / Float(count - 1) }
-        if let fromS, abs(fromS - span.upperBound) < abs(fromS - span.lowerBound) { ss.reverse() }
-        return ss.map { wall.world(s: $0, height: 0, out: out + walkOutMargin) }
     }
 
     private func updateGap(camera: CameraFrame?) {
@@ -610,7 +615,13 @@ final class ScanEngine {
         state.target = cue.target
         if let camera {
             let from = map.wall.wallPoint(camera.position).s
-            state.path = [from, center].map { map.wall.world(s: $0, height: 0, out: cue.standOut) }
+            // A walked path settles only the cells it passes, so a walk-out line runs on to the
+            // far end of the span; the other requests only need the homeowner standing at it.
+            var to = center
+            if case .walkOut = plan.need {
+                to = abs(plan.span.lowerBound - from) > abs(plan.span.upperBound - from) ? plan.span.lowerBound : plan.span.upperBound
+            }
+            state.path = [from, to].map { map.wall.world(s: $0, height: 0, out: cue.standOut) }
         }
         logGuidance()
         if satisfied, !request.isSatisfied {
@@ -651,8 +662,8 @@ final class ScanEngine {
             let farEdge = max(abs(plan.span.lowerBound), abs(plan.span.upperBound))
             return (map.wall.world(s: center, height: 1.2), max(standOff, out + CoverageMap.positionError(atS: farEdge) + 0.3))
         case .overhead(let height):
-            // Aim above the wall band, at the height asked for when there is one.
-            let aim = max(map.config.overheadFrom + 1, height ?? 0)
+            // Aim where a tilted-up view reaches, or at the height asked for when that is higher.
+            let aim = max(Self.tiltUpHeight(map), height ?? 0)
             return (map.wall.world(s: center, height: aim), standOff)
         }
     }
@@ -1024,7 +1035,6 @@ final class ScanEngine {
     private func resetTiltUp() {
         tiltUpSettled = false
         pendingOverhead = nil
-        overheadObservations = []
         state.overheadQuestion = false
     }
 

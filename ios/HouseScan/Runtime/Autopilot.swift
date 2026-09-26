@@ -229,7 +229,14 @@ final class Autopilot {
         }
         await pause(hold)
         engine.answerOverhead(clear: true)
-        log("answered the overhead question: open sky (\(engine.overheadObservations.count) overhead view recorded)")
+        log("answered the overhead question: open sky; \(overheadSummary)")
+    }
+
+    /// The overhead views kept and the stretches they show clear, as the export will send them.
+    private var overheadSummary: String {
+        guard let map = engine.coverage else { return "no wall" }
+        let spans = map.overheadSpans().map { "\(format($0.span)) to \(String(format: "%.2f", $0.out)) m" }
+        return "\(map.overheadCameras.count) overhead view(s) kept, clear over \(spans.isEmpty ? "nothing" : spans.joined(separator: ", "))"
     }
 
     private var isTiltingUp: Bool {
