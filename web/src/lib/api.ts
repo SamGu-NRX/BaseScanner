@@ -145,7 +145,9 @@ export async function checkHealth(server: string, signal: AbortSignal): Promise<
     }
     const policy = body.policy;
     const id =
-      typeof policy === "object" && policy !== null && "id" in policy ? String(policy.id) : "?";
+      typeof policy === "object" && policy !== null && "id" in policy
+        ? String(policy.id)
+        : "unnamed";
     return { ok: true, policy: id };
   } catch {
     return { ok: false };

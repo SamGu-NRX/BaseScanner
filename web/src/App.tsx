@@ -206,6 +206,8 @@ export function App() {
   }, [view.status]);
 
   const input = view.status === "empty" ? null : view.input;
+  const failed = view.status === "failed" ? view : null;
+  const retryInput = failed?.input ?? null;
   const fileName =
     view.status === "failed" && view.input === null
       ? view.name
@@ -246,12 +248,12 @@ export function App() {
         <section ref={sheet} className="sheet" aria-label="Answer">
           {view.status === "loading" && <div className="progress" aria-hidden="true" />}
           {view.status === "empty" && <EmptyView />}
-          {view.status === "failed" && (
+          {failed && (
             <FailureView
-              failure={view.failure}
-              sample={SAMPLES.find((s) => s.id === view.input?.sampleId) ?? null}
-              onRetry={view.input ? () => view.input && solve(view.input) : null}
-              onSaved={(sample) => view.input && showSaved(sample, view.input)}
+              failure={failed.failure}
+              sample={SAMPLES.find((s) => s.id === retryInput?.sampleId) ?? null}
+              onRetry={retryInput ? () => solve(retryInput) : null}
+              onSaved={(sample) => retryInput && showSaved(sample, retryInput)}
             />
           )}
           {view.status === "loading" && !shown && (
