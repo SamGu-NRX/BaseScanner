@@ -311,6 +311,96 @@ struct ResultScene3D: View {
     }
 }
 
+/// The result for "See it on your wall" (`LiveCapture.showResult`): the battery, the cable run and
+/// the clearance zones, the same pieces as `BatteryOverlay` draws over a replay. Built from
+/// `WallGeometry` in world axes with the meter at the origin, so it turns a corner where the wall does.
+@MainActor
+enum ResultARModel {
+    /// The LiDAR mesh sits a centimeter or two off the real wall and ground, and hides whatever is
+    /// behind it: anything flush with either would be cut into.
+    static let meshClearance: Float = 0.03
+
+    private static let unitName = "result-ar-battery"
+
+    static func build(wall: WallGeometry, result: ResultPresentation) -> Entity {
+        let root = Entity()
+        func local(_ s: Float, _ height: Float, _ out: Float) -> SIMD3<Float> {
+            wall.world(s: s, height: height, out: out) - wall.meter
+        }
+        for (index, zone) in result.clearances.enumerated() {
+            var material = UnlitMaterial(color: SceneColor.outcome(zone.outcome))
+            material.blending = .transparent(opacity: .init(floatLiteral: 0.35))
+            let width = zone.span.upperBound - zone.span.lowerBound
+            let middle = zone.span.lowerBound + width / 2
+            // Stacked zones sit a few millimeters apart so overlapping ones don't flicker.
+            let entity = ModelEntity(mesh: .generatePlane(width: width, depth: zone.depth), materials: [material])
+            entity.position = local(middle, meshClearance + Float(index) * 0.003, zone.depth / 2)
+            entity.orientation = facing(wall, atS: middle)
+            root.addChild(entity)
+        }
+        let cable = result.cableRoute.map { local($0.x, $0.y, meshClearance) }
+        let material = SimpleMaterial(color: SceneColor.signal, roughness: 0.85, isMetallic: false)
+        let radius: Float = 0.015
+        for (from, to) in zip(cable, cable.dropFirst()) {
+            let length = simd_distance(from, to)
+            guard length > 0.001 else { continue }
+            let segment = ModelEntity(mesh: .generateCylinder(height: length, radius: radius), materials: [material])
+            segment.position = (from + to) / 2
+            segment.orientation = simd_quatf(from: SIMD3(0, 1, 0), to: (to - from) / length)
+            root.addChild(segment)
+        }
+        for point in cable.dropFirst().dropLast() {
+            let joint = ModelEntity(mesh: .generateSphere(radius: radius), materials: [material])
+            joint.position = point
+            root.addChild(joint)
+        }
+        if let spot = result.spot {
+            let width = max(spot.span.upperBound - spot.span.lowerBound, 0.1)
+            let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
+            let back = max(spot.offsetFromWall, meshClearance)
+            // Origin at the middle of the footprint on the ground, so `rise` grows it upward.
+            let unit = Entity()
+            unit.name = unitName
+            unit.position = local(middle, 0, back + spot.depth / 2)
+            unit.orientation = facing(wall, atS: middle)
+            var paint = PhysicallyBasedMaterial()
+            paint.baseColor = .init(tint: SceneColor.battery)
+            paint.roughness = 0.35
+            let corner = min(0.03, min(width, spot.height, spot.depth) / 4)
+            let body = ModelEntity(
+                mesh: .generateBox(width: width, height: spot.height, depth: spot.depth, cornerRadius: corner),
+                materials: [paint]
+            )
+            body.position = SIMD3(0, spot.height / 2, 0)
+            body.components.set(GroundingShadowComponent(castsShadow: true))
+            unit.addChild(body)
+            let bar = ModelEntity(
+                mesh: .generateBox(width: 0.04, height: spot.height * 0.7, depth: 0.006),
+                materials: [UnlitMaterial(color: SceneColor.signal)]
+            )
+            bar.position = SIMD3(0, spot.height / 2, spot.depth / 2 + 0.003)
+            unit.addChild(bar)
+            root.addChild(unit)
+        }
+        return root
+    }
+
+    /// Lifts the battery out of the ground. Call once the model is in the scene.
+    static func rise(_ model: Entity) {
+        guard let unit = model.findEntity(named: unitName) else { return }
+        let settled = unit.transform
+        unit.scale = SIMD3(1, 0.02, 1)
+        unit.move(to: settled, relativeTo: unit.parent, duration: UIAccessibility.isReduceMotionEnabled ? 0.2 : 0.7, timingFunction: .easeOut)
+    }
+
+    /// x along the wall, y up, z out from the wall toward the homeowner.
+    private static func facing(_ wall: WallGeometry, atS s: Float) -> simd_quatf {
+        let up = SIMD3<Float>(0, 1, 0)
+        let outward = simd_normalize(wall.outward(atS: s))
+        return simd_quatf(simd_float3x3(columns: (simd_normalize(simd_cross(up, outward)), up, outward)))
+    }
+}
+
 /// Fixed scene colors. They match the asset-catalog palette in light mode; a model of a house
 /// in daylight shouldn't change color with the phone's dark mode.
 private enum SceneColor {
