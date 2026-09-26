@@ -79,13 +79,21 @@ struct WallWalkScreen: View {
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
+        if let coaching { return ScanCopy.coaching(coaching) }
         return ScanCopy.guidance(state.guidance)
+    }
+
+    /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark
+    /// and is only turning the phone, which the gate also reads as moving (field test run 1).
+    /// Tracking problems still show.
+    private var coaching: Coaching? {
+        if trayOpen, state.coaching == .slowDown { return nil }
+        return state.coaching
     }
 
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching = state.coaching {
+        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
@@ -327,7 +335,7 @@ struct FeatureTray: View {
                         .contentShape(.rect(cornerRadius: 14))
                     }
                     .buttonStyle(PressableStyle())
-                    .accessibilityLabel("Mark \(ScanCopy.name(kind).lowercased())")
+                    .accessibilityLabel("Mark \(ScanCopy.noun(kind))")
                     .accessibilityIdentifier("feature.\(kind.rawValue)")
                 }
             }
