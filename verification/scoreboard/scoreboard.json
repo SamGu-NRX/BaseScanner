@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-26T03:21:08-05:00",
+  "generated_at": "2026-09-26T03:21:41-05:00",
   "command": "uv run python -m hsverify.scoreboard",
   "slow": false,
   "prs": [
@@ -25,18 +25,18 @@
       "number": 13,
       "title": "verification: independent end-to-end checks (S4)",
       "branch": "t3/verification",
-      "head": "328373d81f280496380c0a9737f1dd0cc3ac50bb",
+      "head": "2ae5a802b41793f6135e56d6c22f33e3109e7761",
       "draft": true,
-      "updated": "2026-09-26T08:19:36Z",
+      "updated": "2026-09-26T08:21:37Z",
       "ci": {
         "counts": {
-          "success": 4,
+          "success": 0,
           "failure": 0,
           "pending": 0,
           "skipped": 0
         },
         "failing": [],
-        "text": "4 success"
+        "text": "no checks"
       }
     },
     {
@@ -66,13 +66,13 @@
       "updated": "2026-09-26T08:20:33Z",
       "ci": {
         "counts": {
-          "success": 4,
+          "success": 5,
           "failure": 0,
-          "pending": 1,
+          "pending": 0,
           "skipped": 0
         },
         "failing": [],
-        "text": "4 success, 1 pending"
+        "text": "5 success"
       }
     },
     {
@@ -465,7 +465,7 @@
       "refs": [
         {
           "ref": "origin/t3/verification",
-          "sha": "328373d81f280496380c0a9737f1dd0cc3ac50bb"
+          "sha": "2ae5a802b41793f6135e56d6c22f33e3109e7761"
         },
         {
           "ref": "origin/t3/ios-mvf",
@@ -477,7 +477,7 @@
           "id": "S4-1",
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/verification",
-          "sha": "328373d81f280496380c0a9737f1dd0cc3ac50bb",
+          "sha": "2ae5a802b41793f6135e56d6c22f33e3109e7761",
           "status": "no evidence yet",
           "evidence": "no report matches ~/house-scanning-data/reports/e2e/*/report.json",
           "links": []
@@ -495,7 +495,7 @@
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "328373d81f280496380c0a9737f1dd0cc3ac50bb",
+          "sha": "2ae5a802b41793f6135e56d6c22f33e3109e7761",
           "status": "gap",
           "evidence": "not yet reviewed",
           "links": []
@@ -504,10 +504,15 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "328373d81f280496380c0a9737f1dd0cc3ac50bb",
-          "status": "gap",
-          "evidence": "missing at 328373d8: verification/SCOREBOARD.md",
-          "links": []
+          "sha": "2ae5a802b41793f6135e56d6c22f33e3109e7761",
+          "status": "met",
+          "evidence": "present at 2ae5a802",
+          "links": [
+            [
+              "verification/SCOREBOARD.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/2ae5a802b41793f6135e56d6c22f33e3109e7761/verification/SCOREBOARD.md"
+            ]
+          ]
         }
       ]
     },

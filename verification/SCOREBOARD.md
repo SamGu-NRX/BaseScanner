@@ -7,9 +7,9 @@ Generated 2026-09-26 03:21 CDT by `make scoreboard` (`uv run python -m hsverify.
 | # | Branch | Head | Draft | CI | Updated |
 | --- | --- | --- | --- | --- | --- |
 | [#14](https://github.com/SamGu-NRX/house-scanning/pull/14) | `t3/docs-cleanup` | `9c9ceb2a` | no | 4 success | 2026-09-26 03:15 CDT |
-| [#13](https://github.com/SamGu-NRX/house-scanning/pull/13) | `t3/verification` | `328373d8` | yes | 4 success | 2026-09-26 03:19 CDT |
+| [#13](https://github.com/SamGu-NRX/house-scanning/pull/13) | `t3/verification` | `2ae5a802` | yes | no checks | 2026-09-26 03:21 CDT |
 | [#12](https://github.com/SamGu-NRX/house-scanning/pull/12) | `t3/evals` | `b0b8a274` | yes | 4 success | 2026-09-26 03:11 CDT |
-| [#11](https://github.com/SamGu-NRX/house-scanning/pull/11) | `t3/server` | `fcd45741` | yes | 4 success, 1 pending | 2026-09-26 03:20 CDT |
+| [#11](https://github.com/SamGu-NRX/house-scanning/pull/11) | `t3/server` | `fcd45741` | yes | 5 success | 2026-09-26 03:20 CDT |
 | [#10](https://github.com/SamGu-NRX/house-scanning/pull/10) | `t3/ios-mvf` | `6885b7b5` | yes | 5 success | 2026-09-26 03:07 CDT |
 | [#9](https://github.com/SamGu-NRX/house-scanning/pull/9) | `codex/capture-contract-probe` | `4b6c4309` | yes | 4 success | 2026-09-26 00:08 CDT |
 | [#8](https://github.com/SamGu-NRX/house-scanning/pull/8) | `t3/testflight` | `b896d59f` | no | 4 success | 2026-09-26 03:18 CDT |
@@ -61,14 +61,14 @@ Generated 2026-09-26 03:21 CDT by `make scoreboard` (`uv run python -m hsverify.
 
 ## S4 Verification
 
-`origin/t3/verification` at [`328373d8`](https://github.com/SamGu-NRX/house-scanning/tree/328373d81f280496380c0a9737f1dd0cc3ac50bb), `origin/t3/ios-mvf` at [`6885b7b5`](https://github.com/SamGu-NRX/house-scanning/tree/6885b7b5ad872df7f73a6b915e5837cd38a2034d). 3 gap, 1 no evidence yet.
+`origin/t3/verification` at [`2ae5a802`](https://github.com/SamGu-NRX/house-scanning/tree/2ae5a802b41793f6135e56d6c22f33e3109e7761), `origin/t3/ios-mvf` at [`6885b7b5`](https://github.com/SamGu-NRX/house-scanning/tree/6885b7b5ad872df7f73a6b915e5837cd38a2034d). 1 met, 2 gap, 1 no evidence yet.
 
 | Metric | Text | Status | Evidence |
 | --- | --- | --- | --- |
 | S4-1 | End to end from a real replay to a placement result passes | no evidence yet | no report matches ~/house-scanning-data/reports/e2e/*/report.json |
 | S4-2 | Screenshot report per app state | gap | states = length 0 (want at least 9): ~/house-scanning-data/reports/sim/20260926-031352-t3-ios-mvf-6885b7b5-replay/report.json |
 | S4-3 | Product description written from the code and checked against screenshots | gap | not yet reviewed |
-| S4-4 | Scoreboard of every PR | gap | missing at 328373d8: verification/SCOREBOARD.md |
+| S4-4 | Scoreboard of every PR | met | present at 2ae5a802 [verification/SCOREBOARD.md](https://github.com/SamGu-NRX/house-scanning/blob/2ae5a802b41793f6135e56d6c22f33e3109e7761/verification/SCOREBOARD.md) |
 
 ## M Maintenance
 
