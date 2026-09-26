@@ -14,7 +14,10 @@ extension ScanEngine {
         guard let map = coverage else { throw ExportError.noWall }
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
-        let sceneWall = SceneWall(meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
+        // The corners carry their pieces' sources (`markNextWall`); the meter's piece is `meterLineSource`.
+        let sceneWall = SceneWall(
+            meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners,
+            source: meterLineSource)
 
         // SceneExport rejects negative heights, a top below a bottom, ground points behind the
         // wall and a zero-length driveway edge, and taps can produce each of them once the ground
@@ -72,9 +75,51 @@ extension ScanEngine {
             stills: store.stills,
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
-            meshOverheads: mesh.overheads
+            meshOverheads: mesh.overheads,
+            // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
+            groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
         )
         return try SceneExport.jsonData(input)
+    }
+
+    static func sceneGroundType(_ answer: GroundAnswer) -> SceneGroundType? {
+        switch answer {
+        case .notSure: nil
+        case .type(.lawn): .lawn
+        case .type(.mulch): .mulch
+        case .type(.gravel): .gravel
+        case .type(.concrete): .concrete
+        case .type(.drive): .drive
+        case .type(.deck): .deck
+        }
+    }
+
+    /// How the line of the meter's piece of wall was found, for scene.json's `walls[].source`.
+    ///
+    /// Live, `markMeter` puts the wall through the raycast's hit point, facing the normal of the
+    /// plane it hit. On a detected plane (an ARPlaneAnchor, `.existingPlaneGeometry`) the normal
+    /// is the anchor's and the hit point lies on the anchor's geometry, so both the line's
+    /// direction and its distance from the camera are the plane's: `plane`. The tap only picks
+    /// where along that line the meter is. On an estimated plane there is no anchor: ARKit fits a
+    /// plane to the feature points around the tapped pixel for that one raycast, which is what an
+    /// AR tap is, and the schema's `plane` means detected planes, so it is `tap`. Nothing in the
+    /// capture takes a wall line from the LiDAR mesh (`MeshProbe` only measures in front of and
+    /// above a line already set), so no piece is `mesh`.
+    ///
+    /// A replay's wall is `tap`: a recorded measure-lab wall runs through two tapped ground
+    /// contacts (its `contacts`), and a wall assumed from the trajectory was never measured at
+    /// all, which no source describes; replays run only in tests and demos.
+    var meterLineSource: WallLineSource {
+        replay == nil ? Self.lineSource(of: meterPlaneSource) : .tap
+    }
+
+    /// The source of a wall line put through a live vertical-plane raycast's hit, facing the hit
+    /// plane's normal (`meterLineSource` has the reasons).
+    static func lineSource(of plane: MeterPlaneSource) -> WallLineSource {
+        switch plane {
+        case .detectedPlane: .plane
+        case .estimatedPlane: .tap
+        }
     }
 
     /// The stretch of wall the scene describes, meters of s: between the marked ends, or out to
@@ -173,16 +218,28 @@ extension ScanEngine {
         var route: [SIMD2<Float>] = []
         if let cable = result.route {
             let height = meters(cable.heightFt)
-            if let placed = result.spot {
-                // Relative to the meter's plan position in the result's own frame (the spot's
-                // centre minus its offset from the meter), along the result's own wall direction.
-                let meterPlan = placed.center - placed.meterOffsetFt
-                route = cable.polyline.map { point in
-                    let d = point - meterPlan
-                    return SIMD2(meters(d.x * placed.along.x + d.y * placed.along.y), height)
+            // Each point as an offset from the meter: the result's meter is the spot's centre
+            // minus its offset from the meter. The answer to this scan is in the scene's plan
+            // frame (the AR world's x and z in feet, scene.json's frame; result.schema.json's
+            // meter_offset_ft is "in the scene frame's axes"), so the offsets are put on the
+            // current wall chain by `chainS`, which follows the route round corners and adds a
+            // vertex at each so the drawn line bends there. Offsets rather than the points
+            // themselves keep the route on the meter's anchor as it moves, like the spot's s.
+            // The bundled sample is in a frame of its own, unrelated to this wall, so its route
+            // is measured along the sample spot's own direction, as before.
+            if isSample {
+                if let placed = result.spot {
+                    let meterPlan = placed.center - placed.meterOffsetFt
+                    route = cable.polyline.map { point in
+                        let d = point - meterPlan
+                        return SIMD2(meters(d.x * placed.along.x + d.y * placed.along.y), height)
+                    }
                 }
             } else if let sceneWall {
-                route = cable.polyline.map { SIMD2(sceneWall.wallCoordinates(ofPlanPointFeet: $0).s, height) }
+                // A route comes with a spot (result.schema.json); without one, the meter as it is now.
+                let meterNow = SIMD2(Double(sceneWall.meter.x), Double(sceneWall.meter.z)) * SceneUnits.feetPerMeter
+                let meterPlan = result.spot.map { $0.center - $0.meterOffsetFt } ?? meterNow
+                route = sceneWall.chainS(ofPlanOffsetsFeet: cable.polyline.map { $0 - meterPlan }).map { SIMD2($0, height) }
             }
         }
 

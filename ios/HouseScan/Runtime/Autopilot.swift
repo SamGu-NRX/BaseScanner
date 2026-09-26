@@ -62,6 +62,9 @@ final class Autopilot {
         await pause(hold)
 
         await engine.waitForGate(.markFeatures)
+        // Mulch, so the replay's scene carries a ground patch over the ground its walk saw.
+        // Answered after the UI test has finished with the screen, so its audit reads a still tree.
+        engine.answerGround(.type(.mulch))
         engine.confirmFeatures()
         await pause(0.3)
         if engine.state.phase == .gapRequest {

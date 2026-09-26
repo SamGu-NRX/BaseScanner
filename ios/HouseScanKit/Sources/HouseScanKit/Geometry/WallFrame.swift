@@ -15,6 +15,18 @@ public struct WallPoint: Sendable, Equatable {
     }
 }
 
+/// How the line of a piece of wall was found: scene.json's `walls[].source`, which sets the
+/// server's default error for the wall (tap 0.3 ft, mesh 0.5, plane 0.75, each plus its drift).
+public enum WallLineSource: String, Sendable, Equatable {
+    /// Through tapped points: the line's position and direction come from where taps landed.
+    case tap
+    /// Fitted to the LiDAR mesh.
+    case mesh
+    /// Taken from an ARKit detected plane (an ARPlaneAnchor): its direction and its distance
+    /// from the camera are the plane's.
+    case plane
+}
+
 /// A corner the walk followed. At `s` the wall turns; beyond it, away from the meter, it faces
 /// `outward`.
 public struct WallCorner: Sendable, Equatable {
@@ -22,10 +34,14 @@ public struct WallCorner: Sendable, Equatable {
     public var s: Float
     /// Unit, horizontal, from the wall past the corner toward the homeowner.
     public var outward: SIMD3<Float>
+    /// How the line of the wall past the corner was found. `.tap` by default, which is also what
+    /// scene.json means when a wall has no source.
+    public var source: WallLineSource
 
-    public init(s: Float, outward: SIMD3<Float>) {
+    public init(s: Float, outward: SIMD3<Float>, source: WallLineSource = .tap) {
         self.s = s
         self.outward = outward
+        self.source = source
     }
 }
 
