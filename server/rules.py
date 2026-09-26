@@ -149,8 +149,30 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that refuses a repeated key. PyYAML keeps the last copy silently, so a rules
+    file with two `clearances:` blocks would load a threshold nobody meant."""
+
+
+def _unique_mapping(loader: yaml.SafeLoader, node: yaml.MappingNode, deep: bool = False) -> Any:
+    seen: set[Any] = set()
+    for key_node, _ in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in seen:
+            raise ValueError(
+                f"duplicate key {key!r} at line {key_node.start_mark.line + 1} of "
+                f"{key_node.start_mark.name}"
+            )
+        seen.add(key)
+    return loader.construct_mapping(node, deep=deep)
+
+
+_UniqueKeyLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
+
+
 def _read_yaml(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text())
+    with path.open() as f:
+        data = yaml.load(f, Loader=_UniqueKeyLoader)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: expected a mapping at the top level")
     return data

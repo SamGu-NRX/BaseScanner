@@ -58,7 +58,7 @@
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/spot"}]
     },
     "missing_evidence": {
-      "description": "Views that would settle an UNSURE result. Only areas nobody observed appear here; an UNSURE caused by a measurement inside its error band needs a person, not more photos. Empty for pass and reject.",
+      "description": "Views that would settle an UNSURE result. Only areas nobody observed appear here; an UNSURE caused by a measurement inside its error band needs a person, not more photos. Empty for pass and reject. Supplying exactly what a band request names settles it: a coverage.observed entry with the same band and span_ft, and out_ft at least the request's out_ft.",
       "type": "array",
       "items": {
         "type": "object",
@@ -68,6 +68,7 @@
           "kind": {"enum": ["band", "past_end"]},
           "band": {"enum": ["wall", "ground", "overhead", "facing"]},
           "span_ft": {"$ref": "#/$defs/span"},
+          "out_ft": {"type": "number", "minimum": 0, "description": "For ground, facing and overhead requests: how far the view must reach, out from the wall (ground, facing) or up from the ground (overhead). Report it as the observed entry's out_ft; seeing further also settles it."},
           "side": {"enum": ["left", "right"]},
           "checks": {"type": "array", "items": {"type": "string"}},
           "message": {"type": "string"}
