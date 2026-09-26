@@ -234,6 +234,10 @@ public struct SceneInput: Sendable {
     /// Position error of each piece's line, meters, one per piece of `wall.chain` in the same
     /// order; nil, or an empty list, leaves the server's default for the piece's source.
     public var wallPlusMinus: [Float?]
+    /// Where the meter is, world meters, when it is not on the wall's line: a meter tapped on the
+    /// face of a box proud of a measured wall. Its foot on the meter's piece must be the chain's
+    /// origin (s = 0), as the server places it. Nil writes `wall.meter`.
+    public var meterPosition: SIMD3<Float>?
     /// What the homeowner said the ground along the wall is. With a type, the ground the ground
     /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
     /// and the server treats the surface as unknown.
@@ -244,7 +248,7 @@ public struct SceneInput: Sendable {
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
         meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil,
-        wallPlusMinus: [Float?] = []
+        wallPlusMinus: [Float?] = [], meterPosition: SIMD3<Float>? = nil
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -261,6 +265,7 @@ public struct SceneInput: Sendable {
         self.meshOverheads = meshOverheads
         self.groundType = groundType
         self.wallPlusMinus = wallPlusMinus
+        self.meterPosition = meterPosition
     }
 }
 
@@ -280,6 +285,8 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     case cornersOutOfOrder([Float])
     /// A list that must be empty or hold one entry per item of another has neither.
     case countMismatch(field: String, expected: Int, actual: Int)
+    /// `meterPosition` projects onto the chain this far from the origin, meters.
+    case meterOffChainOrigin(s: Float)
 
     public var description: String {
         switch self {
@@ -296,6 +303,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
         case .countMismatch(let f, let e, let a): "\(f) has \(a) entries, expected \(e)"
+        case .meterOffChainOrigin(let s): "meterPosition projects onto the wall at s = \(s) m, not at the chain's origin"
         }
     }
 }
@@ -385,6 +393,11 @@ public enum SceneExport {
         if let h = input.wallHeight, !(h > 0) { throw SceneExportError.nonPositiveWallHeight(h) }
         if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
         if let pm = input.objectPlusMinus { try requireNonNegative(pm, "objectPlusMinus") }
+        // The server puts s = 0 at the meter's projection onto its wall; a millimeter covers
+        // Float rounding of a point built on the chain.
+        if let position = input.meterPosition, abs(wall.wallCoordinates(of: position).s) > 0.001 {
+            throw SceneExportError.meterOffChainOrigin(s: wall.wallCoordinates(of: position).s)
+        }
         guard input.wallPlusMinus.isEmpty || input.wallPlusMinus.count == chain.segments.count else {
             throw SceneExportError.countMismatch(field: "wallPlusMinus", expected: chain.segments.count, actual: input.wallPlusMinus.count)
         }
@@ -519,7 +532,7 @@ public enum SceneExport {
 
         return SceneDocument(
             schema_version: "1.0",
-            meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
+            meter: .init(pos: point3Feet(input.meterPosition ?? wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
             walls: writtenWalls,
             objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(

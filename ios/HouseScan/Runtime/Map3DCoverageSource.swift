@@ -53,9 +53,9 @@ enum Map3DCoverageSource {
     /// The measured chain is used when `snapshot.measured` exists (`finalSnapshot()` fills it)
     /// and it agrees with the walk: its meter piece faces within `WallFrame.minCornerAngle` of the
     /// tapped wall (the rule that tells a new wall from the same one), the meter lies within
-    /// `meterLineDistance` of that piece's line, every measured corner within the baseline lies
-    /// within `cornerDistance` of the tapped chain, and the chain reaches both ends of the
-    /// baseline to within `chainShortfall`. Otherwise the tapped wall is written with source
+    /// `meterLineDistance` of that piece's line with its foot on the piece, every measured corner
+    /// within the baseline lies within `cornerDistance` of the tapped chain, and the chain reaches
+    /// both ends of the baseline to within `chainShortfall`. Otherwise the tapped wall is written with source
     /// `tap`, and `tappedBecause` says which test failed. Coverage is always the one measured along
     /// the wall written, so s agrees.
     ///
@@ -113,6 +113,13 @@ enum Map3DCoverageSource {
         }
         let meterMap = frame.map(tapWall.meter)
         let meterPlan = SIMD2(meterMap.x, meterMap.z)
+        // The exported wall's origin is the meter's foot on this piece (`wallFrame`), which the
+        // server must find again by projecting the meter; a foot off the piece would be clamped.
+        let footT = simd_dot(meterPlan - meterPiece.start, meterPiece.along)
+        let inset = min(0.01, meterPiece.length / 2)
+        guard footT >= inset, footT <= meterPiece.length - inset else {
+            return .failure(Refusal(reason: "the meter's foot falls off the measured meter piece"))
+        }
         let meterOff = abs(simd_dot(meterPlan - meterPiece.start, meterPiece.outward))
         guard meterOff <= meterLineDistance else {
             return .failure(Refusal(reason: "the meter is \(meterOff) m from the measured meter piece's line"))
@@ -134,8 +141,7 @@ enum Map3DCoverageSource {
         }
 
         // The chain's own ends in s, as `MeasuredWallChain.wallFrame` lays it out from the meter.
-        let inset = min(0.01, meterPiece.length / 2)
-        let meterS = min(max(simd_dot(meterPlan - meterPiece.start, meterPiece.along), inset), meterPiece.length - inset)
+        let meterS = footT
         let leftEnd = -meterS - chain.walls.prefix(chain.meterIndex).reduce(0) { $0 + $1.length }
         let rightEnd = meterPiece.length - meterS + chain.walls.suffix(from: chain.meterIndex + 1).reduce(0) { $0 + $1.length }
         guard leftEnd <= low + chainShortfall, rightEnd >= high - chainShortfall else {

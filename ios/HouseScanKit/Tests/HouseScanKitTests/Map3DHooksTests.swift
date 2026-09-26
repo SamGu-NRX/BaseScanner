@@ -108,6 +108,26 @@ import simd
         #expect(wallEntries.map { $0["out_ft"]?.number } == [2.9527, 6.5616])
     }
 
+    /// A meter tapped on a box 0.25 m proud of a measured wall: the wall stays on its line and
+    /// the meter's position is where it was tapped, projecting onto the wall at s = 0.
+    @Test func theMeterKeepsItsOwnPositionOffAMeasuredWall() throws {
+        var input = Self.input()
+        input.meterPosition = input.wall.world(s: 0, height: 1.2, out: 0.25)
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let v = try JSONSchemaValidator.Value.parse(data)
+        // (0, 1.2, 0.25) m in feet; the wall's baseline stays on z = 0.
+        #expect(v["meter"]?["pos"]?.numbers == [0, 3.937, 0.8202])
+        let baseline = try #require(v["walls"]?.array?.first?["baseline"]?.array)
+        #expect(baseline.compactMap { $0.numbers?[1] } == [0, 0])
+    }
+
+    @Test func aMeterPositionAwayFromTheChainsOriginIsRefused() {
+        var input = Self.input()
+        input.meterPosition = input.wall.world(s: 0.5, height: 1.2, out: 0.25)
+        #expect(throws: SceneExportError.meterOffChainOrigin(s: 0.5)) { try SceneExport.jsonData(input) }
+    }
+
     @Test func noErrorsWriteNoPlusMinus() throws {
         let data = try SceneExport.jsonData(Self.input(plusMinus: []))
         let walls = try #require(try JSONSchemaValidator.Value.parse(data)["walls"]?.array)

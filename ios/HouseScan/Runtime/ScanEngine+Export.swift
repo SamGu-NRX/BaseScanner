@@ -83,7 +83,10 @@ extension ScanEngine {
             meshOverheads: mesh.overheads,
             // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
             groundType: state.groundAnswer.flatMap(Self.sceneGroundType),
-            wallPlusMinus: geometry.plusMinus
+            wallPlusMinus: geometry.plusMinus,
+            // A measured wall lies on its fitted line; the meter stays where it was tapped, which
+            // may be on a box proud of that line.
+            meterPosition: wall.meter == map.wall.meter ? nil : map.wall.meter - drop
         )
         return try SceneExport.jsonData(input)
     }
