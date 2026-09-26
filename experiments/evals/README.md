@@ -19,17 +19,17 @@ What the ETH3D numbers measure: the error in the distance between two scanned su
 2. **Photos alone: no.** Each model's own metric scale is off. Within 6 m of the camera, MoGe-2 reads 4% to 12% long and Depth Anything 3 metric 7% to 11% short: median errors of 6 to 8 in on 1 to 3 m spans, p90 about 20 in.
 3. **One photo plus one taped distance: good median, loose tail, worst on walls and edges.** A single MoGe-2 photo scaled by a taped 1 to 3 m distance is off a median 1.6 in on 1 to 3 m spans (electro, within 6 m). The p90 is 9.6 in on surfaces overall, 15.1 in on vertical surfaces and 26.9 in at edges. That settles only clear-cut placements.
 4. **More photos with true poses and no rescale: no gain.** On a fixed set of points and pairs, per-photo depth averaged over 1, 2, 4 and 8 photos with the true poses gives, with one tape, medians of 1.8, 2.3, 2.5 and 2.8 in and p90s of 8.6, 11.4, 15.7 and 10.8 in on 1 to 3 m spans. Each photo carries its own scale error, and averaging mixes them.
-5. **AR poses fixing scale: only if the phone's own scale error is about 2% or less, with eight photos, and only on walls.** Rescaling each photo's MoGe-2 depth to points triangulated with the poses, then fusing 8 photos, gives these p90s on 1 to 3 m spans (electro, within 6 m, no tape):
-   - with exact poses, 4.1 in overall and 2.9 in on walls;
-   - with an assumed modern phone (2% scale error, 1 cm and 0.1° of noise), 5.1 in and 3.9 in;
-   - with the errors measured on the 2018 phone, 12.8 in and 11.1 in.
+5. **AR poses fixing scale: not to about 4 in, even at an assumed 2% pose error.** Rescaling each photo's MoGe-2 depth to points triangulated with the poses, then fusing 8 photos, gives these p90s on 1 to 3 m spans (electro, within 6 m, no tape, 95% intervals over seed groups and 5 pose-noise draws):
+   - exact poses: 4.0 in [3.3, 4.8] overall, 2.8 in [2.0, 4.4] on walls;
+   - an assumed modern phone (2% scale error, 1 cm and 0.1° of noise): 5.6 in [4.6, 6.7] overall, 5.0 in [3.8, 6.8] on walls;
+   - the errors measured on the 2018 phone: 14.6 in [10.6, 18.7] overall, 10.8 in [8.6, 13.1] on walls.
 
-   The pose's scale error passes straight into every length. On facade, whose photos were taken from 10 to 25 m, the p90 with exact poses is 8.2 in over all points. Edges stay at 8 in or worse in every setting. MapAnything given the poses as priors fixes most of its scale on electro (+17% becomes −3% to +4%) but not on facade (still 12% to 16% short). It also leaves 10% to 20% of the pairs without a prediction, so its p90 fails.
+   These assume perfect feature matching across photos; without it, walls reach 6.3 in even with exact poses. Edges stay at 8 in or worse everywhere. The pose's scale error passes straight into every length. MapAnything given the poses fixes its scale on one scene but not the other, and leaves 10% to 20% of pairs without a prediction.
 
-   **Verdict:** neither way reaches about 4 in at p90 with the pose error measured on the one phone we have. Triangulation-rescaled depth reaches it on walls only if a current phone's AR scale error is about 2% or less. That is an assumption, and the Measure Lab tape protocol can check it on a real phone in an hour.
-6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.5 to 6.8 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
+   **Verdict:** neither way reaches about 4 in at p90 with realistic pose error. An earlier single noise draw showed walls at 3.9 in; with five draws that was the lucky end of the spread.
+6. **Which photos to keep: the close ones.** Keeping only photos with the wall within 6 m cuts a single photo's p90 from 11.4 to 6.9 in on 1 to 3 m spans, and from 39.0 to 14.8 in on 3 to 10 m spans. Viewing angle barely mattered.
 7. **The field session: not measured yet.** `make field` (section 5) puts the phone's AR taps and three learned-depth rows in one table against tomorrow's tape survey, with the phone's AR scale error beside it. It runs end to end on the ADVIO replay and on a synthetic survey, but the numbers need the real session.
-8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2%, the setting under which walls came out at 3.9 in p90, is plausible for this phone. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. Its position error p90 over trusted walks is 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft (50.0 in at 30 ft counting the three doubtful walks), inside the server's 0.16 ft per ft allowance. The field tape test stays decisive (section 6).
+8. **A current iPhone's ARKit scale: within 2% of the only public reference, which cannot itself be checked to 2%.** On MARViN's 35 outdoor walks (iPhone 14 Pro Max, ARKit 6, 45 to 255 m each), ARKit's scale matched the dataset's COLMAP reference within 2% on 30. Scene by scene the median walk reads +0.3%, +1.2% and −1.7%. So section 3's modern_assumed 2% is plausible for this phone, though even that setting leaves walls at a p90 of 5.0 in [3.8, 6.8]. It is not proven: that reference gets its meters from its authors, not from a tape or a laser, and GPS can only check it to several percent. The phone also has LiDAR, so it may track better than the LiDAR-less phones we target. Its position error p90 over trusted walks is 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft (50.0 in at 30 ft counting the three doubtful walks), inside the server's 0.16 ft per ft allowance. The field tape test stays decisive (section 6).
 
 ## Reproduce
 
@@ -127,17 +127,19 @@ Removing the scale barely changes the numbers, so what remains is heading and ra
 
 **Results at phone range: electro, within 6 m** (facade's photos were taken from 10 to 25 m). |length error|, inches, median / p90; "all photos" rows score every photo on its own evaluation set:
 
-| Method | Photos | Cohort | Model scale: 1-3 m | Scale error | One taped distance: 1-3 m | 3-10 m |
+| Method | Photos | Cohort | Model scale: 1-3 m | Scale error, 1-3 m pairs | One taped distance: 1-3 m | 3-10 m |
 | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo | all | surface interior | 6.8 / 19.5 | +4.3% | 1.6 / 9.6 | 3.0 / 17.8 |
-| | | vertical interior | 7.1 / 24.8 | +1.5% | 1.8 / 15.1 | 3.6 / 58.2 |
-| | | edges | 8.3 / 31.8 | +4.1% | 3.6 / 26.9 | 5.8 / 36.9 |
-| Depth Anything 3 metric, one photo | all | surface interior | 6.0 / 20.2 | −7.4% | 2.9 / 25.3 | 6.1 / 62.6 |
-| MoGe-2 per photo + true poses | 1 | surface interior | 6.9 / 14.9 | +4.8% | 1.8 / 8.6 | 3.5 / 17.5 |
-| | 2 | | 6.8 / 15.0 | +3.8% | 2.3 / 11.4 | 4.0 / 21.1 |
-| | 4 | | 6.2 / 14.4 | +4.4% | 2.5 / 15.7 | 4.3 / 33.2 |
-| | 8 | | 5.4 / 12.5 | +3.0% | 2.8 / 10.8 | 4.3 / 21.3 |
-| Scan rendered as depth (floor) | 1 | surface interior | 0.7 / 1.6 | −0.8% | 0.5 / 1.6 | 0.9 / 2.8 |
+| MoGe-2, one photo | all | surface interior | 6.8 / 19.5 | +3.5% | 1.6 / 9.6 | 3.0 / 17.8 |
+| | | vertical interior | 7.1 / 24.7 | +1.0% | 1.8 / 15.1 | 3.6 / 58.2 |
+| | | edges | 8.3 / 31.8 | +3.6% | 3.7 / 26.9 | 5.8 / 36.8 |
+| Depth Anything 3 metric, one photo | all | surface interior | 6.0 / 20.2 | −6.6% | 2.9 / 25.3 | 6.1 / 62.6 |
+| MoGe-2 per photo + true poses | 1 | surface interior | 6.9 / 14.9 | +4.4% | 1.8 / 8.7 | 3.5 / 17.5 |
+| | 2 | | 6.8 / 15.0 | +2.4% | 2.3 / 11.3 | 4.0 / 21.1 |
+| | 4 | | 6.1 / 14.4 | +2.5% | 2.5 / 15.7 | 4.4 / 33.1 |
+| | 8 | | 5.4 / 12.5 | +0.7% | 2.8 / 10.8 | 4.3 / 21.1 |
+| Scan rendered as depth (floor) | 1 | surface interior | 0.7 / 1.6 | −0.9% | 0.5 / 1.6 | 0.9 / 2.8 |
+
+Back-projection uses ETH3D's own intrinsics, not the centred ones MoGe-2 reports (a 0.8 to 3.6 px difference that moves medians by at most 0.1 in).
 
 Over all points (4 to 23 m away), MoGe-2 reads 8% short on facade and 0.5% long on electro, and Depth Anything 3 metric 10% to 15% short. With a tape, one MoGe-2 photo is off a median 2.5 to 2.9 in on 1 to 3 m spans.
 
@@ -149,7 +151,7 @@ Over all points (4 to 23 m away), MoGe-2 reads 8% short on facade and 0.5% long 
 
 **Poses.** ETH3D's true poses, degraded per group of photos (`evals/ar_poses.py`). Each setting is an assumption:
 - **exact:** the true poses.
-- **advio_2018:** each group takes one ADVIO walk's measured scale against ARCore (0.88, 0.94 or 0.96), plus 5 cm and 0.2° of noise per camera, from ARKit's own 3 in spread over 3 ft and the 0.22° image-vs-pose disagreement on the replay.
+- **advio_2018:** each group takes one ADVIO walk's measured ARKit scale against the GPS-rescaled truth (0.838, 0.943 or 0.951; ARCore itself reads about 4% short of GPS, so it is not the reference). It adds 5 cm and 0.2° of noise per camera, from ARKit's own 3 in spread over 3 ft and the 0.22° image-vs-pose disagreement on the replay.
 - **modern_assumed:** 2% short, 1 cm and 0.1°, a guess for a current iPhone with no data behind it.
 
 **Methods.**
@@ -157,25 +159,21 @@ Over all points (4 to 23 m away), MoGe-2 reads 8% short on facade and 0.5% long 
 - **(b) Triangulation rescale.** MoGe-2 depth for each photo is rescaled to the points triangulated from SIFT matches across the group with those poses (`evals/triangulate.py`: one factor per photo, the median ratio over at least 20 points that reproject within 2 px plus the pose noise), then placed with the same poses and fused.
 - **Control:** MoGe-2 placed with the same poses without the rescale.
 
-**Results: electro, within 6 m, 1 to 3 m spans, no tape.** Median / p90 inches:
+**Results: electro, within 6 m, 1 to 3 m spans, no tape, 8 photos.** Median / p90 inches with 95% intervals. The intervals bootstrap over the seed groups (7 for surface interior, 6 for walls) and over 5 pose-noise draws for each AR-like setting; exact poses have no noise to draw.
 
-| Method | Photos | Poses | Surface interior | Vertical interior | Edges | Scale error |
-| --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2 placed with poses (control) | 8 | exact | 5.4 / 12.5 | 4.9 / 12.5 | 6.4 / 14.6 | +3.0% |
-| (b) MoGe-2 rescaled by triangulation | 8 | exact | 1.3 / 4.1 | 1.1 / 2.9 | 1.5 / 8.4 | −0.4% |
-| | 8 | modern_assumed | 2.1 / 5.1 | 1.8 / 3.9 | 2.6 / 8.1 | −2.6% |
-| | 8 | advio_2018 | 5.3 / 12.8 | 3.7 / 11.1 | 3.9 / 13.1 | −5.1% |
-| | 4 | exact | 1.6 / 8.9 | 1.6 / 10.9 | 2.1 / 25.0 | 0.0% |
-| (a) MapAnything, 392 px, no poses | 4 | none | 15.7 / 69.6 | 16.8 / fails | fails | +16.8% |
-| (a) MapAnything, 392 px, with poses | 4 | exact | 4.1 / fails | | | +3.5% |
-| | 4 | modern_assumed | 3.4 / fails | | | +1.9% |
-| | 4 | advio_2018 | 5.0 / fails | | | −3.1% |
+| (b) MoGe-2 rescaled by triangulation | Surface interior | Vertical interior (walls) | Scale error |
+| --- | --- | --- | --- |
+| exact poses | 1.3 [1.0, 1.5] / 4.0 [3.3, 4.8] | 1.1 [0.8, 1.4] / 2.8 [2.0, 4.4] | −0.6% |
+| modern_assumed (2% short, 1 cm, 0.1°) | 2.5 [2.1, 2.9] / 5.6 [4.6, 6.7] | 2.3 [1.7, 2.8] / 5.0 [3.8, 6.8] | −3.0% |
+| advio_2018 (measured on the 2018 phone) | 6.2 [4.6, 8.6] / 14.6 [10.6, 18.7] | 4.9 [3.7, 6.5] / 10.8 [8.6, 13.1] | −7.3% |
 
-"fails" means more than 10% of pairs had no prediction. MapAnything masks low-confidence and edge pixels, so 10% to 20% of the interior pairs and 70% to 80% of the edge pairs get no prediction from it.
+Edges stay at 8 in or worse at p90 in every setting. The control, MoGe-2 placed with the same poses and no rescale, has a p90 of 12.5 in with exact poses. With 4 photos, (b)'s p90 more than doubles.
 
-On facade over all points, (b) with 8 photos gives 1.9 / 8.2 in with exact poses and 2.2 / 8.3 in with modern_assumed poses. MapAnything with any poses still reads 12% to 16% short there.
+These rows assume perfect cross-view correspondence: each scan point is found in every photo that sees it through the true projection, as a perfect feature matcher would. An app without a matcher would instead reproject the tapped photo's own estimate into the others. Done that way, the wall p90 with 8 photos rises from 2.8 to 6.3 in with exact poses, from 4.3 to 6.4 in with modern_assumed and from 10.3 to 14.8 in with advio_2018, on one noise draw each. Medians move by 0.2 in or less.
 
-**What decides it.** Triangulation fixes each photo's own scale error, which is why 8 rescaled photos beat 8 unscaled ones by a factor of three. But the triangulated points take their scale from the poses, so the pose's scale error passes straight into every length: 2% short in, about 2.5% short out. Fewer photos give fewer and noisier triangulated points; at 4 photos the p90 more than doubles. A taped distance on top makes it worse, not better (p90 7.7 in with exact poses): the reference pair carries its own reconstruction error, a median 1.3 in, which outweighs the scale error that is left.
+(a) MapAnything given the poses, at 392 px with 4 photos, fixes most of its scale on electro (+17% becomes about +3%) but not on facade (still 12% to 16% short). It leaves 10% to 20% of pairs without a prediction, so its p90 fails. Its rows have a single noise draw: its weights were removed to free disk.
+
+**What decides it.** Triangulation fixes each photo's own scale error, which is why 8 rescaled photos beat 8 unscaled ones by a factor of three. But the triangulated points take their scale from the poses, so the pose's scale error passes straight into every length: 2% short in, 3% short out. A taped distance on top makes it worse, not better (p90 7.6 in with exact poses): the reference pair carries its own reconstruction error, which outweighs the scale error that is left.
 
 ## 4. Which photos to keep (ETH3D)
 
@@ -183,12 +181,12 @@ On facade over all points, (b) with 8 photos gives 1.9 / 8.2 in with exact poses
 
 | Keep | Photos kept | 1-3 m spans | 3-10 m spans |
 | --- | --- | --- | --- |
-| every photo | 121 of 121 | 2.7 / 11.5 | 7.6 / 39.0 |
-| wall within 6 m | 15 of 121 | 1.9 / 6.8 | 4.2 / 14.8 |
-| wall within 8 m | 27 of 121 | 2.1 / 7.4 | 4.8 / 17.1 |
-| wall within 12 m | 42 of 121 | 2.3 / 8.1 | 5.4 / 20.5 |
+| every photo | 121 of 121 | 2.7 / 11.4 | 7.6 / 39.0 |
+| wall within 6 m | 15 of 121 | 1.9 / 6.9 | 4.3 / 14.8 |
+| wall within 8 m | 27 of 121 | 2.1 / 7.4 | 4.8 / 17.0 |
+| wall within 12 m | 42 of 121 | 2.3 / 8.1 | 5.4 / 20.4 |
 | wall seen within 40 degrees of head-on | 52 of 121 | 2.3 / 9.3 | 7.1 / 35.2 |
-| wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.7 | 7.1 / 32.9 |
+| wall seen more than 50 degrees off head-on | 40 of 121 | 2.8 / 11.7 | 7.1 / 32.8 |
 
 No photo here is closer to head-on than 26 degrees, so a head-on shot is untested, and all 15 photos within 6 m are from electro.
 
@@ -272,7 +270,7 @@ The 3 ft row in the results file is below what this reference resolves (images 0
 
 **Verdict.**
 - **Within 2%?** Probably, for this phone; not proven. Against the only reference available, this 2022 iPhone's ARKit holds its scale within 2% on 30 of 35 outdoor walks, and each site's walks agree with each other to within about 1 to 2.5%.
-- **Is section 3's "walls within about 4 in" supported?** It needed a pose scale error of about 2% or less, and this is the first evidence from a current phone that it is. The 2018 phone's 5% to 17% does not describe current hardware.
+- **What it means for section 3.** A pose scale error of about 2% is the first thing walls need, and this is the first evidence from a current phone that ARKit meets it. It is not enough: at 2%, walls still come out at a p90 of 5.0 in [3.8, 6.8] (section 3). The 2018 phone's 5% to 17% does not describe current hardware.
 - **What stops it being settled:**
   - the reference's scale cannot be checked independently to 2%;
   - one site sits at a steady −1.7%, which is the phone's error or the reference's;

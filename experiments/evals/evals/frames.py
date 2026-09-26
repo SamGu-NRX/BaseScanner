@@ -72,8 +72,8 @@ def per_view(scene: Scene) -> list[dict]:
     root = PREDICTIONS / scene.name / MODEL
 
     def pv(n):
-        d, K, _ = load_prediction(root / f"{n}.npz")
-        return d, K, scene.views[n].cam_to_world, True
+        d, _, _ = load_prediction(root / f"{n}.npz")
+        return d, scene.K(n), scene.views[n].cam_to_world, True
 
     for name in scene.views:
         ev = EvalSet(scene, name, None)

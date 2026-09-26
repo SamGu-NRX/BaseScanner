@@ -4,17 +4,21 @@ Each setting is an assumption, stated with where its numbers come from:
 
 - `exact`: the true poses, the best any pose prior can do.
 - `advio_2018`: the errors measured in `evals.drift` on ADVIO's 2018 iPhone 6s. Scale: each
-  group of photos takes one walk's measured scale against ARCore (signed median over 30 ft, walks
-  20 to 22 in results/advio_drift.md: -42.2, -23.1 and -15.3 in, so 0.883, 0.936 and 0.958), in
-  turn. Position noise: ARKit's own spread over 3 ft is about 3 in (three-cornered hat, walks 20 to
-  22), which is two independent position errors, so 5 cm per axis per camera. Rotation noise: 0.2
-  degrees per axis, the median disagreement between ARKit and image-derived rotations measured
-  while building the replay session (an upper bound: it includes the image estimate's own error).
+  group of photos takes one walk's ARKit scale against the ground truth rescaled to GPS, in turn
+  (`arkit_scale_vs_truth_gps` in results/advio_drift.json, walks 20 to 22: 0.838, 0.943, 0.951;
+  the median displacement ratio over 10 to 30 ft windows). ARCore is not the reference: on walk
+  20 it reads 4% short of GPS itself (0.802 vs 0.835 of the truth). Position noise: ARKit's own
+  spread over 3 ft is about 3 in (three-cornered hat, walks 20 to 22), which is two independent
+  position errors, so 5 cm per axis per camera. Rotation noise: 0.2 degrees per axis, the median
+  disagreement between ARKit and image-derived rotations measured while building the replay
+  session (an upper bound: it includes the image estimate's own error).
 - `modern_assumed`: a guess for a current iPhone, with no measurement behind it: 2% short, 1 cm
   and 0.1 degrees.
 
 Scale error stretches every camera's offset from the group's first camera; noise is then added
-independently per camera. Rotation noise turns each camera about its own centre.
+independently per camera. Rotation noise turns each camera about its own centre. Each setting with
+noise is drawn `NOISE_DRAWS` times (draw 0 is the one MapAnything was run on); the scale a group
+gets does not change between draws.
 """
 
 from __future__ import annotations
@@ -35,11 +39,23 @@ class PoseError:
     reprojection_px: float
 
 
+# ARKit / GPS-rescaled truth per ADVIO walk (20, 21, 22), from results/advio_drift.json;
+# tests/test_pose_priors.py fails if that file changes.
+ADVIO_ARKIT_SCALES = (0.8377, 0.9425, 0.9509)
+
 SETTINGS = {
     "exact": PoseError((1.0,), 0.0, 0.0, 2.0),
-    "advio_2018": PoseError((1 - 42.2 / 360, 1 - 23.1 / 360, 1 - 15.3 / 360), 0.05, 0.2, 8.0),
+    "advio_2018": PoseError(ADVIO_ARKIT_SCALES, 0.05, 0.2, 8.0),
     "modern_assumed": PoseError((0.98,), 0.01, 0.1, 3.0),
 }
+NOISE_DRAWS = 5
+
+
+def noise_draws(setting: str) -> range:
+    """Draw indices for a setting: one for noise-free poses (every draw would be identical)."""
+    error = SETTINGS[setting]
+    noisy = error.position_sigma_m > 0 or error.rotation_sigma_deg > 0
+    return range(NOISE_DRAWS if noisy else 1)
 
 
 def small_rotation(axis_angle_rad: np.ndarray) -> np.ndarray:
@@ -68,11 +84,14 @@ def degrade(
     return out
 
 
-def group_poses(views: dict, groups: dict[str, list[list[str]]], setting: str) -> dict[str, dict]:
+def group_poses(
+    views: dict, groups: dict[str, list[list[str]]], setting: str, draw: int = 0
+) -> dict[str, dict]:
     """{group id: {"scale": applied scale, "poses": {view: 4x4 cam-to-world}}} for every group,
-    deterministic per setting."""
+    deterministic per setting and draw. Draw 0 keeps the generator the first version used, so it
+    reproduces the poses MapAnything was given."""
     error = SETTINGS[setting]
-    rng = np.random.default_rng(_seed(setting))
+    rng = np.random.default_rng(_seed(setting) if draw == 0 else [_seed(setting), draw])
     out: dict[str, dict] = {}
     k = 0
     for n, members_list in groups.items():

@@ -61,6 +61,9 @@ PREDICTIONS = EVALS_DIR / "predictions"
 # per_view(view name) -> (depth HxW, K 3x3, cam-to-world 4x4, centred). `centred` True: the pose is
 # metric (true or AR-like), so scaling depth moves points along rays from the camera centre;
 # False: the pose is in a model's own frame and the whole reconstruction scales about its origin.
+# Depth placed with the dataset's (or AR-like) poses is back-projected with the dataset's K
+# (`Scene.K`): the pixels are the real camera's. MoGe-2's own K puts the principal point at the
+# image centre, 0.8 to 3.6 px from ETH3D's at 1024 px wide; the model was given only the fov.
 PerView = Callable[[str], tuple[np.ndarray, np.ndarray, np.ndarray, bool]]
 # method(group id, members) -> PerView, or None when that method has no output for the group.
 Method = Callable[[str, list[str]], PerView | None]
@@ -154,6 +157,11 @@ class Scene:
         self.vis_dir = visibility_dir(name, tolerance)
         self._vis: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         self._oracle: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
+    def K(self, view: str) -> np.ndarray:
+        """The dataset's intrinsics for the view at the evaluation width."""
+        v = self.views[view]
+        return v.scaled_K(WIDTH, _height(v))
 
     def visible(self, view: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         if view not in self._vis:
@@ -289,8 +297,8 @@ def score_single_photos(scene: Scene, model: str) -> dict:
     root = PREDICTIONS / scene.name / model
 
     def per_view(name):
-        d, K, _ = load_prediction(root / f"{name}.npz")
-        return d, K, scene.views[name].cam_to_world, True
+        d, _, _ = load_prediction(root / f"{name}.npz")
+        return d, scene.K(name), scene.views[name].cam_to_world, True
 
     out: dict = {}
     for range_name, max_range in RANGES.items():
@@ -321,8 +329,8 @@ def true_pose_methods(scene: Scene) -> dict[str, Method]:
 
         def fused(gid, members, model=model):
             def pv(name):
-                d, K, _ = load_prediction(pred_root / model / f"{name}.npz")
-                return d, K, scene.views[name].cam_to_world, True
+                d, _, _ = load_prediction(pred_root / model / f"{name}.npz")
+                return d, scene.K(name), scene.views[name].cam_to_world, True
 
             return pv
 
@@ -374,9 +382,9 @@ def _scale(x: dict | None) -> str:
 def table(rows: list[tuple[str, str, dict]], cohort: str) -> list[str]:
     """Rows of (label, views, {cohort: pooled}) as one markdown table."""
     lines = [
-        "| Method | Views | Model scale: 1-3 m | 3-10 m | Scale error | One taped distance: 1-3 m "
-        "| 3-10 m | Tape calibrated |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m "
+        "| One taped distance: 1-3 m | 3-10 m | Tape calibrated |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for label, n, res in rows:
         r = res.get(cohort)
@@ -386,15 +394,15 @@ def table(rows: list[tuple[str, str, dict]], cohort: str) -> list[str]:
         ta, tb = r["one_known_distance"].get("1-3m"), r["one_known_distance"].get("3-10m")
         ok = r.get("tape_calibration_success_pct")
         lines.append(
-            f"| {label} | {n} | {cell(a)} | {cell(b)} | {_scale(b or a)} | {cell(ta)} | {cell(tb)} "
-            f"| {'n/a' if ok is None else f'{ok:.0f}%'} |"
+            f"| {label} | {n} | {cell(a)} | {cell(b)} | {_scale(a)} | {_scale(b)} | {cell(ta)} "
+            f"| {cell(tb)} | {'n/a' if ok is None else f'{ok:.0f}%'} |"
         )
     return lines
 
 
 HEADER = (
     "|Error in the distance between two scanned surface points|, inches, median / p90, against the "
-    "laser scan. Scale error: median of predicted / true length, minus 1 (3-10 m pairs). Failed "
+    "laser scan. Scale error: median of predicted / true length, minus 1, per span bin. Failed "
     "pairs (no prediction, or a taped reference no scale could match) count as infinite error; "
     "'fails' means more than 10% failed. Cohorts: surface interior (any scanned surface away from "
     "depth edges), vertical interior (walls, fences and other vertical surfaces), edges (the near "
@@ -444,7 +452,7 @@ def sensitivity() -> str:
         "error. A point counts as visible when it lies within the tolerance of the nearest scanned "
         "depth along its pixel.",
         "",
-        "| Scene | Method | Views | Tolerance | Taped 1-3 m | Taped 3-10 m | Model scale error |",
+        "| Scene | Method | Views | Tolerance | Taped 1-3 m | Taped 3-10 m | Model scale error, 3-10 m pairs |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     for s in SCENES:

@@ -451,16 +451,16 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.22,
-         "median_in": 5.64,
-         "p90_in": 11.56,
-         "scale_error_pct": -5.59
+         "median_in": 5.63,
+         "p90_in": 11.57,
+         "scale_error_pct": -5.58
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.31,
-         "median_in": 20.22,
-         "p90_in": 47.4,
-         "scale_error_pct": -6.99
+         "median_in": 20.21,
+         "p90_in": 47.28,
+         "scale_error_pct": -6.97
         }
        },
        "one_known_distance": {
@@ -469,13 +469,13 @@
          "failed_pct": 0.72,
          "median_in": 3.02,
          "p90_in": 12.12,
-         "scale_error_pct": -0.17
+         "scale_error_pct": -0.16
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.81,
          "median_in": 10.32,
-         "p90_in": 44.78,
+         "p90_in": 44.76,
          "scale_error_pct": -1.23
         }
        },
@@ -494,9 +494,9 @@
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.01,
-         "median_in": 19.25,
-         "p90_in": 46.3,
-         "scale_error_pct": -7.09
+         "median_in": 19.26,
+         "p90_in": 46.21,
+         "scale_error_pct": -7.07
         }
        },
        "one_known_distance": {
@@ -510,8 +510,8 @@
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.51,
-         "median_in": 9.68,
-         "p90_in": 43.91,
+         "median_in": 9.69,
+         "p90_in": 43.92,
          "scale_error_pct": -1.26
         }
        },
@@ -523,32 +523,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.02,
-         "median_in": 5.31,
-         "p90_in": 25.22,
+         "median_in": 5.32,
+         "p90_in": 25.3,
          "scale_error_pct": -1.8
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.1,
-         "median_in": 15.13,
-         "p90_in": 51.1,
-         "scale_error_pct": -3.26
+         "median_in": 15.1,
+         "p90_in": 51.07,
+         "scale_error_pct": -3.25
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.52,
-         "median_in": 4.94,
-         "p90_in": 28.17,
-         "scale_error_pct": 3.58
+         "median_in": 4.93,
+         "p90_in": 28.19,
+         "scale_error_pct": 3.57
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.6,
          "median_in": 14.01,
-         "p90_in": 55.46,
-         "scale_error_pct": 2.23
+         "p90_in": 55.42,
+         "scale_error_pct": 2.24
         }
        },
        "tape_calibration_success_pct": 99.5,
@@ -561,31 +561,31 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.19,
-         "median_in": 5.94,
-         "p90_in": 11.93,
-         "scale_error_pct": -6.18
+         "median_in": 5.93,
+         "p90_in": 11.96,
+         "scale_error_pct": -6.16
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.22,
-         "median_in": 20.47,
-         "p90_in": 47.65,
-         "scale_error_pct": -7.34
+         "median_in": 20.42,
+         "p90_in": 47.68,
+         "scale_error_pct": -7.32
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.68,
-         "median_in": 3.05,
-         "p90_in": 12.67,
-         "scale_error_pct": -0.18
+         "median_in": 3.04,
+         "p90_in": 12.62,
+         "scale_error_pct": -0.17
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.72,
-         "median_in": 9.84,
-         "p90_in": 43.83,
+         "median_in": 9.82,
+         "p90_in": 43.65,
          "scale_error_pct": -1.23
         }
        },
@@ -597,31 +597,31 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.0,
-         "median_in": 5.91,
-         "p90_in": 11.23,
-         "scale_error_pct": -6.48
+         "median_in": 5.9,
+         "p90_in": 11.25,
+         "scale_error_pct": -6.47
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.01,
-         "median_in": 19.59,
-         "p90_in": 46.9,
-         "scale_error_pct": -7.41
+         "median_in": 19.57,
+         "p90_in": 46.74,
+         "scale_error_pct": -7.38
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.5,
-         "median_in": 2.79,
-         "p90_in": 11.31,
+         "median_in": 2.78,
+         "p90_in": 11.26,
          "scale_error_pct": -0.44
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.51,
-         "median_in": 9.23,
-         "p90_in": 42.83,
+         "median_in": 9.21,
+         "p90_in": 42.66,
          "scale_error_pct": -1.24
         }
        },
@@ -634,31 +634,31 @@
          "pairs": 24000,
          "failed_pct": 0.0,
          "median_in": 5.51,
-         "p90_in": 26.09,
-         "scale_error_pct": -2.23
+         "p90_in": 26.11,
+         "scale_error_pct": -2.26
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.03,
-         "median_in": 16.08,
-         "p90_in": 48.5,
-         "scale_error_pct": -4.0
+         "median_in": 16.03,
+         "p90_in": 48.48,
+         "scale_error_pct": -3.98
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.5,
-         "median_in": 5.04,
-         "p90_in": 30.52,
-         "scale_error_pct": 3.93
+         "median_in": 5.01,
+         "p90_in": 30.48,
+         "scale_error_pct": 3.92
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.53,
-         "median_in": 13.79,
-         "p90_in": 55.87,
-         "scale_error_pct": 2.17
+         "median_in": 13.78,
+         "p90_in": 55.8,
+         "scale_error_pct": 2.18
         }
        },
        "tape_calibration_success_pct": 99.5,
@@ -671,35 +671,35 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.15,
-         "median_in": 5.72,
-         "p90_in": 11.66,
-         "scale_error_pct": -5.89
+         "median_in": 5.7,
+         "p90_in": 11.63,
+         "scale_error_pct": -5.87
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.18,
-         "median_in": 19.18,
-         "p90_in": 46.77,
-         "scale_error_pct": -6.99
+         "median_in": 19.2,
+         "p90_in": 46.86,
+         "scale_error_pct": -6.97
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
-         "failed_pct": 1.15,
-         "median_in": 3.37,
-         "p90_in": 12.7,
-         "scale_error_pct": -0.33
+         "failed_pct": 0.65,
+         "median_in": 3.34,
+         "p90_in": 12.34,
+         "scale_error_pct": -0.32
         },
         "3-10m": {
          "pairs": 600000,
-         "failed_pct": 1.18,
-         "median_in": 10.9,
-         "p90_in": 43.37,
-         "scale_error_pct": -1.63
+         "failed_pct": 0.68,
+         "median_in": 10.79,
+         "p90_in": 42.09,
+         "scale_error_pct": -1.62
         }
        },
-       "tape_calibration_success_pct": 99.0,
+       "tape_calibration_success_pct": 99.5,
        "groups": 8
       },
       "vertical interior": {
@@ -707,35 +707,35 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.0,
-         "median_in": 5.62,
-         "p90_in": 10.94,
-         "scale_error_pct": -6.18
+         "median_in": 5.61,
+         "p90_in": 10.92,
+         "scale_error_pct": -6.16
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.01,
-         "median_in": 18.3,
-         "p90_in": 46.47,
-         "scale_error_pct": -7.02
+         "median_in": 18.28,
+         "p90_in": 46.46,
+         "scale_error_pct": -7.0
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
-         "failed_pct": 1.0,
-         "median_in": 3.11,
-         "p90_in": 11.41,
-         "scale_error_pct": -0.64
+         "failed_pct": 0.5,
+         "median_in": 3.08,
+         "p90_in": 11.1,
+         "scale_error_pct": -0.62
         },
         "3-10m": {
          "pairs": 600000,
-         "failed_pct": 1.01,
-         "median_in": 10.4,
-         "p90_in": 42.28,
-         "scale_error_pct": -1.67
+         "failed_pct": 0.51,
+         "median_in": 10.29,
+         "p90_in": 40.99,
+         "scale_error_pct": -1.66
         }
        },
-       "tape_calibration_success_pct": 99.0,
+       "tape_calibration_success_pct": 99.5,
        "groups": 8
       },
       "edges": {
@@ -744,34 +744,34 @@
          "pairs": 24000,
          "failed_pct": 0.0,
          "median_in": 5.09,
-         "p90_in": 24.57,
-         "scale_error_pct": -2.3
+         "p90_in": 24.59,
+         "scale_error_pct": -2.27
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.02,
-         "median_in": 14.83,
-         "p90_in": 45.61,
-         "scale_error_pct": -3.88
+         "median_in": 14.79,
+         "p90_in": 45.42,
+         "scale_error_pct": -3.87
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
-         "failed_pct": 1.0,
-         "median_in": 5.19,
-         "p90_in": 29.3,
-         "scale_error_pct": 3.98
+         "failed_pct": 0.5,
+         "median_in": 5.18,
+         "p90_in": 28.49,
+         "scale_error_pct": 4.06
         },
         "3-10m": {
          "pairs": 600000,
-         "failed_pct": 1.02,
-         "median_in": 13.77,
-         "p90_in": 53.98,
-         "scale_error_pct": 1.97
+         "failed_pct": 0.52,
+         "median_in": 13.74,
+         "p90_in": 52.73,
+         "scale_error_pct": 2.02
         }
        },
-       "tape_calibration_success_pct": 99.0,
+       "tape_calibration_success_pct": 99.5,
        "groups": 8
       }
      },
@@ -781,31 +781,31 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.13,
-         "median_in": 5.94,
-         "p90_in": 11.84,
-         "scale_error_pct": -6.02
+         "median_in": 5.92,
+         "p90_in": 11.81,
+         "scale_error_pct": -5.98
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.15,
-         "median_in": 19.94,
-         "p90_in": 46.22,
-         "scale_error_pct": -7.26
+         "median_in": 19.91,
+         "p90_in": 46.13,
+         "scale_error_pct": -7.24
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 2.13,
-         "median_in": 3.51,
-         "p90_in": 14.52,
-         "scale_error_pct": -0.0
+         "median_in": 3.49,
+         "p90_in": 14.43,
+         "scale_error_pct": 0.01
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 2.15,
-         "median_in": 11.12,
-         "p90_in": 49.23,
+         "median_in": 11.03,
+         "p90_in": 49.0,
          "scale_error_pct": -1.36
         }
        },
@@ -817,32 +817,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.0,
-         "median_in": 5.88,
-         "p90_in": 11.27,
-         "scale_error_pct": -6.35
+         "median_in": 5.86,
+         "p90_in": 11.24,
+         "scale_error_pct": -6.32
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.01,
-         "median_in": 19.09,
-         "p90_in": 46.59,
-         "scale_error_pct": -7.32
+         "median_in": 19.06,
+         "p90_in": 46.46,
+         "scale_error_pct": -7.3
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 2.0,
-         "median_in": 3.23,
-         "p90_in": 13.1,
-         "scale_error_pct": -0.32
+         "median_in": 3.21,
+         "p90_in": 13.02,
+         "scale_error_pct": -0.31
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 2.01,
-         "median_in": 10.67,
-         "p90_in": 48.71,
-         "scale_error_pct": -1.41
+         "median_in": 10.57,
+         "p90_in": 48.53,
+         "scale_error_pct": -1.39
         }
        },
        "tape_calibration_success_pct": 98.0,
@@ -853,32 +853,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.0,
-         "median_in": 5.28,
-         "p90_in": 28.24,
-         "scale_error_pct": -2.41
+         "median_in": 5.26,
+         "p90_in": 28.23,
+         "scale_error_pct": -2.44
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.02,
-         "median_in": 15.39,
-         "p90_in": 53.27,
-         "scale_error_pct": -4.04
+         "median_in": 15.33,
+         "p90_in": 53.18,
+         "scale_error_pct": -4.02
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 2.0,
-         "median_in": 5.7,
-         "p90_in": 36.05,
-         "scale_error_pct": 4.56
+         "median_in": 5.67,
+         "p90_in": 35.99,
+         "scale_error_pct": 4.52
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 2.02,
-         "median_in": 14.69,
-         "p90_in": 65.57,
-         "scale_error_pct": 2.24
+         "median_in": 14.67,
+         "p90_in": 65.25,
+         "scale_error_pct": 2.26
         }
        },
        "tape_calibration_success_pct": 98.0,
@@ -893,23 +893,23 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 1.2,
-         "median_in": 11.44,
+         "median_in": 11.45,
          "p90_in": 20.87,
          "scale_error_pct": -14.79
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 1.56,
-         "median_in": 39.18,
+         "median_in": 39.19,
          "p90_in": 81.47,
-         "scale_error_pct": -16.28
+         "scale_error_pct": -16.29
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 1.68,
-         "median_in": 3.64,
+         "median_in": 3.65,
          "p90_in": 13.91,
          "scale_error_pct": -0.19
         },
@@ -936,9 +936,9 @@
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.12,
-         "median_in": 39.24,
+         "median_in": 39.25,
          "p90_in": 79.31,
-         "scale_error_pct": -17.0
+         "scale_error_pct": -17.01
         }
        },
        "one_known_distance": {
@@ -952,7 +952,7 @@
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.62,
-         "median_in": 11.25,
+         "median_in": 11.26,
          "p90_in": 51.19,
          "scale_error_pct": -1.49
         }
@@ -973,7 +973,7 @@
          "pairs": 24000,
          "failed_pct": 1.06,
          "median_in": 30.43,
-         "p90_in": 71.89,
+         "p90_in": 71.9,
          "scale_error_pct": -11.64
         }
        },
@@ -1010,7 +1010,7 @@
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 1.24,
-         "median_in": 38.13,
+         "median_in": 38.14,
          "p90_in": 82.67,
          "scale_error_pct": -15.91
         }
@@ -1027,7 +1027,7 @@
          "pairs": 600000,
          "failed_pct": 1.71,
          "median_in": 13.29,
-         "p90_in": 59.17,
+         "p90_in": 59.16,
          "scale_error_pct": -1.15
         }
        },
@@ -1040,7 +1040,7 @@
          "pairs": 24000,
          "failed_pct": 0.09,
          "median_in": 11.56,
-         "p90_in": 21.06,
+         "p90_in": 21.07,
          "scale_error_pct": -14.87
         },
         "3-10m": {
@@ -1063,7 +1063,7 @@
          "pairs": 600000,
          "failed_pct": 0.55,
          "median_in": 12.49,
-         "p90_in": 56.15,
+         "p90_in": 56.14,
          "scale_error_pct": -1.46
         }
        },
@@ -1076,13 +1076,13 @@
          "pairs": 24000,
          "failed_pct": 0.41,
          "median_in": 9.19,
-         "p90_in": 29.08,
+         "p90_in": 29.09,
          "scale_error_pct": -8.07
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.77,
-         "median_in": 29.42,
+         "median_in": 29.43,
          "p90_in": 70.76,
          "scale_error_pct": -10.78
         }
@@ -1092,14 +1092,14 @@
          "pairs": 600000,
          "failed_pct": 0.9,
          "median_in": 7.96,
-         "p90_in": 45.48,
+         "p90_in": 45.5,
          "scale_error_pct": 7.93
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.26,
          "median_in": 21.85,
-         "p90_in": 87.67,
+         "p90_in": 87.66,
          "scale_error_pct": 4.64
         }
        },
@@ -1114,8 +1114,8 @@
          "pairs": 24000,
          "failed_pct": 0.59,
          "median_in": 10.99,
-         "p90_in": 20.64,
-         "scale_error_pct": -13.98
+         "p90_in": 20.65,
+         "scale_error_pct": -13.99
         },
         "3-10m": {
          "pairs": 24000,
@@ -1137,7 +1137,7 @@
          "pairs": 600000,
          "failed_pct": 2.28,
          "median_in": 13.46,
-         "p90_in": 55.47,
+         "p90_in": 55.46,
          "scale_error_pct": -1.34
         }
        },
@@ -1149,7 +1149,7 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.04,
-         "median_in": 11.19,
+         "median_in": 11.2,
          "p90_in": 20.44,
          "scale_error_pct": -14.6
         },
@@ -1173,7 +1173,7 @@
          "pairs": 600000,
          "failed_pct": 1.52,
          "median_in": 12.88,
-         "p90_in": 53.94,
+         "p90_in": 53.93,
          "scale_error_pct": -1.77
         }
        },
@@ -1192,8 +1192,8 @@
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.44,
-         "median_in": 27.77,
-         "p90_in": 67.2,
+         "median_in": 27.78,
+         "p90_in": 67.21,
          "scale_error_pct": -10.26
         }
        },
@@ -1209,7 +1209,7 @@
          "pairs": 600000,
          "failed_pct": 1.91,
          "median_in": 20.62,
-         "p90_in": 83.56,
+         "p90_in": 83.55,
          "scale_error_pct": 4.37
         }
        },
@@ -1230,7 +1230,7 @@
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.66,
-         "median_in": 36.04,
+         "median_in": 36.05,
          "p90_in": 76.97,
          "scale_error_pct": -15.05
         }
@@ -1267,7 +1267,7 @@
          "pairs": 24000,
          "failed_pct": 0.02,
          "median_in": 36.22,
-         "p90_in": 77.06,
+         "p90_in": 77.08,
          "scale_error_pct": -15.58
         }
        },
@@ -1295,8 +1295,8 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.18,
-         "median_in": 9.3,
-         "p90_in": 28.56,
+         "median_in": 9.29,
+         "p90_in": 28.54,
          "scale_error_pct": -8.4
         },
         "3-10m": {
@@ -1780,31 +1780,31 @@
          "pairs": 6000,
          "failed_pct": 0.0,
          "median_in": 8.43,
-         "p90_in": 20.21,
-         "scale_error_pct": 9.98
+         "p90_in": 20.14,
+         "scale_error_pct": 10.01
         },
         "3-10m": {
          "pairs": 6000,
          "failed_pct": 0.0,
-         "median_in": 15.94,
-         "p90_in": 30.4,
-         "scale_error_pct": 9.73
+         "median_in": 15.95,
+         "p90_in": 30.25,
+         "scale_error_pct": 9.77
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 0.66,
-         "p90_in": 6.28,
+         "median_in": 0.65,
+         "p90_in": 6.27,
          "scale_error_pct": 0.01
         },
         "3-10m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 1.33,
-         "p90_in": 10.13,
-         "scale_error_pct": 0.15
+         "median_in": 1.3,
+         "p90_in": 10.11,
+         "scale_error_pct": 0.14
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -1816,15 +1816,15 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 16.31,
-         "p90_in": 25.74,
-         "scale_error_pct": 21.43
+         "p90_in": 25.65,
+         "scale_error_pct": 21.36
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 26.68,
-         "p90_in": 33.05,
-         "scale_error_pct": 18.0
+         "median_in": 26.63,
+         "p90_in": 32.89,
+         "scale_error_pct": 17.96
         }
        },
        "one_known_distance": {
@@ -1832,14 +1832,14 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 3.34,
-         "p90_in": 8.76,
-         "scale_error_pct": 2.51
+         "p90_in": 8.75,
+         "scale_error_pct": 2.52
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 4.76,
-         "p90_in": 11.21,
+         "median_in": 4.73,
+         "p90_in": 11.22,
          "scale_error_pct": -0.52
         }
        },
@@ -1851,16 +1851,16 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 10.45,
-         "p90_in": 19.29,
+         "median_in": 10.44,
+         "p90_in": 19.19,
          "scale_error_pct": 17.79
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 30.82,
-         "p90_in": 37.61,
-         "scale_error_pct": 16.24
+         "median_in": 30.75,
+         "p90_in": 37.47,
+         "scale_error_pct": 16.2
         }
        },
        "one_known_distance": {
@@ -1868,15 +1868,15 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 2.35,
-         "p90_in": 6.74,
+         "p90_in": 6.73,
          "scale_error_pct": 0.41
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 5.52,
-         "p90_in": 14.48,
-         "scale_error_pct": -1.32
+         "median_in": 5.49,
+         "p90_in": 14.59,
+         "scale_error_pct": -1.33
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -1890,30 +1890,30 @@
          "pairs": 6000,
          "failed_pct": 0.0,
          "median_in": 8.46,
-         "p90_in": 19.45,
-         "scale_error_pct": 9.97
+         "p90_in": 19.42,
+         "scale_error_pct": 10.02
         },
         "3-10m": {
          "pairs": 6000,
          "failed_pct": 0.0,
-         "median_in": 15.94,
-         "p90_in": 29.88,
-         "scale_error_pct": 9.71
+         "median_in": 15.98,
+         "p90_in": 29.76,
+         "scale_error_pct": 9.74
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 0.66,
-         "p90_in": 6.32,
+         "median_in": 0.65,
+         "p90_in": 6.31,
          "scale_error_pct": -0.0
         },
         "3-10m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 1.33,
-         "p90_in": 10.7,
+         "median_in": 1.3,
+         "p90_in": 10.68,
          "scale_error_pct": 0.15
         }
        },
@@ -1926,15 +1926,15 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 15.83,
-         "p90_in": 24.18,
-         "scale_error_pct": 20.76
+         "p90_in": 24.19,
+         "scale_error_pct": 20.71
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 26.13,
-         "p90_in": 32.45,
-         "scale_error_pct": 17.7
+         "median_in": 26.12,
+         "p90_in": 32.33,
+         "scale_error_pct": 17.68
         }
        },
        "one_known_distance": {
@@ -1942,15 +1942,15 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 3.36,
-         "p90_in": 8.68,
+         "p90_in": 8.69,
          "scale_error_pct": 2.22
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 4.9,
-         "p90_in": 12.06,
-         "scale_error_pct": -0.57
+         "median_in": 4.87,
+         "p90_in": 12.11,
+         "scale_error_pct": -0.56
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -1961,16 +1961,16 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 10.29,
-         "p90_in": 18.57,
-         "scale_error_pct": 17.33
+         "median_in": 10.23,
+         "p90_in": 18.55,
+         "scale_error_pct": 17.31
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 30.9,
-         "p90_in": 38.24,
-         "scale_error_pct": 16.34
+         "median_in": 30.86,
+         "p90_in": 38.1,
+         "scale_error_pct": 16.3
         }
        },
        "one_known_distance": {
@@ -1978,15 +1978,15 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 2.36,
-         "p90_in": 6.76,
-         "scale_error_pct": 0.43
+         "p90_in": 6.78,
+         "scale_error_pct": 0.41
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 5.77,
-         "p90_in": 15.84,
-         "scale_error_pct": -1.35
+         "median_in": 5.7,
+         "p90_in": 15.99,
+         "scale_error_pct": -1.34
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -2001,14 +2001,14 @@
          "failed_pct": 0.0,
          "median_in": 8.3,
          "p90_in": 19.43,
-         "scale_error_pct": 9.73
+         "scale_error_pct": 9.76
         },
         "3-10m": {
          "pairs": 6000,
          "failed_pct": 0.0,
-         "median_in": 15.59,
-         "p90_in": 28.5,
-         "scale_error_pct": 9.54
+         "median_in": 15.64,
+         "p90_in": 28.43,
+         "scale_error_pct": 9.57
         }
        },
        "one_known_distance": {
@@ -2016,13 +2016,13 @@
          "pairs": 150000,
          "failed_pct": 0.0,
          "median_in": 0.66,
-         "p90_in": 6.65,
+         "p90_in": 6.66,
          "scale_error_pct": -0.01
         },
         "3-10m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 1.33,
+         "median_in": 1.3,
          "p90_in": 11.19,
          "scale_error_pct": 0.14
         }
@@ -2035,32 +2035,32 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 15.82,
-         "p90_in": 23.31,
-         "scale_error_pct": 20.51
+         "median_in": 15.81,
+         "p90_in": 23.32,
+         "scale_error_pct": 20.41
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 25.45,
-         "p90_in": 31.14,
-         "scale_error_pct": 17.31
+         "median_in": 25.41,
+         "p90_in": 31.08,
+         "scale_error_pct": 17.29
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 3.41,
-         "p90_in": 8.73,
-         "scale_error_pct": 2.05
+         "median_in": 3.43,
+         "p90_in": 8.76,
+         "scale_error_pct": 2.07
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 5.03,
-         "p90_in": 13.08,
-         "scale_error_pct": -0.72
+         "median_in": 5.01,
+         "p90_in": 13.12,
+         "scale_error_pct": -0.71
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -2071,31 +2071,31 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 9.53,
-         "p90_in": 18.52,
-         "scale_error_pct": 16.86
+         "median_in": 9.56,
+         "p90_in": 18.48,
+         "scale_error_pct": 16.88
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 30.26,
-         "p90_in": 37.8,
-         "scale_error_pct": 16.15
+         "median_in": 30.2,
+         "p90_in": 37.73,
+         "scale_error_pct": 16.12
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 2.37,
-         "p90_in": 7.16,
-         "scale_error_pct": 0.48
+         "median_in": 2.38,
+         "p90_in": 7.18,
+         "scale_error_pct": 0.49
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 5.97,
-         "p90_in": 17.88,
+         "median_in": 5.95,
+         "p90_in": 17.98,
          "scale_error_pct": -1.39
         }
        },
@@ -2109,16 +2109,16 @@
         "1-3m": {
          "pairs": 6000,
          "failed_pct": 0.0,
-         "median_in": 8.22,
+         "median_in": 8.23,
          "p90_in": 19.1,
          "scale_error_pct": 9.43
         },
         "3-10m": {
          "pairs": 6000,
          "failed_pct": 0.0,
-         "median_in": 15.12,
-         "p90_in": 28.48,
-         "scale_error_pct": 9.37
+         "median_in": 15.14,
+         "p90_in": 28.41,
+         "scale_error_pct": 9.39
         }
        },
        "one_known_distance": {
@@ -2126,14 +2126,14 @@
          "pairs": 150000,
          "failed_pct": 0.0,
          "median_in": 0.72,
-         "p90_in": 9.95,
-         "scale_error_pct": -0.01
+         "p90_in": 9.97,
+         "scale_error_pct": -0.02
         },
         "3-10m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 1.41,
-         "p90_in": 17.02,
+         "median_in": 1.39,
+         "p90_in": 17.06,
          "scale_error_pct": 0.16
         }
        },
@@ -2145,16 +2145,16 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 15.35,
-         "p90_in": 22.59,
+         "median_in": 15.36,
+         "p90_in": 22.55,
          "scale_error_pct": 20.32
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 25.31,
-         "p90_in": 30.97,
-         "scale_error_pct": 17.28
+         "median_in": 25.26,
+         "p90_in": 30.98,
+         "scale_error_pct": 17.26
         }
        },
        "one_known_distance": {
@@ -2162,15 +2162,15 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 5.05,
-         "p90_in": 13.44,
+         "p90_in": 13.49,
          "scale_error_pct": 2.76
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 6.64,
-         "p90_in": 28.33,
-         "scale_error_pct": -0.8
+         "median_in": 6.63,
+         "p90_in": 28.42,
+         "scale_error_pct": -0.81
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -2181,32 +2181,32 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 8.96,
-         "p90_in": 17.39,
-         "scale_error_pct": 16.16
+         "median_in": 8.91,
+         "p90_in": 17.37,
+         "scale_error_pct": 16.17
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 30.61,
-         "p90_in": 37.62,
-         "scale_error_pct": 16.52
+         "median_in": 30.58,
+         "p90_in": 37.59,
+         "scale_error_pct": 16.51
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 2.86,
-         "p90_in": 9.37,
-         "scale_error_pct": 0.29
+         "median_in": 2.88,
+         "p90_in": 9.38,
+         "scale_error_pct": 0.27
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 7.37,
-         "p90_in": 41.64,
-         "scale_error_pct": -1.59
+         "median_in": 7.47,
+         "p90_in": 41.77,
+         "scale_error_pct": -1.63
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -2222,7 +2222,7 @@
          "pairs": 6000,
          "failed_pct": 0.0,
          "median_in": 4.56,
-         "p90_in": 9.98,
+         "p90_in": 9.99,
          "scale_error_pct": -6.68
         },
         "3-10m": {
@@ -2245,7 +2245,7 @@
          "pairs": 150000,
          "failed_pct": 0.0,
          "median_in": 1.54,
-         "p90_in": 11.59,
+         "p90_in": 11.58,
          "scale_error_pct": -0.17
         }
        },
@@ -2266,7 +2266,7 @@
          "failed_pct": 0.0,
          "median_in": 1.79,
          "p90_in": 4.6,
-         "scale_error_pct": -0.93
+         "scale_error_pct": -0.92
         }
        },
        "one_known_distance": {
@@ -2274,7 +2274,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 2.78,
-         "p90_in": 8.1,
+         "p90_in": 8.09,
          "scale_error_pct": -0.57
         },
         "3-10m": {
@@ -2293,7 +2293,7 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 1.11,
+         "median_in": 1.12,
          "p90_in": 70.25,
          "scale_error_pct": -0.01
         },
@@ -2301,7 +2301,7 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 1.79,
-         "p90_in": 4.62,
+         "p90_in": 4.61,
          "scale_error_pct": -0.73
         }
        },
@@ -2310,14 +2310,14 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 2.74,
-         "p90_in": 66.26,
-         "scale_error_pct": -0.25
+         "p90_in": 66.27,
+         "scale_error_pct": -0.26
         },
         "3-10m": {
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 6.78,
-         "p90_in": 26.48,
+         "p90_in": 26.47,
          "scale_error_pct": -1.07
         }
        },
@@ -2355,7 +2355,7 @@
          "pairs": 150000,
          "failed_pct": 0.0,
          "median_in": 1.7,
-         "p90_in": 16.28,
+         "p90_in": 16.27,
          "scale_error_pct": -0.08
         }
        },
@@ -2375,7 +2375,7 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 2.53,
-         "p90_in": 7.34,
+         "p90_in": 7.33,
          "scale_error_pct": -1.27
         }
        },
@@ -2403,15 +2403,15 @@
         "1-3m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 1.51,
+         "median_in": 1.5,
          "p90_in": 66.03,
          "scale_error_pct": -0.14
         },
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 3.36,
-         "p90_in": 6.71,
+         "median_in": 3.35,
+         "p90_in": 6.7,
          "scale_error_pct": -1.7
         }
        },
@@ -2427,7 +2427,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 7.98,
-         "p90_in": 30.77,
+         "p90_in": 30.76,
          "scale_error_pct": -1.41
         }
        },
@@ -2479,7 +2479,7 @@
          "failed_pct": 0.0,
          "median_in": 2.47,
          "p90_in": 7.0,
-         "scale_error_pct": 1.61
+         "scale_error_pct": 1.62
         },
         "3-10m": {
          "pairs": 3000,
@@ -2501,7 +2501,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 6.63,
-         "p90_in": 21.34,
+         "p90_in": 21.33,
          "scale_error_pct": -1.4
         }
        },
@@ -2514,7 +2514,7 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 1.33,
-         "p90_in": 68.87,
+         "p90_in": 68.88,
          "scale_error_pct": 0.89
         },
         "3-10m": {
@@ -2537,7 +2537,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 9.11,
-         "p90_in": 33.62,
+         "p90_in": 33.6,
          "scale_error_pct": -0.86
         }
        },
@@ -2574,7 +2574,7 @@
         "3-10m": {
          "pairs": 150000,
          "failed_pct": 0.0,
-         "median_in": 1.54,
+         "median_in": 1.53,
          "p90_in": 17.33,
          "scale_error_pct": 0.07
         }
@@ -2594,7 +2594,7 @@
         "3-10m": {
          "pairs": 3000,
          "failed_pct": 0.0,
-         "median_in": 4.0,
+         "median_in": 3.99,
          "p90_in": 7.93,
          "scale_error_pct": -2.58
         }
@@ -2611,7 +2611,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 5.33,
-         "p90_in": 24.33,
+         "p90_in": 24.32,
          "scale_error_pct": -0.54
         }
        },
@@ -2631,7 +2631,7 @@
          "pairs": 3000,
          "failed_pct": 0.0,
          "median_in": 5.06,
-         "p90_in": 8.66,
+         "p90_in": 8.65,
          "scale_error_pct": -2.57
         }
        },
@@ -2639,7 +2639,7 @@
         "1-3m": {
          "pairs": 75000,
          "failed_pct": 0.0,
-         "median_in": 3.23,
+         "median_in": 3.22,
          "p90_in": 53.75,
          "scale_error_pct": 2.48
         },
@@ -2647,7 +2647,7 @@
          "pairs": 75000,
          "failed_pct": 0.0,
          "median_in": 8.59,
-         "p90_in": 37.61,
+         "p90_in": 37.6,
          "scale_error_pct": 0.43
         }
        },
@@ -2666,31 +2666,31 @@
        "1-3m": {
         "pairs": 228000,
         "failed_pct": 0.15,
-        "median_in": 6.3,
-        "p90_in": 13.26,
-        "scale_error_pct": -6.62
+        "median_in": 6.29,
+        "p90_in": 13.25,
+        "scale_error_pct": -6.61
        },
        "3-10m": {
         "pairs": 228000,
         "failed_pct": 0.25,
-        "median_in": 21.92,
-        "p90_in": 52.6,
-        "scale_error_pct": -7.92
+        "median_in": 21.88,
+        "p90_in": 52.55,
+        "scale_error_pct": -7.9
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 5700000,
         "failed_pct": 0.46,
-        "median_in": 2.93,
-        "p90_in": 12.34,
+        "median_in": 2.92,
+        "p90_in": 12.33,
         "scale_error_pct": 0.03
        },
        "3-10m": {
         "pairs": 5700000,
         "failed_pct": 0.57,
-        "median_in": 9.22,
-        "p90_in": 45.32,
+        "median_in": 9.21,
+        "p90_in": 45.35,
         "scale_error_pct": -0.75
        }
       },
@@ -2702,16 +2702,16 @@
        "1-3m": {
         "pairs": 228000,
         "failed_pct": 0.0,
-        "median_in": 6.33,
-        "p90_in": 12.9,
-        "scale_error_pct": -7.01
+        "median_in": 6.32,
+        "p90_in": 12.89,
+        "scale_error_pct": -7.0
        },
        "3-10m": {
         "pairs": 228000,
         "failed_pct": 0.01,
-        "median_in": 21.59,
-        "p90_in": 54.02,
-        "scale_error_pct": -8.16
+        "median_in": 21.57,
+        "p90_in": 54.08,
+        "scale_error_pct": -8.14
        }
       },
       "one_known_distance": {
@@ -2719,15 +2719,15 @@
         "pairs": 5700000,
         "failed_pct": 0.32,
         "median_in": 2.75,
-        "p90_in": 11.3,
+        "p90_in": 11.29,
         "scale_error_pct": -0.19
        },
        "3-10m": {
         "pairs": 5700000,
         "failed_pct": 0.32,
-        "median_in": 8.94,
-        "p90_in": 46.07,
-        "scale_error_pct": -0.87
+        "median_in": 8.93,
+        "p90_in": 46.11,
+        "scale_error_pct": -0.86
        }
       },
       "tape_calibration_success_pct": 99.7,
@@ -2739,14 +2739,14 @@
         "pairs": 228000,
         "failed_pct": 0.04,
         "median_in": 5.65,
-        "p90_in": 20.83,
+        "p90_in": 20.82,
         "scale_error_pct": -2.87
        },
        "3-10m": {
         "pairs": 225783,
         "failed_pct": 0.08,
-        "median_in": 15.85,
-        "p90_in": 48.41,
+        "median_in": 15.84,
+        "p90_in": 48.4,
         "scale_error_pct": -4.67
        }
       },
@@ -2754,15 +2754,15 @@
        "1-3m": {
         "pairs": 5700000,
         "failed_pct": 0.35,
-        "median_in": 4.44,
+        "median_in": 4.43,
         "p90_in": 23.78,
-        "scale_error_pct": 3.31
+        "scale_error_pct": 3.3
        },
        "3-10m": {
         "pairs": 5644575,
         "failed_pct": 0.4,
-        "median_in": 11.66,
-        "p90_in": 50.73,
+        "median_in": 11.67,
+        "p90_in": 50.67,
         "scale_error_pct": 1.82
        }
       },
@@ -2777,15 +2777,15 @@
         "pairs": 84000,
         "failed_pct": 0.0,
         "median_in": 7.72,
-        "p90_in": 20.0,
-        "scale_error_pct": 10.34
+        "p90_in": 19.98,
+        "scale_error_pct": 10.35
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 0.0,
-        "median_in": 16.89,
-        "p90_in": 31.58,
-        "scale_error_pct": 11.73
+        "median_in": 16.9,
+        "p90_in": 31.59,
+        "scale_error_pct": 11.74
        }
       },
       "one_known_distance": {
@@ -2800,8 +2800,8 @@
         "pairs": 1875000,
         "failed_pct": 0.0,
         "median_in": 2.2,
-        "p90_in": 12.11,
-        "scale_error_pct": -0.08
+        "p90_in": 12.12,
+        "scale_error_pct": -0.09
        }
       },
       "tape_calibration_success_pct": 100.0,
@@ -2812,31 +2812,31 @@
        "1-3m": {
         "pairs": 36000,
         "failed_pct": 0.0,
-        "median_in": 14.89,
+        "median_in": 14.9,
         "p90_in": 25.37,
-        "scale_error_pct": 20.9
+        "scale_error_pct": 20.89
        },
        "3-10m": {
         "pairs": 33000,
         "failed_pct": 0.0,
         "median_in": 26.08,
-        "p90_in": 37.02,
-        "scale_error_pct": 17.45
+        "p90_in": 37.03,
+        "scale_error_pct": 17.5
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 900000,
         "failed_pct": 0.0,
-        "median_in": 2.69,
-        "p90_in": 8.23,
-        "scale_error_pct": 1.64
+        "median_in": 2.7,
+        "p90_in": 8.24,
+        "scale_error_pct": 1.66
        },
        "3-10m": {
         "pairs": 825000,
         "failed_pct": 0.0,
-        "median_in": 4.74,
-        "p90_in": 13.02,
+        "median_in": 4.77,
+        "p90_in": 13.04,
         "scale_error_pct": -1.2
        }
       },
@@ -2848,15 +2848,15 @@
        "1-3m": {
         "pairs": 36000,
         "failed_pct": 0.0,
-        "median_in": 11.2,
-        "p90_in": 24.31,
-        "scale_error_pct": 19.44
+        "median_in": 11.18,
+        "p90_in": 24.32,
+        "scale_error_pct": 19.4
        },
        "3-10m": {
         "pairs": 33000,
         "failed_pct": 0.0,
-        "median_in": 30.18,
-        "p90_in": 43.65,
+        "median_in": 30.19,
+        "p90_in": 43.72,
         "scale_error_pct": 16.66
        }
       },
@@ -2865,14 +2865,14 @@
         "pairs": 900000,
         "failed_pct": 0.0,
         "median_in": 2.95,
-        "p90_in": 9.27,
-        "scale_error_pct": 0.59
+        "p90_in": 9.28,
+        "scale_error_pct": 0.54
        },
        "3-10m": {
         "pairs": 825000,
         "failed_pct": 0.0,
-        "median_in": 5.76,
-        "p90_in": 17.56,
+        "median_in": 5.78,
+        "p90_in": 17.59,
         "scale_error_pct": -1.33
        }
       },
@@ -2889,13 +2889,13 @@
         "pairs": 228000,
         "failed_pct": 0.61,
         "median_in": 10.69,
-        "p90_in": 20.04,
+        "p90_in": 20.05,
         "scale_error_pct": -13.77
        },
        "3-10m": {
         "pairs": 228000,
         "failed_pct": 0.96,
-        "median_in": 36.58,
+        "median_in": 36.59,
         "p90_in": 78.02,
         "scale_error_pct": -15.14
        }
@@ -2926,13 +2926,13 @@
         "failed_pct": 0.09,
         "median_in": 10.83,
         "p90_in": 19.86,
-        "scale_error_pct": -14.1
+        "scale_error_pct": -14.11
        },
        "3-10m": {
         "pairs": 228000,
         "failed_pct": 0.1,
-        "median_in": 37.0,
-        "p90_in": 78.09,
+        "median_in": 37.01,
+        "p90_in": 78.1,
         "scale_error_pct": -15.51
        }
       },
@@ -2967,7 +2967,7 @@
        "3-10m": {
         "pairs": 225783,
         "failed_pct": 1.26,
-        "median_in": 26.34,
+        "median_in": 26.35,
         "p90_in": 68.81,
         "scale_error_pct": -10.38
        }
@@ -2998,8 +2998,8 @@
        "1-3m": {
         "pairs": 84000,
         "failed_pct": 0.0,
-        "median_in": 6.53,
-        "p90_in": 18.15,
+        "median_in": 6.54,
+        "p90_in": 18.16,
         "scale_error_pct": -8.19
        },
        "3-10m": {
@@ -3022,7 +3022,7 @@
         "pairs": 1875000,
         "failed_pct": 0.0,
         "median_in": 4.53,
-        "p90_in": 19.68,
+        "p90_in": 19.67,
         "scale_error_pct": -1.52
        }
       },
@@ -3058,7 +3058,7 @@
         "pairs": 825000,
         "failed_pct": 0.0,
         "median_in": 6.62,
-        "p90_in": 18.66,
+        "p90_in": 18.67,
         "scale_error_pct": -1.9
        }
       },
@@ -3094,7 +3094,7 @@
         "pairs": 825000,
         "failed_pct": 0.0,
         "median_in": 8.8,
-        "p90_in": 29.06,
+        "p90_in": 29.05,
         "scale_error_pct": -1.24
        }
       },
@@ -3557,32 +3557,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.07,
-         "median_in": 7.64,
-         "p90_in": 17.93,
-         "scale_error_pct": 4.07
+         "median_in": 7.63,
+         "p90_in": 17.94,
+         "scale_error_pct": 4.09
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.12,
-         "median_in": 21.9,
-         "p90_in": 49.18,
-         "scale_error_pct": 5.03
+         "median_in": 21.93,
+         "p90_in": 49.22,
+         "scale_error_pct": 5.08
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.07,
-         "median_in": 2.86,
-         "p90_in": 13.25,
-         "scale_error_pct": -0.11
+         "median_in": 2.87,
+         "p90_in": 13.23,
+         "scale_error_pct": -0.1
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.12,
-         "median_in": 6.81,
-         "p90_in": 37.38,
-         "scale_error_pct": -0.09
+         "median_in": 6.86,
+         "p90_in": 37.27,
+         "scale_error_pct": -0.08
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -3593,32 +3593,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.1,
-         "median_in": 7.3,
+         "median_in": 7.28,
          "p90_in": 17.88,
-         "scale_error_pct": 4.28
+         "scale_error_pct": 4.29
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.2,
-         "median_in": 22.73,
-         "p90_in": 56.09,
-         "scale_error_pct": 7.14
+         "median_in": 22.76,
+         "p90_in": 56.19,
+         "scale_error_pct": 7.19
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.1,
-         "median_in": 2.53,
-         "p90_in": 12.39,
-         "scale_error_pct": 0.02
+         "median_in": 2.54,
+         "p90_in": 12.37,
+         "scale_error_pct": 0.03
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.2,
-         "median_in": 7.03,
-         "p90_in": 38.17,
-         "scale_error_pct": 0.33
+         "median_in": 7.08,
+         "p90_in": 38.08,
+         "scale_error_pct": 0.32
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -3629,14 +3629,14 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.31,
-         "median_in": 8.81,
-         "p90_in": 33.04,
-         "scale_error_pct": 6.59
+         "median_in": 8.79,
+         "p90_in": 33.05,
+         "scale_error_pct": 6.58
         },
         "3-10m": {
          "pairs": 23816,
          "failed_pct": 0.17,
-         "median_in": 19.03,
+         "median_in": 19.01,
          "p90_in": 54.82,
          "scale_error_pct": 5.92
         }
@@ -3645,16 +3645,16 @@
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.31,
-         "median_in": 4.08,
-         "p90_in": 36.96,
-         "scale_error_pct": 0.3
+         "median_in": 4.1,
+         "p90_in": 36.99,
+         "scale_error_pct": 0.28
         },
         "3-10m": {
          "pairs": 595400,
          "failed_pct": 0.17,
-         "median_in": 6.95,
-         "p90_in": 45.48,
-         "scale_error_pct": -0.08
+         "median_in": 6.96,
+         "p90_in": 45.46,
+         "scale_error_pct": -0.1
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -3668,31 +3668,31 @@
          "pairs": 24000,
          "failed_pct": 0.06,
          "median_in": 6.26,
-         "p90_in": 16.62,
-         "scale_error_pct": 2.16
+         "p90_in": 16.61,
+         "scale_error_pct": 2.19
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.11,
-         "median_in": 17.38,
-         "p90_in": 42.13,
-         "scale_error_pct": 3.34
+         "median_in": 17.46,
+         "p90_in": 42.18,
+         "scale_error_pct": 3.38
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.06,
-         "median_in": 3.15,
-         "p90_in": 14.02,
+         "median_in": 3.16,
+         "p90_in": 13.99,
          "scale_error_pct": -0.16
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.11,
-         "median_in": 6.95,
-         "p90_in": 37.44,
-         "scale_error_pct": -0.28
+         "median_in": 7.0,
+         "p90_in": 37.37,
+         "scale_error_pct": -0.26
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -3703,16 +3703,16 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.08,
-         "median_in": 6.09,
-         "p90_in": 16.29,
-         "scale_error_pct": 1.72
+         "median_in": 6.08,
+         "p90_in": 16.25,
+         "scale_error_pct": 1.74
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.16,
-         "median_in": 17.53,
+         "median_in": 17.57,
          "p90_in": 45.45,
-         "scale_error_pct": 4.62
+         "scale_error_pct": 4.73
         }
        },
        "one_known_distance": {
@@ -3720,14 +3720,14 @@
          "pairs": 600000,
          "failed_pct": 0.08,
          "median_in": 2.79,
-         "p90_in": 13.47,
+         "p90_in": 13.44,
          "scale_error_pct": -0.3
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 0.16,
-         "median_in": 6.91,
-         "p90_in": 38.62,
+         "median_in": 6.97,
+         "p90_in": 38.54,
          "scale_error_pct": -0.03
         }
        },
@@ -3739,31 +3739,31 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.31,
-         "median_in": 7.68,
+         "median_in": 7.64,
          "p90_in": 30.56,
-         "scale_error_pct": 5.64
+         "scale_error_pct": 5.59
         },
         "3-10m": {
          "pairs": 23816,
          "failed_pct": 0.17,
-         "median_in": 15.42,
-         "p90_in": 44.52,
-         "scale_error_pct": 4.29
+         "median_in": 15.33,
+         "p90_in": 44.69,
+         "scale_error_pct": 4.31
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.31,
-         "median_in": 4.31,
-         "p90_in": 32.63,
-         "scale_error_pct": 0.66
+         "median_in": 4.33,
+         "p90_in": 32.65,
+         "scale_error_pct": 0.63
         },
         "3-10m": {
          "pairs": 595400,
          "failed_pct": 0.17,
-         "median_in": 7.0,
-         "p90_in": 46.46,
+         "median_in": 7.05,
+         "p90_in": 46.43,
          "scale_error_pct": -0.06
         }
        },
@@ -3777,16 +3777,16 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.01,
-         "median_in": 5.93,
-         "p90_in": 16.85,
+         "median_in": 5.91,
+         "p90_in": 16.79,
          "scale_error_pct": 2.54
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.03,
-         "median_in": 16.45,
-         "p90_in": 49.89,
-         "scale_error_pct": 3.62
+         "median_in": 16.5,
+         "p90_in": 49.78,
+         "scale_error_pct": 3.69
         }
        },
        "one_known_distance": {
@@ -3794,15 +3794,15 @@
          "pairs": 600000,
          "failed_pct": 1.01,
          "median_in": 3.16,
-         "p90_in": 15.14,
-         "scale_error_pct": -0.21
+         "p90_in": 15.15,
+         "scale_error_pct": -0.19
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.03,
-         "median_in": 6.85,
-         "p90_in": 39.36,
-         "scale_error_pct": -0.03
+         "median_in": 6.87,
+         "p90_in": 39.4,
+         "scale_error_pct": -0.0
         }
        },
        "tape_calibration_success_pct": 99.0,
@@ -3814,31 +3814,31 @@
          "pairs": 24000,
          "failed_pct": 0.02,
          "median_in": 5.59,
-         "p90_in": 16.2,
-         "scale_error_pct": 1.25
+         "p90_in": 16.16,
+         "scale_error_pct": 1.26
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.05,
          "median_in": 16.49,
-         "p90_in": 52.58,
-         "scale_error_pct": 4.1
+         "p90_in": 52.43,
+         "scale_error_pct": 4.17
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 1.02,
-         "median_in": 2.82,
+         "median_in": 2.83,
          "p90_in": 14.72,
-         "scale_error_pct": -0.32
+         "scale_error_pct": -0.3
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.05,
          "median_in": 6.93,
-         "p90_in": 41.1,
-         "scale_error_pct": 0.02
+         "p90_in": 41.08,
+         "scale_error_pct": 0.03
         }
        },
        "tape_calibration_success_pct": 99.0,
@@ -3849,32 +3849,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.11,
-         "median_in": 6.44,
+         "median_in": 6.42,
          "p90_in": 21.34,
          "scale_error_pct": 4.83
         },
         "3-10m": {
          "pairs": 23816,
          "failed_pct": 0.06,
-         "median_in": 13.35,
-         "p90_in": 37.56,
-         "scale_error_pct": 4.71
+         "median_in": 13.29,
+         "p90_in": 37.59,
+         "scale_error_pct": 4.73
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 1.11,
-         "median_in": 4.64,
-         "p90_in": 27.15,
-         "scale_error_pct": 0.66
+         "median_in": 4.65,
+         "p90_in": 27.06,
+         "scale_error_pct": 0.65
         },
         "3-10m": {
          "pairs": 595400,
          "failed_pct": 1.07,
-         "median_in": 7.62,
-         "p90_in": 48.02,
-         "scale_error_pct": 0.83
+         "median_in": 7.65,
+         "p90_in": 47.82,
+         "scale_error_pct": 0.82
         }
        },
        "tape_calibration_success_pct": 99.0,
@@ -3887,32 +3887,32 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 0.0,
-         "median_in": 5.04,
-         "p90_in": 12.76,
-         "scale_error_pct": 1.09
+         "median_in": 5.05,
+         "p90_in": 12.74,
+         "scale_error_pct": 1.11
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 0.01,
-         "median_in": 13.61,
-         "p90_in": 25.7,
-         "scale_error_pct": 1.92
+         "median_in": 13.58,
+         "p90_in": 25.74,
+         "scale_error_pct": 1.95
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 525000,
          "failed_pct": 0.57,
-         "median_in": 3.54,
-         "p90_in": 13.21,
+         "median_in": 3.52,
+         "p90_in": 13.2,
          "scale_error_pct": -0.33
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 0.59,
-         "median_in": 7.11,
-         "p90_in": 29.87,
-         "scale_error_pct": -0.15
+         "median_in": 7.07,
+         "p90_in": 29.8,
+         "scale_error_pct": -0.14
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -3923,16 +3923,16 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 0.0,
-         "median_in": 4.83,
-         "p90_in": 12.21,
-         "scale_error_pct": -0.55
+         "median_in": 4.85,
+         "p90_in": 12.18,
+         "scale_error_pct": -0.52
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 0.0,
-         "median_in": 13.25,
+         "median_in": 13.26,
          "p90_in": 24.26,
-         "scale_error_pct": 2.93
+         "scale_error_pct": 2.9
         }
        },
        "one_known_distance": {
@@ -3940,14 +3940,14 @@
          "pairs": 525000,
          "failed_pct": 0.57,
          "median_in": 3.29,
-         "p90_in": 13.47,
-         "scale_error_pct": -1.06
+         "p90_in": 13.45,
+         "scale_error_pct": -1.05
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 0.57,
-         "median_in": 7.85,
-         "p90_in": 30.16,
+         "median_in": 7.82,
+         "p90_in": 30.05,
          "scale_error_pct": -0.24
         }
        },
@@ -3961,30 +3961,30 @@
          "failed_pct": 0.0,
          "median_in": 6.48,
          "p90_in": 15.62,
-         "scale_error_pct": 3.74
+         "scale_error_pct": 3.76
         },
         "3-10m": {
          "pairs": 20816,
          "failed_pct": 0.01,
-         "median_in": 11.1,
-         "p90_in": 24.09,
-         "scale_error_pct": 3.79
+         "median_in": 11.05,
+         "p90_in": 24.08,
+         "scale_error_pct": 3.77
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 525000,
          "failed_pct": 0.57,
-         "median_in": 4.78,
-         "p90_in": 16.3,
-         "scale_error_pct": 0.14
+         "median_in": 4.76,
+         "p90_in": 16.26,
+         "scale_error_pct": 0.13
         },
         "3-10m": {
          "pairs": 520400,
          "failed_pct": 0.59,
-         "median_in": 7.35,
-         "p90_in": 27.97,
-         "scale_error_pct": 0.82
+         "median_in": 7.3,
+         "p90_in": 27.99,
+         "scale_error_pct": 0.81
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -4000,14 +4000,14 @@
          "pairs": 24000,
          "failed_pct": 0.36,
          "median_in": 7.6,
-         "p90_in": 18.99,
+         "p90_in": 18.98,
          "scale_error_pct": -7.89
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.64,
-         "median_in": 22.0,
-         "p90_in": 50.6,
+         "median_in": 22.01,
+         "p90_in": 50.63,
          "scale_error_pct": -8.35
         }
        },
@@ -4023,8 +4023,8 @@
          "pairs": 600000,
          "failed_pct": 1.63,
          "median_in": 9.72,
-         "p90_in": 48.65,
-         "scale_error_pct": -0.73
+         "p90_in": 48.66,
+         "scale_error_pct": -0.74
         }
        },
        "tape_calibration_success_pct": 99.0,
@@ -4037,7 +4037,7 @@
          "failed_pct": 0.62,
          "median_in": 7.32,
          "p90_in": 19.16,
-         "scale_error_pct": -9.69
+         "scale_error_pct": -9.7
         },
         "3-10m": {
          "pairs": 24000,
@@ -4071,15 +4071,15 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 1.71,
-         "median_in": 9.48,
-         "p90_in": 37.52,
+         "median_in": 9.47,
+         "p90_in": 37.53,
          "scale_error_pct": -0.93
         },
         "3-10m": {
          "pairs": 23816,
          "failed_pct": 0.94,
-         "median_in": 22.94,
-         "p90_in": 113.45,
+         "median_in": 22.95,
+         "p90_in": 113.43,
          "scale_error_pct": -2.1
         }
        },
@@ -4089,7 +4089,7 @@
          "failed_pct": 2.7,
          "median_in": 7.56,
          "p90_in": 57.88,
-         "scale_error_pct": 5.43
+         "scale_error_pct": 5.44
         },
         "3-10m": {
          "pairs": 595400,
@@ -4111,14 +4111,14 @@
          "failed_pct": 0.25,
          "median_in": 7.65,
          "p90_in": 19.63,
-         "scale_error_pct": -8.04
+         "scale_error_pct": -8.05
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.56,
          "median_in": 21.61,
-         "p90_in": 55.89,
-         "scale_error_pct": -8.48
+         "p90_in": 55.88,
+         "scale_error_pct": -8.49
         }
        },
        "one_known_distance": {
@@ -4126,7 +4126,7 @@
          "pairs": 600000,
          "failed_pct": 0.75,
          "median_in": 3.95,
-         "p90_in": 18.26,
+         "p90_in": 18.27,
          "scale_error_pct": 0.16
         },
         "3-10m": {
@@ -4145,14 +4145,14 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.38,
-         "median_in": 7.27,
+         "median_in": 7.28,
          "p90_in": 20.26,
-         "scale_error_pct": -10.11
+         "scale_error_pct": -10.12
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.82,
-         "median_in": 28.02,
+         "median_in": 28.03,
          "p90_in": 65.28,
          "scale_error_pct": -13.29
         }
@@ -4163,7 +4163,7 @@
          "failed_pct": 0.88,
          "median_in": 3.56,
          "p90_in": 17.34,
-         "scale_error_pct": -0.95
+         "scale_error_pct": -0.94
         },
         "3-10m": {
          "pairs": 600000,
@@ -4182,7 +4182,7 @@
          "pairs": 24000,
          "failed_pct": 1.34,
          "median_in": 9.51,
-         "p90_in": 43.14,
+         "p90_in": 43.13,
          "scale_error_pct": -0.73
         },
         "3-10m": {
@@ -4198,7 +4198,7 @@
          "pairs": 600000,
          "failed_pct": 1.84,
          "median_in": 8.12,
-         "p90_in": 62.5,
+         "p90_in": 62.49,
          "scale_error_pct": 6.44
         },
         "3-10m": {
@@ -4219,15 +4219,15 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.1,
-         "median_in": 7.17,
-         "p90_in": 20.5,
+         "median_in": 7.18,
+         "p90_in": 20.51,
          "scale_error_pct": -7.53
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.28,
-         "median_in": 20.95,
-         "p90_in": 59.25,
+         "median_in": 20.96,
+         "p90_in": 59.26,
          "scale_error_pct": -8.46
         }
        },
@@ -4243,7 +4243,7 @@
          "pairs": 600000,
          "failed_pct": 1.28,
          "median_in": 9.95,
-         "p90_in": 51.42,
+         "p90_in": 51.41,
          "scale_error_pct": -0.36
         }
        },
@@ -4256,15 +4256,15 @@
          "pairs": 24000,
          "failed_pct": 0.15,
          "median_in": 7.02,
-         "p90_in": 20.48,
+         "p90_in": 20.47,
          "scale_error_pct": -9.57
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 0.4,
          "median_in": 26.57,
-         "p90_in": 69.4,
-         "scale_error_pct": -13.49
+         "p90_in": 69.41,
+         "scale_error_pct": -13.5
         }
        },
        "one_known_distance": {
@@ -4273,13 +4273,13 @@
          "failed_pct": 1.15,
          "median_in": 3.73,
          "p90_in": 20.88,
-         "scale_error_pct": -1.13
+         "scale_error_pct": -1.12
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.4,
          "median_in": 11.0,
-         "p90_in": 62.69,
+         "p90_in": 62.68,
          "scale_error_pct": -2.34
         }
        },
@@ -4299,7 +4299,7 @@
          "pairs": 23816,
          "failed_pct": 0.28,
          "median_in": 20.47,
-         "p90_in": 78.26,
+         "p90_in": 78.27,
          "scale_error_pct": -2.04
         }
        },
@@ -4314,8 +4314,8 @@
         "3-10m": {
          "pairs": 595400,
          "failed_pct": 1.29,
-         "median_in": 16.24,
-         "p90_in": 112.98,
+         "median_in": 16.25,
+         "p90_in": 112.97,
          "scale_error_pct": 3.41
         }
        },
@@ -4336,8 +4336,8 @@
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 0.09,
-         "median_in": 19.8,
-         "p90_in": 50.93,
+         "median_in": 19.81,
+         "p90_in": 50.94,
          "scale_error_pct": -7.99
         }
        },
@@ -4352,8 +4352,8 @@
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 0.66,
-         "median_in": 8.78,
-         "p90_in": 45.6,
+         "median_in": 8.77,
+         "p90_in": 45.61,
          "scale_error_pct": -0.26
         }
        },
@@ -4382,13 +4382,13 @@
          "pairs": 525000,
          "failed_pct": 0.59,
          "median_in": 3.72,
-         "p90_in": 20.42,
+         "p90_in": 20.43,
          "scale_error_pct": -1.64
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 0.61,
-         "median_in": 11.27,
+         "median_in": 11.28,
          "p90_in": 54.94,
          "scale_error_pct": -3.08
         }
@@ -4408,8 +4408,8 @@
         "3-10m": {
          "pairs": 20816,
          "failed_pct": 0.11,
-         "median_in": 17.99,
-         "p90_in": 58.53,
+         "median_in": 18.01,
+         "p90_in": 58.55,
          "scale_error_pct": -2.39
         }
        },
@@ -4425,7 +4425,7 @@
          "pairs": 520400,
          "failed_pct": 0.68,
          "median_in": 13.84,
-         "p90_in": 65.4,
+         "p90_in": 65.41,
          "scale_error_pct": 3.25
         }
        },
@@ -4886,15 +4886,15 @@
          "pairs": 24000,
          "failed_pct": 0.7,
          "median_in": 6.88,
-         "p90_in": 14.91,
-         "scale_error_pct": 4.36
+         "p90_in": 14.89,
+         "scale_error_pct": 4.39
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 1.83,
-         "median_in": 15.49,
-         "p90_in": 30.36,
-         "scale_error_pct": 4.81
+         "median_in": 15.5,
+         "p90_in": 30.4,
+         "scale_error_pct": 4.77
         }
        },
        "one_known_distance": {
@@ -4902,14 +4902,14 @@
          "pairs": 600000,
          "failed_pct": 0.7,
          "median_in": 1.78,
-         "p90_in": 8.63,
+         "p90_in": 8.65,
          "scale_error_pct": -0.15
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.83,
-         "median_in": 3.52,
-         "p90_in": 17.49,
+         "median_in": 3.5,
+         "p90_in": 17.52,
          "scale_error_pct": -0.23
         }
        },
@@ -4921,16 +4921,16 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 1.07,
-         "median_in": 5.4,
-         "p90_in": 14.85,
-         "scale_error_pct": 3.5
+         "median_in": 5.39,
+         "p90_in": 14.82,
+         "scale_error_pct": 3.53
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 2.72,
-         "median_in": 13.57,
-         "p90_in": 33.39,
-         "scale_error_pct": 4.5
+         "median_in": 13.51,
+         "p90_in": 33.47,
+         "scale_error_pct": 4.51
         }
        },
        "one_known_distance": {
@@ -4938,15 +4938,15 @@
          "pairs": 525000,
          "failed_pct": 1.07,
          "median_in": 1.82,
-         "p90_in": 9.87,
-         "scale_error_pct": -0.27
+         "p90_in": 9.91,
+         "scale_error_pct": -0.25
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 2.72,
-         "median_in": 4.02,
-         "p90_in": 29.11,
-         "scale_error_pct": 0.07
+         "median_in": 4.07,
+         "p90_in": 29.1,
+         "scale_error_pct": 0.05
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -4957,32 +4957,32 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 1.01,
-         "median_in": 7.8,
-         "p90_in": 35.54,
-         "scale_error_pct": 3.52
+         "median_in": 7.83,
+         "p90_in": 35.53,
+         "scale_error_pct": 3.6
         },
         "3-10m": {
          "pairs": 20786,
          "failed_pct": 0.58,
-         "median_in": 15.11,
-         "p90_in": 68.54,
-         "scale_error_pct": 4.68
+         "median_in": 15.09,
+         "p90_in": 68.66,
+         "scale_error_pct": 4.67
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 525000,
          "failed_pct": 1.01,
-         "median_in": 2.79,
-         "p90_in": 26.12,
-         "scale_error_pct": 0.02
+         "median_in": 2.82,
+         "p90_in": 26.09,
+         "scale_error_pct": 0.06
         },
         "3-10m": {
          "pairs": 519650,
          "failed_pct": 0.58,
-         "median_in": 4.44,
-         "p90_in": 52.34,
-         "scale_error_pct": -0.06
+         "median_in": 4.49,
+         "p90_in": 52.4,
+         "scale_error_pct": -0.07
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -4995,15 +4995,15 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.49,
-         "median_in": 6.8,
-         "p90_in": 15.03,
-         "scale_error_pct": 2.4
+         "median_in": 6.81,
+         "p90_in": 14.99,
+         "scale_error_pct": 2.42
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 1.68,
-         "median_in": 14.91,
-         "p90_in": 28.66,
+         "median_in": 14.9,
+         "p90_in": 28.73,
          "scale_error_pct": 3.75
         }
        },
@@ -5012,15 +5012,15 @@
          "pairs": 600000,
          "failed_pct": 0.49,
          "median_in": 2.3,
-         "p90_in": 11.37,
-         "scale_error_pct": -0.02
+         "p90_in": 11.34,
+         "scale_error_pct": -0.01
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.68,
-         "median_in": 3.95,
-         "p90_in": 21.15,
-         "scale_error_pct": 0.03
+         "median_in": 3.96,
+         "p90_in": 21.1,
+         "scale_error_pct": 0.04
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -5031,16 +5031,16 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 0.99,
-         "median_in": 5.22,
-         "p90_in": 15.35,
-         "scale_error_pct": -0.01
+         "median_in": 5.21,
+         "p90_in": 15.32,
+         "scale_error_pct": -0.05
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 2.6,
-         "median_in": 13.31,
-         "p90_in": 31.61,
-         "scale_error_pct": 2.5
+         "median_in": 13.27,
+         "p90_in": 31.63,
+         "scale_error_pct": 2.53
         }
        },
        "one_known_distance": {
@@ -5049,14 +5049,14 @@
          "failed_pct": 0.99,
          "median_in": 2.4,
          "p90_in": 12.78,
-         "scale_error_pct": -0.28
+         "scale_error_pct": -0.26
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 2.6,
-         "median_in": 5.08,
-         "p90_in": 32.24,
-         "scale_error_pct": 0.17
+         "median_in": 5.11,
+         "p90_in": 32.19,
+         "scale_error_pct": 0.16
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -5068,15 +5068,15 @@
          "pairs": 21000,
          "failed_pct": 1.0,
          "median_in": 8.47,
-         "p90_in": 33.81,
-         "scale_error_pct": 1.1
+         "p90_in": 33.83,
+         "scale_error_pct": 1.22
         },
         "3-10m": {
          "pairs": 20786,
          "failed_pct": 0.58,
-         "median_in": 15.17,
-         "p90_in": 49.71,
-         "scale_error_pct": 2.35
+         "median_in": 15.12,
+         "p90_in": 49.92,
+         "scale_error_pct": 2.38
         }
        },
        "one_known_distance": {
@@ -5084,15 +5084,15 @@
          "pairs": 525000,
          "failed_pct": 1.0,
          "median_in": 3.85,
-         "p90_in": 27.31,
-         "scale_error_pct": 0.7
+         "p90_in": 27.29,
+         "scale_error_pct": 0.75
         },
         "3-10m": {
          "pairs": 519650,
          "failed_pct": 0.58,
          "median_in": 5.53,
-         "p90_in": 38.02,
-         "scale_error_pct": 0.1
+         "p90_in": 38.06,
+         "scale_error_pct": 0.14
         }
        },
        "tape_calibration_success_pct": 100.0,
@@ -5105,32 +5105,32 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 0.22,
-         "median_in": 6.18,
-         "p90_in": 14.43,
+         "median_in": 6.14,
+         "p90_in": 14.4,
          "scale_error_pct": 2.54
         },
         "3-10m": {
          "pairs": 24000,
          "failed_pct": 1.16,
-         "median_in": 13.89,
-         "p90_in": 25.95,
-         "scale_error_pct": 4.39
+         "median_in": 13.88,
+         "p90_in": 25.94,
+         "scale_error_pct": 4.38
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 600000,
          "failed_pct": 0.72,
-         "median_in": 2.45,
-         "p90_in": 15.71,
+         "median_in": 2.47,
+         "p90_in": 15.68,
          "scale_error_pct": 0.19
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 1.66,
-         "median_in": 4.32,
-         "p90_in": 33.21,
-         "scale_error_pct": 0.55
+         "median_in": 4.37,
+         "p90_in": 33.08,
+         "scale_error_pct": 0.56
         }
        },
        "tape_calibration_success_pct": 99.5,
@@ -5141,16 +5141,16 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 0.45,
-         "median_in": 5.59,
-         "p90_in": 15.0,
-         "scale_error_pct": -0.16
+         "median_in": 5.6,
+         "p90_in": 14.98,
+         "scale_error_pct": -0.13
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 2.03,
-         "median_in": 13.69,
-         "p90_in": 30.42,
-         "scale_error_pct": 4.3
+         "median_in": 13.66,
+         "p90_in": 30.36,
+         "scale_error_pct": 4.29
         }
        },
        "one_known_distance": {
@@ -5158,15 +5158,15 @@
          "pairs": 525000,
          "failed_pct": 1.02,
          "median_in": 2.37,
-         "p90_in": 19.81,
+         "p90_in": 19.75,
          "scale_error_pct": -0.05
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 2.6,
-         "median_in": 5.28,
-         "p90_in": 52.68,
-         "scale_error_pct": 1.09
+         "median_in": 5.26,
+         "p90_in": 52.6,
+         "scale_error_pct": 1.1
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -5178,15 +5178,15 @@
          "pairs": 21000,
          "failed_pct": 0.44,
          "median_in": 7.47,
-         "p90_in": 20.54,
-         "scale_error_pct": 2.76
+         "p90_in": 20.55,
+         "scale_error_pct": 2.81
         },
         "3-10m": {
          "pairs": 20786,
          "failed_pct": 0.3,
-         "median_in": 13.36,
-         "p90_in": 34.46,
-         "scale_error_pct": 3.22
+         "median_in": 13.34,
+         "p90_in": 34.63,
+         "scale_error_pct": 3.31
         }
        },
        "one_known_distance": {
@@ -5194,15 +5194,15 @@
          "pairs": 525000,
          "failed_pct": 1.01,
          "median_in": 4.15,
-         "p90_in": 26.46,
-         "scale_error_pct": 0.76
+         "p90_in": 26.44,
+         "scale_error_pct": 0.8
         },
         "3-10m": {
          "pairs": 519650,
          "failed_pct": 0.88,
          "median_in": 6.44,
-         "p90_in": 50.06,
-         "scale_error_pct": 1.0
+         "p90_in": 50.01,
+         "scale_error_pct": 1.03
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -5215,16 +5215,16 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 0.0,
-         "median_in": 5.42,
-         "p90_in": 12.54,
-         "scale_error_pct": 0.73
+         "median_in": 5.4,
+         "p90_in": 12.49,
+         "scale_error_pct": 0.68
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 0.01,
-         "median_in": 12.44,
-         "p90_in": 22.61,
-         "scale_error_pct": 3.02
+         "median_in": 12.4,
+         "p90_in": 22.62,
+         "scale_error_pct": 3.0
         }
        },
        "one_known_distance": {
@@ -5232,15 +5232,15 @@
          "pairs": 525000,
          "failed_pct": 0.57,
          "median_in": 2.78,
-         "p90_in": 10.82,
-         "scale_error_pct": 0.1
+         "p90_in": 10.79,
+         "scale_error_pct": 0.11
         },
         "3-10m": {
          "pairs": 525000,
          "failed_pct": 0.59,
-         "median_in": 4.26,
-         "p90_in": 21.27,
-         "scale_error_pct": 0.12
+         "median_in": 4.27,
+         "p90_in": 21.13,
+         "scale_error_pct": 0.18
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -5251,32 +5251,32 @@
         "1-3m": {
          "pairs": 18000,
          "failed_pct": 0.11,
-         "median_in": 4.88,
-         "p90_in": 12.5,
-         "scale_error_pct": -1.24
+         "median_in": 4.85,
+         "p90_in": 12.45,
+         "scale_error_pct": -1.26
         },
         "3-10m": {
          "pairs": 18000,
          "failed_pct": 0.23,
-         "median_in": 11.54,
-         "p90_in": 25.88,
-         "scale_error_pct": 2.79
+         "median_in": 11.55,
+         "p90_in": 25.82,
+         "scale_error_pct": 2.73
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 450000,
          "failed_pct": 0.77,
-         "median_in": 2.76,
-         "p90_in": 10.07,
-         "scale_error_pct": 0.14
+         "median_in": 2.77,
+         "p90_in": 10.03,
+         "scale_error_pct": 0.16
         },
         "3-10m": {
          "pairs": 450000,
          "failed_pct": 0.9,
-         "median_in": 5.48,
-         "p90_in": 25.78,
-         "scale_error_pct": 1.38
+         "median_in": 5.47,
+         "p90_in": 25.64,
+         "scale_error_pct": 1.4
         }
        },
        "tape_calibration_success_pct": 99.3,
@@ -5294,24 +5294,24 @@
         "3-10m": {
          "pairs": 17786,
          "failed_pct": 0.16,
-         "median_in": 7.82,
-         "p90_in": 18.6,
-         "scale_error_pct": -0.28
+         "median_in": 7.78,
+         "p90_in": 18.54,
+         "scale_error_pct": -0.32
         }
        },
        "one_known_distance": {
         "1-3m": {
          "pairs": 450000,
          "failed_pct": 0.74,
-         "median_in": 4.0,
-         "p90_in": 15.24,
-         "scale_error_pct": 1.77
+         "median_in": 4.03,
+         "p90_in": 15.29,
+         "scale_error_pct": 1.79
         },
         "3-10m": {
          "pairs": 444650,
          "failed_pct": 0.84,
-         "median_in": 6.1,
-         "p90_in": 25.36,
+         "median_in": 6.14,
+         "p90_in": 25.18,
          "scale_error_pct": 0.42
         }
        },
@@ -5327,9 +5327,9 @@
         "1-3m": {
          "pairs": 24000,
          "failed_pct": 2.36,
-         "median_in": 6.52,
+         "median_in": 6.53,
          "p90_in": 19.28,
-         "scale_error_pct": -5.89
+         "scale_error_pct": -5.9
         },
         "3-10m": {
          "pairs": 24000,
@@ -5344,7 +5344,7 @@
          "pairs": 600000,
          "failed_pct": 2.36,
          "median_in": 3.34,
-         "p90_in": 24.76,
+         "p90_in": 24.77,
          "scale_error_pct": -0.16
         },
         "3-10m": {
@@ -5370,8 +5370,8 @@
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 6.39,
-         "median_in": 15.41,
-         "p90_in": 52.93,
+         "median_in": 15.4,
+         "p90_in": 52.92,
          "scale_error_pct": -7.44
         }
        },
@@ -5379,7 +5379,7 @@
         "1-3m": {
          "pairs": 525000,
          "failed_pct": 4.99,
-         "median_in": 2.51,
+         "median_in": 2.52,
          "p90_in": 34.67,
          "scale_error_pct": -0.05
         },
@@ -5387,7 +5387,7 @@
          "pairs": 525000,
          "failed_pct": 6.39,
          "median_in": 6.83,
-         "p90_in": 118.04,
+         "p90_in": 118.05,
          "scale_error_pct": 0.02
         }
        },
@@ -5399,8 +5399,8 @@
         "1-3m": {
          "pairs": 21000,
          "failed_pct": 3.9,
-         "median_in": 9.16,
-         "p90_in": 40.86,
+         "median_in": 9.15,
+         "p90_in": 40.85,
          "scale_error_pct": -1.42
         },
         "3-10m": {
@@ -5422,8 +5422,8 @@
         "3-10m": {
          "pairs": 519650,
          "failed_pct": 2.46,
-         "median_in": 10.78,
-         "p90_in": 171.61,
+         "median_in": 10.79,
+         "p90_in": 171.59,
          "scale_error_pct": 3.68
         }
        },
@@ -5461,7 +5461,7 @@
          "pairs": 600000,
          "failed_pct": 3.58,
          "median_in": 7.14,
-         "p90_in": 44.42,
+         "p90_in": 44.43,
          "scale_error_pct": -0.39
         }
        },
@@ -5480,8 +5480,8 @@
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 4.98,
-         "median_in": 13.8,
-         "p90_in": 41.84,
+         "median_in": 13.79,
+         "p90_in": 41.85,
          "scale_error_pct": -7.34
         }
        },
@@ -5497,7 +5497,7 @@
          "pairs": 525000,
          "failed_pct": 4.98,
          "median_in": 7.66,
-         "p90_in": 76.96,
+         "p90_in": 76.97,
          "scale_error_pct": 0.25
         }
        },
@@ -5516,8 +5516,8 @@
         "3-10m": {
          "pairs": 20786,
          "failed_pct": 2.46,
-         "median_in": 18.81,
-         "p90_in": 103.11,
+         "median_in": 18.8,
+         "p90_in": 103.09,
          "scale_error_pct": -1.69
         }
        },
@@ -5533,7 +5533,7 @@
          "pairs": 519650,
          "failed_pct": 2.46,
          "median_in": 11.27,
-         "p90_in": 132.09,
+         "p90_in": 132.07,
          "scale_error_pct": 3.93
         }
        },
@@ -5548,8 +5548,8 @@
          "pairs": 24000,
          "failed_pct": 0.78,
          "median_in": 5.6,
-         "p90_in": 18.11,
-         "scale_error_pct": -5.65
+         "p90_in": 18.1,
+         "scale_error_pct": -5.66
         },
         "3-10m": {
          "pairs": 24000,
@@ -5565,13 +5565,13 @@
          "failed_pct": 1.77,
          "median_in": 3.99,
          "p90_in": 25.19,
-         "scale_error_pct": 0.24
+         "scale_error_pct": 0.25
         },
         "3-10m": {
          "pairs": 600000,
          "failed_pct": 3.98,
          "median_in": 7.76,
-         "p90_in": 51.37,
+         "p90_in": 51.39,
          "scale_error_pct": -0.17
         }
        },
@@ -5585,13 +5585,13 @@
          "failed_pct": 2.41,
          "median_in": 5.64,
          "p90_in": 20.81,
-         "scale_error_pct": -6.48
+         "scale_error_pct": -6.49
         },
         "3-10m": {
          "pairs": 21000,
          "failed_pct": 4.04,
          "median_in": 12.69,
-         "p90_in": 38.36,
+         "p90_in": 38.37,
          "scale_error_pct": -6.5
         }
        },
@@ -5600,7 +5600,7 @@
          "pairs": 525000,
          "failed_pct": 2.98,
          "median_in": 3.27,
-         "p90_in": 30.93,
+         "p90_in": 30.94,
          "scale_error_pct": 0.06
         },
         "3-10m": {
@@ -5627,8 +5627,8 @@
          "pairs": 20786,
          "failed_pct": 1.59,
          "median_in": 14.85,
-         "p90_in": 74.4,
-         "scale_error_pct": -2.02
+         "p90_in": 74.39,
+         "scale_error_pct": -2.01
         }
        },
        "one_known_distance": {
@@ -5643,8 +5643,8 @@
          "pairs": 519650,
          "failed_pct": 2.17,
          "median_in": 10.7,
-         "p90_in": 109.43,
-         "scale_error_pct": 3.45
+         "p90_in": 109.42,
+         "scale_error_pct": 3.46
         }
        },
        "tape_calibration_success_pct": 99.4,
@@ -5700,7 +5700,7 @@
         "3-10m": {
          "pairs": 18000,
          "failed_pct": 0.66,
-         "median_in": 10.35,
+         "median_in": 10.36,
          "p90_in": 36.45,
          "scale_error_pct": -5.75
         }
@@ -5737,7 +5737,7 @@
          "pairs": 17786,
          "failed_pct": 1.07,
          "median_in": 8.43,
-         "p90_in": 33.22,
+         "p90_in": 33.23,
          "scale_error_pct": -3.35
         }
        },
@@ -5752,8 +5752,8 @@
         "3-10m": {
          "pairs": 444650,
          "failed_pct": 3.76,
-         "median_in": 8.43,
-         "p90_in": 47.0,
+         "median_in": 8.44,
+         "p90_in": 47.01,
          "scale_error_pct": 2.49
         }
        },
@@ -5772,31 +5772,31 @@
        "1-3m": {
         "pairs": 135000,
         "failed_pct": 0.11,
-        "median_in": 6.83,
+        "median_in": 6.81,
         "p90_in": 19.13,
-        "scale_error_pct": 0.92
+        "scale_error_pct": 0.94
        },
        "3-10m": {
         "pairs": 135000,
         "failed_pct": 0.17,
-        "median_in": 18.43,
-        "p90_in": 52.66,
-        "scale_error_pct": 0.49
+        "median_in": 18.42,
+        "p90_in": 52.59,
+        "scale_error_pct": 0.55
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 3375000,
         "failed_pct": 0.29,
-        "median_in": 2.47,
-        "p90_in": 9.76,
+        "median_in": 2.46,
+        "p90_in": 9.72,
         "scale_error_pct": -0.05
        },
        "3-10m": {
         "pairs": 3375000,
         "failed_pct": 0.35,
         "median_in": 5.86,
-        "p90_in": 25.44,
+        "p90_in": 25.35,
         "scale_error_pct": -0.19
        }
       },
@@ -5808,31 +5808,31 @@
        "1-3m": {
         "pairs": 135000,
         "failed_pct": 0.18,
-        "median_in": 6.57,
-        "p90_in": 19.23,
-        "scale_error_pct": 0.28
+        "median_in": 6.55,
+        "p90_in": 19.19,
+        "scale_error_pct": 0.33
        },
        "3-10m": {
         "pairs": 133158,
         "failed_pct": 0.33,
-        "median_in": 17.85,
-        "p90_in": 56.14,
-        "scale_error_pct": -0.18
+        "median_in": 17.8,
+        "p90_in": 56.07,
+        "scale_error_pct": -0.12
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 3375000,
         "failed_pct": 0.36,
-        "median_in": 2.48,
-        "p90_in": 9.71,
-        "scale_error_pct": -0.01
+        "median_in": 2.47,
+        "p90_in": 9.67,
+        "scale_error_pct": -0.0
        },
        "3-10m": {
         "pairs": 3328950,
         "failed_pct": 0.51,
         "median_in": 5.83,
-        "p90_in": 25.42,
+        "p90_in": 25.36,
         "scale_error_pct": -0.05
        }
       },
@@ -5844,15 +5844,15 @@
        "1-3m": {
         "pairs": 135000,
         "failed_pct": 0.64,
-        "median_in": 8.05,
-        "p90_in": 24.9,
+        "median_in": 8.01,
+        "p90_in": 24.92,
         "scale_error_pct": 4.29
        },
        "3-10m": {
         "pairs": 132648,
         "failed_pct": 0.3,
-        "median_in": 17.17,
-        "p90_in": 63.46,
+        "median_in": 17.1,
+        "p90_in": 63.42,
         "scale_error_pct": 2.68
        }
       },
@@ -5860,16 +5860,16 @@
        "1-3m": {
         "pairs": 3375000,
         "failed_pct": 0.81,
-        "median_in": 4.43,
-        "p90_in": 25.06,
-        "scale_error_pct": 1.12
+        "median_in": 4.44,
+        "p90_in": 25.05,
+        "scale_error_pct": 1.11
        },
        "3-10m": {
         "pairs": 3316200,
         "failed_pct": 0.48,
-        "median_in": 7.22,
-        "p90_in": 37.41,
-        "scale_error_pct": 0.54
+        "median_in": 7.23,
+        "p90_in": 37.39,
+        "scale_error_pct": 0.53
        }
       },
       "tape_calibration_success_pct": 99.8,
@@ -5882,15 +5882,15 @@
        "1-3m": {
         "pairs": 135000,
         "failed_pct": 1.47,
-        "median_in": 6.79,
-        "p90_in": 19.48,
-        "scale_error_pct": 3.43
+        "median_in": 6.78,
+        "p90_in": 19.46,
+        "scale_error_pct": 3.47
        },
        "3-10m": {
         "pairs": 135000,
         "failed_pct": 2.27,
-        "median_in": 15.08,
-        "p90_in": 41.89,
+        "median_in": 15.06,
+        "p90_in": 41.83,
         "scale_error_pct": 4.3
        }
       },
@@ -5899,14 +5899,14 @@
         "pairs": 3375000,
         "failed_pct": 3.28,
         "median_in": 1.58,
-        "p90_in": 9.59,
+        "p90_in": 9.57,
         "scale_error_pct": -0.03
        },
        "3-10m": {
         "pairs": 3375000,
         "failed_pct": 4.01,
         "median_in": 3.0,
-        "p90_in": 17.82,
+        "p90_in": 17.8,
         "scale_error_pct": -0.01
        }
       },
@@ -5918,32 +5918,32 @@
        "1-3m": {
         "pairs": 102000,
         "failed_pct": 3.4,
-        "median_in": 7.13,
-        "p90_in": 24.78,
-        "scale_error_pct": 0.97
+        "median_in": 7.12,
+        "p90_in": 24.74,
+        "scale_error_pct": 1.01
        },
        "3-10m": {
         "pairs": 99955,
         "failed_pct": 7.75,
-        "median_in": 15.67,
-        "p90_in": 64.35,
-        "scale_error_pct": 1.51
+        "median_in": 15.62,
+        "p90_in": 64.2,
+        "scale_error_pct": 1.57
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 2550000,
         "failed_pct": 5.38,
-        "median_in": 1.79,
-        "p90_in": 15.12,
-        "scale_error_pct": -0.02
+        "median_in": 1.8,
+        "p90_in": 15.11,
+        "scale_error_pct": -0.0
        },
        "3-10m": {
         "pairs": 2498875,
         "failed_pct": 9.09,
-        "median_in": 3.61,
-        "p90_in": 58.19,
-        "scale_error_pct": 0.25
+        "median_in": 3.63,
+        "p90_in": 58.16,
+        "scale_error_pct": 0.27
        }
       },
       "tape_calibration_success_pct": 97.2,
@@ -5955,31 +5955,31 @@
         "pairs": 102000,
         "failed_pct": 0.97,
         "median_in": 8.34,
-        "p90_in": 31.81,
-        "scale_error_pct": 3.55
+        "p90_in": 31.78,
+        "scale_error_pct": 3.6
        },
        "3-10m": {
         "pairs": 99802,
         "failed_pct": 0.71,
-        "median_in": 15.0,
-        "p90_in": 53.03,
-        "scale_error_pct": 4.13
+        "median_in": 14.99,
+        "p90_in": 52.99,
+        "scale_error_pct": 4.15
        }
       },
       "one_known_distance": {
        "1-3m": {
         "pairs": 2550000,
         "failed_pct": 3.74,
-        "median_in": 3.65,
-        "p90_in": 26.9,
-        "scale_error_pct": 0.58
+        "median_in": 3.67,
+        "p90_in": 26.88,
+        "scale_error_pct": 0.61
        },
        "3-10m": {
         "pairs": 2495050,
         "failed_pct": 3.58,
-        "median_in": 5.78,
-        "p90_in": 36.85,
-        "scale_error_pct": 0.83
+        "median_in": 5.82,
+        "p90_in": 36.78,
+        "scale_error_pct": 0.85
        }
       },
       "tape_calibration_success_pct": 97.2,
@@ -6001,7 +6001,7 @@
        "3-10m": {
         "pairs": 135000,
         "failed_pct": 0.81,
-        "median_in": 21.5,
+        "median_in": 21.51,
         "p90_in": 72.6,
         "scale_error_pct": -9.66
        }
@@ -6018,7 +6018,7 @@
         "pairs": 3375000,
         "failed_pct": 1.41,
         "median_in": 8.63,
-        "p90_in": 38.0,
+        "p90_in": 38.01,
         "scale_error_pct": -0.69
        }
       },
@@ -6038,7 +6038,7 @@
         "pairs": 133158,
         "failed_pct": 1.45,
         "median_in": 22.6,
-        "p90_in": 78.44,
+        "p90_in": 78.45,
         "scale_error_pct": -11.46
        }
       },
@@ -6047,14 +6047,14 @@
         "pairs": 3375000,
         "failed_pct": 1.44,
         "median_in": 3.47,
-        "p90_in": 15.34,
+        "p90_in": 15.35,
         "scale_error_pct": -0.68
        },
        "3-10m": {
         "pairs": 3328950,
         "failed_pct": 2.05,
         "median_in": 8.88,
-        "p90_in": 41.35,
+        "p90_in": 41.36,
         "scale_error_pct": -1.07
        }
       },
@@ -6068,13 +6068,13 @@
         "failed_pct": 2.69,
         "median_in": 7.31,
         "p90_in": 39.35,
-        "scale_error_pct": -2.22
+        "scale_error_pct": -2.21
        },
        "3-10m": {
         "pairs": 132648,
         "failed_pct": 1.54,
         "median_in": 16.94,
-        "p90_in": 93.01,
+        "p90_in": 93.0,
         "scale_error_pct": -4.39
        }
       },
@@ -6129,7 +6129,7 @@
         "failed_pct": 7.29,
         "median_in": 6.09,
         "p90_in": 62.64,
-        "scale_error_pct": -0.72
+        "scale_error_pct": -0.71
        }
       },
       "tape_calibration_success_pct": 96.6,
@@ -6184,7 +6184,7 @@
         "pairs": 99802,
         "failed_pct": 3.11,
         "median_in": 9.51,
-        "p90_in": 73.13,
+        "p90_in": 73.11,
         "scale_error_pct": -0.15
        }
       },
@@ -6200,7 +6200,7 @@
         "pairs": 2495050,
         "failed_pct": 7.46,
         "median_in": 12.41,
-        "p90_in": 185.21,
+        "p90_in": 185.2,
         "scale_error_pct": 5.94
        }
       },
