@@ -222,7 +222,7 @@
       <rect x="48" y="52" width="16" height="74" fill="url(#fogpat)"/>
       <text class="t b" x="76" y="72">Guided scan</text>
       <text class="t" x="76" y="94">live 3D map</text>
-      <text class="t" x="76" y="114">fog lifts as</text>
+      <text class="t" x="76" y="114">haze lifts as</text>
       <text class="t" x="76" y="134">it sees</text>
     </g>
     <g id="pl-packet">
@@ -276,25 +276,25 @@
 <main class="wrap">
 
 <h1>How house scanning works</h1>
-<p class="meta">Living explainer for new teammates and agents. Current as of 26 September 2026. About twenty minutes.</p>
+<p class="meta">For new teammates and agents. 26 September 2026. About ten minutes.</p>
 
-<p class="lede">A homeowner scans the outside of their house around the electric meter with an iPhone. The phone captures the wall, the server builds a 3D model and checks Base Power's placement rules against it, and the app shows where the battery goes, in AR, on the real wall.</p>
-<p class="prose">Picture a home inspector with a tape measure and a checklist. The phone is the inspector's eyes and tape, and the server holds the checklist. The comparison breaks in one place, and that place shapes the design: an inspector can lean around a bush to look, but the server can judge only what the phone actually saw.</p>
+<p class="lede">A homeowner scans the wall around their electric meter with an iPhone. The server checks Base Power's placement rules on a 3D model of that wall. The app shows where the battery goes, in AR.</p>
+<p class="prose">Think of a home inspector with a tape measure and a checklist. The phone is the eyes and the tape, and the server holds the checklist. One difference shapes the design: an inspector can lean around a bush, but the server can judge only what the phone saw.</p>
 
 <nav class="toc" aria-label="Contents">
-  After one read you should be able to explain:
+  Contents
   <ol>
-    <li><a href="#problem">what has to fit where</a></li>
-    <li><a href="#pipeline">how a scan becomes an answer, which team owns each step, and what the homeowner sees</a></li>
-    <li><a href="#ideas">four ideas that keep the answer honest</a></li>
-    <li><a href="#paths">the options for building the 3D model</a></li>
-    <li><a href="#evidence">what the tests found, and what is still unmeasured</a></li>
-    <li><a href="#where">where each piece lives, and how to try it</a></li>
+    <li><a href="#problem">Where the battery can go</a></li>
+    <li><a href="#pipeline">From scan to answer</a></li>
+    <li><a href="#ideas">Four ideas that keep the answer honest</a></li>
+    <li><a href="#paths">Building the 3D model</a></li>
+    <li><a href="#evidence">What the tests found</a></li>
+    <li><a href="#where">Where things live</a></li>
   </ol>
 </nav>
 
 <!-- ================= 1. PROBLEM ================= -->
-<h2 id="problem">1. The problem: a battery has to fit between the rules</h2>
+<h2 id="problem">1. Where the battery can go</h2>
 
 <figure class="wide">
   <svg viewBox="0 0 800 520" role="img" aria-labelledby="p1t p1d">
@@ -410,42 +410,42 @@
     </g>
   </svg>
   <p class="scrollhint">Wider than the screen: scroll sideways for the rest of the picture.</p>
-  <figcaption>Everything is drawn at one scale: 5 ft between tape marks. The red hatched areas are places the battery may not go. The battery just fits between the electric meter and the window's zone. <b>Rules shown:</b> 3 ft from the gas meter, from AC units, fences and other batteries, and from doors and windows that enter the home; 3 ft of clear space in front; 6.5 ft of headroom; within 20 ft of cable run from the meter; a flat, seen stretch of wall behind it.</figcaption>
+  <figcaption>Red hatching marks where the battery can't go. Here it just fits between the meter and the window.</figcaption>
 </figure>
 
 <div class="prose">
-<p>Base Power puts a home battery on the outside wall, close to the electric meter, because a cable runs from the meter to the battery. The battery is 31 in wide, 22 in deep and 39.5 in tall. Whether it fits, and where, depends on the clearance rules in the picture. Today someone judges that from a few customer photos, which have no scale and can't show what sits just outside the frame.</p>
-<p>The demo's rules come from public sources and live in the server's rules file, each with its citation. Two numbers there are placeholders because no public value exists (pool 10 ft, driveway 5 ft). Base's own thresholds are private, load at runtime from a file that is not in git, and do not appear on this page.</p>
+<p>The battery, 31 × 22 × 39.5 in, sits on the outside wall near the meter, because a cable runs between them. Today a person judges the fit from customer photos, which have no scale and miss what's just out of frame.</p>
+<p>Rule values come from public sources, each cited, in the server's rules file. The pool (10 ft) and driveway (5 ft) values are placeholders. Base's own values stay private.</p>
 </div>
 <details>
-  <summary>The rules the demo uses, with sources</summary>
+  <summary>Rule values and sources</summary>
   <div class="scroll-x"><table>
     <thead><tr><th>Rule</th><th>Value</th><th>Source</th></tr></thead>
     <tbody>
-      <tr><td>Distance from the gas meter</td><td>3 ft</td><td>Base's public help page; Austin Energy; Texas Gas Service</td></tr>
+      <tr><td>Distance from the gas meter</td><td>3 ft</td><td>Base's public help page, Austin Energy, Texas Gas Service</td></tr>
       <tr><td>Distance from AC units, fences, other batteries</td><td>3 ft</td><td>Base's help page</td></tr>
       <tr><td>Distance from doors and windows that enter the home</td><td>3 ft</td><td>IRC R328.4</td></tr>
       <tr><td>Clear space in front of the battery</td><td>3 ft</td><td>Base's help page</td></tr>
       <tr><td>Cable run from the meter</td><td>within 20 ft</td><td>Base's help page</td></tr>
       <tr><td>Headroom</td><td>6.5 ft</td><td>NEC 110.26, a demo choice</td></tr>
       <tr><td>Wall behind the battery</td><td>flat, and seen by the camera</td><td>demo requirement</td></tr>
-      <tr><td>Pool, driveway</td><td>10 ft, 5 ft</td><td>placeholders; no public value exists</td></tr>
+      <tr><td>Pool, driveway</td><td>10 ft, 5 ft</td><td>placeholders, no public value exists</td></tr>
     </tbody>
   </table></div>
 </details>
 
 <!-- ================= 2. PIPELINE ================= -->
-<h2 id="pipeline">2. From scan to answer, one step at a time</h2>
-<p class="prose">The project splits into three problems: a phone that guides the homeowner until everything needed is captured, photos and their metadata turned into a 3D model, and that model checked against the rules. Two teams share them. Each picture below redraws the last and adds one step. The dashed line down the middle is the boundary between the teams.</p>
+<h2 id="pipeline">2. From scan to answer</h2>
+<p class="prose">Each picture adds one step. The dashed line splits the client team from the server team.</p>
 
 <ol class="strip">
   <li><figure>
     <svg viewBox="0 0 480 152" role="img" aria-labelledby="pp1t pp1d">
       <title id="pp1t">Stage 1: the phone guides the scan with a live 3D map</title>
-      <desc id="pp1d">The client team's side holds one box: a phone whose screen shows the wall, with grey haze over the part not yet seen. The label reads: guided scan, live 3D map, fog lifts as it sees. The server team's side is empty.</desc>
+      <desc id="pp1d">The client team's side holds one box: a phone whose screen shows the wall, with grey haze over the part not yet seen. The label reads: guided scan, live 3D map, haze lifts as it sees. The server team's side is empty.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/>
     </svg>
-    <figcaption><b>The phone guides the scan.</b> The app builds a live 3D map on the phone as the homeowner moves. A haze, which the team calls fog of war, covers what the phone hasn't seen and lifts as it sees it. The app routes the homeowner until every part the model needs is seen.</figcaption>
+    <figcaption><b>The phone guides the scan</b> until it has seen everything the rules need.</figcaption>
   </figure></li>
 
   <li><figure>
@@ -454,7 +454,7 @@
       <desc id="pp2d">The guided scan box from stage 1, with an arrow to a file icon labelled packet, sitting on the line between the teams.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/><use href="#pl-packet"/>
     </svg>
-    <figcaption><b>It sends a capture packet.</b> Today the app uploads only its measurements and exports the full packet on request. The packet holds photos; where the camera was and which way it pointed for each one (poses); the lens's focal length and center (intrinsics); motion-sensor readings; LiDAR depth and mesh when the phone has LiDAR; and the homeowner's marks, such as the meter. The packet is the contract between the teams.</figcaption>
+    <figcaption><b>It sends a capture packet</b> of photos, camera poses, lens data, motion data, LiDAR depth when the phone has it, and the homeowner's marks. Today the app uploads only its measurements and exports the full packet on request.</figcaption>
   </figure></li>
 
   <li><figure>
@@ -463,7 +463,7 @@
       <desc id="pp3d">Stages 1 and 2, plus an arrow from the packet to a box on the server side showing a dotted 3D wall with a window and the meter, labelled 3D model or point cloud.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/><use href="#pl-packet"/><use href="#pl-model"/>
     </svg>
-    <figcaption><b>The server builds a 3D model.</b> From the packet, the server team builds a 3D model or point cloud of the wall and the ground in front of it, at real scale. Which method does this best is open; <a href="#paths">section 4</a> compares the options.</figcaption>
+    <figcaption><b>The server builds a 3D model</b> at real scale. Which method works best is still open (<a href="#paths">section 4</a>).</figcaption>
   </figure></li>
 
   <li><figure>
@@ -472,7 +472,7 @@
       <desc id="pp4d">Stages 1 to 3, plus an arrow down from the 3D model to a box labelled rules, plain code. It lists three checks: gas meter PASS, window UNSURE, door FAIL.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/><use href="#pl-packet"/><use href="#pl-model"/><use href="#pl-criteria"/>
     </svg>
-    <figcaption><b>Plain code checks the rules.</b> The rules and their sources live in a file. Code tries the battery's footprint at every spot along the wall, and each check at each spot comes out PASS, FAIL or UNSURE. No model makes this decision, so every answer traces back to a rule and a measurement.</figcaption>
+    <figcaption><b>Plain code checks the rules</b> at every spot along the wall, so every answer traces to a rule and a measurement.</figcaption>
   </figure></li>
 
   <li class="span"><figure>
@@ -481,12 +481,12 @@
       <desc id="pp5d">The whole loop. Guided scan, packet, 3D model, rules, and now an arrow labelled answer back across the line to a phone on the client side showing the battery outlined on the wall beside the meter.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/><use href="#pl-packet"/><use href="#pl-model"/><use href="#pl-criteria"/><use href="#pl-answer"/>
     </svg>
-    <figcaption><b>The answer comes back to the phone.</b> The app draws the battery on the real wall in AR. It places the battery relative to the meter's anchor, so the drawing stays on the right spot as the phone's tracking corrects itself. When a check is UNSURE, the answer names the view that would settle it, and the homeowner can capture it on the spot.</figcaption>
+    <figcaption><b>The answer comes back</b> and the battery appears in AR, pinned to the meter. An UNSURE check names the view that would settle it.</figcaption>
   </figure></li>
 </ol>
 
-<h3>What the homeowner sees</h3>
-<p class="prose">The same loop from the phone's side, in six pictures. Each adds one thing to the last. The tape along the bottom is real: the app shows the wall unrolled like a tape measure, with the electric meter at zero.</p>
+<h3>The scan, step by step</h3>
+<p class="prose">The app unrolls the wall like a tape measure, with the meter at zero.</p>
 
 <ol class="strip">
   <li><figure>
@@ -498,9 +498,9 @@
       <circle cx="216" cy="130" r="17" fill="none" stroke="var(--phone)" stroke-width="3"/>
       <circle cx="216" cy="130" r="27" fill="none" stroke="var(--phone)" stroke-width="2" opacity=".45"/>
       <text class="lab b" x="216" y="86" text-anchor="middle">tap the electric meter</text>
-      <text class="lab" x="216" y="230" text-anchor="middle">it becomes 0 ft; all else is left or right of it</text>
+      <text class="lab" x="216" y="230" text-anchor="middle">it becomes 0 ft, all else is left or right of it</text>
     </svg>
-    <figcaption>Point at the electric meter and tap. The meter becomes zero. Every position from now on is measured left or right of it, in feet.</figcaption>
+    <figcaption></figcaption>
   </figure></li>
 
   <li><figure>
@@ -516,7 +516,7 @@
       <text class="lab blue b" x="126" y="226" text-anchor="middle">walk left</text>
       <text class="lab blue b" x="340" y="226" text-anchor="middle">then right</text>
     </svg>
-    <figcaption>The phone takes a close-up of the meter by itself when the picture is sharp, to read the meter's number. Then you walk along the wall, left and then right. The phone keeps photos automatically.</figcaption>
+    <figcaption>The phone snaps a close-up of the meter. Then you walk left and right while it takes photos on its own.</figcaption>
   </figure></li>
 
   <li><figure>
@@ -535,7 +535,7 @@
       <text class="lab b" x="60" y="120" text-anchor="middle">haze</text>
       <text class="lab" x="222" y="80" text-anchor="middle">seen: the haze lifts</text>
     </svg>
-    <figcaption>A haze covers wall and ground the phone has not seen and lifts as it sees them. The team calls this fog of war. The tape strip grows as you walk.</figcaption>
+    <figcaption></figcaption>
   </figure></li>
 
   <li><figure>
@@ -554,7 +554,7 @@
       <rect x="20" y="6" width="440" height="38" rx="6" fill="var(--card)" stroke="var(--line)"/>
       <text class="t" x="240" y="31" text-anchor="middle">Show the ground about 6 ft right of your meter</text>
     </svg>
-    <figcaption>Mark things as you pass: gas meter, AC unit, door, window, driveway edge, fence. If something a rule needs is still unseen, the app asks for one more view, in one sentence.</figcaption>
+    <figcaption>Mark the gas meter, AC, doors and windows as you pass. If a rule still needs a view, the app asks for it.</figcaption>
   </figure></li>
 
   <li><figure>
@@ -575,7 +575,7 @@
       <rect x="250" y="6" width="222" height="36" rx="6" fill="var(--card)" stroke="var(--server)" stroke-width="2"/>
       <text class="t s b" x="361" y="30" text-anchor="middle">server: checks every rule</text>
     </svg>
-    <figcaption>The phone sends its measurements, <code>scene.json</code>, about 17 KB for a real walk. The server slides the battery's footprint along the wall in 2-inch steps and checks every rule at every position.</figcaption>
+    <figcaption></figcaption>
   </figure></li>
 
   <li><figure>
@@ -594,17 +594,16 @@
       <text class="lab b orange" x="120" y="196" text-anchor="middle">shortest cable</text>
       <text class="lab" x="220" y="234" text-anchor="middle">shown in 3D and in AR, placed from the meter</text>
     </svg>
-    <figcaption>The server answers with the best spot (shortest cable run first), the cable route, and every check's outcome and reason. The phone draws the battery on the wall, placed relative to the meter, in 3D and in AR.</figcaption>
+    <figcaption>The answer also lists every check's result and reason.</figcaption>
   </figure></li>
 </ol>
 
 <!-- ================= 3. IDEAS ================= -->
 <h2 id="ideas">3. Four ideas that keep the answer honest</h2>
 
-<h3>The error bar decides: PASS, FAIL or UNSURE</h3>
+<h3>Error bars decide the answer</h3>
 <div class="prose">
-<p>No measurement is exact. The phone tracks its own position by dead reckoning, like counting your steps from a doorway, so its error grows the farther it gets from the meter. The comparison has a limit: a miscounted step only stretches the walk, while the phone's error can also drift sideways.</p>
-<p>The server widens every measurement's error bar by 0.3 ft plus 0.16 ft for each foot from the meter. On public test walks, a current iPhone's tracking stayed inside that allowance. Then each check compares the rule against the whole error bar, not a single number.</p>
+<p>The phone tracks itself by dead reckoning, like counting steps, so its error grows with distance.</p>
 </div>
 <figure class="narrow">
   <svg viewBox="0 0 480 250" role="img" aria-labelledby="d1t d1d">
@@ -641,7 +640,6 @@
     </g>
     <text class="t s m" x="20" y="242">error bar = 0.3 ft + 0.16 ft for every foot from the meter</text>
   </svg>
-  <figcaption>The farther from the meter, the less sure a position is. At 20 ft a position is sure only to about ± 3.5 ft.</figcaption>
 </figure>
 <figure class="narrow">
   <svg viewBox="0 0 480 300" role="img" aria-labelledby="d2t d2d">
@@ -685,11 +683,11 @@
     <rect x="364" y="228" width="100" height="26" rx="13" fill="var(--unsure)"/>
     <text class="pill" x="414" y="246" text-anchor="middle" fill="#2a1e00">? UNSURE</text>
   </svg>
-  <figcaption>Three measurements against the 3 ft gas meter rule, each with an error bar of ± 0.8 ft. A check passes only when its margin beats the error, fails only when it misses by more than the error, and is UNSURE otherwise; a tie is UNSURE. <b>UNSURE means a person looks, or the app asks for a better view.</b> Tighter geometry shrinks the error bars and turns UNSURE answers into PASS or FAIL, which is why the 3D path matters.</figcaption>
+  <figcaption>PASS only when the margin beats the error. FAIL only when it misses by more. Anything else is UNSURE, and a person or a better view settles it.</figcaption>
 </figure>
 
-<h3>Unseen is not clear</h3>
-<p class="prose">The live map's haze works like the fog of war in a strategy game: a dark patch is unexplored, not empty. The comparison stops there. In a game, scouting reveals the truth. Here, even the parts the phone saw carry an error bar.</p>
+<h3>Unseen means unsure</h3>
+<p class="prose">Haze means unexplored, not empty, like fog of war in a strategy game.</p>
 <figure class="narrow">
   <svg viewBox="0 0 480 236" role="img" aria-labelledby="d3t d3d">
     <title id="d3t">A check whose ground was never seen stays UNSURE and names the missing view</title>
@@ -713,15 +711,15 @@
     <text class="t s m" x="212" y="156">missing evidence: show the</text>
     <text class="t s m" x="212" y="176">ground 6 ft right of your meter</text>
   </svg>
-  <figcaption>If the camera never saw part of the area a rule depends on, that check cannot pass. It stays UNSURE, and the server names the view that would settle it. Here the ground beside the spot was never seen, and the checks that use ground need 6 to 13 ft of it. A blank on the map is never treated as empty ground.</figcaption>
+  <figcaption>A check on ground nobody saw stays UNSURE, and the app asks for that view.</figcaption>
 </figure>
 
-<h3>Coverage means 100% of what the model needs</h3>
-<p class="prose">The app doesn't need the whole house. It needs every part the rules depend on, all of it. That is a fixed zone around the meter, so the app can say exactly what is left, and the scan can end when the zone is clear.</p>
+<h3>Coverage is a fixed zone</h3>
+<p class="prose">Not the whole house, just a zone around the meter. The app always knows exactly what's left.</p>
 <figure class="narrow">
   <svg viewBox="0 0 480 300" role="img" aria-labelledby="cvt cvd">
     <title id="cvt">The zone a scan must cover, seen from above</title>
-    <desc id="cvd">A plan view of the house with the electric meter on its front wall. A dashed blue rectangle marks the zone the checks need: the wall 20 feet either side of the meter and the ground in front of it out to 13 feet. Everything outside it is grey haze labelled not needed. Inside, a bush stands in front of the wall; the strip of wall behind it is unseen, so checks there are UNSURE. A dotted path shows the phone walking along the zone.</desc>
+    <desc id="cvd">A plan view of the house with the electric meter on its front wall. A dashed blue rectangle marks the zone the checks need: the wall 20 feet either side of the meter and the ground in front of it out to 13 feet. Everything outside it is grey haze labelled not needed. Inside, a bush stands in front of the wall, and the strip of wall behind it is unseen, so checks there are UNSURE. A dotted path shows the phone walking along the zone.</desc>
     <!-- 1 ft = 8 px, meter at x=240, wall face at y=110 -->
     <rect width="480" height="300" fill="var(--ground)"/>
     <rect x="40" y="16" width="400" height="88" fill="var(--eave)"/>
@@ -753,15 +751,15 @@
     <text class="lab b blue" x="90" y="132">needed: all of it</text>
     <text class="lab" x="392" y="208" text-anchor="end">ground out to 13 ft</text>
   </svg>
-  <figcaption>Drawn to scale, 1 ft to 8 px. The zone is the wall within 20 ft of cable either side of the meter, the ground in front out to 6 to 13 ft depending on the check, and the space overhead for headroom, which a plan view can't show. Near each end it reaches past 20 ft by the clearance around a spot at the edge of reach. A pass needs only the chosen spot and its clearances seen, and the server's answer says when the walk has gone far enough. Section 5 shows how the coverage map was tested against depth.</figcaption>
+  <figcaption>The zone: wall within 20 ft of cable each side, ground out to 6 to 13 ft, and headroom above. It reaches a little past 20 ft for clearances at the edge.</figcaption>
 </figure>
 
-<h3>LiDAR first, never required</h3>
-<p class="prose">Some iPhones have LiDAR, a sensor that measures depth directly by timing reflected light. Most homeowners' phones don't. The app uses LiDAR and other depth sensors whenever the phone has them, and every check must also work without them.</p>
+<h3>LiDAR helps but isn't required</h3>
+<p class="prose">LiDAR measures depth directly, but most homeowners' phones don't have it. Every check must work without it.</p>
 <figure class="narrow">
   <svg viewBox="0 0 480 252" role="img" aria-labelledby="ldt ldd">
     <title id="ldt">Two ways to get depth at real scale</title>
-    <desc id="ldd">Left, a phone with LiDAR sends rays to a wall seen from the side, and dots on the wall mark measured depth; its reach is about 5 metres. Right, any iPhone: a dashed line shows a depth model's guess of where the wall is, a little off. The phone at two known positions sees the same point on the real wall, and the two sight lines meet there, which fixes the scale.</desc>
+    <desc id="ldd">Left, a phone with LiDAR sends rays to a wall seen from the side, and dots on the wall mark measured depth. Its reach is about 5 metres. Right, any iPhone: a dashed line shows a depth model's guess of where the wall is, a little off. The phone at two known positions sees the same point on the real wall, and the two sight lines meet there, which fixes the scale.</desc>
     <line x1="240" y1="8" x2="240" y2="248" stroke="var(--line)" stroke-width="1.5"/>
     <text class="t b" x="120" y="22" text-anchor="middle">Phone with LiDAR</text>
     <text class="t b" x="360" y="22" text-anchor="middle">Any iPhone</text>
@@ -790,37 +788,36 @@
     <text class="t" x="360" y="226" text-anchor="middle">guessed, then rescaled</text>
     <text class="t m" x="360" y="246" text-anchor="middle">by triangulating with poses</text>
   </svg>
-  <figcaption><b>LiDAR</b> works like a laser tape measure: direct distances, but a reach of about 5 m, so capture has to stand within about 4 m of the wall. <b>Without it</b>, a learned model estimates depth in each photo, and the phone's poses fix the scale: the same point seen from two known positions pins down its distance, the way two eyes judge depth. Where that comparison breaks: your eyes sit a fixed distance apart, but the phone's move between photos comes from its tracking and carries that error. Both paths fill the same capture packet.</figcaption>
+  <figcaption>With LiDAR, distances are measured directly, out to about 5 m. Without it, a model guesses depth and the phone's own movement fixes the scale, the way two eyes judge distance.</figcaption>
 </figure>
 
 
 <!-- ================= 4. PATHS ================= -->
-<h2 id="paths">4. How to build the 3D model: the options</h2>
-<p class="prose">Problem 2, photos and metadata into a 3D model, is open. The server team is comparing three families of methods: broadly first, then in depth on the best. None is ruled out. The numbers so far come from public datasets whose buildings were laser-scanned, so the true shape is known to a fraction of an inch.</p>
+<h2 id="paths">4. Building the 3D model</h2>
+<p class="prose">Still open. The server team is comparing three approaches on laser-scanned buildings, where the true shape is known.</p>
 
 <div class="paths">
   <section>
-    <h4>Traditional reconstruction, fused with LiDAR</h4>
-    <p>Geometry from first principles: find the same points in several photos, work out where they sit in 3D, and merge the depth from every view into one surface. LiDAR depth drops straight into that merge.</p>
-    <p>The known weakness is that matching points across photos struggles on blank siding and has no scale of its own. LiDAR and the phone's poses supply the scale.</p>
-    <p class="ev"><b>Evidence:</b> the recon worker (PR #20) merges depth into one surface. With a laser scan standing in for LiDAR, its walls come out at 2.1 in (p90).</p>
+    <h4>Traditional reconstruction + LiDAR</h4>
+    <p>Match points across photos, place them in 3D, and merge them into one surface. LiDAR depth drops straight in.</p>
+    <p>Weak on blank siding, and needs LiDAR or the phone's poses for scale.</p>
+    <p class="ev"><b>Evidence:</b> walls within 2.1 in (p90), with a laser scan standing in for LiDAR.</p>
   </section>
   <section>
-    <h4>Learned depth plus the phone's poses</h4>
-    <p>A neural network estimates depth from a single photo. Its own sense of scale is off by 4 to 12%, so the photos are rescaled with the phone's poses and then merged.</p>
-    <p>MapAnything, a learned model that reads several photos at once, was not a stable baseline: its scale shifted with the input resolution.</p>
-    <p class="ev"><b>Evidence:</b> walls about 5 in (p90) at a realistic phone error, 2.8 in with exact poses. Edges 8 in or worse in every setting.</p>
+    <h4>Learned depth + phone poses</h4>
+    <p>A neural network guesses depth in each photo. Its scale is 4 to 12% off, so the phone's poses rescale it.</p>
+    <p class="ev"><b>Evidence:</b> walls about 5 in (p90). Edges 8 in or worse.</p>
   </section>
   <section>
     <h4>World models</h4>
-    <p>Large learned models that take photos or video and produce a whole 3D scene at once, camera positions included. Think of someone who has seen thousands of houses sketching this one from a few snapshots.</p>
-    <p>The sketch comparison also shows the risk: a good sketch fills in what the artist never saw. That is fine for a picture, but a check needs to know which parts were observed.</p>
-    <p class="ev"><b>Evidence:</b> not evaluated yet. The server team will.</p>
+    <p>Big models that turn photos or video into a whole 3D scene.</p>
+    <p>They fill in what nobody saw, and a check must know what was observed.</p>
+    <p class="ev"><b>Evidence:</b> not tested yet.</p>
   </section>
 </div>
 
 <figure class="narrow">
-  <p class="meta" style="margin:0 0 8px">Wall error at p90 for each 3D path tested so far, on one laser-scanned building</p>
+  <p class="meta" style="margin:0 0 8px">Wall error (p90) on one laser-scanned building</p>
   <svg viewBox="0 0 480 300" role="img" aria-labelledby="evt evd">
     <title id="evt">Wall error at p90, in inches, for each 3D path tested so far</title>
     <desc id="evd">A dot plot from 0 to 20 inches. Depth model alone: about 20 inches. Depth model rescaled with poses at a realistic 2 percent pose error: 5.0 inches, interval 3.8 to 6.8. With exact poses: 2.8 inches, interval 2.0 to 4.4. Edges with learned depth: 8 inches or worse in every setting. Recon worker, photos only: 2.8 inches. Recon worker with a laser scan standing in for LiDAR: 2.1 inches. World models: not evaluated yet.</desc>
@@ -869,7 +866,7 @@
       <g><title>World models: not evaluated yet</title><rect class="hit" x="0" y="218" width="480" height="30"/></g>
     </g>
   </svg>
-  <figcaption>All rows come from the ETH3D electro building, walls within 6 m. The top four are learned depth (MoGe-2 and Depth Anything 3); the next two are the recon worker; the last has no data yet. Brackets are 95% intervals where they exist. <b>Caveat:</b> the recon worker's two runs chose different walls, so those two numbers are not measured on the same wall. <b>Reading it:</b> learned depth alone is too rough for clearances, which are measured from edges. With LiDAR or the phone's poses supplying scale, walls come within a few inches.</figcaption>
+  <figcaption>Learned depth alone is too rough for clearances. With LiDAR or the phone's poses for scale, walls land within a few inches. The two reconstruction runs measured different walls.</figcaption>
   <details><summary>Data table</summary>
     <div class="scroll-x"><table>
       <thead><tr><th>Path</th><th>Setting</th><th class="n">Wall error, p90</th><th>Source</th></tr></thead>
@@ -886,20 +883,20 @@
   </details>
 </figure>
 
-<h3>What any path has to show</h3>
+<h3>What a path must deliver</h3>
 <ul class="prose">
-  <li><b>Real scale.</b> A model's own sense of size is off by 4 to 12%, which is 5 to 14 in across a 10 ft stretch of wall.</li>
-  <li><b>Edges within the error allowance.</b> Clearances run from the edge of a door, window or gas meter, and edges are where learned depth is worst.</li>
-  <li><b>Which parts were observed.</b> The rules can pass a check only over area the phone saw. A method that fills in plausible wall has to mark what it filled in.</li>
-  <li><b>It runs on the packet the phone actually sends.</b> That includes phones without LiDAR.</li>
+  <li><b>Real scale.</b> 4 to 12% off is 5 to 14 in over a 10 ft wall.</li>
+  <li><b>Sharp edges.</b> Clearances are measured from edges.</li>
+  <li><b>A record of what it saw.</b> Filled-in wall must be marked.</li>
+  <li><b>It runs on the real packet,</b> including phones without LiDAR.</li>
 </ul>
 
 <!-- ================= 5. EVIDENCE ================= -->
 <h2 id="evidence">5. What the tests found</h2>
-<p class="prose">These ran on public real-world datasets with laser-measured ground truth. Dataset images never enter git. The 3D path results are in section 4. The panel-label test hasn't run: only 7 open photos of US panels exist, and it needs 40.</p>
+<p class="prose">All results come from public datasets, not our phone. Panel-label reading isn't tested, because only 7 open photos of US panels exist and the test needs 40.</p>
 
 <div class="finding" id="finding-1">
-  <h3>How far off is the phone's own tracking?</h3>
+  <h3>Tracking drift</h3>
   <figure class="narrow">
     <div class="legend">
       <span><i class="sw" style="border-color:var(--server)"></i>2018 iPhone 6s (ADVIO)</span>
@@ -932,7 +929,7 @@
         <g><title>30 ft walked: 2018 phone 132.6 in, 2023 phone 18.5 in, allowance 57.6 in</title><rect class="hit" x="440" y="30" width="60" height="250"/></g>
       </g>
     </svg>
-    <figcaption>Position error after walking, p90 (9 in 10 cases are better). A current iPhone's own tracking stays inside the server's allowance at every distance; the 2018 phone is far over it. The allowance line is the 0.16 ft per foot part of the server's error bar. <b>Caveats:</b> the MARViN reference may itself be scaled to the phone's tracking, and that phone has LiDAR, which most homeowners' phones lack.</figcaption>
+    <figcaption>p90 position error. A current iPhone stays under the server's allowance, and a 2018 iPhone doesn't. That current phone has LiDAR, which most homeowners' phones lack, and its reference may be scaled to its own tracking.</figcaption>
     <details><summary>Data table</summary>
       <div class="scroll-x"><table>
         <thead><tr><th>Walked</th><th class="n">2018 iPhone 6s (ADVIO), in</th><th class="n">2023 iPhone 14 Pro Max (MARViN), in</th><th class="n">Server's allowance, in</th></tr></thead>
@@ -945,11 +942,11 @@
       </table></div>
     </details>
   </figure>
-  <p class="changed"><b>What it set:</b> the server's allowance of 0.16 ft per foot walked comes from these walks.</p>
+  <p class="changed"><b>Takeaway:</b> the server's 0.16 ft-per-foot allowance comes from these walks.</p>
 </div>
 
 <div class="finding" id="finding-3">
-  <h3>Does the coverage map claim wall no photo saw?</h3>
+  <h3>False coverage</h3>
   <figure class="narrow">
     <div class="legend">
       <span><i class="sw box" style="background:var(--phone)"></i>wall a photo saw</span>
@@ -974,13 +971,13 @@
       <rect x="238" y="184" width="20.5" height="18" fill="var(--card)"/>
       <text class="t s m" x="428" y="198">clean</text>
     </svg>
-    <figcaption>Run on real photos of a laser-scanned building. The map claimed 1.1 ft of a 19.3 ft wall that no photo saw, hidden behind scaffold footings. Requiring views from different angles removed it only by also discarding 6 to 8.5 ft of good wall. A depth test, available on LiDAR phones, removed it cleanly. The hatched span is drawn at 8.5 ft, the larger end of the range.</figcaption>
+    <figcaption>The first map claimed 1.1 ft of wall that no photo saw. Demanding more angles threw away good wall too. A LiDAR depth test fixed it cleanly.</figcaption>
   </figure>
-  <p class="changed"><b>What it means:</b> coverage has to come from what photos actually saw. LiDAR phones can run the depth test. Tested against depth, the reconstruction worker claims at most about 0.46 ft of unseen wall. Who checks a wall hidden behind something on phones without LiDAR is still open.</p>
+  <p class="changed"><b>Takeaway:</b> coverage must come from what photos really saw. Who checks hidden wall on phones without LiDAR is still open.</p>
 </div>
 
 <div class="finding" id="finding-4">
-  <h3>Can the phone read the meter?</h3>
+  <h3>Meter reading</h3>
   <figure class="narrow">
     <svg viewBox="0 0 480 230" role="img" aria-labelledby="c4t c4d">
       <title id="c4t">Meter reading success on real meter photos</title>
@@ -1002,16 +999,16 @@
         <text x="192" y="155">85% of held-out photos</text>
       </g>
     </svg>
-    <figcaption>Apple's on-device text recognition read the full meter number on 71 of 73 real meter photos, but could not tell which line on the plate was the number (right on 21 of 75). A barcode held the number on 20 of 24 photos that had one. A tap-to-confirm list of three candidates contained it on 85% of held-out photos.</figcaption>
+    <figcaption>The phone reads the number but usually picks the wrong line, because plates carry several numbers.</figcaption>
   </figure>
-  <p class="changed"><b>What it set:</b> the app offers three candidates to tap, barcode match first, and asks for a retake when the photo is blurry or the number too small.</p>
+  <p class="changed"><b>Takeaway:</b> the app offers three candidates to tap, barcode match first.</p>
 </div>
 
-<h3>Still unmeasured: our own phone</h3>
+<h3>Field test on our phone</h3>
 <figure class="narrow">
   <svg viewBox="0 0 480 190" role="img" aria-labelledby="f0t f0d">
     <title id="f0t">The field test: the phone's reading against a tape on the same wall</title>
-    <desc id="f0d">A wall with the electric meter. A yellow tape runs along the wall with marks at 5, 10, 15 and 20 feet. A phone stands in front. Blue dots show where the phone thinks the same marks are; the gap between dot and mark grows with distance. A label reads: the gap is the phone's scale error.</desc>
+    <desc id="f0d">A wall with the electric meter. A yellow tape runs along the wall with marks at 5, 10, 15 and 20 feet. A phone stands in front. Blue dots show where the phone thinks the same marks are, and the gap between dot and mark grows with distance. A label reads: the gap is the phone's scale error.</desc>
     <rect width="480" height="190" fill="var(--sky)"/>
     <rect x="0" y="26" width="480" height="8" fill="var(--eave)"/>
     <rect x="0" y="34" width="480" height="106" fill="var(--wall)"/>
@@ -1033,41 +1030,40 @@
     <use href="#phone" x="76" y="146"/>
     <text class="lab s" x="100" y="166">a current iPhone, no LiDAR</text>
   </svg>
-  <figcaption>Every number above comes from public datasets. This test measures our own phone on our own wall.</figcaption>
+  <figcaption>Everything above is public data. This test measures our phone on a real wall.</figcaption>
 </figure>
 <div class="prose">
-<p>The field test needs a current iPhone without LiDAR, the Measure Lab build (PR #7), a 30 ft tape and a real meter wall. Follow <code>experiments/evals/field/FIELD_SHEET.md</code> (PR #12): type the tape readings into the prepared templates, and one command turns them into a score and the phone's real scale error. A dry run recovered a planted 1.5% error exactly, so the scoring end is ready.</p>
-<p>The tracking numbers come from a phone with LiDAR, on a dataset whose reference may be scaled to that phone's own tracking. Most homeowners' phones lack LiDAR, so this test is the only direct measurement.</p>
+<p>It needs a current iPhone without LiDAR, the Measure Lab build (PR #7), a 30 ft tape and a meter wall. The steps are in <code>experiments/evals/field/FIELD_SHEET.md</code> (PR #12).</p>
 </div>
 
 <!-- ================= 6. WHERE ================= -->
-<h2 id="where">6. Where each piece lives</h2>
-<p class="prose">Files marked with a pull request exist only on that branch until it merges. Each component's README wins over this page.</p>
+<h2 id="where">6. Where things live</h2>
+<p class="prose">Files marked with a PR live on that branch until it merges. A component's README wins over this page.</p>
 <div class="scroll-x"><table>
   <thead><tr><th>Piece</th><th>Source of truth</th><th>State</th></tr></thead>
   <tbody>
-    <tr><td>iPhone app<br><span class="meta">client team</span></td><td><code>ios/README.md</code></td><td>Guided capture in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/10" target="_blank" rel="noopener noreferrer">PR #10</a>; live 3D map in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/21" target="_blank" rel="noopener noreferrer">PR #21</a>, stacked on it</td></tr>
+    <tr><td>iPhone app<br><span class="meta">client team</span></td><td><code>ios/README.md</code></td><td>Guided capture in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/10" target="_blank" rel="noopener noreferrer">PR #10</a>, live 3D map in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/21" target="_blank" rel="noopener noreferrer">PR #21</a>, stacked on it</td></tr>
     <tr><td>Capture packet<br><span class="meta">client team</span></td><td><code>packet/README.md</code></td><td>Spec, validator and samples in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/22" target="_blank" rel="noopener noreferrer">PR #22</a></td></tr>
-    <tr><td>Rules engine, API, capture contract<br><span class="meta">server team</span></td><td><code>server/README.md</code>, "What settles each check"</td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/11" target="_blank" rel="noopener noreferrer">PR #11</a>; live as a <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">public demo</a> with public rules, and privately with Base's rules behind a key</td></tr>
+    <tr><td>Rules engine, API, capture contract<br><span class="meta">server team</span></td><td><code>server/README.md</code>, "What settles each check"</td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/11" target="_blank" rel="noopener noreferrer">PR #11</a>, live as a <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">public demo</a> with public rules, and privately with Base's rules behind a key</td></tr>
     <tr><td>Reconstruction worker<br><span class="meta">server team</span></td><td><code>recon/HANDOFF.md</code></td><td>Draft <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/20" target="_blank" rel="noopener noreferrer">PR #20</a>, handed to the server team</td></tr>
     <tr><td>Accuracy evals</td><td><code>experiments/evals/README.md</code></td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/12" target="_blank" rel="noopener noreferrer">PR #12</a></td></tr>
     <tr><td>Agent rules, system overview</td><td><code>AGENTS.md</code>, <code>docs/00-overview.md</code></td><td>On <code>main</code></td></tr>
     <tr><td>Web review page</td><td></td><td>Parked, <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/15" target="_blank" rel="noopener noreferrer">PR #15</a></td></tr>
   </tbody>
 </table></div>
-<p class="prose">The plan, the decisions and the full evidence list are in <a href="00-overview.md">00-overview.md</a>. The public rule values, their code citations and the model and imagery licenses are in <a href="04-prior-art-and-codes.md">04-prior-art-and-codes.md</a>.</p>
+<p class="prose">Plan and evidence: <a href="00-overview.md">00-overview.md</a>. Rule sources and licenses: <a href="04-prior-art-and-codes.md">04-prior-art-and-codes.md</a>.</p>
 
-<h3>How to try it</h3>
+<h3>Try it</h3>
 <div class="prose">
 <p>Server health: <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">house-scanning-server.vercel.app/health</a></p>
-<p>App in the Simulator, with guided capture from PR #10: build <code>ios/HouseScan.xcodeproj</code> and run it with</p>
+<p>Simulator, with guided capture from PR #10: build <code>ios/HouseScan.xcodeproj</code> and run it with</p>
 <pre>-replay &lt;folder&gt;
 -autopilot
 -serverURL https://house-scanning-server.vercel.app</pre>
 <p>On a real iPhone: set your team in <code>ios/Config/Local.xcconfig</code> (see <code>ios/README.md</code>), plug in, run.</p>
 </div>
 
-<footer>Base's private thresholds, prompt names and field names do not appear on this page. The drawings are illustrations at a consistent scale, not a real house. Evidence numbers come from public datasets with laser-scanned ground truth; no dataset images are included.</footer>
+<footer>The drawings are illustrations, not a real house.</footer>
 
 </main>
 </body>
