@@ -11,7 +11,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "HouseScanKit"),
-        .testTarget(name: "HouseScanKitTests", dependencies: ["HouseScanKit"]),
+        // Schemas/ holds vendored copies of the server's scene and result contracts.
+        .testTarget(name: "HouseScanKitTests", dependencies: ["HouseScanKit"], resources: [.copy("Schemas")]),
     ],
     swiftLanguageModes: [.v6]
 )

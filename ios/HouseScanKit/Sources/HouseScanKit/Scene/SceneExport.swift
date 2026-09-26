@@ -1,0 +1,429 @@
+import Foundation
+import simd
+
+// Builds scene.json (contract C1, server/schemas/scene.schema.json) from what the capture measured.
+// The capture works in ARKit's gravity-aligned world frame in meters; the scene frame is that same
+// frame in feet, so conversion is a uniform scale with no rotation or origin shift.
+
+public enum SceneUnits {
+    /// Exact by definition: the international foot is 0.3048 m.
+    public static let feetPerMeter: Double = 1 / 0.3048
+}
+
+/// One wall face described around the electric meter.
+///
+/// `s` runs along the wall (positive to the right for someone outside facing the wall), `out` runs
+/// horizontally away from the wall toward that person, and `height` is measured up from `groundY`.
+/// world(s, height, out) = (meter.x, groundY, meter.z) + along * s + outward * out + (0, height, 0).
+public struct SceneWall: Sendable, Equatable {
+    /// A point on the wall face at the meter, world meters.
+    public var meter: SIMD3<Float>
+    /// Unit horizontal vector from the wall toward the homeowner.
+    public var outward: SIMD3<Float>
+    /// World y of the ground in front of the wall, meters.
+    public var groundY: Float
+
+    public init(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float) {
+        self.meter = meter
+        self.outward = outward
+        self.groundY = groundY
+    }
+
+    /// Unit vector toward +s: cross(-outward, up). For outward (0, 0, 1) this is (1, 0, 0), which is
+    /// the scene schema's rule that outward is the baseline direction turned 90 degrees clockwise
+    /// viewed from +y.
+    public var along: SIMD3<Float> {
+        simd_normalize(simd_cross(-outward, SIMD3<Float>(0, 1, 0)))
+    }
+
+    public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
+        SIMD3<Float>(meter.x, groundY, meter.z) + along * s + outward * out + SIMD3<Float>(0, height, 0)
+    }
+
+    public func wallCoordinates(of point: SIMD3<Float>) -> (s: Float, height: Float, out: Float) {
+        let d = point - meter
+        return (simd_dot(d, along), point.y - groundY, simd_dot(d, outward))
+    }
+
+    /// Projects a scene plan point [x, z] in feet (for example a `route.polyline` vertex from the
+    /// placement result) onto this wall, returning s and out in meters.
+    public func wallCoordinates(ofPlanPointFeet point: SIMD2<Double>) -> (s: Float, out: Float) {
+        let world = SIMD3<Float>(
+            Float(point.x / SceneUnits.feetPerMeter), meter.y, Float(point.y / SceneUnits.feetPerMeter))
+        let c = wallCoordinates(of: world)
+        return (c.s, c.out)
+    }
+}
+
+public enum SceneOpeningKind: String, Sendable, Equatable {
+    case door
+    case window
+}
+
+public enum ScenePointObjectKind: String, Sendable, Equatable {
+    case gasMeter = "gas_meter"
+    case ac
+}
+
+public enum SceneFeature: Sendable {
+    /// A door or window on the wall. `span` is in s meters; `bottom` and `top` are meters above the
+    /// ground. `operable` nil means the homeowner was not asked, and it is then left out.
+    case opening(kind: SceneOpeningKind, span: ClosedRange<Float>, bottom: Float, top: Float, operable: Bool?)
+    /// Something tapped once that stands off the wall (gas meter, AC unit). `tap` is a world point.
+    case pointObject(kind: ScenePointObjectKind, tap: SIMD3<Float>, bottom: Float?, top: Float?)
+    /// Two world points at the foot of a fence or hedge facing the wall.
+    case fence(foot: [SIMD3<Float>])
+    /// Two world points along one edge of a driveway.
+    case driveway(edge: [SIMD3<Float>])
+}
+
+public struct SceneCoverage: Sendable {
+    /// True when the homeowner marked the left end as a real limit (fence, property line).
+    public var leftEndMarked: Bool
+    public var rightEndMarked: Bool
+    /// Stretches of wall face seen, in s meters.
+    public var wall: [ClosedRange<Float>]
+    /// Stretches of ground seen in front of the wall, in s meters, each out to `groundOut`.
+    public var ground: [ClosedRange<Float>]
+    /// How far out from the wall the ground was seen, meters.
+    public var groundOut: Float
+
+    public init(
+        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>],
+        ground: [ClosedRange<Float>], groundOut: Float
+    ) {
+        self.leftEndMarked = leftEndMarked
+        self.rightEndMarked = rightEndMarked
+        self.wall = wall
+        self.ground = ground
+        self.groundOut = groundOut
+    }
+}
+
+public struct SceneKeyframe: Sendable {
+    public var id: String
+    /// ARKit camera transform: column-major, translation in meters.
+    public var cameraToWorld: simd_float4x4
+    /// [fx, fy, cx, cy] in pixels of the landscape sensor image.
+    public var intrinsics: SIMD4<Float>
+    public var w: Int
+    public var h: Int
+    /// JPEG file name inside the uploaded bundle.
+    public var img: String
+
+    public init(id: String, cameraToWorld: simd_float4x4, intrinsics: SIMD4<Float>, w: Int, h: Int, img: String) {
+        self.id = id
+        self.cameraToWorld = cameraToWorld
+        self.intrinsics = intrinsics
+        self.w = w
+        self.h = h
+        self.img = img
+    }
+}
+
+public struct SceneInput: Sendable {
+    public var wall: SceneWall
+    public var wallID: String
+    /// s meters of the baseline's left and right ends. Must contain 0, the meter.
+    public var baselineS: ClosedRange<Float>
+    public var wallHeight: Float?
+    /// Meter position error, meters. Nil leaves the server's default for AR taps.
+    public var meterPlusMinus: Float?
+    public var features: [SceneFeature]
+    public var coverage: SceneCoverage
+    public var keyframes: [SceneKeyframe]
+    /// Close-up photo file names keyed by purpose.
+    public var stills: [String: String]
+
+    public init(
+        wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
+        meterPlusMinus: Float? = nil, features: [SceneFeature] = [], coverage: SceneCoverage,
+        keyframes: [SceneKeyframe] = [], stills: [String: String] = [:]
+    ) {
+        self.wall = wall
+        self.wallID = wallID
+        self.baselineS = baselineS
+        self.wallHeight = wallHeight
+        self.meterPlusMinus = meterPlusMinus
+        self.features = features
+        self.coverage = coverage
+        self.keyframes = keyframes
+        self.stills = stills
+    }
+}
+
+public enum SceneExportError: Error, Equatable, CustomStringConvertible {
+    case emptyWallID
+    case outwardNotUnitHorizontal(SIMD3<Float>)
+    case degenerateBaseline(lower: Float, upper: Float)
+    case meterOutsideBaseline(lower: Float, upper: Float)
+    case nonPositiveWallHeight(Float)
+    case negativeValue(field: String, value: Float)
+    case topBelowBottom(field: String, bottom: Float, top: Float)
+    case wrongPointCount(feature: String, expected: Int, actual: Int)
+    case degenerateSegment(feature: String)
+    case invalidKeyframe(id: String, reason: String)
+    case nonFiniteNumber(String)
+
+    public var description: String {
+        switch self {
+        case .emptyWallID: "wallID is empty"
+        case .outwardNotUnitHorizontal(let v): "wall outward \(v) is not a unit horizontal vector"
+        case .degenerateBaseline(let l, let u): "baseline s range \(l)...\(u) has no length"
+        case .meterOutsideBaseline(let l, let u): "baseline s range \(l)...\(u) does not contain the meter (s = 0)"
+        case .nonPositiveWallHeight(let h): "wall height \(h) m is not positive"
+        case .negativeValue(let f, let v): "\(f) is \(v), must be >= 0"
+        case .topBelowBottom(let f, let b, let t): "\(f): top \(t) m is below bottom \(b) m"
+        case .wrongPointCount(let f, let e, let a): "\(f) needs \(e) points, got \(a)"
+        case .degenerateSegment(let f): "\(f) points coincide in plan"
+        case .invalidKeyframe(let id, let r): "keyframe \(id): \(r)"
+        case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
+        }
+    }
+}
+
+public enum SceneExport {
+    /// Half the plan width of a tapped point object. The tap gives one point, not a size, so the
+    /// object is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
+    /// regulator, not a measured size. Replace it once the capture measures the object.
+    static let pointObjectHalfWidth: Float = 0.15
+    /// How far a tapped point object is assumed to stand off the wall, same 0.3 m hypothesis.
+    static let pointObjectDepth: Float = 0.3
+    /// Width of the strip drawn along a tapped driveway edge, feet. The tap marks only the edge
+    /// line; the strip gives the polygon the area the schema requires. Illustrative, not measured.
+    static let drivewayStripFeet: Double = 0.5
+    /// Tolerance for "unit horizontal" on the wall's outward vector. Float round-off from ARKit
+    /// transforms is ~1e-6; 1e-3 rejects a caller passing an unnormalized or tilted vector.
+    static let unitTolerance: Float = 1e-3
+
+    /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
+    public static func jsonData(_ input: SceneInput) throws -> Data {
+        let document = try makeDocument(input)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        do {
+            return try encoder.encode(document)
+        } catch let EncodingError.invalidValue(value, context) {
+            let path = context.codingPath.map { $0.intValue.map(String.init) ?? $0.stringValue }.joined(separator: ".")
+            throw SceneExportError.nonFiniteNumber("\(value) at \(path)")
+        }
+    }
+
+    private static func makeDocument(_ input: SceneInput) throws -> SceneDocument {
+        let wall = input.wall
+        guard !input.wallID.isEmpty else { throw SceneExportError.emptyWallID }
+        guard abs(wall.outward.y) < unitTolerance, abs(simd_length(wall.outward) - 1) < unitTolerance else {
+            throw SceneExportError.outwardNotUnitHorizontal(wall.outward)
+        }
+        guard input.baselineS.lowerBound < input.baselineS.upperBound else {
+            throw SceneExportError.degenerateBaseline(lower: input.baselineS.lowerBound, upper: input.baselineS.upperBound)
+        }
+        guard input.baselineS.contains(0) else {
+            throw SceneExportError.meterOutsideBaseline(lower: input.baselineS.lowerBound, upper: input.baselineS.upperBound)
+        }
+        if let h = input.wallHeight, !(h > 0) { throw SceneExportError.nonPositiveWallHeight(h) }
+        if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
+
+        let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
+
+        var objects: [SceneDocument.Object] = []
+        var ground: [SceneDocument.Ground] = []
+        var facing: [SceneDocument.Facing] = []
+        for (index, feature) in input.features.enumerated() {
+            let name = "features[\(index)]"
+            switch feature {
+            case let .opening(kind, span, bottom, top, operable):
+                try requireNonNegative(bottom, "\(name).bottom")
+                guard top >= bottom else { throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top) }
+                objects.append(.init(
+                    type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(span),
+                    bottom_ft: feet(bottom), top_ft: feet(top),
+                    attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil))
+            case let .pointObject(kind, tap, bottom, top):
+                if let bottom { try requireNonNegative(bottom, "\(name).bottom") }
+                if let top { try requireNonNegative(top, "\(name).top") }
+                if let bottom, let top, top < bottom {
+                    throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top)
+                }
+                let s = wall.wallCoordinates(of: tap).s
+                let left = s - pointObjectHalfWidth
+                let right = s + pointObjectHalfWidth
+                objects.append(.init(
+                    type: kind.rawValue, wall_id: input.wallID, span_ft: spanFeet(left...right),
+                    bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
+                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)]))
+            case let .fence(foot):
+                guard foot.count == 2 else {
+                    throw SceneExportError.wrongPointCount(feature: "\(name) fence", expected: 2, actual: foot.count)
+                }
+                let a = wall.wallCoordinates(of: foot[0])
+                let b = wall.wallCoordinates(of: foot[1])
+                let depth = (a.out + b.out) / 2
+                try requireNonNegative(depth, "\(name) fence depth")
+                facing.append(.init(
+                    wall_id: input.wallID, span_ft: spanFeet(min(a.s, b.s)...max(a.s, b.s)), depth_ft: feet(depth)))
+            case let .driveway(edge):
+                guard edge.count == 2 else {
+                    throw SceneExportError.wrongPointCount(feature: "\(name) driveway", expected: 2, actual: edge.count)
+                }
+                ground.append(.init(type: "drive", polygon: try drivewayStrip(edge[0], edge[1], wall: wall, name: name)))
+            }
+        }
+
+        let coverage = input.coverage
+        var observed: [SceneDocument.Observed] = coverage.wall.map { .init(band: "wall", span_ft: spanFeet($0), out_ft: nil) }
+        if !coverage.ground.isEmpty {
+            try requireNonNegative(coverage.groundOut, "coverage.groundOut")
+            observed += coverage.ground.map { .init(band: "ground", span_ft: spanFeet($0), out_ft: feet(coverage.groundOut)) }
+        }
+
+        let keyframes = try input.keyframes.map(keyframe)
+
+        return SceneDocument(
+            schema_version: "1.0",
+            meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: input.meterPlusMinus.map(feet)),
+            walls: [.init(
+                id: input.wallID,
+                baseline: [plan(input.baselineS.lowerBound, 0), plan(input.baselineS.upperBound, 0)],
+                height_ft: input.wallHeight.map(feet))],
+            objects: objects, ground: ground, facing: facing,
+            coverage: .init(
+                ends: .init(
+                    left: .init(kind: coverage.leftEndMarked ? "limit" : "unexplored"),
+                    right: .init(kind: coverage.rightEndMarked ? "limit" : "unexplored")),
+                observed: observed),
+            keyframes: keyframes,
+            stills: input.stills.isEmpty ? nil : input.stills)
+    }
+
+    /// A strip `drivewayStripFeet` wide on the far side of the tapped edge from the wall. The offset
+    /// is perpendicular to the edge, on whichever side has +out; an edge running straight out from
+    /// the wall has no such side and keeps the perpendicular that is the edge direction turned
+    /// 90 degrees clockwise viewed from +y.
+    private static func drivewayStrip(
+        _ p: SIMD3<Float>, _ q: SIMD3<Float>, wall: SceneWall, name: String
+    ) throws -> [[Double]] {
+        let a = SIMD2<Double>(planFeet(p)[0], planFeet(p)[1])
+        let b = SIMD2<Double>(planFeet(q)[0], planFeet(q)[1])
+        let d = b - a
+        // 1e-3 ft is well under any tap error; below it the two taps are the same point.
+        guard simd_length(d) > 1e-3 else { throw SceneExportError.degenerateSegment(feature: "\(name) driveway") }
+        let unit = simd_normalize(d)
+        var perp = SIMD2<Double>(-unit.y, unit.x)
+        let outwardPlan = SIMD2<Double>(Double(wall.outward.x), Double(wall.outward.z))
+        if simd_dot(perp, outwardPlan) < 0 { perp = -perp }
+        let offset = perp * drivewayStripFeet
+        return [a, b, b + offset, a + offset].map { [round4($0.x), round4($0.y)] }
+    }
+
+    private static func keyframe(_ k: SceneKeyframe) throws -> SceneDocument.Keyframe {
+        guard !k.id.isEmpty else { throw SceneExportError.invalidKeyframe(id: k.id, reason: "empty id") }
+        guard !k.img.isEmpty else { throw SceneExportError.invalidKeyframe(id: k.id, reason: "empty img") }
+        guard k.w >= 1, k.h >= 1 else {
+            throw SceneExportError.invalidKeyframe(id: k.id, reason: "image size \(k.w)x\(k.h)")
+        }
+        let m = k.cameraToWorld
+        var pose: [Double] = []
+        for column in 0..<4 {
+            for row in 0..<4 {
+                let value = Double(m[column][row])
+                // Rotation stays unitless; only the translation (column 3, rows 0-2) becomes feet.
+                pose.append(round4(column == 3 && row < 3 ? value * SceneUnits.feetPerMeter : value))
+            }
+        }
+        let i = k.intrinsics
+        return .init(
+            id: k.id, pose: pose, intrinsics: [i.x, i.y, i.z, i.w].map { round4(Double($0)) },
+            w: k.w, h: k.h, img: k.img)
+    }
+
+    private static func requireNonNegative(_ value: Float, _ field: String) throws {
+        guard value >= 0 else { throw SceneExportError.negativeValue(field: field, value: value) }
+    }
+
+    private static func feet(_ meters: Float) -> Double { round4(Double(meters) * SceneUnits.feetPerMeter) }
+
+    private static func spanFeet(_ span: ClosedRange<Float>) -> [Double] { [feet(span.lowerBound), feet(span.upperBound)] }
+
+    private static func planFeet(_ p: SIMD3<Float>) -> [Double] { [feet(p.x), feet(p.z)] }
+
+    private static func point3Feet(_ p: SIMD3<Float>) -> [Double] { [feet(p.x), feet(p.y), feet(p.z)] }
+
+    /// Four decimals of a foot is 0.03 mm, far below AR tap error; it only keeps the JSON readable.
+    /// Non-finite values pass through so the encoder reports them.
+    private static func round4(_ x: Double) -> Double {
+        guard x.isFinite else { return x }
+        let r = (x * 10_000).rounded() / 10_000
+        return r == 0 ? 0 : r  // drop negative zero
+    }
+}
+
+/// Mirror of scene.schema.json. Property names are the schema's; nil optionals are omitted.
+private struct SceneDocument: Encodable {
+    struct Meter: Encodable {
+        var pos: [Double]
+        var wall_id: String
+        var plus_minus_ft: Double?
+    }
+    struct Wall: Encodable {
+        var id: String
+        var baseline: [[Double]]
+        var height_ft: Double?
+    }
+    struct Attrs: Encodable {
+        var operable: Bool
+    }
+    struct Object: Encodable {
+        var type: String
+        var wall_id: String
+        var span_ft: [Double]
+        var bottom_ft: Double?
+        var top_ft: Double?
+        var attrs: Attrs?
+        var source: String
+        var footprint: [[Double]]?
+    }
+    struct Ground: Encodable {
+        var type: String
+        var polygon: [[Double]]
+    }
+    struct Facing: Encodable {
+        var wall_id: String
+        var span_ft: [Double]
+        var depth_ft: Double
+    }
+    struct End: Encodable {
+        var kind: String
+    }
+    struct Ends: Encodable {
+        var left: End
+        var right: End
+    }
+    struct Observed: Encodable {
+        var band: String
+        var span_ft: [Double]
+        var out_ft: Double?
+    }
+    struct Coverage: Encodable {
+        var ends: Ends
+        var observed: [Observed]
+    }
+    struct Keyframe: Encodable {
+        var id: String
+        var pose: [Double]
+        var intrinsics: [Double]
+        var w: Int
+        var h: Int
+        var img: String
+    }
+
+    var schema_version: String
+    var meter: Meter
+    var walls: [Wall]
+    var objects: [Object]
+    var ground: [Ground]
+    var facing: [Facing]
+    var coverage: Coverage
+    var keyframes: [Keyframe]
+    var stills: [String: String]?
+}
