@@ -130,7 +130,13 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
-        tap(app, "action.showAR")
+        // The result reveal slides its content in; a tap while it moves can miss (one failure in
+        // three local runs), so wait until the button takes taps.
+        let showAR = element(app, "action.showAR")
+        XCTAssertTrue(showAR.waitForExistence(timeout: 20), "missing action.showAR")
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: showAR)
+        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: 10), .completed, "action.showAR never took taps")
+        showAR.tap()
         XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 10))
         tap(app, "action.closeAR")
         let startOver = element(app, "action.startOver")
