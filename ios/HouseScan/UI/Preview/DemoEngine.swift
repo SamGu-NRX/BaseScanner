@@ -12,6 +12,12 @@ final class DemoEngine: ScanActions {
     private let offline: Bool
     private let passResult: Bool
     private let rejectUpload: Bool
+    /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
+    private let gapKind: String?
+    /// The tilt-up step was answered or skipped.
+    private var tiltUpSettled = false
+    /// Walk-script ticks spent on the tilt-up step, standing in for the phone being tilted up.
+    private var tiltUpTicks = 0
     private var script: Task<Void, Never>?
     private var nextCaptureID = 1
     /// How far the walk has seen to each side of the meter, meters.
@@ -35,6 +41,7 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         rejectUpload = arguments.contains("-uiDemoRejected")
+        gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.isReplay = true
         state.tracking = .normal
@@ -66,6 +73,10 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoEndQuestion") {
             state.endQuestion = .left
+        }
+        if arguments.contains("-uiDemoTiltUp") || arguments.contains("-uiDemoOverheadQuestion") {
+            enterTiltUp()
+            state.overheadQuestion = arguments.contains("-uiDemoOverheadQuestion")
         }
         if arguments.contains("-uiDemoSample") {
             state.usesSampleResult = true
@@ -185,6 +196,16 @@ final class DemoEngine: ScanActions {
         state.target = nil
     }
 
+    /// Both ends are marked and answered: the walk asks to tilt up over the stretch by the meter.
+    private func enterTiltUp() {
+        placeMeter()
+        finishedWalkState()
+        state.phase = .wallWalk
+        state.closeUp = .captured(DemoScene.meterThumbnail)
+        refreshGuidance()
+        run { engine in await engine.walkScript() }
+    }
+
     private func enterGap() {
         // Leave a hole in the ground right of the likely spot, as the phone's planner would find.
         state.phase = .gapRequest
@@ -194,6 +215,31 @@ final class DemoEngine: ScanActions {
         state.gap = GapRequest(id: 1, origin: .phone, reason: .groundNearCandidate, band: .ground, span: span, progress: 0, isSatisfied: false)
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
+        // The server's requests, with the numbers its public rules would give (feet in the
+        // README, meters here): ground out to D + r + e = 5.1 ft, a walk past D + r = 4.83 ft.
+        switch gapKind {
+        case "groundOut":
+            state.gap?.origin = .server
+            state.gap?.reason = .groundOut(out: 1.56)
+            state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 1.56)
+        case "walkOut":
+            let out: Float = 1.47
+            state.gap?.origin = .server
+            state.gap?.reason = .walkOut(out: out)
+            state.target = DemoScene.wall.world(s: 2.1, height: 0, out: out + 0.3)
+            // Along the stretch, 1 ft past the requested distance, as the engine draws it.
+            state.path = stride(from: span.lowerBound, through: span.upperBound, by: 0.2).map {
+                DemoScene.wall.world(s: $0, height: 0, out: out + 0.3)
+            }
+        case "overhead":
+            state.gap?.origin = .server
+            state.gap?.reason = .overhead
+            state.gap?.band = .wall
+            state.target = DemoScene.wall.world(s: 1.7, height: 3.0)
+            state.path = []
+        default:
+            break
+        }
         run { engine in await engine.gapScript(span: span) }
     }
 
@@ -253,6 +299,14 @@ final class DemoEngine: ScanActions {
         while !Task.isCancelled {
             guard await pause(0.45) else { return }
             guard state.marking == nil else { continue }
+            if case .tiltUp = state.guidance, !state.overheadQuestion {
+                // About two seconds of tilting up, then the kept view raises the question.
+                tiltUpTicks += 1
+                if tiltUpTicks >= 4 {
+                    capture(.walk)
+                    state.overheadQuestion = true
+                }
+            }
             if case .walk(let side, _) = state.guidance {
                 if side == .right {
                     reachedRight = min(reachedRight + 0.3, Self.rightEnd)
@@ -379,6 +433,12 @@ final class DemoEngine: ScanActions {
                 state.target = DemoScene.wall.world(s: max(-reachedLeft - 0.9, Self.leftEnd), height: 0.2, out: 0.3)
                 state.path = DemoScene.path(toward: max(-reachedLeft - 1.2, Self.leftEnd))
             }
+        } else if !tiltUpSettled {
+            // Like the real engine: 1.5 m each side of the meter, inside the marked ends.
+            let span = max(wall.leftEnd ?? -1.5, -1.5)...min(wall.rightEnd ?? 1.5, 1.5)
+            state.guidance = .tiltUp(span: span)
+            state.target = DemoScene.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: 3.0)
+            state.path = []
         } else {
             state.guidance = .walkComplete
             state.target = nil
@@ -485,6 +545,8 @@ final class DemoEngine: ScanActions {
 
     func finishWalk() {
         guard state.wall?.leftEnd != nil, state.wall?.rightEnd != nil else { return }
+        state.overheadQuestion = false
+        tiltUpSettled = true
         script?.cancel()
         state.phase = .markFeatures
     }
@@ -499,6 +561,11 @@ final class DemoEngine: ScanActions {
     }
 
     func cannotAccessArea() {
+        if case .tiltUp = state.guidance {
+            tiltUpSettled = true
+            refreshGuidance()
+            return
+        }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
             skippedSpan = (reachedRight + 0.1)...Self.rightEnd
@@ -551,6 +618,9 @@ final class DemoEngine: ScanActions {
         reachedLeft = 0.3
         reachedRight = 0.3
         skippedSpan = nil
+        tiltUpSettled = false
+        tiltUpTicks = 0
+        state.overheadQuestion = false
     }
 
     func liveCameraView() -> AnyView {
@@ -660,7 +730,12 @@ final class DemoEngine: ScanActions {
     }()
 }
 
-// Placeholder for contract (overhead question) so the app compiles; lane G replaces it.
 extension DemoEngine {
-    func answerOverhead(clear: Bool) {}
+    /// Nothing to record in the demo: either answer ends the step, as in the real engine.
+    func answerOverhead(clear: Bool) {
+        guard state.overheadQuestion else { return }
+        state.overheadQuestion = false
+        tiltUpSettled = true
+        refreshGuidance()
+    }
 }
