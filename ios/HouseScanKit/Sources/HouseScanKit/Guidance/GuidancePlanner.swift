@@ -19,7 +19,8 @@ public enum GuidanceTask: Sendable, Equatable {
 
 public struct GuidanceConfig: Sendable, Equatable {
     /// Keep a task at least this long unless it is satisfied, so instructions never flip A, B, A
-    /// within 3 s (verification checklist item I6).
+    /// within 3 s except when a task was completed, which checklist item I6 allows (for example
+    /// step back, done, walk on).
     public var minDwell: Double = 3
     /// Ask for the end once coverage reaches this far from the meter on a side: about 20 ft, past
     /// which docs/01 expects the cable route to be too long for a placement anyway.
