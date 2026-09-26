@@ -30,6 +30,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
+        ("markFeatures-lostPlace", ["-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"], "markFeatures"),
         ("markFeatures-groundQuestion", ["-uiDemoGroundQuestion"], "markFeatures"),
         ("markFeatures-groundAnswered", ["-uiDemoGroundAnswer", "mulch"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
@@ -57,7 +58,7 @@ final class ScreenStatesUITests: XCTestCase {
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
-        "markFeatures-groundQuestion", "markFeatures-groundAnswered",
+        "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -69,6 +70,7 @@ final class ScreenStatesUITests: XCTestCase {
         "uploading-followUp": (nil, "One more view to finish"),
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
+        "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -173,6 +175,22 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.markPoint", timeout: 5)
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
+    }
+
+    /// While the phone has lost its place the review can't start a mark, which taps into the
+    /// scene: the chips give way to a line saying so, and "Looks complete" still sends the scan.
+    @MainActor
+    func testReviewWhileLostOffersFinishingNotMarking() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "review.lostPlace").exists, "the review must say the phone lost its place")
+        for kind in ["gas_meter", "door", "window", "ac", "drive", "fence"] {
+            XCTAssertFalse(element(app, "feature.\(kind)").exists, "feature.\(kind) must not be offered while the phone is lost")
+        }
+        XCTAssertTrue(element(app, "action.confirmFeatures").isHittable, "Looks complete must stay available")
     }
 
     /// The ground question asks until it is answered, then folds into one row with the answer;
