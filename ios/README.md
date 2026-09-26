@@ -14,7 +14,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 | --- | --- |
 | `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. |
 | `-autopilot` | Drives every step on a replay, including one gap request closed by frames it held back from the walk. |
-| `-serverURL <url>` | Uploads to this server. The route is a placeholder (`POST <url>/v1/scenes`, `application/zip`) until the server has one. |
+| `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with the zip as `application/zip`. |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample. This is the default when no server is given. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
 

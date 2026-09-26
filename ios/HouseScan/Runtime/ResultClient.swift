@@ -8,12 +8,9 @@ protocol ResultClient: AnyObject {
     func submit(bundle: URL, progress: @escaping @Sendable (Double) -> Void) async throws -> Data
 }
 
-/// Posts the zip to the placement server.
-///
-/// The server branch has no upload route yet (origin/t3/server at 69c6c3c), so the route and
-/// encoding here are a placeholder: POST {serverURL}/v1/scenes with the raw zip as
-/// application/zip. The server's pyproject pulls in python-multipart, so the real route may take
-/// multipart form data instead; `makeRequest` is the one place to change.
+/// Posts the zip to the placement server: `POST {serverURL}/v1/placements` with the raw bundle
+/// as `application/zip` (server/api.py on origin/t3/server, which also takes a bare scene.json or
+/// a multipart form). The response body is the result JSON.
 @MainActor
 final class HTTPResultClient: ResultClient {
     let serverURL: URL
@@ -24,7 +21,7 @@ final class HTTPResultClient: ResultClient {
     }
 
     nonisolated static func makeRequest(serverURL: URL, zip: URL) -> URLRequest {
-        var request = URLRequest(url: serverURL.appending(path: "v1/scenes"))
+        var request = URLRequest(url: serverURL.appending(path: "v1/placements"))
         request.httpMethod = "POST"
         request.setValue("application/zip", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
