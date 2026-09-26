@@ -1178,8 +1178,9 @@ final class ScanEngine {
         exported = nil
         uploadedScene = nil
         map3D?.start(wall: frame)
-        // With depth the 3D map decides what is covered from the start (`applyMap3D`).
-        mapDecidesCoverage = map3D != nil && (state.depthAvailable || depthEstimator != nil)
+        // With measured depth the 3D map decides what is covered from the start (`applyMap3D`).
+        // Estimated depth only clears fog and places the next view: it certifies no coverage.
+        mapDecidesCoverage = map3D != nil && state.depthAvailable
         if mapDecidesCoverage { coverage?.setMeasuredCovered([:]) }
         coverage?.heightError = groundMeasured ? 0 : Self.estimatedGroundError
         self.groundMeasured = groundMeasured

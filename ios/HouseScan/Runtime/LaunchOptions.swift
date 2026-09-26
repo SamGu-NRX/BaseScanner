@@ -23,9 +23,10 @@ import OSLog
 ///   phone with depth the strip's and planners' covered cells. `legacy` is the camera-sighting
 ///   `CoverageMap` alone. Any other value stops the app: a mistyped flag must not run the other model.
 /// - `-estimatedDepth on|off`: on a phone without LiDAR under `map3d`, run the depth model on
-///   kept keyframes into the 3D map and let the map decide the strip's covered cells (default
-///   `off`: `ScanEngine.estimatedDepthByDefault`). Without the model it stays off. Any other
-///   value stops the app.
+///   kept keyframes into the 3D map, for its fog of war and next view. Coverage stays with the
+///   camera coverage map: estimated depth certifies none (default `off`:
+///   `ScanEngine.estimatedDepthByDefault`). Without the model it stays off. Any other value
+///   stops the app.
 struct LaunchOptions: Equatable {
     enum CoverageModel: String {
         case map3d

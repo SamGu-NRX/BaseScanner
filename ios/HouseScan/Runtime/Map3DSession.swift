@@ -19,9 +19,9 @@ struct Map3DSnapshot: Sendable {
     /// Only `Map3DSession.finalSnapshot()` fills it: the export is its one reader, and reading
     /// coverage along a second wall twice a second would double the snapshot's cost.
     var measured: (wall: WallFrame, coverage: Map3DCoverage)?
-    /// Whether any depth frame (LiDAR, a replay's, or estimated) went into the map since `start`.
-    /// Without one the map holds only feature points and planes, too sparse to report coverage
-    /// from. Only `Map3DSession.finalSnapshot()` fills it, for the export.
+    /// Whether measured depth (LiDAR or a replay's) went into the map since `start`. Without it
+    /// the map holds only feature points, planes and estimated depth, which certify too little
+    /// to report coverage from. Only `Map3DSession.finalSnapshot()` fills it, for the export.
     var integratedDepth = false
 }
 
@@ -301,8 +301,10 @@ final class Map3DSession: Sendable {
         var planes: [UUID: PlaneObservation] = [:]
         /// Chunks that arrived while there was no map, for the next `start`.
         var waitingChunks: [UUID: MeshChunk] = [:]
-        /// A depth frame went into the map since `start` (`Map3DSnapshot.integratedDepth`). A
-        /// rebuild after the ground moved keeps it: the phone still gives depth.
+        /// A measured depth frame (LiDAR or a replay's) went into the map since `start`
+        /// (`Map3DSnapshot.integratedDepth`). Estimated depth doesn't count: it never certifies
+        /// coverage, so a map with only estimated depth can't decide it. A rebuild after the
+        /// ground moved keeps it: the phone still gives depth.
         var integratedDepth = false
         var revision = 0
         var publishedRevision = -1
@@ -414,7 +416,6 @@ final class Map3DSession: Sendable {
         if var map = core.map, !taken.estimated.isEmpty {
             core.map = nil
             for depth in taken.estimated { map.integrate(depth) }
-            core.integratedDepth = true
             core.map = map
             changed = true
         }
