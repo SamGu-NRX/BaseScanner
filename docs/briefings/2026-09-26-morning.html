@@ -876,7 +876,7 @@
 <h2 id="decisions">7. Decisions for this morning, recommendation first</h2>
 <ol class="decisions">
   <li class="first"><h4>Run the field test first</h4><p class="rec">Recommend: about an hour, before anything else.</p><p>A current non-LiDAR iPhone, Measure Lab, a 30 ft tape, a real meter wall. Follow <code>experiments/evals/field/FIELD_SHEET.md</code>. One command turns tape readings into a score and the phone's real scale error.</p></li>
-  <li><h4>How points get measured</h4><p class="rec">Recommend: AR taps, not depth maps.</p><p>Finding 2: learned depth gets edges to 8 in or worse.</p></li>
+  <li><h4>How points get measured</h4><p class="rec">Recommend: metric depth where precision decides a check.</p><p>Take those points from LiDAR or AR taps; learned depth alone gets edges to 8 in or worse (Finding 2). The 3D model still carries everything else. <em>Updated 11:40 after the team split.</em></p></li>
   <li><h4>How far to walk</h4><p class="rec">Recommend: outward from the meter on both sides; stop when the nearest spot that fits is fully seen.</p><p>The server prefers the shortest cable, so walking farther cannot find a better spot, and shorter walks drift less.</p></li>
   <li><h4>Base's real rules</h4><p class="rec">Recommend: load them into the private rules file now.</p><p>Confirm with Base which rules the demo follows and which number on the meter plate they need (plates carry several). Otherwise the demo can never show a real "fits here".</p></li>
   <li><h4>Merge order</h4><p class="rec">Recommend: #11 server first, since the others depend on its schemas.</p><p>Then #14 docs, #10 app, #13 verification, #12 evals, then #7, #4, #8, #6, #16, #17, #19.</p></li>
