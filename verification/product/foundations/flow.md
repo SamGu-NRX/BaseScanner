@@ -142,4 +142,4 @@ the autopilot wait on each screen until a file named after it appears, for UI te
 - The 1.2 s pause after a finished step and the 20 s relocalization limit are read from code;
   neither has been timed on a device.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

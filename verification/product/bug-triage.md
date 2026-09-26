@@ -1,7 +1,7 @@
 # Suspected defects
 
 Collected from every document's open questions and from [verification.md](verification.md),
-deduplicated. Status checked at `t3/ios-mvf` `beede15`; line references are at `0876e03` unless an
+deduplicated. Status checked at `t3/ios-mvf` `a39d0a5`; line references are at `0876e03` unless an
 entry names another commit; paths are under `ios/`. **Seen** means observed in the Simulator; **code** means read from the
 source and not run. Every blocker and major entry was re-read in the source by a second reader.
 

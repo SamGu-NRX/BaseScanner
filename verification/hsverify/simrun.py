@@ -577,7 +577,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if args.server_ref:
                 server_sha = gitref.resolve(args.server_ref)
-                url = services.enter_context(server_from_ref(server_sha, out / "server.log"))
+                url, _ = services.enter_context(server_from_ref(server_sha, out / "server.log"))
                 launch_args += ["-serverURL", url]
                 rep.server = {"ref": args.server_ref, "sha": server_sha, "url": url}
                 print(f"Server {args.server_ref} at {server_sha[:12]} on {url}", flush=True)

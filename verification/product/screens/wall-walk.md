@@ -359,4 +359,4 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   interruption recovery. The first
   Simulator pass showed this screen's chrome without text (B-05 in [bug-triage.md](../bug-triage.md)).
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

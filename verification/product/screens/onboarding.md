@@ -173,4 +173,4 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   session error, and the Reduce Motion stills. The unsupported screen and the
   `-replay /nonexistent` case can be checked in the Simulator.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

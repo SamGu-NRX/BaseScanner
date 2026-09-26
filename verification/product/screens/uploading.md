@@ -171,4 +171,4 @@ autopilot logs "upload failed; retrying once". Test identifiers: `screen.uploadi
 - Pass 1 (`21a63e7`) saw "That didn't go through" with no button or symbol visible
   ([verification](../verification.md) UP-01, B-05). Not rechecked at this commit.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

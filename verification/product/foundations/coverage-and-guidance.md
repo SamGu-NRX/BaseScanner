@@ -182,4 +182,4 @@ hooks.** Each instruction change logs `GUIDANCE=<name>`.
   (`Runtime/ScanEngine.swift`, `step(_:)`).
 - All thresholds are the code's stated hypotheses (research note), not measured values.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

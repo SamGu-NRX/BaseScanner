@@ -217,4 +217,4 @@ appears; marking itself logs nothing. Identifiers: `action.markSomething`, `acti
   "Mark". MF-01 in [verification](../verification.md) was observed on an earlier commit and has
   not been rechecked here.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

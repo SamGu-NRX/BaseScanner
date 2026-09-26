@@ -10,8 +10,10 @@ wrong is collected in [bug-triage.md](bug-triage.md).
 - **Surface.** The HouseScan app, one run of the homeowner flow from onboarding to the result,
   default settings. The ARKit camera cannot run in the Simulator, so behavior that needs the live
   camera is described from code and marked unverified.
-- **Source.** `t3/ios-mvf`. Line references, footers and the last Simulator check are at
-  `beede15`.
+- **Source.** `t3/ios-mvf`. Footers and the last Simulator check are at `a39d0a5`; line
+  references are at `beede15`. Between the two, the only change a homeowner can reach is that the
+  strip's marks scale with text size and stay inside it; the upload refusal and meter-number
+  states added to the contract are not wired to anything yet.
 - **How it is run.** `make sim-app REF=<commit>` from `verification/`: the real ADVIO replay
   `advio-20-0040-0075` (C3), the autopilot, and the server started from `t3/server`.
 - **Out of scope.** The `-uiDemo` screens (a design preview, not the product), TestFlight
@@ -72,5 +74,5 @@ and Open questions and verification, ending with the commit it was verified agai
 | [screens/gap-request.md](screens/gap-request.md) | One targeted extra view, from the phone or the server | drafted; checked in the Simulator |
 | [screens/uploading.md](screens/uploading.md) | Sending the scan and waiting for the result, offline and failure | drafted; checked in the Simulator |
 | [screens/result.md](screens/result.md) | The result, its checks and the 3D and AR views | drafted; checked in the Simulator |
-| [verification.md](verification.md) | Checks against the running app and their results | current pass at `beede15` |
+| [verification.md](verification.md) | Checks against the running app and their results | current pass at `a39d0a5` |
 | [bug-triage.md](bug-triage.md) | Every suspected defect, deduplicated | 16 entries, 2 resolved |

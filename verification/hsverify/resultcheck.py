@@ -33,12 +33,10 @@ EPS = 1e-6
 NUMBER_TOL_FT = 1e-5
 # Spot centres and offsets are rounded by the server; a hundredth of a foot is 1/8 inch.
 OFFSET_TOL_FT = 0.01
-# Check ids whose PASS depends on seeing an area around the footprint, the band that area lies
-# in, and the rules.yaml clearance that sets its radius. ground_surface needs only the ground
-# under the battery.
 # Clearance check -> the bands an unseen hazard could hide in, and its rules.yaml radius. C1: a
 # gas meter hangs on the wall face (wall band) and its regulator stands on the ground (ground
 # band); openings are on the wall face; AC units, drives and pools are on the ground.
+# ground_surface (radius 0, added in RuleSet.from_yaml) needs the ground under the battery.
 CLEARANCE_CHECKS = {
     "gas_clearance": (("ground", "wall"), "gas_ft"),
     "ac_clearance": (("ground",), "ac_ft"),

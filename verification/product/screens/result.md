@@ -219,4 +219,4 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
   ([verification](../verification.md), RES-01 to AR-01). Whether the AR drawing lines up with a
   real wall, and hiding it while the phone relocalizes, need the live camera.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

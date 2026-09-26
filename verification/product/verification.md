@@ -15,11 +15,11 @@ what each shows and speaks, what the app logged, and what the server answered. W
 cover: anything needing the live camera (tracking, the meter tap on a real wall, a close-up that
 succeeds), haptics, or timing a person feels.
 
-## Current pass: `t3/ios-mvf` `beede15`, server `f2705dd`
+## Current pass: `t3/ios-mvf` `a39d0a5`, server `739fb6f`
 
-Report `sim/20260926-061551-t3-ios-mvf-beede15f-replay` (real server; the pass at `525ea40` is
-`sim/20260926-052535-t3-ios-mvf-525ea401-replay`), the audit at `24af434` and
-`525ea40` (sample result), plus the variant runs on the preview
+Report `sim/20260926-071459-t3-ios-mvf-a39d0a50-replay` (real server; the pass at `525ea40` is
+`sim/20260926-052535-t3-ios-mvf-525ea401-replay`), the audit at `a39d0a5` (`a11y/20260926-071248-t3-ios-mvf-a39d0a50-head-sample`, sample result), plus
+the variant runs on the preview
 `5520229` (the same UI before S3's last fixes) named in [the UX review](../ux/review.md#evidence).
 
 | ID | Claim | Result |
@@ -34,10 +34,10 @@ Report `sim/20260926-061551-t3-ios-mvf-beede15f-replay` (real server; the pass a
 | WW-02 | Guidance moves from walking to tilting to stepping back | Pass: the audit saw "Walk slowly to your left", "Tilt down to show the ground", "Take a step back". |
 | MF-01 | The list shows each mark with its distance, the window question and "Add something" | Pass at default size; hidden behind "Looks complete" at the largest text size (UX-01). |
 | GAP-01 | A gap request states what to show and why, with a progress bar and "I can't get there" | Pass ("Show the ground around your meter", "0%"). |
-| GAP-02 | New photos close the request and the flow moves on | Pass at `24af434` and `525ea40` ("gap 1 satisfied"; "Got it, thanks"). Not exercised at `beede15`: the autopilot finds no closable gap on this replay and skips it. |
+| GAP-02 | New photos close the request and the flow moves on | Pass at `24af434` and `525ea40` ("gap 1 satisfied"; "Got it, thanks"). Not exercised since `beede15`: at `a39d0a5` the request appears, but the autopilot holds back no frames that could fill it and answers "I can't get there" ("gap 1 skipped"). |
 | WW-03 | After "Wall ends here" the walk asks what is at that end, and a corner stays unexplored | Pass: logged "end left at s=-3.81 (unexplored)", then "answered the left end: turns a corner"; same on the right. |
 | UP-01 | Upload progress is shown in steps apart from coverage | Pass: "Photos ready", "Sending photos, 99%", "Check clearances". |
-| RES-01 | The result shows the headline, placement line, the server's summary, the rules-not-final note and the panel notice | Pass: "An installer will take a look" with the server's placement and summary (seen at `0876e03`, `24af434`, `525ea40` and `beede15`). |
+| RES-01 | The result shows the headline, placement line, the server's summary, the rules-not-final note and the panel notice | Pass: "An installer will take a look" with the server's placement and summary (seen at `0876e03`, `24af434`, `525ea40`, `beede15` and `a39d0a5`). |
 | RES-02 | A borderline check shows the measurement, the rule and the error | Pass on the sample result: "Measured 3 ft 1 in. The rule is 3 ft, and the measurement can be off by about 4 in." |
 | RES-03 | A maximum reads as a maximum | Fail: "Measured 3 ft. The rule is 20 ft" (B-14). |
 | RES-04 | The result is visible when the app logs `STATE=result` | Fail, minor: the upload screen was still showing 1.2 s later on first load, in both passes (UX-07). |

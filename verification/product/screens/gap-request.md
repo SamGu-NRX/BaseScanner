@@ -192,4 +192,4 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
 - Nothing here has run in the Simulator. The completion moment, the amber highlight and the
   dots need the replay with `-autopilot`, which reaches this screen only when held-back frames exist.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

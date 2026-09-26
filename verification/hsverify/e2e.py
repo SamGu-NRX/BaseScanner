@@ -497,7 +497,8 @@ def property_problems(
 # --- Hostile inputs ---------------------------------------------------------------------------
 
 # A refusal or an answer must come within this; an input that keeps the server busy longer is a
-# denial-of-service risk. Generous for a laptop-hosted server; the real-scene budget is 1 s.
+# denial-of-service risk. Not derived from any requirement: it is ten times the real-scene
+# budget. S2 at 739fb6f answered the crowded input in 8.2 s on this Mac, close to the line.
 HOSTILE_BUDGET_MS = 10_000.0
 
 
@@ -571,6 +572,8 @@ def zip_bomb(megabytes: int) -> bytes:
 
 
 # A hostile input may cost the server this much memory above what it held before the request.
+# Not derived from any requirement: S2 at 739fb6f grew by at most 186 MB on these inputs, and at
+# 26d2870, before its input caps, by 557 to 1176 MB.
 HOSTILE_MEMORY_MB = 500
 
 

@@ -174,4 +174,4 @@ replay logs where its wall came from when it loads.
 - The live tap, the refusals, the coaching and the camera prompt need the live camera and have not
   been seen running. The Simulator shows only the replay path, where every tap is accepted.
 
-Verified against house-scanning commit `beede15` (t3/ios-mvf).
+Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).

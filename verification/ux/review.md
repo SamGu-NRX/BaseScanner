@@ -7,8 +7,10 @@ audit reports stay in `~/house-scanning-data/reports/` (replay frames are non-co
 
 | Run | What it shows |
 | --- | --- |
+| `sim/20260926-071459-t3-ios-mvf-a39d0a50-replay` | Every state at `a39d0a5`, the current head, with the real server's result; the gap request appears and is answered "I can't get there" |
+| `a11y/20260926-071248-t3-ios-mvf-a39d0a50-head-sample` | Apple's audit at `a39d0a5` on 21 screens: 10 issues, down from 32 at `525ea40` |
 | `sim/20260926-051323-t3-ios-mvf-24af4342-replay` | Every state at `t3/ios-mvf` `24af434` with the real server's result |
-| `sim/20260926-052535-t3-ios-mvf-525ea401-replay` | Every state at `525ea40`, the current head, with the real server's result and the end question answered |
+| `sim/20260926-052535-t3-ios-mvf-525ea401-replay` | Every state at `525ea40` with the real server's result and the end question answered |
 | `a11y/20260926-052756-t3-ios-mvf-525ea401-head-sample` | Apple's audit at `525ea40` on 21 screens, including the end question and the sample wording |
 | `a11y/20260926-051535-t3-ios-mvf-24af4342-head-sample` | Apple's audit at `24af434` on 17 screens; the gap loop closes on the replay |
 | `sim/20260926-050058-t3-ios-mvf-0876e03c-replay` | Every state at `0876e03` |
@@ -65,13 +67,15 @@ amber; in grayscale both are the same light gray, and the strip has no legend or
 homeowner with red-green colour blindness cannot tell done from not done. Suggested: a pattern or
 height difference per state, and "Wall" and "Ground" row labels.
 
-**UX-03. Minor. Contrast over the camera (A5).** The audit fails contrast on the photo counter
-during the walk, the close-up's problem pill and, at `24af434`, the walk's "Can't get there"
-reply. Failures it reported on text mid-transition (the upload steps, the result headline as it
-fades in) are left out.
+**UX-03. Minor. Contrast over the camera (A5).** At `a39d0a5` the audit still fails contrast on
+the photo counter during the walk; the close-up's problem pill and the walk's "Can't get there"
+reply, which failed at `24af434` and `525ea40`, now pass. Failures on text mid-transition (the
+result headline and the sample note as they fade in) are left out.
 
-**UX-04. Minor. Text that does not scale (A4).** The audit reports elements whose font size cannot
-change on the upload screen (four) and, at `525ea40`, on the close-up (four) and the walk (two).
+**UX-04. Minor. Text that does not scale or clips (A4).** At `a39d0a5` one element's font size
+cannot change ("Mark something" on the walk), down from ten at `525ea40`; the strip's marks now
+scale. Text may clip at large sizes on the close-up, the mark prompt ("Now tap its top-right
+corner") and the end question ("What's at the right end?" and its explanation).
 
 **UX-05. Minor. Two names for one action (V8).** The walk's reply is "Can't get there"; the gap
 request's is "I can't get there".
@@ -83,9 +87,9 @@ marks "seen but not enough" cells on the same strip.
 ("Checking your wall") was still showing 1.2 s after the app logged the result; after returning
 from AR the result appeared at once. The 3D model's first load is the likely cause.
 
-**UX-08. Minor. Text VoiceOver cannot read (A2).** At `525ea40` the audit flags text on the walk
-that is drawn rather than exposed to accessibility, probably labels drawn into the camera overlay
-or the strip.
+**UX-08. Minor, not seen at `a39d0a5`. Text VoiceOver cannot read (A2).** At `525ea40` the audit
+flagged text on the walk that is drawn rather than exposed to accessibility; the audit at
+`a39d0a5` does not report it.
 
 ## Fixed since the preview (`0876e03`)
 

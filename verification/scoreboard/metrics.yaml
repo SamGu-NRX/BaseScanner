@@ -288,7 +288,7 @@ metrics:
     manual:
       status: met
       evidence: >-
-        verification/product covers every screen of t3/ios-mvf at 525ea40, checked in the
+        verification/product covers every screen of t3/ios-mvf at a39d0a5, checked in the
         Simulator there with the real server's result (verification.md); bug-triage.md has 16
         entries, 3 resolved; ux/review.md judges every state.
 

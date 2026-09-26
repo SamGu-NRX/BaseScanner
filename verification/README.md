@@ -26,9 +26,9 @@ its own Simulator ("HouseScan Verify") and launches it with the C4 arguments. It
 settled for 1.2 s; a state replaced sooner is captured at once and marked *transient*. The report
 lists a failed build, a crash, markers logged as `<private>`, and a run with no markers as
 problems, and keeps every app log line. `make sim-app` also fails unless the app reaches
-`result`, and keeps the scan it uploaded as `scan.zip`. Log capture starts only once the log
-stream has attached, so early states are not missed. It waits while another `xcodebuild` compiles, because
-several workers share the Mac.
+`result`, and keeps the scan it uploaded as `scan.zip`. The app is launched only once the log
+stream has attached, so early states are not missed. The runner waits while another
+`xcodebuild` compiles, because several workers share the Mac.
 
 **End-to-end check** (`hsverify/e2e.py`, `hsverify/resultcheck.py`). Starts the server from a ref
 and finds its placement endpoint in the OpenAPI document, refusing to guess between candidates.
@@ -43,12 +43,14 @@ policy:
 - Each check's outcome follows from its numbers (C5): a minimum T passes only when measured −
   error > T and fails only when measured + error < T, a maximum mirrored, a review line also
   cleared for a pass; an unsure labelled `margin` lies within its error of a line.
-- No battery position passes unless the wall and cable route under it were observed, and each
-  clearance's band was observed for its full radius on both sides (ground out to the battery's
-  depth plus the radius). Distance along the wall is never shorter than straight-line distance,
-  so this needs no model of the solver's geometry and cannot flag a correct pass.
-- Every check that is unsure for lack of coverage is named in `missing_evidence`, and no photo
-  request covers an observed area.
+- No battery position passes unless the wall and cable route under it were observed, and every
+  point within each clearance's radius, widened by the battery's position error, was observed
+  in the bands a hazard could hide in (gas: wall and ground; openings: wall; AC, drives, pools:
+  ground). Only points within that reach whatever the wall's shape are required: along the wall
+  to the radius, and on the ground out to the battery's depth plus the radius in front, tapering
+  past its ends. So a correct server is never flagged.
+- When the result gives an unobserved area as a reason, each check left unsure for that reason
+  is named by a request of every band it lacks, and no request covers an area already observed.
 - Counts add up, `input_sha256` is the hash of the bytes sent, the spot's offset equals its centre
   minus the meter.
 
@@ -56,13 +58,16 @@ Each scene is also resent changed, and the pairs must stay ordered: the same sce
 same; mirrored it gives the same decision and outcome lengths; with no coverage, less coverage, or
 ground trimmed just short of the largest clearance nothing new passes; with more error, or tape
 measurements re-taken by tap, no outcome moves except to unsure; adding every requested photo, up
-to three rounds, leaves no check unsure for lack of coverage. Four hostile inputs (20 000 objects,
-coordinates of 1e300, a 5000 ft wall, 20 000 levels of nesting) must be refused with 400, 413 or
-422, or answered validly, within 10 s; a timeout is a failure. `--no-hostile` skips them.
+to three rounds, leaves no check unsure for lack of coverage. Five hostile inputs (150 objects
+with their own errors, coordinates of 1e300, a 5000 ft wall, nesting 5000 deep, and a small zip
+holding a 400 MB scene.json) must each be refused with 400, 413 or 422, or answered validly,
+within 10 s and, for a server started here, 500 MB of extra memory. `--no-hostile` skips them.
 
 The 43 cases in [`e2e/cases/`](e2e/cases/README.md) were written from the public goldens and C5
-without reading the server's tests. Each names the thresholds it assumes; a mismatch is reported
-as such rather than as a pass or fail. [`scenes/eth3d-facade`](scenes/eth3d-facade/README.md)
+without reading the server's tests, except that the three drift cases take drift at the
+battery's far edge as S2's 70ab0b0 states. The hostile inputs were chosen after reading S2's
+hardening tests. Each case names the thresholds it assumes; a mismatch is reported as such
+rather than as a pass or fail. [`scenes/eth3d-facade`](scenes/eth3d-facade/README.md)
 builds a scene from real laser-scanned geometry; real scenes must answer within 1 s.
 `--app-export` takes a `make sim-app` report folder and sends the scan the app uploaded, recording
 the app's commit.
