@@ -51,6 +51,29 @@ def test_multipart_endpoint_names_its_file_field():
     )
 
 
+def test_one_path_with_json_and_upload_uses_the_upload():
+    both = {
+        "post": {
+            "requestBody": {
+                "content": {
+                    "application/json": {"schema": {}},
+                    "multipart/form-data": {"schema": {"$ref": "#/components/schemas/Upload"}},
+                }
+            }
+        }
+    }
+    assert discover_endpoint(openapi({"/v1/placements": both})) == Endpoint(
+        "/v1/placements", "multipart/form-data", "bundle"
+    )
+
+
+def test_a_post_answering_with_svg_is_not_the_placement_endpoint():
+    svg = json_op()
+    svg["post"]["responses"] = {"200": {"content": {"image/svg+xml": {}}}}
+    found = discover_endpoint(openapi({"/v1/placements": json_op(), "/v1/plan.svg": svg}))
+    assert found.path == "/v1/placements"
+
+
 def test_a_scene_named_path_wins_among_several():
     found = discover_endpoint(openapi({"/login": json_op(), "/placement": json_op()}))
     assert found.path == "/placement"

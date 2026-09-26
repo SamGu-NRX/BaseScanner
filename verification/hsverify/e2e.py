@@ -183,7 +183,13 @@ def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
     """The POST operation that takes a scene: JSON body, or a multipart upload of the bundle."""
     candidates = []
     for path, ops in openapi.get("paths", {}).items():
-        body = ops.get("post", {}).get("requestBody", {}).get("content", {})
+        post = ops.get("post", {})
+        # The result is JSON; a POST declared to answer with something else (an SVG site
+        # plan, say) is not the placement endpoint.
+        answers = post.get("responses", {}).get("200", {}).get("content")
+        if answers and "application/json" not in answers:
+            continue
+        body = post.get("requestBody", {}).get("content", {})
         for kind in ("application/json", "multipart/form-data"):
             if kind in body:
                 candidates.append((path, kind, body[kind].get("schema", {})))
@@ -199,6 +205,10 @@ def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
     elif len(candidates) > 1:
         named = [c for c in candidates if re.search(r"scene|place|solve|placement", c[0])]
         candidates = named if len(named) == 1 else candidates
+    # One path taking both a JSON body and an upload: use the upload, which is how the app sends
+    # scene.json with its keyframe JPEGs (C1).
+    if len({c[0] for c in candidates}) == 1 and len(candidates) > 1:
+        candidates = [c for c in candidates if c[1] == "multipart/form-data"] or candidates[:1]
     if len(candidates) != 1:
         listed = ", ".join(f"{p} ({k})" for p, k, _ in candidates) or "none"
         raise SystemExit(f"Cannot tell which endpoint takes a scene: {listed}. Pass --endpoint.")
@@ -268,7 +278,10 @@ def post(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[int, bytes, fl
 
 def variant(item: SceneInput, name: str, scene: dict) -> SceneInput:
     raw = json.dumps(scene, indent=1).encode()
-    return SceneInput(f"{item.name}~{name}", scene, raw, real=item.real, source=item.source)
+    # Keep the bundle's images: a variant that still lists keyframes must still carry them.
+    return SceneInput(
+        f"{item.name}~{name}", scene, raw, images=item.images, real=item.real, source=item.source
+    )
 
 
 def judge(url: str, endpoint: Endpoint, item: SceneInput, schemas: dict) -> dict:
