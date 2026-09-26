@@ -1,19 +1,19 @@
 import Foundation
 import simd
 
-// Facing gap and headroom measured on the LiDAR mesh, per docs/02-implementation-plan.md ("Mesh
-// measurements"): a ray straight out from the wall at 1.5 ft for the passage in front, and a ray
+// Facing gap and headroom measured on the LiDAR mesh, per docs/00-overview.md ("Conventions the
+// code relies on"): a ray straight out from the wall at 1.5 ft for the passage in front, and a ray
 // straight up from 1 ft out for what is overhead. The mesh has holes, so each measurement is the
 // smallest over a small fan of rays, and a ray that meets nothing within the LiDAR's range says
 // nothing: unknown, never open.
 
 /// How the mesh is probed. Every value is a guess unless its comment says where it comes from.
 public struct MeshProbeConfig: Sendable, Equatable {
-    /// Height of the facing rays above the ground: 1.5 ft, docs/02's passage-width ray.
+    /// Height of the facing rays above the ground: 1.5 ft, the facing ray in docs/00 (Conventions).
     public var facingHeight: Float = 0.4572
-    /// How far out from the wall the headroom rays start: 1 ft, docs/02's headroom ray.
+    /// How far out from the wall the headroom rays start: 1 ft, the headroom ray in docs/00 (Conventions).
     public var overheadOut: Float = 0.3048
-    /// A ray meeting nothing within this is unknown: about 5 m, the LiDAR range docs/02 gives.
+    /// A ray meeting nothing within this is unknown: about 5 m, the LiDAR range in docs/00 (Conventions).
     public var maxRange: Float = 5
     /// Hits nearer than this to a ray's start are ignored, so the wall or ground the ray starts on
     /// is not measured as an obstruction. A guess: the wall and ground planes are placed to a few

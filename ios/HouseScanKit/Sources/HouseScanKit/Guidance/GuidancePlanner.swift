@@ -26,7 +26,8 @@ public struct GuidanceConfig: Sendable, Equatable {
     /// step back, done, walk on).
     public var minDwell: Double = 3
     /// Ask for the end once coverage reaches this far from the meter on a side: about 20 ft, past
-    /// which docs/01 expects the cable route to be too long for a placement anyway.
+    /// which Base's public 20 ft cable limit (docs/04, Public rule values) rules out for a
+    /// placement anyway.
     public var reach: Float = 6.1
     /// Closer to the wall than this, a portrait phone camera sees less than about 1.4 m of it.
     public var tooClose: Float = 1.2
