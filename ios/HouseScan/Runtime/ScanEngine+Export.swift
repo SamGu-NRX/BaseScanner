@@ -4,20 +4,17 @@ import OSLog
 import simd
 
 extension ScanEngine {
-    /// scene.json for the current scan (contract C1).
+    /// scene.json for the current scan (contract C1), with the LiDAR mesh's measurements on
+    /// phones that have one.
     ///
     /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
     /// server reads heights (meter.pos y, pose translations) as height above that ground, and
     /// scene.json has no field for the ground's height otherwise.
-    func sceneJSON() throws -> Data {
+    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
         guard let map = coverage else { throw ExportError.noWall }
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         let sceneWall = SceneWall(meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
-
-        let seen = map.seenExtent
-        let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
-        let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
 
         // SceneExport rejects negative heights, a top below a bottom, ground points behind the
         // wall and a zero-length driveway edge, and taps can produce each of them once the ground
@@ -63,7 +60,7 @@ extension ScanEngine {
         let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
         let input = SceneInput(
             wall: sceneWall,
-            baselineS: low...high,
+            baselineS: Self.exportSpan(map),
             meterPlusMinus: groundError,
             meterPlane: meterPlaneSource,
             objectPlusMinus: groundError,
@@ -74,7 +71,37 @@ extension ScanEngine {
             keyframes: keyframes,
             stills: store.stills
         )
-        return try SceneExport.jsonData(input)
+        // Absent plus_minus_ft: the server takes its mesh error (0.5 ft) for both.
+        return try SceneExport.jsonData(input, facing: mesh.facing, overheads: mesh.overheads)
+    }
+
+    /// The stretch of wall the scene describes, meters of s: between the marked ends, or out to
+    /// what was seen (at least 1 m) on a side without one, always containing the meter.
+    nonisolated static func exportSpan(_ map: CoverageMap) -> ClosedRange<Float> {
+        let seen = map.seenExtent
+        let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
+        let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
+        return low...high
+    }
+
+    /// What the LiDAR mesh measured over the exported stretch: the gap from the wall out to
+    /// whatever faces it, and the clear height under anything overhead, each per stretch of s in
+    /// meters. Empty without a mesh.
+    struct MeshMeasurements: Sendable {
+        var facing: [ObservedSpan] = []
+        var overheads: [ObservedSpan] = []
+    }
+
+    /// Measures a world-space mesh (meters) against the wall.
+    nonisolated static func measure(_ mesh: TriangleMesh, wall: WallFrame, over span: ClosedRange<Float>) -> MeshMeasurements {
+        MeshMeasurements(facing: facingDepth(mesh, wall: wall, over: span), overheads: overheadClearance(mesh, wall: wall, over: span))
+    }
+
+    /// The mesh in scene.json's frame, as mesh.ply stores it: the ground at the wall moved to
+    /// y = 0 like the keyframe poses, then meters to feet.
+    nonisolated static func sceneMesh(_ mesh: TriangleMesh, groundY: Float) -> TriangleMesh {
+        let feet = Float(SceneUnits.feetPerMeter)
+        return TriangleMesh(vertices: mesh.vertices.map { ($0 - SIMD3(0, groundY, 0)) * feet }, indices: mesh.indices)
     }
 
     /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held

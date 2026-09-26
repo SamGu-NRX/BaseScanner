@@ -7,7 +7,8 @@ import simd
 /// Plays a recorded measure-lab-session v2 folder (contract C3) as if it were the camera.
 ///
 /// Frames are delivered at their recorded timing divided by `speed`, each with its own pose and
-/// intrinsics, through the same engine path as live frames. JPEGs are decoded off the main actor.
+/// intrinsics, and its LiDAR depth when the replay has some, through the same engine path as live
+/// frames. JPEGs and depth are decoded off the main actor.
 @MainActor
 final class ReplayPlayer {
     let folder: URL
@@ -20,6 +21,9 @@ final class ReplayPlayer {
     /// True when the ground height comes from the recording's wall taps; an assumed wall puts
     /// the ground 1.4 m under the mean camera height, a guess.
     let groundMeasured: Bool
+    /// Depth files by keyframe id, from the replay's `depth/index.json` (the scan bundle's
+    /// layout); empty when it has none.
+    let depth: [String: LidarBundle.DepthEntry]
     /// Frames the autopilot holds back from the walk for the gap loop, once prepared.
     private(set) var heldBack: ReplayPlanning.HeldBackWindow?
     private(set) var isPlaying = false
@@ -35,6 +39,7 @@ final class ReplayPlayer {
         let wall: WallFrame
         let wallDescription: String
         let groundMeasured: Bool
+        let depth: [String: LidarBundle.DepthEntry]
     }
 
     /// Reads session.json and settles the wall. Deriving an assumed wall projects every frame
@@ -47,15 +52,40 @@ final class ReplayPlayer {
                 timestamp: $0.timestamp, trackingNormal: $0.trackingNormal
             )
         }
+        let depth = try loadDepthIndex(folder: folder)
         if let declared = session.declaredWall, let frame = WallFrame(meter: declared.meter, outward: declared.outward, groundY: declared.groundY) {
-            return Loaded(session: session, planned: planned, wall: frame, wallDescription: "recorded (wall taps in session.json)", groundMeasured: true)
+            return Loaded(session: session, planned: planned, wall: frame, wallDescription: "recorded (wall taps in session.json)", groundMeasured: true, depth: depth)
         }
         guard let assumed = ReplayPlanning.assumedWall(frames: planned) else { throw ReplayError.noFrames }
         let description = String(
             format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, meter where the walk covers most, %d cells covered within 20 ft of it with every frame; not a measured wall",
             assumed.offset, assumed.coveredCells
         )
-        return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description, groundMeasured: false)
+        return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description, groundMeasured: false, depth: depth)
+    }
+
+    /// The replay's `depth/index.json` by keyframe id, or empty when the file is absent. A file
+    /// that is present but unreadable fails the load: playing on without depth would quietly
+    /// count what the depth would have hidden.
+    nonisolated private static func loadDepthIndex(folder: URL) throws -> [String: LidarBundle.DepthEntry] {
+        let url = folder.appending(path: "depth/index.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
+        let entries = try LidarBundle.decodeDepthIndex(Data(contentsOf: url))
+        return Dictionary(entries.map { ($0.keyframe, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// One frame's depth, read off the main actor. A frame whose files are missing or the wrong
+    /// size plays without depth, logged.
+    nonisolated private static func loadDepth(_ entry: LidarBundle.DepthEntry?, folder: URL) -> DepthImage? {
+        guard let entry else { return nil }
+        do {
+            let millimeters = try Data(contentsOf: folder.appending(path: entry.file))
+            let confidence = try entry.confidenceFile.map { try Data(contentsOf: folder.appending(path: $0)) }
+            return try LidarBundle.depthImage(entry, millimeters: millimeters, confidence: confidence)
+        } catch {
+            RuntimeLog.engine.error("replay depth for \(entry.keyframe, privacy: .public) unreadable: \(String(describing: error), privacy: .public)")
+            return nil
+        }
     }
 
     init(folder: URL, loaded: Loaded, onFrame: @escaping @MainActor (SourceFrame) -> Void) {
@@ -66,6 +96,7 @@ final class ReplayPlayer {
         wall = loaded.wall
         wallDescription = loaded.wallDescription
         groundMeasured = loaded.groundMeasured
+        depth = loaded.depth
     }
 
     /// Finds the frames to hold back for the autopilot's gap loop. Heavy, so it runs off the
@@ -90,20 +121,24 @@ final class ReplayPlayer {
         isPlaying = true
         let frames = frames
         let folder = folder
+        let depth = depth
         task = Task { [weak self] in
             var previous: Double?
             for index in indices {
                 let frame = frames[index]
                 let url = folder.appending(path: frame.imagePath)
                 let started = ContinuousClock.now
-                let decoded = await Task.detached(priority: .userInitiated) { ImageWork.decode(url) }.value
+                let entry = depth[frame.id]
+                let (decoded, frameDepth) = await Task.detached(priority: .userInitiated) {
+                    (ImageWork.decode(url), Self.loadDepth(entry, folder: folder))
+                }.value
                 if let previous {
                     let wait = Duration.seconds(max(0, (frame.timestamp - previous) / speed)) - (ContinuousClock.now - started)
                     if wait > .zero { try? await Task.sleep(for: wait) }
                 }
                 previous = frame.timestamp
                 guard !Task.isCancelled, let self else { return }
-                self.deliver(index: index, decoded: decoded, isReview: false)
+                self.deliver(index: index, decoded: decoded, depth: frameDepth, isReview: false)
             }
             self?.isPlaying = false
         }
@@ -117,7 +152,7 @@ final class ReplayPlayer {
         task = Task { [weak self] in
             let decoded = await Task.detached(priority: .userInitiated) { ImageWork.decode(url) }.value
             guard !Task.isCancelled else { return }
-            self?.deliver(index: index, decoded: decoded, isReview: true)
+            self?.deliver(index: index, decoded: decoded, depth: nil, isReview: true)
         }
     }
 
@@ -134,7 +169,8 @@ final class ReplayPlayer {
         isPlaying = false
     }
 
-    private func deliver(index: Int, decoded: (CGImage, FrameQuality)?, isReview: Bool) {
+    /// A frame shown for review is never kept, so it goes without depth.
+    private func deliver(index: Int, decoded: (CGImage, FrameQuality)?, depth: DepthImage?, isReview: Bool) {
         let frame = frames[index]
         shownIndex = index
         onFrame(SourceFrame(
@@ -146,6 +182,7 @@ final class ReplayPlayer {
             jpeg: .file(folder.appending(path: frame.imagePath)),
             still: decoded?.0,
             meterAnchor: nil,
+            depth: depth,
             isReview: isReview
         ))
     }

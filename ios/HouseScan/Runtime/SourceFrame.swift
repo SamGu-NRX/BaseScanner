@@ -23,6 +23,9 @@ struct SourceFrame: Sendable {
     /// Detected horizontal planes as (center x, y, center z, radius), world meters. Empty when
     /// ARKit has found none or the frame doesn't carry them.
     var groundPlanes: [SIMD4<Float>] = []
+    /// LiDAR depth copied with the photo of a frame that could be kept; nil without LiDAR, and on
+    /// frames without a photo.
+    var depth: DepthImage?
     /// Shown for review or tapping only; never offered to auto-capture.
     var isReview = false
     /// Carries only pose and tracking, so overlays follow the camera between sampled frames.
