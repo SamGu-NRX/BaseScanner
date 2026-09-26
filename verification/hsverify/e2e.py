@@ -91,6 +91,22 @@ def load_input(path: Path, real: bool = False) -> SceneInput:
             images = {Path(n).name: bundle.read(n) for n in names if n.lower().endswith(".jpg")}
         return SceneInput(path.stem, json.loads(raw), raw, images, real=real, source=str(path))
     data = json.loads(path.read_text())
+    if "scene_path" in data and "expect" in data:
+        # A committed case about a scene that stays outside git (dataset-derived).
+        target = Path(data["scene_path"]).expanduser()
+        if not target.exists():
+            return SceneInput(
+                data["id"],
+                {},
+                b"",
+                source=str(path),
+                skip_reason=f"{target} not built here; see the case's README",
+            )
+        item = load_input(target, real=bool(data.get("real", real)))
+        item.name, item.expect = data["id"], data["expect"]
+        item.rules_assumed = data.get("rules_assumed", {})
+        item.source = data.get("source", str(path))
+        return item
     if "scene" in data and "expect" in data:
         raw = json.dumps(data["scene"], indent=1).encode()
         return SceneInput(

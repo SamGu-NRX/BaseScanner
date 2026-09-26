@@ -35,7 +35,10 @@ The keys follow the lead's case format. The cases use two additions and one conv
   catch that before the outcome is compared.
 - `missing_evidence_empty: false` means the list must be non-empty.
 - `rules_assumed` maps a check-id substring to the `threshold_ft` the case depends on: `gas` 3 ft
-  (`clearances.gas_ft`) and `opening` 3 ft (`clearances.opening_ft`).
+  (`clearances.gas_ft`), `opening` 3 ft (`clearances.opening_ft`), `headroom` 6.5 ft
+  (`headroom.min_ft`) and `route_length` 20 ft (`route.max_ft`). `route.confident_reach_ft` (15)
+  is not reported as any check's `threshold_ft`, so g09 can't declare it there. A change to it
+  shows up as g09-reach-14 or g09-reach-15 failing.
 
 ## The rules these cases depend on
 
@@ -50,10 +53,22 @@ From `rules.yaml` at 2c9348f:
   and ask for a photo.
 - `openings.types` is `[door, window]`. A garage door is not an opening, so it has no 3 ft
   clearance. It does fail the route (`route.crossing.garage_door: fail`).
-- `route.crossing.window: detour` and `gas_meter: detour`. `route.corner_allowance_ft` adds 0.5 ft
-  per corner the cable turns.
+- `route.crossing.window: detour`, `gas_meter: detour` and `elec_box: detour`.
+  `route.corner_allowance_ft` adds 0.5 ft per corner the cable turns. `route.height_ft` 1: the
+  cable runs 1 ft above the ground. The route length has no vertical run from the meter down to
+  that height (at 2c9348f a spot at s = 1.583 reports route 1.583). A detour over an object adds
+  2 × (top − 1): up to its top and back down. Going under is impossible when the object sits on
+  the ground. A window whose bottom is above 1 ft is crossed with no extra (g12a: route 7.042 for
+  start 7.042).
+- `route.confident_reach_ft` 15: a longer route is unsure. `route.max_ft` 20 (`route_length`,
+  `at_most`): pass needs length + error < 20, fail needs length − error > 20. The route's error
+  is the meter's and the wall's errors summed (at 2c9348f a wall at ±0.3 with an exact meter gives
+  a route at ±0.3).
+- `headroom.min_ft` 6.5 (`at_least`): pass needs clearance − error > 6.5, fail needs
+  clearance + error < 6.5.
+- `ground.allowed` is concrete, gravel, lawn and mulch. A deck under the footprint fails
+  `ground_surface`.
 - `facing.measured_from: battery_front`, `min_ft` 3: a 9 ft facing gap gives 9 − 11/6 ≈ 7.17.
-- `ground.allowed` includes concrete.
 
 ## Fixture conventions
 
@@ -94,6 +109,15 @@ From `rules.yaml` at 2c9348f:
 | g12b-exact-fit-last-start | 12 | spot within [6, 6 + W]; no photo request | Five 1.8 ft segments (headings 40° to 8°) for s = [−3, 6], then one segment of exactly W at heading 0° ending the wall. Its only start, 6, is also its last. Measured in floating point, the segment is 4.4e-16 longer than W. Route 6 + 3 corners × 0.5 = 7.5. |
 | g13a-unsure-never-outranks-pass | 13 | spot within [−8, −1.25]; gas check at the spot passes; starts in (−3.8, 1.2) fail with `meter_working_space`; starts in (1.3, 5) unsure; no photo request | Strip x ∈ [0.3, 12] at gap 3.2, ±0.3: every battery overlapping x ≥ 0.3 gets 3.2 − 0.3 = 2.9, unsure. A battery with right edge b < 0.3 gets √((0.3 − b)² + 3.2²), which passes when > 3.3: (0.3 − b)² > 0.65, b < 0.3 − √0.65 ≈ −0.506. The working space also needs b ≤ −1.25, so passing spots have b ≤ −1.25 and route ≥ 1.25. Unsure spots start at 1.25 (route 1.25), and the passing spot must still win. |
 | g13b-unsure-alone | 13 | decision manual_review; spot on w1; gas unsure (margin), measured 3.2, ±0.3; starts in (−0.4, 1.2) fail with `meter_working_space`; starts in (1.3, 5.3) unsure; no photo request | The wall starts at −0.5, so every battery ends at ≥ 2.08 and overlaps the strip: gap 3.2 for all. The spot is fully observed and unsure only by margin, so no photos. |
+| g07-headroom-fail | 07 | headroom fail, measured 5.5, ±0.5; spot null; every start in (−5, 12.4) fails with `headroom`; no photo request | Overhead over the whole wall at 6.5 − 1 = 5.5 ± 0.5: 5.5 + 0.5 = 6.0 < 6.5. |
+| g07-headroom-pass | 07 | headroom pass, measured 7.2, ±0.5; starts in (−5, −3.9) and (1.3, 12.4) pass; no photo request | 6.5 + 0.7 = 7.2: 7.2 − 0.5 = 6.7 > 6.5. The gap between the two intervals is the meter working space. |
+| g07-headroom-margin | 07 | headroom unsure (margin), measured 6.8, ±0.5; same intervals unsure; no photo request | 6.5 + 0.3 = 6.8: 6.8 − 0.5 = 6.3 is not > 6.5 and 7.3 is not < 6.5. |
+| g07-headroom-unobserved | 07 | headroom unsure (unobserved); same intervals unsure; `missing_evidence` non-empty | No overheads, and the overhead band is left out of coverage. |
+| g07-headroom-partial-span | 07 | starts in (5.5, 8.4) fail with `headroom`; starts in (1.3, 5.3) and (8.6, 12.4) pass | Overhead 5.5 ± 0.5 over s = [8, 8.5] only. A battery [a, a + W] overlaps it when 8 − W < a < 8.5, i.e. 5.417 < a < 8.5, even if it covers only a few inches of the battery. The schema's overheads have no depth out from the wall, so the golden's "front strip only" is tested along the wall instead. |
+| g09-reach-14, -15, -16, -20, -21 | 09 | `route_length` measured L, ±0: pass at 14, unsure at 15, 16 and 20, fail at 21. For pass and unsure the spot is [L, L + W] and the sweep at start L has that outcome. For fail the spot is null and the sweep at L fails with `route_length`. No photo request | The wall runs s = [−1, L + W], all ground before L is deck and [L, L + W] is concrete. Every start before L fails `ground_surface`, starts left of the meter also fail the working space, and L is the last start. So the route is L with no corner. 14 < 15, pass. 15 is not inside 15. 16 is past 15 but below 20. For 20: 20 + 0 is not < 20 and 20 − 0 is not > 20, so unsure. For 21: 21 − 0 > 20, fail. |
+| g09-reach-20p2-pm03 | 09 | `route_length` unsure, measured 20.2, ±0.3; spot at L | Meter at ±0.3, wall exact. 20.2 − 0.3 = 19.9 is not > 20, and 20.5 is not < 20. |
+| g09-reach-20p4-pm03 | 09 | spot null; the sweep at L fails with `route_length` | 20.4 − 0.3 = 20.1 > 20. |
+| g09-vertical-run | 09 | `route_length` unsure, measured 16, ±0; `route_path` pass; spot at [11, 11 + W] | Pad at 15 − 4 = 11. An `elec_box` at s = [4, 5], 0 to 3.5 ft tall, sits across the 1 ft cable run, and elec boxes detour. Over: 2 × (3.5 − 1) = 5. Routed 11 + 5 = 16 = 15 + 1, past the confident reach. Measuring along the wall alone (11) would pass. |
 | c5-no-coverage | C5, scene schema | decision manual_review; `missing_evidence` non-empty; starts in (−6, −3.9) and (1.3, 7.4) unsure, starts in (−3.8, 1.2) fail with `meter_working_space` | Clean wall s = [−6, 10] with ground and facing data but no `coverage`. "Absent means nothing is known to be observed" makes every start unsure except where the working space, which needs no observation, fails it. Absent ends default to unexplored, which rules out reject. |
 
 ## Assumptions a failure should be checked against
@@ -104,6 +128,14 @@ From `rules.yaml` at 2c9348f:
   covers the meter, which makes the cable detour; those cases assert only gas and photo requests.
   g13a keeps the span off the left routes.
 - s counts the length of a no-wall stretch (g08b: w2 starts at s = 2, after a 1 ft gap).
+- g09's last start is end − 2.583333333333 (the width as rules.yaml writes it) in floating point.
+  For L = 16, 20, 20.4, 21 and 11 the wall end is chosen so that start is exactly L. For 14, 15 and
+  20.2 no such end exists, so the start lands 1.8e-15, 1.8e-15 and 3.6e-15 past L. No outcome
+  changes, but g09-reach-15 tests "past the confident reach", not the equality at exactly 15.
+- The vertical detour is an inference. Neither rules.yaml nor the result schema gives the
+  formula; "go over or under it at route height" does not say how far. If g09-vertical-run fails
+  on `measured_ft` alone, check `route.detours[].extra_ft` against 5 before calling it a server
+  error.
 
 ## Changes after the first run
 
@@ -141,10 +173,6 @@ errors, corrected once `rules.yaml` was published:
 - 04: the golden gives w1 outward [0, −1] for a baseline running +x, which contradicts the
   schema's clockwise rule. Its pad also relies on a ground check whose passing surfaces are not
   published. The flush rule it tests is exercised by g03 and g12b.
-- 07: needs headroom around `headroom.min_ft` 6.5, a placeholder. Now that the value is
-  published this could be encoded; it isn't yet.
-- 09: needs `confident_reach_ft` 15 and `max_route_ft` 20. `confident_reach_ft` is a placeholder
-  but published, so this could also be encoded now.
 - 11 (d): its expectation is a pass, which `auto_approve: false` can't produce. Its photo-request
   half duplicates g01.
 - 14: needs a pass. The result schema already requires every field it lists.

@@ -613,6 +613,258 @@ case(
     },
 )
 
+# g07: headroom. rules.yaml headroom.min_ft = 6.5 (at_least). The schema's overheads carry only
+# a stretch of wall (span_ft) and a clear height, not a depth out from the wall, so "covers the
+# whole footprint" is tested along the wall: a partial overhead over part of the battery's width
+# must still limit it.
+HEADROOM = 6.5
+
+
+def overhead(span, clearance, pm=0.5):
+    return {"wall_id": "w1", "span_ft": list(span), "clearance_ft": clearance, "plus_minus_ft": pm}
+
+
+G07_ROWS = [
+    # name, clearance, outcome, unsure cause
+    ("fail", HEADROOM - 1, "fail", None),
+    ("pass", HEADROOM + 0.7, "pass", None),
+    ("margin", HEADROOM + 0.3, "unsure", "margin"),
+]
+for name, clearance, outcome, cause in G07_ROWS:
+    check = {
+        "match": "headroom",
+        "outcome": outcome,
+        "measured_ft": clearance,
+        "plus_minus_ft": 0.5,
+    }
+    if cause:
+        check["unsure_cause"] = cause
+    if outcome == "fail":
+        runs = [
+            {
+                "wall_id": "w1",
+                "start_ft": [-5, 12.4],
+                "outcome": "fail",
+                "failing_match": "headroom",
+            }
+        ]
+    else:
+        runs = [
+            {"wall_id": "w1", "start_ft": [-5, -3.9], "outcome": outcome},
+            {"wall_id": "w1", "start_ft": [1.3, 12.4], "outcome": outcome},
+        ]
+    expect = {"checks": [check], "sweep_runs": runs, "missing_evidence_empty": True}
+    if outcome != "pass":
+        expect["decision_not"] = ["pass"]
+    if outcome == "fail":
+        expect["spot"] = None
+    case(
+        f"g07-headroom-{name}",
+        golden("07"),
+        f"An overhead over the whole wall has clear height {clearance} +/- 0.5 ft against "
+        f"headroom {HEADROOM} ft, so every start's headroom check is {outcome}.",
+        straight_scene(-5, 15) | {"overheads": [overhead((-5, 15), clearance)]},
+        expect,
+        {"headroom": HEADROOM},
+    )
+
+g07u = straight_scene(
+    -5, 15, cov=coverage((-5, 15), bands=("wall", "facing"), past=(PAST, PAST), out=PAST)
+)
+case(
+    "g07-headroom-unobserved",
+    golden("07"),
+    "Nothing overhead was recorded and the overhead band was never observed, so every start's "
+    "headroom check is unsure for lack of a view, and the result asks for that view.",
+    g07u,
+    {
+        "decision_not": ["pass"],
+        "checks": [{"match": "headroom", "outcome": "unsure", "unsure_cause": "unobserved"}],
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [-5, -3.9], "outcome": "unsure"},
+            {"wall_id": "w1", "start_ft": [1.3, 12.4], "outcome": "unsure"},
+        ],
+        "missing_evidence_empty": False,
+    },
+    {"headroom": HEADROOM},
+)
+case(
+    "g07-headroom-partial-span",
+    golden("07"),
+    "A low overhead (5.5 +/- 0.5 ft) covers only s = [8, 8.5]. Every battery whose 31 in "
+    "stretch overlaps it fails headroom, even when the overhead covers a few inches of it.",
+    straight_scene(-5, 15) | {"overheads": [overhead((8, 8.5), HEADROOM - 1)]},
+    {
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [1.3, 5.3], "outcome": "pass"},
+            {
+                "wall_id": "w1",
+                "start_ft": [5.5, 8.4],
+                "outcome": "fail",
+                "failing_match": "headroom",
+            },
+            {"wall_id": "w1", "start_ft": [8.6, 12.4], "outcome": "pass"},
+        ],
+        "missing_evidence_empty": True,
+    },
+    {"headroom": HEADROOM},
+)
+
+# g09: reach uses the routed length. rules.yaml route.confident_reach_ft = 15 (beyond it the
+# route is unsure), route.max_ft = 20 (route_length check, at_most; beyond it the route fails).
+# Every start before L sits on deck, which rules.yaml ground.allowed excludes, so it fails
+# ground_surface; the wall ends at L + W, so L is the last start and the only one on concrete.
+# Starts left of the meter overlap its working space (the wall begins at -1).
+CONFIDENT, MAX_ROUTE = 15.0, 20.0
+# The battery width as rules.yaml writes it. The last start is end - W_RULES in floating point.
+# The wall's end is the nearest float to L + W_RULES for which that start is exactly L. For
+# L = 14, 15 and 20.2 no such float exists (end has a coarser ulp than L), so the end is the
+# smallest float whose last start is at or past L: 14 and 15 land 1.8e-15 past, 20.2 lands 3.6e-15
+# past. None of those flips an outcome except that L = 15 tests "past the confident reach", not
+# the equality at 15 itself.
+W_RULES = 2.583333333333
+
+
+def exact_end(L):
+    base = L + W_RULES
+    near = [base]
+    for direction in (-math.inf, math.inf):
+        x = base
+        for _ in range(4):
+            x = math.nextafter(x, direction)
+            near.append(x)
+    exact = [x for x in near if x - W_RULES == L]
+    end = (
+        min(exact, key=lambda x: abs(x - base))
+        if exact
+        else min(x for x in near if x - W_RULES >= L)
+    )
+    assert (end + 1) - 1 == end
+    return end
+
+
+def reach_scene(L, meter_pm=0.0, objects=()):
+    end = exact_end(L)
+    scene = straight_scene(-1, end, objects=objects)
+    scene["meter"]["plus_minus_ft"] = meter_pm
+    scene["ground"] = [
+        {"type": "deck", "polygon": rect(-1, L, 0, 10), "plus_minus_ft": 0.0},
+        concrete(rect(L, end, 0, 10)),
+    ]
+    return scene
+
+
+def reach_case(cid, L, route_ft, e, outcome, description, objects=(), extra_checks=()):
+    at_L = [round(L - 0.001, 3), round(L + 0.001, 3)]
+    check = {
+        "match": "route_length",
+        "outcome": outcome,
+        "measured_ft": route_ft,
+        "plus_minus_ft": e,
+    }
+    expect = {"missing_evidence_empty": True}
+    if outcome == "fail":
+        expect["spot"] = None
+        expect["sweep_runs"] = [
+            {"wall_id": "w1", "start_ft": at_L, "outcome": "fail", "failing_match": "route_length"}
+        ]
+    else:
+        expect["spot"] = {"wall_id": "w1", "span_within": [L, L + W]}
+        expect["checks"] = [check, *extra_checks]
+        expect["sweep_runs"] = [{"wall_id": "w1", "start_ft": at_L, "outcome": outcome}]
+    if outcome != "pass":
+        expect["decision_not"] = ["pass"]
+    case(
+        cid,
+        golden("09"),
+        description,
+        reach_scene(L, e, objects),
+        expect,
+        {"route_length": MAX_ROUTE},
+    )
+
+
+reach_case(
+    "g09-reach-14",
+    14.0,
+    14.0,
+    0.0,
+    "pass",
+    "Route 14 ft, 1 ft inside the 15 ft confident reach: the route passes.",
+)
+reach_case(
+    "g09-reach-15",
+    15.0,
+    15.0,
+    0.0,
+    "unsure",
+    "Route exactly at the 15 ft confident reach: not inside it, so unsure.",
+)
+reach_case(
+    "g09-reach-16",
+    16.0,
+    16.0,
+    0.0,
+    "unsure",
+    "Route 16 ft, between the 15 ft confident reach and the 20 ft maximum: unsure.",
+)
+reach_case(
+    "g09-reach-20",
+    20.0,
+    20.0,
+    0.0,
+    "unsure",
+    "Route exactly at the 20 ft maximum with no error: 20 + 0 is not below 20 and 20 - 0 "
+    "is not above it, so unsure.",
+)
+reach_case(
+    "g09-reach-21",
+    21.0,
+    21.0,
+    0.0,
+    "fail",
+    "Route 21 ft, 1 ft past the 20 ft maximum: the only start on usable ground fails.",
+)
+reach_case(
+    "g09-reach-20p2-pm03",
+    20.2,
+    20.2,
+    0.3,
+    "unsure",
+    "Route 20.2 +/- 0.3 ft (meter tap error): 20.2 - 0.3 = 19.9 is not above 20, so unsure.",
+)
+reach_case(
+    "g09-reach-20p4-pm03",
+    20.4,
+    20.4,
+    0.3,
+    "fail",
+    "Route 20.4 +/- 0.3 ft (meter tap error): 20.4 - 0.3 = 20.1 is above 20, so fail.",
+)
+# Vertical run: an electrical box standing on the ground at s = [4, 5], 3.5 ft tall, across the
+# 1 ft cable run (rules.yaml route.height_ft). route.crossing.elec_box is detour; going under is
+# impossible (bottom 0), so the cable climbs 3.5 - 1 = 2.5 ft and comes back down: 5 ft extra.
+ebox = {
+    "type": "elec_box",
+    "wall_id": "w1",
+    "span_ft": [4, 5],
+    "bottom_ft": 0.0,
+    "top_ft": 3.5,
+    "source": "tape",
+    "plus_minus_ft": 0.0,
+}
+reach_case(
+    "g09-vertical-run",
+    CONFIDENT - 4,
+    CONFIDENT + 1,
+    0.0,
+    "unsure",
+    "The pad starts 11 ft along the wall, but the cable must climb over a 3.5 ft box at "
+    "the 1 ft run height: 11 + 2 x 2.5 = 16 ft routed, past the 15 ft confident reach.",
+    objects=[ebox],
+    extra_checks=[{"match": "route_path", "outcome": "pass"}],
+)
+
 
 def main():
     for old in HERE.glob("*.json"):

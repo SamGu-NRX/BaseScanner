@@ -241,13 +241,19 @@ def expectation_problems(expect: dict, result: dict) -> list[str]:
             for r in result.get("sweep", [])
             if r["wall_id"] == rule["wall_id"] and r["start_ft"][0] < b and r["start_ft"][1] > a
         ]
-        if not runs:
+        if not runs and "outcome" in rule:
             problems.append(f"no sweep run overlaps {rule['wall_id']} starts ({a}, {b})")
         for run in runs:
-            if run["outcome"] != rule["outcome"]:
+            if "outcome" in rule and run["outcome"] != rule["outcome"]:
                 problems.append(
                     f"sweep {run['wall_id']} starts {run['start_ft']} is {run['outcome']}, "
                     f"expected {rule['outcome']}"
+                )
+            if "outcome_not" in rule and run["outcome"] == rule["outcome_not"]:
+                why = f" ({rule['reason']})" if "reason" in rule else ""
+                problems.append(
+                    f"sweep {run['wall_id']} starts {run['start_ft']} is {run['outcome']}, "
+                    f"which this case rules out{why}"
                 )
             for field, key in (("failing", "failing_match"), ("unsure", "unsure_match")):
                 if key in rule and not any(rule[key] in c for c in run[field]):

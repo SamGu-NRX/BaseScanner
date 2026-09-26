@@ -250,6 +250,42 @@ def test_expectations():
     assert len(msgs) == 4, msgs
 
 
+def test_outcome_not_rules_out_one_outcome_and_tolerates_no_runs():
+    r = result(
+        sweep=[
+            {
+                "wall_id": "w1",
+                "start_ft": [0.0, 2.0],
+                "outcome": "unsure",
+                "failing": [],
+                "unsure": [],
+            },
+            {
+                "wall_id": "w1",
+                "start_ft": [2.1, 3.0],
+                "outcome": "pass",
+                "failing": [],
+                "unsure": [],
+            },
+        ]
+    )
+    ok = {
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [0.5, 1.5], "outcome_not": "pass"},
+            {"wall_id": "w9", "start_ft": [0, 9], "outcome_not": "pass"},
+        ]
+    }
+    assert expectation_problems(ok, r) == []
+    bad = {
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [0.5, 2.5], "outcome_not": "pass", "reason": "window"}
+        ]
+    }
+    assert expectation_problems(bad, r) == [
+        "sweep w1 starts [2.1, 3.0] is pass, which this case rules out (window)"
+    ]
+
+
 def test_pinned_check_numbers():
     r = result()
     assert expectation_problems({"checks": [{"match": "gas", "measured_ft": 5.0000004}]}, r) == []

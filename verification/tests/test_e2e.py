@@ -113,6 +113,26 @@ def test_case_file_is_loaded_with_its_expectations(tmp_path):
     assert json.loads(item.raw) == SCENE
 
 
+def test_case_pointing_at_a_scene_outside_git(tmp_path):
+    scene = tmp_path / "scene.json"
+    scene.write_text(json.dumps(SCENE))
+    case = tmp_path / "case.json"
+    case.write_text(
+        json.dumps(
+            {
+                "id": "real-1",
+                "real": True,
+                "scene_path": str(scene),
+                "expect": {"decision_not": ["pass"]},
+            }
+        )
+    )
+    item = load_input(case)
+    assert (item.name, item.real, item.expect) == ("real-1", True, {"decision_not": ["pass"]})
+    scene.unlink()
+    assert load_input(case).skip_reason.endswith("not built here; see the case's README")
+
+
 class FakeServer(BaseHTTPRequestHandler):
     """Answers every scene with a consistent manual_review; `decide_pass` breaks C5."""
 
