@@ -182,6 +182,11 @@ def ft(v: float) -> str:
     return format_ft_in(abs(v)) if v >= 0 else "-" + format_ft_in(abs(v))
 
 
+def _point(s: float) -> str:
+    """where(s) as the end of a stretch: "from 3 ft left of the meter to the meter"."""
+    return "the meter" if abs(s) < 1 / 24 else where(s)
+
+
 def where(s: float) -> str:
     if abs(s) < 1 / 24:
         return "at the meter"
@@ -1195,7 +1200,7 @@ def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
                 "span_ft": _outward(a, b),
                 "checks": sorted({i for _, i in within}),
             }
-            text = f"Show the {_BAND_TEXT[band]} from {where(a)} to {where(b)}"
+            text = f"Show the {_BAND_TEXT[band]} from {_point(a)} to {_point(b)}"
             if depths:
                 request["out_ft"] = _up(max(depths))
                 text += _DEPTH_TEXT[band].format(ft(request["out_ft"]))
