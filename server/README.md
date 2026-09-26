@@ -32,6 +32,7 @@ Only `server/` uploads (`.vercelignore`), so the repository's `private/` rules c
 | `GET /health` | | Which rules are loaded, and their hash |
 | `POST /v1/placements` | a scene | The result, `schemas/result.schema.json` |
 | `POST /v1/placements/site-plan.svg` | a scene | The site plan, `image/svg+xml` |
+| `GET /v1/schemas/scene.json`, `GET /v1/schemas/result.json` | | The contract this server honours |
 
 A scene is bare `scene.json` (`application/json`), a zip holding `scene.json` and the JPEGs it names (`application/zip`), or either one as the multipart field `bundle`. `/openapi.json` declares all three.
 
@@ -45,9 +46,9 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 | Status | When |
 | --- | --- |
 | 400 | The body or zip can't be read, or a zip entry has an absolute or `..` path |
-| 413 | Over `HOUSESCAN_MAX_UPLOAD_MB` (default 256) or, unzipped, `HOUSESCAN_MAX_UNZIPPED_MB` (default 512) |
+| 413 | Over `HOUSESCAN_MAX_UPLOAD_MB` (default 256), unzipped over `HOUSESCAN_MAX_UNZIPPED_MB` (default 512), or `scene.json` itself over `HOUSESCAN_MAX_SCENE_MB` (default 10) |
 | 415 | Not JSON, zip or multipart |
-| 422 | The scene breaks `schemas/scene.schema.json`, names an image the zip lacks, or can't be placed (for example the meter is far from its wall) |
+| 422 | The scene breaks `schemas/scene.schema.json`, names an image the zip lacks, can't be placed (for example the meter is far from its wall), or needs more than 50,000 positions or 20 s to check (`scene_too_complex`) |
 
 ## Writing a scene
 
@@ -77,4 +78,4 @@ A check passes only when its margin exceeds its error and fails only when it mis
 
 ## Rules
 
-`rules.yaml` holds the public values. `placeholder: true` marks a value with no public source; because it has some, it sets `auto_approve: false`, which turns every pass or reject into manual review. At startup the server merges a git-ignored `private/rules.yaml` over it when one exists (path: `HOUSESCAN_PRIVATE_RULES`, else `<repo root>/private/rules.yaml`). Never commit Base's values. Base-derived tests live beside them in `private/tests/`: `uv run pytest ../private/tests -q`.
+`rules.yaml` holds the public values. `placeholder: true` marks a value with no public source; because it has some, it sets `auto_approve: false`, which turns every pass or reject into manual review. At startup the server merges a git-ignored `private/rules.yaml` over it when one exists (path: `HOUSESCAN_PRIVATE_RULES`, else `<repo root>/private/rules.yaml`). Every value the private file sets must carry its own `source`, or the server refuses to start; answers show those citations only as "Private rules". Never commit Base's values. Base-derived tests live beside them in `private/tests/`: `uv run pytest ../private/tests -q`.

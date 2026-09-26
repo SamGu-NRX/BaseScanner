@@ -134,6 +134,8 @@ class LoadedRules:
     rules: Rules
     sources: tuple[str, ...]
     sha256: str
+    # Dotted keys the private file overrides. Answers withhold their source text.
+    private_keys: frozenset[str] = frozenset()
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -154,10 +156,35 @@ def _read_yaml(path: Path) -> dict[str, Any]:
     return data
 
 
-def rules_from_dict(data: dict[str, Any], sources: tuple[str, ...] = ("public",)) -> LoadedRules:
+def rules_from_dict(
+    data: dict[str, Any],
+    sources: tuple[str, ...] = ("public",),
+    private_keys: frozenset[str] = frozenset(),
+) -> LoadedRules:
     rules = Rules.model_validate(data)
     canonical = json.dumps(rules.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-    return LoadedRules(rules, sources, hashlib.sha256(canonical.encode()).hexdigest())
+    return LoadedRules(rules, sources, hashlib.sha256(canonical.encode()).hexdigest(), private_keys)
+
+
+def overridden_keys(public: dict[str, Any], private: dict[str, Any], path: str = "") -> set[str]:
+    """Dotted keys the private file sets. A private threshold must carry its own source: merged
+    over the public one, it would otherwise be shown with the public citation."""
+    keys: set[str] = set()
+    for key, value in private.items():
+        dotted = f"{path}{key}"
+        base = public.get(key)
+        if isinstance(value, dict) and isinstance(base, dict):
+            if "value" in base and "source" in base and "source" not in value:
+                raise ValueError(
+                    f"private rules: {dotted} overrides a cited value without its own source"
+                )
+            if "value" in base:
+                keys.add(dotted)
+            else:
+                keys |= overridden_keys(base, value, f"{dotted}.")
+        else:
+            keys.add(dotted)
+    return keys
 
 
 def public_rules_dict() -> dict[str, Any]:
@@ -173,7 +200,10 @@ def load_rules(private_path: Path | None = None) -> LoadedRules:
         private_path = Path(env) if env else DEFAULT_PRIVATE_RULES
         if env and not private_path.is_file():
             raise FileNotFoundError(f"{PRIVATE_RULES_ENV}={env} does not name a file")
+    private_keys: frozenset[str] = frozenset()
     if private_path.is_file():
-        data = deep_merge(data, _read_yaml(private_path))
+        private = _read_yaml(private_path)
+        private_keys = frozenset(overridden_keys(data, private))
+        data = deep_merge(data, private)
         sources = ("public", "private")
-    return rules_from_dict(data, sources)
+    return rules_from_dict(data, sources, private_keys)

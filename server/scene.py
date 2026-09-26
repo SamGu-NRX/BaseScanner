@@ -439,25 +439,27 @@ def _error(item: dict[str, Any], default: float) -> float:
 MAX_COORDINATE_FT = 1e5
 
 
-def _check_numbers(value: Any, path: str) -> None:
-    """JSON Schema accepts NaN and infinities as numbers; nothing in a scene may be either."""
-    if isinstance(value, dict):
-        for k, v in value.items():
-            _check_numbers(v, f"{path}/{k}")
-    elif isinstance(value, list):
-        for i, v in enumerate(value):
-            _check_numbers(v, f"{path}/{i}")
-    elif isinstance(value, float | int) and not isinstance(value, bool):
-        if not math.isfinite(value):
-            raise SceneError(path or "/", f"{value!r} is not a finite number")
-        if abs(value) > MAX_COORDINATE_FT:
-            raise SceneError(
-                path or "/", f"{value} ft is beyond the {MAX_COORDINATE_FT:g} ft bound"
-            )
+def _check_numbers(raw: Any) -> None:
+    """JSON Schema accepts NaN and infinities as numbers; nothing in a scene may be either.
+    Walks with an explicit stack, so deeply nested input can't exhaust Python's recursion."""
+    stack: list[tuple[Any, str]] = [(raw, "")]
+    while stack:
+        value, path = stack.pop()
+        if isinstance(value, dict):
+            stack.extend((v, f"{path}/{k}") for k, v in value.items())
+        elif isinstance(value, list):
+            stack.extend((v, f"{path}/{i}") for i, v in enumerate(value))
+        elif isinstance(value, float | int) and not isinstance(value, bool):
+            if not math.isfinite(value):
+                raise SceneError(path or "/", f"{value!r} is not a finite number")
+            if abs(value) > MAX_COORDINATE_FT:
+                raise SceneError(
+                    path or "/", f"{value} ft is beyond the {MAX_COORDINATE_FT:g} ft bound"
+                )
 
 
 def validate_schema(raw: Any) -> None:
-    _check_numbers(raw, "")
+    _check_numbers(raw)
     errors = sorted(_VALIDATOR.iter_errors(raw), key=lambda e: list(e.absolute_path))
     if errors:
         e = errors[0]
@@ -581,12 +583,16 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     pieces = _join_straight_walls(pieces)
     meter_piece = next(p for p in pieces if p.kind == "wall" and p.s0 - EPS <= 0 <= p.s1 + EPS)
 
-    # How far out from the walls the outdoor area matters: the largest clearance plus the battery.
+    # How far out from the walls the outdoor area matters: the largest clearance, plus the
+    # battery, plus the largest wall error anywhere, because a check must have seen everything
+    # within its clearance plus the footprint's own error. Anything out there nobody observed
+    # then counts as unseen.
     c = rules.clearances
     reach = max(
         c.gas_ft.value, c.ac_ft.value, c.opening_ft.value, c.drive_ft.value, c.pool_ft.value
     )
-    reach += rules.battery.depth_ft.value + 1.0
+    wall_error = max(p.error_at(max(abs(p.s0), abs(p.s1))) for p in pieces if p.kind == "wall")
+    reach += rules.battery.depth_ft.value + wall_error + 1.0
     first, last = pieces[0], pieces[-1]
     ext_len = reach + rules.battery.width_ft.value
     left_ext = Piece(

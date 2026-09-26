@@ -19,11 +19,12 @@ import os
 import re
 import zipfile
 import zlib
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
@@ -31,7 +32,7 @@ from starlette.exceptions import HTTPException
 import siteplan
 from rules import LoadedRules, load_rules
 from scene import Scene, SceneError, parse_scene
-from solver import SCHEMA_VERSION, solve
+from solver import SCHEMA_VERSION, SceneTooComplex, solve
 
 log = logging.getLogger("housescan.api")
 
@@ -54,6 +55,9 @@ def _limit_bytes(env: str, default_mb: float) -> int:
 # Read once at import so a bad value stops the server at startup. Tests monkeypatch these names.
 MAX_UPLOAD_BYTES = _limit_bytes("HOUSESCAN_MAX_UPLOAD_MB", 256)
 MAX_UNZIPPED_BYTES = _limit_bytes("HOUSESCAN_MAX_UNZIPPED_MB", 512)
+# Parsing JSON takes many times its size in memory (10.5 MB took 255 MB), and a real scene.json
+# is well under 1 MB, so scene.json itself is capped far below the bundle.
+MAX_SCENE_BYTES = _limit_bytes("HOUSESCAN_MAX_SCENE_MB", 10)
 
 # Loaded at import: invalid rules must stop the server before it answers anything.
 LOADED: LoadedRules = load_rules()
@@ -143,6 +147,20 @@ def health() -> dict[str, Any]:
     return {"status": "ok", "schema_version": SCHEMA_VERSION, "policy": _policy()}
 
 
+# The contract, served by the server that honours it, so clients can fetch the version they talk to.
+SCHEMAS = Path(__file__).resolve().parent / "schemas"
+
+
+@app.get("/v1/schemas/scene.json")
+def scene_schema() -> FileResponse:
+    return FileResponse(SCHEMAS / "scene.schema.json", media_type="application/schema+json")
+
+
+@app.get("/v1/schemas/result.json")
+def result_schema() -> FileResponse:
+    return FileResponse(SCHEMAS / "result.schema.json", media_type="application/schema+json")
+
+
 # --- reading the upload ---------------------------------------------------------------------------
 
 
@@ -218,6 +236,15 @@ def _unsafe(name: str) -> bool:
     return n.startswith("/") or bool(_DRIVE.match(n)) or ".." in n.split("/")
 
 
+def _check_scene_size(size: int) -> None:
+    if size > MAX_SCENE_BYTES:
+        raise ApiError(
+            413,
+            "scene_too_large",
+            f"scene.json is {size} bytes, over the {MAX_SCENE_BYTES // _MB} MB limit.",
+        )
+
+
 def _open_bundle(data: bytes) -> tuple[bytes, set[str], str]:
     """scene.json's bytes, every file name in the bundle, and the folder scene.json sits in."""
     try:
@@ -243,8 +270,12 @@ def _open_bundle(data: bytes) -> tuple[bytes, set[str], str]:
             )
         names = {i.filename for i in infos if not i.is_dir()}
         prefix = _scene_folder(names)
+        _check_scene_size(zf.getinfo(prefix + "scene.json").file_size)
         try:
-            scene_bytes = zf.read(prefix + "scene.json")
+            # Read at most one byte past the cap: a declared size can lie.
+            with zf.open(prefix + "scene.json") as entry:
+                scene_bytes = entry.read(MAX_SCENE_BYTES + 1)
+            _check_scene_size(len(scene_bytes))
         except (zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError, EOFError) as exc:
             raise ApiError(
                 400, "unreadable_zip", f"scene.json in the bundle can't be read: {exc}"
@@ -311,6 +342,7 @@ def _parse(payload: bytes, is_zip: bool) -> Scene:
         raw = _load_json(scene_bytes, "scene.json")
     else:
         scene_bytes, names, prefix = payload, None, ""
+        _check_scene_size(len(payload))
         raw = _load_json(payload, "The body")
     try:
         scene = parse_scene(raw, LOADED.rules, scene_bytes)
@@ -323,7 +355,12 @@ def _parse(payload: bytes, is_zip: bool) -> Scene:
 
 def _solve(payload: bytes, is_zip: bool) -> tuple[Scene, dict[str, Any]]:
     scene = _parse(payload, is_zip)
-    return scene, solve(scene, LOADED)
+    try:
+        return scene, solve(scene, LOADED)
+    except SceneTooComplex as exc:
+        raise ApiError(
+            422, "scene_too_complex", f"The server can't place this scene: {exc}."
+        ) from None
 
 
 # The routes read the raw body so one endpoint can take JSON, a zip or a form, so FastAPI can't

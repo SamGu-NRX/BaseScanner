@@ -29,6 +29,14 @@ _SEVERITY = {PASS: 0, UNSURE: 1, FAIL: 2}
 # Areas and lengths below this are floating point slivers, not geometry.
 _MEASURE_EPS = 1e-6
 SCHEMA_VERSION = "1.0"
+# Operational bounds on one request: a realistic scan needs a few thousand positions and well
+# under a second. Past these the input is refused rather than tying the server up.
+MAX_STARTS = 50_000
+SOLVE_BUDGET_S = 20.0
+
+
+class SceneTooComplex(ValueError):
+    """The scene needs more positions checked, or more time, than one request may take."""
 
 
 @dataclass
@@ -55,7 +63,17 @@ class Check:
     def all_missing(self) -> list[tuple[str, float, float]]:
         return self.missing + (self.missing_later() if self.missing_later else [])
 
-    def to_json(self) -> dict[str, Any]:
+    def rule_keys(self) -> tuple[str, ...]:
+        # route_length's citation names the confident reach too.
+        extra = ("route.confident_reach_ft",) if self.id == "route_length" else ()
+        return (self.rule_key, *extra)
+
+    def to_json(self, private_keys: frozenset[str] = frozenset()) -> dict[str, Any]:
+        source = self.rule.source if self.rule else self.rule_source
+        if _is_private(self.rule_keys(), private_keys):
+            # The private file's citations stay on the server; answers say only where the value
+            # came from.
+            source = "Private rules"
         out: dict[str, Any] = {
             "id": self.id,
             "label": self.label,
@@ -68,7 +86,7 @@ class Check:
             "subject": self.subject,
             "rule": {
                 "key": self.rule_key,
-                "source": self.rule.source if self.rule else self.rule_source,
+                "source": source,
                 "placeholder": self.rule.placeholder if self.rule else self.rule_placeholder,
             },
         }
@@ -77,6 +95,13 @@ class Check:
         if self.outcome == UNSURE:
             out["unsure_cause"] = self.unsure_cause or "margin"
         return out
+
+
+def _is_private(keys: tuple[str, ...], private_keys: frozenset[str]) -> bool:
+    """Whether the private file set any of these rules or anything under them."""
+    return any(
+        k == p or p.startswith(f"{k}.") or k.startswith(f"{p}.") for k in keys for p in private_keys
+    )
 
 
 def _round(v: float | None) -> float | None:
@@ -781,8 +806,12 @@ class Solver:
         e_fixed = self.scene.meter_plus_minus + piece.plus_minus + detour_err
         if piece.drift >= 1:
             return math.inf
-        # The route's error grows with |s| by the wall's drift: solve |s| - e(|s|) = max.
-        return (self.r.route.max_ft.value + e_fixed) / (1 - piece.drift) + 2 * EPS
+        # The route's error grows by the wall's drift at the battery's far edge, |s| + W from the
+        # meter (as evaluate takes it): solve |s| - e(|s| + W) = max.
+        e_fixed += piece.drift * self.W
+        # The 1e-6 ft margin keeps the cutoff clear of the 6-decimal rounding of reported
+        # starts, so a start reported past reach really fails when evaluated.
+        return (self.r.route.max_ft.value + e_fixed) / (1 - piece.drift) + 1e-6
 
     def starts(self, piece: Piece) -> list[float]:
         """Start positions (left edge, in s) to evaluate on one straight segment."""
@@ -798,23 +827,24 @@ class Solver:
         # treatment.
         k_lo, k_hi = math.floor(lo / step) - 1, math.ceil((hi + W) / step) + 1
         points = [lo, hi] + [k * step - W / 2 for k in range(k_lo, k_hi + 1)]
-        # Along the wall: every place an interval can start or stop mattering.
-        boundaries = [0.0, *self.ws_span]
+        # Along the wall: every place an interval can start or stop mattering, each with only
+        # its own error offsets (combining every boundary with every error would grow as their
+        # product).
+        ew = piece.error_at(max(abs(lo), abs(hi)))
+        around = (0.0, ew, -ew)
+        boundaries: list[tuple[float, tuple[float, ...]]] = [(0.0, around)]
+        boundaries += [(b, around) for b in self.ws_span]
         for o in self.scene.objects:
-            boundaries += list(o.span)
+            e = o.plus_minus
+            boundaries += [(b, (0.0, e, -e, e + ew, -(e + ew))) for b in o.span]
         for m in self.scene.overheads + self.scene.facing:
-            boundaries += list(m.span)
+            boundaries += [(b, around) for b in m.span]
         for band in self.scene.observed.values():
             for a, b, _ in band:
-                boundaries += [a, b]
+                boundaries += [(a, around), (b, around)]
         for g in self.scene.gaps:
-            boundaries += [g.s0, g.s1]
-        ew = piece.error_at(max(abs(lo), abs(hi)))
-        offsets = {0.0}
-        for m in [*self.equipment, *self.scene.overheads, *self.scene.facing]:
-            for e in (m.plus_minus, m.plus_minus + ew):
-                offsets |= {e, -e}
-        for b in boundaries:
+            boundaries += [(g.s0, around), (g.s1, around)]
+        for b, offsets in boundaries:
             for off in offsets:
                 points += [b + off, b - W - off]
         rt = self.r.route
@@ -869,11 +899,22 @@ class Solver:
                 out.append((g.polygon, d))
         return out
 
-    def candidates(self) -> list[Candidate]:
+    def candidates(self, budget_s: float) -> list[Candidate]:
+        started = time.perf_counter()
+        starts = [(piece, s0) for piece in self.scene.walls for s0 in self.starts(piece)]
+        if len(starts) > MAX_STARTS:
+            raise SceneTooComplex(
+                f"the scene needs {len(starts)} battery positions checked, more than the "
+                f"{MAX_STARTS} this server evaluates"
+            )
         out = []
-        for piece in self.scene.walls:
-            for s0 in self.starts(piece):
-                out.append(self.evaluate(piece, s0))
+        for i, (piece, s0) in enumerate(starts):
+            if i % 64 == 0 and time.perf_counter() - started > budget_s:
+                raise SceneTooComplex(
+                    f"checking the scene took longer than {budget_s:g} seconds "
+                    f"({i} of {len(starts)} positions done)"
+                )
+            out.append(self.evaluate(piece, s0))
         return out
 
     def out_of_reach(self) -> list[dict[str, Any]]:
@@ -1036,25 +1077,28 @@ def _sweep_json(cands: list[Candidate], scene: Scene, step: float) -> list[dict[
     return runs
 
 
-def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
-    """Decide where the battery goes. Pure apart from the elapsed time it reports."""
+def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -> dict[str, Any]:
+    """Decide where the battery goes. Pure apart from the elapsed time it reports.
+
+    Raises SceneTooComplex when the scene needs more positions checked, or more time, than a
+    request may take."""
     started = time.perf_counter()
     solver = Solver(scene, loaded)
     r = loaded.rules
-    cands = solver.candidates()
+    cands = solver.candidates(budget_s)
     far = solver.out_of_reach()
     passes = [c for c in cands if c.outcome == PASS]
     unsures = [c for c in cands if c.outcome == UNSURE]
     fails = [c for c in cands if c.outcome == FAIL]
     auto = r.policy.auto_approve and r.policy.id is not None
 
-    e_end = scene.meter_plus_minus
     ends: dict[str, dict[str, Any]] = {}
     for side, s_end, pt, piece in (
         ("left", scene.s_min, scene.walls[0].a, scene.walls[0]),
         ("right", scene.s_max, scene.walls[-1].b, scene.walls[-1]),
     ):
-        beyond = abs(s_end) - (e_end + piece.error_at(s_end)) - r.route.max_ft.value > EPS
+        # Any spot past this end has its near edge at least |s_end| out.
+        beyond = abs(s_end) > solver.reach_limit(piece)
         ends[side] = {
             "kind": scene.end_kinds[side],
             "s_ft": _round(s_end),
@@ -1204,7 +1248,7 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
         },
         "spot": _spot_json(solver, spot) if spot else None,
         "route": _route_json(solver, spot) if spot else None,
-        "checks": [c.to_json() for c in best.checks] if best else [],
+        "checks": [c.to_json(loaded.private_keys) for c in best.checks] if best else [],
         "nearest_considered": _spot_json(solver, nearest) if nearest else None,
         "missing_evidence": missing,
         "ends": ends,
