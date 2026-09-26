@@ -23,10 +23,15 @@ final class KeyframeStore {
     /// Bumped by `discardKeyframes`, so a write that started before it doesn't land in the list.
     private var epoch = 0
 
+    /// Makes a new, empty scan folder and deletes every other one: only the current scan is kept
+    /// on the phone. Covers both a start over (the previous scan's folder) and launch (folders a
+    /// quit or crashed run left behind), since both make a new store.
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        directory = caches.appending(path: "Scans/\(UUID().uuidString)", directoryHint: .isDirectory)
+        let scans = caches.appending(path: "Scans", directoryHint: .isDirectory)
+        directory = scans.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        Self.deleteScans(in: scans, except: directory.lastPathComponent)
     }
 
     func nextKeyframeIndex() -> Int {
@@ -87,7 +92,8 @@ final class KeyframeStore {
     }
 
     /// Zips scene.json with every keyframe and still into `scan.zip` and returns its URL. The
-    /// bundle stays on the phone until the next scan, so a failed upload can be retried.
+    /// bundle is for replay and debugging (the upload sends scene.json alone) and stays on the
+    /// phone until the next scan.
     func writeBundle(sceneJSON: Data) async throws -> URL {
         let directory = directory
         let files = keyframes.map(\.fileName) + stills.values.sorted()
@@ -101,6 +107,22 @@ final class KeyframeStore {
             try zip.write(to: url, options: .atomic)
             return url
         }.value
+    }
+
+    /// Off the main actor. A write still in flight for a deleted folder fails, because its
+    /// directory is gone, and is dropped like any failed write.
+    nonisolated private static func deleteScans(in scans: URL, except kept: String) {
+        Task.detached(priority: .utility) {
+            let files = FileManager.default
+            guard let names = try? files.contentsOfDirectory(atPath: scans.path) else { return }
+            for name in names where name != kept {
+                do {
+                    try files.removeItem(at: scans.appending(path: name))
+                } catch {
+                    RuntimeLog.engine.error("could not delete old scan \(name, privacy: .public): \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
     }
 
     nonisolated private static func data(of payload: JPEGPayload) -> Data? {
