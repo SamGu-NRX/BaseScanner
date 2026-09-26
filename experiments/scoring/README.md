@@ -70,7 +70,11 @@ Each results file carries the sha256 of the exact rules file it was produced und
      "status": "measured", "value_ft": 4.500, "plus_minus_ft": 0.010,
      "method": "tape", "measured_by": ["surveyor-a", "surveyor-b"]}
   ],
-  "checks": [{"candidate": "c1", "check": "gas", "measurement": "c1-gas", "threshold": "gas_clearance_ft"}]
+  "checks": [
+    {"candidate": "c1", "check": "gas", "measurement": "c1-gas", "threshold": "gas_clearance_ft"},
+    {"candidate": "c1", "check": "route", "measurement": "c1-route",
+     "threshold": "max_route_ft", "review_threshold": "review_route_ft"}
+  ]
 }
 ```
 
@@ -86,6 +90,7 @@ Each results file carries the sha256 of the exact rules file it was produced und
 | `measurements[].plus_minus_ft` | The survey's own uncertainty, u. |
 | `measurements[].method`, `measured_by` | How and by whom. |
 | `checks[]` | One pass/fail decision: the spot, a check name, the measurement that decides it and the threshold it is compared with. A measurement can decide more than one check. An absent feature may only decide an `at_least` check, which it passes. Every candidate must have the same check names, so leaving a hard check out at one spot cannot shrink the denominator. |
+| `checks[].review_threshold` | Optional. Turns the check into a band: values that clear `review_threshold` pass, values past `threshold` fail, and values between go to review. Both thresholds must pass in the same direction, and the review line must sit on the passing side of `threshold`. The route check uses `review_route_ft` and `max_route_ft`. |
 
 ### Results file (one per pipeline run)
 
@@ -122,9 +127,25 @@ The markdown summary has one section per house. Each section has a distances tab
 
 **Survey outcome of a check.** Let s be the survey value's margin on the passing side of the threshold, and u the survey uncertainty. The check passes when s ≥ u, fails when s < −u, and is borderline in between. A value exactly on the threshold with u = 0 passes. The same value with any uncertainty is borderline. An absent feature passes. An unmeasured one is unknown and is left out of the decision counts.
 
-**Error relative to the threshold.** The ratio is |error| / max(|s|, u). Above 1, the run's error could flip the check. When s and u are both zero the ratio has no denominator, so the CSV reports `at_threshold`, and any nonzero error counts as a possible flip.
+A check with a review band follows `docs/02-implementation-plan.md` "Lane C": past the confident reach it is unsure, over the maximum it fails. For the route, with length L and survey uncertainty u:
 
-**Decisions.** A correct run passes a passing check, fails a failing one, and says unsure on a borderline one. An unsafe pass is a run's pass where the survey fails or is borderline. That count matters most. A false rejection is a run's fail where the survey passes. An unsure is justified when the survey is borderline or the run had no value (unsupported or failed). Otherwise it is avoidable.
+| Survey | Outcome |
+|---|---|
+| L + u ≤ `review_route_ft` | pass |
+| L − u > `max_route_ft` | fail |
+| anything else | review |
+
+So a route exactly on `review_route_ft` with u = 0 passes, and one exactly on `max_route_ft` is review, not fail. A pipeline should apply the same rule with its own ±.
+
+**Error relative to the threshold.** The ratio is |error| / max(m, u), where m is the survey value's distance to the nearest threshold. For a band, that is whichever of the two lines is closer, since crossing either changes the outcome. Above 1, the run's error could flip the check. When m and u are both zero the ratio has no denominator, so the CSV reports `at_threshold`, and any nonzero error counts as a possible flip.
+
+**Decisions.** A correct run passes a passing check, fails a failing one, and says unsure on a borderline or review one. Three wrong answers are counted separately:
+
+- An unsafe pass is a run's pass where the survey fails or is borderline. That count matters most.
+- A missed review is a run's pass where the survey is review: the spot was inside the band and needed a person to look.
+- Over-caution is a run's unsure or fail where the survey passes. False rejections are the fails among them, listed on their own too.
+
+A run's fail on a review-band spot is a disagreement but none of the three. An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
 
 **Timing.** Capture and processing seconds, as the run reported them. Every row that shares a recording shares its capture time. A photo row cannot claim a shorter capture from it.
 
@@ -148,8 +169,7 @@ An honest pitch sentence: "On [N] houses, AR taps measured [k] of [n] distances,
 
 ## Known gaps
 
-- Each check has one threshold. Route length has a review band between `review_route_ft` and `max_route_ft`, and nobody has decided what a pipeline should report inside it. The fixture scores the route against `max_route_ft` only.
 - Spot placement error (how far a pipeline's spot sits from the taped mark) is not scored.
 - Latency is one processing time per run. Cold and warm starts, crashes and timeouts need separate runs or fields.
 - The protocol keeps survey values in meters. This format uses feet to match `rules.yaml` and `scene.json`. Convert once, when the survey is typed up.
-- `rules.yaml` does not exist yet. Threshold names follow the protocol note. `facing_gap_ft` and `pool_clearance_ft` in the fixture are synthetic placeholders.
+- `rules.yaml` does not exist yet. Threshold names follow the protocol note. `facing_gap_ft`, `pool_clearance_ft` and `review_route_ft` in the fixture are synthetic placeholders.

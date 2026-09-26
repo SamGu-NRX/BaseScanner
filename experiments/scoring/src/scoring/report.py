@@ -42,10 +42,13 @@ CHECK_COLUMNS = (
     "measurement",
     "threshold",
     "threshold_ft",
+    "review_threshold",
+    "review_threshold_ft",
     "pass_when",
     "survey_ft",
     "survey_plus_minus_ft",
     "margin_ft",
+    "review_margin_ft",
     "truth_outcome",
     "run_ft",
     "abs_error_in",
@@ -55,6 +58,8 @@ CHECK_COLUMNS = (
     "expected_outcome",
     "agrees",
     "unsafe_pass",
+    "missed_review",
+    "over_caution",
     "false_rejection",
     "abstention",
 )
@@ -82,6 +87,8 @@ RUN_COLUMNS = (
     "judged",
     "agrees",
     "unsafe_passes",
+    "missed_reviews",
+    "over_cautious",
     "false_rejections",
     "abstentions_justified",
     "abstentions_avoidable",
@@ -155,10 +162,13 @@ def check_row(run: RunScore, score: CheckScore) -> dict[str, str]:
         "measurement": score.check.measurement,
         "threshold": score.threshold.name,
         "threshold_ft": feet(score.threshold.value_ft),
+        "review_threshold": score.review.name if score.review else "",
+        "review_threshold_ft": feet(score.review.value_ft) if score.review else "",
         "pass_when": score.threshold.pass_when,
         "survey_ft": feet(score.survey.value_ft),
         "survey_plus_minus_ft": feet(score.survey.plus_minus_ft),
         "margin_ft": feet(score.margin_ft),
+        "review_margin_ft": feet(score.review_margin_ft),
         "truth_outcome": score.truth,
         "run_ft": feet(reported.value_ft) if reported else "",
         "abs_error_in": inches(score.measurement.abs_error_in),
@@ -168,6 +178,8 @@ def check_row(run: RunScore, score: CheckScore) -> dict[str, str]:
         "expected_outcome": score.expected or "",
         "agrees": flag(score.agrees),
         "unsafe_pass": flag(score.unsafe_pass),
+        "missed_review": flag(score.missed_review),
+        "over_caution": flag(score.over_caution),
         "false_rejection": flag(score.false_rejection),
         "abstention": score.abstention or "",
     }
@@ -203,6 +215,8 @@ def run_row(run: RunScore) -> dict[str, str]:
         "judged": str(run.judged),
         "agrees": decision(run.agreements),
         "unsafe_passes": decision(run.unsafe_passes),
+        "missed_reviews": decision(run.missed_reviews),
+        "over_cautious": decision(run.over_cautious),
         "false_rejections": decision(run.false_rejections),
         "abstentions_justified": decision(run.abstentions("justified")),
         "abstentions_avoidable": decision(run.abstentions("avoidable")),
@@ -332,17 +346,21 @@ def _checks(runs: list[RunScore]) -> list[str]:
             decided = [
                 f"{run.agreements}/{judged}",
                 str(run.unsafe_passes),
+                str(run.missed_reviews),
+                str(run.over_cautious),
                 str(run.false_rejections),
                 str(run.abstentions("justified")),
                 str(run.abstentions("avoidable")),
             ]
         else:
-            decided = ["no decisions", "", "", "", ""]
+            decided = ["no decisions", "", "", "", "", "", ""]
         rows.append([f"`{run.results.pipeline}`", *decided, str(run.could_flip)])
     header = [
         "Pipeline",
         "Agree",
         "Unsafe passes",
+        "Missed reviews",
+        "Over-cautious",
         "False rejections",
         "Unsure, justified",
         "Unsure, avoidable",
@@ -353,11 +371,16 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "### Checks",
         "",
         f"{total} checks, {judged} with a survey outcome. The survey passes a check when its "
-        "value clears the threshold by at least its ± and fails it when it misses by more; "
-        "anything between is borderline, where the right answer is unsure. An unsafe pass is a "
-        "run's pass where the survey fails or is borderline. An unsure is justified when the "
-        "survey is borderline or the run has no value. The error could flip a check when it is "
-        "larger than both the survey's distance to the threshold and its ±.",
+        "value clears the pass line by at least its ± and fails it when it misses the fail line "
+        "by more. For most checks the two lines are one threshold, and anything between is "
+        "borderline. A check with a review band (such as route length between review_route_ft "
+        "and max_route_ft) is review in between. Borderline and review both call for unsure. "
+        "An unsafe pass is a run's pass where the survey fails or is borderline. A missed "
+        "review is a pass where the survey is review. Over-cautious counts unsure or fail "
+        "where the survey passes; false rejections are the fails among them. An unsure is "
+        "justified when the survey is borderline or review, or the run has no value. The error "
+        "could flip a check when it is larger than both the survey's distance to the nearest "
+        "threshold and its ±.",
         "",
         *_table(header, rows),
     ]

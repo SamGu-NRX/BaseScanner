@@ -1,9 +1,10 @@
 """The committed synthetic fixtures, scored through the CLI and checked against hand-worked answers.
 
 House synthetic-01 has two spots. Survey outcomes under fixtures/rules.json:
-c1: gas pass (4.5 vs 3), facing_gap pass (5.0 vs 3), route pass (12 vs 20), pool pass (absent).
-c2: gas borderline (3.02 +- 0.03 vs 3), facing_gap fail (2.5 vs 3), route pass (19.9 vs 20),
-pool unknown (not measured).
+Route checks pass up to review_route_ft (15), are review up to max_route_ft (20), and fail beyond.
+c1: gas pass (4.5 vs 3), facing_gap pass (5.0 vs 3), route pass (12.05 <= 15), pool pass (absent).
+c2: gas borderline (3.02 +- 0.03 vs 3), facing_gap fail (2.5 vs 3), route review (19.9 +- 0.05
+is past 15 but not past 20), pool unknown (not measured).
 """
 
 import csv
@@ -67,8 +68,10 @@ EXPECTED_RUNS = {
         "absent_agreed": "1",
         "not_surveyed": "1",
         "judged": "7",
-        "agrees": "5",
-        "unsafe_passes": "1",
+        "agrees": "4",
+        "unsafe_passes": "1",  # c2 gas, borderline
+        "missed_reviews": "1",  # c2 route, review
+        "over_cautious": "0",
         "false_rejections": "0",
         "abstentions_justified": "1",
         "abstentions_avoidable": "0",
@@ -91,9 +94,11 @@ EXPECTED_RUNS = {
         "judged": "7",
         "agrees": "2",
         "unsafe_passes": "0",
-        "false_rejections": "1",
+        "missed_reviews": "0",
+        "over_cautious": "2",  # c1 facing_gap fail, c1 route unsure
+        "false_rejections": "1",  # c1 facing_gap
         "abstentions_justified": "1",
-        "abstentions_avoidable": "2",
+        "abstentions_avoidable": "1",
         "could_flip": "2",
         "capture_s": "420.0",
         "processing_s": "95.0",
@@ -114,6 +119,8 @@ EXPECTED_RUNS = {
         # No decisions: the decision counts are empty, not zero.
         "agrees": "",
         "unsafe_passes": "",
+        "missed_reviews": "",
+        "over_cautious": "",
         "false_rejections": "",
         "abstentions_justified": "",
         "abstentions_avoidable": "",
@@ -178,18 +185,31 @@ def test_check_rows(scored):
     )
 
     route = rows[("ar-taps", "c2", "route")]
-    assert (route["margin_ft"], route["error_to_margin"], route["agrees"]) == (
-        "0.100",
-        "4.00",  # 0.4 / max(0.1, 0.05)
+    assert route["truth_outcome"] == "review"
+    assert (route["margin_ft"], route["review_margin_ft"]) == ("0.100", "-4.900")
+    assert route["error_to_margin"] == "4.00"  # 0.4 / max(min(0.1, 4.9), 0.05)
+    assert (route["missed_review"], route["unsafe_pass"], route["agrees"]) == (
         "true",
+        "false",
+        "false",
     )
 
-    rejection = rows[("photo-depth", "c2", "route")]
-    assert (rejection["false_rejection"], rejection["error_to_margin"]) == ("true", "11.00")
+    in_band = rows[("photo-depth", "c2", "route")]  # fail where the survey is review
+    assert (in_band["false_rejection"], in_band["over_caution"], in_band["agrees"]) == (
+        "false",
+        "false",
+        "false",
+    )
+    assert in_band["error_to_margin"] == "11.00"  # 1.1 / 0.1
+
+    rejection = rows[("photo-depth", "c1", "facing_gap")]
+    assert (rejection["false_rejection"], rejection["over_caution"]) == ("true", "true")
 
     assert rows[("ar-taps", "c2", "facing_gap")]["abstention"] == "justified"
-    assert rows[("photo-depth", "c1", "route")]["abstention"] == "justified"
-    assert rows[("photo-depth", "c1", "facing_gap")]["abstention"] == "avoidable"
+    unsupported = rows[("photo-depth", "c1", "route")]
+    assert (unsupported["abstention"], unsupported["over_caution"]) == ("justified", "true")
+    assert rows[("photo-depth", "c2", "facing_gap")]["abstention"] == "avoidable"
+    assert rows[("mesh-scaled", "c1", "route")]["error_to_margin"] == "0.17"  # 0.5 / 3
 
     unknown = rows[("ar-taps", "c2", "pool")]
     assert (unknown["truth_outcome"], unknown["run_outcome"], unknown["agrees"]) == (
@@ -206,7 +226,8 @@ def test_markdown_summary(scored):
     assert "left out of every error figure" in stdout
     assert "Scale reference `scale` (5.000 ft), excluded." in stdout
     assert "| `ar-taps` | ar_poses | 6/9 | 3.48 | 4.80 | 3/6 | 0 | 1 | 0 | 0 | 1 | 1 |" in stdout
-    assert "| `mesh-scaled` | no decisions | n/a | n/a | n/a | n/a | 0 |" in stdout
+    assert "| `mesh-scaled` | no decisions | n/a | n/a | n/a | n/a | n/a | n/a | 0 |" in stdout
+    assert "| `ar-taps` | 4/7 | 1 | 1 | 0 | 0 | 1 | 0 | 2 |" in stdout
     assert "| `mesh-scaled` | 420.0 | not recorded |" in stdout
     assert (
         "- `ar-taps` passed `gas` at `c2`; the survey is borderline at 3.020 ± 0.030 ft against "

@@ -13,6 +13,11 @@
       "pass_when": "at_least",
       "source": "Synthetic placeholder; the public passage width is TBD in docs/01-feature-map.md"
     },
+    "review_route_ft": {
+      "value_ft": 15,
+      "pass_when": "at_most",
+      "source": "Synthetic placeholder; the confident reach before review, per docs/02-implementation-plan.md Lane C"
+    },
     "max_route_ft": {
       "value_ft": 20,
       "pass_when": "at_most",

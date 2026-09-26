@@ -70,18 +70,18 @@ class TestTruthOutcome:
 class TestErrorToMargin:
     def test_ratio_uses_the_margin_when_it_is_larger(self):
         # error 0.4, margin |3.6 - 3| = 0.6, u 0.02: 0.4 / 0.6
-        assert error_to_margin(D("0.4"), D("0.6"), D("0.02")) == D("0.4") / D("0.6")
+        assert error_to_margin(D("0.4"), (D("0.6"),), D("0.02")) == D("0.4") / D("0.6")
 
     def test_ratio_uses_the_uncertainty_when_it_is_larger(self):
         # error 0.33, margin 0.02, u 0.03: 0.33 / 0.03 = 11
-        assert error_to_margin(D("0.33"), D("0.02"), D("0.03")) == D("11")
+        assert error_to_margin(D("0.33"), (D("0.02"),), D("0.03")) == D("11")
 
     def test_negative_margin_uses_its_size(self):
-        assert error_to_margin(D("0.4"), D("-0.5"), D("0.02")) == D("0.8")
+        assert error_to_margin(D("0.4"), (D("-0.5"),), D("0.02")) == D("0.8")
 
     def test_zero_margin_and_zero_uncertainty_is_at_threshold(self):
-        assert error_to_margin(D("0.1"), D("0"), D("0")) == AT_THRESHOLD
-        assert error_to_margin(D("0"), D("0"), D("0")) == AT_THRESHOLD
+        assert error_to_margin(D("0.1"), (D("0"),), D("0")) == AT_THRESHOLD
+        assert error_to_margin(D("0"), (D("0"),), D("0")) == AT_THRESHOLD
 
     def test_ratio_of_exactly_one_cannot_flip(self):
         assert could_flip(D("1"), D("0.5")) is False
@@ -240,6 +240,121 @@ class TestScoreCheck:
         assert score.margin_ft is None
         assert score.error_to_margin is None
         assert score.agrees is True
+
+
+REVIEW = threshold("15", "at_most", "review_route_ft")
+MAX = threshold("20", "at_most", "max_route_ft")
+ROUTE = Check("c1", "route", "m", "max_route_ft", "review_route_ft")
+
+
+def route_outcome(value: str, plus_minus: str = "0"):
+    return truth_outcome(survey(value, plus_minus), MAX, REVIEW)
+
+
+class TestRouteBand:
+    # Pass when length + u <= 15, fail when length - u > 20, review otherwise.
+
+    @pytest.mark.parametrize(
+        ("length", "expected"),
+        [
+            ("10", "pass"),
+            ("15", "pass"),  # on the review line: pass
+            ("15.001", "review"),
+            ("17.5", "review"),
+            ("20", "review"),  # on the max line: still review, not fail
+            ("20.001", "fail"),
+            ("25", "fail"),
+        ],
+    )
+    def test_bands_and_boundaries_without_uncertainty(self, length, expected):
+        assert route_outcome(length) == expected
+
+    @pytest.mark.parametrize(
+        ("length", "plus_minus", "expected"),
+        [
+            ("14.7", "0.3", "pass"),  # 14.7 + 0.3 = 15, on the review line
+            ("14.701", "0.3", "review"),  # its +- crosses the review line
+            ("14.9", "0.3", "review"),
+            ("20.3", "0.3", "review"),  # 20.3 - 0.3 = 20, not past max
+            ("20.301", "0.3", "fail"),
+            ("19.9", "0.3", "review"),  # its +- reaches past max, but a fail needs all of it past
+        ],
+    )
+    def test_uncertainty_must_clear_each_line(self, length, plus_minus, expected):
+        assert route_outcome(length, plus_minus) == expected
+
+    def test_band_does_not_change_a_single_threshold_check(self):
+        assert truth_outcome(survey("20", "0.01"), MAX) == "borderline"
+
+    def route_check(self, truth_value, run_value, outcome, *, missing=None):
+        measurement = score_measurement(
+            survey(truth_value, "0.05"),
+            reported(run_value, None if run_value is None else "0.3", missing=missing),
+            scale_reference=False,
+        )
+        return score_check(ROUTE, MAX, measurement, outcome, REVIEW)
+
+    def categories(self, score):
+        return (score.unsafe_pass, score.missed_review, score.over_caution)
+
+    def test_pass_where_the_survey_fails_is_unsafe(self):
+        score = self.route_check("22", "19", "pass")
+        assert score.truth == "fail"
+        assert self.categories(score) == (True, False, False)
+
+    def test_pass_where_the_survey_is_review_is_a_missed_review(self):
+        score = self.route_check("17", "14", "pass")
+        assert score.truth == "review"
+        assert score.expected == "unsure"
+        assert self.categories(score) == (False, True, False)
+        assert score.agrees is False
+
+    def test_unsure_where_the_survey_passes_is_over_caution(self):
+        score = self.route_check("12", "16", "unsure")
+        assert self.categories(score) == (False, False, True)
+        assert score.false_rejection is False
+        assert score.abstention == "avoidable"
+
+    def test_fail_where_the_survey_passes_is_over_caution_and_a_false_rejection(self):
+        score = self.route_check("12", "21", "fail")
+        assert self.categories(score) == (False, False, True)
+        assert score.false_rejection is True
+
+    def test_unsure_in_the_band_agrees_and_is_justified(self):
+        score = self.route_check("17", "17.2", "unsure")
+        assert score.agrees is True
+        assert score.abstention == "justified"
+        assert self.categories(score) == (False, False, False)
+
+    def test_fail_in_the_band_is_none_of_the_three(self):
+        score = self.route_check("17", "21", "fail")
+        assert score.agrees is False
+        assert self.categories(score) == (False, False, False)
+        assert score.false_rejection is False
+
+    def test_correct_pass_and_fail_agree(self):
+        assert self.route_check("12", "12.2", "pass").agrees is True
+        assert self.route_check("22", "22.2", "fail").agrees is True
+
+    def test_margins_and_ratio_use_the_nearest_line(self):
+        # Survey 19.9: 0.1 inside max, 4.9 past review. Run 19.5, error 0.4: 0.4 / 0.1 = 4.
+        score = self.route_check("19.9", "19.5", "pass")
+        assert (score.margin_ft, score.review_margin_ft) == (D("0.1"), D("-4.9"))
+        assert score.error_to_margin == D("4")
+        assert score.could_flip is True
+        # Survey 12: 3 inside review, 8 inside max. Error 0.25: 0.25 / 3.
+        near_review = self.route_check("12", "12.25", "pass")
+        assert near_review.error_to_margin == D("0.25") / D("3")
+        assert near_review.could_flip is False
+
+    def test_survey_on_the_review_line_with_no_uncertainty(self):
+        measurement = score_measurement(
+            survey("15", "0"), reported("15.1", "0.3"), scale_reference=False
+        )
+        score = score_check(ROUTE, MAX, measurement, "pass", REVIEW)
+        assert score.truth == "pass"
+        assert score.error_to_margin == AT_THRESHOLD
+        assert score.could_flip is True
 
 
 def run_score(scale_value: str, *, outcomes=None):

@@ -127,11 +127,11 @@
   "checks": [
     {"candidate": "c1", "check": "gas", "measurement": "c1-gas", "threshold": "gas_clearance_ft"},
     {"candidate": "c1", "check": "facing_gap", "measurement": "c1-facing", "threshold": "facing_gap_ft"},
-    {"candidate": "c1", "check": "route", "measurement": "c1-route", "threshold": "max_route_ft"},
+    {"candidate": "c1", "check": "route", "measurement": "c1-route", "threshold": "max_route_ft", "review_threshold": "review_route_ft"},
     {"candidate": "c1", "check": "pool", "measurement": "c1-pool", "threshold": "pool_clearance_ft"},
     {"candidate": "c2", "check": "gas", "measurement": "c2-gas", "threshold": "gas_clearance_ft"},
     {"candidate": "c2", "check": "facing_gap", "measurement": "c2-facing", "threshold": "facing_gap_ft"},
-    {"candidate": "c2", "check": "route", "measurement": "c2-route", "threshold": "max_route_ft"},
+    {"candidate": "c2", "check": "route", "measurement": "c2-route", "threshold": "max_route_ft", "review_threshold": "review_route_ft"},
     {"candidate": "c2", "check": "pool", "measurement": "c2-pool", "threshold": "pool_clearance_ft"}
   ]
 }

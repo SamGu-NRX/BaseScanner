@@ -44,8 +44,10 @@ def reported(
     )
 
 
-def threshold(value: str = "3", pass_when: str = "at_least") -> Threshold:
-    return Threshold("gas_clearance_ft", Decimal(value), pass_when, "synthetic")  # type: ignore[arg-type]
+def threshold(
+    value: str = "3", pass_when: str = "at_least", name: str = "gas_clearance_ft"
+) -> Threshold:
+    return Threshold(name, Decimal(value), pass_when, "synthetic")  # type: ignore[arg-type]
 
 
 RULES: dict[str, Any] = {
@@ -55,6 +57,7 @@ RULES: dict[str, Any] = {
     "thresholds": {
         "gas_clearance_ft": {"value_ft": 3, "pass_when": "at_least", "source": "synthetic"},
         "max_route_ft": {"value_ft": 20, "pass_when": "at_most", "source": "synthetic"},
+        "review_route_ft": {"value_ft": 15, "pass_when": "at_most", "source": "synthetic"},
     },
 }
 

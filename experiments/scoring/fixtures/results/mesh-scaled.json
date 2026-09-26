@@ -3,7 +3,7 @@
   "unit": "ft",
   "pipeline": "mesh-scaled",
   "capture": "synthetic-01-walk-1",
-  "rules_sha256": "b046319784113b08f7d390f45824d0c1ac5ab922a26ff8506f7ffc3776464862",
+  "rules_sha256": "05b466b3436155e190513a21b6333304ad9da4e93f1b5022b1813a433bdb325e",
   "scale_source": "scale_reference",
   "measurements": [
     {"id": "scale", "value_ft": 5.000, "plus_minus_ft": null},

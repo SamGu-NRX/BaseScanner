@@ -82,7 +82,9 @@ class Check:
     candidate: str
     check: str
     measurement: str
+    # The fail line. With review_threshold set, values between the two lines are for review.
     threshold: str
+    review_threshold: str | None = None
 
 
 @dataclass(frozen=True)
@@ -396,13 +398,18 @@ def load_truth(path: Path, rules: Rules) -> Truth:
     checks: list[Check] = []
     for index, entry in enumerate(top.items("checks")):
         fields = top.child(
-            entry, f"checks[{index}]", {"candidate", "check", "measurement", "threshold"}
+            entry,
+            f"checks[{index}]",
+            {"candidate", "check", "measurement", "threshold", "review_threshold"},
         )
         check = Check(
             candidate=fields.text("candidate"),
             check=fields.text("check"),
             measurement=fields.text("measurement"),
             threshold=fields.text("threshold"),
+            review_threshold=(
+                fields.text("review_threshold") if fields.has("review_threshold") else None
+            ),
         )
         if any((c.candidate, c.check) == (check.candidate, check.check) for c in checks):
             raise fields.error(f"check {check.check!r} at {check.candidate!r} is listed twice")
@@ -474,6 +481,34 @@ def _validate_check(
             f"measurement {check.measurement!r} is absent, but {check.threshold!r} passes "
             "at_most a distance; only a clearance (at_least) passes when the feature does not "
             "exist"
+        )
+    if check.review_threshold is not None:
+        _validate_review_band(fields, check, threshold, rules)
+
+
+def _validate_review_band(fields: _Fields, check: Check, fail: Threshold, rules: Rules) -> None:
+    """The review line must sit on the passing side of the fail line, in the same direction."""
+    review = rules.thresholds.get(check.review_threshold or "")
+    if review is None:
+        raise fields.error(f"{check.review_threshold!r} is not in {rules.path}", "review_threshold")
+    if review.name == fail.name:
+        raise fields.error("must differ from threshold", "review_threshold")
+    if review.pass_when != fail.pass_when:
+        raise fields.error(
+            f"{review.name!r} passes {review.pass_when} but {fail.name!r} passes "
+            f"{fail.pass_when}; a review band needs both in the same direction",
+            "review_threshold",
+        )
+    inside = (
+        review.value_ft <= fail.value_ft
+        if fail.pass_when == "at_most"
+        else review.value_ft >= fail.value_ft
+    )
+    if not inside:
+        raise fields.error(
+            f"{review.name!r} ({review.value_ft} ft) must be on the passing side of "
+            f"{fail.name!r} ({fail.value_ft} ft, {fail.pass_when})",
+            "review_threshold",
         )
 
 

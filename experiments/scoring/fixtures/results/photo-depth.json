@@ -3,7 +3,7 @@
   "unit": "ft",
   "pipeline": "photo-depth",
   "capture": "synthetic-01-walk-1",
-  "rules_sha256": "b046319784113b08f7d390f45824d0c1ac5ab922a26ff8506f7ffc3776464862",
+  "rules_sha256": "05b466b3436155e190513a21b6333304ad9da4e93f1b5022b1813a433bdb325e",
   "scale_source": "native_metric",
   "measurements": [
     {"id": "wall-length", "value_ft": 30.500, "plus_minus_ft": 1.5},
@@ -18,7 +18,7 @@
   ],
   "outcomes": [
     {"candidate": "c1", "check": "gas", "outcome": "pass"},
-    {"candidate": "c1", "check": "facing_gap", "outcome": "unsure"},
+    {"candidate": "c1", "check": "facing_gap", "outcome": "fail"},
     {"candidate": "c1", "check": "route", "outcome": "unsure"},
     {"candidate": "c1", "check": "pool", "outcome": "pass"},
     {"candidate": "c2", "check": "gas", "outcome": "fail"},

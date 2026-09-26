@@ -58,6 +58,15 @@ def test_scale_reference_may_be_left_out_of_a_run(tmp_path: Path):
     assert "scale" not in house.runs[0].measurements
 
 
+def test_review_band_loads(tmp_path: Path):
+    files = Files(tmp_path)
+    files.truth["checks"][1]["review_threshold"] = "review_route_ft"
+    rules, truth, results = files.write_all()
+    (house,) = load_study(rules, [truth], [results]).houses
+    assert house.truth.checks[1].review_threshold == "review_route_ft"
+    assert house.truth.checks[0].review_threshold is None
+
+
 def test_run_without_decisions_loads(tmp_path: Path):
     files = Files(tmp_path)
     files.results["outcomes"] = None
@@ -176,6 +185,29 @@ CASES: list[tuple[str, Callable[[Files], Any], str]] = [
             ),
         ],
         "candidate 'c2' has no route check; every spot needs the same checks",
+    ),
+    (
+        "unknown review threshold",
+        lambda f: f.truth["checks"][1].update(review_threshold="review_ft"),
+        "checks[1].review_threshold: 'review_ft' is not in",
+    ),
+    (
+        "review threshold equal to threshold",
+        lambda f: f.truth["checks"][1].update(review_threshold="max_route_ft"),
+        "checks[1].review_threshold: must differ from threshold",
+    ),
+    (
+        "review threshold in the other direction",
+        lambda f: f.truth["checks"][1].update(review_threshold="gas_clearance_ft"),
+        "passes at_least but 'max_route_ft' passes at_most",
+    ),
+    (
+        "review threshold past the fail line",
+        lambda f: [
+            f.rules["thresholds"]["review_route_ft"].update(value_ft=25),
+            f.truth["checks"][1].update(review_threshold="review_route_ft"),
+        ],
+        "'review_route_ft' (25 ft) must be on the passing side of 'max_route_ft' (20 ft, at_most)",
     ),
     ("absent at_most", make_route_absent, "only a clearance (at_least) passes"),
     (
