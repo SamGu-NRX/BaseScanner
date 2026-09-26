@@ -91,7 +91,7 @@ import Testing
         let over: Float = 4.83345 * 0.3048
         for (clear, met) in [(under, false), (over, true)] {
             var map = CoverageMap(wall: standardWall())
-            FacingTests.walk(&map, out: clear + CoverageMap.positionError(atS: 0.3048), from: -1, to: 1.5)
+            FacingTests.walk(&map, out: clear + ServerErrorDefaults.wall(.tap, atS: 0.3048), from: -1, to: 1.5)
             let exported = try #require(map.walkedClearance(at: 1))
             #expect(SceneExport.feetDown(exported) == (met ? 4.8334 : 4.8333))
             let cell = GapPlan(band: .ground, span: 0.1524...0.3048, reason: .server, need: plan.need, requestedOutFt: plan.requestedOutFt)
@@ -115,24 +115,28 @@ import Testing
         #expect(abs(planner.progress(of: deep, ground) - 0.5 / 0.6) < 1e-3)
 
         var walked = CoverageMap(wall: standardWall())
-        FacingTests.walk(&walked, out: 1.6 + CoverageMap.positionError(atS: 0.9144), from: -1, to: 1.5)
+        FacingTests.walk(&walked, out: 1.6 + ServerErrorDefaults.wall(.tap, atS: 0.9144), from: -1, to: 1.5)
         let facing = GapPlan(band: .ground, span: 0...0.786, reason: .server, need: .walkOut(1.5))
         #expect(planner.isSatisfied(facing, walked))
         walked.setEnd(.right, at: 0.5)
         #expect(!planner.isSatisfied(facing, walked))
     }
 
-    /// The request's span is read as the server sent it. Ground seen up to an end at 0.5 m is
-    /// exported to 1.6404 ft; the server's span_ft rounded outward is 1.64042 ft, which that
-    /// leaves 0.00002 ft short. Through Float meters and four decimals the request read 1.6404.
+    /// The request's span is read as the server sent it and the export as written. Ground seen up
+    /// to an end at 0.5 m (1.64042 ft) is written to 1.6404 ft, rounded inward. The server reads
+    /// a shortfall under its 0.01 ft tolerance as rounding, so a request to 1.64042 ft is met, but
+    /// one 0.02 ft past what was seen is not.
     @Test func aRequestSpanIsReadInTheServersFeet() throws {
         var map = CoverageMap(wall: standardWall())
         for out: Float in [1.0, 4.0] {
             for s: Float in [0, 0.3] { map.observe(GroundDepthTests.downCamera(s: s, out: out), trackingNormal: true) }
         }
         map.setEnd(.right, at: 0.5)
-        let short = try #require(GapPlanner().plan(
+        let rounding = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.64042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        #expect(GapPlanner().isSatisfied(rounding, map))
+        let short = try #require(GapPlanner().plan(
+            for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.66042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
         #expect(!GapPlanner().isSatisfied(short, map))
         let exact = try #require(GapPlanner().plan(
             for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.6404],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
@@ -146,7 +150,8 @@ import Testing
         // Needs 1.5 m clear: the walk at 1.5 m leaves 1.5 less the error.
         let gap = GapPlan(band: .ground, span: 0...0.786, reason: .server, need: .walkOut(1.5))
         #expect(!planner.isSatisfied(gap, map))
-        FacingTests.walk(&map, out: 1.5 + CoverageMap.positionError(atS: 0.9144) + 0.01, from: -1, to: 1.5)
+        // A second pass later on: poses join in the order they were captured, so it needs its own times.
+        FacingTests.walk(&map, out: 1.5 + ServerErrorDefaults.wall(.tap, atS: 0.9144) + 0.01, from: -1, to: 1.5, startTime: 100)
         #expect(planner.isSatisfied(gap, map))
     }
 

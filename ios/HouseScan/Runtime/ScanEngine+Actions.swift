@@ -46,6 +46,9 @@ extension ScanEngine: ScanActions {
             state.guidance = .aimAtWallForMeter
             return
         }
+        // The map carries the line's source: the export writes it and the walked clearance
+        // takes the server's error for it.
+        updateCoverage { $0.setWallLineSource(meterLineSource) }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform))
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
@@ -93,16 +96,15 @@ extension ScanEngine: ScanActions {
     /// with the kept keyframes whenever the wall moves (`CoverageMap.observedCameras`).
     ///
     /// Only when the close-up step ends (number confirmed, or skipped), because the photo on disk
-    /// is final then: a retake overwrites `meter_close.jpg`, and coverage must not keep a view
-    /// whose photo the scan no longer has. A skip keeps the last photo taken, which the scan
-    /// still sends as its still, so its view counts too; it passed the close-up gate's sharpness
-    /// and exposure checks, and only the number reading failed. The map always exists here: the
-    /// close-up follows the meter mark, which sets the wall (`setWall`). No time is passed, so
-    /// the pose never joins the walked path: nothing is kept between the close-up and the walk's
-    /// first frame.
+    /// is final then, and only the view `closeUpCredit` holds: the shot whose photo is on disk,
+    /// after the reader found it decodable and in focus. A skip after a photo the reader
+    /// rejected as blurry, or while a retake's photo is still saving or being read, adds nothing.
+    /// A photo in focus where only the number couldn't be read still counts. The map always
+    /// exists here: the close-up follows the meter mark, which sets the wall (`setWall`). No time
+    /// is passed, so the pose never joins the walked path: nothing is kept between the close-up
+    /// and the walk's first frame.
     private func observeCloseUpView() {
-        guard let view = closeUpView else { return }
-        closeUpView = nil
+        guard let view = closeUpCredit.take() else { return }
         var delta: CoverageMap.Delta?
         updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
         RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")

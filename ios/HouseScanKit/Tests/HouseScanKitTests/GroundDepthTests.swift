@@ -149,7 +149,8 @@ import Testing
         let observed = try #require(JSONSchemaValidator.Value.parse(data)["coverage"]?["observed"]?.array)
         let past = observed.filter { $0["band"]?.string == "ground" && ($0["span_ft"]?.numbers?.last ?? 0) > 1.6405 }
         #expect(past.count == 1)
-        #expect(past.first?["span_ft"]?.numbers == [1.6404, 5.6404])
+        // 0.5 m (1.64042 ft) to 1.7192 m (5.64042 ft), each end rounded inward.
+        #expect(past.first?["span_ft"]?.numbers == [1.6405, 5.6404])
         #expect(past.first?["out_ft"]?.number == 2.5)
 
         let item = try JSONDecoder().decode(PlacementMissingEvidence.self, from: Data(

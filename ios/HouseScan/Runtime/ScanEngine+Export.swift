@@ -14,10 +14,11 @@ extension ScanEngine {
         guard let map = coverage else { throw ExportError.noWall }
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
-        // The corners carry their pieces' sources (`markNextWall`); the meter's piece is `meterLineSource`.
+        // The corners carry their pieces' sources (`markNextWall`); the meter's piece, its own
+        // (`meterLineSource`, set on the map in `markMeter`).
         let sceneWall = SceneWall(
             meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners,
-            source: meterLineSource)
+            source: wall.source)
 
         // SceneExport rejects negative heights, a top below a bottom, ground points behind the
         // wall and a zero-length driveway edge, and taps can produce each of them once the ground
