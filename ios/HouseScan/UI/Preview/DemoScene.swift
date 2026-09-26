@@ -21,20 +21,28 @@ enum DemoScene {
 
     static let imageSize = SIMD2<Float>(1920, 1440)
 
-    /// A phone held upright 5 m from the wall, a little right of the meter, tilted 18° down.
-    /// Camera space: +x is down in the world (sensor image rotated for portrait), +y is right.
-    static let projection: CameraProjection = {
-        let pitch = Float(18) * .pi / 180
+    /// A phone held upright 5 m from the wall, a little right of the meter, tilted 18° down:
+    /// the walk.
+    static let projection = camera(at: SIMD3(0.6, 1.5, 5.0), pitchDegrees: 18, focal: 1100)
+    /// Standing 2.4 m back and aiming at the meter: finding it.
+    static let meterProjection = camera(at: SIMD3(0.05, 1.5, 2.4), pitchDegrees: 0, focal: 1400)
+    /// Close to the meter for its photo.
+    static let closeUpProjection = camera(at: SIMD3(0, 1.5, 0.9), pitchDegrees: 0, focal: 1400)
+
+    /// An upright phone at `position` looking at the wall (-z), tilted down by `pitchDegrees`.
+    /// Camera space: +x is down in the world (the sensor image is rotated for portrait), +y is
+    /// right, +z points back toward the homeowner.
+    private static func camera(at position: SIMD3<Float>, pitchDegrees: Float, focal: Float) -> CameraProjection {
+        let pitch = pitchDegrees * .pi / 180
         let x = SIMD4<Float>(0, -cos(pitch), sin(pitch), 0)
         let y = SIMD4<Float>(1, 0, 0, 0)
         let z = SIMD4<Float>(0, sin(pitch), cos(pitch), 0)
-        let position = SIMD4<Float>(0.6, 1.5, 5.0, 1)
         return CameraProjection(
-            cameraToWorld: simd_float4x4(columns: (x, y, z, position)),
-            intrinsics: SIMD4(1100, 1100, 960, 720),
+            cameraToWorld: simd_float4x4(columns: (x, y, z, SIMD4(position, 1))),
+            intrinsics: SIMD4(focal, focal, 960, 720),
             imageSize: imageSize
         )
-    }()
+    }
 
     /// Where the homeowner stands, on the ground.
     static let standingPoint = SIMD3<Float>(0.6, 0, 5.0)
@@ -61,10 +69,12 @@ enum DemoScene {
 
     // MARK: Picture
 
-    /// The still frame: rendered once, landscape, unrotated, like a sensor image.
-    static let image: CGImage? = render()
+    /// The still frames: rendered once each, landscape, unrotated, like sensor images.
+    static let image: CGImage? = render(through: projection)
+    static let meterImage: CGImage? = render(through: meterProjection)
+    static let closeUpImage: CGImage? = render(through: closeUpProjection)
 
-    private static func render() -> CGImage? {
+    private static func render(through projection: CameraProjection) -> CGImage? {
         let width = Int(imageSize.x), height = Int(imageSize.y)
         guard let context = CGContext(
             data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
@@ -75,7 +85,7 @@ enum DemoScene {
         context.translateBy(x: 0, y: CGFloat(height))
         context.scaleBy(x: 1, y: -1)
 
-        let painter = Painter(context: context)
+        let painter = Painter(context: context, projection: projection)
         painter.fillAll(CGColor(srgbRed: 0.72, green: 0.83, blue: 0.93, alpha: 1))
 
         // Wall, foundation, siding and eave.
@@ -157,9 +167,10 @@ enum DemoScene {
     @MainActor
     private struct Painter {
         let context: CGContext
+        let projection: CameraProjection
 
         func pixel(_ world: SIMD3<Float>) -> CGPoint? {
-            DemoScene.projection.imagePixel(for: world).map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
+            projection.imagePixel(for: world).map { CGPoint(x: CGFloat($0.x), y: CGFloat($0.y)) }
         }
 
         func fillAll(_ color: CGColor) {

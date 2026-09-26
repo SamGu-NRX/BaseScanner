@@ -9,13 +9,8 @@ struct UploadingScreen: View {
 
     var body: some View {
         let copy = ScanCopy.upload(state.upload)
-        ScrollView {
+        CenteredScroll {
             VStack(spacing: 28) {
-                HStack {
-                    ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
-                    Spacer()
-                }
-                Spacer(minLength: 24)
                 UploadEmblem(upload: state.upload)
                 VStack(spacing: 8) {
                     Text(copy.title)
@@ -42,9 +37,11 @@ struct UploadingScreen: View {
             }
             .padding(24)
             .frame(maxWidth: 520)
-            .frame(maxWidth: .infinity)
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .overlay(alignment: .topLeading) {
+            ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                .padding(.horizontal, 24)
+        }
         .background(Palette.canvas.ignoresSafeArea())
     }
 
@@ -100,9 +97,9 @@ private struct UploadSteps: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            step("Photos ready", index: 0)
-            step(sendingTitle, index: 1)
-            step("Checking clearances", index: 2)
+            step(index: 0)
+            step(index: 1)
+            step(index: 2)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,14 +118,22 @@ private struct UploadSteps: View {
         }
     }
 
-    private var sendingTitle: String {
-        if case .uploading(let fraction) = upload {
-            return "Sending photos, \(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
+    /// Each step says what it will do until it's done, then what it did.
+    private func title(_ index: Int) -> String {
+        switch index {
+        case 0:
+            return index < current ? "Photos ready" : "Get photos ready"
+        case 1:
+            if case .uploading(let fraction) = upload {
+                return "Sending photos, \(Int((min(max(fraction, 0), 1) * 100).rounded()))%"
+            }
+            return index < current ? "Photos sent" : "Send photos"
+        default:
+            return index < current ? "Clearances checked" : "Check clearances"
         }
-        return "Photos sent"
     }
 
-    private func step(_ title: String, index: Int) -> some View {
+    private func step(index: Int) -> some View {
         HStack(spacing: 12) {
             ZStack {
                 if index < current {
@@ -146,7 +151,7 @@ private struct UploadSteps: View {
             .font(.title3)
             .frame(width: 28, height: 28)
             .animation(Motion.settle, value: current)
-            Text(index == 1 && current < 1 ? "Send photos" : title)
+            Text(title(index))
                 .font(Typeface.hint)
                 .foregroundStyle(index <= current ? .primary : .secondary)
                 .contentTransition(.numericText())

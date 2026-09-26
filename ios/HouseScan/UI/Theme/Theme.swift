@@ -10,6 +10,8 @@ enum Palette {
     /// Text on dark scrims over the camera.
     static let chalk = Color("Chalk")
     /// Primary actions, the walking path and the aiming ring: blue always means "go here, do this".
+    /// One value in both appearances: the lighter blue a dark variant would use drops white
+    /// button labels below 4.5:1, and camera screens run in dark mode.
     static let signal = Color("Signal")
     static let unseen = Color("CoverageUnseen")
     static let seen = Color("CoverageSeen")

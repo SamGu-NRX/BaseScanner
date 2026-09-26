@@ -210,7 +210,11 @@ struct CameraOverlays: View {
                     features: state.features,
                     wallBandHeight: state.coverage.wallBandHeight
                 )
-                WayfindingOverlay(projection: projection, wall: wall, path: state.path, target: state.target)
+                if state.marking == nil {
+                    // While marking, the reticle is the only aim; the path and ring would compete.
+                    WayfindingOverlay(projection: projection, wall: wall, path: state.path, target: state.target)
+                        .transition(.opacity)
+                }
             }
         }
     }

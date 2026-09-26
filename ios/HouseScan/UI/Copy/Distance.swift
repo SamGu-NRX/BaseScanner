@@ -42,12 +42,11 @@ enum Distance {
         return "\(feetAndInches(s)) \(s < 0 ? "left" : "right") of your meter"
     }
 
-    /// "between 2 ft and 5 ft right of your meter" for a span.
-    static func spanFromMeter(_ span: ClosedRange<Float>) -> String {
-        if span.lowerBound < 0, span.upperBound > 0 { return "around your meter" }
-        let near = min(abs(span.lowerBound), abs(span.upperBound))
-        let far = max(abs(span.lowerBound), abs(span.upperBound))
-        let side = span.upperBound <= 0 ? "left" : "right"
-        return "\(feetAndInches(near)) to \(feetAndInches(far)) \(side) of your meter"
+    /// "about 5 ft right of your meter" for the middle of a span: a place to walk to, not a
+    /// measurement to check.
+    static func aroundFromMeter(_ span: ClosedRange<Float>) -> String {
+        let center = (span.lowerBound + span.upperBound) / 2
+        if span.contains(0) || abs(center) < 0.3 { return "around your meter" }
+        return "about \(roughFeet(center)) \(center < 0 ? "left" : "right") of your meter"
     }
 }

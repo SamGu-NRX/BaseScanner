@@ -102,7 +102,7 @@ private struct FeatureRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(ScanCopy.name(feature.kind))
                         .font(Typeface.hint.weight(.semibold))
-                    Text(Distance.spanFromMeter(feature.span).prefix(1).uppercased() + Distance.spanFromMeter(feature.span).dropFirst())
+                    Text(Distance.aroundFromMeter(feature.span).prefix(1).uppercased() + Distance.aroundFromMeter(feature.span).dropFirst())
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

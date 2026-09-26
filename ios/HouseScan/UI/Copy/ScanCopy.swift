@@ -150,7 +150,7 @@ enum ScanCopy {
     // MARK: Gap
 
     static func gap(_ gap: GapRequest) -> Instruction {
-        let place = Distance.spanFromMeter(gap.span)
+        let place = Distance.aroundFromMeter(gap.span)
         switch gap.reason {
         case .groundNearCandidate:
             return Instruction(title: "Show the ground \(place)", detail: "This might be a spot for the battery, so the ground there needs a clear look from two places.")

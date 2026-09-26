@@ -100,12 +100,14 @@ final class DemoEngine: ScanActions {
     private func enterFindMeter() {
         state.phase = .findMeter
         state.guidance = .findMeter
-        state.projection = DemoScene.projection
+        state.feed = DemoScene.meterImage.map(CameraFeed.still) ?? .none
+        state.projection = DemoScene.meterProjection
         state.wall = nil
         state.coverage = .empty
     }
 
     private func placeMeter() {
+        state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.projection = DemoScene.projection
         state.wall = DemoScene.wall
         state.captureCount = max(state.captureCount, 1)
@@ -113,6 +115,8 @@ final class DemoEngine: ScanActions {
 
     private func enterCloseUp() {
         placeMeter()
+        state.feed = DemoScene.closeUpImage.map(CameraFeed.still) ?? .none
+        state.projection = DemoScene.closeUpProjection
         state.phase = .meterCloseUp
         state.guidance = .holdOnMeter
         state.closeUp = .aiming(hold: 0, problem: nil)

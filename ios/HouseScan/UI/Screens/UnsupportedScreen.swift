@@ -10,13 +10,8 @@ struct UnsupportedScreen: View {
     var body: some View {
         let failure = state.failure ?? .arUnsupported
         let copy = ScanCopy.failure(failure)
-        ScrollView {
+        CenteredScroll {
             VStack(spacing: 24) {
-                HStack {
-                    ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
-                    Spacer()
-                }
-                Spacer(minLength: 40)
                 Image(systemName: symbol(failure))
                     .font(.system(size: 52, weight: .semibold))
                     .foregroundStyle(Palette.signal)
@@ -44,7 +39,7 @@ struct UnsupportedScreen: View {
                             .background(Palette.signal, in: .capsule)
                     }
                     .accessibilityIdentifier("action.openSettings")
-                } else {
+                } else if failure != .arUnsupported {
                     Button("Start over") { actions.startOver() }
                         .buttonStyle(.quiet)
                         .accessibilityIdentifier("action.startOver")
@@ -52,9 +47,11 @@ struct UnsupportedScreen: View {
             }
             .padding(24)
             .frame(maxWidth: 520)
-            .frame(maxWidth: .infinity)
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .overlay(alignment: .topLeading) {
+            ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                .padding(.horizontal, 24)
+        }
         .background(Palette.canvas.ignoresSafeArea())
     }
 
