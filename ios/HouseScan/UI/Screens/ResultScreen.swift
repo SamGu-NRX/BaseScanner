@@ -25,6 +25,17 @@ struct ResultScreen: View {
                     headline(result)
                         .opacity(revealed ? 1 : 0)
                         .offset(y: revealed || reduceMotion ? 0 : 12)
+                    if result.spot != nil {
+                        // Right under the answer: seeing it on the real wall is the next thing
+                        // anyone wants to do.
+                        Button {
+                            actions.showAR()
+                        } label: {
+                            Label("See it on your wall", systemImage: "camera.viewfinder")
+                        }
+                        .buttonStyle(.primary)
+                        .accessibilityIdentifier("action.showAR")
+                    }
                     if !result.policyApproved {
                         Notice(symbol: "info.circle.fill", text: ScanCopy.rulesNotFinal)
                             .accessibilityIdentifier("result.rulesNotFinal")
@@ -39,32 +50,16 @@ struct ResultScreen: View {
                     if !result.missing.isEmpty {
                         MissingList(missing: result.missing, actions: actions)
                     }
+                    Button("Start over") { actions.startOver() }
+                        .buttonStyle(.quiet)
+                        .accessibilityIdentifier("action.startOver")
+                        .padding(.top, 8)
                 }
                 .padding(20)
             }
         }
         .scrollBounceBehavior(.basedOnSize)
         .background(Palette.canvas.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 8) {
-                if result.spot != nil {
-                    Button {
-                        actions.showAR()
-                    } label: {
-                        Label("See it on your wall", systemImage: "camera.viewfinder")
-                    }
-                    .buttonStyle(.primary)
-                    .accessibilityIdentifier("action.showAR")
-                }
-                Button("Start over") { actions.startOver() }
-                    .buttonStyle(.quiet)
-                    .accessibilityIdentifier("action.startOver")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
-            .background(.bar)
-        }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : Motion.settle.delay(0.35)) { revealed = true }
         }
@@ -80,7 +75,7 @@ struct ResultScreen: View {
             } else {
                 Palette.canvas
             }
-            HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
                 if result.isSample {
                     Label("Sample result, not from the server", systemImage: "flask.fill")
                         .font(Typeface.caption)
@@ -88,6 +83,7 @@ struct ResultScreen: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(Palette.caution, in: .capsule)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("result.sampleBadge")
                 }
                 ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
@@ -120,12 +116,12 @@ struct ResultScreen: View {
             if !result.summary.isEmpty {
                 Text(result.summary)
                     .font(Typeface.hint)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
             } else if result.decision == .reject, let reason = result.checks.first(where: { $0.outcome == .fail })?.reason {
                 Text(reason)
                     .font(Typeface.hint)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
             }
         }
         .accessibilityElement(children: .combine)
@@ -206,7 +202,7 @@ private struct CheckRowView: View {
                     .font(Typeface.hint.weight(.semibold))
                 Text(row.reason)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
                 if let measurement = ScanCopy.measurement(row) {
                     Text(measurement)
@@ -263,7 +259,7 @@ private struct MissingList: View {
                     } else {
                         Label("An installer will check this", systemImage: "person.fill")
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                     }
                 }
                 .padding(14)

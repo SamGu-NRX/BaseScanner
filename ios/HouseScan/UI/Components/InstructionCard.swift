@@ -35,11 +35,12 @@ struct InstructionCard: View {
                 .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
             if let reply {
                 Button(reply.title, action: reply.perform)
-                    .font(Typeface.caption)
+                    .font(Typeface.caption.weight(.bold))
                     .foregroundStyle(Palette.chalk)
                     .padding(.horizontal, 16)
                     .frame(minHeight: Metrics.minTarget)
-                    .background(.white.opacity(0.16), in: .capsule)
+                    .background(.white.opacity(0.1), in: .capsule)
+                    .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 1))
                     .contentShape(.capsule)
                     .buttonStyle(PressableStyle())
                     .accessibilityHint(reply.hint)
@@ -71,7 +72,7 @@ struct InstructionCard: View {
                 if let detail = instruction.detail {
                     Text(detail)
                         .font(Typeface.hint)
-                        .foregroundStyle(Palette.chalk.opacity(0.86))
+                        .foregroundStyle(Palette.chalk.opacity(0.92))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

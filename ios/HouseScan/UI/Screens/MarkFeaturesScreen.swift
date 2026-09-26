@@ -37,13 +37,13 @@ struct MarkFeaturesScreen: View {
                             .accessibilityAddTraits(.isHeader)
                         Text("Gas meters, doors, windows, AC units, driveways and fences all change where a battery can go.")
                             .font(Typeface.hint)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                     }
 
                     if state.features.isEmpty {
                         Text("Nothing marked yet.")
                             .font(Typeface.hint)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(16)
                             .background(Palette.canvas, in: .rect(cornerRadius: 16, style: .continuous))
@@ -104,7 +104,7 @@ private struct FeatureRow: View {
                         .font(Typeface.hint.weight(.semibold))
                     Text(Distance.aroundFromMeter(feature.span).prefix(1).uppercased() + Distance.aroundFromMeter(feature.span).dropFirst())
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Palette.muted)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
@@ -140,7 +140,7 @@ private struct FeatureRow: View {
         Button(action: action) {
             Text(title)
                 .font(Typeface.button)
-                .foregroundStyle(selected ? .white : Palette.signal)
+                .foregroundStyle(selected ? .white : Palette.signalText)
                 .frame(maxWidth: .infinity, minHeight: 46)
                 .background(selected ? Palette.signal : Palette.signal.opacity(0.1), in: .capsule)
                 .contentShape(.capsule)
@@ -151,34 +151,39 @@ private struct FeatureRow: View {
     }
 }
 
-/// Quick-add chips that wrap onto as many lines as the text size needs.
+/// Quick-add chips in as many columns as the text size allows.
 private struct FlowChips: View {
     var onPick: (FeatureKind) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { chips }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 8)], alignment: .leading, spacing: 8) { chips }
+        let columns = typeSize.isAccessibilitySize ? 1 : 2
+        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+            ForEach(Array(stride(from: 0, to: FeatureKind.allCases.count, by: columns)), id: \.self) { start in
+                GridRow {
+                    ForEach(FeatureKind.allCases[start..<min(start + columns, FeatureKind.allCases.count)]) { kind in
+                        chip(kind)
+                    }
+                }
+            }
         }
     }
 
-    @ViewBuilder
-    private var chips: some View {
-        ForEach(FeatureKind.allCases) { kind in
-            Button {
-                onPick(kind)
-            } label: {
-                Label(ScanCopy.name(kind), systemImage: ScanCopy.symbol(kind))
-                    .font(Typeface.caption)
-                    .foregroundStyle(Palette.signal)
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: Metrics.minTarget)
-                    .background(Palette.signal.opacity(0.1), in: .capsule)
-                    .contentShape(.capsule)
-            }
-            .buttonStyle(PressableStyle())
-            .accessibilityLabel("Add \(ScanCopy.name(kind).lowercased())")
-            .accessibilityIdentifier("feature.\(kind.rawValue)")
+    private func chip(_ kind: FeatureKind) -> some View {
+        Button {
+            onPick(kind)
+        } label: {
+            Label(ScanCopy.name(kind), systemImage: ScanCopy.symbol(kind))
+                .font(Typeface.caption)
+                .foregroundStyle(Palette.signalText)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, minHeight: Metrics.minTarget, alignment: .leading)
+                .background(Palette.signal.opacity(0.1), in: .rect(cornerRadius: 14, style: .continuous))
+                .contentShape(.rect(cornerRadius: 14))
         }
+        .buttonStyle(PressableStyle())
+        .accessibilityLabel("Add \(ScanCopy.name(kind).lowercased())")
+        .accessibilityIdentifier("feature.\(kind.rawValue)")
     }
 }

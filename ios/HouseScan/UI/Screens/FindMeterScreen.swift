@@ -13,10 +13,6 @@ struct FindMeterScreen: View {
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraTapLayer { point, size in
-                ripple(at: point)
-                actions.markMeter(at: point, viewSize: size)
-            }
             Reticle(diameter: 76)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
@@ -26,7 +22,11 @@ struct FindMeterScreen: View {
                 tone: tone,
                 photoCount: nil,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                onCameraTap: { point in
+                    ripple(at: point)
+                    actions.markMeter(at: point, viewSize: cameraSize)
+                }
             ) {
                 Button {
                     ripple(at: CGPoint(x: cameraSize.width / 2, y: cameraSize.height / 2))

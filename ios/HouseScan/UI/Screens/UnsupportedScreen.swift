@@ -22,12 +22,14 @@ struct UnsupportedScreen: View {
                     Text(copy.title)
                         .font(Typeface.screenTitle)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                     if let detail = copy.detail {
                         Text(detail)
                             .font(Typeface.hint)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 if failure == .cameraDenied, let settings = URL(string: UIApplication.openSettingsURLString) {

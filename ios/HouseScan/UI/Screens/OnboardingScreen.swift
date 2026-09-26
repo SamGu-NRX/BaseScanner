@@ -37,7 +37,7 @@ struct OnboardingScreen: View {
                         withAnimation(Motion.screen) { page = pages.count - 1 }
                     }
                     .font(Typeface.hint.weight(.semibold))
-                    .foregroundStyle(Palette.signal)
+                    .foregroundStyle(Palette.signalText)
                     .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
                     .accessibilityIdentifier("action.onboardingSkip")
                 }
@@ -67,7 +67,7 @@ struct OnboardingScreen: View {
                         .accessibilityIdentifier("action.finishOnboarding")
                         Text("Your phone will ask to use the camera.")
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                     }
                     .transition(.opacity)
                 } else {
@@ -120,7 +120,7 @@ private struct OnboardingPageView: View {
                     if let body = page.body {
                         Text(body)
                             .font(.system(.title3, design: .rounded, weight: .regular))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -147,8 +147,8 @@ private struct PageDots: View {
             }
         }
         .animation(Motion.settle, value: current)
-        .accessibilityElement()
-        .accessibilityLabel("Page \(current + 1) of \(count)")
+        // The page view already announces its position; these dots are for sighted users.
+        .accessibilityHidden(true)
     }
 }
 
@@ -275,7 +275,7 @@ private struct SafetyArt: View {
                             .font(Typeface.sectionTitle)
                         Text(item.detail)
                             .font(Typeface.hint)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

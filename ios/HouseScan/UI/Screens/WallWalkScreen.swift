@@ -20,10 +20,6 @@ struct WallWalkScreen: View {
             CameraSizeReader(size: $cameraSize)
             CameraOverlays(state: state, highlight: nil)
             if state.marking != nil {
-                CameraTapLayer { point, size in
-                    taps.append(.init(point: point))
-                    actions.markFeaturePoint(at: point, viewSize: size)
-                }
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -36,7 +32,11 @@ struct WallWalkScreen: View {
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                onCameraTap: state.marking == nil ? nil : { point in
+                    taps.append(.init(point: point))
+                    actions.markFeaturePoint(at: point, viewSize: cameraSize)
+                }
             ) {
                 VStack(spacing: 10) {
                     controls

@@ -20,6 +20,11 @@ enum Palette {
     static let skipped = Color("CoverageSkipped")
     static let caution = Color("Caution")
     static let danger = Color("Danger")
+    /// Secondary text on the light screens. The system's secondary gray falls just under 4.5:1
+    /// on Canvas, so this is a touch darker (lighter in dark mode).
+    static let muted = Color("Muted")
+    /// Blue text and icons on light or tinted backgrounds, where Signal itself is under 4.5:1.
+    static let signalText = Color("SignalText")
     static let surface = Color("Surface")
     static let canvas = Color("Canvas")
 
@@ -57,8 +62,7 @@ enum Palette {
 
 enum Typeface {
     /// The one instruction on a camera screen. Rounded, heavy and large so it reads at arm's
-    /// length in sun; the camera screens cap Dynamic Type (see `cameraTypeCap`) so it never
-    /// covers the wall it is talking about.
+    /// length in sun.
     static let instruction = Font.system(.title2, design: .rounded, weight: .bold)
     static let hint = Font.system(.body, design: .rounded, weight: .medium)
     static let screenTitle = Font.system(.largeTitle, design: .rounded, weight: .bold)
@@ -75,10 +79,6 @@ enum Metrics {
     static let cardRadius: CGFloat = 22
     static let edge: CGFloat = 16
 }
-
-/// Camera screens keep the camera the hero: type grows through the large accessibility sizes
-/// but stops before an instruction card could hide most of the wall.
-let cameraTypeCap = DynamicTypeSize.xSmall...DynamicTypeSize.accessibility2
 
 enum Motion {
     /// Screen-to-screen crossfades and card swaps.

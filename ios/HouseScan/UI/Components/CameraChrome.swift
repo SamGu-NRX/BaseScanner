@@ -10,9 +10,35 @@ struct CameraChrome<Bottom: View>: View {
     var lastCaptureID: Int?
     var isReplay: Bool
     var isAutopilot: Bool
+    /// Taps on the open camera area, in the camera view's coordinates (full screen, which is
+    /// the window's global space). Nil when the screen has nothing to tap.
+    var onCameraTap: ((CGPoint) -> Void)?
     @ViewBuilder var bottom: Bottom
 
     var body: some View {
+        // One layout at every text size: the chrome fills the screen and, only when the largest
+        // text makes it taller than the screen, scrolls instead of squeezing the words. The
+        // scroll view would swallow taps meant for the camera, so camera taps are caught inside
+        // it, behind the chrome.
+        GeometryReader { proxy in
+            ScrollView {
+                stack
+                    .frame(minHeight: proxy.size.height)
+                    .background {
+                        if let onCameraTap {
+                            Color.clear
+                                .contentShape(.rect)
+                                .onTapGesture(coordinateSpace: .global) { point in onCameraTap(point) }
+                                .accessibilityHidden(true)
+                        }
+                    }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var stack: some View {
         VStack(spacing: 10) {
             HStack(alignment: .center) {
                 ModeBadge(isReplay: isReplay, isAutopilot: isAutopilot)
@@ -29,25 +55,6 @@ struct CameraChrome<Bottom: View>: View {
         .padding(.horizontal, Metrics.edge)
         .padding(.top, 4)
         .padding(.bottom, 8)
-        .dynamicTypeSize(cameraTypeCap)
-    }
-}
-
-/// A full-screen invisible layer that turns taps on the camera image into view points in the
-/// camera view's coordinate space (full screen, ignoring safe areas), as `ScanActions` expects.
-struct CameraTapLayer: View {
-    var onTap: (CGPoint, CGSize) -> Void
-
-    var body: some View {
-        GeometryReader { proxy in
-            Color.clear
-                .contentShape(.rect)
-                .onTapGesture(coordinateSpace: .local) { point in
-                    onTap(point, proxy.size)
-                }
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
     }
 }
 

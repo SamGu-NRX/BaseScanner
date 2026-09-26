@@ -43,7 +43,7 @@ struct QuietButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Typeface.button)
-            .foregroundStyle(Palette.signal)
+            .foregroundStyle(Palette.signalText)
             .frame(maxWidth: .infinity, minHeight: 52)
             .padding(.horizontal, 16)
             .background(Palette.signal.opacity(configuration.isPressed ? 0.16 : 0.1), in: .capsule)

@@ -2,8 +2,9 @@ import SwiftUI
 
 /// The dark frosted surface every piece of chrome over the camera sits on.
 ///
-/// A plain material thins out to near-white over a bright wall in sun, so an Ink layer sits on
-/// top of the blur: text stays chalk-on-dark whatever the camera sees. With Reduce Transparency
+/// A plain material thins out to near-white over a bright wall in sun, so an 86% Ink layer sits
+/// on top of the blur: chalk text keeps well over 4.5:1 even over a white wall (the
+/// accessibility audit failed at 66%). With Reduce Transparency
 /// the blur drops and the Ink layer goes nearly opaque.
 struct ScrimShape<S: InsettableShape>: View {
     var shape: S
@@ -14,7 +15,7 @@ struct ScrimShape<S: InsettableShape>: View {
             if !reduceTransparency {
                 shape.fill(.ultraThinMaterial)
             }
-            shape.fill(Palette.ink.opacity(reduceTransparency ? 0.94 : 0.66))
+            shape.fill(Palette.ink.opacity(reduceTransparency ? 0.94 : 0.86))
             shape.strokeBorder(.white.opacity(0.1), lineWidth: 1)
         }
         .environment(\.colorScheme, .dark)

@@ -16,13 +16,15 @@ struct UploadingScreen: View {
                     Text(copy.title)
                         .font(Typeface.screenTitle)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                         .contentTransition(.opacity)
                     if let detail = copy.detail {
                         Text(detail)
                             .font(Typeface.hint)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .animation(Motion.text, value: copy)
@@ -153,7 +155,7 @@ private struct UploadSteps: View {
             .animation(Motion.settle, value: current)
             Text(title(index))
                 .font(Typeface.hint)
-                .foregroundStyle(index <= current ? .primary : .secondary)
+                .foregroundStyle(index <= current ? Color.primary : Palette.muted)
                 .contentTransition(.numericText())
         }
     }
