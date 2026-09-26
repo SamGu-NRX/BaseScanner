@@ -32,9 +32,9 @@ final class KeyframeStore {
         return nextIndex
     }
 
-    /// Writes a keyframe's JPEG unrotated, as the sensor produced it, and returns an upright
-    /// thumbnail for the capture acknowledgment.
-    func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame) async -> CGImage? {
+    /// Writes a keyframe's JPEG unrotated, as the sensor produced it. Returns whether it was
+    /// stored, and an upright thumbnail for the capture acknowledgment.
+    func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame) async -> (stored: Bool, thumbnail: CGImage?) {
         let id = String(format: "k%05d", index)
         let url = directory.appending(path: "\(id).jpg")
         let thumbnail = await Task.detached(priority: .utility) { () -> CGImage? in
@@ -48,11 +48,11 @@ final class KeyframeStore {
         }.value
         guard FileManager.default.fileExists(atPath: url.path) else {
             RuntimeLog.engine.error("keyframe \(id, privacy: .public) was not written")
-            return nil
+            return (false, nil)
         }
         keyframes.append(StoredKeyframe(id: id, camera: camera))
         keyframes.sort { $0.id < $1.id }
-        return thumbnail
+        return (true, thumbnail)
     }
 
     /// Writes a still such as the meter close-up. Returns false when there was nothing to write.

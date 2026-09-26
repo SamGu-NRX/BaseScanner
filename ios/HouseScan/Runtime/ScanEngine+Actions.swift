@@ -36,7 +36,7 @@ extension ScanEngine: ScanActions {
         }
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
-        let groundY = groundBelow(hit.position.y, camera: frame.camera)
+        let groundY = groundBelow(hit.position, camera: frame.camera)
         guard setWall(meter: hit.position, outward: outward, groundY: groundY) else {
             state.guidance = .aimAtWallForMeter
             return
@@ -45,11 +45,15 @@ extension ScanEngine: ScanActions {
         go(.meterCloseUp)
     }
 
-    /// The detected ground plane below a height, or the camera height minus 1.4 m (a phone held
-    /// at chest height) until one appears.
-    private func groundBelow(_ y: Float, camera: CameraFrame) -> Float {
-        if let plane = detectedGroundY, plane < y - 0.3 { return plane }
-        return camera.position.y - 1.4
+    /// The ground at the meter: the highest detected horizontal plane at least 0.3 m below it whose
+    /// extent comes within 2 m of it (so a porch or a neighbour's lawn elsewhere doesn't count), or
+    /// the camera height minus 1.4 m (a phone held at chest height) until one appears.
+    private func groundBelow(_ meter: SIMD3<Float>, camera: CameraFrame) -> Float {
+        let near = detectedGroundPlanes.filter { plane in
+            let horizontal = simd_distance(SIMD2(plane.x, plane.z), SIMD2(meter.x, meter.z))
+            return plane.y < meter.y - 0.3 && horizontal - plane.w <= 2
+        }
+        return near.map(\.y).max() ?? camera.position.y - 1.4
     }
 
     func skipCloseUp() {

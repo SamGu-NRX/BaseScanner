@@ -141,7 +141,6 @@ final class ReplayPlayer {
             jpeg: .file(folder.appending(path: frame.imagePath)),
             still: decoded?.0,
             meterAnchor: nil,
-            groundPlaneY: nil,
             isReview: isReview
         ))
     }

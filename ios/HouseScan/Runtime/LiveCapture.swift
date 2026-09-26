@@ -57,6 +57,15 @@ final class LiveCapture {
         arView.session.pause()
     }
 
+    /// Starts world tracking over with a fresh map, after relocalization failed.
+    func restart() {
+        let configuration = ARWorldTrackingConfiguration()
+        configuration.worldAlignment = .gravity
+        configuration.planeDetection = [.horizontal, .vertical]
+        arView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+        delegate.shared.withLock { $0.meterAnchorID = nil }
+    }
+
     func setMode(_ mode: LiveMode) {
         delegate.shared.withLock { $0.mode = mode }
     }
@@ -147,7 +156,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         guard count % Self.sampleEvery == 0 else {
             let pose = SourceFrame(
                 id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
-                quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlaneY: nil, isPoseOnly: true
+                quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, isPoseOnly: true
             )
             Task { @MainActor [onFrame] in onFrame(pose) }
             return
@@ -155,8 +164,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         let quality = Self.quality(frame.capturedImage)
         let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.alignment == .horizontal }
-            .map { $0.transform.columns.3.y }
-            .min()
+            .map { plane -> SIMD4<Float> in
+                let center = plane.transform * SIMD4(plane.center, 1)
+                let radius = simd_length(SIMD2(plane.planeExtent.width, plane.planeExtent.height)) / 2
+                return SIMD4(center.x, center.y, center.z, radius)
+            }
         var jpeg = JPEGPayload.none
         if tracking == .normal, shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera),
            let data = encode(frame.capturedImage) {
@@ -164,7 +176,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         }
         let snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
-            quality: quality, jpeg: jpeg, still: nil, meterAnchor: meterAnchor, groundPlaneY: ground
+            quality: quality, jpeg: jpeg, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
         )
         Task { @MainActor [onFrame] in onFrame(snapshot) }
     }

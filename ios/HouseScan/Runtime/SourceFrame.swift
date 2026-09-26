@@ -20,8 +20,9 @@ struct SourceFrame: Sendable {
     var still: CGImage?
     /// World transform of the meter's ARAnchor in this frame, when one exists.
     var meterAnchor: simd_float4x4?
-    /// World y of the lowest detected horizontal plane, when ARKit has found one.
-    var groundPlaneY: Float?
+    /// Detected horizontal planes as (center x, y, center z, radius), world meters. Empty when
+    /// ARKit has found none or the frame doesn't carry them.
+    var groundPlanes: [SIMD4<Float>] = []
     /// Shown for review or tapping only; never offered to auto-capture.
     var isReview = false
     /// Carries only pose and tracking, so overlays follow the camera between sampled frames.

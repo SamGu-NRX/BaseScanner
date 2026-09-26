@@ -29,16 +29,24 @@ final class ScanEngine {
     private(set) var store: KeyframeStore
     private var keptSourceIDs: Set<String> = []
     private var closeUpPending = false
+    /// Keyframe writes still in flight; the bundle waits for them.
+    private var pendingSaves = 0
+    /// Bumped whenever the world frame or the whole scan is thrown away, so work that finishes
+    /// afterwards (a keyframe write, an upload) can tell it belongs to a scan that no longer exists.
+    private var generation = 0
 
     // Wall geometry inputs
     private var meterAnchorID: UUID?
-    private var groundPlaneY: Float?
+    /// Detected horizontal planes as (center x, y, center z, radius), world meters.
+    private var groundPlanes: [SIMD4<Float>] = []
     private var lastFrame: SourceFrame?
     private var endKinds: [WallSide: EndKind] = [:]
 
     // Gap loop
     private var gapPlan: GapPlan?
     private var gapCounter = 0
+    /// Keyframes stored when the current gap request began: a request is closed only by new views.
+    private var keyframesAtGapStart = 0
     private var skippedGaps: [GapPlan] = []
 
     // Tracking recovery
@@ -164,7 +172,7 @@ final class ScanEngine {
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
         if state.tracking != frame.tracking { state.tracking = frame.tracking }
-        if let y = frame.groundPlaneY { groundPlaneY = y }
+        if !frame.groundPlanes.isEmpty { groundPlanes = frame.groundPlanes }
         refreshMeterFromAnchor(frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
@@ -203,16 +211,20 @@ final class ScanEngine {
             closeUpPending = false
             captureCloseUp(frame)
         } else {
-            if status.fire { closeUpPending = true }
+            // A hold that finished on a frame without a photo waits for the next photo, but only
+            // while the gates keep passing; any problem restarts the hold.
+            closeUpPending = status.issue == nil && (closeUpPending || status.fire)
             state.closeUp = .aiming(hold: status.hold, problem: status.issue.map(Self.problem))
         }
     }
 
     private func captureCloseUp(_ frame: SourceFrame) {
         state.closeUp = .captured(nil)
+        let scan = generation
+        let store = store
         Task {
             let saved = await store.saveStill(frame.jpeg, name: "meter_close.jpg")
-            guard state.phase == .meterCloseUp else { return }
+            guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
                 closeUpGate.photoRejected()
                 state.closeUpFailedAttempts = closeUpGate.failedAttempts
@@ -229,7 +241,7 @@ final class ScanEngine {
     }
 
     private func walk(_ frame: SourceFrame) {
-        guard var map = coverage else { return }
+        guard let map = coverage else { return }
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         var skip: CaptureDecision.SkipReason?
@@ -237,29 +249,38 @@ final class ScanEngine {
         if decision.isKeep, frame.jpeg.isAvailable, !keptSourceIDs.contains(frame.id) {
             autoCapture.didKeep(sample)
             keptSourceIDs.insert(frame.id)
-            // Coverage only moves on kept frames with normal tracking (checklist R3).
-            map.observe(frame.camera, trackingNormal: frame.tracking == .normal)
-            coverage = map
             keep(frame)
         }
         state.coaching = coaching(for: frame.tracking, skip: skip)
+        afterCoverageChange(camera: frame.camera, time: frame.timestamp)
+    }
+
+    private func afterCoverageChange(camera: CameraFrame?, time: Double) {
         publishCoverage()
-        if state.phase == .wallWalk {
-            updateGuidance(camera: frame.camera, time: frame.timestamp)
-        } else {
-            updateGap(camera: frame.camera)
+        if state.phase == .wallWalk, let camera {
+            updateGuidance(camera: camera, time: time)
+        } else if state.phase == .gapRequest {
+            updateGap(camera: camera)
         }
     }
 
+    /// Stores a kept frame; coverage and the capture count move only once its photo is on disk,
+    /// so the strip never claims a view the bundle lacks.
     private func keep(_ frame: SourceFrame) {
         let kind: CaptureEvent.Kind = state.phase == .gapRequest ? .gap : .walk
         let index = store.nextKeyframeIndex()
-        let camera = frame.camera
-        state.captureCount += 1
-        let eventID = state.captureCount
+        let scan = generation
+        let store = store
+        pendingSaves += 1
         Task {
-            let thumbnail = await store.saveKeyframe(frame.jpeg, index: index, camera: camera)
-            state.lastCapture = CaptureEvent(id: eventID, kind: kind, thumbnail: thumbnail)
+            let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
+            pendingSaves -= 1
+            guard scan == generation, saved.stored else { return }
+            // Coverage only moves on kept frames with normal tracking (checklist R3).
+            coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
+            state.captureCount += 1
+            state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
+            afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? frame.timestamp)
         }
     }
 
@@ -283,7 +304,7 @@ final class ScanEngine {
     private func updateGap(camera: CameraFrame?) {
         guard let map = coverage, let plan = gapPlan, var request = state.gap else { return }
         request.progress = gapPlanner.progress(of: plan, map)
-        let satisfied = gapPlanner.isSatisfied(plan, map)
+        let satisfied = gapPlanner.isSatisfied(plan, map) && store.keyframes.count > keyframesAtGapStart
         state.guidance = .gap
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
         state.target = plan.band == .ground
@@ -351,7 +372,11 @@ final class ScanEngine {
     /// Forgets everything tied to the old world frame and asks for the meter again.
     func resetSpatialState(reason: String) {
         RuntimeLog.engine.info("spatial reset: \(reason, privacy: .public)")
+        generation += 1
         relocalizingSince = nil
+        groundPlanes = []
+        // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
+        live?.restart()
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
@@ -444,6 +469,7 @@ final class ScanEngine {
     func beginGap(_ plan: GapPlan, origin: GapRequest.Origin, reason: GapRequest.Reason) {
         gapCounter += 1
         gapPlan = plan
+        keyframesAtGapStart = store.keyframes.count
         let progress = coverage.map { gapPlanner.progress(of: plan, $0) } ?? 0
         state.gap = GapRequest(id: gapCounter, origin: origin, reason: reason, band: plan.band == .ground ? .ground : .wall, span: plan.span, progress: progress, isSatisfied: false)
         state.guidance = .gap
@@ -477,24 +503,33 @@ final class ScanEngine {
     }
 
     private func upload() async {
+        let scan = generation
         state.upload = .packaging
+        // Keyframe writes still in flight belong in the bundle.
+        for _ in 0..<200 where pendingSaves > 0 {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        guard scan == generation else { return }
         let bundle: URL
         do {
             bundle = try await store.writeBundle(sceneJSON: try sceneJSON())
             RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(self.store.keyframes.count) keyframes")
         } catch {
+            guard scan == generation else { return }
             RuntimeLog.engine.error("packaging failed: \(String(describing: error), privacy: .public)")
             state.upload = .failed(message: String(describing: error), offline: false)
             return
         }
+        guard scan == generation, !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
             let data = try await resultClient.submit(bundle: bundle) { [weak self] fraction in
                 Task { @MainActor in
-                    guard let self, case .uploading = self.state.upload else { return }
+                    guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
                 }
             }
+            guard scan == generation else { return }
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
             placement = result
@@ -505,6 +540,7 @@ final class ScanEngine {
         } catch is CancellationError {
             return
         } catch {
+            guard scan == generation else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
             state.upload = .failed(message: String(describing: error), offline: (error as? URLError) != nil)
         }
@@ -524,6 +560,8 @@ final class ScanEngine {
     // MARK: Start over
 
     func resetAll() {
+        generation += 1
+        pendingSaves = 0
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
@@ -564,7 +602,7 @@ final class ScanEngine {
     var wallEndKinds: [WallSide: EndKind] { endKinds }
 
     func setMeterAnchor(_ id: UUID?) { meterAnchorID = id }
-    var detectedGroundY: Float? { groundPlaneY }
+    var detectedGroundPlanes: [SIMD4<Float>] { groundPlanes }
 
     func updateCoverage(_ body: (inout CoverageMap) -> Void) {
         guard var map = coverage else { return }
