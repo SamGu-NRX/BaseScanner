@@ -48,7 +48,7 @@ Keep workflows that run pull-request code away from production credentials and d
 
 ### Before the first upload
 
-Each app needs an app icon. App Store Connect rejects a build without one, and neither app has one yet. That means an `AppIcon` set in an asset catalog inside the app's source folder (`ios/HouseScan/` or `experiments/measure-lab/MeasureLab/`) with a 1024×1024 image. The projects already set `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`. The owner of each app adds its icon.
+Each app needs an app icon, because App Store Connect rejects a build without one. Measure Lab has one in `experiments/measure-lab/MeasureLab/Assets.xcassets`, added in #7. House Scan does not yet. It needs an `AppIcon` set with a 1024×1024 image in an asset catalog inside `ios/HouseScan/`, added by the lane A owner. The project already sets `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`.
 
 Neither `Info.plist` declares `ITSAppUsesNonExemptEncryption`. Until one does, every new build waits in TestFlight under "Missing Compliance" until someone answers the encryption question on the build page. Setting the key to `false` skips that step for an app that uses only HTTPS and Apple's system encryption.
 
@@ -57,7 +57,12 @@ Neither `Info.plist` declares `ITSAppUsesNonExemptEncryption`. Until one does, e
 The account holder does this once, in order.
 
 1. **Create an App Store Connect API key.** In [App Store Connect](https://appstoreconnect.apple.com) > Users and Access > Integrations > App Store Connect API, create a team key with the **Admin** role. The export step signs with a cloud-managed distribution certificate, and API keys with the App Manager role get `Cloud signing permission error` because keys have no setting to grant that access. Download the `.p8` file (Apple offers it once) and note the Key ID and the Issuer ID shown above the key list.
-2. **Add the `testflight` environment.** In the GitHub repository, open Settings > Environments > New environment and name it `testflight`. Under Deployment branches and tags, choose Selected branches and add `main`, so the Admin key only signs reviewed code. Add these:
+2. **Add the `testflight` environment.** In the GitHub repository, open Settings > Environments > New environment and name it `testflight`. Set two protection rules:
+
+   - Required reviewers: add Sam. Every run then pauses until he approves it, and GitHub releases no secret to the job before that. Leave "Prevent self-review" off so he can approve runs he starts.
+   - Deployment branches and tags: choose Selected branches and add `main`, so the key only signs reviewed code.
+
+   An Admin key can sign and upload for the whole team, so it is acceptable here only because both rules hold. A run needs Sam's approval and code already merged to `main`. Then add these:
 
    | Kind | Name | Value |
    | --- | --- | --- |
@@ -71,7 +76,7 @@ The account holder does this once, in order.
 3. **Register a device.** The archive step signs for development first and asks Apple for a development profile, which Apple refuses to a team with no registered devices. Running either app on your iPhone from Xcode once registers it. You can also add the device under Certificates, Identifiers & Profiles > Devices.
 4. **Create the app records.** App Store Connect has no API for creating apps. First register the two explicit App IDs, `<BUNDLE_ID_PREFIX>.housescan` and `<BUNDLE_ID_PREFIX>.measurelab`, under Certificates, Identifiers & Profiles > Identifiers. Then in App Store Connect > Apps > New App, create **House Scan** and **Measure Lab** for iOS and pick the matching bundle id for each. The name must be unique across the App Store, so add a suffix if Apple says it is taken.
 5. **Add internal testers.** In each app's TestFlight tab, create an internal group and add team members. Internal testers must already be users in App Store Connect. Turn on automatic distribution so new builds reach the group without another click.
-6. **Run the workflow.** Open Actions > TestFlight > Run workflow, pick the branch and the app, and start it. The run summary reports the uploaded build number. The build shows in TestFlight once Apple finishes processing it.
+6. **Run the workflow.** Open Actions > TestFlight > Run workflow, pick `main` and the app, and start it. Sam approves the pending deployment on the run page. The run summary reports the uploaded build number. The build shows in TestFlight once Apple finishes processing it.
 
 Measure Lab is only on its pull request branch until that merges, and the environment rule above only lets `main` use the key. Its uploads start working once it lands on `main`.
 

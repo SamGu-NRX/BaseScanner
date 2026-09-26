@@ -1,7 +1,12 @@
 name: TestFlight
 
 # Run by hand from the Actions tab. Never add pull_request or push triggers: this job holds an
-# App Store Connect key that can sign and upload builds for the whole team.
+# Admin App Store Connect key that can sign and upload builds for the whole team. The testflight
+# environment only admits main and waits for a required reviewer before any secret is released.
+#
+# Key handling: secrets reach only the steps that use them, through step-level env. The decoded
+# .p8 lives in a private temporary directory, only its path is passed on, nothing prints it, and
+# the last step deletes the directory. No step uploads artifacts, caches or logs.
 on:
   workflow_dispatch:
     inputs:
@@ -16,8 +21,9 @@ on:
 permissions:
   contents: read
 
+# One upload at a time across both apps; a second run waits instead of cancelling the first.
 concurrency:
-  group: testflight-${{ inputs.app }}
+  group: testflight
   cancel-in-progress: false
 
 jobs:
@@ -34,15 +40,16 @@ jobs:
       XCODEGEN_VERSION: 2.46.0
       XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
       APP: ${{ inputs.app }}
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
       # GitHub counts runs per workflow, so both apps share one increasing build number.
       BUILD_NUMBER: ${{ github.run_number }}
     steps:
+      # Tests only whether each value is empty; it never prints one.
       - name: Check secrets and variables
         env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           missing=0
@@ -109,21 +116,28 @@ jobs:
       - name: Generate project
         run: xcodegen generate --spec "$PROJECT_DIR/project.yml"
 
+      # GitHub masks the base64 secret in logs but not the decoded key, so no command here may
+      # print the file: base64 and grep -q write nothing to the log.
       - name: Write App Store Connect key
         env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
-          key="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
           umask 077
+          dir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
+          echo "ASC_KEY_DIR=$dir" >> "$GITHUB_ENV"
+          key="$dir/AuthKey_${ASC_KEY_ID}.p8"
           if ! printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key" 2>/dev/null \
             || ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$key"; then
-            rm -f "$key"
             echo "::error::ASC_KEY_P8 is not a base64-encoded .p8 file. Store the output of: base64 -i AuthKey_<KEY_ID>.p8"
             exit 1
           fi
           echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
 
       - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: >-
           xcodebuild archive
           -project "$PROJECT_DIR/$PROJECT_NAME.xcodeproj"
@@ -142,6 +156,9 @@ jobs:
       # destination=upload makes -exportArchive send the signed build to App Store Connect instead
       # of writing an .ipa. manageAppVersionAndBuildNumber=false keeps the run number as the build.
       - name: Export and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           plist="$RUNNER_TEMP/ExportOptions.plist"
           cat > "$plist" <<EOF
@@ -177,4 +194,7 @@ jobs:
 
       - name: Remove App Store Connect key
         if: always()
-        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+        run: |
+          if [ -n "${ASC_KEY_DIR:-}" ]; then
+            rm -rf -- "$ASC_KEY_DIR"
+          fi
