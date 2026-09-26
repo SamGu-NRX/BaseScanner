@@ -164,6 +164,7 @@ extension ScanEngine: ScanActions {
             skipCurrentGap()
         case .wallWalk:
             guard let map = coverage else { return }
+            let task = ScanEngine.name(state.guidance)
             switch state.guidance {
             case .aimAtGround(let s):
                 updateCoverage { $0.markSkipped(.ground, (s - 0.5)...(s + 0.5)) }
@@ -177,7 +178,7 @@ extension ScanEngine: ScanActions {
             default:
                 return
             }
-            RuntimeLog.engine.info("cannot access area during \(ScanEngine.name(self.state.guidance), privacy: .public)")
+            RuntimeLog.engine.info("cannot access area during \(task, privacy: .public)")
             if let frame = currentFrame {
                 resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
             }

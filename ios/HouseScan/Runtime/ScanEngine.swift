@@ -299,9 +299,11 @@ final class ScanEngine {
             request.progress = max(request.progress, gapPlanner.config.satisfiedFraction)
             state.gap = request
             RuntimeLog.engine.info("gap \(request.id) satisfied")
+            let id = request.id
             Task {
                 try? await Task.sleep(for: .seconds(autoAdvanceDelay))
-                guard state.phase == .gapRequest else { return }
+                // Only if this same request is still showing (not skipped or replaced meanwhile).
+                guard state.phase == .gapRequest, state.gap?.id == id else { return }
                 afterGapResolved()
             }
         } else if !request.isSatisfied {
