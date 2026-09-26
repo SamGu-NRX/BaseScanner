@@ -37,6 +37,18 @@ enum Map3DFeed {
         return DepthFrame(photo: photoCamera(frame), width: width, height: height, depth: depth, kind: .lidar(confidence: confidence))
     }
 
+    /// A replay's stored LiDAR depth (`SourceFrame.depth`) as the map's depth frame. `pose` is the
+    /// photo's camera; the image keeps its own intrinsics and size. Both use z-depth and the same
+    /// pixel convention, so only millimeters become meters (0 stays no measurement).
+    static func depthFrame(_ image: DepthImage, pose: CameraFrame) -> DepthFrame {
+        let camera = CameraFrame(
+            cameraToWorld: pose.cameraToWorld, intrinsics: image.intrinsics,
+            imageSize: SIMD2(Float(image.width), Float(image.height)))
+        return DepthFrame(
+            camera: camera, width: image.width, height: image.height,
+            depth: image.millimeters.map { Float($0) / 1000 }, kind: .lidar(confidence: image.confidence))
+    }
+
     static func meshChunk(_ anchor: ARMeshAnchor) -> MeshChunk {
         let geometry = anchor.geometry
 

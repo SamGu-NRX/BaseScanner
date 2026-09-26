@@ -12,7 +12,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 `HouseScanKit/Sources/HouseScanKit/Map3D/` keeps a live occupancy map of the space around the meter. A ray from the camera marks the voxels it passes through as free and the voxel it stops in as surface. Voxels no ray reached stay unknown, so a wall behind a bush stays unseen until some view gets past the bush. The map uses 10 cm voxels in 8³ bricks, stored only once a ray reaches them. The default bounds hold at most 32 MB. `MapFrame` is the capture packet's meter frame (`packet/README.md`): origin at the meter anchor, +z the wall's outward normal, +y up, and the ground's height below the anchor as `groundY`. `DepthFrame` uses the packet's depth encoding, and a packet's mesh is one `MeshChunk` placed at `MapFrame.poseInWorld`.
 
-`Runtime/Map3DFeed.swift` converts ARKit data into the map's inputs on the AR delegate queue. Nothing calls it yet. Integrate only frames with normal tracking.
+`Runtime/Map3DFeed.swift` converts ARKit data into the map's inputs on the AR delegate queue. `Runtime/Map3DSession.swift` owns one map for the app. The delegate queue only converts and hands inputs over, keeping the newest pending frame. The session integrates on its own queue and publishes a `Map3DSnapshot` (coverage, measured walls, fog, next view) at most twice a second. `Runtime/Map3DCoverageSource.swift` is what the export reads: the measured wall chain with each piece's `source` and `plus_minus_ft` when the chain spans the walk, otherwise the tapped wall. `UI/Camera/Map3DOverlay.swift` draws the fog and the next-view cue. The engine doesn't call any of these yet: the hooks it needs are listed on PR #21. Integrate only frames with normal tracking.
 
 | Phone | Session setting | Feed |
 | --- | --- | --- |
@@ -21,14 +21,22 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 Outputs, all against a `WallFrame` (the walk's, or one built from the map's own walls):
 
-- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`. A span is seen only where rays reached it. The wall counts only within 10 cm in front of its line, so anything standing proud of it hides it, the meter included. The few cells behind the meter stay unseen.
-- `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners, each marked `mesh` or `plane`. `wallFrame(meter:groundY:frame:)` turns it into a `WallFrame`. scene.json's walls have no `source` field, so the source doesn't reach the server.
+- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`.
+  - A span is seen only where rays reached it. A voxel is free only where a ray crossed it completely and ended beyond it.
+  - The wall is judged against where the facade was measured around each cell, not the chain's line. Its face counts within 7.5 cm, and a recessed face up to 0.5 m behind also counts.
+  - Attached relief up to 0.5 m proud, such as a pilaster, counts as the facade, because nothing can be mounted behind it. It must reach headroom, and no gap may have been seen behind it.
+  - Anything else standing in front hides the wall: a box, a shrub, or the meter itself, so the few cells behind the meter stay unseen.
+  - Facing reaches shorter than the battery's depth are not reported.
+- `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners.
+  - Each piece is marked `mesh` or `plane` and carries `plusMinus`, its line's position error. The server takes both as `walls[].source` and `plus_minus_ft`.
+  - Lines are found by an angle sweep over the densest band of wall evidence, so relief along part of a wall doesn't tilt them.
+  - `wallFrame(meter:groundY:frame:)` turns the chain into a `WallFrame`.
 - `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
 - `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
 
-Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes add wall geometry only, since a plane can't show what stands in front of it. Coverage without LiDAR is therefore sparse until monocular depth arrives. `DepthFrame.Kind.estimated` takes that depth with a per-pixel standard deviation, and it is never used for walls.
+Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse until monocular depth arrives, and a replay without depth gives the map nothing. `DepthFrame.Kind.estimated` takes that depth with a per-pixel standard deviation, and it is never used for walls.
 
-On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel). `swift test -c release --filter Map3DPerformanceTests` prints the current numbers.
+On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel), and reading coverage takes about 25 ms. `swift test -c release --filter Map3DPerformanceTests` prints the current numbers. The map assumes nothing moves: an object that appears in space seen empty earlier becomes surface where its face is measured, but its inside keeps the earlier free reading.
 
 ## Launch arguments
 
