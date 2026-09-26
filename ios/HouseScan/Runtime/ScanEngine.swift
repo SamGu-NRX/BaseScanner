@@ -1076,7 +1076,7 @@ final class ScanEngine {
             scene = try sceneJSON()
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.packaging
+            state.upload = UploadFailure.packaging(error)
             return
         }
         saveReplayBundle(scene: scene)

@@ -84,10 +84,18 @@ enum UploadFailure {
         }
     }
 
-    /// The scan couldn't be turned into scene.json.
-    static let packaging = UploadState.rejected(
-        message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over."
-    )
+    /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
+    /// again says which, so the homeowner knows what to fix in the review.
+    static func packaging(_ error: any Error) -> UploadState {
+        switch error as? ScanEngine.ExportError {
+        case .markCollapsed(.driveway)?:
+            .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
+        case .markCollapsed(.fence)?:
+            .rejected(message: "Mark the fence again: its two points came out on top of each other.")
+        default:
+            .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
+        }
+    }
 }
 
 final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
