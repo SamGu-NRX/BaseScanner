@@ -456,6 +456,17 @@ def test_report_sha_key_missing_from_the_report_is_stale(tmp_path):
     )
 
 
+def test_stale_cites_the_newest_report_that_records_the_sha(tmp_path):
+    measured = write_report(tmp_path / "a" / "report.json", {"app_sha": OLD, "passed": True}, 100)
+    write_report(tmp_path / "b" / "report.json", {"sha": SHA, "passed": True}, 200)
+    m = report_metric(
+        tmp_path, key="passed", equals=True, require_current_sha=True, sha_key="app_sha"
+    )
+    assert evaluate(m, SHA, ctx()) == Outcome(
+        "stale", f"report for app_sha bbbbbbbb, ref at aaaaaaaa: {measured}"
+    )
+
+
 def test_report_sha_key_defaults_to_sha():
     assert metric("report", glob="x", key="k", equals=1).probe["sha_key"] == "sha"
 

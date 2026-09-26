@@ -491,7 +491,10 @@ def probe_report(probe: dict, sha: str | None) -> Outcome:
             (p, d) for p, d in reports if d is not None and _value_or_none(d, sha_key) == sha
         ]
         if not current:
-            newest, data = reports[0]
+            # Cite the newest run that measured this SHA at all: a later run that did not (an
+            # e2e run without an app export) says nothing about which commit was checked.
+            measured = [(p, d) for p, d in reports if d and _value_or_none(d, sha_key)]
+            newest, data = (measured or reports)[0]
             return Outcome(
                 "stale",
                 f"report for {measured_at(data)}, ref at {sha[:8]}: {short_home(newest)}",
