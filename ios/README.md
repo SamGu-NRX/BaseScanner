@@ -12,8 +12,8 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 | Argument | Effect |
 | --- | --- |
-| `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. |
-| `-autopilot` | Drives every step on a replay, including one gap request closed by frames it held back from the walk. |
+| `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. Keyframes with a `depth` entry (`{file, confidenceFile, w, h}`, Float32 meters) play their LiDAR depth into coverage as a LiDAR phone would. |
+| `-autopilot` | Drives every step on a replay. It holds some walk frames back to close one gap request before the upload. After each upload it also drives the requests the server's answer raises, closing each with the replay's frames, until the result shows. A request the frames don't close gets "I can't get there", as a homeowner would answer. |
 | `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Keyframe photos stay on the phone unless someone uses Share scan; the scan folder keeps a `scan.zip` of scene.json and the photos for replay and debugging. |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
@@ -32,14 +32,14 @@ Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescann
 | `Config/Local.xcconfig.example` | Template for per-person signing |
 | `Config/Info.plist` | Camera prompt, `arkit` capability, portrait only, HTTP to local-network servers |
 | `HouseScanKit/` | Capture logic package with its tests |
-| `HouseScanUITests/` | Full-flow UI test on a replay, its synthetic fixture, and an accessibility audit of every screen state in demo mode |
+| `HouseScanUITests/` | Full-flow UI tests on a replay, and an accessibility audit of every screen state in demo mode. `Fixtures/` holds two synthetic replays, one with LiDAR depth; the tests read them from the source tree, and `project.yml` keeps them out of the test bundle. |
 | `Tools/make-synthetic-replay.swift` | Renders the synthetic fixture |
 | `Tools/check-app-scene.sh` | Checks a scan bundle's scene.json against the server schema |
 
 ## Requirements
 
 - Xcode 26 or newer. The deployment target is iOS 26.0 and the code uses only iOS 26 SDK APIs.
-- An iPhone that supports ARKit to run it. LiDAR is not required.
+- An iPhone that supports ARKit to run it. LiDAR is not required; with it the scan also records depth and a mesh.
 - XcodeGen 2.46.0, only if you change `project.yml`.
 
 ## Commands
@@ -84,7 +84,23 @@ Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabili
 
 **Logs.** Open Console.app on the Mac, select the iPhone, press Start and search for `subsystem:dev.housescanning.housescan`. Every screen change logs as `STATE=<phase>`; the `engine` category records the capture's decisions, the scan bundle and upload failures. The same lines show in Xcode's console while it runs the app.
 
-**Getting a scan off the phone.** The result screen, and the screens for a failed or refused upload, have a Share scan button. It shares the scan bundle (scene.json, the photos and their camera positions); AirDrop it to your Mac. It holds photos of a real home, so keep it out of git.
+**Getting a scan off the phone.** The result screen, and the screens for a failed or refused upload, have a Share scan button. It shares the scan bundle (below); AirDrop it to your Mac. It holds photos of a real home, so keep it out of git.
+
+## Scan bundle
+
+`scan.zip` in the scan's folder is what Share scan sends. The upload sends only scene.json.
+
+| File | Contents |
+| --- | --- |
+| `scene.json` | The scene the server checks (contract C1): feet, gravity-aligned, ground at the wall at y = 0. Each keyframe's pose and intrinsics are in it, and `img` names its photo. |
+| `k<NNNNN>.jpg` | Keyframe photos, landscape and unrotated as the sensor produced them, matching the intrinsics in scene.json. |
+| `meter_close.jpg` | The meter close-up, when one was taken (scene.json `stills`). |
+| `depth/<id>.u16` | LiDAR phones only. The keyframe's depth: uint16 little-endian millimeters, row-major, 0 = no reading. |
+| `depth/<id>.conf.u8` | LiDAR phones only. One byte per depth pixel: 0 low, 1 medium, 2 high confidence. |
+| `depth/index.json` | LiDAR phones only. `{"units": "mm", "frames": [...]}`, one entry per depth frame: `keyframe`, `file`, `confidence_file` (null without confidence), `w`, `h` and `intrinsics` [fx, fy, cx, cy] in depth pixels. A depth frame has the pose of the scene.json keyframe with the same id. |
+| `mesh.ply` | LiDAR phones only. ARKit's reconstructed mesh, binary little-endian PLY: `float x y z` per vertex, then faces as `list uchar uint vertex_indices`. It uses scene.json's frame and units: feet, gravity-aligned, ground at y = 0. |
+
+`HouseScanKit/Sources/HouseScanKit/Scene/BundleFiles.swift` writes the depth files and mesh.ply.
 
 ## Conventions
 
