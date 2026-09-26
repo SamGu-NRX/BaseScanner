@@ -191,7 +191,7 @@ enum ScanCopy {
         case .walkOut(let out):
             return Instruction(
                 title: "Walk along this stretch about \(Distance.feetAtLeast(out)) out from the wall",
-                detail: "\(place.capitalizedFirst). Follow the dotted line. It shows the space in front of the wall is clear."
+                detail: "\(place.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
             )
         case .overhead:
             return Instruction(
