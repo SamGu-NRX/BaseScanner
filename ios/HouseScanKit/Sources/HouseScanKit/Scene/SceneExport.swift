@@ -258,7 +258,9 @@ public enum SceneExport {
                 }
                 let a = wall.wallCoordinates(of: foot[0])
                 let b = wall.wallCoordinates(of: foot[1])
-                let depth = (a.out + b.out) / 2
+                // The nearer tap: a fence that angles toward the wall must not read as farther out
+                // at its narrow end than it is. The mean overstated that end by half the difference.
+                let depth = min(a.out, b.out)
                 try requireNonNegative(depth, "\(name) fence depth")
                 facing.append(.init(
                     wall_id: input.wallID, span_ft: spanFeet(min(a.s, b.s)...max(a.s, b.s)), depth_ft: feet(depth)))

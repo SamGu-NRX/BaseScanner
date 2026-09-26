@@ -140,7 +140,8 @@ extension ScanEngine: ScanActions {
             let s = ss.first ?? 0
             return MarkedFeature(id: UUID(), kind: kind, span: (s - 0.15)...(s + 0.15), bottom: nil, top: nil, out: nil, points: points, opens: nil)
         case .driveway, .fence:
-            let out = taps.map(\.out).reduce(0, +) / Float(max(1, taps.count))
+            // The nearer tap, as the export uses: the narrow end must not be overstated.
+            let out = taps.map(\.out).min() ?? 0
             return MarkedFeature(id: UUID(), kind: kind, span: span, bottom: nil, top: nil, out: out, points: points, opens: nil)
         }
     }
