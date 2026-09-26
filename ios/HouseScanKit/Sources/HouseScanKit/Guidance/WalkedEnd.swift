@@ -35,6 +35,23 @@ public enum WalkedEnd {
         let along = side.sign * wall.wallPoint(phone).s
         return side.sign * (along < 0 ? reach : min(along, reach))
     }
+
+    /// The side "Wall ends here" ends while the walk asks about the wall in front of the phone
+    /// (tilt down, tilt up, step back) instead of asking to walk a side: the side of the meter the
+    /// phone is on, by its s along the chain as `end` measures it, when that side has no end yet.
+    /// The planner does the left side first, so the first side without an end can be the one
+    /// behind the homeowner: after walking right with the left end unmarked, the button ended the
+    /// left side at its farthest walked point, far from the phone (review of #24). With the
+    /// phone's place unknown, the phone at the meter, or its side already ended: the first side
+    /// without an end, as before. Nil when both ends are marked.
+    public static func side(phone: SIMD3<Float>?, wall: WallFrame, leftEnd: Float?, rightEnd: Float?) -> WalkSide? {
+        let open = WalkSide.allCases.filter { ($0 == .left ? leftEnd : rightEnd) == nil }
+        if let phone {
+            let s = wall.wallPoint(phone).s
+            if let side = open.first(where: { $0.sign * s > 0 }) { return side }
+        }
+        return open.first
+    }
 }
 
 extension CoverageMap {
@@ -44,6 +61,13 @@ extension CoverageMap {
     /// How far the walk went on `side` (`WalkedEnd.farthest`).
     public func walkedFarthest(_ side: WalkSide) -> Float {
         WalkedEnd.farthest(side, walked: walkedPositions, wall: wall)
+    }
+
+    /// True when both ends are marked closer together along the chain than
+    /// `WallFrame.minWallLength`: too short a wall to finish the walk with.
+    public var endsTooClose: Bool {
+        guard let leftEnd, let rightEnd else { return false }
+        return rightEnd - leftEnd < WallFrame.minWallLength
     }
 
     /// The unexplored end the camera stands beyond while its view shows nothing between the marked

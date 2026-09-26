@@ -109,6 +109,10 @@ enum ScanCopy {
         "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
     }
 
+    /// Over the walk's own prompt after "Done with this wall" was refused and the ends cleared
+    /// (`ScanViewState.wallTooShort`).
+    static let wallTooShort = "The ends were too close. Walk along the wall first."
+
     // MARK: Close-up
 
     static func closeUpProblem(_ problem: CloseUpProblem) -> String {
@@ -376,22 +380,45 @@ enum ScanCopy {
         row.needsPerson ? "An installer will check this" : "One more photo would settle this"
     }
 
-    /// "Measured 3 ft 2 in. The rule is 3 ft, and the measurement can be off by about 4 in."
+    /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."
+    /// The limit says whether it is a minimum or a maximum: without it, the 20 ft cable limit read
+    /// like a minimum under "Measured 3 ft".
     /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
     static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
-        func length(_ meters: Float) -> String {
-            spoken ? Distance.spoken(meters) : Distance.feetAndInches(meters)
-        }
-        var parts = ["Measured \(length(measured))."]
+        let length = spoken ? Distance.spoken : Distance.feetAndInches
+        var parts = [measuredLine(measured, length: length)]
         if let threshold = row.threshold {
+            let limit = ruleLimit(threshold, row.comparison, length: length)
             if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(length(threshold)), and the measurement can be off by about \(length(plusMinus)).")
+                parts.append("The rule is \(limit), and the measurement can be off by about \(length(plusMinus)).")
             } else {
-                parts.append("The rule is \(length(threshold)).")
+                parts.append("The rule is \(limit).")
             }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// "Measured 3 ft 2 in.", or "Overlaps by 1 ft 3 in." below zero. A clearance the server
+    /// measures to an area (the meter's working space, a box on the wall above) goes negative
+    /// once the battery is inside it, and the bare magnitude read as clearance (#40). Less than
+    /// half an inch of overlap stays "Measured 0 in.", not "Overlaps by 0 in.".
+    static func measuredLine(_ measured: Float, length: (Float) -> String = Distance.feetAndInches) -> String {
+        if measured <= -Distance.metersPerInch / 2 {
+            return "Overlaps by \(length(measured))."
+        }
+        return "Measured \(length(measured))."
+    }
+
+    /// "at least 3 ft", "at most 20 ft", or the bare distance when the server didn't say which.
+    /// A minimum of 0 reads "no overlap": "at least 0 in" says the same thing less plainly.
+    static func ruleLimit(_ threshold: Float, _ comparison: RuleComparison?, length: (Float) -> String = Distance.feetAndInches) -> String {
+        let distance = length(threshold)
+        guard let comparison else { return distance }
+        switch comparison {
+        case .atLeast: return threshold < Distance.metersPerInch / 2 ? "no overlap" : "at least \(distance)"
+        case .atMost: return "at most \(distance)"
+        }
     }
 
     static func outcomeWord(_ outcome: CheckOutcome) -> String {

@@ -79,6 +79,9 @@ final class ScanEngine {
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
     var pastEndSide: WallSide?
+    /// The end the past_end request cleared: where it was, its kind and when it was marked, put
+    /// back or moved on when the request ends without it marked again (`settleClearedEnd`).
+    private var clearedEnd: (s: Float, kind: EndKind, t: Double?)?
     /// Server requests raised without a tap since the review was confirmed (`nextAutomaticGap`),
     /// oldest first. Each is raised once; the result still offers it as a capture.
     private var automaticGaps: [GapPlan] = []
@@ -203,6 +206,7 @@ final class ScanEngine {
         if state.phase == .wallWalk || state.phase == .gapRequest {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
+        if state.phase == .resultAR { hideResultInCamera() }
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         switch phase {
@@ -249,6 +253,7 @@ final class ScanEngine {
         case .resultAR:
             live?.setMode(.idle)
             if let replay, let index = bestFrameForResult() { replay.show(index: index) }
+            showResultInCamera(rising: true)
         case .onboarding, .unsupported:
             break
         }
@@ -330,6 +335,7 @@ final class ScanEngine {
             RuntimeLog.capture.info("tracking \(Self.name(self.state.tracking), privacy: .public) -> \(Self.name(frame.tracking), privacy: .public)")
             if state.tracking == .normal { breakWalkedPath(because: "tracking left normal") }
             state.tracking = frame.tracking
+            live?.setResultVisible(frame.tracking == .normal)
         }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
@@ -783,9 +789,9 @@ final class ScanEngine {
         return low < high ? low...high : nil
     }
 
-    /// How far above the top of the wall band (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a
-    /// view must reach to count as tilted up: 0.7 m, so about 9.8 ft above the ground, past a
-    /// one-storey eave, where the view shows whether one is there. It is a height, not a pitch: a
+    /// How far above the top wall row (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a view must
+    /// reach to count as tilted up: 0.7 m, so about 9.8 ft above the ground, past a one-storey
+    /// eave, where the view shows whether one is there. It is a height, not a pitch: a
     /// level view from 2 m out reaches about 8.5 ft and does not count, one from 2.6 m out
     /// reaches about 10 ft and does, and it shows what is overhead as well as a tilted one. A
     /// guess to try on a phone, not measured.
@@ -1083,6 +1089,7 @@ final class ScanEngine {
         state.gap = nil
         gapPlan = nil
         pastEndSide = nil
+        clearedEnd = nil
         // Skipped requests name spans along the old wall.
         skippedGaps = []
         automaticGaps = []
@@ -1090,6 +1097,7 @@ final class ScanEngine {
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
@@ -1122,6 +1130,7 @@ final class ScanEngine {
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
@@ -1141,6 +1150,24 @@ final class ScanEngine {
                 return WallGeometry.Segment(span: piece.span, along: piece.along, outward: piece.outward, anchor: piece.anchor, anchorS: piece.anchorS)
             }
         )
+        if state.phase == .resultAR { showResultInCamera(rising: false) }
+    }
+
+    /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
+    /// anchor, where people and objects in front of it hide it. A replay, or a meter without an
+    /// anchor, leaves it to the screen's overlay.
+    private func showResultInCamera(rising: Bool) {
+        guard let live, let wall = state.wall, let result = state.result else { return }
+        let model = ResultARModel.build(wall: wall, result: result)
+        state.resultInCamera = live.showResult(model)
+        guard state.resultInCamera else { return }
+        live.setResultVisible(state.tracking == .normal)
+        if rising { ResultARModel.rise(model) }
+    }
+
+    private func hideResultInCamera() {
+        live?.hideResult()
+        state.resultInCamera = false
     }
 
     func publishCoverage() {
@@ -1153,7 +1180,8 @@ final class ScanEngine {
             firstCellS: map.cellRange(indices.lowerBound).lowerBound,
             wall: indices.map { Self.cell(map.level(.wall, $0)) },
             ground: indices.map { Self.cell(map.level(.ground, $0)) },
-            wallBandHeight: map.config.wallCaptureHeight,
+            // The band the walk asks for; heights above it are still reported when seen.
+            wallBandHeight: map.config.wallWalkHeight,
             groundBandDepth: map.config.groundBandDepth,
             visibleRange: range,
             revision: map.revision
@@ -1169,6 +1197,7 @@ final class ScanEngine {
         map.setEndIsLimit(side == .left ? .left : .right, kind == .limit)
         coverage = map
         endKinds[side] = kind
+        state.wallTooShort = false
         publishWall()
         publishCoverage()
         RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) at s=\(s) (\(kind == .limit ? "limit" : "unexplored", privacy: .public))")
@@ -1240,6 +1269,7 @@ final class ScanEngine {
     /// with the new evidence (the closed loop: gap, instruction, capture, updated result). The
     /// answer then leads to the next capturable request or to the result (`upload`).
     private func afterGapResolved() {
+        settleClearedEnd()
         gapPlan = nil
         pastEndSide = nil
         pendingOverhead = nil
@@ -1271,7 +1301,7 @@ final class ScanEngine {
     /// the camera can't tell open sky from an eave. The view's photo is stored as a keyframe
     /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
     /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
-    /// view doesn't show the wall from the top of the wall band (7.5 ft, `wallCaptureHeight`) upward.
+    /// view doesn't show the wall from the top of the sampled rows (7.5 ft, `wallCaptureHeight`) upward.
     /// `segment` is the walked-path segment the view was captured in.
     func keepOverheadView(_ frame: SourceFrame, capturedIn segment: Int?) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
@@ -1398,7 +1428,7 @@ final class ScanEngine {
         guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
               let map = coverage else { return nil }
         for item in result.missingEvidence {
-            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
+            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
                   !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
             return (item, plan)
         }
@@ -1411,13 +1441,35 @@ final class ScanEngine {
         var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
             // The walk has to go past the end it stopped at; that end is no longer a limit. It
-            // exports as unexplored unless the homeowner marks it again (markWallEnd).
-            pastEnd = side == .left ? .left : .right
-            clearEnd(side == .left ? .left : .right)
+            // stays cleared until the homeowner marks it again (markWallEnd) or the request ends
+            // (settleClearedEnd).
+            let wallSide: WallSide = side == .left ? .left : .right
+            pastEnd = wallSide
+            let old = wallSide == .left ? coverage?.leftEnd : coverage?.rightEnd
+            clearedEnd = old.map { (s: $0, kind: endKinds[wallSide] ?? EndKind.unexplored, t: markTimes[MarkKey.end(wallSide)]) }
+            clearEnd(wallSide)
         }
         // Set first, so the guidance log records the request as a past-end one.
         pastEndSide = pastEnd
         beginGap(plan, origin: .server, reason: .server(detail: item.message))
+    }
+
+    /// A past_end request ending without its end marked again (the gap screen offers only "I
+    /// can't get there") must not leave that side without an end: the export would run the wall
+    /// out to whatever the fog saw, and the next past_end request would be planned from the
+    /// meter (issue #35). Met, the end moves on past the ground the request showed, still
+    /// unexplored (`GapPlanner.endAfterPastEnd`); skipped, the end it cleared comes back with its
+    /// kind and mark time.
+    private func settleClearedEnd() {
+        guard let side = pastEndSide, let old = clearedEnd, let plan = gapPlan else { return }
+        clearedEnd = nil
+        guard (side == .left ? coverage?.leftEnd : coverage?.rightEnd) == nil else { return }
+        if state.gap?.isSatisfied == true {
+            setEnd(side, at: gapPlanner.endAfterPastEnd(plan, side: side == .left ? .left : .right, clearedAt: old.s), kind: .unexplored)
+        } else {
+            setEnd(side, at: old.s, kind: old.kind)
+            markTimes[MarkKey.end(side)] = old.t
+        }
     }
 
     /// Writes the capture packet (`ScanEngine+Packet.swift`) with this scene.json inside, zipped
@@ -1483,11 +1535,13 @@ final class ScanEngine {
         gapPlan = nil
         skippedGaps = []
         pastEndSide = nil
+        clearedEnd = nil
         automaticGaps = []
         automaticGapsStopped = false
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
