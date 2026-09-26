@@ -233,22 +233,28 @@ final class ScreenStatesUITests: XCTestCase {
         let first = try audit(app)
         guard !first.isEmpty else { return }
         Thread.sleep(forTimeInterval: 6)
+        revealCutOff(first.values.compactMap(\.frame), in: app)
         let second = try audit(app)
         for key in first.keys.sorted() where second[key] != nil {
-            XCTFail("\(name): \(second[key] ?? key)")
+            XCTFail("\(name): \(second[key]?.message ?? key)")
         }
+    }
+
+    private struct Issue {
+        var message: String
+        var frame: CGRect?
     }
 
     /// Issues keyed by type, identifier and label. A failed snapshot (the tree changed while the
     /// audit read it) is retried once; a second failure throws.
     @MainActor
-    private func audit(_ app: XCUIApplication) throws -> [String: String] {
-        func run() throws -> [String: String] {
-            var found: [String: String] = [:]
+    private func audit(_ app: XCUIApplication) throws -> [String: Issue] {
+        func run() throws -> [String: Issue] {
+            var found: [String: Issue] = [:]
             try app.performAccessibilityAudit { issue in
                 let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
                 let key = "\(issue.auditType.rawValue)|\(issue.element?.identifier ?? "")|\(issue.element?.label ?? "")"
-                found[key] = "\(issue.compactDescription) (\(element))"
+                found[key] = Issue(message: "\(issue.compactDescription) (\(element))", frame: issue.element?.frame)
                 return true
             }
             return found
@@ -259,6 +265,22 @@ final class ScreenStatesUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 1)
             return try run()
         }
+    }
+
+    /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge
+    /// is audited on the sliver that shows, which fails contrast however it is drawn (a few
+    /// points of a button's top edge over the camera). A homeowner would scroll to it, so before
+    /// the second audit the screen scrolls until every flagged element that crosses the bottom
+    /// edge is in full view; one that still fails there fails the test.
+    @MainActor
+    private func revealCutOff(_ frames: [CGRect], in app: XCUIApplication) {
+        let screen = app.windows.firstMatch.frame
+        guard let lowest = frames.filter({ $0.minY < screen.maxY && $0.maxY > screen.maxY }).map(\.maxY).max() else { return }
+        let distance = min(lowest - screen.maxY + 60, screen.height * 0.5)
+        // A slow drag from mid-screen: it scrolls by about the distance dragged, without the
+        // momentum a swipe adds.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 0.5)
     }
 
     @MainActor
