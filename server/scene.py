@@ -205,6 +205,22 @@ class Scene:
             parts.append(_wedge(prev.b, prev.outward, nxt.outward, out))
         return unary_union(parts)
 
+    def s_of(self, p: Point2) -> float:
+        """s of the chain point nearest to a plan point."""
+        best = min(self.pieces, key=lambda q: Point(p).distance(LineString([q.a, q.b])))
+        return min(max(best.local(p)[0], best.s0), best.s1)
+
+    def s_extent(self, geom: Geometry) -> tuple[float, float] | None:
+        """The stretch of chain a region lies in front of."""
+        if geom.is_empty:
+            return None
+        coords: list[Point2] = []
+        for part in getattr(geom, "geoms", [geom]):
+            ring = part.exterior if hasattr(part, "exterior") else part
+            coords += [(x, z) for x, z in ring.coords]
+        values = [self.s_of(c) for c in coords]
+        return (min(values), max(values))
+
     def wall_line(self, s_lo: float, s_hi: float) -> Geometry:
         if s_hi - s_lo <= EPS:
             return Point(self.point_at(s_lo))

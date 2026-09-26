@@ -234,7 +234,7 @@ class Solver:
                 return c
         if not self._covered(fp, self.unobserved_ground, 0.0):
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing = [("ground", *self._s_range(piece, fp, 0.0))]
+            c.missing = self._missing_ground(fp, 0.0)
             c.reason = "The ground under the footprint was not seen."
             return c
         # A patch edge's error matters only where an allowed surface meets a disallowed or
@@ -263,9 +263,20 @@ class Solver:
             c.reason = "The footprint sits within measurement error of a surface boundary."
         return c
 
-    def _s_range(self, piece: Piece, fp: Polygon, radius: float) -> tuple[float, float]:
-        s0 = piece.local(fp.exterior.coords[0])[0]
-        return (s0 - radius, s0 + self.W + radius)
+    def _missing_ground(self, fp: Polygon, radius: float) -> list[tuple[str, float, float]]:
+        """The stretch of ground within `radius` of the footprint that nobody saw."""
+        region = self.unobserved_ground.intersection(fp.buffer(radius) if radius > 0 else fp)
+        extent = self.scene.s_extent(region)
+        return [("ground", *extent)] if extent else []
+
+    def _missing_band(
+        self, band: str, fp: Polygon, radius: float
+    ) -> list[tuple[str, float, float]]:
+        if band == "ground":
+            return self._missing_ground(fp, radius)
+        region = self.unobserved_wall.intersection(fp.buffer(radius) if radius > 0 else fp)
+        extent = self.scene.s_extent(region)
+        return [("wall", *extent)] if extent else []
 
     def check_clearance(
         self,
@@ -318,11 +329,11 @@ class Solver:
                     f"battery against a {ft(t)} rule: too close to call."
                 )
             if not covered:
-                c.missing = [(band, *self._s_range(piece, fp, t))]
+                c.missing = self._missing_band(band, fp, t)
             return c
         if not covered:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing = [(band, *self._s_range(piece, fp, t))]
+            c.missing = self._missing_band(band, fp, t)
             c.reason = (
                 f"Not everything within {ft(t)} of the battery was seen, so a {noun} could "
                 "hide there."
@@ -483,8 +494,13 @@ class Solver:
                 )
                 effects.append("fail")
         h = r.height_ft.value
+        path_line = self.scene.wall_line(lo, hi) if hi - lo > EPS else None
         for o in self.route_objects:
             if min(hi, o.span[1]) - max(lo, o.span[0]) <= EPS:
+                continue
+            # Only something that touches the wall the cable runs along is in its way; a pipe
+            # or unit standing off the wall is not (the cable passes behind it).
+            if path_line is None or o.geom.distance(path_line) > o.plus_minus + _MEASURE_EPS:
                 continue
             effect = r.crossing[o.type]  # type: ignore[index]
             crossings.append({"subject": o.label, "span_ft": list(o.span), "effect": effect})
@@ -968,13 +984,22 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
                 }
             )
             missing += past_end_requests()
-        summary = (
-            f"A person needs to check the best spot, {where((best.s0 + best.s1) / 2)}: "
-            + "; ".join(labels)
-            + "."
-        )
+        spot_at = where((best.s0 + best.s1) / 2)
+        if any(c.unsure_cause == "unobserved" for c in best.checks if c.outcome == UNSURE):
+            summary = (
+                f"More views are needed around the best spot, {spot_at}: "
+                f"{len(ids)} checks depend on areas the scan did not see."
+            )
+        else:
+            summary = (
+                f"A person needs to check the best spot, {spot_at}: " + "; ".join(labels) + "."
+            )
     else:
-        nearest = min(fails, key=lambda c: (c.route.length, c.s0)) if fails else None
+        nearest = (
+            min(fails, key=lambda c: (len(c.failing()), len(c.unsure()), c.route.length, c.s0))
+            if fails
+            else None
+        )
         best = nearest
         fail_counts: dict[str, int] = {}
         for c in fails:

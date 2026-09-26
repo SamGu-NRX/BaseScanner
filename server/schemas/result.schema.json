@@ -49,12 +49,12 @@
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/route"}]
     },
     "checks": {
-      "description": "Every check at the chosen spot, or, when `spot` is null, at the nearest spot considered (see `nearest_considered`).",
+      "description": "Every check at the chosen spot, or, when `spot` is null, at `nearest_considered`.",
       "type": "array",
       "items": {"$ref": "#/$defs/check"}
     },
     "nearest_considered": {
-      "description": "When `spot` is null: the spot with the shortest route that was evaluated, and why it fails. Null otherwise.",
+      "description": "When `spot` is null: the evaluated spot closest to passing (fewest failing checks, then fewest unsure, then shortest route), whose checks explain why it fails. Null otherwise.",
       "oneOf": [{"type": "null"}, {"$ref": "#/$defs/spot"}]
     },
     "missing_evidence": {
