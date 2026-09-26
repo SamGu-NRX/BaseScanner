@@ -32,6 +32,12 @@ struct ProbeView: View {
             Text(current).font(.largeTitle.bold())
             Text(CommandLine.arguments.dropFirst().joined(separator: " "))
                 .font(.footnote.monospaced())
+            if current == "probe_middle" {
+                // Negative control for the accessibility audit: an icon-only button with no
+                // label and a 12 pt target. The audit must report it.
+                Button {} label: { Image(systemName: "gearshape").font(.system(size: 9)) }
+                    .frame(width: 12, height: 12)
+            }
         }
         .padding()
         .task {
