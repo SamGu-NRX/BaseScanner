@@ -87,6 +87,10 @@ final class ScanEngine {
     /// measured: an answer usually lists one to three capturable items, and each round is a
     /// capture and an upload.
     static let maxAutomaticGaps = 5
+    /// How long the upload screen shows "One more view to finish" before a request raised from
+    /// the answer opens the camera: 1.5 s, about the time to read four words and see the new
+    /// step appear, and what the UI lane asked for. Not measured with homeowners.
+    static let followUpHold: Double = 1.5
 
     // LiDAR
     /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`: those with
@@ -1228,6 +1232,11 @@ final class ScanEngine {
             await waitForGate(.uploading)
             guard scan == generation else { return }
             if let next = nextAutomaticGap(result) {
+                // The upload screen says "One more view to finish" once the answer is in
+                // (`state.result` set, upload `.done`, both kept through the request): long
+                // enough to read before the camera takes over.
+                try await Task.sleep(for: .seconds(Self.followUpHold))
+                guard scan == generation, state.phase == .uploading else { return }
                 automaticGaps.append(next.plan)
                 RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
                 beginServerGap(next.item, plan: next.plan)
