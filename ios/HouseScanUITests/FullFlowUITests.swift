@@ -33,10 +33,22 @@ final class FullFlowUITests: XCTestCase {
 
     static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
+    /// On the synthetic replay, which has no depth, the 3D map (the default) sees nothing, so the
+    /// export takes the camera coverage map's path (`ScanEngine.exportGeometry`): the scene reports
+    /// the wall the walk saw rather than the map's empty coverage.
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        var wallEntries = 0
+        try runFlow(replay: replay, onScene: { data in
+            let scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+            let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+            wallEntries = observed.filter { $0["band"] as? String == "wall" }.count
+        })
+        if replay == Self.fixture {
+            XCTAssertGreaterThan(wallEntries, 0, "a replay without depth exported the 3D map's empty coverage")
+        }
     }
 
     /// The same flow with the camera coverage map alone (`-coverage legacy`), the model the 3D map

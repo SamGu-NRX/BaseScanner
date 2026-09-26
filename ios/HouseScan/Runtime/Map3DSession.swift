@@ -19,6 +19,10 @@ struct Map3DSnapshot: Sendable {
     /// Only `Map3DSession.finalSnapshot()` fills it: the export is its one reader, and reading
     /// coverage along a second wall twice a second would double the snapshot's cost.
     var measured: (wall: WallFrame, coverage: Map3DCoverage)?
+    /// Whether any depth frame (LiDAR, a replay's, or estimated) went into the map since `start`.
+    /// Without one the map holds only feature points and planes, too sparse to report coverage
+    /// from. Only `Map3DSession.finalSnapshot()` fills it, for the export.
+    var integratedDepth = false
 }
 
 /// What the fog overlay draws from a snapshot (`ScanViewState.map3D`), in the map's frame:
@@ -249,6 +253,7 @@ final class Map3DSession: Sendable {
             drainInbox(into: &core)
             guard let map = core.map, let wall = core.wall else { return nil }
             var snapshot = Self.snapshot(map, wall: wall, revision: core.revision)
+            snapshot.integratedDepth = core.integratedDepth
             if let chain = snapshot.chain, let measuredWall = chain.wallFrame(meter: wall.meter, groundY: wall.groundY, frame: map.frame) {
                 snapshot.measured = (measuredWall, map.coverage(along: measuredWall))
             }
@@ -296,6 +301,9 @@ final class Map3DSession: Sendable {
         var planes: [UUID: PlaneObservation] = [:]
         /// Chunks that arrived while there was no map, for the next `start`.
         var waitingChunks: [UUID: MeshChunk] = [:]
+        /// A depth frame went into the map since `start` (`Map3DSnapshot.integratedDepth`). A
+        /// rebuild after the ground moved keeps it: the phone still gives depth.
+        var integratedDepth = false
         var revision = 0
         var publishedRevision = -1
         /// `ProcessInfo.systemUptime` at which the last snapshot was started.
@@ -341,6 +349,7 @@ final class Map3DSession: Sendable {
                 core.planes = [:]
                 core.waitingChunks = [:]
             }
+            core.integratedDepth = false
             changed = true
         }
         for (id, plane) in taken.planes {
@@ -369,6 +378,7 @@ final class Map3DSession: Sendable {
                 RuntimeLog.engine.info("3D map started with \(waiting - outside) waiting mesh chunks; \(outside) wholly outside its bounds dropped")
             }
             core.waitingChunks = [:]
+            core.integratedDepth = false
             core.map = map
             core.wall = wall
             changed = true
@@ -384,6 +394,7 @@ final class Map3DSession: Sendable {
             switch frame {
             case .depth(let depth):
                 map.integrate(depth)
+                core.integratedDepth = true
             case .features(let features, let planes):
                 // The frame's planes are every plane ARKit had then: any other one is gone.
                 let current = Set(planes.map(\.id))
@@ -403,12 +414,14 @@ final class Map3DSession: Sendable {
         if var map = core.map, !taken.estimated.isEmpty {
             core.map = nil
             for depth in taken.estimated { map.integrate(depth) }
+            core.integratedDepth = true
             core.map = map
             changed = true
         }
         if var map = core.map, !taken.replay.isEmpty {
             core.map = nil
             for item in taken.replay { map.integrate(DepthFrame(image: item.depth, pose: item.camera)) }
+            core.integratedDepth = true
             core.map = map
             changed = true
         }

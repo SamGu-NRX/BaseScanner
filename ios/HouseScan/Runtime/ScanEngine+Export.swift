@@ -104,14 +104,21 @@ extension ScanEngine {
     /// Under `-coverage legacy`, the walk's tapped wall and the coverage map's sightings. Under
     /// `map3d`, the 3D map's (`Map3DCoverageSource.export`): the measured wall chain when it
     /// matches the walk, and coverage read along whichever wall is written.
+    ///
+    /// The 3D map is used only once some depth went into it (LiDAR, a replay's, or estimated
+    /// with `-estimatedDepth on` and the model present). Without, it holds only feature points
+    /// and planes and would report near-empty coverage, so the camera coverage map decides here
+    /// as it does for the walk on such a phone.
     func exportGeometry() async throws -> ExportGeometry {
         guard let map = coverage else { throw ExportError.noWall }
-        guard let map3D else {
+        func camera(because reason: String) -> ExportGeometry {
+            RuntimeLog.engine.info("export: camera coverage map, \(reason, privacy: .public)")
             return ExportGeometry(
                 wall: map.wall, baselineS: Self.exportSpan(map),
                 coverage: SceneCoverage(map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit),
                 plusMinus: [])
         }
+        guard let map3D else { return camera(because: "-coverage legacy") }
         // The snapshot is computed off the main actor, and meanwhile the meter anchor can move the
         // wall. One read along another wall than the current one is taken again; the next read
         // includes the move. Three tries, then the export fails rather than mix two walls.
@@ -120,6 +127,9 @@ extension ScanEngine {
             guard let snapshot else { throw ExportError.noMap3D }
             guard let map = coverage else { throw ExportError.noWall }
             guard snapshot.wall == map.wall else { continue }
+            guard snapshot.integratedDepth else {
+                return camera(because: "the 3D map integrated no depth (no LiDAR, and estimated depth off or without its model)")
+            }
             let export = try Map3DCoverageSource.export(
                 snapshot, tapWall: map.wall, baselineS: Self.exportSpan(map),
                 leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit,
