@@ -1,4 +1,5 @@
 import Foundation
+import HouseScanKit
 
 /// Sends a scan's scene.json to the placement server and returns the result JSON (contract C2).
 @MainActor
@@ -58,37 +59,35 @@ enum UploadError: Error, CustomStringConvertible {
     }
 }
 
-/// Which upload failures are worth sending again, and what the homeowner reads about them. The
-/// technical detail goes to the log; the screen never shows raw error text.
+/// What the homeowner reads about a failed upload. Which failures are worth sending again is
+/// decided (and tested) in HouseScanKit's `UploadFailureKind`; the technical detail goes to the
+/// log, and the screen never shows raw error text.
 enum UploadFailure {
     /// A failure while sending or reading the answer (not while packaging the scan).
     static func state(for error: any Error) -> UploadState {
-        if let urlError = error as? URLError {
-            if offlineCodes.contains(urlError.code) {
-                return .failed(message: "Your phone isn't connected to the internet. Your scan is saved on this phone.", offline: true)
-            }
-            return .failed(message: "We couldn't reach the House Scan server. Your scan is saved on this phone, so you can try again.", offline: false)
+        let kind: UploadFailureKind = if case .server(let status, _) = error as? UploadError {
+            UploadFailureKind.classify(httpStatus: status)
+        } else {
+            UploadFailureKind.classify(error)
         }
-        if case .server(let status, _) = error as? UploadError, (500..<600).contains(status) {
-            return .failed(message: "The House Scan server had a problem. Your scan is saved on this phone, so you can try again.", offline: false)
+        return switch kind {
+        case .offline:
+            .failed(message: "Your phone isn't connected to the internet. Your scan is saved on this phone.", offline: true)
+        case .unreachable:
+            .failed(message: "We couldn't reach the House Scan server. Your scan is saved on this phone, so you can try again.", offline: false)
+        case .serverError:
+            .failed(message: "The House Scan server had a problem. Your scan is saved on this phone, so you can try again.", offline: false)
+        case .refused:
+            .rejected(message: "The server couldn't use this scan. Go back to the review to check your marks, or start over.")
+        case .unreadableAnswer:
+            .rejected(message: "We couldn't read the server's answer. Go back to the review and send it again, or start over.")
         }
-        if case .server = error as? UploadError {
-            // 4xx: the server refused this scene, and sending the same scene again would too.
-            return .rejected(message: "The server couldn't use this scan. Go back to the review to check your marks, or start over.")
-        }
-        // Not HTTP, or an answer that doesn't decode as a result.
-        return .rejected(message: "We couldn't read the server's answer. Go back to the review and send it again, or start over.")
     }
 
     /// The scan couldn't be turned into scene.json.
     static let packaging = UploadState.rejected(
         message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over."
     )
-
-    /// No connection at all, as opposed to a server that can't be reached.
-    private static let offlineCodes: Set<URLError.Code> = [
-        .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff,
-    ]
 }
 
 final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
