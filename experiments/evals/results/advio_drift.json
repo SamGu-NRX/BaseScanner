@@ -15,6 +15,7 @@
     "arkit_over_truth": 0.6974453399490128
    },
    "walked_m_truth_gps": 391.9,
+   "arkit_scale_vs_truth_gps": 0.8377,
    "distance_error": {
     "3": {
      "truth": {
@@ -161,6 +162,7 @@
     "arkit_over_truth": 0.753844727096209
    },
    "walked_m_truth_gps": 379.1,
+   "arkit_scale_vs_truth_gps": 0.9425,
    "distance_error": {
     "3": {
      "truth": {
@@ -307,6 +309,7 @@
     "arkit_over_truth": 0.9752490457520531
    },
    "walked_m_truth_gps": 509.9,
+   "arkit_scale_vs_truth_gps": 0.9509,
    "distance_error": {
     "3": {
      "truth": {
@@ -469,6 +472,18 @@
     "median_in": 2.75,
     "p90_in": 8.17,
     "signed_median_in": -2.44
+   },
+   "position_truth_gps": {
+    "n": 1936,
+    "median_in": 8.3,
+    "p90_in": 18.63,
+    "signed_median_in": 8.3
+   },
+   "position_beyond_scale": {
+    "n": 1936,
+    "median_in": 7.72,
+    "p90_in": 20.35,
+    "signed_median_in": 7.72
    }
   },
   "10": {
@@ -489,6 +504,18 @@
     "median_in": 8.56,
     "p90_in": 22.3,
     "signed_median_in": -8.05
+   },
+   "position_truth_gps": {
+    "n": 1923,
+    "median_in": 26.3,
+    "p90_in": 55.7,
+    "signed_median_in": 26.3
+   },
+   "position_beyond_scale": {
+    "n": 1923,
+    "median_in": 24.47,
+    "p90_in": 59.65,
+    "signed_median_in": 24.47
    }
   },
   "20": {
@@ -509,6 +536,18 @@
     "median_in": 16.86,
     "p90_in": 41.55,
     "signed_median_in": -15.95
+   },
+   "position_truth_gps": {
+    "n": 1903,
+    "median_in": 50.37,
+    "p90_in": 94.61,
+    "signed_median_in": 50.37
+   },
+   "position_beyond_scale": {
+    "n": 1903,
+    "median_in": 47.69,
+    "p90_in": 102.46,
+    "signed_median_in": 47.69
    }
   },
   "30": {
@@ -529,6 +568,18 @@
     "median_in": 25.72,
     "p90_in": 60.15,
     "signed_median_in": -24.84
+   },
+   "position_truth_gps": {
+    "n": 1889,
+    "median_in": 73.8,
+    "p90_in": 132.58,
+    "signed_median_in": 73.8
+   },
+   "position_beyond_scale": {
+    "n": 1889,
+    "median_in": 70.37,
+    "p90_in": 144.56,
+    "signed_median_in": 70.37
    }
   }
  }

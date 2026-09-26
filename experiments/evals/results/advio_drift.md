@@ -20,6 +20,19 @@ Sequences 20, 21, 22. |ARKit - reference| in inches.
 | 20 ft | 60.4 / 106.0 | 30.9 / 70.1 | 16.9 / 41.5 | -15.9 |
 | 30 ft | 88.2 / 156.8 | 44.5 / 92.9 | 25.7 / 60.1 | -24.8 |
 
+## Position error against the truth rescaled to GPS, pooled
+
+|ARKit - truth| of the whole displacement, inches, median / p90: ARKit's displacement is turned by the heading difference at the window's start, so sideways drift counts too. 'Scale removed' first divides each walk's own ARKit scale out (its median displacement ratio over windows of 10 ft or more), leaving heading and random drift; the difference between the columns is the scale's share. The last column is the server's allowance of 0.16 ft of error per foot. The truth's own random error is large at every distance (noise split below), so these overstate ARKit's.
+
+| Walked | As tracked | Scale removed | 0.16 ft/ft allowance |
+| --- | --- | --- | --- |
+| 3 ft | 8.3 / 18.6 | 7.7 / 20.4 | 5.8 |
+| 10 ft | 26.3 / 55.7 | 24.5 / 59.6 | 19.2 |
+| 20 ft | 50.4 / 94.6 | 47.7 / 102.5 | 38.4 |
+| 30 ft | 73.8 / 132.6 | 70.4 / 144.6 | 57.6 |
+
+ARKit scale against the GPS-rescaled truth, per walk: 20: 0.838, 21: 0.943, 22: 0.951.
+
 ## Per sequence
 
 | Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | ARKit - ARCore disagreement: median / p90 (signed) | split if errors were independent (1 sigma, in): ARKit / truth / ARCore |

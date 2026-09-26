@@ -104,9 +104,11 @@ def position_errors(
     ref_R: np.ndarray,
     i: np.ndarray,
     j: np.ndarray,
+    scale: float = 1.0,
 ) -> np.ndarray:
-    """|Y (est(j) - est(i)) - (ref(j) - ref(i))|, with Y the heading difference at the start."""
-    de = at(est_p, j) - est_p[i]
+    """|Y (est(j) - est(i)) / scale - (ref(j) - ref(i))|, with Y the heading difference at the
+    start. `scale` divides out the estimate's own scale error, leaving heading and random drift."""
+    de = (at(est_p, j) - est_p[i]) / scale
     dr = at(ref_p, j) - ref_p[i]
     out = np.empty(len(i))
     for k, a in enumerate(i):
@@ -260,6 +262,16 @@ def evaluate_sequence(number: int) -> dict:
     truth_R = truth.R[[truth.nearest(x) for x in times]]
     step = int(START_EVERY_S * SAMPLE_HZ)
     result["walked_m_truth_gps"] = round(float(horizontal_path_length(refs["truth_gps"])[-1]), 1)
+    # ARKit's own scale on this walk: median displacement ratio over windows of 10 ft or more.
+    ratios = []
+    for ft in DISTANCES_FT:
+        if ft >= 10:
+            i, j = window_pairs(refs["truth_gps"], ft * FEET, step)
+            da = np.linalg.norm(at(A, j) - A[i], axis=1)
+            dg = np.linalg.norm(at(refs["truth_gps"], j) - refs["truth_gps"][i], axis=1)
+            ratios.append(da / dg)
+    scale = float(np.median(np.concatenate(ratios)))
+    result["arkit_scale_vs_truth_gps"] = round(scale, 4)
     result["distance_error"] = {}
     result["position_error_truth_gps"] = {}
     result["noise_split_in"] = {}
@@ -271,6 +283,7 @@ def evaluate_sequence(number: int) -> dict:
         errs = {name: distance_errors(A, P, i, j) for name, P in refs.items()}
         result["distance_error"][str(ft)] = {name: _abs_stats_in(e) for name, e in errs.items()}
         pe = position_errors(A, refs["truth_gps"], ark_R, truth_R, i, j)
+        pe_beyond = position_errors(A, refs["truth_gps"], ark_R, truth_R, i, j, scale)
         result["position_error_truth_gps"][str(ft)] = _abs_stats_in(pe)
         arcore_vs_truth = distance_errors(refs["arcore"], refs["truth_gps"], i, j)
         va, vt, vc = three_cornered_hat(
@@ -284,6 +297,8 @@ def evaluate_sequence(number: int) -> dict:
             "truth_gps": sig(vt),
             "arcore": sig(vc),
         }
+        errs["position_truth_gps"] = pe
+        errs["position_beyond_scale"] = pe_beyond
         result["errors_in"][str(ft)] = {k: (v / INCH).round(2).tolist() for k, v in errs.items()}
     return result
 
@@ -293,7 +308,7 @@ def _pooled(results: list[dict]) -> dict:
     out: dict = {"sequences": [r["sequence"] for r in ok]}
     for ft in DISTANCES_FT:
         out[str(ft)] = {}
-        for ref in ("truth", "truth_gps", "arcore"):
+        for ref in ("truth", "truth_gps", "arcore", "position_truth_gps", "position_beyond_scale"):
             e = np.concatenate([np.asarray(r["errors_in"][str(ft)][ref]) for r in ok])
             out[str(ft)][ref] = _abs_stats_in(e * INCH)
     return out
@@ -336,6 +351,34 @@ def _markdown(results: list[dict], pooled: dict) -> str:
             f"{p['truth_gps']['median_in']:.1f} / {p['truth_gps']['p90_in']:.1f} | "
             f"{p['arcore']['median_in']:.1f} / {p['arcore']['p90_in']:.1f} | {p['arcore']['signed_median_in']:+.1f} |"
         )
+    lines += [
+        "",
+        "## Position error against the truth rescaled to GPS, pooled",
+        "",
+        "|ARKit - truth| of the whole displacement, inches, median / p90: ARKit's displacement is "
+        "turned by the heading difference at the window's start, so sideways drift counts too. "
+        "'Scale removed' first divides each walk's own ARKit scale out (its median displacement "
+        "ratio over windows of 10 ft or more), leaving heading and random drift; the difference "
+        "between the columns is the scale's share. The last column is the server's allowance of "
+        "0.16 ft of error per foot. The truth's own random error is large at every distance "
+        "(noise split below), so these overstate ARKit's.",
+        "",
+        "| Walked | As tracked | Scale removed | 0.16 ft/ft allowance |",
+        "| --- | --- | --- | --- |",
+    ]
+    for ft in DISTANCES_FT:
+        p = pooled[str(ft)]
+        a, b = p["position_truth_gps"], p["position_beyond_scale"]
+        lines.append(
+            f"| {ft} ft | {a['median_in']:.1f} / {a['p90_in']:.1f} | "
+            f"{b['median_in']:.1f} / {b['p90_in']:.1f} | {0.16 * ft * 12:.1f} |"
+        )
+    scales = ", ".join(
+        f"{r['sequence']}: {r['arkit_scale_vs_truth_gps']:.3f}"
+        for r in results
+        if "arkit_scale_vs_truth_gps" in r
+    )
+    lines += ["", f"ARKit scale against the GPS-rescaled truth, per walk: {scales}."]
     lines += ["", "## Per sequence", ""]
     lines.append(
         "| Seq | Walked | vs truth rescaled to GPS: median / p90 (signed) | ARKit - ARCore disagreement: median / p90 (signed) | split if errors were independent (1 sigma, in): ARKit / truth / ARCore |"

@@ -107,3 +107,12 @@ def test_tracking_failure_time():
     assert tracking_failure_time(p, t) is None
     p[3:, 0] += 2.0  # a 2 m jump between samples 2 and 3
     assert tracking_failure_time(p, t) == pytest.approx(0.2)
+
+
+def test_position_error_with_scale_removed():
+    ref = _straight_walk(21, 0.1)
+    est = 0.9 * ref  # 10% short, same heading
+    R = np.stack([np.eye(3)] * 21)
+    i, j = window_pairs(ref, 2.0, 100)
+    np.testing.assert_allclose(position_errors(est, ref, R, R, i, j), [0.2])
+    np.testing.assert_allclose(position_errors(est, ref, R, R, i, j, 0.9), [0.0], atol=1e-12)
