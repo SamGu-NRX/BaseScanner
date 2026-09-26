@@ -127,27 +127,24 @@ def find_app(server_dir: Path) -> str:
     return found[0]
 
 
+SHIM = Path(__file__).with_name("solver_shim.py")
+
+
 @contextlib.contextmanager
-def server_from_ref(sha: str, log_path: Path) -> Iterator[str]:
+def server_from_ref(sha: str, log_path: Path, via_shim: bool = False) -> Iterator[str]:
+    """The server at `sha` on a free port: its own FastAPI app, or `solver_shim` around `solve`."""
     with gitref.detached_worktree(sha) as tree:
         server_dir = tree / "server"
         subprocess.run(["uv", "sync", "--locked", "--quiet"], cwd=server_dir, check=True)
-        app = find_app(server_dir)
         port = free_port()
         url = f"http://127.0.0.1:{port}"
+        if via_shim:
+            target = ["python", str(SHIM), "--server-dir", str(server_dir), "--port", str(port)]
+        else:
+            target = ["uvicorn", find_app(server_dir), "--host", "127.0.0.1", "--port", str(port)]
         with log_path.open("w") as log:
             proc = subprocess.Popen(
-                [
-                    "uv",
-                    "run",
-                    "--quiet",
-                    "uvicorn",
-                    app,
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    str(port),
-                ],
+                ["uv", "run", "--quiet", *target],
                 cwd=server_dir,
                 stdout=log,
                 stderr=subprocess.STDOUT,
@@ -360,7 +357,7 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     lines = [
         f"# End-to-end run against `{meta['server_ref']}` at `{meta['server_sha'][:12]}`",
         "",
-        f"{meta['started_at']}. Endpoint `{meta['endpoint']}`. "
+        f"{meta['started_at']}. Endpoint `{meta['endpoint']}` via {meta['transport']}. "
         + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())),
         "",
         "| Scene | Status | Decision | ms | Problems |",
@@ -384,6 +381,11 @@ def main(argv: list[str] | None = None) -> int:
     where.add_argument("--server-url", help="use a running server instead of starting one")
     parser.add_argument("--schema-ref", help="ref for the schemas (default: --server-ref)")
     parser.add_argument("--endpoint", help="POST path, when discovery is ambiguous")
+    parser.add_argument(
+        "--via-shim",
+        action="store_true",
+        help="serve the ref's solver.solve through solver_shim (before the ref has an API)",
+    )
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument(
         "--scene",
@@ -420,16 +422,14 @@ def main(argv: list[str] | None = None) -> int:
     if not items:
         raise SystemExit("No scenes: add case files to e2e/cases or pass --scene/--real.")
 
-    server_sha = schema_sha if not args.server_url else "(running server)"
-    if not args.server_url:
-        server_sha = gitref.resolve(args.server_ref)
+    server_sha = "(running server)" if args.server_url else gitref.resolve(args.server_ref)
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = (args.out or DEFAULT_REPORTS / f"{stamp}-{server_sha[:8]}").expanduser()
     out.mkdir(parents=True, exist_ok=True)
 
     with contextlib.ExitStack() as stack:
         url = args.server_url or stack.enter_context(
-            server_from_ref(server_sha, out / "server.log")
+            server_from_ref(server_sha, out / "server.log", via_shim=args.via_shim)
         )
         openapi = json.loads(urllib.request.urlopen(f"{url}/openapi.json", timeout=10).read())
         endpoint = discover_endpoint(openapi, args.endpoint)
@@ -457,6 +457,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema_sha": schema_sha,
         "sha": server_sha,
         "endpoint": f"POST {endpoint.path} ({endpoint.content_type})",
+        "transport": "solver shim (HTTP layer not tested)" if args.via_shim else "server API",
         "command": " ".join([sys.executable, "-m", "hsverify.e2e", *(argv or sys.argv[1:])]),
         "cases_sha256": hashlib.sha256(b"".join(i.raw for i in items)).hexdigest(),
     }

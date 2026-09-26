@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -49,18 +50,20 @@ def show(ref: str, path: str) -> str | None:
 
 @contextlib.contextmanager
 def detached_worktree(sha: str, keep: bool = False) -> Iterator[Path]:
-    """A detached worktree of `sha` at /tmp/hs-verify-<sha12>, removed afterwards unless `keep`.
+    """A detached worktree of `sha` under /tmp, removed afterwards unless `keep`.
 
-    An existing worktree at that path is reused, since it holds the same commit.
+    The path is unique per call: several checks (and the scoreboard) run at once on this Mac,
+    and a path shared by SHA let one run delete a tree another was still using.
     """
-    path = TMP_ROOT / f"hs-verify-{sha[:12]}"
-    if not (path / ".git").exists():
-        if path.exists():
-            shutil.rmtree(path)
-        git("worktree", "add", "--detach", "--force", str(path), sha)
-        # The landing page submodule is not needed for any check here.
+    path = Path(tempfile.mkdtemp(prefix=f"hs-verify-{sha[:12]}-", dir=TMP_ROOT))
+    path.rmdir()  # git creates it
+    git("worktree", "add", "--detach", "--force", str(path), sha)
     try:
         yield path
     finally:
         if not keep:
-            git("worktree", "remove", "--force", str(path))
+            try:
+                git("worktree", "remove", "--force", str(path))
+            except subprocess.CalledProcessError:
+                shutil.rmtree(path, ignore_errors=True)
+                git("worktree", "prune")

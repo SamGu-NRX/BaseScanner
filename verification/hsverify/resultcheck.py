@@ -69,7 +69,13 @@ def covers(intervals: list[tuple[float, float]], a: float, b: float, slack: floa
 
 
 def margin_problem(check: dict) -> str | None:
-    """The C5 rule for one check, when its numbers are all present."""
+    """The C5 rule for one check, when its numbers are all present.
+
+    PASS needs a clear pass and FAIL a clear fail. UNSURE from the margin needs neither. UNSURE
+    for another cause (an unobserved area, an unknown attribute, a review rule) may sit on
+    numbers that would pass, but not on numbers that clearly fail: a measured object inside
+    the clearance by more than the error fails whatever else went unseen.
+    """
     m, e, t, cmp = (
         check.get(k) for k in ("measured_ft", "plus_minus_ft", "threshold_ft", "comparison")
     )
@@ -80,12 +86,15 @@ def margin_problem(check: dict) -> str | None:
     else:
         clear_pass, clear_fail = m + e < t - EPS, m - e > t + EPS
     expected = "pass" if clear_pass else "fail" if clear_fail else "unsure"
-    if check["outcome"] != expected:
-        return (
-            f"check {check['id']}: measured {m} ± {e} {cmp} {t} should be {expected}, "
-            f"server says {check['outcome']}"
-        )
-    return None
+    outcome, cause = check["outcome"], check.get("unsure_cause")
+    other_cause = outcome == "unsure" and cause not in (None, "margin")
+    if outcome == expected or (other_cause and not clear_fail):
+        return None
+    because = f" ({cause})" if cause else ""
+    return (
+        f"check {check['id']}: measured {m} ± {e} {cmp} {t} should be {expected}, "
+        f"server says {outcome}{because}"
+    )
 
 
 def invariant_problems(scene: dict, result: dict, sent: bytes | None = None) -> list[str]:

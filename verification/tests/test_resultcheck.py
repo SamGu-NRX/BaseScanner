@@ -134,6 +134,15 @@ def test_margin_rule(cmp, measured, error, threshold, expected):
         assert (problem is None) == (outcome == expected), (outcome, problem)
 
 
+def test_unsure_for_another_cause_may_sit_on_passing_numbers_but_not_failing_ones():
+    assert margin_problem(check("unsure", 5.9, 0.6, 3.0, cause="unobserved")) is None
+    assert margin_problem(check("unsure", 3.1, 0.6, 3.0, cause="unknown_attribute")) is None
+    problem = margin_problem(check("unsure", 1.0, 0.6, 3.0, cause="unobserved"))
+    assert problem is not None and "should be fail" in problem
+    # A margin-caused unsure must really be inside the band.
+    assert margin_problem(check("unsure", 5.9, 0.6, 3.0, cause="margin")) is not None
+
+
 def test_margin_rule_skips_checks_without_numbers():
     assert margin_problem(check("unsure", measured=None, cause="unobserved")) is None
 
