@@ -1,7 +1,7 @@
 """Peak memory of this harness process and of the child processes it waited for.
 
 The Mac is shared by several agents and one oversized process froze it once, so every report
-records these two numbers. macOS reports `ru_maxrss` in bytes.
+records these two numbers. `ru_maxrss` is in bytes on macOS and in kilobytes on Linux (CI).
 """
 
 from __future__ import annotations
@@ -10,12 +10,15 @@ import os
 import resource
 import signal
 import subprocess
+import sys
 import threading
+
+MAXRSS_UNIT = 1 if sys.platform == "darwin" else 1024
 
 
 def peak_rss_mb() -> dict[str, float]:
-    own = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    children = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    own = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * MAXRSS_UNIT
+    children = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * MAXRSS_UNIT
     return {"harness_mb": round(own / 2**20, 1), "largest_child_mb": round(children / 2**20, 1)}
 
 
