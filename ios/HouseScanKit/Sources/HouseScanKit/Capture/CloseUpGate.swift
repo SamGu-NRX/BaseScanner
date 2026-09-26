@@ -11,7 +11,7 @@ public struct CloseUpConfig: Sendable, Equatable {
     public var maxDistance: Float = 1.5
     /// Hold still this long with every gate passing before the shutter fires.
     public var holdDuration: Double = 0.6
-    /// A problem that persists this long ends an attempt as failed.
+    /// An attempt that goes this long without a photo fails, whatever its frames did.
     public var failAfter: Double = 4
     /// Sharpness below half the recent median means shake.
     public var sharpnessRatio: Double = 0.5
@@ -37,7 +37,7 @@ public struct CloseUpStatus: Sendable, Equatable {
     public var issue: CloseUpIssue?
     /// True on the frame the shutter fires.
     public var fire: Bool
-    /// Attempts that ended with a problem persisting `failAfter` seconds.
+    /// Attempts that went `failAfter` seconds without a photo, plus rejected photos.
     public var failedAttempts: Int
 }
 
@@ -46,7 +46,8 @@ public struct CloseUpStatus: Sendable, Equatable {
 public struct CloseUpGate: Sendable {
     public let config: CloseUpConfig
     private var holdStart: Double?
-    private var problemSince: Double?
+    /// When the current attempt began: the first frame, or the frame after a failed attempt or a photo.
+    private var attemptStart: Double?
     private var recentSharpness: [Double] = []
     private var lastQuality: FrameQuality?
     public private(set) var failedAttempts = 0
@@ -57,19 +58,24 @@ public struct CloseUpGate: Sendable {
 
     public mutating func evaluate(_ frame: FrameSample, meter: SIMD3<Float>) -> CloseUpStatus {
         let issue = issue(frame, meter: meter)
+        let attempt = attemptStart ?? frame.timestamp
+        attemptStart = attempt
         if let issue {
             holdStart = nil
-            if problemSince == nil { problemSince = frame.timestamp }
-            if let since = problemSince, frame.timestamp - since >= config.failAfter {
+            // Counted on any problem frame once the attempt is old enough, not only after one
+            // unbroken problem: frames alternating good and blurry never finish the hold, and a
+            // clock reset by every good frame never ran out, so the homeowner never saw the way out.
+            // A hold still running at the deadline is left to end in a photo or in the next problem.
+            if frame.timestamp - attempt >= config.failAfter {
                 failedAttempts += 1
-                problemSince = nil
+                attemptStart = frame.timestamp
             }
             return CloseUpStatus(hold: 0, issue: issue, fire: false, failedAttempts: failedAttempts)
         }
-        problemSince = nil
         let start = holdStart ?? frame.timestamp
         holdStart = start
         let hold = min(1, (frame.timestamp - start) / config.holdDuration)
+        if hold >= 1 { attemptStart = nil }
         return CloseUpStatus(hold: hold, issue: nil, fire: hold >= 1, failedAttempts: failedAttempts)
     }
 
@@ -77,6 +83,7 @@ public struct CloseUpGate: Sendable {
     public mutating func photoRejected() {
         failedAttempts += 1
         holdStart = nil
+        attemptStart = nil
     }
 
     private mutating func issue(_ frame: FrameSample, meter: SIMD3<Float>) -> CloseUpIssue? {
