@@ -7,8 +7,8 @@ import Testing
 /// requests carry `out_ft` and facing and overhead coverage may too; 737bf75 adds
 /// `walls[].source`; 930e8e5 defines a wall entry's `out_ft` as the height seen above the
 /// ground; 074bf1d adds the `battery` object type. `vendoredCopiesMatchServer` fails if the
-/// server's files change and these are not refreshed; `vendoredCopiesAreTheRecordedRevision`
-/// fails if a copy is edited by hand.
+/// server's files change and these are not
+/// refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
     static let vendored: [(name: String, serverPath: String, sha256: String)] = [
         ("scene.schema.json", "server/schemas/scene.schema.json",
