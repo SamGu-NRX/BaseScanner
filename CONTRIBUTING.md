@@ -85,7 +85,7 @@ Neither `Info.plist` sets `ITSAppUsesNonExemptEncryption`, so each build waits u
 
 Approving a run also means Sam has reviewed the build inputs at the commit the run shows: `project.yml`, the generated project, xcconfig files and any local package manifest. That code builds while the key is on the runner.
 
-The workflow limits what that code can do. "Check build inputs" runs before any key exists and fails the run on shell script build phases, build rules, scheme pre- or post-actions, remote Swift packages, package plugins, `Package.resolved`, nested projects and Swift compiler plugin flags. Each app may use only the in-repo packages named in the workflow's "Select project" step (`Geometry` for Measure Lab, none for House Scan), and their manifests may not declare dependencies, plugins, macros, binary targets or unsafe flags.
+The workflow limits what that code can do. "Check build inputs" runs before any key exists and fails the run on shell script build phases, build rules, scheme pre- or post-actions, remote Swift packages, package plugins, `Package.resolved`, nested projects and Swift compiler plugin flags. Each app may use only the in-repo packages named in the workflow's "Select project" step (`Geometry` for Measure Lab, `HouseScanKit` for House Scan), and their manifests may not declare dependencies, plugins, macros, binary targets or unsafe flags.
 
 The key exists only inside the Archive step and the Export and upload step. Each decodes it into its own private directory under `RUNNER_TEMP` and deletes the directory when the step ends, fails or is cancelled. A final step removes any leftover. If the runner is killed before any of that runs, GitHub destroys the hosted runner after the job.
 

@@ -74,7 +74,7 @@ jobs:
       - name: Select project
         run: |
           case "$APP" in
-            house-scan)  dir=ios;                     name=HouseScan;  packages="" ;;
+            house-scan)  dir=ios;                     name=HouseScan;  packages="HouseScanKit" ;;
             measure-lab) dir=experiments/measure-lab; name=MeasureLab; packages="Geometry" ;;
             *) echo "::error::Unknown app '$APP'."; exit 1 ;;
           esac
