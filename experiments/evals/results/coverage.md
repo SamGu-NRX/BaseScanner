@@ -5,7 +5,7 @@ HouseScanKit `CoverageMap` at beede15f568b3a4d694fb275caf9eaaa882c546b (t3/ios-m
 | Scene | Band | Claimed | False-observed (share) | Pass (<= 0.5 ft) | Causes: occlusion / frame edge / range | False-observed, 2-position truth (share) | Seen from 2 positions | Missed | Missed causes: frame edge / grazing / range / one position |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | electro | wall | 19.3 | 1.1 (6%) | no | 1.1 / 0.0 / 0.0 | 1.3 (7%) | 18.0 | 0.0 | 0.0 / 0.0 / 0.0 / 0.0 |
-| electro | ground | 0.0 | 0.0 (0%) | yes | 0.0 / 0.0 / 0.0 | 0.0 (0%) | 18.1 | 18.1 | 0.0 / 18.1 / 0.0 / 0.0 |
+| electro | ground | 0.0 | 0.0 (0%) | untested | 0.0 / 0.0 / 0.0 | 0.0 (0%) | 18.1 | 18.1 | 0.0 / 18.1 / 0.0 / 0.0 |
 
 ## Setup and validity checks
 

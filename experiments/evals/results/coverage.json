@@ -63,7 +63,7 @@
      "one position": 0.0
     },
     "claimed_samples_seen_only_where_scan_is_empty": 0.0,
-    "passes": true
+    "passes": null
    }
   }
  },

@@ -604,7 +604,8 @@ def evaluate_band(wall, band, cfg, app, views, cams, truths_by_band, centres, fa
         "claimed_samples_seen_only_where_scan_is_empty": float(only_unknown[claimed].mean())
         if claimed.any()
         else 0.0,
-        "passes": bool(false_cols.sum() * ft <= PASS_FT),
+        # Nothing claimed tests nothing.
+        "passes": bool(false_cols.sum() * ft <= PASS_FT) if claimed.any() else None,
     }
 
 
@@ -779,7 +780,7 @@ def markdown(runs: list[dict]) -> str:
             lines.append(
                 f"| {r['scene']} | {band} | {_ft(b['claimed_ft'])} | "
                 f"{_ft(b['false_observed_ft'])} ({100 * b['false_observed_share']:.0f}%) | "
-                f"{'yes' if b['passes'] else 'no'} | "
+                f"{ {True: 'yes', False: 'no', None: 'untested'}[b['passes']] } | "
                 f"{' / '.join(_ft(fc[k]) for k in FALSE_CAUSES)} | "
                 f"{_ft(b['false_two_view_ft'])} ({100 * b['false_two_view_share']:.0f}%) | "
                 f"{_ft(b['seen_two_view_ft'])} | {_ft(b['missed_ft'])} | "
