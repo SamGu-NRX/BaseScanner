@@ -241,6 +241,13 @@ class Solver:
         objs = scene.objects
         self.gas = [o for o in objs if o.type == "gas_meter"]
         self.ac = [o for o in objs if o.type == "ac"]
+        self.batteries = [o for o in objs if o.type == "battery"]
+        # Without an existing battery, its check would only ask for the ground the AC check
+        # already needs (same band, and a radius no larger), so it is left out and answers for
+        # scenes without one stay as they were.
+        self.battery_check = bool(self.batteries) or (
+            r.clearances.battery_ft.value > r.clearances.ac_ft.value
+        )
         self.pool = [o for o in objs if o.type == "pool"]
         self.openings = [o for o in objs if o.type in r.openings.types]
         self.equipment = [o for o in objs if o.type in r.wall_equipment.types]
@@ -910,6 +917,23 @@ class Solver:
                 "ground",
                 "AC unit",
             ),
+            *(
+                [
+                    self.check_clearance(
+                        "battery_clearance",
+                        "Distance from an existing battery",
+                        "clearances.battery_ft",
+                        c.battery_ft,
+                        piece,
+                        fp,
+                        [(o.label, o.geom, o.plus_minus, True) for o in self.batteries],
+                        "ground",
+                        "battery",
+                    )
+                ]
+                if self.battery_check
+                else []
+            ),
             self.check_clearance(
                 "drive_clearance",
                 "Distance from the driveway",
@@ -1068,6 +1092,7 @@ class Solver:
         items = [
             *((c.gas_ft.value, o.geom, o.plus_minus) for o in self.gas),
             *((c.ac_ft.value, o.geom, o.plus_minus) for o in self.ac),
+            *((c.battery_ft.value, o.geom, o.plus_minus) for o in self.batteries),
             *((c.pool_ft.value, o.geom, o.plus_minus) for o in self.pool),
             *((c.opening_ft.value, o.geom, o.plus_minus) for o in self.openings),
             *((c.drive_ft.value, g.polygon, g.plus_minus) for g in self.drives),

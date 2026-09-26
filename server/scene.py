@@ -705,7 +705,12 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     # then counts as unseen.
     c = rules.clearances
     reach = max(
-        c.gas_ft.value, c.ac_ft.value, c.opening_ft.value, c.drive_ft.value, c.pool_ft.value
+        c.gas_ft.value,
+        c.ac_ft.value,
+        c.battery_ft.value,
+        c.opening_ft.value,
+        c.drive_ft.value,
+        c.pool_ft.value,
     )
     wall_error = max(p.error_at(max(abs(p.s0), abs(p.s1))) for p in pieces if p.kind == "wall")
     reach += rules.battery.depth_ft.value + wall_error + 1.0
