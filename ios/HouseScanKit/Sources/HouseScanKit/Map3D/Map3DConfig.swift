@@ -90,10 +90,10 @@ public struct Map3DConfig: Sendable, Equatable {
     /// Relief: attached structure standing up to this far proud of the wall line, meters, such
     /// as a pilaster, column or chimney breast, counts as the facade for the wall band, because
     /// nothing can be mounted on the wall behind it. ETH3D electro's pilasters stand 0.36 m
-    /// proud (experiments/evals/results/map3d.md on t3/evals). It counts only where the
-    /// structure runs up to headroom, no free space was seen between it and the wall, and the
-    /// mesh, when it classifies, does not call it something else; a box or shrub against the
-    /// wall still hides the wall.
+    /// proud (experiments/evals/results/map3d.md on t3/evals). It counts only up to where it
+    /// runs without the face showing above it, where no free space was seen between it and the
+    /// wall, and where the mesh, when it classifies, does not call it something else; a box or
+    /// shrub against the wall still hides the wall.
     public var reliefDepth: Float = 0.5
     /// Relief is at most this wide along the wall, meters; a wider face in front of the wall is
     /// a wall of its own (a bump-out).

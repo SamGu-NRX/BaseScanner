@@ -98,5 +98,28 @@ import Testing
         #expect(angle < 0.3, "angle \(angle) degrees")
         #expect(abs(offset) < 0.03, "line \(offset) m off the face at the meter")
     }
+
+    /// A box 0.3 m proud mounted on the wall from 1.0 to 1.5 m up: the wall is seen up to just
+    /// below it, and the rest of the wall up to the top of the map. Pilasters' faces carry the
+    /// height on up.
+    @Test func wallHeightStopsBelowABoxOnTheWall() {
+        let scene = SyntheticScene(
+            walls: [SyntheticScene.Wall(a: SIMD2(-5, 0), b: SIMD2(7, 0))],
+            boxes: [SyntheticScene.Box(min: SIMD3(1, 1.0, 0), max: SIMD3(2, 1.5, 0.3))])
+        var map = Map3D(frame: sceneFrame())
+        for (index, camera) in pilasterWalk().enumerated() { map.integrate(scene.depthFrame(from: camera, noise: 0.02, seed: UInt64(index))) }
+        for index in map.cellIndices {
+            let range = map.cellRange(index)
+            let height = map.wallHeight(cell: index, along: Self.wall)
+            if range.lowerBound >= 1.2, range.upperBound <= 1.8 {
+                #expect(height.map { $0 >= 0.8 && $0 < 1.0 } == true, "cell \(index) seen to \(height ?? -1)")
+            }
+            if range.lowerBound >= -2, range.upperBound <= 0.6 {
+                #expect((height ?? 0) >= 2.3, "cell \(index) seen to \(height ?? -1)")
+            }
+        }
+        let behind = Self.map.cellIndices.filter { Self.map.cellRange($0).lowerBound >= -4.2 && Self.map.cellRange($0).upperBound <= -3.8 }
+        #expect(behind.allSatisfy { (Self.map.wallHeight(cell: $0, along: Self.wall) ?? 0) >= 2.3 })
+    }
 }
 

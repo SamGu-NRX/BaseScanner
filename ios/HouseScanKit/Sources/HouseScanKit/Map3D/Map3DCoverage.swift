@@ -7,6 +7,9 @@ import simd
 public struct Map3DCoverage: Sendable, Equatable {
     /// Stretches where the wall face was seen from the ground to headroom.
     public var wall: [ClosedRange<Float>]
+    /// Stretches of wall face, each with how high above the ground it was seen without a break:
+    /// scene.json's wall `out_ft`, which each server check credits against its own height.
+    public var wallHeight: [ObservedSpan]
     /// Stretches of ground, each with how far out from the wall it was seen without a break.
     public var ground: [ObservedSpan]
     /// Stretches with the space in front of the wall seen clear, each with how far out.
@@ -41,13 +44,16 @@ extension Map3D {
 
     public func coverage(along wall: WallFrame) -> Map3DCoverage {
         var seenWall: [ClosedRange<Float>] = []
+        var wallHeight: [ObservedSpan] = []
         var ground: [ObservedSpan] = []
         var facing: [ObservedSpan] = []
         var overhead: [ObservedSpan] = []
         let facades = facadeOffsets(along: wall)
         for index in cellIndices {
             let range = cellRange(index)
-            let wallSeen = isWallSeen(cell: index, along: wall, facade: facades[index])
+            let height = seenHeight(cell: index, along: wall, facade: facades[index])
+            if let height { wallHeight.append(ObservedSpan(span: range, out: height)) }
+            let wallSeen = (height ?? 0) >= config.headroom
             if wallSeen {
                 if let last = seenWall.last, last.upperBound == range.lowerBound {
                     seenWall[seenWall.count - 1] = last.lowerBound...range.upperBound
@@ -63,13 +69,14 @@ extension Map3D {
         }
         let touching = config.cellWidth * 0.01
         return Map3DCoverage(
-            wall: seenWall, ground: ObservedSpan.merge(ground, touching: touching),
+            wall: seenWall, wallHeight: ObservedSpan.merge(wallHeight, touching: touching), ground: ObservedSpan.merge(ground, touching: touching),
             facing: ObservedSpan.merge(facing, touching: touching), overhead: ObservedSpan.merge(overhead, touching: touching))
     }
 
     // MARK: Per cell
 
-    /// Whether the facade over a cell was seen from `voxelSize` up to headroom. At every sample
+    /// Whether the facade over a cell was seen from `voxelSize` up to headroom (`wallHeight`
+    /// reaches it). At every sample
     /// some well-seen surface (`Voxel.isWellSeenSurface`) must lie on the facade face, from
     /// `recessDepth` behind the facade to `faceTolerance` in front of it, or on attached relief
     /// (`attachedRelief`) up to `reliefDepth` in front. The facade is where the wall's surface
@@ -81,14 +88,44 @@ extension Map3D {
     }
 
     private func isWallSeen(cell index: Int, along wall: WallFrame, facade: Float?) -> Bool {
-        guard let facade else { return false }
+        (seenHeight(cell: index, along: wall, facade: facade) ?? 0) >= config.headroom
+    }
+
+    /// How high above the ground the facade over a cell was seen without a break, meters: the
+    /// least over the cell's samples of `seenHeight(_:s:facade:)`. Nil where not even the
+    /// lowest row was.
+    public func wallHeight(cell index: Int, along wall: WallFrame) -> Float? {
+        seenHeight(cell: index, along: wall, facade: facadeOffset(cell: index, along: wall))
+    }
+
+    private func seenHeight(cell index: Int, along wall: WallFrame, facade: Float?) -> Float? {
+        guard let facade else { return nil }
         let heights = bandHeights()
-        return samples(in: cellRange(index)).allSatisfy { s in
-            let rows = heights.map { faceSample(wall, s: s, height: $0, facade: facade) }
-            if rows.allSatisfy(\.face) { return true }
-            guard attachedRelief(wall, s: s, rows: rows, facade: facade) else { return false }
-            return rows.allSatisfy { $0.face || $0.relief != nil }
+        var least: Float = .infinity
+        for s in samples(in: cellRange(index)) {
+            guard let top = seenHeight(wall, s: s, heights: heights, facade: facade) else { return nil }
+            least = min(least, top)
         }
+        return least.isFinite ? least : nil
+    }
+
+    /// The highest row at s up to which every row, from the lowest, shows the facade: its face,
+    /// or attached relief (`attachedRelief`). Relief counts only where it runs on to that height;
+    /// where the face shows above relief (a box on the wall, a shrub), the height stops below it.
+    private func seenHeight(_ wall: WallFrame, s: Float, heights: [Float], facade: Float) -> Float? {
+        let rows = heights.map { faceSample(wall, s: s, height: $0, facade: facade) }
+        var top = (rows.firstIndex { !$0.face && $0.relief == nil } ?? rows.count) - 1
+        if let firstRelief = rows.firstIndex(where: { !$0.face }), firstRelief <= top {
+            let relief = Array(rows[firstRelief...top])
+            if relief.contains(where: \.face) || !attachedRelief(wall, s: s, rows: relief, facade: facade) { top = firstRelief - 1 }
+        }
+        return top >= 0 ? rows[top].height : nil
+    }
+
+    /// Heights the wall band is judged at: every half voxel from one voxel up to the top of the
+    /// map, and headroom itself, which the facing and overhead bands need seen.
+    private func bandHeights() -> [Float] {
+        (Array(stride(from: config.voxelSize, to: config.top, by: config.voxelSize / 2)) + [config.headroom]).sorted()
     }
 
     /// Front of the facade face, meters past the facade: a voxel's center lies at most 7.1 cm
@@ -148,10 +185,6 @@ extension Map3D {
         return histogram
     }
 
-    /// Heights the wall band is judged at: every half voxel from one voxel up, and headroom.
-    private func bandHeights() -> [Float] {
-        Array(stride(from: config.voxelSize, to: config.headroom, by: config.voxelSize / 2)) + [config.headroom]
-    }
 
     struct FaceSample {
         var height: Float
@@ -182,11 +215,10 @@ extension Map3D {
     /// Mesh classes that are never part of the facade (`Voxel.meshLabel` values).
     private static let clutterClasses: Set<UInt8> = Set([MeshClass.none, .floor, .ceiling, .table, .seat].map { $0.rawValue + 1 })
 
-    /// Whether the relief at s is attached structure: it covers every height the face does not,
-    /// reaches headroom, and no free voxel was seen between it and the wall at any of those
-    /// heights (a gap would make it something standing in front of the wall).
+    /// Whether the relief rows at s are attached structure: no free voxel was seen between the
+    /// relief and the wall at any of them (a gap would make it something standing in front of
+    /// the wall).
     private func attachedRelief(_ wall: WallFrame, s: Float, rows: [FaceSample], facade: Float) -> Bool {
-        guard let top = rows.last, top.relief != nil else { return false }
         for row in rows where !row.face {
             guard let front = row.relief else { return false }
             for out in stride(from: facade + faceTolerance, to: facade + front, by: config.voxelSize / 2) {
