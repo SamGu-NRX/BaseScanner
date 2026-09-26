@@ -15,6 +15,16 @@ Needs [uv](https://docs.astral.sh/uv/) 0.11. From `server/`:
 
 Without the web layer: `loaded = load_rules()`, then `solve(parse_scene(raw, loaded.rules), loaded)` (from `rules`, `scene` and `solver`).
 
+## Deploy
+
+The public demo runs at **https://house-scanning-server.vercel.app** (Vercel project `house-scanning-server`, public rules only). Redeploy from this directory:
+
+```sh
+npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
+```
+
+Only `server/` uploads (`.vercelignore`), so the repository's `private/` rules can't reach a deployment; `/health` shows `sources: ["public"]`. Vercel caps a request body at 4.5 MB, so send it bare `scene.json` or a zip without the keyframe JPEGs; the solver doesn't read the images. The project isn't connected to Git: a deploy is always this command.
+
 ## API
 
 | Endpoint | Body | Returns |
