@@ -71,16 +71,17 @@ extension ScanEngine {
     /// The server's result in the terms the screens use (meters, wall coordinates).
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
-        let wall = coverage?.wall
-        let sceneWall = wall.map { SceneWall(meter: $0.meter, outward: $0.outward, groundY: $0.groundY) }
+        let sceneWall = coverage.map { SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY) }
 
         var spot: BatterySpot?
-        if let placed = result.spot, let wall {
+        if let placed = result.spot {
             // Placed from the offset to the meter, as result.schema.json asks, so the AR box
-            // follows the meter's anchor.
-            let offset = SIMD3<Float>(meters(placed.meterOffsetFt.x), 0, meters(placed.meterOffsetFt.y))
-            let centerS = simd_dot(offset, wall.along)
-            let centerOut = simd_dot(offset, wall.outward)
+            // follows the meter's anchor. The offset is split along the result's own `along` and
+            // `outward` vectors (same scene frame as the offset), which keeps the bundled sample
+            // meaningful on any wall orientation.
+            let offset = placed.meterOffsetFt
+            let centerS = meters(offset.x * placed.along.x + offset.y * placed.along.y)
+            let centerOut = meters(offset.x * placed.outward.x + offset.y * placed.outward.y)
             let width = meters(placed.widthFt)
             let depth = meters(placed.depthFt)
             spot = BatterySpot(
@@ -91,9 +92,19 @@ extension ScanEngine {
         }
 
         var route: [SIMD2<Float>] = []
-        if let cable = result.route, let sceneWall {
+        if let cable = result.route {
             let height = meters(cable.heightFt)
-            route = cable.polyline.map { SIMD2(sceneWall.wallCoordinates(ofPlanPointFeet: $0).s, height) }
+            if let placed = result.spot {
+                // Relative to the meter's plan position in the result's own frame (the spot's
+                // centre minus its offset from the meter), along the result's own wall direction.
+                let meterPlan = placed.center - placed.meterOffsetFt
+                route = cable.polyline.map { point in
+                    let d = point - meterPlan
+                    return SIMD2(meters(d.x * placed.along.x + d.y * placed.along.y), height)
+                }
+            } else if let sceneWall {
+                route = cable.polyline.map { SIMD2(sceneWall.wallCoordinates(ofPlanPointFeet: $0).s, height) }
+            }
         }
 
         let checks = result.checks.map { check in
