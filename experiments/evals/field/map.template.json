@@ -3,7 +3,7 @@
   "unit": "ft",
   "pipeline": "measure-lab",
   "session": "filled in by make field",
-  "notes": "M numbers follow FIELD_SHEET.md's order. plus_minus_ft_by_key is docs/02's untested +-0.3 ft for AR taps, not a measured error bar.",
+  "notes": "M numbers follow FIELD_SHEET.md's order. plus_minus_ft_by_key is the untested +-0.3 ft default for AR taps (docs/00, Conventions), not a measured error bar.",
   "plus_minus_ft_by_key": {
     "straight": 0.3,
     "alongWall": 0.3,

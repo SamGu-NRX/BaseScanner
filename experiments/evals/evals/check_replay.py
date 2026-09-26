@@ -83,6 +83,10 @@ def check(folder: Path, gap: int = 2) -> dict:
         medians.append(float(np.median(d)))
         up_cam = _pose(a)[:3, :3].T @ np.array([0.0, 1.0, 0.0])
         ups.append(up_cam)
+    if not medians:
+        raise ValueError(
+            f"{folder}: no keyframe pair had enough matches and inliers to check the poses"
+        )
     up = np.mean(ups, axis=0)
     return {
         "pairs": len(medians),

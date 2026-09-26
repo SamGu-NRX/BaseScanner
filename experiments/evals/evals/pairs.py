@@ -102,8 +102,11 @@ def summarize(errors_m: np.ndarray, ratios: np.ndarray | None = None) -> dict[st
     q = np.where(finite, a, sentinel)
 
     def pct(p: float) -> float:
-        v = float(np.percentile(q, p))
-        return float("inf") if v >= sentinel / 2 else round(v, 2)
+        # Interpolation between a finite value and the sentinel gives a huge finite number, so
+        # check the upper neighbour: if it is a failure, the percentile is one.
+        if float(np.percentile(q, p, method="higher")) >= sentinel:
+            return float("inf")
+        return round(float(np.percentile(q, p)), 2)
 
     out = {
         "pairs": len(a),

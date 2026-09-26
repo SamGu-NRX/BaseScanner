@@ -2,7 +2,7 @@
 
 ## Questions
 
-1. How far is ARKit's tracking off after walking 3, 10, 20 and 30 ft outdoors? `docs/02` assumes plus or minus 0.3 ft (3.6 in).
+1. How far is ARKit's tracking off after walking 3, 10, 20 and 30 ft outdoors? The untested default for an AR tap is plus or minus 0.3 ft (3.6 in; `docs/00`, Conventions the code relies on).
 2. How accurately can phone photos reconstruct a real building wall, with the model's own scale or with one taped distance, from one photo or several?
 3. Can the phone's AR poses fix the learned models' scale, well enough for about 4 in at p90 on 1 to 3 m spans, the error that decides a 3 ft clearance?
 4. Which photos are worth keeping?
@@ -10,7 +10,7 @@
 6. How large is a current iPhone's ARKit scale error, from public data?
 7. Does the app's coverage map claim wall and ground that no photo saw?
 
-Every number comes from real data. Synthetic data appears only in the unit tests of the metric code.
+Every dataset evaluation uses real captures. Two checks add synthetic inputs, and are labelled where they appear: section 3's pose-prior rows degrade ETH3D's true poses with simulated AR-like error, and `make field-dryrun` scores a synthetic session to prove the field command. The unit tests of the metric code also use synthetic cases.
 
 ## Answers
 
@@ -50,7 +50,7 @@ make recon         # ETH3D download (about 2.4 GB), MoGe-2 and Depth Anything 3 
 make sensitivity   # after recon -> results/eth3d_visibility_sensitivity.md
 make pose-priors   # after recon -> results/pose_priors.md
 make frames        # after recon -> results/frames.md
-make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a field session, section 5
+make field SESSION=... TRUTH=... MAP=...   # a field session, section 5; PR #4's harness is checked out at a pinned commit
 make modern-arkit  # MARViN pose files (about 3 MB) -> results/modern_arkit.md, section 6
 make coverage      # after recon-data; the app's coverage code at a pinned commit -> results/coverage.md, section 7
 make coverage-options  # after coverage -> results/coverage_options.md, section 7b

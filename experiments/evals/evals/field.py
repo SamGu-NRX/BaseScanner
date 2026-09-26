@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 import zipfile
@@ -121,8 +122,19 @@ def rotated_K(K: np.ndarray, w: int, h: int, turns: int) -> np.ndarray:
     return np.array([[new[0], 0, new[2]], [0, new[1], new[3]], [0, 0, 1.0]])
 
 
+SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def safe_id(value: str, what: str) -> str:
+    """An id from the session that becomes a file name: one plain path component, never an
+    absolute path or `..`, so a crafted session cannot write outside the work folder."""
+    if not isinstance(value, str) or not SAFE_ID.fullmatch(value) or value in (".", ".."):
+        raise ValueError(f"{what} {value!r} is not a plain name (letters, digits, . _ -)")
+    return value
+
+
 def work_dir(folder: Path) -> Path:
-    return FIELD_DIR / "work" / load_session(folder)["session"]["id"]
+    return FIELD_DIR / "work" / safe_id(load_session(folder)["session"]["id"], "session id")
 
 
 def prepare(folder: Path) -> Path:
@@ -136,7 +148,7 @@ def prepare(folder: Path) -> Path:
         if img is None:
             raise FileNotFoundError(folder / kf["img"])
         k = upright_turns(keyframe_pose_cv(kf))
-        path = out / "upright" / f"{kf['id']}.jpg"
+        path = out / "upright" / f"{safe_id(kf['id'], 'keyframe id')}.jpg"
         cv2.imwrite(str(path), np.rot90(img, k), [cv2.IMWRITE_JPEG_QUALITY, 95])
         Kr = rotated_K(keyframe_K_cv(kf), img.shape[1], img.shape[0], k)
         listing.append(str(path))
@@ -425,25 +437,24 @@ def ar_scale_report(session: dict, truth: dict, mapping: dict, tap_error_in: flo
 # --- Stamping the team's survey and map for one session ------------------------------------
 
 
+TAPE_FORMAT = re.compile(r"(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?(?:\s+(\d+)/(\d+))?")
+
+
 def parse_tape(text: str) -> float:
-    """A tape reading as written on the sheet, feet then inches then a fraction ("30 2 1/4",
-    "4 11", "12"), in feet rounded to a millionth."""
-    parts = text.split()
-    if not parts or len(parts) > 3:
+    """A tape reading as written on the sheet: feet, then optional whole inches, then an optional
+    fraction of an inch ("30 2 1/4", "4 11", "12"), in feet rounded to a millionth. Anything else,
+    including a fraction that is not last, is refused rather than partly read."""
+    m = TAPE_FORMAT.fullmatch(text.strip())
+    if not m:
         raise ValueError(f"tape reading {text!r}: write feet, inches, fraction, e.g. '30 2 1/4'")
-    try:
-        feet = float(parts[0])
-        inches = float(parts[1]) if len(parts) > 1 and "/" not in parts[1] else 0.0
-        frac = parts[-1] if "/" in parts[-1] else None
-        if frac is not None:
-            num, den = frac.split("/")
-            inches += float(num) / float(den)
-    except ValueError:
-        raise ValueError(
-            f"tape reading {text!r}: write feet, inches, fraction, e.g. '30 2 1/4'"
-        ) from None
-    if feet < 0 or inches < 0 or inches >= 12:
-        raise ValueError(f"tape reading {text!r}: feet >= 0 and inches from 0 to under 12")
+    feet = float(m[1])
+    inches = float(m[2]) if m[2] else 0.0
+    if m[3]:
+        if int(m[4]) == 0:
+            raise ValueError(f"tape reading {text!r}: a fraction cannot have 0 below the line")
+        inches += int(m[3]) / int(m[4])
+    if inches >= 12:
+        raise ValueError(f"tape reading {text!r}: inches must be under 12")
     return round(feet + inches / 12, 6)
 
 
@@ -492,6 +503,11 @@ def score(
     out_dir: Path,
     tap_error_in: float = TAP_ERROR_IN,
 ) -> str:
+    # First: a re-run, even one that stops early below, must not leave an earlier run's rows
+    # for `score` to pick up.
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name in ROW_FILES:
+        (out_dir / name).unlink(missing_ok=True)
     folder, capture = unpack(session_path)
     session = load_session(folder)
     out = work_dir(folder)
@@ -563,10 +579,6 @@ def score(
             "session measurement."
         )
     processing = time.perf_counter() - started
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # A re-run must not leave an earlier run's rows for `score` to pick up.
-    for name in ROW_FILES:
-        (out_dir / name).unlink(missing_ok=True)
     for name, (source, recomputed) in rows.items():
         doc = results_file(
             name,

@@ -33,6 +33,6 @@ select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "models/tests"]
 pythonpath = ["."]
 addopts = ["--strict-markers", "--strict-config"]

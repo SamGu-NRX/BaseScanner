@@ -123,6 +123,9 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
+DOWNLOAD_TIMEOUT_S = 60  # per socket operation: a stalled server fails instead of hanging
+
+
 def fetch(archive: Archive) -> None:
     archive.dest.mkdir(parents=True, exist_ok=True)
     free_gb = shutil.disk_usage(archive.dest).free / 1e9
@@ -133,8 +136,15 @@ def fetch(archive: Archive) -> None:
         )
     tmp = archive.dest / (archive.name + ".part")
     print(f"downloading {archive.url}")
-    with urllib.request.urlopen(archive.url) as resp, tmp.open("wb") as out:
-        shutil.copyfileobj(resp, out, 1 << 20)
+    try:
+        with (
+            urllib.request.urlopen(archive.url, timeout=DOWNLOAD_TIMEOUT_S) as resp,
+            tmp.open("wb") as out,
+        ):
+            shutil.copyfileobj(resp, out, 1 << 20)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     size = tmp.stat().st_size
     digest = sha256_of(tmp)
     if size != archive.size or digest != archive.sha256:

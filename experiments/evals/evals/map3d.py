@@ -445,9 +445,31 @@ def markdown(r: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def check_kit() -> None:
+    """The checkout must be the pinned commit, with HouseScanKit unmodified, and the driver built."""
     if not DRIVER_BIN.exists() or not KIT_DIR.is_dir():
         raise SystemExit("run `uv run python -m evals.map3d prepare` first")
+    git = ["git", "-C", str(KIT_CHECKOUT)]
+    head = subprocess.run(
+        [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    pinned = subprocess.run(
+        [*git, "rev-parse", f"{KIT_COMMIT}^{{commit}}"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    dirty = subprocess.run(
+        [*git, "status", "--porcelain", "--", "ios/HouseScanKit"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    if head != pinned or dirty:
+        raise SystemExit(
+            f"{KIT_CHECKOUT} is at {head} with changes {dirty!r}; expected {pinned}, clean"
+        )
+
+
+def main() -> None:
+    check_kit()
     r = evaluate()
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / "map3d.json").write_text(json.dumps(r, indent=1, default=float))

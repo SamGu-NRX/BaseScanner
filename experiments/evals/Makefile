@@ -70,10 +70,14 @@ FIELD_OUT ?= $(DATA)/evals/field/results/$(basename $(notdir $(SESSION)))
 RULES ?= field/rules.json
 # PR #4's harness, checked out read-only at a pinned commit outside the repo.
 SCORING_COMMIT := 77ce830
-SCORING ?= $(DATA)/evals/scoring-$(SCORING_COMMIT)/experiments/scoring
+SCORING_CHECKOUT := $(DATA)/evals/scoring-$(SCORING_COMMIT)
+SCORING ?= $(SCORING_CHECKOUT)/experiments/scoring
 STAMPED_MAP = $(FIELD_OUT)/inputs/map.json
 field:
-	test -d "$(SCORING)" || git -C ../.. worktree add --detach "$(abspath $(SCORING)/../..)" $(SCORING_COMMIT)
+	@# The pinned checkout is created only at its default place; an overridden SCORING must exist.
+	test -d "$(SCORING)" || { test "$(SCORING)" = "$(SCORING_CHECKOUT)/experiments/scoring" && \
+	  git -C ../.. worktree add --detach "$(SCORING_CHECKOUT)" $(SCORING_COMMIT); } || \
+	  { echo "SCORING=$(SCORING) is not a scoring harness checkout" >&2; exit 1; }
 	uv sync --project models
 	$(if $(TRUTH),uv run python -m evals.field stamp "$(SESSION)" --truth "$(TRUTH)" --map "$(MAP)" --out-dir "$(FIELD_OUT)" &&) \
 	W=$$(uv run python -m evals.field prepare "$(SESSION)") && \

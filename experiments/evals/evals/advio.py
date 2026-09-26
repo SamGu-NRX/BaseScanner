@@ -164,12 +164,14 @@ def _read_pose_csv(path: Path) -> PoseTrack:
     data = data[order]
     q = data[:, 4:8]
     norms = np.linalg.norm(q, axis=1)
-    keep = np.abs(norms - 1) < 1e-2
-    if keep.mean() < 0.99:
+    # Dropping bad rows would shift every later row against frames.csv, so refuse instead. No
+    # ADVIO pose file used here has one.
+    bad = np.flatnonzero(np.abs(norms - 1) >= 1e-2)
+    if len(bad):
         raise ValueError(
-            f"{path}: {100 * (1 - keep.mean()):.1f}% of quaternions are not unit length"
+            f"{path}: {len(bad)} quaternions are not unit length (first at row {bad[0]}, norm "
+            f"{norms[bad[0]]:.4f})"
         )
-    data = data[keep]
     return PoseTrack(t=data[:, 0], p=data[:, 1:4], R=quat_wxyz_to_matrix(data[:, 4:8]))
 
 

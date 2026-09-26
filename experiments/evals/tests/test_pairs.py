@@ -152,3 +152,16 @@ def test_reference_with_no_positive_scale_fails():
         scale_for_known_distance(pts, np.array([0, 1]))
     res = evaluate_fixed(pts, {"1-3m": np.array([[0, 1]])}, np.array([[0, 1]]))
     assert res["ref_failures"] == 1
+
+
+def test_a_percentile_touching_a_failure_is_a_failure():
+    inch = 0.0254
+    # Nine good pairs and one failure: p90 falls between the ninth value and the failure, which
+    # linear interpolation used to turn into a huge finite number.
+    errors = np.r_[np.arange(1, 10) * inch, np.inf]
+    s = summarize(errors)
+    assert s["p90_in"] == float("inf")
+    assert s["median_in"] == pytest.approx(5.5, abs=1e-6)
+    # Twenty pairs, one failed: p90 lies wholly among the finite values.
+    s = summarize(np.r_[np.arange(1, 20) * inch, np.inf])
+    assert s["p90_in"] == pytest.approx(18.1, abs=1e-6)

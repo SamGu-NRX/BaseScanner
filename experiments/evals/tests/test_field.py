@@ -305,3 +305,17 @@ def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
     # Idempotent: a second stamp adds nothing.
     field.stamp(archive, paths["truth"], paths["map"], out)
     assert json.loads(paths["truth"].read_text())["captures"] == [capture]
+
+
+@pytest.mark.parametrize("text", ["30 2 5", "30 1/4 2", "1 1/0", "1/2", "30 -2"])
+def test_parse_tape_refuses_partial_or_misordered_readings(text):
+    # "30 2 5" would drop the 5; "30 1/4 2" would read the fraction as inches then drop it.
+    with pytest.raises(ValueError):
+        field.parse_tape(text)
+
+
+@pytest.mark.parametrize("bad", ["../escape", "/abs", "..", "a/b", "", "sp ace"])
+def test_safe_id_refuses_path_components(bad):
+    with pytest.raises(ValueError):
+        field.safe_id(bad, "session id")
+    assert field.safe_id("synthetic-field_1.2", "session id") == "synthetic-field_1.2"
