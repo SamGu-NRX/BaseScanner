@@ -61,8 +61,25 @@ extension ScanEngine: ScanActions {
     func skipCloseUp() {
         guard state.phase == .meterCloseUp else { return }
         state.closeUp = .skipped
+        state.meterNumber = .skipped
         RuntimeLog.engine.info("close-up skipped after \(self.state.closeUpFailedAttempts) failed attempts")
         go(.wallWalk)
+    }
+
+    /// The homeowner's pick of the meter number. The number stays on the phone, in
+    /// `state.meterNumber`: scene.json has no field for it and its schema allows no extra
+    /// properties, so the server never receives it.
+    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {
+        guard state.phase == .meterCloseUp, case .choose(let candidates) = state.meterNumber else { return }
+        guard let candidate else {
+            // "None of these": small characters mean the phone was too far for a clear read.
+            retakeCloseUp(currentMeterReadout?.numberTooSmall == true ? .numberTooSmall : .noNumber)
+            return
+        }
+        guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
+        state.meterNumber = .confirmed(chosen.text)
+        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public))")
+        finishCloseUp()
     }
 
     /// Marks a wall end during the walk, or, during a server past_end request, marks that
@@ -228,6 +245,14 @@ extension ScanEngine: ScanActions {
         if case .failed = state.upload { startUpload() }
     }
 
+    /// Back to the feature review after a rejected upload. The scan (wall, coverage, keyframes,
+    /// features) stays; confirming the review runs the gap check and the upload again.
+    func backToReview() {
+        guard state.phase == .uploading, case .rejected = state.upload else { return }
+        state.upload = .idle
+        go(.markFeatures)
+    }
+
     func captureMissing(_ id: String) {
         guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
@@ -272,10 +297,4 @@ extension ScanEngine: ScanActions {
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
     }
-}
-
-// Placeholders for contract 1cc297f so the app compiles; the engine lane replaces both.
-extension ScanEngine {
-    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {}
-    func backToReview() {}
 }

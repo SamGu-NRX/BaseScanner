@@ -45,11 +45,7 @@ final class Autopilot {
         await engine.waitForGate(.findMeter)
         engine.markMeter(at: nil, viewSize: viewSize)
         guard await waitFor(.meterCloseUp, timeout: 10) else { return fail("meter was not marked") }
-        if await !waitUntil(timeout: 4, { if case .captured = self.engine.state.closeUp { return true }; return false }) {
-            log("close-up did not fire on this replay; skipping it as a homeowner would")
-            await engine.waitForGate(.meterCloseUp)
-            engine.skipCloseUp()
-        }
+        await takeCloseUp()
         guard await waitFor(.wallWalk, timeout: 150) else { return fail("walk did not start") }
 
         await pause(0.5)
@@ -100,6 +96,48 @@ final class Autopilot {
     }
 
     // MARK: Steps
+
+    /// What the close-up came to, as far as the autopilot acts on it.
+    private enum CloseUpOutcome {
+        case choose(MeterNumberCandidate)
+        /// The photo has to be retaken because no number could be read from it.
+        case retake(CloseUpProblem)
+        /// The flow left the close-up by itself.
+        case left
+    }
+
+    private var closeUpOutcome: CloseUpOutcome? {
+        let state = engine.state
+        guard state.phase == .meterCloseUp else { return .left }
+        if case .choose(let candidates) = state.meterNumber, let first = candidates.first { return .choose(first) }
+        if case .aiming(_, let problem?) = state.closeUp, problem == .noNumber || problem == .numberTooSmall { return .retake(problem) }
+        return nil
+    }
+
+    /// Picks the first meter-number candidate after the hold, as a homeowner confirming it would.
+    /// When the number can't be read (the synthetic fixture has none) or the close-up never
+    /// fires, skips the close-up instead of retaking forever.
+    private func takeCloseUp() async {
+        // 4 s for the shutter on a 3x replay, plus time for the reader.
+        _ = await waitUntil(timeout: 8) { self.closeUpOutcome != nil }
+        switch closeUpOutcome {
+        case .choose(let first):
+            await pause(hold)
+            engine.chooseMeterNumber(first)
+            log("chose meter-number candidate \(first.id)")
+        case .retake(let problem):
+            await pause(hold)
+            log("close-up needs a retake (\(String(describing: problem))); skipping it as a homeowner would")
+            await engine.waitForGate(.meterCloseUp)
+            engine.skipCloseUp()
+        case .left:
+            return
+        case nil:
+            log("close-up did not fire on this replay; skipping it as a homeowner would")
+            await engine.waitForGate(.meterCloseUp)
+            engine.skipCloseUp()
+        }
+    }
 
     /// A gas meter (one tap) and a window (two diagonal corners) on covered wall. The synthetic
     /// fixture paints them at s = -1.2 m and s = 2.0...3.0 m; on other replays the nearest covered

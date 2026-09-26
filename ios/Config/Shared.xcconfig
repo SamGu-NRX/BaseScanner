@@ -7,4 +7,9 @@
 
 BUNDLE_ID_PREFIX = dev.housescanning
 
+// The placement server the app uploads to when no -serverURL launch argument is given; Info.plist
+// carries it as HouseScanServerURL. xcconfig reads // as a comment, so $() splits the slashes.
+// Set it empty in Local.xcconfig to fall back to the bundled sample result.
+HOUSESCAN_SERVER_URL = https:/$()/house-scanning-server.vercel.app
+
 #include? "Local.xcconfig"

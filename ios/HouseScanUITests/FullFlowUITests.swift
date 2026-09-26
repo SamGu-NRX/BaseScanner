@@ -108,6 +108,7 @@ final class FullFlowUITests: XCTestCase {
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
+            // The app defaults to the deployed server; the sample keeps this run offline.
             arguments += ["-sampleResult"]
         }
         app.launchArguments = arguments

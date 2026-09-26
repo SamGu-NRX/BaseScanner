@@ -14,8 +14,8 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 | --- | --- |
 | `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. |
 | `-autopilot` | Drives every step on a replay, including one gap request closed by frames it held back from the walk. |
-| `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with the zip as `application/zip`. |
-| `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample. This is the default when no server is given. |
+| `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Keyframe photos stay on the phone; the scan folder keeps a `scan.zip` of scene.json and the photos for replay and debugging. |
+| `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
 | `-uiDemo` | Runs the screens on a scripted fake engine instead of the capture engine, for design work and for auditing states a replay can't reach. The arguments it takes are listed in `HouseScan/UI/Preview/UIDemo.swift`. |
 

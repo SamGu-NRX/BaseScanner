@@ -5,8 +5,11 @@ import OSLog
 ///
 /// - `-replay <folder>`: play a recorded measure-lab-session v2 folder instead of the camera.
 /// - `-autopilot`: drive the intents automatically (UI tests, demos).
-/// - `-serverURL <url>`: the placement server to upload to.
-/// - `-sampleResult`: answer uploads with the bundled sample result, flagged as a sample.
+/// - `-serverURL <url>`: the placement server to upload to. Without it the app uses the build's
+///   default, Info.plist `HouseScanServerURL` (set from `HOUSESCAN_SERVER_URL` in
+///   Config/Shared.xcconfig); with neither, uploads answer with the bundled sample.
+/// - `-sampleResult`: answer uploads with the bundled sample result, flagged as a sample, even
+///   when a server is configured. UI tests pass it to stay offline and deterministic.
 /// - `-autopilotHold <seconds>`: how long the autopilot leaves each screen up (default 1.2 s).
 ///   UI tests raise it so each screen stays long enough to screenshot and audit.
 /// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
@@ -20,7 +23,10 @@ struct LaunchOptions: Equatable {
     var autopilotHold: Double = 1.2
     var autopilotGate: URL?
 
-    init(arguments: [String] = ProcessInfo.processInfo.arguments) {
+    init(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        defaultServerURL: String? = Bundle.main.object(forInfoDictionaryKey: "HouseScanServerURL") as? String
+    ) {
         func value(after flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
             return arguments[index + 1]
@@ -29,10 +35,19 @@ struct LaunchOptions: Equatable {
             replayFolder = URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
         }
         autopilot = arguments.contains("-autopilot")
-        serverURL = value(after: "-serverURL").flatMap(URL.init(string:))
+        serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+    }
+
+    /// An http(s) URL with a host, or nil. An empty build setting leaves the plist value empty,
+    /// and an unexpanded "$(HOUSESCAN_SERVER_URL)" has no scheme; both mean "no server".
+    private static func serverURL(_ text: String) -> URL? {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespaces)),
+              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              url.host() != nil else { return nil }
+        return url
     }
 }
 
