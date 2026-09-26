@@ -26,6 +26,10 @@ public struct VoxelSources: OptionSet, Sendable, Hashable {
     public static let feature = VoxelSources(rawValue: 1 << 3)
     /// Rays of estimated (monocular) depth.
     public static let estimated = VoxelSources(rawValue: 1 << 4)
+    /// A LiDAR or feature ray passed through: the voxel's free space was measured, not estimated.
+    public static let measuredPass = VoxelSources(rawValue: 1 << 5)
+    /// What a ray that measured the voxel, rather than estimated or outlined it, leaves.
+    static let measuredHit: VoxelSources = [.lidar, .feature]
 }
 
 /// A voxel's evidence, read out of the map.
@@ -91,9 +95,10 @@ struct RaySample {
     var freeLength: Float
     /// Whether `end` is marked as a surface.
     var hit: Bool
-    /// For an estimated ray, distance from the camera past which its uncertainty puts every
-    /// point behind the surface it met: two deviations beyond its depth. Infinite otherwise.
-    var shadowFrom: Float = .infinity
+    /// |cos| between the ray and the surface normal, when the caller knows it better than the
+    /// two directions do: an estimated ray's is widened for its normal's error. Nil takes it from
+    /// `normal` and the ray.
+    var cosine: Float?
 }
 
 /// Sparse voxels over fixed bounds: a dense index of 8 x 8 x 8 bricks, each brick stored only
@@ -112,14 +117,6 @@ struct VoxelGrid {
     private(set) var brickSlot: [Int32]
     private(set) var pool: [Voxel] = []
     private var frameStamp: UInt16 = 0
-    /// Per voxel, parallel to `pool`, once an estimated depth frame has been integrated: how many
-    /// estimated rays hit it (x) and how many stopped at a surface at least two of their
-    /// deviations in front of it, within `Map3DConfig.estimatedShadowLength` (y). Rays, not
-    /// frames, are counted: at 1.2 m about 64 rays of one frame reach a 10 cm voxel, so one in
-    /// forty landing two deviations too far puts a stray hit behind an occluder in most frames.
-    /// Empty until then, so a phone with LiDAR stores nothing more.
-    private(set) var estimatedRays: [SIMD2<UInt16>] = []
-    private var tracksEstimated = false
 
     /// Covers `bounds` with voxels one of which is centred on `center`, so the planes through it
     /// (the meter's ground and wall face) run through voxel centers rather than along voxel
@@ -136,13 +133,11 @@ struct VoxelGrid {
     /// Bytes held now: the brick index plus stored bricks.
     var allocatedBytes: Int {
         brickSlot.count * MemoryLayout<Int32>.stride + pool.capacity * MemoryLayout<Voxel>.stride
-            + estimatedRays.capacity * MemoryLayout<SIMD2<UInt16>>.stride
     }
 
-    /// Bytes with every brick stored, and 4 more a voxel once estimated depth is tracked.
+    /// Bytes with every brick stored.
     var worstCaseBytes: Int {
-        let perVoxel = MemoryLayout<Voxel>.stride + (tracksEstimated ? MemoryLayout<SIMD2<UInt16>>.stride : 0)
-        return brickSlot.count * MemoryLayout<Int32>.stride + brickSlot.count * Self.brickVolume * perVoxel
+        brickSlot.count * MemoryLayout<Int32>.stride + brickSlot.count * Self.brickVolume * MemoryLayout<Voxel>.stride
     }
 
     // MARK: Addressing
@@ -186,10 +181,6 @@ struct VoxelGrid {
                 pool.reserveCapacity(min(brickSlot.count * Self.brickVolume, max(2 * pool.capacity, 64 * Self.brickVolume)))
             }
             pool.append(contentsOf: repeatElement(Voxel(), count: Self.brickVolume))
-            if tracksEstimated {
-                if estimatedRays.capacity < pool.capacity { estimatedRays.reserveCapacity(pool.capacity) }
-                estimatedRays.append(contentsOf: repeatElement(.zero, count: Self.brickVolume))
-            }
             brickSlot[b] = slot
         }
         return Int(slot) + Self.local(g)
@@ -229,75 +220,52 @@ struct VoxelGrid {
     /// Integrates one frame's rays from `camera` (map coordinates). Hits first, so a voxel both
     /// hit and passed through in one frame counts as hit (OctoMap's rule); then free space along
     /// each ray, each voxel counted once per frame.
+    /// Estimated rays leave evidence that tells seen from unknown (the fog of war, the next
+    /// view) but never certifies coverage: an estimated hit changes neither a voxel's viewing
+    /// evidence nor the normal of one a measured ray hit, and an estimated pass neither lowers a
+    /// voxel a measured ray hit nor makes one measured free (`VoxelSources.measuredPass`).
     mutating func integrate(camera: SIMD3<Float>, rays: [RaySample], sources: VoxelSources, config: Map3DConfig) {
         frameStamp = frameStamp == .max ? 1 : frameStamp + 1
         let stamp = frameStamp
+        let measured = !sources.isDisjoint(with: VoxelSources.measuredHit)
         for ray in rays where ray.hit {
             guard let g = coordinate(of: ray.end) else { continue }
             let i = storedIndex(g)
             let offset = ray.end - camera
             let distance = simd_length(offset)
-            let cosine = simd_length_squared(ray.normal) > 0 ? abs(simd_dot(ray.normal, offset / distance)) : 0
+            let cosine = ray.cosine ?? (simd_length_squared(ray.normal) > 0 ? abs(simd_dot(ray.normal, offset / distance)) : 0)
             pool[i].recordHit(
-                stamp: stamp, distance: distance, cosine: cosine, normal: ray.normal, sources: sources.rawValue, config: config)
+                stamp: stamp, distance: distance, cosine: cosine, normal: ray.normal, sources: sources.rawValue, measured: measured, config: config)
         }
         for ray in rays where ray.freeLength > 0 {
-            carveFree(from: camera, to: ray.end, length: ray.freeLength, stamp: stamp, config: config)
-        }
-        guard sources == .estimated else { return }
-        if !tracksEstimated {
-            tracksEstimated = true
-            estimatedRays = Array(repeating: .zero, count: pool.count)
-        }
-        for ray in rays where ray.hit {
-            guard let g = coordinate(of: ray.end) else { continue }
-            let i = storedIndex(g)
-            if estimatedRays[i].x < .max { estimatedRays[i].x += 1 }
-        }
-        var shadowed: [SIMD3<Int32>] = []
-        for ray in rays where ray.shadowFrom.isFinite {
-            let span = ray.end - camera
-            let total = simd_length(span)
-            guard total > 0 else { continue }
-            let direction = span / total
-            let start = camera + direction * ray.shadowFrom
-            shadowed.removeAll(keepingCapacity: true)
-            // Only voxels the ray enters past its shadow's start: the one holding the start may
-            // hold the surface itself.
-            march(from: start, direction: direction, length: config.estimatedShadowLength) { g, _, entered in
-                if entered > 0 { shadowed.append(g) }
-                return true
-            }
-            for g in shadowed {
-                let i = storedIndex(g)
-                if estimatedRays[i].y < .max { estimatedRays[i].y += 1 }
-            }
+            carveFree(from: camera, to: ray.end, length: ray.freeLength, stamp: stamp, measured: measured, config: config)
         }
     }
 
-    /// A surface seen well enough to count as coverage (`Voxel.isWellSeenSurface`). One whose
-    /// surface evidence is estimated depth alone must also have been hit by at least
-    /// `minEstimatedHitShare` of the estimated rays that hit it or stopped two deviations in front
-    /// of it: a visible voxel is hit by about half the rays aimed at it and counted against by the
-    /// few that fall short, while one behind an occluder is hit only by the few that land too far.
+    /// A surface seen well enough to count as coverage (`Voxel.isWellSeenSurface`) by a ray that
+    /// measured it: LiDAR or a feature point. Estimated depth never certifies one. The review of
+    /// 2f17d67 made estimated hits claim walls behind occluders several ways; the fog of war and
+    /// the next view still read estimated evidence through `Voxel.state`.
     func isWellSeenSurface(_ index: Int, config: Map3DConfig) -> Bool {
         let voxel = pool[index]
-        guard voxel.isWellSeenSurface(config) else { return false }
-        guard tracksEstimated, voxel.sources & (VoxelSources.lidar.rawValue | VoxelSources.feature.rawValue) == 0 else { return true }
-        let counts = estimatedRays[index]
-        let total = Float(counts.x) + Float(counts.y)
-        return total == 0 || Float(counts.x) >= config.minEstimatedHitShare * total
+        return voxel.isWellSeenSurface(config) && !VoxelSources(rawValue: voxel.sources).isDisjoint(with: VoxelSources.measuredHit)
     }
 
     func isWellSeenSurface(_ g: SIMD3<Int32>, config: Map3DConfig) -> Bool {
         index(g).map { isWellSeenSurface($0, config: config) } ?? false
     }
 
+    /// Free, and a measured ray passed through it: what the coverage bands count as free.
+    func isMeasuredFree(_ g: SIMD3<Int32>, config: Map3DConfig) -> Bool {
+        guard let voxel = voxel(g) else { return false }
+        return voxel.state(config) == .free && voxel.sources & VoxelSources.measuredPass.rawValue != 0
+    }
+
     /// Marks the voxels a segment from `from` toward `to` crosses completely within `length` as
     /// passed through (3D DDA, Amanatides and Woo 1987), clipped to the grid. A voxel the
     /// segment only enters is left alone: the ray ended somewhere past its free length, which
     /// may lie inside that voxel, so only voxels it left again are known empty.
-    private mutating func carveFree(from: SIMD3<Float>, to: SIMD3<Float>, length: Float, stamp: UInt16, config: Map3DConfig) {
+    private mutating func carveFree(from: SIMD3<Float>, to: SIMD3<Float>, length: Float, stamp: UInt16, measured: Bool, config: Map3DConfig) {
         let span = to - from
         let total = simd_length(span)
         guard total > 0 else { return }
@@ -320,7 +288,7 @@ struct VoxelGrid {
         while true {
             let axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2)
             guard tMax[axis] <= end else { return }
-            pool[storedIndex(g)].recordPass(stamp: stamp, miss: miss, floor: floor, surface: config.surfaceLogOdds)
+            pool[storedIndex(g)].recordPass(stamp: stamp, miss: miss, floor: floor, surface: config.surfaceLogOdds, measured: measured)
             g[axis] &+= step[axis]
             guard g[axis] >= 0, g[axis] < dims[axis] else { return }
             tMax[axis] += tDelta[axis]
@@ -452,8 +420,11 @@ extension Voxel {
     @inline(__always)
     /// A voxel that stops being surface loses its viewing evidence, so it counts as seen again
     /// only on a new observation.
-    mutating func recordPass(stamp: UInt16, miss: Int16, floor: Int16, surface: Int16) {
+    mutating func recordPass(stamp: UInt16, miss: Int16, floor: Int16, surface: Int16, measured: Bool) {
         guard self.stamp != stamp else { return }
+        // An estimate can't take back what a measured ray found, such as an occluder LiDAR saw.
+        guard measured || sources & VoxelSources.measuredHit.rawValue == 0 else { return }
+        if measured { sources |= VoxelSources.measuredPass.rawValue }
         self.stamp = stamp
         logOdds = max(floor, logOdds &+ miss)
         if passes < .max { passes += 1 }
@@ -464,13 +435,17 @@ extension Voxel {
     }
 
     @inline(__always)
-    mutating func recordHit(stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, config: Map3DConfig) {
+    mutating func recordHit(
+        stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, measured: Bool, config: Map3DConfig
+    ) {
+        // Estimated evidence is not allowed to shape what a measured ray found.
+        let keepsMeasured = !measured && self.sources & VoxelSources.measuredHit.rawValue != 0
         if self.stamp != stamp {
             self.stamp = stamp
             // A measured hit means something is there now, however long the space was seen
             // empty: start from even odds, so one hit is surface, never still free.
             logOdds = min(config.maxLogOdds, max(logOdds, 0) &+ config.hitLogOdds)
-            if simd_length_squared(normal) > 0 {
+            if simd_length_squared(normal) > 0, !keepsMeasured {
                 // A running mean over up to 16 frames, so a normal keeps adapting as views improve.
                 let weight = Float(min(hits, 16))
                 setNormal((self.normal ?? .zero) * weight + normal)
@@ -478,9 +453,9 @@ extension Voxel {
             if hits < .max { hits += 1 }
         }
         nearestCm = min(nearestCm, UInt16(min(Float(UInt16.max - 1), distance * 100)))
-        // The best angle only from views within range, so one view is both near enough and
-        // square enough when the voxel counts as well seen.
-        if distance <= config.maxViewDistance {
+        // The best angle only from measured views within range, so one view is both near enough
+        // and square enough when the voxel counts as well seen.
+        if measured, distance <= config.maxViewDistance {
             bestCos = max(bestCos, UInt8(min(255, (cosine * 255).rounded(.down))))
         }
         self.sources |= sources

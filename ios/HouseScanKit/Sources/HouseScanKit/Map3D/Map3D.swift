@@ -70,9 +70,8 @@ public struct Map3D: Sendable {
     /// free up to just short of its depth, stopping at a surface there. LiDAR pixels below
     /// `minConfidence` are skipped. An estimated pixel carves free space to two standard
     /// deviations short of its depth and marks a surface only when that is within
-    /// `maxSurfaceSigma`. It also counts against the voxels from two deviations past its depth
-    /// for `estimatedShadowLength`: a surface it may have met is in front of them
-    /// (`VoxelGrid.isWellSeenSurface`).
+    /// `maxSurfaceSigma`. Estimated evidence tells seen from unknown but never certifies
+    /// coverage (`VoxelGrid.integrate`).
     public mutating func integrate(_ depth: DepthFrame) {
         let mapFromCamera = frame.mapFromWorld * depth.camera.cameraToWorld
         let camera = SIMD3(mapFromCamera.columns.3.x, mapFromCamera.columns.3.y, mapFromCamera.columns.3.z)
@@ -153,14 +152,12 @@ public struct Map3D: Sendable {
                 }
                 var freeLength = length - freeMargin(cosine: cosine)
                 var hit = true
-                var shadowFrom = Float.infinity
                 if estimated {
                     freeLength = min(freeLength, (-p.z - 2 * sigma) / -p.z * length)
                     hit = 2 * sigma <= config.maxSurfaceSigma
-                    shadowFrom = (-p.z + 2 * sigma) / -p.z * length
                 }
                 let end4 = mapFromCamera * SIMD4(p, 1)
-                rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit, shadowFrom: shadowFrom))
+                rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit, cosine: cosine))
             }
         }
         grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, config: config)

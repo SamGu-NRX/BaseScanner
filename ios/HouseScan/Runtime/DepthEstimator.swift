@@ -136,7 +136,7 @@ final class DepthEstimator: Sendable {
             let started = ProcessInfo.processInfo.systemUptime
             guard let prediction = predict(input.bgra) else { return }
             let predicted = ProcessInfo.processInfo.systemUptime
-            let anchors = DepthAnchor.anchors(points: input.points, camera: input.camera) + DepthAnchor.anchors(planes: input.planes, camera: input.camera)
+            let anchors = DepthAnchor.anchors(points: input.points, camera: input.camera) + DepthAnchor.anchors(planes: input.planes, confirmedBy: input.points, camera: input.camera)
             guard let estimate = MonocularDepth.estimate(prediction, anchors: anchors, photo: input.camera) else {
                 RuntimeLog.engine.info("depth \(input.frameID, privacy: .public): no scale fit from \(anchors.count) anchors; frame skipped")
                 return

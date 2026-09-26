@@ -16,7 +16,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 The 3D map is the coverage model by default (`-coverage map3d`); `-coverage legacy` keeps the camera coverage map alone. Under map3d:
 
-- scene.json's coverage, walls and wall sources come from the map once some depth went into it (LiDAR, a replay's, or estimated with `-estimatedDepth on`). Without depth the export takes the camera coverage map's path, as the walk does, and logs which path it took. The walk's own facing (the walked path) and overhead (tilt-up views confirmed clear) are merged in, taking the larger reach. When the measured chain is written they are first restated along it, on the meter's piece only (`ObservedSpan.carried`).
+- scene.json's coverage, walls and wall sources come from the map once some depth went into it (LiDAR, a replay's, or estimated with `-estimatedDepth on`, which alone certifies nothing). Without depth the export takes the camera coverage map's path, as the walk does, and logs which path it took. The walk's own facing (the walked path) and overhead (tilt-up views confirmed clear) are merged in, taking the larger reach. When the measured chain is written they are first restated along it, on the meter's piece only (`ObservedSpan.carried`).
 - On a phone or replay with depth, the strip and the gap planner count a cell covered only where the map saw it (`CoverageMap.setMeasuredCovered`). Without depth the map is too sparse to walk by, and the camera sightings keep deciding.
 - The result is placed along the wall the scene described, which can be the measured chain.
 - A replay's frames go into the map only on the walk and in a gap request: for the close-up a replay plays its whole recording.
@@ -43,7 +43,7 @@ Outputs, all against a `WallFrame` (the walk's, or one built from the map's own 
 
 Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse, and a replay without depth gives the map nothing.
 
-Estimated depth (`-estimatedDepth on`, off by default) runs Apple's Core ML Depth Anything V2 Small on each kept keyframe of a phone without LiDAR (`Runtime/DepthEstimator.swift`). The model gives inverse depth up to an unknown scale and shift, so each frame is scaled by its own ARKit geometry: `MonocularDepth` fits 1/depth = a · prediction + b to the frame's feature points and to points on detected planes, robustly. A frame with too few of them gets no depth. Each pixel gets a standard deviation that grows where nothing checked the model:
+Estimated depth (`-estimatedDepth on`, off by default) runs Apple's Core ML Depth Anything V2 Small on each kept keyframe of a phone without LiDAR (`Runtime/DepthEstimator.swift`). The model gives inverse depth up to an unknown scale and shift, so each frame is scaled by its own ARKit geometry: `MonocularDepth` fits 1/depth = a · prediction + b to the frame's feature points and to points on detected planes, robustly. A plane point counts only where a feature point on that plane shows it in view nearby: a plane's extent can run behind something standing in front of it. A frame with too few of them gets no depth. Each pixel gets a standard deviation that grows where nothing checked the model:
 
 - the fit's robust residual scale;
 - the local scale of anchors within 8% of the image width;
@@ -54,10 +54,8 @@ Pixels with no anchor nearby get no depth. `Map3D` then treats a pixel as a ray 
 
 - It carves free space to two deviations short of the depth.
 - It marks a surface only when two deviations are within 15 cm.
-- It counts views as further from square by the tilt its error could give the normal.
-- A surface only estimated depth measured counts as seen only where at least a quarter of the estimated rays that hit it, or stopped two deviations in front of it, hit it. This keeps stray hits behind an occluder from claiming the wall there (`Map3DEstimatedTests`).
 
-Estimated depth never makes walls. On ETH3D electro, photos only, it claimed nothing: at the photos' 3.8 m median distance two deviations are about 60 cm. The model is not in the repository. The locator looks for it in the app bundle, then in Application Support/Models.
+That tells seen from unknown for the fog of war and the next view, and nothing more: estimated evidence never certifies coverage. A surface counts as seen only where a LiDAR or feature ray measured it, space counts as free for the facing and overhead bands only where one passed through it, and an estimated ray never lowers a voxel a measured ray hit (`VoxelGrid.integrate`). A review of the first version made estimated hits claim walls behind occluders several ways (`Map3DEstimatedEvidenceTests`). Estimated depth never makes walls. On ETH3D electro, photos only, it claimed nothing: at the photos' 3.8 m median distance two deviations are about 60 cm. The model is not in the repository. The locator looks for it in the app bundle, then in Application Support/Models.
 
 On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel), and reading coverage takes about 25 ms. `swift test -c release --filter Map3DPerformanceTests` prints the current numbers. The map assumes nothing moves: an object that appears in space seen empty earlier becomes surface where its face is measured, but its inside keeps the earlier free reading.
 

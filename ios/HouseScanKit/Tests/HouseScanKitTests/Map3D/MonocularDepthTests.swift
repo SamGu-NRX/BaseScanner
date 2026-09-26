@@ -184,11 +184,36 @@ func photoCamera(at position: SIMD3<Float>, lookingAt target: SIMD3<Float>) -> C
         let wall = PlaneObservation(
             id: UUID(), worldFromPlane: simd_float4x4(SIMD4(1, 0, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0, -1, 0, 0), SIMD4(0, 1.4, 0, 1)),
             alignment: .vertical, center: .zero, width: 2, length: 2)
-        let anchors = DepthAnchor.anchors(planes: [wall], camera: camera)
+        // Feature points all over the plane's square confirm it is in view everywhere.
+        let points = Swift.stride(from: Float(-0.95), through: 0.95, by: 0.1).flatMap { x in
+            Swift.stride(from: Float(0.45), through: 2.35, by: 0.1).map { y in SIMD3(x, y, 0) }
+        }
+        let anchors = DepthAnchor.anchors(planes: [wall], confirmedBy: points, camera: camera)
         #expect(!anchors.isEmpty)
         for anchor in anchors { #expect(abs(anchor.depth - 2) < 1e-3) }
         // A 2 m square seen from 2 m covers the middle of a 67 x 53 degree view, not its corners.
         #expect(!anchors.contains { $0.fraction.x < 0.1 || $0.fraction.x > 0.9 })
+    }
+
+    /// A plane's extent can run behind something standing in front of it (the review's probe: a
+    /// box before the wall, the wall's plane scaling the model into the wall behind the box).
+    /// A plane point anchors the fit only where a feature point on the plane shows it is in view
+    /// there; points in front of the plane confirm nothing.
+    @Test func planeAnchorsNeedAFeaturePointOnThePlaneNearby() {
+        let camera = photoCamera(at: SIMD3(0, 1.4, 2), lookingAt: SIMD3(0, 1.4, 0))
+        let wall = PlaneObservation(
+            id: UUID(), worldFromPlane: simd_float4x4(SIMD4(1, 0, 0, 0), SIMD4(0, 0, 1, 0), SIMD4(0, -1, 0, 0), SIMD4(0, 1.4, 0, 1)),
+            alignment: .vertical, center: .zero, width: 2, length: 2)
+        // One point on the wall left of center, one on a box 1 m in front of the wall's right half.
+        let onWall = SIMD3<Float>(-0.5, 1.4, 0)
+        let onBox = SIMD3<Float>(0.5, 1.4, 1)
+        let anchors = DepthAnchor.anchors(planes: [wall], confirmedBy: [onWall, onBox], camera: camera)
+        #expect(!anchors.isEmpty)
+        let seen = camera.pixel(of: onWall)! / camera.imageSize
+        for anchor in anchors {
+            #expect(abs(anchor.fraction.x - seen.x) <= 1.0 / 16 + 1e-4 && abs(anchor.fraction.y - seen.y) <= 1.0 / 12 + 1e-4, "unconfirmed anchor at \(anchor.fraction)")
+        }
+        #expect(DepthAnchor.anchors(planes: [wall], confirmedBy: [onBox], camera: camera).isEmpty)
     }
 
     /// End to end on a wall 1.5 m away: a prediction rendered at the model's 518 x 392 from the

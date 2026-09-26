@@ -67,9 +67,16 @@ public struct DepthAnchor: Sendable, Equatable {
     }
 
     /// Where rays through a `columns` x `rows` grid of pixels first meet a detected plane inside
-    /// its extent, between `minDepth` and `maxDepth`. A plane's extent can run behind something
-    /// standing in front of it; such a point disagrees with the model and the fit rejects it.
-    public static func anchors(planes: [PlaneObservation], camera: CameraFrame, columns: Int = 16, rows: Int = 12, minDepth: Float = 0.2, maxDepth: Float = 8) -> [DepthAnchor] {
+    /// its extent, between `minDepth` and `maxDepth`, kept only where a feature point (world,
+    /// `confirmedBy`) within `onPlane` of that plane falls in the same or a neighbouring grid
+    /// cell of the image. A plane's extent can run behind something standing in front of it,
+    /// and the fit did not reliably reject such points: in the review of 2f17d67 a box's plane
+    /// anchors scaled the model's box into the wall behind it. A feature point on the plane
+    /// there shows the plane itself is in view.
+    public static func anchors(
+        planes: [PlaneObservation], confirmedBy points: [SIMD3<Float>], camera: CameraFrame, columns: Int = 16, rows: Int = 12,
+        minDepth: Float = 0.2, maxDepth: Float = 8, onPlane: Float = 0.05
+    ) -> [DepthAnchor] {
         let surfaces = planes.compactMap { plane -> (point: SIMD3<Float>, normal: SIMD3<Float>, planeFromWorld: simd_float4x4, boundary: [SIMD2<Float>])? in
             guard plane.boundary.count >= 3 else { return nil }
             let m = plane.worldFromPlane
@@ -78,19 +85,29 @@ public struct DepthAnchor: Sendable, Equatable {
             return (SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z), simd_normalize(normal), m.inverse, plane.boundary)
         }
         guard !surfaces.isEmpty, columns > 0, rows > 0 else { return [] }
+        let cellSize = SIMD2(1 / Float(columns), 1 / Float(rows))
+        // Per plane, where in the image points lying on it were seen.
+        let confirmations = surfaces.map { surface in
+            points.compactMap { point -> SIMD2<Float>? in
+                guard abs(simd_dot(point - surface.point, surface.normal)) <= onPlane, -camera.cameraSpace(point).z > 0,
+                      let pixel = camera.pixel(of: point), camera.contains(pixel: pixel) else { return nil }
+                return pixel / camera.imageSize
+            }
+        }
         var anchors: [DepthAnchor] = []
         for row in 0..<rows {
             for column in 0..<columns {
                 let fraction = SIMD2((Float(column) + 0.5) / Float(columns), (Float(row) + 0.5) / Float(rows))
                 let ray = camera.ray(throughPixel: fraction * camera.imageSize)
-                var nearest: Float?
-                for surface in surfaces {
-                    guard let t = ray.intersect(planePoint: surface.point, normal: surface.normal), t < nearest ?? .infinity else { continue }
+                var nearest: (t: Float, plane: Int)?
+                for (index, surface) in surfaces.enumerated() {
+                    guard let t = ray.intersect(planePoint: surface.point, normal: surface.normal), t < nearest?.t ?? .infinity else { continue }
                     let local = surface.planeFromWorld * SIMD4(ray.at(t), 1)
                     guard Map3D.polygon(surface.boundary, contains: SIMD2(local.x, local.z)) else { continue }
-                    nearest = t
+                    nearest = (t, index)
                 }
-                guard let t = nearest else { continue }
+                guard let (t, plane) = nearest,
+                      confirmations[plane].contains(where: { all(abs($0 - fraction) .<= cellSize + 1e-4) }) else { continue }
                 let depth = -camera.cameraSpace(ray.at(t)).z
                 guard depth >= minDepth, depth <= maxDepth else { continue }
                 anchors.append(DepthAnchor(fraction: fraction, depth: depth))

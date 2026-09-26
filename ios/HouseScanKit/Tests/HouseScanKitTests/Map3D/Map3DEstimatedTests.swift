@@ -95,16 +95,17 @@ func nearlyVisible(_ scene: SyntheticScene, _ cameras: [CameraFrame], _ point: S
         }
     }
 
-    /// The same walks do claim the wall away from the box, so the test above is not passed by
-    /// claiming nothing.
+    /// Estimated evidence never certifies coverage (`VoxelGrid.isWellSeenSurface`, since the
+    /// review of 2f17d67), so the same walks claim not even the wall away from the box. The
+    /// tests here then hold vacuously; they stay to catch estimated claims coming back.
     @Test(arguments: [Float(0.2), 0.5, 1.0])
-    func wallAwayFromTheOccluderIsClaimed(offset: Float) {
+    func estimatedDepthClaimsNotEvenTheClearWall(offset: Float) {
         let scene = Self.occluderScene(offset: offset)
         let map = Self.map(scene, Self.walk(offset: offset))
         let coverage = map.coverage(along: Self.wall)
         let clear = map.cellIndices.filter { let r = map.cellRange($0); return r.lowerBound >= -0.8 && r.upperBound <= 0.4 }
         let seen = clear.filter { Self.covers(map, coverage.wall, $0) }
-        #expect(seen.count == clear.count, "clear cells seen: \(seen.count) of \(clear.count)")
+        #expect(seen.isEmpty, "clear cells claimed from estimated depth: \(seen.count) of \(clear.count)")
     }
 
     @Test(arguments: [Float(0.2), 0.5, 1.0])
@@ -170,6 +171,7 @@ func nearlyVisible(_ scene: SyntheticScene, _ cameras: [CameraFrame], _ point: S
                 }
             }
         }
-        #expect(checked > 0, "nothing claimed")
+        // Estimated evidence certifies nothing, so nothing is claimed at all.
+        #expect(checked == 0, "\(checked) wall samples claimed from estimated depth")
     }
 }

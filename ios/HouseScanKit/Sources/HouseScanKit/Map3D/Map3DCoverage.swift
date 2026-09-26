@@ -222,7 +222,7 @@ extension Map3D {
         for row in rows where !row.face {
             guard let front = row.relief else { return false }
             for out in stride(from: facade + faceTolerance, to: facade + front, by: config.voxelSize / 2) {
-                if coordinate(wall, s: s, height: row.height, out: out).flatMap(grid.voxel)?.state(config) == .free { return false }
+                if coordinate(wall, s: s, height: row.height, out: out).map({ grid.isMeasuredFree($0, config: config) }) == true { return false }
             }
         }
         return true
@@ -270,7 +270,7 @@ extension Map3D {
         guard sample.face, sample.relief == nil else { return false }
         let outward = frame.mapDirection(wall.segment(atS: s).outward)
         for out in stride(from: facade - config.recessDepth, through: facade + faceTolerance, by: config.voxelSize / 2) {
-            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), voxel.isWellSeenSurface(config),
+            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), grid.isWellSeenSurface(g, config: config),
                   let normal = voxel.normal else { continue }
             let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s) - facade
             guard centerOut >= -config.recessDepth - 1e-4, centerOut <= faceTolerance + 1e-4 else { continue }
@@ -285,15 +285,17 @@ extension Map3D {
     /// degrees of up, and every voxel above it must be free, except within `groundClearance`
     /// of it: a ray that ended on the ground leaves the last stretch before it unmarked (see
     /// `VoxelGrid.carveFree`), and anything that low is not told apart from the ground anyway.
-    /// Ground under a bush, or under anything else taller than that, is not seen.
+    /// Ground under a bush, or under anything else taller than that, is not seen. Free means
+    /// measured free (`VoxelGrid.isMeasuredFree`).
     func groundHeight(_ wall: WallFrame, s: Float, out: Float) -> Float? {
         var unknownFrom: Float?
         for height in stride(from: config.groundSearch, through: -config.groundSearch, by: -config.voxelSize / 2) {
             guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g) else { return nil }
             switch voxel.state(config) {
-            case .free:
+            // Free only by estimated depth is not known free here.
+            case .free where grid.isMeasuredFree(g, config: config):
                 guard unknownFrom == nil else { return nil }
-            case .unknown:
+            case .free, .unknown:
                 if unknownFrom == nil { unknownFrom = height }
             case .surface:
                 guard grid.isWellSeenSurface(g, config: config), (voxel.normal?.y ?? 0) >= cos(Float.pi / 4) else { return nil }
@@ -379,7 +381,7 @@ extension Map3D {
     }
 
     private func isFree(_ wall: WallFrame, s: Float, height: Float, out: Float) -> Bool {
-        coordinate(wall, s: s, height: height, out: out).flatMap(grid.voxel)?.state(config) == .free
+        coordinate(wall, s: s, height: height, out: out).map { grid.isMeasuredFree($0, config: config) } ?? false
     }
 
     /// The largest distance, from `start` in steps of half a voxel up to `end`, up to which

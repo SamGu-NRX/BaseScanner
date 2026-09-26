@@ -76,6 +76,20 @@
         }
       }
     },
+    "objects_not_used": {
+      "description": "Marked objects the server did not use: ones with no footprint past an unexplored end of the walk, where the wall may turn, so they have no known place. Tell the homeowner those marks weren't counted; walking further or giving them a footprint lets them count.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["object", "side", "message"],
+        "properties": {
+          "object": {"type": "string", "description": "objects[<index>] <type>, as in checks' subject."},
+          "side": {"enum": ["left", "right"]},
+          "message": {"type": "string"}
+        }
+      }
+    },
     "ends": {
       "type": "object",
       "additionalProperties": false,
