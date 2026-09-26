@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-09-26T05:40:43-05:00",
+  "generated_at": "2026-09-26T05:43:41-05:00",
   "command": "uv run python -m hsverify.scoreboard",
-  "slow": false,
+  "slow": true,
   "prs": [
     {
       "number": 16,
@@ -61,18 +61,20 @@
       "number": 13,
       "title": "verification: independent end-to-end checks (S4)",
       "branch": "t3/verification",
-      "head": "e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2",
+      "head": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
       "draft": true,
-      "updated": "2026-09-26T10:11:53Z",
+      "updated": "2026-09-26T10:41:29Z",
       "ci": {
         "counts": {
-          "success": 4,
-          "failure": 0,
+          "success": 2,
+          "failure": 1,
           "pending": 0,
           "skipped": 0
         },
-        "failing": [],
-        "text": "4 success"
+        "failing": [
+          "Vercel"
+        ],
+        "text": "2 success, 1 failure; failing: Vercel"
       }
     },
     {
@@ -262,8 +264,8 @@
           "text": "Metric code tested on hand-computed cases",
           "ref": "origin/t3/evals",
           "sha": "7c5318d6610a06e657a98b0c8c7d1cc2acc53738",
-          "status": "not run",
-          "evidence": "slow; run with --slow",
+          "status": "partial",
+          "evidence": "exit 0: Installed 20 packages in 60ms / .................................................. [100%] / 50 passed in 1.60s (tests pass; whether the cases are hand-computed needs a read)",
           "links": []
         },
         {
@@ -327,8 +329,8 @@
           "text": "pytest green",
           "ref": "origin/t3/server",
           "sha": "f2705dd5580ccd8c18ebd34a743b448bcb59ae03",
-          "status": "not run",
-          "evidence": "slow; run with --slow",
+          "status": "met",
+          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 222 passed, 1 warning in 11.01s",
           "links": []
         },
         {
@@ -413,8 +415,8 @@
           "text": "ruff clean",
           "ref": "origin/t3/server",
           "sha": "f2705dd5580ccd8c18ebd34a743b448bcb59ae03",
-          "status": "not run",
-          "evidence": "slow; run with --slow",
+          "status": "met",
+          "evidence": "exit 0: Installed 33 packages in 37ms / All checks passed! / 17 files already formatted",
           "links": []
         },
         {
@@ -582,7 +584,7 @@
       "refs": [
         {
           "ref": "origin/t3/verification",
-          "sha": "e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2"
+          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39"
         },
         {
           "ref": "origin/t3/ios-mvf",
@@ -594,7 +596,7 @@
           "id": "S4-1",
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/verification",
-          "sha": "e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2",
+          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
           "status": "met",
           "evidence": "app_export_passed = true (want True): ~/house-scanning-data/reports/e2e/20260926-050517-26d28707/report.json",
           "links": []
@@ -612,7 +614,7 @@
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2",
+          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
           "status": "met",
           "evidence": "verification/product covers every screen of t3/ios-mvf at 525ea40, checked in the Simulator there with the real server's result (verification.md); bug-triage.md has 16 entries, 3 resolved; ux/review.md judges every state.",
           "links": []
@@ -621,13 +623,13 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2",
+          "sha": "60fe0d327dfd0ac56b5570ffdc9daf24d8760a39",
           "status": "met",
-          "evidence": "present at e18a2eb7",
+          "evidence": "present at 60fe0d32",
           "links": [
             [
               "verification/SCOREBOARD.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/e18a2eb7a213a5bd9d752a4fadccf09c50bcebf2/verification/SCOREBOARD.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/60fe0d327dfd0ac56b5570ffdc9daf24d8760a39/verification/SCOREBOARD.md"
             ]
           ]
         }
