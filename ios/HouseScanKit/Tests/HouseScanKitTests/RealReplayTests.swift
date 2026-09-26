@@ -26,7 +26,8 @@ import Testing
         var window: ReplayPlanning.HeldBackWindow?
         let windowTime = clock.measure { window = ReplayPlanning.heldBackWindow(frames: frames, wall: wall) }
         let walked = ReplayPlanning.simulateWalk(frames, wall: wall)
-        print("replay \(session.id): \(frames.count) frames; assumed wall offset \(assumed?.offset ?? .nan) m, \(assumed?.coveredCells ?? 0) cells (\(wallTime)); walk covers wall \(walked.coveredIntervals(.wall).count) runs, ground \(walked.coveredIntervals(.ground).count) runs; held-back window \(window.map { "\($0.frames) gap \($0.gap.band) \($0.gap.span)" } ?? "none") (\(windowTime))")
+        let besideMeter = frames.indices.min { abs(wall.wallPoint(frames[$0].camera.position).s) < abs(wall.wallPoint(frames[$1].camera.position).s) } ?? 0
+        print("replay \(session.id): \(frames.count) frames; assumed wall offset \(assumed?.offset ?? .nan) m, \(assumed?.coveredCells ?? 0) cells within reach of the meter, which is beside frame \(besideMeter) (\(wallTime)); walk covers wall \(walked.coveredIntervals(.wall).count) runs, ground \(walked.coveredIntervals(.ground).count) runs; held-back window \(window.map { "\($0.frames) gap \($0.gap.band) \($0.gap.span)" } ?? "none") (\(windowTime))")
         #expect(walked.coveredCount > 0, "the replay covers nothing on its wall")
     }
 }
