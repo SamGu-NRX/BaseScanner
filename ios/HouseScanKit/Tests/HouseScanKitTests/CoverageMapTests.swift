@@ -2,21 +2,24 @@ import HouseScanKit
 import simd
 import Testing
 
-// Cells are 0.1524 m wide: cell -1 is [-0.1524, 0], cell 0 is [0, 0.1524]. Wall samples sit at
-// heights 0.4, 1.2 and 2.0; ground samples 0.2, 0.6 and 1.0 out; a cell counts as seen at 4 of 6.
+// Cells are 0.1524 m wide: cell -1 is [-0.1524, 0], cell 0 is [0, 0.1524]. Wall rows sit at heights
+// 0, 0.9906 and 1.9812; ground rows 0, 0.6 and 1.2 out. A row counts when both its samples (a quarter
+// and three quarters along the cell) are in view; a cell is covered when every row is seen from two
+// positions 0.25 m apart.
 //
-// The front camera stands 2.6 m out at height 1.4, pitched down 20 degrees. With the 3 % margin the
+// The front camera stands 2.6 m out at height 1.4, pitched down 16 degrees. With the 3 % margin the
 // image spans atan(300.8 / 500) = 31.03 degrees above and below the view axis. Looking at s = 0:
-//   wall h 0.4: atan(-1.0 / 2.6) = -21.0, so 1.0 below the axis    -> in
-//   wall h 1.2: atan(-0.2 / 2.6) = -4.4, so 15.6 above              -> in
-//   wall h 2.0: atan(0.6 / 2.6) = 13.0, so 33.0 above               -> out
-//   ground out 0.2 / 0.6 / 1.0: -30.3 / -35.0 / -41.2, so 10.3 / 15.0 / 21.2 below -> in
-// The shallowest ground view (out 0.2) is acos(1.4 / 2.78) = 59.7 degrees from the normal, under 65.
-// So cells -1 and 0 are seen in both bands: 4/6 on the wall, 6/6 on the ground.
+//   wall h 0:      atan(-1.4 / 2.6) = -28.3, so 12.3 below the axis   -> in
+//   wall h 0.99:   atan(-0.41 / 2.6) = -9.0, so 7.0 above              -> in
+//   wall h 1.98:   atan(0.58 / 2.6) = 12.6, so 28.6 above              -> in
+//   ground out 0 / 0.6 / 1.2: -28.3 / -35.0 / -45.0, so 12.3 / 19.0 / 29.0 below -> in
+// The shallowest ground view (out 0) is acos(1.4 / 2.95) = 61.7 degrees from the normal, under 65.
+// So cells -1 and 0 see every row of both bands. At the 20 degree pitch a walking phone often has,
+// the top wall row is 32.6 degrees above the axis and out of view (see wallTopNeedsItsOwnView).
 @Suite struct CoverageMapTests {
     static let front = SIMD3<Float>(0, 1.4, 2.6)
-    static func frontCamera(x: Float = 0) -> CameraFrame {
-        portraitCamera(at: front + SIMD3(x, 0, 0), forward: forwardFacingWall(pitchedDown: 20))
+    static func frontCamera(x: Float = 0, pitch: Float = 16) -> CameraFrame {
+        portraitCamera(at: front + SIMD3(x, 0, 0), forward: forwardFacingWall(pitchedDown: pitch))
     }
 
     @Test func frontCameraSeesBothBandsAroundTheMeter() {
@@ -33,6 +36,22 @@ import Testing
         #expect(map.coveredCount == 0)
         // 6 m away from the meter is far outside a 2.6 m view.
         #expect(map.level(.wall, 40) == .unseen)
+    }
+
+    /// Rows seen by different frames add up, but only a row seen from two positions counts: views
+    /// that never show the top of the wall band never cover the wall, however many there are.
+    @Test func wallTopNeedsItsOwnView() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(Self.frontCamera(pitch: 20), trackingNormal: true)
+        map.observe(Self.frontCamera(x: 0.3, pitch: 20), trackingNormal: true)
+        map.observe(Self.frontCamera(x: 0.6, pitch: 20), trackingNormal: true)
+        #expect(map.level(.wall, 0) == .seen)
+        #expect(map.level(.ground, 0) == .covered)
+        // Two level views from other places see the top row: every wall row now has two positions.
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        #expect(map.level(.wall, 0) == .seen)
+        map.observe(wallCamera(s: 0.3), trackingNormal: true)
+        #expect(map.level(.wall, 0) == .covered)
     }
 
     @Test func repeatedAndNearbyFramesNeverCover() {
@@ -74,8 +93,9 @@ import Testing
     }
 
     @Test func cameraBehindTheWallSeesNothing() {
-        // At z = -3 looking at the wall's back: wall samples face +z, away from it. The nearest
-        // ground sample (0, 0, 0.2) is 3.49 m away and 1.4 up: cos = 0.40 < cos 65 = 0.42.
+        // At z = -3 looking at the wall's back: wall samples face +z, away from it, and the wall
+        // hides the ground in front of it (the row at its foot would otherwise pass: cos = 1.4 / 3.31
+        // = 0.4229 >= cos 65 = 0.4226).
         var map = CoverageMap(wall: standardWall())
         let behind = portraitCamera(at: SIMD3(0, 1.4, -3), lookingAt: SIMD3(0, 0.5, 0))
         #expect(map.newlySeenCount(from: behind) == 0)
@@ -84,9 +104,9 @@ import Testing
     }
 
     @Test func grazingViewDoesNotSeeFarCells() throws {
-        // Standing 1 m out and looking along the wall at s = -4: a wall sample there is
-        // (4, 0.2, 1) from the camera, cos = 1 / 4.13 = 0.24, 76 degrees from the normal. The ground
-        // sample there is (4, 1.4, 0.4) away, cos = 1.4 / 4.26 = 0.33, 71 degrees.
+        // Standing 1 m out and looking along the wall at s = -4: a wall sample there is at most
+        // (4, 1.4, 1) from the camera, cos = 1 / 4.36 = 0.23, 77 degrees from the normal. The
+        // nearest ground sample there is (4, 1.4, 1) away, cos = 1.4 / 4.36 = 0.32, 71 degrees.
         let map = CoverageMap(wall: standardWall())
         let camera = portraitCamera(at: SIMD3(0, 1.4, 1), lookingAt: SIMD3(-4, 0.8, 0))
         let index = map.cellIndex(forS: -4)
