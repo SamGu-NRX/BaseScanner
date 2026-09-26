@@ -119,7 +119,7 @@ Each results file carries the sha256 of the exact rules file it was produced und
 
 ## What the scorer reports
 
-The markdown summary has one section per house. Each section has a distances table, a checks table, a timing table, and a list of every unsafe pass. Nothing is averaged across houses, and a missing output is never averaged away. The CSVs hold one row per run and measurement, per run and check, and per run.
+The markdown summary has one section per house. Each section has a distances table, a checks table, a timing table, and every unsafe pass and missed review listed by name. Nothing is averaged across houses, and a missing output is never averaged away. The CSVs hold one row per run and measurement, per run and check, and per run.
 
 **Distances.** Signed error is run minus survey, in inches, so positive means the run overestimated. The summary gives the median and maximum absolute error over the distances both sides measured. "Survey inside run's ±" counts the scored distances where the absolute error is at most the run's reported uncertainty, out of those where the run reported one. Every survey measurement except the scale reference is in the denominator and lands in exactly one bucket: scored, unsupported, failed, wrongly absent (the run says it is not there, the survey measured it), phantom (the run measured a feature the survey found absent), absent in both, or not surveyed.
 
@@ -139,13 +139,13 @@ So a route exactly on `review_route_ft` with u = 0 passes, and one exactly on `m
 
 **Error relative to the threshold.** The ratio is |error| / max(m, u), where m is the survey value's distance to the nearest threshold. For a band, that is whichever of the two lines is closer, since crossing either changes the outcome. Above 1, the run's error could flip the check. When m and u are both zero the ratio has no denominator, so the CSV reports `at_threshold`, and any nonzero error counts as a possible flip.
 
-**Decisions.** A correct run passes a passing check, fails a failing one, and says unsure on a borderline or review one. Three wrong answers are counted separately:
+**Decisions.** A correct run passes a passing check, fails a failing one, and says unsure on a borderline or review one. Borderline means the survey itself is unsure. Three wrong answers are counted separately, and each means the same for a single-threshold check and a banded one:
 
-- An unsafe pass is a run's pass where the survey fails or is borderline. That count matters most.
-- A missed review is a run's pass where the survey is review: the spot was inside the band and needed a person to look.
+- An unsafe pass is a run's pass where the survey fails. That count matters most.
+- A missed review is a run's pass where the survey is borderline or review: the answer needed a person to look.
 - Over-caution is a run's unsure or fail where the survey passes. False rejections are the fails among them, listed on their own too.
 
-A run's fail on a review-band spot is a disagreement but none of the three. An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
+The protocol note counts a pass on a borderline survey as unsafe. This scorer counts it as a missed review instead, so that "unsafe" always means the survey shows the spot breaks a rule, and the borderline cases stay visible in their own column and list. A run's fail where the survey is borderline or review is a disagreement but none of the three. An unsure is justified when the survey is borderline or review, or the run had no value (unsupported or failed). Otherwise it is avoidable.
 
 **Timing.** Capture and processing seconds, as the run reported them. Every row that shares a recording shares its capture time. A photo row cannot claim a shorter capture from it.
 

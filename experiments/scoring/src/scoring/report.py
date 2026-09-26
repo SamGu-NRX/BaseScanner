@@ -375,8 +375,8 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "by more. For most checks the two lines are one threshold, and anything between is "
         "borderline. A check with a review band (such as route length between review_route_ft "
         "and max_route_ft) is review in between. Borderline and review both call for unsure. "
-        "An unsafe pass is a run's pass where the survey fails or is borderline. A missed "
-        "review is a pass where the survey is review. Over-cautious counts unsure or fail "
+        "An unsafe pass is a run's pass where the survey fails. A missed review is a pass "
+        "where the survey is borderline or review. Over-cautious counts unsure or fail "
         "where the survey passes; false rejections are the fails among them. An unsure is "
         "justified when the survey is borderline or review, or the run has no value. The error "
         "could flip a check when it is larger than both the survey's distance to the nearest "
@@ -398,23 +398,29 @@ def _timing(runs: list[RunScore]) -> list[str]:
     return ["", "### Timing", "", *_table(["Pipeline", "Capture (s)", "Processing (s)"], rows)]
 
 
+def _wrong_pass(run: RunScore, score: CheckScore) -> str:
+    survey, threshold, review = score.survey, score.threshold, score.review
+    reported = score.measurement.reported
+    has_value = reported is not None and reported.value_ft is not None
+    run_value = f"{feet(reported.value_ft)} ft" if has_value else "no value"
+    limits = f"`{threshold.name}` {threshold.pass_when} {feet(threshold.value_ft)} ft"
+    if review is not None:
+        limits = f"`{review.name}` {feet(review.value_ft)} ft and {limits}"
+    return (
+        f"- `{run.results.pipeline}` passed `{score.check.check}` at "
+        f"`{score.check.candidate}`; the survey is {score.truth} at "
+        f"{feet(survey.value_ft)} ± {feet(survey.plus_minus_ft)} ft against {limits} "
+        f"(run measured {run_value})."
+    )
+
+
 def _unsafe(runs: list[RunScore]) -> list[str]:
+    """List every unsafe pass, then every missed review, by name."""
     lines = []
-    for run in runs:
-        for score in run.checks:
-            if not score.unsafe_pass:
-                continue
-            survey, threshold = score.survey, score.threshold
-            reported = score.measurement.reported
-            has_value = reported is not None and reported.value_ft is not None
-            run_value = f"{feet(reported.value_ft)} ft" if has_value else "no value"
-            lines.append(
-                f"- `{run.results.pipeline}` passed `{score.check.check}` at "
-                f"`{score.check.candidate}`; the survey is {score.truth} at "
-                f"{feet(survey.value_ft)} ± {feet(survey.plus_minus_ft)} ft against "
-                f"`{threshold.name}` {threshold.pass_when} {feet(threshold.value_ft)} ft "
-                f"(run measured {run_value})."
-            )
-    if not lines:
-        return ["", "No unsafe passes."]
-    return ["", "### Unsafe passes", "", *lines]
+    for title, picked in (
+        ("Unsafe passes", lambda score: score.unsafe_pass),
+        ("Missed reviews", lambda score: score.missed_review),
+    ):
+        found = [_wrong_pass(run, score) for run in runs for score in run.checks if picked(score)]
+        lines += ["", f"### {title}", "", *found] if found else ["", f"No {title.lower()}."]
+    return lines

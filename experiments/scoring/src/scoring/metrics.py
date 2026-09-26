@@ -33,9 +33,9 @@ MeasurementStatus = Literal[
     "absent_agreed",  # both say the feature does not exist
 ]
 
-# pass and fail are outside the survey's uncertainty. borderline: the survey's ± reaches a check's
-# single threshold. review: the survey value, or its ±, lies in a check's review band. unknown: the
-# survey could not measure the deciding distance.
+# pass and fail are outside the survey's uncertainty. borderline: the survey itself is unsure,
+# because its ± reaches a check's single threshold. review: the survey value, or its ±, lies in a
+# check's review band. unknown: the survey could not measure the deciding distance.
 TruthOutcome = Literal["pass", "fail", "borderline", "review", "unknown"]
 Abstention = Literal["justified", "avoidable"]
 
@@ -186,9 +186,10 @@ class CheckScore:
     expected: Outcome | None
     # The following are None when the run makes no decisions or the survey outcome is unknown.
     agrees: bool | None
-    # A pass where the survey fails or is borderline.
+    # The three wrong-answer categories mean the same for every check, banded or not.
+    # A pass where the survey fails.
     unsafe_pass: bool | None
-    # A pass where the survey value lies in the review band.
+    # A pass where the survey is unsure (borderline) or in a review band.
     missed_review: bool | None
     # An unsure or fail where the survey passes.
     over_caution: bool | None
@@ -222,8 +223,8 @@ def score_check(
     abstention: Abstention | None = None
     if reported is not None and truth != "unknown":
         agrees = reported == expected
-        unsafe = reported == "pass" and truth in ("fail", "borderline")
-        missed = reported == "pass" and truth == "review"
+        unsafe = reported == "pass" and truth == "fail"
+        missed = reported == "pass" and truth in ("borderline", "review")
         cautious = reported in ("unsure", "fail") and truth == "pass"
         rejection = reported == "fail" and truth == "pass"
         if reported == "unsure":

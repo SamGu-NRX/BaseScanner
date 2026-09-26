@@ -69,11 +69,11 @@ EXPECTED_RUNS = {
         "not_surveyed": "1",
         "judged": "7",
         "agrees": "4",
-        "unsafe_passes": "1",  # c2 gas, borderline
-        "missed_reviews": "1",  # c2 route, review
+        "unsafe_passes": "1",  # c2 facing_gap, where the survey fails
+        "missed_reviews": "2",  # c2 gas (borderline) and c2 route (review)
         "over_cautious": "0",
         "false_rejections": "0",
-        "abstentions_justified": "1",
+        "abstentions_justified": "0",
         "abstentions_avoidable": "0",
         "could_flip": "2",
         "capture_s": "420.0",
@@ -174,15 +174,16 @@ def test_check_rows(scored):
     rows = by_key(table("checks.csv"), "pipeline", "candidate", "check")
     assert len(rows) == 24
 
-    unsafe = rows[("ar-taps", "c2", "gas")]
-    assert unsafe["truth_outcome"] == "borderline"
-    assert unsafe["margin_ft"] == "0.020"
-    assert unsafe["error_to_margin"] == "11.00"  # 0.33 / max(0.02, 0.03)
-    assert (unsafe["could_flip"], unsafe["unsafe_pass"], unsafe["agrees"]) == (
-        "true",
-        "true",
-        "false",
-    )
+    borderline = rows[("ar-taps", "c2", "gas")]
+    assert borderline["truth_outcome"] == "borderline"
+    assert borderline["margin_ft"] == "0.020"
+    assert borderline["error_to_margin"] == "11.00"  # 0.33 / max(0.02, 0.03)
+    assert (borderline["could_flip"], borderline["agrees"]) == ("true", "false")
+    assert (borderline["unsafe_pass"], borderline["missed_review"]) == ("false", "true")
+
+    unsafe = rows[("ar-taps", "c2", "facing_gap")]  # passed with no value; the survey fails
+    assert (unsafe["truth_outcome"], unsafe["run_outcome"]) == ("fail", "pass")
+    assert (unsafe["unsafe_pass"], unsafe["missed_review"]) == ("true", "false")
 
     route = rows[("ar-taps", "c2", "route")]
     assert route["truth_outcome"] == "review"
@@ -205,7 +206,6 @@ def test_check_rows(scored):
     rejection = rows[("photo-depth", "c1", "facing_gap")]
     assert (rejection["false_rejection"], rejection["over_caution"]) == ("true", "true")
 
-    assert rows[("ar-taps", "c2", "facing_gap")]["abstention"] == "justified"
     unsupported = rows[("photo-depth", "c1", "route")]
     assert (unsupported["abstention"], unsupported["over_caution"]) == ("justified", "true")
     assert rows[("photo-depth", "c2", "facing_gap")]["abstention"] == "avoidable"
@@ -227,12 +227,21 @@ def test_markdown_summary(scored):
     assert "Scale reference `scale` (5.000 ft), excluded." in stdout
     assert "| `ar-taps` | ar_poses | 6/9 | 3.48 | 4.80 | 3/6 | 0 | 1 | 0 | 0 | 1 | 1 |" in stdout
     assert "| `mesh-scaled` | no decisions | n/a | n/a | n/a | n/a | n/a | n/a | 0 |" in stdout
-    assert "| `ar-taps` | 4/7 | 1 | 1 | 0 | 0 | 1 | 0 | 2 |" in stdout
+    assert "| `ar-taps` | 4/7 | 1 | 2 | 0 | 0 | 0 | 0 | 2 |" in stdout
     assert "| `mesh-scaled` | 420.0 | not recorded |" in stdout
+    unsafe, missed = stdout.split("### Unsafe passes")[1].split("### Missed reviews")
+    assert unsafe.strip() == (
+        "- `ar-taps` passed `facing_gap` at `c2`; the survey is fail at 2.500 ± 0.020 ft "
+        "against `facing_gap_ft` at_least 3.000 ft (run measured no value)."
+    )
     assert (
         "- `ar-taps` passed `gas` at `c2`; the survey is borderline at 3.020 ± 0.030 ft against "
         "`gas_clearance_ft` at_least 3.000 ft (run measured 3.350 ft)."
-    ) in stdout
+    ) in missed
+    assert (
+        "- `ar-taps` passed `route` at `c2`; the survey is review at 19.900 ± 0.050 ft against "
+        "`review_route_ft` 15.000 ft and `max_route_ft` at_most 20.000 ft (run measured 19.500 ft)."
+    ) in missed
     assert "case series" in stdout
     assert "wrote" in stderr and "runs.csv" in stderr
 

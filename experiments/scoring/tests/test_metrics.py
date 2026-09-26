@@ -160,7 +160,7 @@ def check_score(
 
 
 class TestScoreCheck:
-    def test_pass_on_a_borderline_survey_is_unsafe(self):
+    def test_pass_on_a_borderline_survey_is_a_missed_review(self):
         # Survey 3.02 +- 0.03 against at_least 3: margin 0.02 < u, borderline.
         score = check_score("3.02", "0.03", "3.35", "0.3", "pass")
         assert score.truth == "borderline"
@@ -169,7 +169,8 @@ class TestScoreCheck:
         assert score.error_to_margin == D("11")
         assert score.could_flip is True
         assert score.agrees is False
-        assert score.unsafe_pass is True
+        assert score.unsafe_pass is False
+        assert score.missed_review is True
         assert score.false_rejection is False
         assert score.abstention is None
 
@@ -177,6 +178,7 @@ class TestScoreCheck:
         score = check_score("2.5", "0.02", "3.4", "0.3", "pass")
         assert score.truth == "fail"
         assert score.unsafe_pass is True
+        assert score.missed_review is False
 
     def test_fail_on_a_passing_survey_is_a_false_rejection(self):
         score = check_score("4.5", "0.01", "2.9", "0.3", "fail")
@@ -355,6 +357,66 @@ class TestRouteBand:
         assert score.truth == "pass"
         assert score.error_to_margin == AT_THRESHOLD
         assert score.could_flip is True
+
+
+GAS = threshold("3", "at_least")
+GAS_CHECK = Check("c1", "gas", "m", "gas_clearance_ft")
+
+
+def single_or_banded(kind: str, truth_value: str, outcome: str):
+    """Score one outcome on a single-threshold gas check or the banded route check."""
+    measurement = score_measurement(
+        survey(truth_value, "0.05"), reported(truth_value, "0.3"), scale_reference=False
+    )
+    if kind == "single":
+        return score_check(GAS_CHECK, GAS, measurement, outcome)
+    return score_check(ROUTE, MAX, measurement, outcome, REVIEW)
+
+
+# (kind, survey value, survey outcome). Gas is at_least 3; route passes to 15 and fails past 20.
+SURVEYS = {
+    ("single", "pass"): "5",
+    ("single", "borderline"): "3.02",
+    ("single", "fail"): "2",
+    ("banded", "pass"): "12",
+    ("banded", "review"): "17",
+    ("banded", "fail"): "22",
+}
+
+
+class TestCategoriesAreTheSameForEveryCheck:
+    """unsafe pass: pass on a failing survey. missed review: pass on an unsure (borderline) or
+    review survey. over-caution: unsure or fail on a passing survey."""
+
+    @pytest.mark.parametrize(
+        ("kind", "truth", "outcome", "unsafe", "missed", "cautious"),
+        [
+            ("single", "fail", "pass", True, False, False),
+            ("banded", "fail", "pass", True, False, False),
+            ("single", "borderline", "pass", False, True, False),
+            ("banded", "review", "pass", False, True, False),
+            ("single", "pass", "unsure", False, False, True),
+            ("banded", "pass", "unsure", False, False, True),
+            ("single", "pass", "fail", False, False, True),
+            ("banded", "pass", "fail", False, False, True),
+            ("single", "pass", "pass", False, False, False),
+            ("banded", "pass", "pass", False, False, False),
+            ("single", "borderline", "unsure", False, False, False),
+            ("banded", "review", "unsure", False, False, False),
+            ("single", "borderline", "fail", False, False, False),
+            ("banded", "review", "fail", False, False, False),
+            ("single", "fail", "unsure", False, False, False),
+            ("banded", "fail", "fail", False, False, False),
+        ],
+    )
+    def test_category(self, kind, truth, outcome, unsafe, missed, cautious):
+        score = single_or_banded(kind, SURVEYS[(kind, truth)], outcome)
+        assert score.truth == truth
+        assert (score.unsafe_pass, score.missed_review, score.over_caution) == (
+            unsafe,
+            missed,
+            cautious,
+        )
 
 
 def run_score(scale_value: str, *, outcomes=None):

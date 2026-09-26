@@ -23,7 +23,7 @@
     {"candidate": "c1", "check": "route", "outcome": "pass"},
     {"candidate": "c1", "check": "pool", "outcome": "pass"},
     {"candidate": "c2", "check": "gas", "outcome": "pass"},
-    {"candidate": "c2", "check": "facing_gap", "outcome": "unsure"},
+    {"candidate": "c2", "check": "facing_gap", "outcome": "pass"},
     {"candidate": "c2", "check": "route", "outcome": "pass"},
     {"candidate": "c2", "check": "pool", "outcome": "unsure"}
   ],
