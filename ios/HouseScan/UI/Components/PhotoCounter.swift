@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// Photo count with a small acknowledgment per capture: the icon flashes and the number rolls.
+/// Photo count with a small acknowledgment per capture: the icon flashes and the number changes.
 /// The homeowner never presses a shutter, so this is how they learn the phone is taking photos.
+///
+/// The number swaps without animation. A rolling digit passes through half-faded frames, and
+/// the accessibility audit caught those as contrast failures ("22", "72" on the real replay).
 struct PhotoCounter: View {
     var count: Int
     var lastCaptureID: Int?
@@ -22,12 +25,10 @@ struct PhotoCounter: View {
             Text("\(count)")
                 .font(Typeface.caption.monospacedDigit())
                 .foregroundStyle(Palette.chalk)
-                .contentTransition(.numericText(value: Double(count)))
         }
         .padding(.horizontal, 12)
         .frame(minWidth: Metrics.minTarget, minHeight: 36)
         .background(ScrimShape.capsule)
-        .animation(.easeOut(duration: 0.18), value: count)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(count == 1 ? "1 photo taken" : "\(count) photos taken")
         .accessibilityIdentifier("photoCount")

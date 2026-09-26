@@ -13,6 +13,10 @@ enum Palette {
     /// One value in both appearances: the lighter blue a dark variant would use drops white
     /// button labels below 4.5:1, and camera screens run in dark mode.
     static let signal = Color("Signal")
+    /// The primary button's fill: Signal's hue (220 degrees), a little darker. White on Signal
+    /// is about 4.9:1 on paper, but the audit rated "See it on your wall" as only nearly
+    /// passing; white on this is about 6.2:1.
+    static let signalFill = Color(red: 26 / 255.0, green: 88 / 255.0, blue: 214 / 255.0)
     static let unseen = Color("CoverageUnseen")
     static let seen = Color("CoverageSeen")
     static let covered = Color("CoverageCovered")

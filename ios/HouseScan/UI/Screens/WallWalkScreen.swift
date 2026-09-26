@@ -162,35 +162,35 @@ struct WallWalkScreen: View {
                 onClose: { trayOpen = false }
             )
             .transition(.opacity.combined(with: .move(edge: .bottom)))
-        case .markEnd:
+        case .markEnd, .finish, .walking:
+            // One row for all three, so "Mark something" stays the same view while the button
+            // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the
+            // accessibility audit reported as not following Dynamic Type.
             HStack(spacing: 10) {
                 markSomethingButton
-                Button {
-                    actions.markWallEnd(at: nil, viewSize: cameraSize)
-                } label: {
-                    Label("Wall ends here", systemImage: "flag.fill")
+                switch controlsKey {
+                case .markEnd:
+                    Button {
+                        actions.markWallEnd(at: nil, viewSize: cameraSize)
+                    } label: {
+                        Label("Wall ends here", systemImage: "flag.fill")
+                    }
+                    .buttonStyle(.primary)
+                    .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
+                    .accessibilityIdentifier("action.markEnd")
+                    .transition(.opacity)
+                case .finish:
+                    Button {
+                        actions.finishWalk()
+                    } label: {
+                        Label("Done with this wall", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.primary)
+                    .accessibilityIdentifier("action.finishWalk")
+                    .transition(.opacity)
+                default:
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.primary)
-                .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
-                .accessibilityIdentifier("action.markEnd")
-            }
-            .transition(.opacity)
-        case .finish:
-            HStack(spacing: 10) {
-                markSomethingButton
-                Button {
-                    actions.finishWalk()
-                } label: {
-                    Label("Done with this wall", systemImage: "checkmark")
-                }
-                .buttonStyle(.primary)
-                .accessibilityIdentifier("action.finishWalk")
-            }
-            .transition(.opacity)
-        case .walking:
-            HStack {
-                markSomethingButton
-                Spacer(minLength: 0)
             }
             .transition(.opacity)
         }

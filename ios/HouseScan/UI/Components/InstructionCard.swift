@@ -2,8 +2,10 @@ import SwiftUI
 
 /// The single instruction at the top of a camera screen.
 ///
-/// When the text changes, the old line blurs out and the new one blurs in (blur bridges the
-/// crossfade so it reads as one card changing its mind, not two cards overlapping). Coaching
+/// When the text changes, the words swap at once and the card eases to its new height. A
+/// blur or fade between them left both lines half-transparent for a moment, which the
+/// accessibility audit reported as low contrast and, for the outgoing line, as clipped text
+/// (the marking prompt, the end question). Coaching
 /// takes the same slot with an amber icon so a problem replaces the instruction instead of
 /// stacking on top of it.
 struct InstructionCard: View {
@@ -32,7 +34,7 @@ struct InstructionCard: View {
         VStack(alignment: .trailing, spacing: 0) {
             message
                 .id(instruction)
-                .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
+                .transition(.identity)
             if let reply {
                 Button(reply.title, action: reply.perform)
                     .font(Typeface.caption.weight(.bold))

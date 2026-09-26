@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The one big action on a screen: solid blue, white bold text, full width. Solid rather than
-/// glass because it has to stay legible over a sunlit wall; white on Signal is about 5:1.
+/// glass because it has to stay legible over a sunlit wall; white on the fill is about 6:1.
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -12,7 +12,7 @@ struct PrimaryButtonStyle: ButtonStyle {
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: Metrics.primaryButtonHeight)
             .padding(.horizontal, 20)
-            .background(Palette.signal.opacity(isEnabled ? 1 : 0.45), in: .capsule)
+            .background(Palette.signalFill.opacity(isEnabled ? 1 : 0.45), in: .capsule)
             .contentShape(.capsule)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
