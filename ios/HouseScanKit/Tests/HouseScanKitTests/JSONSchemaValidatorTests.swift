@@ -2,17 +2,18 @@ import CryptoKit
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 737bf75
+/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 930e8e5
 /// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). Since e0ee8d3
 /// requests carry `out_ft` and facing and overhead coverage may too; 737bf75 adds
-/// `walls[].source`. `vendoredCopiesMatchServer` fails if the server's files change and these are not
+/// `walls[].source`; 930e8e5 defines a wall entry's `out_ft` as the height seen above the
+/// ground. `vendoredCopiesMatchServer` fails if the server's files change and these are not
 /// refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
     static let vendored: [(name: String, serverPath: String, sha256: String)] = [
         ("scene.schema.json", "server/schemas/scene.schema.json",
-         "4cceae764872c0935f6c9fdefd585ec51d8a2dd92ad1378b96c185dfa58c8705"),
+         "e07f20f0487c9c9f890842230ea87114b4b385a43744c7144d881b4bdd6cbf26"),
         ("result.schema.json", "server/schemas/result.schema.json",
-         "be3e7731ecd6baeb6e4626a0b8658c4ab7f2fac230be12b9d7cfbac233a9cd3e"),
+         "ddc7cc486945e18eaae714b4a6c29249cbd86f24960fa5df640bb5bbc340049c"),
         ("example-scene.json", "server/tests/fixtures/example-scene.json",
          "07bda024c682be365f0f7a6ad7a83fb44c0726344193e7a8b2d8d79499b4bef0"),
     ]
@@ -143,7 +144,7 @@ enum SceneSchemas {
 
     @Test func vendoredCopiesMatchServer() throws {
         // Without the server tree (before the server branch is merged) there is nothing to compare;
-        // the vendored copies then stand as taken from origin/t3/server 737bf75.
+        // the vendored copies then stand as taken from origin/t3/server 930e8e5.
         guard let root = SceneSchemas.repoRoot() else { return }
         for (name, serverPath, _) in SceneSchemas.vendored {
             let serverFile = root.appendingPathComponent(serverPath)
@@ -153,12 +154,12 @@ enum SceneSchemas {
         }
     }
 
-    /// The hashes are of `git show 737bf75:<serverPath>`, so a copy edited by hand (or refreshed
+    /// The hashes are of `git show 930e8e5:<serverPath>`, so a copy edited by hand (or refreshed
     /// without updating the provenance above) fails here even where the server tree is absent.
     @Test func vendoredCopiesAreTheRecordedRevision() throws {
         for (name, _, sha256) in SceneSchemas.vendored {
             let digest = SHA256.hash(data: try SceneSchemas.data(name)).map { String(format: "%02x", $0) }.joined()
-            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 737bf75")
+            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 930e8e5")
         }
     }
 
