@@ -35,10 +35,22 @@ On 2026-09-26, filtered to CC0, public domain, CC BY and CC BY-SA:
 
 The first pass returned 1,476 unique results and the deeper Openverse pass 1,356 more, about 2,800 in all. Screening titles and about 850 thumbnails left 78 photos to download at full resolution; removing 11 duplicates left 67. Most results are aircraft and ship panels, European consumer units, industrial switchgear, substations, car fuse boxes and diagrams. Most US residential panel photos are wide shots of wiring in which no label text is legible; Flickr copies in Openverse are mostly 1024 px.
 
-## What would unblock it
+## What would unblock it: photos to take on field day
 
-- **Photos the team takes or collects locally.** Like the meter photos, these would stay outside git. Ten minutes per house covers a labelled deadfront, the door label and the main breaker. About 40 panels would support the pre-set criteria, and a few older homes would cover the hazard lines.
-- **Sources this search did not use.** Unsplash and Pexels photos are free to use but not CC-licensed, and whether they count as "openly licensed" is the team's call. US government works are public domain, for example CPSC recall notices, but those show individual breakers rather than panel labels. Home-inspection sites have many panel photos but are not openly licensed.
+The questions can run on the team's own photos, kept in `~/house-scanning-data/panel/images` and never committed, like the meter photos. The pre-set bar needs about 40 panels, each with the photos below. Ask the homeowner's permission first.
+
+| Photo | Framing | Answers |
+|---|---|---|
+| Door label | the label inside the panel door, filling the frame, straight on | manufacturer, model or catalogue number, rated amperage |
+| Main breaker | the main breaker handle and its rating, from about 20 cm | main amperage |
+| Deadfront | the whole cover with the door open, including any brand badge or series name | manufacturer and line (Stab-Lok, Zinsco and other hazard lines show their name here) |
+| Context | the panel and its surroundings from about 1 m | lets a reader check which panel the close-ups belong to |
+
+- Take each close-up the way a homeowner would, handheld with the phone's own camera, not with a tripod or macro lens. Question 3 then degrades these photos under control, as the meter sweep did, so no deliberately bad shots are needed.
+- Include several homes built between about 1950 and 1985. Federal Pacific Stab-Lok and Zinsco panels were installed then, and at least a few are needed to score naming them.
+- Frame out, or cover before shooting, anything that identifies the home: inspection stickers with addresses, handwritten names in the circuit directory, and the meter's serial number.
+
+Sources this search did not use are a second option. Unsplash and Pexels photos are free to use but not CC-licensed, and whether they count as "openly licensed" is the team's call. US government works are public domain, for example CPSC recall notices, but those show individual breakers rather than panel labels. Home-inspection sites have many panel photos but are not openly licensed.
 
 ## Rerun
 
