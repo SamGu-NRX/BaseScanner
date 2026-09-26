@@ -107,6 +107,10 @@ enum ScanCopy {
         "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
     }
 
+    /// Over the walk's own prompt after "Done with this wall" was refused and the ends cleared
+    /// (`ScanViewState.wallTooShort`).
+    static let wallTooShort = "The ends were too close. Walk along the wall first."
+
     // MARK: Close-up
 
     static func closeUpProblem(_ problem: CloseUpProblem) -> String {

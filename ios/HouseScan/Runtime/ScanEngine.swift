@@ -1093,6 +1093,7 @@ final class ScanEngine {
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
@@ -1125,6 +1126,7 @@ final class ScanEngine {
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
@@ -1191,6 +1193,7 @@ final class ScanEngine {
         map.setEndIsLimit(side == .left ? .left : .right, kind == .limit)
         coverage = map
         endKinds[side] = kind
+        state.wallTooShort = false
         publishWall()
         publishCoverage()
         RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) at s=\(s) (\(kind == .limit ? "limit" : "unexplored", privacy: .public))")
@@ -1510,6 +1513,7 @@ final class ScanEngine {
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()

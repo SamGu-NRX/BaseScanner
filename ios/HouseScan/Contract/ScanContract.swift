@@ -661,6 +661,9 @@ final class ScanViewState {
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// True after "Done with this wall" was refused because the ends were closer together than
+    /// `WallFrame.minWallLength`; the ends were cleared. False again once an end is marked.
+    var wallTooShort = false
     /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
     /// camera can't tell open sky from an eave, so the homeowner answers.
     var overheadQuestion = false
@@ -731,7 +734,8 @@ protocol ScanActions: AnyObject {
     func cancelMarking()
     func deleteFeature(_ id: UUID)
     func setWindowOpens(_ id: UUID, opens: Bool)
-    /// Leave the walk for the feature review (allowed once both ends are marked).
+    /// Leave the walk for the feature review (allowed once both ends are marked). Ends closer
+    /// together than `WallFrame.minWallLength` are cleared instead, and `wallTooShort` is set.
     func finishWalk()
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()
