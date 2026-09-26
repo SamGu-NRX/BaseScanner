@@ -48,7 +48,7 @@ Keep workflows that run pull-request code away from production credentials and d
 
 ### Before the first upload
 
-App Store Connect rejects a build without an app icon. House Scan needs an `AppIcon` set with a 1024×1024 image in an asset catalog inside `ios/HouseScan/`, added by the lane A owner. Measure Lab has one.
+App Store Connect rejects a build without an app icon. House Scan needs an `AppIcon` set with a 1024×1024 image in an asset catalog inside `ios/HouseScan/`, added by the client team. Measure Lab has one.
 
 Neither `Info.plist` sets `ITSAppUsesNonExemptEncryption`, so each build waits under "Missing Compliance" until someone answers the encryption question on its TestFlight page. Setting the key to `false` removes that step for an app that uses only HTTPS and Apple's system encryption.
 
@@ -67,11 +67,11 @@ Neither `Info.plist` sets `ITSAppUsesNonExemptEncryption`, so each build waits u
    Set the secrets and variables with the [GitHub CLI](https://cli.github.com), so the key never appears on screen. `gh secret set` without `--body` prompts without echoing.
 
    ```sh
-   base64 -i AuthKey_<KEY_ID>.p8 | gh secret set ASC_KEY_P8 --env testflight --repo SamGu-NRX/house-scanning
-   gh secret set ASC_KEY_ID --env testflight --repo SamGu-NRX/house-scanning
-   gh secret set ASC_ISSUER_ID --env testflight --repo SamGu-NRX/house-scanning
-   gh variable set APPLE_TEAM_ID --env testflight --repo SamGu-NRX/house-scanning --body <TEAM_ID>
-   gh variable set BUNDLE_ID_PREFIX --env testflight --repo SamGu-NRX/house-scanning --body <PREFIX>
+   base64 -i AuthKey_<KEY_ID>.p8 | gh secret set ASC_KEY_P8 --env testflight --repo SamGu-NRX/house-scanning-master
+   gh secret set ASC_KEY_ID --env testflight --repo SamGu-NRX/house-scanning-master
+   gh secret set ASC_ISSUER_ID --env testflight --repo SamGu-NRX/house-scanning-master
+   gh variable set APPLE_TEAM_ID --env testflight --repo SamGu-NRX/house-scanning-master --body <TEAM_ID>
+   gh variable set BUNDLE_ID_PREFIX --env testflight --repo SamGu-NRX/house-scanning-master --body <PREFIX>
    rm AuthKey_<KEY_ID>.p8
    ```
 

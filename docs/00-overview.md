@@ -1,130 +1,52 @@
-# House scanning: overview and decisions
+# House scanning: plan, decisions and evidence
 
-Hackathon project, 4-person team, started 2026-09-25. The goal: from a homeowner's phone, work out
-**where a Base Power battery can be installed** against the outside of the house, and show the spot
-back to them in AR. Updated 2026-09-26 midday for the team split; where this file and a component's README disagree, the README wins.
+A homeowner scans the outside wall around their electric meter with an iPhone. The server works out whether a Base Power battery fits there and where, and the app shows the spot in AR. Success means one capture session gives Base enough to decide, with no follow-up photos. A person can still review any result.
 
-> **This repo is public.** Materials Base gave the team live in `private/`, which is gitignored. Never commit,
-> quote or summarize them here. Team-only notes are in `private/internal-notes.md`.
+Base's survey starts today from customer photos, which have no scale, can't show whether two things share a wall, and miss whatever sits just outside the frame. An AR session gives every photo a position and a real scale, and the app knows what it hasn't seen while the homeowner is still there.
 
-The MVP is three problems:
+The work is three problems: guide the homeowner until the phone has captured everything the rules need, turn the photos and their metadata into a 3D model, and check that model against the placement rules. Full-house scans, roofs and Android are out of scope. Each component's README is the source of truth for that component and wins where it differs from this file.
 
-1. A phone with a live camera feed that routes the homeowner until everything the model needs is captured.
-2. Photos and their metadata turned into a 3D model.
-3. The 3D model evaluated against the placement criteria.
+## Two teams
 
-## The core insight (why AR)
+- **Client team.** Sam with AI agents; Aiden films video and gathers sample datasets. The app in `ios/` builds a live 3D map on the phone, with a haze ("fog of war") over what it hasn't seen, and guides the homeowner until everything the rules need is covered. Guided capture is in PR #10 and the live map in PR #21. The app sends a capture packet: photos, camera poses, intrinsics, motion-sensor readings, LiDAR depth and mesh when the phone has LiDAR, and the homeowner's marks. `packet/README.md` (PR #22) specifies it and lists what the app records today. For now the app uploads only its measurements, `scene.json`, and exports the full packet on request.
+- **Server team.** Hunter with his agents. The packet goes in, a 3D model comes out, and the rules are checked on it. Starting points: the rules engine and API in `server/` (PR #11), the reconstruction worker in `recon/` (PR #20), the evals in `experiments/evals/` (PR #12), Hunter's research handoff (PR #18) and his [live-survey design](05-live-guided-survey-hld.md).
 
-Today homeowners submit photos and reviewers judge them. Three problems come up that ordinary photos can't solve:
-1. **Measuring distance.** A single photo has no real scale, so gaps and clearances get estimated by eye, and the borderline cases go to a person.
-2. **Fitting photos together.** A handful of unordered photos can't reliably say whether two things are on the same wall, or how far apart they are.
-3. **Coverage.** If part of the wall wasn't photographed, nobody can say what's there, so the homeowner gets asked for more photos.
+## Decisions
 
-AR capture fixes all three: the phone's tracking and depth give every photo a known position and a real scale, which a 3D
-model can build on, and the app knows what it hasn't seen yet. The recognition half (panel brand, meter text, rust, whether
-a window opens) stays with a vision model. AR adds nothing there beyond better photos.
+- **Guided AR capture, not a video processed later.** Photogrammetry alone (COLMAP, splats) has no scale, is slow, and struggles on blank siding; COLMAP's own tutorial says to avoid texture-less walls. The packet carries ARKit's poses and any LiDAR depth, so the server's model starts at real scale.
+- **3D modeling stays central,** with LiDAR and the phone's poses supplying scale, because learned depth alone is too rough at edges.
+- **Plain code decides placement; models build geometry and recognize things.** The engine unrolls the walls into one line, `s`, in feet from the meter (negative to the left), slides the battery's footprint along it in 2 in steps, and checks each rule as an interval overlap or a polygon distance.
+- **Every check answers PASS, FAIL or UNSURE.** A check passes only when its margin beats the measurement's error and fails only when it misses by more than the error. Anything else is UNSURE, including a check on an area nobody observed, and the answer names the view that would settle it.
+- **Rule values live in rules files, each with its source.** `server/rules.yaml` (PR #11) holds the public values and two labeled placeholders (pool 10 ft, driveway 5 ft); Base's values load from a git-ignored private file. Battery sizes live there too, because models differ: Base Core is 39.5 in tall on a 30.68 × 22 in footprint, and older units are 3 × 3 ft.
+- **Native iOS only.** Expo has no first-class ARKit support, and capture needs mesh export, per-frame pose and lens data, and mesh raycasts.
+- **AR results hang off the meter's anchor, with `.gravity` alignment.** ARKit corrects anchors as tracking improves, and drift runs about 2 cm a second. `.gravityAndHeading` depends on the compass, which developers report off by up to about 176° near a house.
 
-## Two teams (since 2026-09-26)
+## Conventions the code relies on
 
-```
- client team (iPhone)                              server team
- ┌──────────────────────────┐   capture packet   ┌──────────────────────────┐
- │ guided scan              │ ─────────────────▶ │ 3D model or point cloud  │
- │ live 3D map, fog of war  │                    │           │              │
- │                          │                    │           ▼              │
- │ battery spot in AR       │ ◀───────────────── │ criteria: PASS/FAIL/     │
- │ (placed from the meter)  │      answer        │ UNSURE per check         │
- └──────────────────────────┘                    └──────────────────────────┘
-```
+- `capturedImage` is landscape, as the sensor reads it, and the intrinsics match it. Save it unrotated. Any rotation must also rotate the intrinsics and every image-space annotation. Gemini, the box detector (Claude's docs call its coordinates approximate), returns `[ymin, xmin, ymax, xmax]` on a 0 to 1000 scale, so apply EXIF rotation before inference and before casting. Depth maps are 256 × 192, so scale the intrinsics down to match.
+- ARKit camera space is x right, y up, looking down −z, with image v growing downward. The ray through pixel (u, v) has direction ((u − cx)/fx, −(v − cy)/fy, −1), rotated by the camera-to-world transform.
+- Keep a frame when the phone has moved 0.5 m or turned 15° since the last one kept.
+- Mesh vertices are local to their `ARMeshAnchor`: multiply each by the anchor's transform while copying it out, and never write back into ARKit's buffer. Set `automaticallyConfigureSession = false`, or RealityKit turns mesh classification off.
+- On the mesh, the gap to a facing fence is a ray straight out from the wall at 1.5 ft high, and headroom is a ray straight up from 1 ft out. The mesh has holes, so cast a small fan and take a robust minimum. LiDAR reads from about 0.5 m to 5 m, so capture stands 1 to 3 m from the wall, and a miss beyond 5 m is unknown, not open.
+- Default error bars are 0.3 ft for an AR tap, 0.5 ft for the LiDAR mesh and 1.5 ft for a position from photo detection. They are untested estimates. The server adds 0.16 ft per foot along the wall from the meter, from measured ARKit drift.
 
-- **Client team:** Sam with AI agents; Aiden films video and gathers sample datasets. The iOS app guides capture with a live
-  on-device 3D map, and a haze ("fog of war") covers what the phone hasn't seen. Coverage aims at 100% of what the model needs,
-  not the whole house. LiDAR and other depth sensors come first when present; the non-LiDAR path is built alongside. Guided capture
-  is in PR #10; the live 3D map is on branch `t3/ios-map3d`, stacked on it. The output is the **capture packet**: photos, camera
-  poses, intrinsics, IMU readings, LiDAR depth and mesh when present, and the homeowner's marks. It is being specified on branch `t3/packet`.
-- **Server team:** Hunter with his agents. Packet in, a 3D model or point cloud out, then the criteria evaluated on it. They are
-  comparing world models with traditional and newer reconstruction methods, broadly first, then in depth on the best paths.
-  Starting points: `server/` (PR #11), the deterministic rules engine and API, live as a public demo at
-  https://house-scanning-server.vercel.app plus a private deployment with Base's rules behind a key; `recon/` (draft PR #20),
-  a working reconstruction worker; and the evals in `experiments/evals/` (PR #12).
+## Evidence so far
 
-## Decisions made
+Public datasets with laser-scanned or surveyed ground truth. Sources: `experiments/evals/README.md` (PR #12), `recon/HANDOFF.md` (PR #20), `experiments/meter-closeup/README.md` (PR #16) and `experiments/panel-label/README.md` (PR #17).
 
-- **AR-guided capture, not "upload a video and process it later."** Offline photogrammetry alone (COLMAP, splats) struggles on
-  blank siding and stucco, has no real scale, and is slow. ARKit already fuses the camera with the motion sensors on the phone,
-  and the capture packet carries those poses and any LiDAR depth, so the server's 3D model starts at real scale.
-- **The phone collects data; the server decides.** Swift app → capture packet → Python FastAPI server (3D model, then rule checks)
-  → result → AR preview.
-- **The placement code is plain code, not AI.** Models build the geometry and recognize things; the decision is ordinary code
-  over that geometry. Today's rules engine (PR #11) unrolls the house walls into one straight line `s` (feet along the wall
-  from the meter). Most rules become 1-D interval checks plus 2-D polygon distances. Sweep the battery footprint in small steps.
-  Every check returns PASS / FAIL / UNSURE, with error bars on each measurement. See `02-implementation-plan.md`.
-- **Unseen is never clear.** A check whose area nobody observed is UNSURE, and the server names the view that would settle it.
-- **The vision model only recognises things.** Day-1 plan: Gemini boxes → SAM 2 → cast onto the wall using where the phone was.
-  Recognition prompts run on the close-ups.
-- **Native Swift + ARKit/RealityKit on iPhone, in `ios/`.** iOS only. LiDAR is used when present, never required: most homeowners
-  don't have it. Not Expo (no first-class ARKit), and not Android.
-- **3D modeling stays central.** Learned depth alone is too rough at edges, so LiDAR and the phone's poses supply the scale. See
-  the evidence below.
-- **Normal dev app for the hackathon; an App Clip is only the pitch's rollout story** (see the gotchas in `03-stack-research.md`).
+- **Tracking.** A current iPhone (14 Pro Max, MARViN dataset) stayed inside the server's allowance: p90 position error 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft, against 19.2, 38.4 and 57.6 in. That phone has LiDAR, and MARViN's reference may be scaled to its tracking. A 2018 iPhone 6s (ADVIO) ran two to three times over, partly from noise in that dataset's reference.
+- **Learned depth.** A model's own scale is 4 to 12% off. Rescaled with the phone's poses, walls come within about 5 in at p90 at a realistic 2% pose error, and 2.8 in with exact poses. Edges, where clearances are measured from, stay at 8 in or worse. MapAnything's scale shifted with input resolution.
+- **Reconstruction worker.** On the ETH3D building, wall p90 is 2.1 in with a laser scan standing in for LiDAR and 2.8 in from photos only, on different walls.
+- **Coverage.** The app's first coverage map claimed 1.1 ft of a 19.3 ft wall that no photo saw. Requiring several view angles fixed that but dropped 6 to 8.5 ft of good wall; a depth test on LiDAR phones fixed it cleanly. The reconstruction worker, checked against depth, claims at most about 0.46 ft.
+- **Meter reading.** Apple's on-device text recognition read the full meter number on 71 of 73 real photos but found the right line on only 21 of 75, because nameplates carry several numbers. A barcode held it on 20 of 24 photos that had one, and a list of three candidates held it on 85% of held-out photos. So the app offers three to tap, barcode match first, and asks for a retake when the photo is blurry or the number too small.
+- **Panel labels.** Untested: 7 open photos of US panels exist, against the 40 the test needs.
+- **World models.** Not evaluated yet.
 
-## Corrections made after the research (supersede earlier drafts)
+## Open questions
 
-1. Use `worldAlignment = .gravity`, **not** `.gravityAndHeading`. The compass is unreliable near a house
-   (developers report errors up to ~176°). Take one compass reading away from the meter as a rough hint. Which wall faces the
-   street comes from map data: Overture building outline + osmnx nearest road.
-2. **Place the battery relative to the meter's anchor**, not in raw world coordinates. ARKit corrects anchors as it goes,
-   and drift is about 2 cm per second.
-3. The battery is **39.5″ tall** (Base Core: 39.5 × 30.68 × 22 in), not 36″. Base's older units are 3 × 3 ft,
-   so keep all dimensions in the rules config.
-4. Claude is **not** the box detector; its docs say its coordinates are approximate. Gemini returns boxes natively as
-   `[ymin, xmin, ymax, xmax]` on 0–1000.
-5. **Never run ML on Google, Mapbox or Esri imagery.** Google's ToS §3.2.3(c) bans it outright. Use StratMap/NAIP (public domain).
-6. **3D modeling is not ruled out** (2026-09-26). The morning briefing's Finding 2 first said "no photo-to-3D measurement pipeline".
-   The evidence says learned depth *alone* is too rough; with LiDAR or the phone's poses supplying scale, a 3D model is the plan.
-
-## Evidence so far (2026-09-26)
-
-From public datasets with laser-scanned ground truth. Sources: `experiments/evals/README.md` (PR #12) and `recon/HANDOFF.md` (PR #20).
-
-- A depth model's own scale is 4 to 12% wrong.
-- Rescaled with the phone's poses, learned depth gets walls to about 5 in at p90 at a realistic phone error. Edges come out at
-  8 in or worse, and clearances are measured from edges.
-- The recon worker on the ETH3D building gets walls to p90 2.1 in with a laser scan standing in for LiDAR, and 2.8 in from photos only.
-- Coverage tested against depth claims at most about 0.46 ft of wall that no photo saw.
-- A current iPhone's tracking stays within the server's error allowance.
-- World models have not been evaluated yet; the server team will.
-
-## Open questions (team must decide)
-
-- **Which clearance numbers to use.** The public baseline is Base's help page: within 20 ft of the meter, within 1 ft of the wall,
-  and 3 ft from gas meters, fences, AC units and other batteries. The public demo fills the gaps with labeled placeholders
-  (pool 10 ft, driveway 5 ft) in `server/rules.yaml` (PR #11). Base's own values load from the git-ignored private rules file.
-  The team's working notes are in `private/internal-notes.md`.
-- **Whether the install includes a separate battery disconnect box** beside the meter. Base's public pages mention a wall-mounted
-  transfer switch and a battery disconnect.
-- **Which 3D path.** Traditional reconstruction fused with LiDAR, learned depth rescaled with the phone's poses, or world models
-  (large learned models that produce a whole 3D scene from photos or video). Whichever wins needs real scale, edges within the
-  error allowance, and an honest account of which parts it observed and which it filled in.
-- **Real-phone accuracy.** The evidence above comes from public datasets. A field session with a tape survey on a real wall
-  measures our own phone.
-- **The day-1 "test first" list** in `03-stack-research.md`: LiDAR on siding in midday sun, tap-to-pixel orientation,
-  Gemini boxes on real photos, and compass accuracy at the meter. Check which the experiments have answered before relying on one.
-
-## Doc map
-
-| File | What |
-|---|---|
-| `00-overview.md` | this file: goal, insight, team split, decisions, evidence |
-| `how-it-works.html` | the current visual explainer: the two-team pipeline, error bars, coverage, the 3D path options |
-| `01-feature-map.md` | day-1 plan: lanes A–D, feature list with priorities, data format, rules table |
-| `02-implementation-plan.md` | day-1 plan: how to build each part, code snippets, 24 h schedule, risks |
-| `03-stack-research.md` | libraries and open-source projects per part, licenses, gotchas, what to skip |
-| `04-prior-art-and-codes.md` | what Base does publicly, competitors, electrical-code citations, pitch angle |
-| `05-live-guided-survey-hld.md` | live guided survey: automatic capture, coverage display, next-view planning, evidence flow |
-| `eli5.html` | the day-1 visual explainer; step 4 is an interactive "slide the battery" demo that predates error bars |
-| `briefings/` | dated team briefings |
-
-Each component's own README is its source of truth: `ios/README.md`; `server/README.md` (PR #11), especially "What settles
-each check"; `recon/HANDOFF.md` (PR #20); `experiments/evals/README.md` (PR #12); and `packet/README.md` (coming on branch
-`t3/packet`). The web review page (PR #15) is parked.
+- **Clearance values.** [04-prior-art-and-codes.md](04-prior-art-and-codes.md) has the public values with their citations. Base's own values go in the private rules file, along with which number on the meter plate Base needs.
+- **Disconnect box.** Does the install add a battery disconnect beside the meter? Base's public pages mention a wall-mounted transfer switch and a battery disconnect.
+- **The 3D path.** Traditional reconstruction fused with LiDAR, learned depth rescaled with the phone's poses, or world models, which produce a whole 3D scene from photos or video. The winner needs real scale, edges within the error allowance, and a record of which parts it observed and which it filled in.
+- **Accuracy on our phone.** Nothing above ran on our phone. The field test uses a current iPhone without LiDAR, the Measure Lab build (PR #7), a 30 ft tape and a real meter wall, following `experiments/evals/field/FIELD_SHEET.md` (PR #12); a dry run recovered a planted 1.5% scale error. It also checks the default error bars. LiDAR on siding in midday sun is untested too.
+- **Pool and driveway.** Their checks need up to 13 ft of photographed ground. The alternative is one yes-or-no question, recorded as the homeowner's answer.
+- **Hidden wall.** Something standing in front of the wall can hide it, and nobody owns that check yet. One proposal: the app shows the homeowner the photo of the chosen spot and asks, and runs the depth test on LiDAR phones.

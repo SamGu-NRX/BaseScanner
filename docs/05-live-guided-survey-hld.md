@@ -1,10 +1,8 @@
-# Base Power — Live Guided Site Survey
-
-> Day-1 plan from 2026-09-25, kept for its reasoning and citations. Where it conflicts with [00-overview.md](00-overview.md) or a component README, those win.
+# Base Power: Live Guided Site Survey
 
 **High-Level Design · v0.1 · September 25, 2026**
 
-**Status:** Public architecture proposal for review; no implementation or existing lane decisions are changed by this document.
+**Status:** Public architecture proposal for review; this document changes no implementation or existing decision.
 
 **Audience:** Product, engineering, ML, and Base survey reviewers.
 
@@ -16,7 +14,7 @@ This document describes the intended system, not an implemented or benchmarked p
 
 Base customers currently supply site-survey photographs used to assess electrical equipment and possible battery installations. The proposed experience keeps the camera open while the app guides the customer, chooses useful photographs, and develops a spatial understanding of the relevant exterior.
 
-The repository baseline is documented in [the overview](00-overview.md), [feature map](01-feature-map.md), and [implementation plan](02-implementation-plan.md). This HLD records the proposed continuous capture and guidance experience, with public technical resources. Business-rule values and their authority are maintained separately through the approved rules configuration. This public document contains no team-only criteria material.
+The repository baseline is documented in [the overview](00-overview.md) and the component READMEs. This HLD records the proposed continuous capture and guidance experience, with public technical resources. Business-rule values and their authority are maintained separately through the approved rules configuration. This public document contains no team-only criteria material.
 
 | Status | Decision |
 |---|---|
@@ -33,7 +31,7 @@ The repository baseline is documented in [the overview](00-overview.md), [featur
 
 ### Relationship to the existing repository plan
 
-The current plan targets an iPhone demo with native Swift, ARKit/RealityKit, and LiDAR geometry where supported. It uses native AR measurements and a deterministic server-side placement solver, retaining tap-to-mark capture as a dependable fallback. Capture is native Swift in `ios/`, and LiDAR is optional. The existing implementation plan remains the baseline until the team adopts a change.
+The current plan targets an iPhone demo with native Swift, ARKit/RealityKit, and LiDAR geometry where supported. It uses native AR measurements and a deterministic server-side placement solver, retaining tap-to-mark capture as a dependable fallback. Capture is native Swift in `ios/`, and LiDAR is optional. The overview remains the baseline until the team adopts a change.
 
 | Existing baseline | Proposal in this HLD |
 |---|---|
@@ -44,7 +42,7 @@ The current plan targets an iPhone demo with native Swift, ARKit/RealityKit, and
 | Gemini detection, SAM 2 segmentation, and native Apple Vision checks in the research plan | Treat newer OCR/segmentation models as benchmark candidates, not silent replacements. |
 | iPhone demo | Keep Android and browser AR references as future portability research, outside the initial demo commitment. |
 
-The evidence record below extends the existing `scene.json` concept rather than replacing its contract. Proposed metadata additions require coordination with the lane owners. Preserve its existing units at interfaces with explicit conversions, and keep AR results relative to the meter anchor using gravity world alignment.
+The evidence record below extends the existing `scene.json` concept rather than replacing its contract. Proposed metadata additions require coordination with the owning team. Preserve its existing units at interfaces with explicit conversions, and keep AR results relative to the meter anchor using gravity world alignment.
 
 ### Objectives
 
@@ -308,7 +306,7 @@ Perception extracts observable facts. Geometry supplies measured or estimated sp
 | Human judgment | Preserve a review path for uncertain measurements, interpretation, or unresolved configuration. |
 | Aggregation | Use the agreed API contract to combine findings; a successful individual check does not establish overall completion. |
 
-The public-source starting points and unresolved values are recorded in [the feature-map rules table](01-feature-map.md#rules-table-c1-confirm-these) and [public source research](04-prior-art-and-codes.md). This HLD introduces no new rule values and does not resolve disputed requirements. Team-only material stays outside tracked files.
+The public-source starting points and unresolved values are recorded in [public rule values](04-prior-art-and-codes.md#public-rule-values) and the overview's [open questions](00-overview.md#open-questions). This HLD introduces no new rule values and does not resolve disputed requirements. Team-only material stays outside tracked files.
 
 ### Decision and recapture flow
 
@@ -405,17 +403,17 @@ Authenticate survey access and isolate sessions. Store original photos separatel
 
 ## 10. Hackathon implementation plan
 
-### Phase 1 — Prove the closed loop
+### Phase 1: Prove the closed loop
 
 Use one target device, a meter, and one candidate battery area. Demonstrate automatic capture, one real evidence gap, a targeted corrective instruction, a second capture, and an updated explained finding. Include a visible case where additional evidence changes the initial assessment.
 
 Use confirmed public-source rules or clearly labeled synthetic test configuration. Unresolved rule values remain configuration gaps; do not present a synthetic demonstration as installation approval. Provide a basic review screen with original images and the reason behind each result.
 
-### Phase 2 — Add progressive spatial understanding
+### Phase 2: Add progressive spatial understanding
 
 Integrate periodic reconstruction, coordinate alignment, observed-surface coverage, and a virtual battery footprint. Compare ordinary camera-and-motion capture with optional depth input on the same scene. Preserve image evidence when geometry fails.
 
-### Phase 3 — Evaluate streaming and broader coverage
+### Phase 3: Evaluate streaming and broader coverage
 
 Test LingBot-Map behind the same reconstruction interface. Expand to adjacent walls, interrupted sessions, panel tasks, and representative phones. Adopt streaming only if its measured benefit exceeds integration, compute, and reliability costs.
 
@@ -445,7 +443,7 @@ Measure incorrect approvals and rejections separately, exact meter-number accura
 ## 12. Decisions needed before implementation hardens
 
 1. **Policy:** Which publicly justified rules configuration is confirmed, and how does the result contract combine findings?
-2. **Device scope:** How will native capture integrate with the app shell, and which iPhones represent actual customers?
+2. **Device scope:** Which iPhones represent actual customers?
 3. **Measurement standard:** What scale anchor and error tolerance are acceptable near each decision boundary?
 4. **Deployment:** What GPU, connectivity, latency, and per-survey cost budget are available?
 5. **Review handoff:** What evidence package and result format should Base’s existing review process receive?

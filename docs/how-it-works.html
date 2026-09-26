@@ -403,7 +403,7 @@
       <desc id="pp2d">The guided scan box from stage 1, with an arrow to a file icon labelled packet, sitting on the line between the teams.</desc>
       <use href="#pl-frame"/><use href="#pl-scan"/><use href="#pl-packet"/>
     </svg>
-    <figcaption><b>It sends a capture packet.</b> Photos; where the camera was and which way it pointed for each one (poses); the lens's focal length and center (intrinsics); motion-sensor readings; LiDAR depth and mesh when the phone has LiDAR; and the homeowner's marks, such as the meter. The packet is the contract between the teams.</figcaption>
+    <figcaption><b>It sends a capture packet.</b> Today the app uploads only its measurements and exports the full packet on request; the packet's README lists what it records so far. The packet holds photos; where the camera was and which way it pointed for each one (poses); the lens's focal length and center (intrinsics); motion-sensor readings; LiDAR depth and mesh when the phone has LiDAR; and the homeowner's marks, such as the meter. The packet is the contract between the teams.</figcaption>
   </figure></li>
 
   <li><figure>
@@ -552,7 +552,7 @@
     <text class="lab b blue" x="90" y="132">needed: all of it</text>
     <text class="lab" x="392" y="208" text-anchor="end">ground out to 13 ft</text>
   </svg>
-  <figcaption>Drawn to scale, 1 ft to 8 px. The zone is the wall within 20 ft of cable either side of the meter, the ground in front out to 6 to 13 ft depending on the check, and the space overhead for headroom, which a plan view can't show. <b>The coverage map has to be honest.</b> The app's first map checked only range, angle and framing, and claimed 1.1 ft of wall that no photo saw. Tested against depth, the recon worker claims at most about 0.46 ft.</figcaption>
+  <figcaption>Drawn to scale, 1 ft to 8 px. The zone is the wall within 20 ft of cable either side of the meter, the ground in front out to 6 to 13 ft depending on the check, and the space overhead for headroom, which a plan view can't show. Near each end it reaches past 20 ft by the clearance around a spot at the edge of reach. A pass needs only the chosen spot and its clearances seen, and the server's answer says when the walk has gone far enough. <b>The coverage map has to be honest.</b> The app's first map checked only range, angle and framing, and claimed 1.1 ft of wall that no photo saw. Tested against depth, the recon worker claims at most about 0.46 ft.</figcaption>
 </figure>
 
 <h3>LiDAR first, never required</h3>
@@ -699,8 +699,8 @@
 <div class="scroll-x"><table>
   <thead><tr><th>Piece</th><th>Source of truth</th><th>State</th></tr></thead>
   <tbody>
-    <tr><td>iPhone app<br><span class="meta">client team</span></td><td><code>ios/README.md</code></td><td>Guided capture in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/10" target="_blank" rel="noopener noreferrer">PR #10</a>; live 3D map on branch <code>t3/ios-map3d</code>, stacked on it</td></tr>
-    <tr><td>Capture packet<br><span class="meta">client team</span></td><td><code>packet/README.md</code></td><td>Being specified on branch <code>t3/packet</code></td></tr>
+    <tr><td>iPhone app<br><span class="meta">client team</span></td><td><code>ios/README.md</code></td><td>Guided capture in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/10" target="_blank" rel="noopener noreferrer">PR #10</a>; live 3D map in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/21" target="_blank" rel="noopener noreferrer">PR #21</a>, stacked on it</td></tr>
+    <tr><td>Capture packet<br><span class="meta">client team</span></td><td><code>packet/README.md</code></td><td>Spec, validator and samples in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/22" target="_blank" rel="noopener noreferrer">PR #22</a></td></tr>
     <tr><td>Rules engine, API, capture contract<br><span class="meta">server team</span></td><td><code>server/README.md</code>, "What settles each check"</td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/11" target="_blank" rel="noopener noreferrer">PR #11</a>; live as a <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">public demo</a> with public rules, and privately with Base's rules behind a key</td></tr>
     <tr><td>Reconstruction worker<br><span class="meta">server team</span></td><td><code>recon/HANDOFF.md</code></td><td>Draft <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/20" target="_blank" rel="noopener noreferrer">PR #20</a>, handed to the server team</td></tr>
     <tr><td>Accuracy evals</td><td><code>experiments/evals/README.md</code></td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/12" target="_blank" rel="noopener noreferrer">PR #12</a></td></tr>
@@ -708,7 +708,7 @@
     <tr><td>Web review page</td><td></td><td>Parked, <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/15" target="_blank" rel="noopener noreferrer">PR #15</a></td></tr>
   </tbody>
 </table></div>
-<p class="prose">The day-1 plan (<code>docs/01</code> to <code>05</code>) is kept for its reasoning and rule citations, and the day-1 explainer, with its drag-the-battery demo, is <a href="eli5.html">eli5.html</a>. The dated briefings in <code>docs/briefings/</code> hold the evidence behind several figures here.</p>
+<p class="prose">The plan, the decisions and the full evidence list are in <a href="00-overview.md">00-overview.md</a>. The public rule values, their code citations and the model and imagery licenses are in <a href="04-prior-art-and-codes.md">04-prior-art-and-codes.md</a>.</p>
 
 <footer>Base's private thresholds, prompt names and field names do not appear on this page. The drawings are illustrations at a consistent scale, not a real house. Evidence numbers come from public datasets with laser-scanned ground truth; no dataset images are included.</footer>
 
