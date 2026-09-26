@@ -53,8 +53,10 @@ enum ScanCopy {
         case .walkComplete:
             Instruction(title: "That's the whole wall", detail: "Tap Done when you're ready.")
         case .seeBehind(let s):
-            // Placeholder wording until round 5's UI lane.
-            Instruction(title: "Something is in the way", detail: "Look at the wall \(Distance.fromMeter(s)) from another angle.")
+            Instruction(
+                title: "Something is in front of the wall here",
+                detail: "\(Distance.fromMeter(s).capitalizedFirst). Look at it from the side or step around it."
+            )
         case .gap:
             Instruction(title: "One more view", detail: nil)
         }
@@ -218,6 +220,25 @@ enum ScanCopy {
         }
     }
 
+    /// The reply on the see-behind step: the homeowner can't get a view past the obstruction.
+    static let cannotSeeBehind = "Can't see past it"
+
+    // MARK: Follow-up view
+
+    /// The check came back asking for views the camera can take now; the scan goes straight
+    /// back to the camera for them before the result. Said on the upload screen as it hands
+    /// over and on the camera card that follows, so the two read as one step.
+    static func followUp(remaining: Int) -> String {
+        remaining <= 1 ? "One more view to finish" : "\(remaining) more views to finish"
+    }
+
+    /// A sample result checked nothing, so it must not say the wall was checked.
+    static func followUpDetail(sample: Bool) -> String {
+        sample
+            ? "The example result asks for another view, so the camera opens again. Nothing leaves this phone."
+            : "The check needs a view the camera can take now. Your result comes right after."
+    }
+
     // MARK: Upload
 
     /// The question after the tilt-up view. The camera can't tell open sky from an eave.
@@ -235,7 +256,11 @@ enum ScanCopy {
     }
 
     /// With no server connected nothing is sent, and the words must not say it is.
-    static func upload(_ upload: UploadState, sample: Bool) -> Instruction {
+    /// `followUps` is how many views the finished check still wants from the camera.
+    static func upload(_ upload: UploadState, sample: Bool, followUps: Int = 0) -> Instruction {
+        if upload == .done, followUps > 0 {
+            return Instruction(title: followUp(remaining: followUps), detail: followUpDetail(sample: sample))
+        }
         if sample {
             switch upload {
             case .idle, .packaging, .uploading, .analyzing:

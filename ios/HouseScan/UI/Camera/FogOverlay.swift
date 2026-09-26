@@ -1,4 +1,5 @@
 import SwiftUI
+import simd
 
 /// The haze over the parts of the wall and ground the phone hasn't seen yet.
 ///
@@ -10,6 +11,11 @@ import SwiftUI
 ///
 /// A gap request replaces the fog on its cells with an amber highlight, so the camera itself
 /// shows where to aim.
+///
+/// On a phone with depth, a stretch the camera looked at through something nearer (a bush, a
+/// bin) is hidden: no frost, since the phone did look, but a soft dark veil with a dashed violet
+/// outline round the whole stretch. It fades in without rising: the rising drift belongs to
+/// "the phone saw that", which a hidden stretch is not.
 struct FogOverlay: View {
     var coverage: CoverageStrip
     var wall: WallGeometry
@@ -77,15 +83,19 @@ struct FogOverlay: View {
         switch state {
         case .unseen: 0.75
         case .seen: 0.35
-        case .covered, .skipped: 0
-        // Placeholder until round 5's UI lane: hidden reads as unseen.
-        case .hidden: 0.75
+        // Hidden is drawn by `veil`: frost would say "not looked at yet", and it was.
+        case .covered, .skipped, .hidden: 0
         }
+    }
+
+    /// Strength of the dark veil and outline per state: only a hidden stretch has one.
+    nonisolated static func veil(_ state: CellState) -> Double {
+        state == .hidden ? 1 : 0
     }
 
 }
 
-/// One frame of fog: which cells are hazy, lifting, skipped or requested, at a moment in time.
+/// One frame of fog: which cells are hazy, lifting, veiled, skipped or requested, at a moment in time.
 private struct FogFrame {
     var coverage: CoverageStrip
     var wall: WallGeometry
@@ -102,43 +112,72 @@ private struct FogFrame {
         var lift: CGFloat
     }
 
-    private func cells(size: CGSize) -> (haze: [Cell], skipped: [Path], amber: [Path]) {
-        let geometry = WallProjection(projection: projection, wall: wall, size: size)
-        let visible = coverage.visibleRange
-        guard visible.upperBound > visible.lowerBound else { return ([], [], []) }
+    private struct Layers {
         var haze: [Cell] = []
         var skipped: [Path] = []
         var amber: [Path] = []
+        /// Per-cell veil fills, blurred together so a stretch reads as one shadow.
+        var veil: [(quad: Path, level: Double)] = []
+        /// One outline per run of hidden cells in a band, so the dash runs on unbroken.
+        var outlines: [(path: Path, level: Double)] = []
+    }
+
+    private func layers(size: CGSize) -> Layers {
+        let geometry = WallProjection(projection: projection, wall: wall, size: size)
+        let visible = coverage.visibleRange
+        var layers = Layers()
+        guard visible.upperBound > visible.lowerBound else { return layers }
         for band in CoverageBand.allCases {
             let states = coverage.cells(band)
+            // The hidden run being collected: its clipped s edges and its strongest veil.
+            var run: (edges: [Float], level: Double)?
+            func closeRun() {
+                if let edges = run?.edges, let level = run?.level, let outline = outline(band, edges, geometry) {
+                    layers.outlines.append((outline, level))
+                }
+                run = nil
+            }
             for index in states.indices {
                 let range = coverage.cellRange(index)
-                guard FogMemory.interiorsOverlap(range, visible) else { continue }
+                guard FogMemory.interiorsOverlap(range, visible) else { closeRun(); continue }
                 let clipped = max(range.lowerBound, visible.lowerBound)...min(range.upperBound, visible.upperBound)
-                guard let quad = quad(band, clipped, geometry) else { continue }
+                guard let quad = quad(band, clipped, geometry) else { closeRun(); continue }
                 let state = states[index]
                 if let gap = highlight, gap.band == band, FogMemory.interiorsOverlap(gap.span, range), state != .covered {
-                    amber.append(quad)
+                    layers.amber.append(quad)
+                    closeRun()
                     continue
                 }
-                if state == .skipped { skipped.append(quad) }
-                let target = FogOverlay.haze(state)
-                let key = FogMemory.Key(band: band, index: index)
-                if let lift = lifts[key], let progress = lift.progress(at: now), progress < 1 {
+                if state == .skipped { layers.skipped.append(quad) }
+                let hazeTarget = FogOverlay.haze(state)
+                let veilTarget = FogOverlay.veil(state)
+                var haze = hazeTarget, veil = veilTarget, rise: CGFloat = 0
+                if let lift = lifts[FogMemory.Key(band: band, index: index)], let progress = lift.progress(at: now), progress < 1 {
                     let eased = 1 - pow(1 - progress, 3)
-                    haze.append(Cell(quad: quad, level: lift.from + (target - lift.from) * eased, lift: CGFloat(eased)))
-                } else if target > 0 {
-                    haze.append(Cell(quad: quad, level: target, lift: 0))
+                    haze = lift.from + (hazeTarget - lift.from) * eased
+                    veil = lift.fromVeil + (veilTarget - lift.fromVeil) * eased
+                    rise = lift.drifts ? CGFloat(eased) : 0
+                }
+                if haze > 0 { layers.haze.append(Cell(quad: quad, level: haze, lift: rise)) }
+                if veil > 0 { layers.veil.append((quad, veil)) }
+                if state == .hidden {
+                    var current = run ?? ([clipped.lowerBound], 0)
+                    current.edges.append(clipped.upperBound)
+                    current.level = max(current.level, veil)
+                    run = current
+                } else {
+                    closeRun()
                 }
             }
+            closeRun()
         }
-        return (haze, skipped, amber)
+        return layers
     }
 
     /// Haze cells in one blurred layer, so neighbours merge into one bank of fog; lifting cells
     /// rise a few points as they thin out.
     func drawHaze(in context: inout GraphicsContext, size: CGSize, color: Color) {
-        let haze = cells(size: size).haze
+        let haze = layers(size: size).haze
         context.drawLayer { layer in
             layer.addFilter(.blur(radius: 9))
             for cell in haze {
@@ -150,10 +189,25 @@ private struct FogFrame {
     }
 
     /// Skipped cells get a slate hatch, so "can't get there" never reads as clear or as fog;
-    /// requested cells glow amber.
+    /// hidden stretches get a dark veil and a dashed violet outline; requested cells glow amber.
     func drawMarks(in context: inout GraphicsContext, size: CGSize) {
-        let (_, skipped, amber) = cells(size: size)
-        for quad in skipped {
+        let layers = layers(size: size)
+        if !layers.veil.isEmpty {
+            context.drawLayer { layer in
+                layer.addFilter(.blur(radius: 4))
+                for cell in layers.veil {
+                    layer.fill(cell.quad, with: .color(.black.opacity(0.42 * cell.level)))
+                }
+            }
+        }
+        // The map's dash, lengthened for the larger shapes on the camera.
+        let dash = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: Palette.hiddenDash.map { $0 * 1.6 })
+        for outline in layers.outlines {
+            // A dark halo under the dash keeps it legible on a sunlit wall.
+            context.stroke(outline.path, with: .color(.black.opacity(0.35 * outline.level)), style: StrokeStyle(lineWidth: 4, lineJoin: .round))
+            context.stroke(outline.path, with: .color(Palette.hidden.opacity(outline.level)), style: dash)
+        }
+        for quad in layers.skipped {
             context.fill(quad, with: .color(Palette.skipped.opacity(0.3)))
             var hatched = context
             hatched.clip(to: quad)
@@ -167,10 +221,22 @@ private struct FogFrame {
             }
             hatched.stroke(lines, with: .color(.white.opacity(0.55)), lineWidth: 1.5)
         }
-        for quad in amber {
+        for quad in layers.amber {
             context.fill(quad, with: .color(Palette.caution.opacity(0.34)))
             context.stroke(quad, with: .color(Palette.caution.opacity(0.9)), lineWidth: 1.5)
         }
+    }
+
+    /// The outline of a run of cells whose s edges are `edges`, through every cell edge so it
+    /// follows the wall round a corner. Nil when any point is behind the camera.
+    private func outline(_ band: CoverageBand, _ edges: [Float], _ geometry: WallProjection) -> Path? {
+        let corners: [SIMD3<Float>] = switch band {
+        case .wall:
+            edges.map { wall.world(s: $0, height: coverage.wallBandHeight) } + edges.reversed().map { wall.world(s: $0, height: 0) }
+        case .ground:
+            edges.map { wall.world(s: $0, height: 0, out: coverage.groundBandDepth) } + edges.reversed().map { wall.world(s: $0, height: 0) }
+        }
+        return geometry.polygon(corners)
     }
 
     private func quad(_ band: CoverageBand, _ range: ClosedRange<Float>, _ geometry: WallProjection) -> Path? {
@@ -192,8 +258,12 @@ final class FogMemory {
     }
 
     struct Lift {
+        /// Haze and veil strength when the change began.
         var from: Double
+        var fromVeil: Double
         var start: Date
+        /// Rises as it thins: only fog lifting off something the phone saw.
+        var drifts: Bool
 
         func progress(at now: Date) -> Double? {
             let t = now.timeIntervalSince(start) / Motion.fogLift
@@ -210,7 +280,8 @@ final class FogMemory {
         states = Self.snapshot(coverage)
     }
 
-    /// Records a lift for every cell whose haze went down. Returns true when any lift started.
+    /// Records a lift for every cell whose haze went down or whose veil changed. Returns true
+    /// when any lift started.
     /// Cells inside `highlight` are drawn amber, not fogged, so they get no lift.
     func update(to coverage: CoverageStrip, at now: Date, highlight: GapRequest?) -> Bool {
         // The strip can grow to the left, which shifts every index; realign by s.
@@ -227,8 +298,12 @@ final class FogMemory {
                Self.interiorsOverlap(highlight.span, coverage.cellRange(key.index)) {
                 continue
             }
-            if FogOverlay.haze(state) < FogOverlay.haze(old) {
-                lifts[key] = Lift(from: FogOverlay.haze(old), start: now)
+            let thinned = FogOverlay.haze(state) < FogOverlay.haze(old)
+            if thinned || FogOverlay.veil(state) != FogOverlay.veil(old) {
+                lifts[key] = Lift(
+                    from: FogOverlay.haze(old), fromVeil: FogOverlay.veil(old), start: now,
+                    drifts: thinned && state != .hidden
+                )
                 started = true
             }
         }

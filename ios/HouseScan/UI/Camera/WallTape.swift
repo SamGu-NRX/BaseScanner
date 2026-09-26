@@ -5,6 +5,11 @@ import SwiftUI
 /// Top row is the wall face, bottom row the ground at its foot. Gray is not seen yet, amber
 /// seen once, green seen well enough (docs/05 section 2); green is evidence, not approval.
 /// Foot ticks run along the bottom edge so distances read at a glance without numbers.
+///
+/// The two states that aren't about how well the phone saw get a pattern as well as a color,
+/// so they read in grayscale, and a legend line under the strip while any is on it: skipped is
+/// slate with a slash, hidden (depth saw something in front) a violet dashed outline round the
+/// stretch, as on the camera. On a phone with depth the same line says the map is depth-checked.
 struct WallTape: View {
     var coverage: CoverageStrip
     var wall: WallGeometry
@@ -12,11 +17,15 @@ struct WallTape: View {
     /// The homeowner's position along the wall, meters of s, when known.
     var cameraS: Float?
     var highlight: GapRequest?
+    /// The phone has depth, so a cell counts only where depth confirms the wall itself.
+    var depthChecked = false
 
     /// Glyph size for the meter and feature marks. It follows the text size, like every other
     /// glyph in the app (fixed 9 and 10 pt sizes failed the audit's Dynamic Type check), and
     /// stops growing at 16 pt so the marks still fit the strip's 58 pt height.
     @ScaledMetric(relativeTo: .caption2) private var glyphSize: CGFloat = 10
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var glyph: CGFloat { min(glyphSize, 16) }
     private var glyphBox: CGFloat { glyph * 1.8 }
 
@@ -49,7 +58,12 @@ struct WallTape: View {
                 }
             }
             .frame(height: 58)
+            if showsFooter {
+                footer
+                    .transition(.opacity)
+            }
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: showsFooter)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(ScrimShape.rounded(18))
@@ -57,6 +71,38 @@ struct WallTape: View {
         .accessibilityLabel("Map of the wall")
         .accessibilityValue(accessibilitySummary)
         .accessibilityIdentifier("wallTape")
+    }
+
+    // MARK: Legend
+
+    private var hiddenSections: [ClosedRange<Float>] { sections(of: .hidden) }
+    private var skippedSections: [ClosedRange<Float>] { sections(of: .skipped) }
+
+    private var showsFooter: Bool {
+        depthChecked || !hiddenSections.isEmpty || !skippedSections.isEmpty
+    }
+
+    private var footer: some View {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            if !hiddenSections.isEmpty {
+                LegendEntry(title: "Hidden behind something") { HiddenSwatch() }
+            }
+            if !skippedSections.isEmpty {
+                LegendEntry(title: "Skipped") { SkippedSwatch() }
+            }
+            if !typeSize.isAccessibilitySize {
+                Spacer(minLength: 0)
+            }
+            if depthChecked {
+                Label("Depth-checked", systemImage: "cube.transparent")
+                    .font(Typeface.caption)
+                    .foregroundStyle(Palette.chalk)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Layout
@@ -116,13 +162,26 @@ struct WallTape: View {
                 let x0 = map.x(range.lowerBound)
                 let x1 = map.x(range.upperBound)
                 let rect = CGRect(x: x0 + 0.5, y: row.minY, width: max(1, x1 - x0 - 1), height: row.height)
-                context.fill(Path(rect), with: .color(Palette.cell(state).opacity(state == .unseen ? 0.55 : 1)))
+                // Hidden is a tint under a dashed outline drawn per stretch below: hollow, so it
+                // never reads as a solid covered cell.
+                let opacity = switch state {
+                case .unseen: 0.55
+                case .hidden: 0.22
+                default: 1.0
+                }
+                context.fill(Path(rect), with: .color(Palette.cell(state).opacity(opacity)))
                 if state == .skipped {
                     var slash = Path()
                     slash.move(to: CGPoint(x: rect.minX, y: rect.maxY))
                     slash.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
                     context.stroke(slash, with: .color(.white.opacity(0.7)), lineWidth: 1)
                 }
+            }
+            for run in runs(of: .hidden, in: band) {
+                let rect = CGRect(x: map.x(run.lowerBound), y: row.minY, width: map.x(run.upperBound) - map.x(run.lowerBound), height: row.height)
+                    .insetBy(dx: 0.75, dy: 0.75)
+                context.stroke(Path(roundedRect: rect, cornerRadius: 2), with: .color(Palette.hidden),
+                               style: StrokeStyle(lineWidth: 1.5, dash: Palette.hiddenDash))
             }
             if let gap = highlight, gap.band == band {
                 let rect = CGRect(x: map.x(gap.span.lowerBound), y: row.minY - 2,
@@ -170,6 +229,36 @@ struct WallTape: View {
         }
     }
 
+    /// Runs of cells in `state` within one band, as s ranges, over the cells the strip draws.
+    private func runs(of state: CellState, in band: CoverageBand) -> [ClosedRange<Float>] {
+        var runs: [ClosedRange<Float>] = []
+        for (index, cell) in coverage.cells(band).enumerated() {
+            let range = coverage.cellRange(index)
+            guard cell == state, FogMemory.interiorsOverlap(range, coverage.visibleRange), isInsideEnds(range) else { continue }
+            if let last = runs.last, last.upperBound >= range.lowerBound - 0.001 {
+                runs[runs.count - 1] = last.lowerBound...range.upperBound
+            } else {
+                runs.append(range)
+            }
+        }
+        return runs
+    }
+
+    /// Stretches of wall with cells in `state` in either band, overlapping runs merged: a bush
+    /// that hides both the wall and the ground in front of it is one section, not two.
+    private func sections(of state: CellState) -> [ClosedRange<Float>] {
+        let all = (runs(of: state, in: .wall) + runs(of: state, in: .ground)).sorted { $0.lowerBound < $1.lowerBound }
+        var merged: [ClosedRange<Float>] = []
+        for run in all {
+            if let last = merged.last, last.upperBound >= run.lowerBound - 0.001 {
+                merged[merged.count - 1] = last.lowerBound...max(last.upperBound, run.upperBound)
+            } else {
+                merged.append(run)
+            }
+        }
+        return merged
+    }
+
     private func isInsideEnds(_ range: ClosedRange<Float>) -> Bool {
         if let left = wall.leftEnd, range.upperBound <= left { return false }
         if let right = wall.rightEnd, range.lowerBound >= right { return false }
@@ -191,15 +280,71 @@ struct WallTape: View {
         if let cameraS {
             parts.append("You are \(Distance.spoken(cameraS)) \(cameraS < 0 ? "left" : "right") of your meter")
         }
+        if let hidden = Self.count(hiddenSections.count, "section") {
+            parts.append("\(hidden) hidden behind something")
+        }
+        if let skipped = Self.count(skippedSections.count, "section") {
+            parts.append("\(skipped) skipped")
+        }
         if wall.leftEnd != nil, wall.rightEnd != nil {
             parts.append("Both ends marked")
         }
+        if depthChecked {
+            parts.append("Checked with your phone's depth sensor")
+        }
         return parts.joined(separator: ". ")
+    }
+
+    /// "1 section", "2 sections"; nil for none.
+    private static func count(_ n: Int, _ noun: String) -> String? {
+        n == 0 ? nil : "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 
     private func percentSeen(in range: ClosedRange<Float>) -> Int {
         let states = coverage.wall.indices.filter { range.overlaps(coverage.cellRange($0)) }.map { coverage.wall[$0] }
         guard !states.isEmpty else { return 0 }
         return Int((Double(states.filter { $0 == .seen || $0 == .covered }.count) / Double(states.count) * 100).rounded())
+    }
+}
+
+// MARK: - Legend pieces
+
+private struct LegendEntry<Swatch: View>: View {
+    var title: String
+    @ViewBuilder var swatch: Swatch
+
+    var body: some View {
+        HStack(spacing: 6) {
+            swatch
+            Text(title)
+                .font(Typeface.caption)
+                .foregroundStyle(Palette.chalk)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// A hidden cell as the strip draws it: violet tint inside a dashed violet outline.
+private struct HiddenSwatch: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(Palette.hidden.opacity(0.22))
+            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Palette.hidden, style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])))
+            .frame(width: 18, height: 12)
+    }
+}
+
+/// A skipped cell as the strip draws it: slate with a white slash.
+private struct SkippedSwatch: View {
+    var body: some View {
+        Canvas { context, size in
+            let rect = CGRect(origin: .zero, size: size)
+            context.fill(Path(roundedRect: rect, cornerRadius: 2), with: .color(Palette.skipped))
+            var slash = Path()
+            slash.move(to: CGPoint(x: rect.minX + 3, y: rect.maxY))
+            slash.addLine(to: CGPoint(x: rect.maxX - 3, y: rect.minY))
+            context.stroke(slash, with: .color(.white.opacity(0.7)), lineWidth: 1)
+        }
+        .frame(width: 18, height: 12)
     }
 }

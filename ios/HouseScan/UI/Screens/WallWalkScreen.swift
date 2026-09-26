@@ -53,7 +53,8 @@ struct WallWalkScreen: View {
                             wall: wall,
                             features: state.features,
                             cameraS: cameraS,
-                            highlight: nil
+                            highlight: nil,
+                            depthChecked: state.depthAvailable
                         )
                     }
                 }
@@ -111,7 +112,7 @@ struct WallWalkScreen: View {
     /// True while the guidance points at a particular stretch the homeowner might not reach.
     private var asksForArea: Bool {
         switch state.guidance {
-        case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall: true
+        case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall, .seeBehind: true
         default: false
         }
     }
@@ -221,6 +222,14 @@ struct WallWalkScreen: View {
 
     private var reply: InstructionCard.Reply? {
         guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.coaching == nil, !trayOpen else { return nil }
+        if case .seeBehind = state.guidance {
+            return InstructionCard.Reply(
+                title: ScanCopy.cannotSeeBehind,
+                identifier: "action.cannotAccess",
+                hint: "Skips the part behind it. An installer will look at it instead.",
+                perform: { actions.cannotAccessArea() }
+            )
+        }
         return InstructionCard.Reply(
             title: "Can't get there",
             identifier: "action.cannotAccess",

@@ -26,6 +26,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
+        ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
+        ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
@@ -33,10 +35,12 @@ final class ScreenStatesUITests: XCTestCase {
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
         ("gapRequest-overhead", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead"], "gapRequest"),
         ("gapRequest-overheadQuestion", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead", "-uiDemoOverheadQuestion"], "gapRequest"),
+        ("gapRequest-followUp", ["-uiDemoPhase", "gapRequest", "-uiDemoFollowUp"], "gapRequest"),
         ("uploading", ["-uiDemoPhase", "uploading"], "uploading"),
         ("uploading-offline", ["-uiDemoPhase", "uploading", "-uiDemoOffline"], "uploading"),
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
+        ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
@@ -50,6 +54,16 @@ final class ScreenStatesUITests: XCTestCase {
     private static let largestTextStates: Set<String> = [
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
+        "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
+    ]
+
+    /// Words a state must show: in the named element's label or value, or with no identifier,
+    /// in any text on screen.
+    private static let expectations: [String: (identifier: String?, text: String)] = [
+        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
+        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
+        "gapRequest-followUp": ("instruction", "One more view to finish"),
+        "uploading-followUp": (nil, "One more view to finish"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -108,7 +122,12 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10))
         XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 20))
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
+        // The answer lists a view the camera can take: the scan goes back to the camera for it
+        // on its own, and the result follows that view.
+        let followUp = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
+        XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
         tap(app, "action.showAR")
@@ -197,6 +216,16 @@ final class ScreenStatesUITests: XCTestCase {
         add(shot)
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
             XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+        }
+        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+            let found: Bool
+            if let identifier = expected.identifier {
+                let target = element(app, identifier)
+                found = target.label.contains(expected.text) || (target.value as? String)?.contains(expected.text) == true
+            } else {
+                found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
+            }
+            XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
         }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
