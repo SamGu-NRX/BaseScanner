@@ -42,6 +42,21 @@ import Testing
         #expect(GapPlanner().plan(for: try item(#"{"kind":"band","band":"overhead","span_ft":[0,1],"message":"m"}"#), leftEnd: nil, rightEnd: nil)?.need == .overhead(nil))
     }
 
+    /// Ground past the deepest sampled row (17 ft) can't be captured: no request is built, so the
+    /// app sends it to review. 17 ft itself can be.
+    @Test func groundDeeperThanTheMapSamplesIsBeyondCapture() throws {
+        let planner = GapPlanner()
+        let deepest = try item(#"{"kind":"band","band":"ground","span_ft":[0,2.58],"out_ft":17.0,"message":"m"}"#)
+        #expect(!planner.isBeyondCapture(deepest))
+        #expect(planner.plan(for: deepest, leftEnd: nil, rightEnd: nil) != nil)
+        let deeper = try item(#"{"kind":"band","band":"ground","span_ft":[0,2.58],"out_ft":17.000001,"message":"m"}"#)
+        #expect(planner.isBeyondCapture(deeper))
+        #expect(planner.plan(for: deeper, leftEnd: nil, rightEnd: nil) == nil)
+        // Only ground has a sampling limit.
+        #expect(!planner.isBeyondCapture(try item(#"{"kind":"band","band":"facing","span_ft":[0,1],"out_ft":30,"message":"m"}"#)))
+        #expect(planner.config.groundDepthReach == CoverageConfig().groundDepthReach)
+    }
+
     @Test func outFtRoundTrips() throws {
         let decoded = try item(#"{"kind":"band","band":"ground","span_ft":[0,1],"out_ft":5.13,"message":"m"}"#)
         #expect(decoded.outFt == 5.13)

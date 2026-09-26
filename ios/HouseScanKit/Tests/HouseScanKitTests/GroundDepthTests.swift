@@ -3,7 +3,7 @@ import HouseScanKit
 import simd
 import Testing
 
-// Ground depth rows sit every 0.1524 m from the wall foot (row 0) out to 4.572 m (row 30, 15 ft).
+// Ground depth rows sit every 0.1524 m from the wall foot (row 0) out to 5.1816 m (row 34, 17 ft).
 //
 // `downCamera(s:out:)` hangs 2 m up looking straight down, image +y along +s. A ground point
 // (s', 0, o) is 2 m deep and lands on u = 320 + 250 (o - out), v = 240 - 250 (s' - s); with the
@@ -26,8 +26,8 @@ import Testing
     @Test func rowsFromDifferentViewsAddUpToTheFullDepth() {
         // out 1.0 sees 0...2.2 m, out 3.3 sees 2.1...4.5 m, out 4.0 sees 2.8...5.2 m.
         let map = Self.map(outs: [1.0, 3.3, 4.0])
-        #expect(map.groundDepthRows.count == 31)
-        #expect(map.groundDepth(at: 0).map { nearlyEqual($0, 4.572) } == true)
+        #expect(map.groundDepthRows.count == 35)
+        #expect(map.groundDepth(at: 0).map { nearlyEqual($0, 5.1816) } == true)
     }
 
     @Test func depthStopsAtTheFirstRowNotCovered() {
@@ -62,9 +62,19 @@ import Testing
         let spans = map.groundDepthSpans()
         #expect(spans.count == 1)
         #expect(nearlyEqual(spans[0].span, -0.6096...0.9144))
-        #expect(nearlyEqual(spans[0].out, 4.572))
+        #expect(nearlyEqual(spans[0].out, 5.1816))
         map.setEnd(.right, at: 0.5)
         #expect(nearlyEqual(map.groundDepthSpans()[0].span, -0.6096...0.5))
+    }
+
+    /// The deepest row reaches the pool request the public rules make at the edge of cable
+    /// reach: D + r + e = 1.8333 + 10 + 0.3 + 0.16 x 27.60 = 16.55 ft (CoverageConfig's
+    /// derivation), and 15 ft fell short of it.
+    @Test func theDeepestRowReachesTheFarthestPublicPoolRequest() {
+        let map = CoverageMap(wall: standardWall())
+        let deepestFt = Double(map.groundDepthRows.last ?? 0) * SceneUnits.feetPerMeter
+        let farEdge = (20 + 0.3 + 0.3 + 0.16 * 2.583333) / (1 - 0.16) + 2.583333
+        #expect(deepestFt >= 1.833333 + 10 + 0.3 + 0.16 * farEdge)
     }
 
     @Test func exportReportsTheDepthInFeetNeverRoundedUp() throws {

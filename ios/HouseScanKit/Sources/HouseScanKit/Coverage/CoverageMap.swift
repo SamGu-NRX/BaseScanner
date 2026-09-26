@@ -36,11 +36,19 @@ public struct CoverageConfig: Sendable, Equatable {
     /// This near band is what the coverage strip draws and what the walk's guidance asks for; how
     /// far out the ground was actually seen is `groundDepthReach` and `groundDepth(at:)`.
     public var groundBandDepth: Float = 1.2
-    /// How far out from the wall ground depth is sampled: 15 ft. The server asks for ground out to
-    /// D + r + e (server/README.md "What settles each check" on origin/t3/server): about 6 ft for
-    /// gas and AC, 8 ft for a driveway and 13 ft for a pool near the meter, so 15 ft settles the
-    /// pool check with up to 2 ft of position error to spare.
-    public var groundDepthReach: Float = 4.572
+    /// How far out from the wall ground depth is sampled: 17 ft (34 rows of 6 in), the deepest
+    /// ground request the public rules make within cable reach, rounded up to a whole row.
+    ///
+    /// The server asks for ground out to D + r + e (server/README.md "What settles each check" on
+    /// origin/t3/server), with D = 1.8333 ft, r = 10 ft for a pool (the largest clearance in
+    /// rules.yaml) and e = 0.3 + 0.16 x ft at the battery's far edge, x ft along the walls from
+    /// the meter. The server tries spots whose near edge is within (20 + 0.3 + 0.3 + 0.16 W) /
+    /// (1 - 0.16) = 25.02 ft of the meter (solver.py `reach_limit`: the 20 ft cable maximum plus
+    /// the default meter and wall errors, W = 2.5833 ft); past that the route fails whatever the
+    /// ground shows. The far edge is then 27.60 ft out, e = 4.72 ft, and the pool request
+    /// 16.55 ft. A larger meter or wall error, a detour round a wall object, or private rules can
+    /// ask for more; `GapPlanner.isBeyondCapture` sends such a request to review.
+    public var groundDepthReach: Float = 5.1816
     /// Spacing of the ground depth rows: 6 in, the cell width, so depth is sampled as densely out
     /// from the wall as the cells are along it. Depth is exported as a whole number of rows, so this
     /// is also the resolution of the reported depth; 6 in is under the position error the server

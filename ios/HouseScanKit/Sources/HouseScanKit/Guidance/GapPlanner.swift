@@ -68,6 +68,9 @@ public struct GapPlannerConfig: Sendable, Equatable {
     /// or two at the edges that a real camera never quite reaches. A guess, not measured. Server
     /// requests need their whole span (`isSatisfied`).
     public var satisfiedFraction: Double = 0.8
+    /// The deepest ground the coverage map samples, meters. Must match the map's
+    /// `CoverageConfig.groundDepthReach`: a ground request past it can never be met.
+    public var groundDepthReach: Float = CoverageConfig().groundDepthReach
 
     public init() {}
 }
@@ -214,8 +217,17 @@ public struct GapPlanner: Sendable {
 }
 
 extension GapPlanner {
+    /// Whether a server request asks for more than the phone can capture: ground seen farther
+    /// out than the coverage map samples (`GapPlannerConfig.groundDepthReach`), so no walk could
+    /// ever meet it. It has no capture request (`plan(for:leftEnd:rightEnd:)` is nil) and goes
+    /// to review instead of a capture loop the homeowner can't finish.
+    public func isBeyondCapture(_ item: PlacementMissingEvidence) -> Bool {
+        guard item.kind == .band, item.band == .ground, let out = item.outFt else { return false }
+        return out > SceneExport.feetDown(config.groundDepthReach)
+    }
+
     /// The capture request for an item of the server's missing evidence, or nil when no capture
-    /// can settle it.
+    /// can settle it (including `isBeyondCapture`).
     ///
     /// A band item asks for its own span, and for its `out_ft` when it has one: ground seen that
     /// far out, a walk past the span that far out (facing), a tilt-up view reaching that high
@@ -227,7 +239,7 @@ extension GapPlanner {
         let metersPerFoot: Float = 0.3048
         switch item.kind {
         case .band:
-            guard let span = item.spanFt else { return nil }
+            guard let span = item.spanFt, !isBeyondCapture(item) else { return nil }
             let out = item.outFt.map { Float($0) * metersPerFoot }
             let band: SurfaceBand
             let need: GapPlan.Need
