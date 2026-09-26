@@ -21,6 +21,19 @@ public struct ReplayFrame: Sendable, Equatable {
     public let timestamp: Double
     /// True only when ARKit reported tracking as "normal" for this frame.
     public let trackingNormal: Bool
+    /// The LiDAR depth saved with the frame, or nil when the session recorded none.
+    public let depth: ReplayDepthFile?
+}
+
+/// Where a keyframe's LiDAR depth lies in a session folder: Float32 little-endian meters,
+/// row-major, `width` x `height`, and optionally UInt8 confidence in the same layout (0 low,
+/// 1 medium, 2 high). The depth map covers the same field of view as the keyframe's JPEG.
+public struct ReplayDepthFile: Sendable, Equatable {
+    /// Paths relative to the session folder.
+    public let file: String
+    public let confidenceFile: String?
+    public let width: Int
+    public let height: Int
 }
 
 /// The wall the person marked during capture, reduced to what a replay needs to check results.
@@ -80,6 +93,44 @@ public struct ReplaySession: Sendable {
         }
         return try decode(sessionJSON: data)
     }
+
+    /// Reads a keyframe's depth from the session folder (`ReplayDepthFile`); nil when it has none.
+    public static func loadDepth(for frame: ReplayFrame, folder: URL) throws -> DepthImage? {
+        guard let file = frame.depth else { return nil }
+        func read(_ path: String) throws -> Data {
+            let url = folder.appendingPathComponent(path)
+            do {
+                return try Data(contentsOf: url)
+            } catch {
+                throw ReplayError.unreadable(path: url.path, message: error.localizedDescription)
+            }
+        }
+        return try depthImage(for: frame, depth: read(file.file), confidence: file.confidenceFile.map(read))
+    }
+
+    /// Builds a keyframe's `DepthImage` from the bytes of its depth and confidence files: meters
+    /// become millimeters as `DepthImage(meters:...)` converts them, and the intrinsics are the
+    /// JPEG's, scaled by the depth map's size over the JPEG's on each axis
+    /// (`DepthImage.intrinsics(scaling:from:toWidth:height:)`).
+    public static func depthImage(for frame: ReplayFrame, depth: Data, confidence: Data?) throws -> DepthImage {
+        guard let file = frame.depth else { throw ReplayError.badDepth(frameID: frame.id, reason: "the keyframe lists no depth") }
+        guard frame.width >= 1, frame.height >= 1 else {
+            throw ReplayError.badDepth(frameID: frame.id, reason: "the JPEG size \(frame.width) x \(frame.height) can't scale intrinsics")
+        }
+        let count = file.width * file.height
+        guard depth.count == count * 4 else {
+            throw ReplayError.badDepth(frameID: frame.id, reason: "depth has \(depth.count) bytes, expected \(count * 4) for \(file.width) x \(file.height) Float32")
+        }
+        if let confidence, confidence.count != count {
+            throw ReplayError.badDepth(frameID: frame.id, reason: "confidence has \(confidence.count) bytes, expected \(count)")
+        }
+        let meters: [Float] = depth.withUnsafeBytes { raw in
+            (0..<count).map { Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
+        }
+        let intrinsics = DepthImage.intrinsics(
+            scaling: frame.intrinsics, from: SIMD2(Float(frame.width), Float(frame.height)), toWidth: file.width, height: file.height)
+        return DepthImage(meters: meters, width: file.width, height: file.height, confidence: confidence.map { [UInt8]($0) }, intrinsics: intrinsics)
+    }
 }
 
 public enum ReplayError: Error, Equatable, CustomStringConvertible {
@@ -92,6 +143,8 @@ public enum ReplayError: Error, Equatable, CustomStringConvertible {
     /// The intrinsics are not 4 finite numbers with positive focal lengths.
     case badIntrinsics(frameID: String)
     case noFrames
+    /// A keyframe's depth entry or files do not match: `reason` says how.
+    case badDepth(frameID: String, reason: String)
     /// The file could not be read, or its contents are not the JSON shape this reader expects.
     case unreadable(path: String, message: String)
 
@@ -109,6 +162,8 @@ public enum ReplayError: Error, Equatable, CustomStringConvertible {
             "keyframe \(frameID) has intrinsics that are not [fx, fy, cx, cy] with positive focal lengths"
         case .noFrames:
             "session.json lists no keyframes"
+        case .badDepth(let frameID, let reason):
+            "keyframe \(frameID) depth: \(reason)"
         case .unreadable(let path, let message):
             "cannot read \(path): \(message)"
         }
@@ -137,6 +192,14 @@ private struct Manifest: Decodable {
         let pose: [Double]
         let timestamp: Double
         let tracking: String
+        let depth: Depth?
+    }
+
+    struct Depth: Decodable {
+        let file: String
+        let confidenceFile: String?
+        let w: Int
+        let h: Int
     }
 
     struct Point: Decodable {
@@ -196,6 +259,9 @@ private func makeFrame(_ k: Manifest.Keyframe) throws -> ReplayFrame {
     guard k.pose.count == 16, k.pose.allSatisfy(\.isFinite) else { throw ReplayError.badPose(frameID: k.id) }
     guard k.intrinsics.count == 4, k.intrinsics.allSatisfy(\.isFinite), k.intrinsics[0] > 0, k.intrinsics[1] > 0
     else { throw ReplayError.badIntrinsics(frameID: k.id) }
+    if let depth = k.depth, depth.w < 1 || depth.h < 1 {
+        throw ReplayError.badDepth(frameID: k.id, reason: "size \(depth.w) x \(depth.h)")
+    }
     let p = k.pose.map(Float.init)
     let column = { (i: Int) in SIMD4<Float>(p[i * 4], p[i * 4 + 1], p[i * 4 + 2], p[i * 4 + 3]) }
     return ReplayFrame(
@@ -206,7 +272,8 @@ private func makeFrame(_ k: Manifest.Keyframe) throws -> ReplayFrame {
         intrinsics: SIMD4(k.intrinsics.map(Float.init)),
         cameraToWorld: simd_float4x4(columns: (column(0), column(1), column(2), column(3))),
         timestamp: k.timestamp,
-        trackingNormal: k.tracking == "normal"
+        trackingNormal: k.tracking == "normal",
+        depth: k.depth.map { ReplayDepthFile(file: $0.file, confidenceFile: $0.confidenceFile, width: $0.w, height: $0.h) }
     )
 }
 
