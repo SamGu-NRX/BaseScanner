@@ -1440,6 +1440,13 @@ final class ScanEngine {
         }
     }
 
+    /// A server request with its span in the walk's s, where it is planned and tracked: the
+    /// answer's s runs along the wall scene.json described (`exportedWall`).
+    func walkRequest(_ item: PlacementMissingEvidence) -> PlacementMissingEvidence {
+        guard let exported = exportedWall, let walk = coverage?.wall else { return item }
+        return item.along(walk, from: exported)
+    }
+
     /// The first item of the answer's missing evidence a capture can settle (the result's
     /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
     /// they can't get to one, or after `maxAutomaticGaps` requests.
@@ -1448,7 +1455,7 @@ final class ScanEngine {
         guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
               let map = coverage else { return nil }
         for item in result.missingEvidence {
-            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
+            guard let plan = gapPlanner.plan(for: walkRequest(item), leftEnd: map.leftEnd, rightEnd: map.rightEnd),
                   !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
             return (item, plan)
         }

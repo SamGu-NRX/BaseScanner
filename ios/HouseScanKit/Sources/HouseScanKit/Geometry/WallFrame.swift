@@ -223,6 +223,13 @@ public struct WallFrame: Sendable, Equatable {
         return WallPoint(s: min(max(local.s, piece.span.lowerBound), piece.span.upperBound), height: d.y, out: local.out)
     }
 
+    /// The s on `other` of the place at `s` on this wall: its point on the ground, projected onto
+    /// the nearest piece of `other` (`wallPoint`). Two walls built from the same scan (the walk's
+    /// and the one scene.json described) agree on it within the distance between their lines.
+    public func s(_ s: Float, along other: WallFrame) -> Float {
+        other == self ? s : other.wallPoint(world(s: s, height: 0)).s
+    }
+
     /// How far a point is in front of the line of the piece holding `s`, meters.
     func out(of world: SIMD3<Float>, pieceAtS s: Float) -> Float {
         segment(atS: s).coordinates(ofOffset: world - origin).out
