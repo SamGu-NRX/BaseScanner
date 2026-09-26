@@ -367,7 +367,9 @@ enum ScanCopy {
     /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
     static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
-        let length: (Float) -> String = spoken ? Distance.spoken : Distance.feetAndInches
+        func length(_ meters: Float) -> String {
+            spoken ? Distance.spoken(meters) : Distance.feetAndInches(meters)
+        }
         var parts = ["Measured \(length(measured))."]
         if let threshold = row.threshold {
             if let plusMinus = row.plusMinus, plusMinus > 0 {
