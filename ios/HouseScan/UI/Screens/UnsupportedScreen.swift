@@ -1,11 +1,15 @@
 import SwiftUI
 import UIKit
 
-/// When the scan can't run: camera access is off, the phone can't track motion, or a recording
-/// can't be read. Says what happened and the one thing to do about it.
+/// When the scan can't run: camera access is off, the phone can't track motion, the camera
+/// stopped, or a recording can't be read. Says what happened and the one thing to do about it:
+/// Settings for camera access, a fresh start for a stopped camera or a bad recording. A phone
+/// that can't measure has nothing to retry, so it gets advice and no button.
 struct UnsupportedScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let failure = state.failure ?? .arUnsupported
@@ -32,19 +36,20 @@ struct UnsupportedScreen: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if failure == .cameraDenied, let settings = URL(string: UIApplication.openSettingsURLString) {
-                    Link(destination: settings) {
-                        Text("Open Settings")
-                            .font(Typeface.button)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: Metrics.primaryButtonHeight)
-                            .background(Palette.signal, in: .capsule)
+                switch failure {
+                case .cameraDenied:
+                    if let settings = URL(string: UIApplication.openSettingsURLString) {
+                        Button("Open Settings") { openURL(settings) }
+                            .buttonStyle(.primary)
+                            .accessibilityHint("Opens House Scan's page in Settings, where you can turn on Camera.")
+                            .accessibilityIdentifier("action.openSettings")
                     }
-                    .accessibilityIdentifier("action.openSettings")
-                } else if failure != .arUnsupported {
+                case .sessionFailed, .replayUnreadable:
                     Button("Start over") { actions.startOver() }
-                        .buttonStyle(.quiet)
+                        .buttonStyle(.primary)
                         .accessibilityIdentifier("action.startOver")
+                case .arUnsupported:
+                    EmptyView()
                 }
             }
             .padding(24)

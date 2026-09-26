@@ -38,7 +38,12 @@ final class DemoEngine: ScanActions {
         state.tracking = .normal
 
         if let failure = value("-uiDemoFailure") {
-            state.failure = failure == "cameraDenied" ? .cameraDenied : .arUnsupported
+            state.failure = switch failure {
+            case "cameraDenied": .cameraDenied
+            case "sessionFailed": .sessionFailed("The operation couldn't be completed. (demo error 102.)")
+            case "replayUnreadable": .replayUnreadable("demo: frames.jsonl not found")
+            default: .arUnsupported
+            }
             state.phase = .unsupported
             return
         }

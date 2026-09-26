@@ -261,10 +261,12 @@ enum ScanCopy {
             Instruction(title: "House Scan needs your camera", detail: "It uses the camera to measure the wall around your meter. Turn on Camera for House Scan in Settings.")
         case .arUnsupported:
             Instruction(title: "This phone can't measure walls", detail: "House Scan needs an iPhone that supports motion tracking with the camera. Try another iPhone from the last few years.")
-        case .sessionFailed(let message):
-            Instruction(title: "The camera stopped", detail: message)
-        case .replayUnreadable(let message):
-            Instruction(title: "This recording can't be opened", detail: message)
+        // The engine's messages for these two are system error text (ARKit's, or the replay
+        // loader's), not the homeowner's words, so they aren't shown.
+        case .sessionFailed:
+            Instruction(title: "The camera stopped", detail: "Something interrupted the camera partway through. Start over to try again.")
+        case .replayUnreadable:
+            Instruction(title: "This recording can't be opened", detail: "Some of its files are missing or damaged, so it can't be played back.")
         }
     }
 }
