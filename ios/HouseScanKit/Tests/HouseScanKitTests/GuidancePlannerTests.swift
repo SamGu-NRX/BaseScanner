@@ -48,8 +48,9 @@ import Testing
     /// The two-position rule settles it: `frontCamera` sees every ground row of cells -1 and 0 and,
     /// 2.6 m out with a half-angle of 24 degrees across, cells -2 and 1 as well. One view leaves
     /// them seen; a second 0.3 m away covers all four, which satisfies the task: the planner moves
-    /// on at once, well inside the dwell. (What it moves on to is the wall there, which these views
-    /// see only 1.98 m up, so it lags the ground.)
+    /// on at once, well inside the dwell. The same views cover the wall's walking band (1.98 m
+    /// seen against 4.5 ft asked) over a wider stretch, cells -4 to 5, so what it moves on to is
+    /// the ground beside those four cells, which lags the wall. No wall task comes up.
     @Test func groundByTheMeterIsMetFromTwoPlaces() {
         var map = CoverageMap(wall: standardWall())
         var planner = GuidancePlanner()
@@ -59,8 +60,8 @@ import Testing
         map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
         for index in -2...1 { #expect(map.level(.ground, index) == .covered, "cell \(index)") }
         let next = planner.update(coverage: map, camera: Self.homeowner(), time: 0.4).task
-        guard case .aimAtWall = next else {
-            Issue.record("expected the lagging wall next, got \(next)")
+        guard case .aimAtGround(let s) = next, s != 0 else {
+            Issue.record("expected the ground beside it next, got \(next)")
             return
         }
     }

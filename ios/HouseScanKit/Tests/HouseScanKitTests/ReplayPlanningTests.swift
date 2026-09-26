@@ -78,6 +78,9 @@ import Testing
         // The walk without the window, with the ends marked, leaves exactly that gap unsatisfied.
         var rest = frames
         rest.removeSubrange(held.frames)
+        // Its gap lies where the rest of the walk went, so ends set where the phone stood keep it.
+        let stood = rest.map { wall.wallPoint($0.camera.position).s }
+        #expect((stood.min() ?? 0) <= held.gap.span.lowerBound && held.gap.span.upperBound <= (stood.max() ?? 0))
         var walked = ReplayPlanning.simulateWalk(rest, wall: wall)
         walked.setEnd(.left, at: held.ends.lowerBound)
         walked.setEnd(.right, at: held.ends.upperBound)

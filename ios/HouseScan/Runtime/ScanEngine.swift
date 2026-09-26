@@ -783,9 +783,9 @@ final class ScanEngine {
         return low < high ? low...high : nil
     }
 
-    /// How far above the top of the wall band (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a
-    /// view must reach to count as tilted up: 0.7 m, so about 9.8 ft above the ground, past a
-    /// one-storey eave, where the view shows whether one is there. It is a height, not a pitch: a
+    /// How far above the top wall row (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a view must
+    /// reach to count as tilted up: 0.7 m, so about 9.8 ft above the ground, past a one-storey
+    /// eave, where the view shows whether one is there. It is a height, not a pitch: a
     /// level view from 2 m out reaches about 8.5 ft and does not count, one from 2.6 m out
     /// reaches about 10 ft and does, and it shows what is overhead as well as a tilted one. A
     /// guess to try on a phone, not measured.
@@ -1153,7 +1153,8 @@ final class ScanEngine {
             firstCellS: map.cellRange(indices.lowerBound).lowerBound,
             wall: indices.map { Self.cell(map.level(.wall, $0)) },
             ground: indices.map { Self.cell(map.level(.ground, $0)) },
-            wallBandHeight: map.config.wallCaptureHeight,
+            // The band the walk asks for; heights above it are still reported when seen.
+            wallBandHeight: map.config.wallWalkHeight,
             groundBandDepth: map.config.groundBandDepth,
             visibleRange: range,
             revision: map.revision
@@ -1271,7 +1272,7 @@ final class ScanEngine {
     /// the camera can't tell open sky from an eave. The view's photo is stored as a keyframe
     /// first, and it counts as overhead evidence only once stored (`recordOverhead`), like every
     /// other view. Returns false when it can't be kept: no photo, tracking not normal, or the
-    /// view doesn't show the wall from the top of the wall band (7.5 ft, `wallCaptureHeight`) upward.
+    /// view doesn't show the wall from the top of the sampled rows (7.5 ft, `wallCaptureHeight`) upward.
     /// `segment` is the walked-path segment the view was captured in.
     func keepOverheadView(_ frame: SourceFrame, capturedIn segment: Int?) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
