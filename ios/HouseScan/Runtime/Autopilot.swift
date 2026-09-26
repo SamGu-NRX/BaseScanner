@@ -30,7 +30,7 @@ final class Autopilot {
         guard await waitUntil(timeout: 60, { self.engine.replay != nil || self.engine.state.failure != nil }), let replay = engine.replay else {
             return fail("replay did not load")
         }
-        async let prepared: Void = replay.prepareHeldBack()
+        async let prepared: Void = replay.prepareHeldBack(map3D: engine.map3D != nil)
         await pause(hold)
         await engine.waitForGate(.onboarding)
         engine.finishOnboarding()
@@ -51,6 +51,7 @@ final class Autopilot {
         await pause(0.5)
         guard await waitUntil(timeout: 120, { !replay.isPlaying }) else { return fail("walk replay did not finish") }
         await pause(1.0)
+        await settleMap3D()
 
         await markFeatures(replay)
         await markEnds(replay)
@@ -65,6 +66,8 @@ final class Autopilot {
         // Mulch, so the replay's scene carries a ground patch over the ground its walk saw.
         // Answered after the UI test has finished with the screen, so its audit reads a still tree.
         engine.answerGround(.type(.mulch))
+        // The tilt-up frames went into the map too; the gap check reads what it made of them.
+        await settleMap3D()
         engine.confirmFeatures()
         await pause(0.3)
         if engine.state.phase == .gapRequest {
@@ -315,6 +318,7 @@ final class Autopilot {
         _ = await waitUntil(timeout: 60) { !replay.isPlaying || self.engine.state.gap?.id != request.id }
         // Time for the last frame's keyframe to be stored and counted.
         await pause(hold)
+        await settleMap3D()
         if engine.state.phase == .gapRequest, let gap = engine.state.gap, gap.id == request.id, !gap.isSatisfied {
             log("the replay does not settle request \(request.id) (\(Int(gap.progress * 100))% of it seen); skipping it")
             await engine.waitForGate(.gapRequest)
@@ -343,6 +347,17 @@ final class Autopilot {
     }
 
     // MARK: Helpers
+
+    /// Under `-coverage map3d`, waits until the 3D map has integrated every frame played and its
+    /// last change has reached the coverage map, for at most a minute. Without it the steps after
+    /// the walk act on coverage the map has not caught up with: a debug build takes about 7 s per
+    /// snapshot (`Map3DSession`), and the replay's walk lasts about 6 s at 3x.
+    private func settleMap3D() async {
+        guard let map3D = engine.map3D else { return }
+        if await !waitUntil(timeout: 60, { !map3D.isCatchingUp }) {
+            log("the 3D map was still catching up after a minute; going on")
+        }
+    }
 
     /// Shows the replay frame that best shows `point`, then taps where it appears on screen.
     @discardableResult

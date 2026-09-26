@@ -39,13 +39,31 @@ final class FullFlowUITests: XCTestCase {
         try runFlow(replay: replay)
     }
 
+    /// The same flow with the camera coverage map alone (`-coverage legacy`), the model the 3D map
+    /// replaced as the default.
+    @MainActor
+    func testFullFlowFromReplayLegacyCoverage() throws {
+        try runFlow(replay: Self.fixture, coverage: "legacy")
+    }
+
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
     /// reports hidden cells on the walk, or, when the autopilot held the bin's frames back for the
     /// gap loop, on the gap request.
     @MainActor
     func testFullFlowFromLidarReplay() throws {
+        try runLidarFlow(coverage: nil)
+    }
+
+    @MainActor
+    func testFullFlowFromLidarReplayLegacyCoverage() throws {
+        try runLidarFlow(coverage: "legacy")
+    }
+
+    /// `coverage` is the `-coverage` launch argument; nil leaves the app's default.
+    @MainActor
+    private func runLidarFlow(coverage: String?) throws {
         var showedHidden = false
-        try runFlow(replay: Self.lidarFixture) { app, phase in
+        try runFlow(replay: Self.lidarFixture, coverage: coverage) { app, phase in
             guard !showedHidden else { return }
             switch phase {
             // At the autopilot's 3x the walk plays in about 6 s. No other frame sees the wall
@@ -131,7 +149,7 @@ final class FullFlowUITests: XCTestCase {
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it.
     @MainActor
-    private func runFlow(replay: String, beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in }) throws {
+    private func runFlow(replay: String, coverage: String? = nil, beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in }) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
         // slow screen can never make the test miss the next one.
@@ -139,6 +157,7 @@ final class FullFlowUITests: XCTestCase {
         try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: gate) }
         var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path]
+        if let coverage { arguments += ["-coverage", coverage] }
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
