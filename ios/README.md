@@ -17,7 +17,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 | `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Photos stay on the phone unless someone uses Share scan, which shares the scan as a capture packet (see "Scan bundle"). |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
-| `-uiDemo` | Runs the screens on a scripted fake engine instead of the capture engine, for design work and for auditing states a replay can't reach. The arguments it takes are listed in `HouseScan/UI/Preview/UIDemo.swift`. |
+| `-uiDemo` | Runs the screens on a scripted fake engine instead of the capture engine, for design work and for auditing states a replay can't reach. The arguments it takes are listed in `HouseScan/UI/Preview/UIDemo.swift`; for example `-uiDemoGroundQuestion` opens the feature review with the ground question showing, and `-uiDemoPhase meterCloseUp -uiDemoMeterChoose` shows the meter number picker. |
 
 Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescanning.housescan`, category `state`.
 

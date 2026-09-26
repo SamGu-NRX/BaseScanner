@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// "Anything else near your meter?": review what was marked, answer the one question a camera
-/// can't (does this window open?), add anything missed, then confirm.
+/// "Anything else near your meter?": say what the ground along the wall is, review what was
+/// marked, answer the one question a camera can't (does this window open?), add anything
+/// missed, then confirm.
 ///
 /// A panel over the dimmed camera rather than a new page: the homeowner is still standing at
 /// the wall, and the list refers to things they can see.
@@ -50,39 +51,11 @@ struct MarkFeaturesScreen: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Anything else near your meter?")
-                            .font(Typeface.screenTitle)
-                            .foregroundStyle(.primary)
-                            .accessibilityAddTraits(.isHeader)
-                        Text("Gas meters, doors, windows, AC units, driveways and fences all change where a battery can go.")
-                            .font(Typeface.hint)
-                            .foregroundStyle(Palette.muted)
-                    }
-
-                    if state.features.isEmpty {
-                        Text("Nothing marked yet.")
-                            .font(Typeface.hint)
-                            .foregroundStyle(Palette.muted)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                            .background(Palette.canvas, in: .rect(cornerRadius: 16, style: .continuous))
-                    } else {
-                        VStack(spacing: 10) {
-                            ForEach(state.features) { feature in
-                                FeatureRow(feature: feature, actions: actions)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                            }
-                        }
-                        .animation(Motion.settle, value: state.features)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Add something")
-                            .font(Typeface.sectionTitle)
-                            .accessibilityAddTraits(.isHeader)
-                        FlowChips { kind in actions.beginMarking(kind) }
-                    }
+                    // First, so it is seen before "Looks complete"; skipping it counts as not sure.
+                    GroundQuestion(answer: state.groundAnswer, actions: actions)
+                    heading
+                    featureList
+                    addSomething
                 }
                 .padding(20)
             }
@@ -105,6 +78,47 @@ struct MarkFeaturesScreen: View {
                 .ignoresSafeArea(edges: .bottom)
         }
         .environment(\.colorScheme, .light)
+    }
+
+    private var heading: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Anything else near your meter?")
+                .font(Typeface.screenTitle)
+                .foregroundStyle(.primary)
+                .accessibilityAddTraits(.isHeader)
+            Text("Gas meters, doors, windows, AC units, driveways and fences all change where a battery can go.")
+                .font(Typeface.hint)
+                .foregroundStyle(Palette.muted)
+        }
+    }
+
+    @ViewBuilder
+    private var featureList: some View {
+        if state.features.isEmpty {
+            Text("Nothing marked yet.")
+                .font(Typeface.hint)
+                .foregroundStyle(Palette.muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Palette.canvas, in: .rect(cornerRadius: 16, style: .continuous))
+        } else {
+            VStack(spacing: 10) {
+                ForEach(state.features) { feature in
+                    FeatureRow(feature: feature, actions: actions)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                }
+            }
+            .animation(Motion.settle, value: state.features)
+        }
+    }
+
+    private var addSomething: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add something")
+                .font(Typeface.sectionTitle)
+                .accessibilityAddTraits(.isHeader)
+            FlowChips { kind in actions.beginMarking(kind) }
+        }
     }
 }
 
@@ -147,9 +161,9 @@ private struct FeatureRow: View {
                         .font(.subheadline.weight(.semibold))
                     // Stacked, so both answers stay full width at every text size (checklist I4).
                     VStack(spacing: 8) {
-                        answer("It opens", selected: feature.opens == true) { actions.setWindowOpens(feature.id, opens: true) }
+                        AnswerButton(title: "It opens", selected: feature.opens == true) { actions.setWindowOpens(feature.id, opens: true) }
                             .accessibilityIdentifier("window.opens.yes")
-                        answer("It stays shut", selected: feature.opens == false) { actions.setWindowOpens(feature.id, opens: false) }
+                        AnswerButton(title: "It stays shut", selected: feature.opens == false) { actions.setWindowOpens(feature.id, opens: false) }
                             .accessibilityIdentifier("window.opens.no")
                     }
                 }
@@ -157,20 +171,6 @@ private struct FeatureRow: View {
         }
         .padding(14)
         .background(Palette.canvas, in: .rect(cornerRadius: 18, style: .continuous))
-    }
-
-    private func answer(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(Typeface.button)
-                .foregroundStyle(selected ? .white : Palette.signalText)
-                .frame(maxWidth: .infinity, minHeight: 46)
-                .background(selected ? Palette.signal : Palette.signal.opacity(0.1), in: .capsule)
-                .contentShape(.capsule)
-        }
-        .buttonStyle(PressableStyle())
-        .accessibilityAddTraits(selected ? .isSelected : [])
-        .animation(.easeOut(duration: 0.15), value: selected)
     }
 }
 
