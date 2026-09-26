@@ -20,7 +20,12 @@ metrics:
     workstream: S1
     ref: origin/t3/evals
     text: One command regenerates every number from a clean checkout
-    manual: {status: gap, evidence: not yet reviewed}
+    manual:
+      status: partial
+      evidence: >-
+        make drift at b5ca7af from a clean worktree reproduced advio_drift.md and advio_drift.json
+        byte for byte (85 MB peak). ETH3D recon not rerun: it loads the laser scans, whose memory
+        has not been bounded on this shared Mac.
 
   - id: S1-2
     workstream: S1
@@ -273,7 +278,12 @@ metrics:
     workstream: S4
     ref: origin/t3/verification
     text: Product description written from the code and checked against screenshots
-    manual: {status: gap, evidence: not yet reviewed}
+    manual:
+      status: partial
+      evidence: >-
+        verification/product: scope, glossary, both foundations and the pilot drafted from S3's
+        integration commit 21a63e7; one Simulator pass recorded (verification.md); 7 suspected
+        defects in bug-triage.md. Seven screen documents to go.
 
   - id: S4-4
     workstream: S4

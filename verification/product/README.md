@@ -69,11 +69,11 @@ and Open questions and verification, ending with `Verified against house-scannin
 | [foundations/coverage-and-guidance.md](foundations/coverage-and-guidance.md) | The coverage strip, when a photo is kept, the one instruction and what overrides it | drafted |
 | [screens/onboarding.md](screens/onboarding.md) | The intro pages and the failure screens (camera off, unsupported phone, unreadable replay) | not started |
 | [screens/find-meter.md](screens/find-meter.md) | Finding the meter and tapping it to set the wall | not started |
-| [screens/meter-close-up.md](screens/meter-close-up.md) | The self-timed meter photo (pilot) | drafted |
+| [screens/meter-close-up.md](screens/meter-close-up.md) | The self-timed meter photo (pilot) | drafted; checked on the replay |
 | [screens/wall-walk.md](screens/wall-walk.md) | Walking the wall, marking its ends, "I can't get there" | not started |
 | [screens/mark-features.md](screens/mark-features.md) | Marking gas meters, doors, windows, AC units, driveways and fences; the window question | not started |
 | [screens/gap-request.md](screens/gap-request.md) | One targeted extra view, from the phone or the server | not started |
 | [screens/uploading.md](screens/uploading.md) | Sending the scan and waiting for the result, offline and failure | not started |
 | [screens/result.md](screens/result.md) | The result, its checks and the 3D and AR views | not started |
-| [verification.md](verification.md) | Checks against the running app and their results | not started |
-| [bug-triage.md](bug-triage.md) | Every suspected defect, deduplicated | not started |
+| [verification.md](verification.md) | Checks against the running app and their results | pass 1 recorded |
+| [bug-triage.md](bug-triage.md) | Every suspected defect, deduplicated | 7 entries |
