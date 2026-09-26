@@ -86,6 +86,7 @@ final class Map3DSession: Sendable {
             inbox.generation += 1
             inbox.active = true
             inbox.frame = nil
+            inbox.estimated = []
             inbox.command = .start(wall)
             schedule(&inbox)
         }
@@ -118,6 +119,7 @@ final class Map3DSession: Sendable {
             inbox.generation += 1
             inbox.active = false
             inbox.frame = nil
+            inbox.estimated = []
             inbox.command = nil
             inbox.reset = .some((inbox.reset ?? false) || forgetAnchors)
             if forgetAnchors {
@@ -162,6 +164,28 @@ final class Map3DSession: Sendable {
         }
     }
 
+    // MARK: Depth model queue
+
+    /// An estimated depth frame (`DepthEstimator`) of a kept keyframe. Held apart from the
+    /// sampled frame, which replaces itself ten times a second: an estimate comes once per kept
+    /// keyframe and is not replaced by the next feature frame. At most `waitingEstimates` wait.
+    func ingest(estimated depth: DepthFrame) {
+        inbox.withLock { inbox in
+            guard inbox.active else { return }
+            inbox.estimated.append(depth)
+            if inbox.estimated.count > Self.waitingEstimates {
+                inbox.dropped += inbox.estimated.count - Self.waitingEstimates
+                inbox.estimated.removeFirst(inbox.estimated.count - Self.waitingEstimates)
+            }
+            schedule(&inbox)
+        }
+    }
+
+    /// Estimates waiting to be integrated, newest kept. One integrates in a few milliseconds and
+    /// keyframes are kept at most about three a second, so more than a few waiting means the
+    /// queue is stuck behind something else. A guess, not measured.
+    private static let waitingEstimates = 4
+
     /// Anchors ARKit added or updated: mesh chunks and planes. Other anchors are ignored.
     func ingest(updated anchors: [ARAnchor]) {
         var planes: [UUID: PlaneObservation] = [:]
@@ -196,7 +220,7 @@ final class Map3DSession: Sendable {
     /// main actor as a snapshot. The autopilot waits for it before acting on coverage; a person
     /// never needs to. Blocks while an integration runs.
     var isCatchingUp: Bool {
-        if inbox.withLock({ $0.drainScheduled || $0.frame != nil || $0.command != nil || $0.reset != nil }) { return true }
+        if inbox.withLock({ $0.drainScheduled || $0.frame != nil || !$0.estimated.isEmpty || $0.command != nil || $0.reset != nil }) { return true }
         return core.withLock { core in
             core.map != nil && (core.revision != core.publishedRevision || core.snapshotRunning || core.publishScheduled)
         }
@@ -239,6 +263,7 @@ final class Map3DSession: Sendable {
         /// A wall is set: frames are taken.
         var active = false
         var frame: FrameInput?
+        var estimated: [DepthFrame] = []
         /// Frames replaced before they were integrated; logged with the next snapshot.
         var dropped = 0
         /// Applied before `command`. The value says whether to forget the anchors too.
@@ -281,6 +306,7 @@ final class Map3DSession: Sendable {
         let taken = inbox.withLock { inbox -> Inbox in
             let taken = inbox
             inbox.frame = nil
+            inbox.estimated = []
             inbox.dropped = 0
             inbox.reset = nil
             inbox.command = nil
@@ -358,6 +384,12 @@ final class Map3DSession: Sendable {
             case .replay(let depth, let camera):
                 map.integrate(DepthFrame(image: depth, pose: camera))
             }
+            core.map = map
+            changed = true
+        }
+        if var map = core.map, !taken.estimated.isEmpty {
+            core.map = nil
+            for depth in taken.estimated { map.integrate(depth) }
             core.map = map
             changed = true
         }

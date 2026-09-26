@@ -97,6 +97,11 @@ final class LiveCapture {
         )
     }
 
+    /// Where keyframe candidates of a phone without LiDAR go for estimated depth; nil for none.
+    func setDepthEstimator(_ estimator: DepthEstimator?) {
+        delegate.shared.withLock { $0.depthEstimator = estimator }
+    }
+
     /// Where every ARFrame's pose goes as it arrives (`CaptureRecorder.recordPose`).
     func setRecorder(_ recorder: CaptureRecorder?) {
         delegate.shared.withLock { $0.recorder = recorder }
@@ -266,6 +271,7 @@ struct LiveShared: Sendable {
     var mode: LiveMode = .idle
     var meterAnchorID: UUID?
     var recorder: CaptureRecorder?
+    var depthEstimator: DepthEstimator?
 }
 
 /// Receives ARSession callbacks on a private serial queue. Each sampled frame is reduced to a
@@ -382,6 +388,10 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                     meters: copied.meters, width: copied.width, height: copied.height, confidence: copied.confidence,
                     intrinsics: DepthImage.intrinsics(scaling: camera.intrinsics, from: camera.imageSize, toWidth: copied.width, height: copied.height)
                 )
+            } else if let estimator = shared.depthEstimator, let input = DepthEstimator.input(from: frame, id: snapshot.id, context: context) {
+                // Without LiDAR: a copy of the image and the frame's geometry, so the model can
+                // run once the engine keeps the frame, without holding the ARFrame.
+                estimator.offer(input)
             }
         }
         encodeQueue.async { [self, snapshot] in

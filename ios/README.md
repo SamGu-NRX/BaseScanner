@@ -41,7 +41,23 @@ Outputs, all against a `WallFrame` (the walk's, or one built from the map's own 
 - `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
 - `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
 
-Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse until monocular depth arrives, and a replay without depth gives the map nothing. `DepthFrame.Kind.estimated` takes that depth with a per-pixel standard deviation, and it is never used for walls.
+Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse, and a replay without depth gives the map nothing.
+
+Estimated depth (`-estimatedDepth on`, off by default) runs Apple's Core ML Depth Anything V2 Small on each kept keyframe of a phone without LiDAR (`Runtime/DepthEstimator.swift`). The model gives inverse depth up to an unknown scale and shift, so each frame is scaled by its own ARKit geometry: `MonocularDepth` fits 1/depth = a · prediction + b to the frame's feature points and to points on detected planes, robustly. A frame with too few of them gets no depth. Each pixel gets a standard deviation that grows where nothing checked the model:
+
+- the fit's robust residual scale;
+- the local scale of anchors within 8% of the image width;
+- the fit's own uncertainty where it extrapolates;
+- half of any depth jump within two pixels.
+
+Pixels with no anchor nearby get no depth. `Map3D` then treats a pixel as a ray with that uncertainty:
+
+- It carves free space to two deviations short of the depth.
+- It marks a surface only when two deviations are within 15 cm.
+- It counts views as further from square by the tilt its error could give the normal.
+- A surface only estimated depth measured counts as seen only where at least a quarter of the estimated rays that hit it, or stopped two deviations in front of it, hit it. This keeps stray hits behind an occluder from claiming the wall there (`Map3DEstimatedTests`).
+
+Estimated depth never makes walls. On ETH3D electro, photos only, it claimed nothing: at the photos' 3.8 m median distance two deviations are about 60 cm. The model is not in the repository. The locator looks for it in the app bundle, then in Application Support/Models.
 
 On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel), and reading coverage takes about 25 ms. `swift test -c release --filter Map3DPerformanceTests` prints the current numbers. The map assumes nothing moves: an object that appears in space seen empty earlier becomes surface where its face is measured, but its inside keeps the earlier free reading.
 
@@ -51,6 +67,7 @@ On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, 
 | --- | --- |
 | `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. Keyframes with a `depth` entry (`{file, confidenceFile, w, h}`, Float32 meters) play their LiDAR depth into coverage as a LiDAR phone would. |
 | `-coverage map3d\|legacy` | Where coverage comes from (default `map3d`): see "3D map". Any other value stops the app. |
+| `-estimatedDepth on\|off` | On a live phone without LiDAR under map3d, runs the depth model on kept keyframes into the 3D map, and lets the map decide the strip's covered cells for walls set after it loads (default `off`, see "3D map"). Without the model it stays off. Any other value stops the app. |
 | `-autopilot` | Drives every step on a replay, answering the ground question with mulch. It holds some walk frames back to close one gap request before the upload: under map3d on a replay with depth, frames whose depth alone shows a gap the map keeps without them (`ReplayPlanning.heldBackWindow(frames:depths:wall:)`), otherwise frames the camera coverage map needs. On the LiDAR fixture no window qualifies under map3d: the bin's shadow is always the nearest gap, and the autopilot answers it "I can't get there". Under map3d it waits for the map to catch up before each step that reads coverage. After each upload it also drives the requests the server's answer raises, closing each with the replay's frames, until the result shows. A request the frames don't close gets "I can't get there", as a homeowner would answer. |
 | `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Photos stay on the phone unless someone uses Share scan, which shares the scan as a capture packet (see "Scan bundle"). |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |

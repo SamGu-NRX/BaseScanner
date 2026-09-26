@@ -25,6 +25,22 @@ final class ScanEngine {
     private(set) var coverage: CoverageMap?
     /// The 3D map under `-coverage map3d`; nil under `legacy`.
     private(set) var map3D: Map3DSession?
+    /// Estimated depth into `map3D` on a live phone without LiDAR, with `-estimatedDepth on`
+    /// and the model present; nil otherwise (`startEstimatedDepth`).
+    private var depthEstimator: DepthEstimator?
+
+    /// Whether a phone without LiDAR runs the depth model by default. Off: on ETH3D electro
+    /// (section 7's 19.3 ft wall, photos only, depth scaled by structure-from-motion points)
+    /// Map3D with estimated depth claimed 0 ft of wall, ground, facing and overhead, so it is
+    /// not a coverage model yet, and CoverageMap's camera sightings keep deciding the walk.
+    /// `-estimatedDepth on` runs it for trying on a phone.
+    nonisolated static let estimatedDepthByDefault = false
+
+    /// Whether the 3D map decides the strip's and planners' covered cells for the current wall:
+    /// with LiDAR depth, or with estimated depth running when the wall was set. Otherwise the
+    /// map is too sparse to walk by and `CoverageMap`'s camera sightings decide. Fixed per wall,
+    /// so a model that finishes loading mid-walk doesn't take covered cells off the strip.
+    private var mapDecidesCoverage = false
     /// The wall the last scene.json described (`exportGeometry()`): the server's s runs along it.
     /// Under `-coverage map3d` it can be the measured chain rather than `coverage.wall`. It stays
     /// as exported: later moves of the meter anchor move `coverage.wall`, not the answer's wall.
@@ -294,6 +310,18 @@ final class ScanEngine {
         capture.setRecorder(recorder)
         capture.start()
         updateRecording()
+        startEstimatedDepth()
+    }
+
+    /// Loads the depth model for a live phone without LiDAR when `-estimatedDepth on` and the
+    /// model is present. Until it loads, and without it, `CoverageMap` decides coverage.
+    private func startEstimatedDepth() {
+        guard options.estimatedDepth, let map3D, !LiveCapture.supportsDepth else { return }
+        Task {
+            guard let estimator = await DepthEstimator.load(onFrame: { map3D.ingest(estimated: $0) }), let live else { return }
+            depthEstimator = estimator
+            live.setDepthEstimator(estimator)
+        }
     }
 
     private static func makeRecorder(_ store: KeyframeStore) -> CaptureRecorder {
@@ -620,6 +648,7 @@ final class ScanEngine {
             let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
+            if frame.tracking == .normal { depthEstimator?.estimate(frameID: frame.id) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
             afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? frame.timestamp)
@@ -1075,7 +1104,8 @@ final class ScanEngine {
         exportedWall = nil
         map3D?.start(wall: frame)
         // With depth the 3D map decides what is covered from the start (`applyMap3D`).
-        if map3D != nil, state.depthAvailable { coverage?.setMeasuredCovered([:]) }
+        mapDecidesCoverage = map3D != nil && (state.depthAvailable || depthEstimator != nil)
+        if mapDecidesCoverage { coverage?.setMeasuredCovered([:]) }
         coverage?.heightError = groundMeasured ? 0 : Self.estimatedGroundError
         self.groundMeasured = groundMeasured
         endKinds = [:]
@@ -1105,7 +1135,7 @@ final class ScanEngine {
         // Read along an older wall: the wall change has already queued a newer snapshot.
         guard var map = coverage, snapshot.wall == map.wall else { return }
         state.map3D = Map3DFog(fog: snapshot.fog, nextView: snapshot.nextView, frame: snapshot.frame)
-        guard state.depthAvailable else { return }
+        guard mapDecidesCoverage else { return }
         map.setMeasuredCovered(map.cells(seenIn: snapshot.coverage))
         guard map.revision != coverage?.revision else { return }
         coverage = map
