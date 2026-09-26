@@ -51,6 +51,8 @@ sweep:
 clearances:
   gas_ft: {value: 3.0, source: "Base help page: 3 ft from the gas meter; Austin Energy §1.9; Texas Gas Service"}
   ac_ft: {value: 3.0, source: "Base help page: 3 ft from AC units, fences and other batteries"}
+  # A battery already on the wall (objects of type battery; issue #27).
+  battery_ft: {value: 3.0, source: "Base help page: 3 ft from AC units, fences and other batteries; IRC 2021 R328: 3 ft between batteries unless UL 9540A testing allows closer (docs/04, Public rule values)"}
   opening_ft: {value: 3.0, source: "IRC 2021 R328.4: 3 ft from doors and windows directly entering the dwelling. Applying it to garage doors (openings.types) is a demo choice the code does not require"}
   drive_ft: {value: 5.0, source: "No public value (docs/04, Public rule values)", placeholder: true}
   pool_ft: {value: 10.0, source: "No public value (docs/04, Public rule values)", placeholder: true}
@@ -105,5 +107,7 @@ route:
     vent: detour
     gas_meter: detour
     ac: allow
+    # Flush against the wall like a box, so the cable can't pass behind it; it goes over.
+    battery: detour
     downspout: allow
     pool: allow

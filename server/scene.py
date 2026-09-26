@@ -149,6 +149,9 @@ class Scene:
     meter_piece: Piece
     wall_spans: list[tuple[str | None, float, float]]  # each wall's stretch of s, as uploaded
     objects: list[SceneObject]
+    # Objects with no footprint past an unexplored end: (index, type, side, s at their middle).
+    # The wall may turn there, so they have no known place and are not measured (issue #42).
+    set_aside: list[tuple[int, str, str, float]]
     ground: list[GroundPatch]
     overheads: list[Measured]
     facing: list[Measured]
@@ -705,7 +708,12 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     # then counts as unseen.
     c = rules.clearances
     reach = max(
-        c.gas_ft.value, c.ac_ft.value, c.opening_ft.value, c.drive_ft.value, c.pool_ft.value
+        c.gas_ft.value,
+        c.ac_ft.value,
+        c.battery_ft.value,
+        c.opening_ft.value,
+        c.drive_ft.value,
+        c.pool_ft.value,
     )
     wall_error = max(p.error_at(max(abs(p.s0), abs(p.s1))) for p in pieces if p.kind == "wall")
     reach += rules.battery.depth_ft.value + wall_error + 1.0
@@ -747,6 +755,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         meter_piece=meter_piece,
         wall_spans=wall_spans,
         objects=[],
+        set_aside=[],
         ground=[],
         overheads=[],
         facing=[],
@@ -754,6 +763,11 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         end_kinds={"left": "unexplored", "right": "unexplored"},
         reach_ft=reach,
     )
+
+    # What each end is decides where an object without a footprint can be placed, so it is read
+    # before the objects.
+    for side, end in raw.get("coverage", {}).get("ends", {}).items():
+        scene.end_kinds[side] = end["kind"]
 
     for i, obj in enumerate(raw.get("objects", [])):
         path = f"/objects/{i}"
@@ -766,7 +780,20 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         if "footprint" in obj:
             geom = _geometry([_xz(p) for p in obj["footprint"]], f"{path}/footprint")
         else:
-            geom = scene.wall_line(*span)
+            # Without a footprint an object lies on the wall's line. Past an unexplored end that
+            # line may not exist (the wall may turn), so only the part on the scanned wall counts.
+            lo, hi = span
+            if scene.end_kinds["left"] == "unexplored":
+                lo = max(lo, scene.s_min)
+            if scene.end_kinds["right"] == "unexplored":
+                hi = min(hi, scene.s_max)
+            # Set aside when nothing of a mark with length remains on the scanned wall (its span
+            # can start exactly at the end, leaving a single point); a point mark stays.
+            if hi < lo - EPS or (span[1] - span[0] > EPS and hi - lo <= EPS):
+                side = "right" if span[0] > scene.s_max else "left"
+                scene.set_aside.append((i, obj["type"], side, (span[0] + span[1]) / 2))
+                continue
+            geom = scene.wall_line(lo, max(lo, hi))
         attrs = obj.get("attrs", {})
         scene.objects.append(
             SceneObject(
@@ -814,8 +841,6 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     for i, obs in enumerate(coverage.get("observed", [])):
         span = _span(obs["span_ft"], f"/coverage/observed/{i}/span_ft")
         scene.observed.setdefault(obs["band"], []).append((span[0], span[1], obs.get("out_ft")))
-    for side, end in coverage.get("ends", {}).items():
-        scene.end_kinds[side] = end["kind"]
 
     _check_orientation(scene, raw.get("keyframes", []))
     return scene

@@ -35,7 +35,16 @@ STRICT_POLICY = {
 
 Effect = Literal["fail", "review", "detour", "allow"]
 ObjectType = Literal[
-    "window", "door", "garage_door", "ac", "gas_meter", "elec_box", "vent", "downspout", "pool"
+    "window",
+    "door",
+    "garage_door",
+    "ac",
+    "gas_meter",
+    "elec_box",
+    "vent",
+    "downspout",
+    "pool",
+    "battery",
 ]
 GroundType = Literal["drive", "concrete", "gravel", "lawn", "mulch", "deck"]
 
@@ -85,6 +94,7 @@ class Sweep(_Strict):
 class Clearances(_Strict):
     gas_ft: Value
     ac_ft: Value
+    battery_ft: Value
     opening_ft: Value
     drive_ft: Value
     pool_ft: Value
