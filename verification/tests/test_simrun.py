@@ -1,6 +1,6 @@
 import datetime as dt
 
-from hsverify.simrun import seconds_since, slug
+from hsverify.simrun import compiling, seconds_since, slug
 
 
 def test_state_time_uses_the_log_clock():
@@ -16,3 +16,9 @@ def test_unparseable_timestamp_falls_back_to_arrival_time():
 def test_slug_is_filename_safe():
     assert slug("origin/t3/ios-mvf") == "origin-t3-ios-mvf"
     assert slug("wall walk: gap!") == "wall-walk-gap"
+
+
+def test_only_compiling_xcodebuilds_block_a_build():
+    assert compiling("/Applications/Xcode.app/.../xcodebuild -project a.xcodeproj build")
+    assert compiling("xcodebuild test -project a.xcodeproj -scheme A")
+    assert not compiling("xcodebuild -project a.xcodeproj test-without-building")

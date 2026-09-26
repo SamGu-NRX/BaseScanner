@@ -129,13 +129,26 @@ def prepare_display(udid: str, appearance: str, content_size: str | None) -> Non
 # --- Build -----------------------------------------------------------------------------------
 
 
+def compiling(args: str) -> bool:
+    """Whether an xcodebuild command line compiles. Running prebuilt tests does not."""
+    return "xcodebuild" in args and "test-without-building" not in args
+
+
+def other_builds_running() -> bool:
+    listing = subprocess.run(["ps", "-Ao", "args="], capture_output=True, text=True).stdout
+    return any(
+        compiling(line)
+        for line in listing.splitlines()
+        if line.split(" ")[0].endswith("xcodebuild")
+    )
+
+
 def wait_for_other_builds(max_wait_s: float) -> float:
-    """The Mac is shared: wait while any other xcodebuild runs, up to `max_wait_s`."""
+    """The Mac is shared: wait while another xcodebuild compiles, up to `max_wait_s`."""
     start = time.monotonic()
     announced = False
     while True:
-        busy = subprocess.run(["pgrep", "-x", "xcodebuild"], capture_output=True).returncode == 0
-        if not busy:
+        if not other_builds_running():
             return time.monotonic() - start
         if time.monotonic() - start > max_wait_s:
             raise SystemExit(f"Another xcodebuild has run for over {max_wait_s:.0f} s; try later.")

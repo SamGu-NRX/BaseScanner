@@ -12,7 +12,9 @@ from dataclasses import dataclass
 
 SUBSYSTEM = "dev.housescanning.housescan"
 CATEGORY = "state"
-LOG_PREDICATE = f'subsystem == "{SUBSYSTEM}" AND category == "{CATEGORY}"'
+# Every category of the app is streamed into the report (engine and autopilot lines explain what
+# happened); only `state` lines are parsed as screens.
+LOG_PREDICATE = f'subsystem == "{SUBSYSTEM}"'
 
 # A state name is an identifier-like token. Anything after it on the line is detail.
 _STATE_RE = re.compile(r"STATE=([A-Za-z0-9_.\-]+)")
