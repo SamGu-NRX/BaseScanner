@@ -256,4 +256,51 @@ import simd
         // The two separated spans stay two.
         #expect(entries.filter { ($0["span_ft"]?.numbers?.first ?? 0) > 22 }.count == 2)
     }
+
+    /// Mesh measurements become `facing` and `overheads` entries without `plus_minus_ft` (the
+    /// server's mesh default), rounded down to 4 decimals of a foot. The fence feature's entry
+    /// stays first. 1.9812 m is 6.5 ft and 2.4994 m 8.2 ft (8.20013 down to 8.2001).
+    @Test func meshMeasurementsBecomeFacingAndOverheads() throws {
+        var input = Self.input()
+        input.meshFacing = [ObservedSpan(span: -0.5...0.5, out: 1.9812)]
+        input.meshOverheads = [ObservedSpan(span: 0...1, out: 2.4994)]
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let v = try Value.parse(data)
+        let facing = try #require(v["facing"]?.array)
+        #expect(facing.count == 2)
+        #expect(facing[1]["wall_id"] == .string("side"))
+        expectClose(facing[1]["span_ft"]?.numbers, [-1.6404, 1.6404])
+        #expect(facing[1]["depth_ft"]?.number == 6.5)
+        #expect(facing[1]["plus_minus_ft"] == nil)
+        let overheads = try #require(v["overheads"]?.array)
+        #expect(overheads.count == 1)
+        expectClose(overheads[0]["span_ft"]?.numbers, [0, 3.2808])
+        #expect(overheads[0]["clearance_ft"]?.number == 8.2001)
+        #expect(overheads[0]["plus_minus_ft"] == nil)
+    }
+
+    /// Without mesh measurements there is no `overheads` key, as before.
+    @Test func noMeshMeansNoOverheads() throws {
+        #expect(try Self.exported().value["overheads"] == nil)
+    }
+
+    /// A measured span over a corner is split there, each part naming its own wall.
+    @Test func meshSpansSplitAtCorners() throws {
+        var input = Self.input()
+        input.wall.rightCorners = [WallCorner(s: 0.2, outward: SIMD3(0.8, 0, -0.6))]
+        input.meshOverheads = [ObservedSpan(span: -0.5...0.5, out: 2)]
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let overheads = try #require(try Value.parse(data)["overheads"]?.array)
+        #expect(overheads.map { $0["wall_id"]?.string } == ["side", "side-right-1"])
+        expectClose(overheads[0]["span_ft"]?.numbers, [-1.6404, 0.6562])
+        expectClose(overheads[1]["span_ft"]?.numbers, [0.6562, 1.6404])
+    }
+
+    @Test func negativeMeshMeasurementIsRefused() {
+        var input = Self.input()
+        input.meshFacing = [ObservedSpan(span: 0...1, out: -0.1)]
+        #expect(throws: SceneExportError.negativeValue(field: "meshFacing[0].out", value: -0.1)) { try SceneExport.jsonData(input) }
+    }
 }

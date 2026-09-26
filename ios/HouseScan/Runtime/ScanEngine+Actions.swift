@@ -18,6 +18,7 @@ extension ScanEngine: ScanActions {
             // assumed from the trajectory, see ReplayPlayer.wallDescription).
             let wall = replay.wall
             guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, groundMeasured: replay.groundMeasured) else { return }
+            markTimes[MarkKey.meter] = captureClock
             go(.meterCloseUp)
             return
         }
@@ -46,6 +47,7 @@ extension ScanEngine: ScanActions {
             return
         }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform))
+        markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
     }
 
@@ -158,6 +160,8 @@ extension ScanEngine: ScanActions {
         guard state.overheadQuestion else { return }
         switch state.phase {
         case .wallWalk:
+            // Something overhead is an answer, not a view: the stretch goes to review unseen.
+            resolveGuidance(clear ? .met : .skipped)
             settleTiltUp(clear: clear)
             if let frame = currentFrame {
                 resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
@@ -209,7 +213,9 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
-        state.features.append(feature(marking.kind, taps: pendingTaps, wall: wall))
+        let marked = feature(marking.kind, taps: pendingTaps, wall: wall)
+        markTimes[MarkKey.feature(marked.id)] = captureClock
+        state.features.append(marked)
         state.marking = nil
         pendingTaps = []
     }
@@ -260,6 +266,8 @@ extension ScanEngine: ScanActions {
 
     func finishWalk() {
         guard state.phase == .wallWalk, bothEndsMarked else { return }
+        // Done while a request is still up passes it by.
+        resolveGuidance(.superseded)
         state.marking = nil
         nextWallSide = nil
         nextWallRefusal = nil
@@ -286,10 +294,24 @@ extension ScanEngine: ScanActions {
             guard let map = coverage else { return }
             let task = ScanEngine.name(state.guidance)
             switch state.guidance {
+            case .aimAtGround, .aimAtWall, .seeBehind, .walk, .markEnd, .tiltUp, .markNextWall:
+                resolveGuidance(.cannotReach)
+            default:
+                return
+            }
+            switch state.guidance {
             case .aimAtGround(let s):
                 updateCoverage { $0.markSkipped(.ground, (s - 0.5)...(s + 0.5)) }
             case .aimAtWall(let s):
                 updateCoverage { $0.markSkipped(.wall, (s - 0.5)...(s + 0.5)) }
+            case .seeBehind(let s):
+                // Whatever is in the way can't be seen past: its hidden cells go to review. Only
+                // those: open cells beside them can still be seen and stay asked for.
+                updateCoverage { map in
+                    for band in seeBehindBands {
+                        for index in ScanEngine.hiddenCells(map, band: band, around: s) { map.markSkipped(band, map.cellRange(index)) }
+                    }
+                }
             case .walk(let side, _), .markEnd(let side):
                 // The walk can't continue this way: stop the wall here, as an unexplored end.
                 let reach = GuidancePlanner().reach(side == .left ? .left : .right, coverage: map)
@@ -333,15 +355,7 @@ extension ScanEngine: ScanActions {
               missing.indices.contains(index) else { return }
         let item = missing[index]
         guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
-        var pastEnd: WallSide?
-        if item.kind == .pastEnd, let side = item.side {
-            // The walk has to go past the end it stopped at; that end is no longer a limit. It
-            // exports as unexplored unless the homeowner marks it again (markWallEnd).
-            pastEnd = side == .left ? .left : .right
-            clearEnd(side == .left ? .left : .right)
-        }
-        beginGap(plan, origin: .server, reason: .server(detail: item.message))
-        pastEndSide = pastEnd
+        beginServerGap(item, plan: plan)
     }
 
     func showAR() {

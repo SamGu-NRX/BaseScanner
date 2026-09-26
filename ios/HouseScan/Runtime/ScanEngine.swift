@@ -63,7 +63,7 @@ final class ScanEngine {
     var nextWallRefusal: NextWallRefusal?
 
     // Gap loop
-    private var gapPlan: GapPlan?
+    private(set) var gapPlan: GapPlan?
     private var gapCounter = 0
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
@@ -76,6 +76,26 @@ final class ScanEngine {
     /// The side of a server past_end request being captured: that end was cleared, and marking
     /// it again settles the request (see `markWallEnd`).
     var pastEndSide: WallSide?
+    /// Server requests raised without a tap since the review was confirmed (`nextAutomaticGap`),
+    /// oldest first. Each is raised once; the result still offers it as a capture.
+    private var automaticGaps: [GapPlan] = []
+    /// Set when the homeowner says they can't get to a server request's view: after the upload
+    /// that follows, the result shows instead of the next request.
+    private var automaticGapsStopped = false
+    /// At most this many server requests are raised without a tap per confirmed review, so a
+    /// server that keeps finding new gaps can't hold the homeowner in the loop. A guess, not
+    /// measured: an answer usually lists one to three capturable items, and each round is a
+    /// capture and an upload.
+    static let maxAutomaticGaps = 5
+    /// How long the upload screen shows "One more view to finish" before a request raised from
+    /// the answer opens the camera: 1.5 s, about the time to read four words and see the new
+    /// step appear, and what the UI lane asked for. Not measured with homeowners.
+    static let followUpHold: Double = 1.5
+
+    // LiDAR
+    /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`: those with
+    /// hidden cells near its s (`hiddenCells(_:band:around:)`).
+    private(set) var seeBehindBands: [SurfaceBand] = []
 
     // Tilt-up step and overhead requests
     /// Set once the tilt-up step is answered or skipped: the walk asks it once per scan.
@@ -98,6 +118,19 @@ final class ScanEngine {
     private var bundleTask: Task<Void, Never>?
     private var bundleSerial = 0
 
+    // Packet
+    /// The packet's sensor streams for the current world frame.
+    private(set) var recorder: CaptureRecorder
+    private let motion = MotionSource()
+    /// Every request the homeowner was shown, for the packet.
+    var guidanceLog = GuidanceLog()
+    /// When each mark was made, on the capture clock (`MarkKey`).
+    var markTimes: [String: Double] = [:]
+    /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
+    /// live. A replay plays parts of its recording more than once, so its clock is the latest
+    /// frame time seen and never runs back. Nil until the first frame.
+    private(set) var captureClock: Double?
+
     private var lastGuidanceLog = ""
     private var lastGateLog = ""
     /// Taps of the feature being marked, in wall coordinates.
@@ -115,6 +148,7 @@ final class ScanEngine {
     init(options: LaunchOptions) {
         self.options = options
         store = KeyframeStore()
+        recorder = Self.makeRecorder(store)
         if let url = options.serverURL, !options.sampleResult {
             resultClient = HTTPResultClient(serverURL: url)
         } else {
@@ -149,8 +183,10 @@ final class ScanEngine {
             let loaded = try await Task.detached(priority: .userInitiated) { try ReplayPlayer.load(folder: folder) }.value
             let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame) }
             replay = player
+            let withDepth = player.frames.filter { $0.depth != nil }.count
+            state.depthAvailable = withDepth > 0
             player.show(index: 0)
-            RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, wall \(player.wallDescription, privacy: .public)")
+            RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, \(withDepth) with depth, wall \(player.wallDescription, privacy: .public)")
         } catch {
             RuntimeLog.engine.error("replay unreadable: \(String(describing: error), privacy: .public)")
             fail(.replayUnreadable(String(describing: error)))
@@ -212,6 +248,8 @@ final class ScanEngine {
         case .onboarding, .unsupported:
             break
         }
+        updateRecording()
+        noteGuidance()
     }
 
     private var replaySpeed: Double { options.autopilot ? 3 : 1 }
@@ -238,12 +276,36 @@ final class ScanEngine {
         )
         live = capture
         state.feed = .live
+        state.depthAvailable = LiveCapture.supportsDepth
+        capture.setRecorder(recorder)
         capture.start()
+        updateRecording()
     }
+
+    private static func makeRecorder(_ store: KeyframeStore) -> CaptureRecorder {
+        CaptureRecorder(directory: store.directory.appending(path: "streams-raw", directoryHint: .isDirectory))
+    }
+
+    /// Streams record while a capture is under way, from the meter search to the upload, and stop
+    /// on the result; a request raised from the result starts them again. Core Motion runs only
+    /// with the live camera: a replay's frames were recorded by another phone at another time.
+    private func updateRecording() {
+        let capturing = switch state.phase {
+        case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest, .uploading: true
+        case .onboarding, .result, .resultAR, .unsupported: false
+        }
+        recorder.setRecording(capturing)
+        guard live != nil else { return }
+        if capturing { motion.start(into: recorder) } else { motion.stop() }
+    }
+
+    var motionRunsLive: Bool { live != nil }
+    var motionAvailable: Set<CaptureRecorder.Stream> { motion.available }
 
     // MARK: Frames
 
     func ingest(_ frame: SourceFrame) {
+        captureClock = max(captureClock ?? frame.timestamp, frame.timestamp)
         if !frame.isPoseOnly { lastFrame = frame }
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
@@ -390,7 +452,7 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let saved = await store.saveStill(frame.jpeg, name: "meter_close.jpg")
+            let saved = await store.saveStill(frame, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
                 retakeCloseUp(.blurry)
@@ -523,7 +585,7 @@ final class ScanEngine {
             }
             // A frame queued before a reset must not be written into the new scan's store.
             guard scan == generation else { return }
-            let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
+            let saved = await store.saveKeyframe(frame, index: index)
             guard scan == generation else { return }
             guard saved.stored else {
                 // Not stored, so not kept: a later pass over the same replay frame may keep it.
@@ -533,8 +595,9 @@ final class ScanEngine {
             }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             // The frame's own time lets the walked path join only poses kept close together in time.
-            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp)
-            RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
+            // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
+            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth)
+            RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
@@ -568,10 +631,85 @@ final class ScanEngine {
         }
         let screenTime = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
         let output = planner.update(coverage: map, camera: camera, time: screenTime)
-        state.guidance = Self.step(output.task)
-        state.target = output.target
-        state.path = output.path
+        if let hidden = hiddenBlock(output.task, map, camera: camera) {
+            seeBehindBands = hidden.bands
+            state.guidance = .seeBehind(s: hidden.s)
+            state.target = hidden.bands.contains(.wall)
+                ? map.wall.world(s: hidden.s, height: 1)
+                : map.wall.world(s: hidden.s, height: 0, out: map.config.groundBandDepth / 2)
+            // Where to stand for another angle depends on what is in the way, which the map
+            // doesn't know; no path.
+            state.path = []
+        } else {
+            seeBehindBands = []
+            state.guidance = Self.step(output.task)
+            state.target = output.target
+            state.path = output.path
+        }
         logGuidance()
+    }
+
+    // MARK: See-behind step (LiDAR)
+
+    /// How far past a hidden stretch the camera must be before the walk asks to look behind it
+    /// instead of walking on: 1 m, about two strides, so the stretch has had a chance to show from
+    /// the angles the walk passes through. A guess to try on a phone, not measured.
+    static let seeBehindPassed: Float = 1
+
+    /// LiDAR phones: the stretch the walk's task is waiting on, when what keeps it open is hidden
+    /// cells (the camera looked, and depth showed something nearer) rather than unseen ones.
+    /// Walking up to it again gives the same view; another angle, or stepping round, can show it.
+    ///
+    /// An aim task's stretch counts as hidden when at least half of its cells still open (neither
+    /// covered nor skipped) within 0.3 m of it are hidden: the planner's own window for the task
+    /// (`GuidancePlanner.isSatisfied`), and "half" is a guess. A walk counts as blocked when the
+    /// first open cell on its side, where the planner's reach stops, is hidden and the camera is
+    /// `seeBehindPassed` beyond it: without this, a bush hiding the whole band leaves the walk
+    /// saying "walk on" while its reach never moves.
+    ///
+    /// The planner raises `.seeBehind` itself when hidden cells lie near the camera; the step is
+    /// then about the bands holding hidden cells near its s. Nil when there are none, which leaves
+    /// no cell for "Can't see past it" to settle.
+    private func hiddenBlock(_ task: GuidanceTask, _ map: CoverageMap, camera: CameraFrame) -> (s: Float, bands: [SurfaceBand])? {
+        func open(_ band: SurfaceBand, _ index: Int) -> Bool {
+            let level = map.level(band, index)
+            return level != .covered && level != .skipped
+        }
+        func mostlyHidden(_ band: SurfaceBand, around s: Float) -> Bool {
+            let cells = map.indices(overlapping: (s - 0.3)...(s + 0.3)).filter { map.isWithinEnds($0) && open(band, $0) }
+            let hidden = cells.filter { map.level(band, $0) == .hidden }.count
+            return hidden > 0 && hidden * 2 >= cells.count
+        }
+        switch task {
+        case .seeBehind(let s):
+            let bands = SurfaceBand.allCases.filter { !Self.hiddenCells(map, band: $0, around: s).isEmpty }
+            return bands.isEmpty ? nil : (s, bands)
+        case .aimAtGround(let s):
+            return mostlyHidden(.ground, around: s) ? (s, [.ground]) : nil
+        case .aimAtWall(let s):
+            return mostlyHidden(.wall, around: s) ? (s, [.wall]) : nil
+        case .walk(let side):
+            let reach = planner.reach(side, coverage: map)
+            let index = map.cellIndex(forS: side.sign * (reach + map.config.cellWidth / 2))
+            let bands = SurfaceBand.allCases.filter { map.level($0, index) == .hidden }
+            let beyond = side.sign * map.wall.wallPoint(camera.position).s - reach
+            guard !bands.isEmpty, beyond >= Self.seeBehindPassed else { return nil }
+            let cell = map.cellRange(index)
+            return ((cell.lowerBound + cell.upperBound) / 2, bands)
+        case .markEnd, .stepBack, .complete:
+            return nil
+        }
+    }
+
+    /// How far either side of a see-behind step's s its hidden cells are looked for: 1 m, the
+    /// half-width of the window around the camera in which the planner looks for them
+    /// (`GuidancePlanner.preferredTask`).
+    static let seeBehindReach: Float = 1
+
+    /// The hidden cells of `band` within `seeBehindReach` of `s`: what the see-behind step asks
+    /// to see past, and what "Can't see past it" hands to review.
+    static func hiddenCells(_ map: CoverageMap, band: SurfaceBand, around s: Float) -> [Int] {
+        map.indices(overlapping: (s - seeBehindReach)...(s + seeBehindReach)).filter { map.level(band, $0) == .hidden }
     }
 
     /// A frame shown for review (not captured) keeps the current task but re-aims its target and
@@ -580,6 +718,7 @@ final class ScanEngine {
         guard state.phase == .wallWalk, state.endQuestion == nil, !state.overheadQuestion, nextWallSide == nil,
               let map = coverage, let task = planner.current else { return }
         if case .tiltUp = state.guidance { return }
+        if case .seeBehind = state.guidance { return }
         let output = planner.cues(for: task, coverage: map, camera: camera)
         state.target = output.target
         state.path = output.path
@@ -677,7 +816,7 @@ final class ScanEngine {
         pendingOverhead = nil
         state.overheadQuestion = false
         guard clear else {
-            skipCurrentGap(because: "something is overhead")
+            skipCurrentGap(because: "something is overhead", refused: false)
             return
         }
         if frame.map({ keepOverheadView($0) }) != true {
@@ -728,6 +867,7 @@ final class ScanEngine {
         }
         logGuidance()
         if satisfied, !request.isSatisfied {
+            resolveGuidance(.met)
             request.isSatisfied = true
             request.progress = max(request.progress, gapPlanner.config.satisfiedFraction)
             state.gap = request
@@ -772,6 +912,7 @@ final class ScanEngine {
     }
 
     private func logGuidance() {
+        noteGuidance()
         let name = Self.name(state.guidance)
         guard name != lastGuidanceLog else { return }
         lastGuidanceLog = name
@@ -859,6 +1000,9 @@ final class ScanEngine {
     func resetSpatialState(reason: String) {
         RuntimeLog.engine.info("spatial reset: \(reason, privacy: .public)")
         generation += 1
+        // A new world frame is a new packet session: what was recorded is in the old frame.
+        recorder.restart()
+        resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -875,6 +1019,9 @@ final class ScanEngine {
         state.gap = nil
         gapPlan = nil
         pastEndSide = nil
+        automaticGaps = []
+        automaticGapsStopped = false
+        seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
         nextWallSide = nil
@@ -939,6 +1086,7 @@ final class ScanEngine {
 
     func setEnd(_ side: WallSide, at s: Float, kind: EndKind) {
         guard var map = coverage else { return }
+        markTimes[MarkKey.end(side)] = captureClock
         map.setEnd(side == .left ? .left : .right, at: s)
         // Ground past a limit end still counts toward clearances (server contract, "Ends and
         // corners"); past an unexplored end it doesn't.
@@ -961,6 +1109,7 @@ final class ScanEngine {
     }
 
     func clearEnd(_ side: WallSide) {
+        markTimes[MarkKey.end(side)] = nil
         updateCoverage { $0.clearEnd(side == .left ? .left : .right) }
         endKinds[side] = nil
         if state.endQuestion == side { state.endQuestion = nil }
@@ -971,8 +1120,11 @@ final class ScanEngine {
 
     // MARK: Gap loop
 
-    /// After the review: ask for the planner's gap, or upload.
+    /// After the review: ask for the planner's gap, or upload. Confirming the review starts a new
+    /// pass of server requests raised without a tap.
     func runGapCheck() {
+        automaticGaps = []
+        automaticGapsStopped = false
         guard let map = coverage, let plan = gapPlanner.plan(map), !skippedGaps.contains(plan) else {
             startUpload()
             return
@@ -1000,7 +1152,8 @@ final class ScanEngine {
     }
 
     /// A closed or skipped gap goes straight to the upload, which re-runs the server's checks
-    /// with the new evidence (the closed loop: gap, instruction, capture, updated result).
+    /// with the new evidence (the closed loop: gap, instruction, capture, updated result). The
+    /// answer then leads to the next capturable request or to the result (`upload`).
     private func afterGapResolved() {
         gapPlan = nil
         pastEndSide = nil
@@ -1014,6 +1167,7 @@ final class ScanEngine {
     /// settled, so the scan goes to the upload like a closed gap.
     func settlePastEnd() {
         guard state.phase == .gapRequest, var request = state.gap, !request.isSatisfied else { return }
+        resolveGuidance(.met)
         request.isSatisfied = true
         request.progress = 1
         state.gap = request
@@ -1054,9 +1208,14 @@ final class ScanEngine {
     }
 
     /// Ends the current request without the view it asked for ("I can't get there", or something
-    /// overhead): recorded for installer review, then on to the upload.
-    func skipCurrentGap(because reason: String = "the homeowner can't get there") {
+    /// overhead): recorded for installer review, then on to the upload. "I can't get there" on a
+    /// server request also ends the requests raised without a tap: after that upload the result
+    /// shows. Something overhead is an answer, not a refusal, so the loop goes on.
+    func skipCurrentGap(because reason: String = "the homeowner can't get there", refused: Bool = true) {
         guard let plan = gapPlan else { return }
+        // Something overhead is an answer: the request goes to review without its view.
+        resolveGuidance(refused ? .cannotReach : .skipped)
+        if refused, state.gap?.origin == .server { automaticGapsStopped = true }
         // Only a cell request marks cells: skipping a deeper, walked or overhead view says
         // nothing about the band the strip draws.
         if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
@@ -1082,15 +1241,26 @@ final class ScanEngine {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
+        // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
+        // overhead, off the main actor since ray casts over a whole mesh take a while.
+        let meshSnapshot = live?.meshSnapshot()
+        var measured = MeshMeasurements()
+        if let mesh = meshSnapshot?.mesh, let map = coverage {
+            let wall = map.wall
+            let span = Self.exportSpan(map)
+            measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
+            guard scan == generation else { return }
+            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+        }
         let scene: Data
         do {
-            scene = try sceneJSON()
+            scene = try sceneJSON(mesh: measured)
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
             return
         }
-        saveBundle(scene: scene)
+        saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
@@ -1108,6 +1278,17 @@ final class ScanEngine {
             state.upload = .done
             await waitForGate(.uploading)
             guard scan == generation else { return }
+            if let next = nextAutomaticGap(result) {
+                // The upload screen says "One more view to finish" once the answer is in
+                // (`state.result` set, upload `.done`, both kept through the request): long
+                // enough to read before the camera takes over.
+                try await Task.sleep(for: .seconds(Self.followUpHold))
+                guard scan == generation, state.phase == .uploading else { return }
+                automaticGaps.append(next.plan)
+                RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
+                beginServerGap(next.item, plan: next.plan)
+                return
+            }
             // The result appears only after the server answered (checklist R6).
             go(.result)
         } catch is CancellationError {
@@ -1119,27 +1300,58 @@ final class ScanEngine {
         }
     }
 
-    /// Writes scene.json with the keyframes and stills into the scan folder's `scan.zip`, the
-    /// bundle "Share scan" offers (`state.shareableScan`) whatever the upload then does: it
-    /// fails, is refused or answers. Nothing uploads the bundle, and the upload never waits for
-    /// it or fails because of it. The zip is rewritten in place, so it is not offered while a
-    /// write is under way, and writes run one after another: a retry's write waits for the last
-    /// one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data) {
+    /// The first item of the answer's missing evidence a capture can settle (the result's
+    /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
+    /// they can't get to one, or after `maxAutomaticGaps` requests.
+    private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, let map = coverage else { return nil }
+        for item in result.missingEvidence {
+            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd),
+                  !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
+            return (item, plan)
+        }
+        return nil
+    }
+
+    /// Starts the capture for an item of the server's missing evidence, whether tapped on the
+    /// result or raised after an upload.
+    func beginServerGap(_ item: PlacementMissingEvidence, plan: GapPlan) {
+        var pastEnd: WallSide?
+        if item.kind == .pastEnd, let side = item.side {
+            // The walk has to go past the end it stopped at; that end is no longer a limit. It
+            // exports as unexplored unless the homeowner marks it again (markWallEnd).
+            pastEnd = side == .left ? .left : .right
+            clearEnd(side == .left ? .left : .right)
+        }
+        // Set first, so the guidance log records the request as a past-end one.
+        pastEndSide = pastEnd
+        beginGap(plan, origin: .server, reason: .server(detail: item.message))
+    }
+
+    /// Writes the capture packet (`ScanEngine+Packet.swift`) with this scene.json inside, zipped
+    /// into the scan folder's `scan.zip`: the bundle "Share scan" offers (`state.shareableScan`)
+    /// whatever the upload then does: it fails, is refused or answers. Nothing uploads the
+    /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
+    /// place, so it is not offered while a write is under way, and writes run one after another:
+    /// a retry's write waits for the last one, and a write already superseded is skipped.
+    private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
         let scan = generation
-        let store = store
         let previous = bundleTask
+        guard let inputs = packetInputs(scene: scene, mesh: mesh) else {
+            RuntimeLog.engine.error("scan bundle not written: no wall")
+            return
+        }
         bundleTask = Task {
             await previous?.value
             guard scan == generation, serial == bundleSerial else { return }
             do {
-                let bundle = try await store.writeBundle(sceneJSON: scene)
-                RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(store.keyframes.count) keyframes (kept on the phone)")
+                let written = try await Task.detached(priority: .userInitiated) { try Self.writePacket(inputs) }.value
+                RuntimeLog.engine.info("bundle \(written.url.path, privacy: .public): packet 1.0 with \(written.summary, privacy: .public) (kept on the phone)")
                 guard scan == generation, serial == bundleSerial else { return }
-                state.shareableScan = bundle
+                state.shareableScan = written.url
             } catch {
                 RuntimeLog.engine.error("scan bundle not written: \(String(describing: error), privacy: .public)")
             }
@@ -1168,6 +1380,10 @@ final class ScanEngine {
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
         store = KeyframeStore()
+        recorder = Self.makeRecorder(store)
+        live?.setRecorder(recorder)
+        motion.stop()
+        resetPacketLog()
         keptSourceIDs = []
         autoCapture.reset()
         planner.reset()
@@ -1175,6 +1391,9 @@ final class ScanEngine {
         gapPlan = nil
         skippedGaps = []
         pastEndSide = nil
+        automaticGaps = []
+        automaticGapsStopped = false
+        seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
         nextWallSide = nil
@@ -1228,6 +1447,28 @@ final class ScanEngine {
         coverage = map
         publishCoverage()
     }
+
+    // MARK: Packet log
+
+    /// Forgets the guidance log, the mark times and the clock: they belong to the packet session
+    /// being thrown away.
+    private func resetPacketLog() {
+        guidanceLog = GuidanceLog()
+        markTimes = [:]
+        captureClock = nil
+    }
+
+    /// Records what request is on screen now in the guidance log.
+    func noteGuidance() {
+        guard let t = captureClock else { return }
+        guidanceLog.show(guidanceRequest(), at: t) { old, next in closingOutcome(old, next: next) }
+    }
+
+    /// Closes the open request with an outcome an action settled.
+    func resolveGuidance(_ outcome: GuidanceLog.Outcome) {
+        guard let t = captureClock else { return }
+        guidanceLog.resolve(outcome, at: t)
+    }
 }
 
 // MARK: - Mapping to contract values
@@ -1239,6 +1480,7 @@ extension ScanEngine {
         case .seen: .seen
         case .covered: .covered
         case .skipped: .skipped
+        case .hidden: .hidden
         }
     }
 
@@ -1249,6 +1491,7 @@ extension ScanEngine {
         case .aimAtGround(let s): .aimAtGround(s: s)
         case .aimAtWall(let s): .aimAtWall(s: s)
         case .stepBack: .stepBack
+        case .seeBehind(let s): .seeBehind(s: s)
         case .complete: .walkComplete
         }
     }

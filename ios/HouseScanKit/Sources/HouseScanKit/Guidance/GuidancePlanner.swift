@@ -13,6 +13,9 @@ public enum GuidanceTask: Sendable, Equatable {
     case aimAtWall(s: Float)
     /// The camera is too close to the wall to see the band.
     case stepBack
+    /// LiDAR found something standing in front of the wall or ground around `s` (hidden cells):
+    /// look at that part from another angle or step around the obstruction.
+    case seeBehind(s: Float)
     /// Both ends marked and nothing lags between them.
     case complete
 }
@@ -23,7 +26,8 @@ public struct GuidanceConfig: Sendable, Equatable {
     /// step back, done, walk on).
     public var minDwell: Double = 3
     /// Ask for the end once coverage reaches this far from the meter on a side: about 20 ft, past
-    /// which docs/01 expects the cable route to be too long for a placement anyway.
+    /// which Base's public 20 ft cable limit (docs/04, Public rule values) rules out for a
+    /// placement anyway.
     public var reach: Float = 6.1
     /// Closer to the wall than this, a portrait phone camera sees less than about 1.4 m of it.
     public var tooClose: Float = 1.2
@@ -117,6 +121,9 @@ public struct GuidancePlanner: Sendable {
         if let camera, coverage.wall.wallPoint(camera.position).out < config.tooClose {
             return .stepBack
         }
+        if let camera, let blocked = hiddenNearCamera(coverage: coverage, camera: camera) {
+            return blocked
+        }
         if let camera, let lag = laggingBand(coverage: coverage, camera: camera) {
             return lag
         }
@@ -144,6 +151,18 @@ public struct GuidancePlanner: Sendable {
         if groundLag.count >= needed, let mid = middle(groundLag, coverage) { return .aimAtGround(s: mid) }
         if wallLag.count >= needed, let mid = middle(wallLag, coverage) { return .aimAtWall(s: mid) }
         return nil
+    }
+
+    /// Cells hidden in either band around the camera, over at least `lagRun`. It comes before a
+    /// lagging band: aiming at a band something stands in front of adds nothing.
+    private func hiddenNearCamera(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
+        let s = coverage.wall.wallPoint(camera.position).s
+        let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
+        let hidden = coverage.indices(overlapping: (s - 1)...(s + 1)).filter { index in
+            SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
+        }
+        guard hidden.count >= needed, let mid = middle(hidden, coverage) else { return nil }
+        return .seeBehind(s: mid)
     }
 
     /// After both ends are marked: the first stretch between them where a band is not done.
@@ -184,6 +203,10 @@ public struct GuidancePlanner: Sendable {
         case .stepBack:
             guard let camera else { return false }
             return coverage.wall.wallPoint(camera.position).out >= config.tooClose + 0.2
+        case .seeBehind(let s):
+            return !coverage.indices(overlapping: (s - 0.3)...(s + 0.3)).contains { index in
+                SurfaceBand.allCases.contains { coverage.level($0, index) == .hidden }
+            }
         case .complete:
             return false
         }
@@ -212,6 +235,9 @@ public struct GuidancePlanner: Sendable {
             return wall.world(s: s, height: 0, out: coverage.config.groundBandDepth / 2)
         case .aimAtWall(let s):
             return wall.world(s: s, height: 1.2)
+        case .seeBehind(let s):
+            // The wall's foot, where the two bands meet: either may be the hidden one.
+            return wall.world(s: s, height: 0)
         case .stepBack, .complete:
             return nil
         }
@@ -225,7 +251,9 @@ public struct GuidancePlanner: Sendable {
         switch task {
         case .walk(let side): goal = walkGoal(side, coverage: coverage, camera: camera)
         case .aimAtGround(let s), .aimAtWall(let s): goal = s
-        case .markEnd, .stepBack, .complete: return []
+        // No path for seeBehind: which way round the obstruction is clear is not known, and a path
+        // to straight in front of it could lead to the same blocked view.
+        case .markEnd, .stepBack, .seeBehind, .complete: return []
         }
         let clipped = from + max(-config.maxPathLength, min(config.maxPathLength, goal - from))
         let steps = max(1, Int((abs(clipped - from) / 0.5).rounded(.up)))

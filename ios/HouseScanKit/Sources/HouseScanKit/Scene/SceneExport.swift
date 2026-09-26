@@ -198,11 +198,19 @@ public struct SceneInput: Sendable {
     public var keyframes: [SceneKeyframe]
     /// Close-up photo file names keyed by purpose.
     public var stills: [String: String]
+    /// Facing gaps measured on the LiDAR mesh (`TriangleMesh.facingSpans`): stretches in s
+    /// meters, each with the gap in meters. Written as `facing` entries without `plus_minus_ft`,
+    /// so the server applies its mesh error.
+    public var meshFacing: [ObservedSpan]
+    /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
+    /// written as `overheads` entries.
+    public var meshOverheads: [ObservedSpan]
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
-        features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:]
+        features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = []
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -215,6 +223,8 @@ public struct SceneInput: Sendable {
         self.coverage = coverage
         self.keyframes = keyframes
         self.stills = stills
+        self.meshFacing = meshFacing
+        self.meshOverheads = meshOverheads
     }
 }
 
@@ -289,6 +299,8 @@ public enum SceneExport {
     static let unitTolerance: Float = 1e-3
     /// scene.schema.json's `coverage.observed` maxItems.
     static let maxObserved = 500
+    /// scene.schema.json's `facing` and `overheads` maxItems.
+    static let maxMeasured = 500
 
     /// How many `coverage.observed` entries each of the three bands with a reach (ground, facing,
     /// overhead) may use. Wall stretches are few (one per unbroken run); the budget they leave
@@ -407,13 +419,34 @@ public enum SceneExport {
             observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
         }
 
+        // Mesh measurements, split where the chain turns a corner so each entry names the wall it
+        // is in front of. Coarsening first leaves room for one more entry per corner.
+        let corners = chain.segments.dropLast().map(\.span.upperBound)
+        func measured(_ spans: [ObservedSpan], _ field: String, room: Int) throws -> [(id: String, span: [Double], value: Double)] {
+            for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "\(field)[\(index)].out") }
+            let limit = room - corners.count
+            guard limit >= 1 else { return [] }
+            return ObservedSpan.coarsened(spans, toAtMost: limit).flatMap { item in
+                let cuts = [item.span.lowerBound] + corners.filter { item.span.contains($0) && $0 != item.span.lowerBound && $0 != item.span.upperBound } + [item.span.upperBound]
+                return zip(cuts, cuts.dropFirst()).map { low, high in
+                    (wallIDAt((low + high) / 2), spanFeet(low...high), feetDown(item.out))
+                }
+            }
+        }
+        facing += try measured(input.meshFacing, "meshFacing", room: maxMeasured - facing.count).map {
+            SceneDocument.Facing(wall_id: $0.id, span_ft: $0.span, depth_ft: $0.value)
+        }
+        let overheads = try measured(input.meshOverheads, "meshOverheads", room: maxMeasured).map {
+            SceneDocument.Overhead(wall_id: $0.id, span_ft: $0.span, clearance_ft: $0.value)
+        }
+
         let keyframes = try input.keyframes.map(keyframe)
 
         return SceneDocument(
             schema_version: "1.0",
             meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
             walls: walls(chain.segments, ids: wallIDs, baselineS: input.baselineS, height: input.wallHeight, plan: plan),
-            objects: objects, ground: ground, facing: facing,
+            objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(
                 ends: .init(
                     left: .init(kind: coverage.leftEndMarked ? "limit" : "unexplored"),
@@ -550,6 +583,11 @@ private struct SceneDocument: Encodable {
         var span_ft: [Double]
         var depth_ft: Double
     }
+    struct Overhead: Encodable {
+        var wall_id: String
+        var span_ft: [Double]
+        var clearance_ft: Double
+    }
     struct End: Encodable {
         var kind: String
     }
@@ -580,6 +618,7 @@ private struct SceneDocument: Encodable {
     var walls: [Wall]
     var objects: [Object]
     var ground: [Ground]
+    var overheads: [Overhead]?
     var facing: [Facing]
     var coverage: Coverage
     var keyframes: [Keyframe]

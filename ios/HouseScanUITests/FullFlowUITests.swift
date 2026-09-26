@@ -24,12 +24,46 @@ final class FullFlowUITests: XCTestCase {
             .appending(path: "Fixtures/synthetic-wall", directoryHint: .isDirectory).path
     }
 
+    /// The same walk recorded as a LiDAR phone would, with depth maps, and a bin standing in front
+    /// of the wall 4 to 6 ft right of the meter: `make-synthetic-replay.swift --lidar`.
+    static var lidarFixture: String {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appending(path: "Fixtures/synthetic-wall-lidar", directoryHint: .isDirectory).path
+    }
+
     static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
         try runFlow(replay: replay)
+    }
+
+    /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
+    /// reports hidden cells on the walk, or, when the autopilot held the bin's frames back for the
+    /// gap loop, on the gap request.
+    @MainActor
+    func testFullFlowFromLidarReplay() throws {
+        var showedHidden = false
+        try runFlow(replay: Self.lidarFixture) { app, phase in
+            guard !showedHidden else { return }
+            switch phase {
+            // At the autopilot's 3x the walk plays in about 6 s. No other frame sees the wall
+            // behind the bin, so its cells stay hidden once the bin has been in view.
+            case "wallWalk": showedHidden = Self.wallTapeShowsHidden(app, timeout: 60)
+            case "gapRequest": showedHidden = Self.wallTapeShowsHidden(app, timeout: 30)
+            default: break
+            }
+        }
+        XCTAssertTrue(showedHidden, "the wall map never reported hidden cells behind the bin")
+    }
+
+    /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
+    @MainActor
+    private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        let tape = app.descendants(matching: .any)["wallTape"]
+        let mentionsHidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] %@", "hidden"), object: tape)
+        return XCTWaiter().wait(for: [mentionsHidden], timeout: timeout) == .completed
     }
 
     /// Runs only when HOUSESCAN_REPLAY names a session folder, so CI stays on the synthetic fixture.
@@ -56,9 +90,10 @@ final class FullFlowUITests: XCTestCase {
             try app.performAccessibilityAudit { issue in
                 let element = issue.element
                 let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
-                // An element without a label is otherwise impossible to find from the report.
-                let described = element.map { "type \($0.elementType.rawValue) frame \($0.frame)" } ?? "no element"
-                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "") (\(described))"
+                // Only the identifier and label: reading the element's type or frame queries it live,
+                // and an element that has gone records a snapshot failure the retry can't catch
+                // (CI run 36260279300).
+                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
                 return true
             }
             return found
@@ -90,8 +125,10 @@ final class FullFlowUITests: XCTestCase {
         }
     }
 
+    /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
+    /// waits to leave it.
     @MainActor
-    private func runFlow(replay: String) throws {
+    private func runFlow(replay: String, beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in }) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
         // slow screen can never make the test miss the next one.
@@ -120,6 +157,7 @@ final class FullFlowUITests: XCTestCase {
             shot.lifetime = .keepAlways
             add(shot)
             try audit(app, screen: phase)
+            beforeLeaving(app, phase)
             try Data().write(to: gate.appending(path: phase))
         }
         // Closing the AR view returns to the result.

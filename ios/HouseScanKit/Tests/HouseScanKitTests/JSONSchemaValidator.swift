@@ -1,7 +1,7 @@
 import Foundation
 
-/// A JSON Schema (draft 2020-12) validator for exactly the keywords scene.schema.json and
-/// result.schema.json use. Any other keyword makes `init` throw, so a schema change that needs a new
+/// A JSON Schema (draft 2020-12) validator for exactly the keywords scene.schema.json,
+/// result.schema.json and the capture packet's manifest.schema.json use. Any other keyword makes `init` throw, so a schema change that needs a new
 /// keyword fails the tests instead of being silently ignored.
 struct JSONSchemaValidator {
     /// Parsed JSON. Numbers are Doubles; "integer" means a Double with no fractional part, as the
@@ -75,10 +75,12 @@ struct JSONSchemaValidator {
     private static let supported: Set<String> = [
         "type", "properties", "required", "additionalProperties", "items", "minItems", "maxItems",
         "enum", "const", "$ref", "oneOf", "pattern", "minimum", "maximum", "exclusiveMinimum",
-        "minLength", "if", "then",
+        "minLength", "if", "then", "allOf",
     ]
-    /// Keywords that only annotate and never affect validation.
-    private static let annotations: Set<String> = ["$schema", "$id", "$defs", "$comment", "title", "description"]
+    /// Keywords that only annotate and never affect validation. `format` is one: draft 2020-12
+    /// makes it an annotation unless a validator opts in, and the packet's own validator
+    /// (Draft202012Validator without a format checker) does not.
+    private static let annotations: Set<String> = ["$schema", "$id", "$defs", "$comment", "title", "description", "format"]
 
     let root: Value
 
@@ -115,7 +117,7 @@ struct JSONSchemaValidator {
                 for (name, sub) in members { try checkSchema(sub, path: "\(here)/\(name)") }
             case "additionalProperties", "items", "if", "then":
                 try checkSchema(value, path: here)
-            case "oneOf":
+            case "oneOf", "allOf":
                 guard let list = value.array, !list.isEmpty else { throw SchemaError(description: "\(here): not a non-empty array") }
                 for (i, sub) in list.enumerated() { try checkSchema(sub, path: "\(here)/\(i)") }
             case "$ref":
@@ -229,6 +231,10 @@ struct JSONSchemaValidator {
                 return sub.isEmpty
             }.count
             if passing != 1 { errors.append("\(path): matches \(passing) oneOf options, expected exactly 1") }
+        }
+
+        for option in s["allOf"]?.array ?? [] {
+            check(instance, against: option, path: path, errors: &errors)
         }
 
         if let condition = s["if"] {

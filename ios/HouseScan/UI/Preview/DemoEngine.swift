@@ -24,6 +24,15 @@ final class DemoEngine: ScanActions {
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
     private var skippedSpan: ClosedRange<Float>?
+    /// Things standing in front of the wall, as depth would find them: a looked-at cell in the
+    /// span is hidden, or skipped once the homeowner said they can't see past it.
+    private var obstructions: [(span: ClosedRange<Float>, skipped: Bool)] = []
+    /// Walk-script ticks spent on the see-behind step, standing in for stepping round the bush.
+    private var seeBehindTicks = 0
+    /// The check's first answer asked for a view and the scan went back to the camera for it,
+    /// like the real engine does; the next answer goes to the result.
+    private var followedUp = false
+    private var followUpSkipped = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -95,6 +104,25 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoSample") {
             state.usesSampleResult = true
+        }
+        if arguments.contains("-uiDemoDepth") {
+            state.depthAvailable = true
+        }
+        if arguments.contains("-uiDemoHidden") || arguments.contains("-uiDemoSeeBehind") {
+            // A bush right of the meter and a bin left of it, on a phone with depth.
+            state.depthAvailable = true
+            reachedRight = max(reachedRight, 2.4)
+            obstructions = [(1.2...1.8, false), (-0.55 ... -0.25, false)]
+            refreshCoverage()
+            refreshGuidance()
+            if arguments.contains("-uiDemoSeeBehind") {
+                state.guidance = .seeBehind(s: 1.5)
+                state.target = DemoScene.wall.world(s: 1.5, height: 0.6)
+                state.path = DemoScene.path(toward: 2.4, out: 1.8)
+            }
+        }
+        if arguments.contains("-uiDemoFollowUp") {
+            enterFollowUp(at: state.phase)
         }
         if arguments.contains("-uiDemoNoFeed") {
             state.feed = .none
@@ -224,7 +252,8 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.walkScript() }
     }
 
-    private func enterGap() {
+    /// A gap request: the phone's own by default, or `serverItem` from the check's answer.
+    private func enterGap(serverItem: MissingEvidence? = nil) {
         // Leave a hole in the ground right of the likely spot, as the phone's planner would find.
         state.phase = .gapRequest
         state.guidance = .gap
@@ -233,6 +262,12 @@ final class DemoEngine: ScanActions {
         state.gap = GapRequest(id: 1, origin: .phone, reason: .groundNearCandidate, band: .ground, span: span, progress: 0, isSatisfied: false)
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
+        if let serverItem {
+            state.gap?.origin = .server
+            state.gap?.reason = .server(detail: serverItem.text)
+            run { engine in await engine.gapScript(span: span) }
+            return
+        }
         // The server's requests, with the numbers its public rules would give (feet in the
         // README, meters here): ground out to D + r + e = 5.1 ft, a walk past D + r = 4.83 ft.
         switch gapKind {
@@ -280,7 +315,7 @@ final class DemoEngine: ScanActions {
     private func showResult() {
         state.shareableScan = Self.demoScan
         state.upload = .done
-        state.result = passResult ? Self.passSample : Self.reviewSample
+        state.result = sample
         state.phase = .result
     }
 
@@ -331,6 +366,17 @@ final class DemoEngine: ScanActions {
                 if tiltUpTicks >= 4 {
                     capture(.walk)
                     state.overheadQuestion = true
+                }
+            }
+            if case .seeBehind(let s) = state.guidance {
+                // A few steps to the side, then depth sees the wall behind the bush.
+                seeBehindTicks += 1
+                if seeBehindTicks >= 5 {
+                    seeBehindTicks = 0
+                    obstructions.removeAll { $0.span.contains(s) }
+                    capture(.walk)
+                    refreshCoverage()
+                    refreshGuidance()
                 }
             }
             if case .walk(let side, _) = state.guidance {
@@ -389,7 +435,44 @@ final class DemoEngine: ScanActions {
             state.upload = .rejected(message: Self.rejection)
             return
         }
+        // Like the real engine: an answer that lists a view the camera can take goes back to
+        // the camera for it, after the upload screen has said so; the next answer is the result.
+        if !followedUp, let item = sample.missing.first(where: \.capturable) {
+            state.shareableScan = Self.demoScan
+            state.result = sample
+            state.upload = .done
+            followedUp = true
+            guard await pause(1.6) else { return }
+            enterGap(serverItem: item)
+            return
+        }
         showResult()
+    }
+
+    /// The check's answer, before or after its follow-up view.
+    private var sample: ResultPresentation {
+        if passResult { return Self.passSample }
+        guard followedUp else { return Self.reviewSample }
+        return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
+    }
+
+    /// `-uiDemoFollowUp`: the check has answered and asked for a view. On the upload screen,
+    /// the moment before the camera opens; on the gap screen, the view itself.
+    private func enterFollowUp(at phase: ScanPhase) {
+        guard phase == .uploading || phase == .gapRequest, let item = Self.reviewSample.missing.first(where: \.capturable) else { return }
+        script?.cancel()
+        state.shareableScan = Self.demoScan
+        state.result = Self.reviewSample
+        state.upload = .done
+        followedUp = true
+        if phase == .gapRequest {
+            enterGap(serverItem: item)
+        } else {
+            run { engine in
+                guard await engine.pause(1.6) else { return }
+                engine.enterGap(serverItem: item)
+            }
+        }
     }
 
     // MARK: Coverage
@@ -409,6 +492,16 @@ final class DemoEngine: ScanActions {
                 let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
                 if skippedSpan.contains(center), wallCells[index] != .covered { wallCells[index] = .skipped }
                 if skippedSpan.contains(center), groundCells[index] != .covered { groundCells[index] = .skipped }
+            }
+        }
+        for obstruction in obstructions {
+            for index in 0..<count {
+                let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
+                guard obstruction.span.contains(center) else { continue }
+                // Hidden needs a look: a cell the camera never pointed at stays unseen.
+                let cell: CellState = obstruction.skipped ? .skipped : .hidden
+                if wallCells[index] != .unseen { wallCells[index] = cell }
+                if groundCells[index] != .unseen { groundCells[index] = cell }
             }
         }
         let fogAhead: Float = 1.2
@@ -622,10 +715,17 @@ final class DemoEngine: ScanActions {
 
     func skipGap() {
         if let gap = state.gap { setGround(gap.span, to: .skipped) }
+        if state.gap?.origin == .server, followedUp { followUpSkipped = true }
         enterUpload()
     }
 
     func cannotAccessArea() {
+        if case .seeBehind(let s) = state.guidance {
+            obstructions = obstructions.map { (span: $0.span, skipped: $0.skipped || $0.span.contains(s)) }
+            refreshCoverage()
+            refreshGuidance()
+            return
+        }
         if case .markNextWall = state.guidance {
             refreshGuidance()
             return
@@ -657,9 +757,11 @@ final class DemoEngine: ScanActions {
         state.phase = .markFeatures
     }
 
+    /// Like the real engine: the answer stays while its request is captured.
     func captureMissing(_ id: String) {
-        state.result = nil
-        enterGap()
+        guard let item = state.result?.missing.first(where: { $0.id == id && $0.capturable }) else { return }
+        followedUp = true
+        enterGap(serverItem: item)
     }
 
     func showAR() {
@@ -690,6 +792,10 @@ final class DemoEngine: ScanActions {
         demoLeftEnd = -2.9
         demoRightEnd = 4.3
         skippedSpan = nil
+        obstructions = []
+        seeBehindTicks = 0
+        followedUp = false
+        followUpSkipped = false
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -814,6 +920,33 @@ final class DemoEngine: ScanActions {
         }
         return sample
     }()
+}
+
+private extension ResultPresentation {
+    /// The ground right of the spot was seen again: its check settles and nothing is left to take.
+    var withFollowUpTaken: ResultPresentation {
+        var result = self
+        result.checks = checks.map { row in
+            guard row.id == "ground" else { return row }
+            var row = row
+            row.outcome = .pass
+            row.reason = "Seen from two places."
+            return row
+        }
+        result.missing = missing.filter { !$0.capturable }
+        return result
+    }
+
+    /// "I can't get there": the view stays on the list for the installer, not as a capture.
+    var withFollowUpSkipped: ResultPresentation {
+        var result = self
+        result.missing = missing.map { item in
+            var item = item
+            item.capturable = false
+            return item
+        }
+        return result
+    }
 }
 
 extension DemoEngine {

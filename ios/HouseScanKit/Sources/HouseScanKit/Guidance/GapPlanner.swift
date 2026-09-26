@@ -107,7 +107,8 @@ public struct GapPlanner: Sendable {
         return nil
     }
 
-    /// Runs of unseen or seen-once cells at least `minRun` long, clipped to `range`.
+    /// Runs of cells neither covered nor skipped (unseen, seen but not covered, or hidden) at
+    /// least `minRun` long, clipped to `range`.
     public func missingRuns(_ band: SurfaceBand, in range: ClosedRange<Float>, coverage: CoverageMap) -> [ClosedRange<Float>] {
         var runs: [ClosedRange<Float>] = []
         var start: Float?
@@ -115,7 +116,7 @@ public struct GapPlanner: Sendable {
         for index in coverage.indices(overlapping: range) {
             let cell = coverage.cellRange(index).clamped(to: range)
             let level = coverage.level(band, index)
-            if level == .unseen || level == .seen {
+            if level != .covered && level != .skipped {
                 if start == nil { start = cell.lowerBound }
                 end = cell.upperBound
             } else if let s = start {

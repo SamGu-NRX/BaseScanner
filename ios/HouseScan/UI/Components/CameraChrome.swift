@@ -6,6 +6,8 @@ struct CameraChrome<Bottom: View>: View {
     var instruction: Instruction
     var tone: InstructionCard.Tone = .normal
     var reply: InstructionCard.Reply?
+    /// See `InstructionCard.eyebrow`.
+    var eyebrow: String?
     var photoCount: Int?
     var lastCaptureID: Int?
     var isReplay: Bool
@@ -49,7 +51,7 @@ struct CameraChrome<Bottom: View>: View {
                 }
             }
             .frame(minHeight: 36)
-            InstructionCard(instruction: instruction, tone: tone, reply: reply)
+            InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
             Spacer(minLength: 0)
             bottom
         }

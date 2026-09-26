@@ -37,7 +37,7 @@ public struct AutoCaptureConfig: Sendable, Equatable {
     /// A frame less than half as sharp as the recent median is probably motion-blurred.
     public var sharpnessRatio: Double = 0.5
     public var sharpnessWindow = 15
-    /// Keyframe spacing from docs/02 and Measure Lab: 0.5 m or 15° since the last kept frame.
+    /// Keyframe spacing from docs/00 (Conventions the code relies on) and Measure Lab: 0.5 m or 15° since the last kept frame.
     public var spacingMeters: Float = 0.5
     public var spacingRadians: Float = 15 * .pi / 180
     /// A frame that would see this many unseen cells (3 cells, about 0.45 m of one band) is worth
