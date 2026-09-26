@@ -1188,8 +1188,26 @@ def _rank_pass(c: Candidate) -> tuple:
     return (c.route.length, abs((c.s0 + c.s1) / 2), c.s0)
 
 
+def estimate_fails(c: Candidate) -> bool:
+    """Whether a check's best estimate is past its rule although the error leaves it UNSURE:
+    the measured value on the fail side (an overlap with the meter's working space, a clearance
+    under its minimum, a run over its maximum)."""
+    for check in c.checks:
+        if check.outcome != UNSURE or check.measured is None or check.threshold is None:
+            continue
+        if check.comparison == "at_least" and check.measured < check.threshold - EPS:
+            return True
+        if check.comparison == "at_most" and check.measured > check.threshold + EPS:
+            return True
+    return False
+
+
 def _rank_unsure(c: Candidate) -> tuple:
-    return (len(c.unsure()), c.route.length, c.s0)
+    """A candidate whose best estimate is past a rule (issue #44: a spot overlapping the meter's
+    working space, UNSURE only because the meter's error is large) ranks below every candidate
+    whose best estimates all clear, whatever its route. Within each group: fewest UNSURE checks,
+    then the shortest route."""
+    return (estimate_fails(c), len(c.unsure()), c.route.length, c.s0)
 
 
 def _spot_json(solver: Solver, c: Candidate) -> dict[str, Any]:
@@ -1415,11 +1433,20 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             reasons.append(unexplored_reason)
             missing += past_end_requests()
         spot_at = where((best.s0 + best.s1) / 2)
-        if any(c.unsure_cause == "unobserved" for c in best.checks if c.outcome == UNSURE):
+        unseen = [c for c in best.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
+        if unseen:
+            # Only unseen checks are settled by more views; the rest need a person (issue #45).
+            others = len(ids) - len(unseen)
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "
-                + ("1 check depends" if len(ids) == 1 else f"{len(ids)} checks depend")
-                + " on areas the scan did not see."
+                + ("1 check depends" if len(unseen) == 1 else f"{len(unseen)} checks depend")
+                + " on areas the scan did not see"
+                + (
+                    f", and {others} {'needs' if others == 1 else 'need'} a person to judge"
+                    if others
+                    else ""
+                )
+                + "."
             )
         else:
             summary = (
@@ -1494,6 +1521,17 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
         "checks": [c.to_json(loaded.private_keys) for c in best.checks] if best else [],
         "nearest_considered": _spot_json(solver, nearest) if nearest else None,
         "missing_evidence": missing,
+        "objects_not_used": [
+            {
+                "object": f"objects[{index}] {kind}",
+                "side": side,
+                "message": (
+                    f"The {kind.replace('_', ' ')} marked {where(s)} is past the {side} end of "
+                    "the scan, where the wall may turn, so it was not used."
+                ),
+            }
+            for index, kind, side, s in scene.set_aside
+        ],
         "ends": ends,
         "sweep": sorted(
             _sweep_json(cands, scene, r.sweep.step_ft.value) + far,
