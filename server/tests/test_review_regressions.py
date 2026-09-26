@@ -467,3 +467,15 @@ def test_oversized_scene_is_refused() -> None:
     raw["walls"][0]["baseline"] = [[x / 10, (x % 2) / 10] for x in range(-400, 400)]
     with pytest.raises(SceneError, match="is too long"):
         parsed(raw)
+
+
+@pytest.mark.parametrize(
+    ("start", "cause"), [(15.0, "margin"), (16.0, "rule_requires_review"), (20.0, "margin")]
+)
+def test_route_length_unsure_cause(start, cause) -> None:
+    # On a line the run is too close to call; clearly between the lines the policy sends it to a
+    # person, which more photos can't settle either.
+    raw = shared_fixture()
+    raw["ground"] = pads_ground([(start, start + 3)])
+    reach = check(run(raw), "route_length")
+    assert (reach["outcome"], reach["unsure_cause"]) == ("unsure", cause)

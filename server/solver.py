@@ -644,11 +644,19 @@ class Solver:
         if reach.outcome == FAIL:
             reach.reason = f"The cable run is {run}, over the {ft(r.max_ft.value)} maximum."
         elif reach.outcome == UNSURE:
-            reach.unsure_cause = "margin"
-            reach.reason = (
-                f"The cable run is {run}: past the {ft(confident)} confident reach "
-                f"or within error of the {ft(r.max_ft.value)} maximum."
-            )
+            near_a_line = any(abs(length - line) <= e + EPS for line in (confident, r.max_ft.value))
+            if near_a_line:
+                reach.unsure_cause = "margin"
+                reach.reason = (
+                    f"The cable run is {run}, within its error of the {ft(confident)} confident "
+                    f"reach or the {ft(r.max_ft.value)} maximum: too close to call."
+                )
+            else:
+                reach.unsure_cause = "rule_requires_review"
+                reach.reason = (
+                    f"The cable run is {run}: past the {ft(confident)} confident reach, so the "
+                    f"policy sends it to a person, though under the {ft(r.max_ft.value)} maximum."
+                )
         else:
             reach.reason = f"The cable run is {run}, within the {ft(confident)} confident reach."
         route = Route(
