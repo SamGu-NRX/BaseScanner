@@ -65,9 +65,11 @@ final class ScanEngine {
     var pendingTaps: [WallPoint] = []
 
     enum EndKind {
-        /// The homeowner marked where the wall ends.
+        /// The homeowner marked the end and said something blocks the wall there (a fence, gate
+        /// or property line).
         case limit
-        /// The walk stopped there without reaching the wall's end ("I can't get there").
+        /// The wall may go on past this end: it turns a corner, the walk stopped there ("I can't
+        /// get there"), or the homeowner has not said what is there yet.
         case unexplored
     }
 
@@ -340,7 +342,8 @@ final class ScanEngine {
     // MARK: Guidance
 
     private func updateGuidance(camera: CameraFrame, time: Double) {
-        guard let map = coverage else { return }
+        // The end question is on screen: the next step waits for its answer.
+        guard let map = coverage, state.endQuestion == nil else { return }
         let output = planner.update(coverage: map, camera: camera, time: time)
         state.guidance = Self.step(output.task)
         state.target = output.target
@@ -348,7 +351,8 @@ final class ScanEngine {
         logGuidance()
     }
 
-    /// "I can't get there" satisfied the current task: choose the next one now.
+    /// "I can't get there" or an answered end question settled the current task: choose the next
+    /// one now.
     func resetGuidanceAfterSkip(camera: CameraFrame, time: Double) {
         planner.reset()
         updateGuidance(camera: camera, time: time)
@@ -442,6 +446,7 @@ final class ScanEngine {
         state.gap = nil
         gapPlan = nil
         endKinds = [:]
+        state.endQuestion = nil
         store.discardKeyframes()
         keptSourceIDs = []
         state.captureCount = 0
@@ -457,6 +462,7 @@ final class ScanEngine {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
         endKinds = [:]
+        state.endQuestion = nil
         publishWall()
         publishCoverage()
         return true
@@ -501,9 +507,16 @@ final class ScanEngine {
         }
     }
 
+    /// What the homeowner said is at an already marked end.
+    func setEndKind(_ side: WallSide, _ kind: EndKind) {
+        endKinds[side] = kind
+        RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) is \(kind == .limit ? "limit" : "unexplored", privacy: .public)")
+    }
+
     func clearEnd(_ side: WallSide) {
         updateCoverage { $0.clearEnd(side == .left ? .left : .right) }
         endKinds[side] = nil
+        if state.endQuestion == side { state.endQuestion = nil }
         publishWall()
     }
 
@@ -631,6 +644,7 @@ final class ScanEngine {
         gapPlan = nil
         skippedGaps = []
         endKinds = [:]
+        state.endQuestion = nil
         placement = nil
         state.wall = nil
         state.coverage = .empty

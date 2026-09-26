@@ -66,7 +66,20 @@ extension ScanEngine: ScanActions {
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         guard state.phase == .wallWalk, let wall = coverage?.wall, let frame = currentFrame else { return }
         guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else { return }
-        setEnd(hit.s < 0 ? .left : .right, at: hit.s, kind: .limit)
+        let side: WallSide = hit.s < 0 ? .left : .right
+        // Unexplored until the homeowner says something blocks the wall there: an unanswered
+        // question must not tell the server the usable wall stops at this point.
+        state.endQuestion = side
+        setEnd(side, at: hit.s, kind: .unexplored)
+    }
+
+    func answerWallEnd(turnsCorner: Bool) {
+        guard let side = state.endQuestion else { return }
+        state.endQuestion = nil
+        if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
+        if state.phase == .wallWalk, let frame = currentFrame {
+            resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
+        }
     }
 
     func beginMarking(_ kind: FeatureKind) {
@@ -236,4 +249,11 @@ extension ScanEngine: ScanActions {
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
     }
+}
+
+/// Stand-in for conformers that don't ask the end question yet (the UI lane's DemoEngine, until
+/// its own `answerWallEnd` lands). It ignores the answer. Delete this extension once every
+/// conformer implements the method; ScanEngine's own implementation above always wins.
+extension ScanActions {
+    func answerWallEnd(turnsCorner: Bool) {}
 }

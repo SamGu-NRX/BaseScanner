@@ -159,6 +159,12 @@ final class Autopilot {
                 log("no replay frame shows the \(side.rawValue) end; setting it directly at s=\(s)")
                 engine.setEnd(side, at: s, kind: .limit)
             }
+            if let asked = engine.state.endQuestion {
+                // Every end counts as a corner here: a replay has no fence or gate to report.
+                await pause(hold)
+                engine.answerWallEnd(turnsCorner: true)
+                log("answered the \(asked.rawValue) end: turns a corner")
+            }
             await pause(0.6)
         }
     }
