@@ -9,6 +9,7 @@ import json
 
 from PIL import Image
 
+from meter_eval.locate import top_candidate
 from meter_eval.match import class_read, number_boxes
 from meter_eval.ocr import CONFIGS, PRIMARY, Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
@@ -22,14 +23,19 @@ def usable_rows() -> list[dict]:
 
 
 def evaluate(row: dict, results: dict[str, dict]) -> dict:
-    out = {"id": row["id"], "number_agreed": row["number_agreed"], "class_kind": row["class_kind"]}
-    has_number = bool(row["number_sha256"])
+    out = {
+        "id": row["id"],
+        "number_agreed": row["number_agreed"],
+        "number_agreed_strict": row["number_agreed_strict"],
+        "class_kind": row["class_kind"],
+    }
+    has_number = bool(row["number_hmac"])
     for config, result in results.items():
         lines = result["lines"]
         if has_number:
             length = int(row["number_len"])
-            strict = number_boxes(lines, row["number_sha256"], length, lenient=False)
-            lenient = number_boxes(lines, row["number_sha256_lenient"], length, lenient=True)
+            strict = number_boxes(lines, row["number_hmac"], length, lenient=False)
+            lenient = number_boxes(lines, row["number_hmac_lenient"], length, lenient=True)
             out[f"number_{config}"] = int(strict is not None)
             out[f"number_lenient_{config}"] = int(lenient is not None)
             if config == PRIMARY and strict is not None:
@@ -48,13 +54,18 @@ def run() -> list[dict]:
     with Reader() as reader, raw_path.open("w") as raw:
         for row in usable_rows():
             path = DATA_DIR / "images" / f"{row['id']}.jpg"
-            results = {config: reader.read(path, config) for config in CONFIGS}
+            # Barcodes feed the number-finding ranking that picks the phone-side box.
+            results = {
+                config: reader.read(path, config, barcodes=config == PRIMARY) for config in CONFIGS
+            }
             for result in results.values():
                 raw.write(json.dumps(result) + "\n")
             out = evaluate(row, results)
             with Image.open(path) as image:
                 g = gray(image)
-            out |= {k: round(v, 4) for k, v in device_checks(g, results[PRIMARY]["lines"]).items()}
+            guess = top_candidate(results[PRIMARY])
+            checks = device_checks(g, guess and guess["box"])
+            out |= {k: round(v, 4) for k, v in checks.items()}
             if "number_box" in out:
                 located = region_checks(g, json.loads(out["number_box"]))
                 out |= {f"label_{k}": round(v, 4) for k, v in located.items()}
@@ -71,6 +82,7 @@ def rate(rows: list[dict], key: str) -> str:
 
 def table(rows: list[dict]) -> str:
     agreed = [r for r in rows if r["number_agreed"] == "yes"]
+    strict = [r for r in rows if r["number_agreed_strict"] == "yes"]
     with_number = [r for r in rows if r["number_agreed"]]
     ansi = [r for r in rows if r["class_kind"] == "ansi_class"]
     rating = [r for r in rows if r["class_kind"] == "current_rating"]
@@ -81,6 +93,7 @@ def table(rows: list[dict]) -> str:
     groups = [
         ("Meter number, exact", "number_{}", agreed, "both readers agree"),
         ("Meter number, O→0 and I/L→1 allowed", "number_lenient_{}", agreed, "both readers agree"),
+        ("Meter number, exact", "number_{}", strict, "readers' main numbers identical"),
         ("Meter number, exact", "number_{}", with_number, "all labelled"),
         ("US class label (CL200, 200 CL, CL20)", "class_{}", ansi, "all labelled"),
         ("Current rating (e.g. 10(60)A)", "class_{}", rating, "all labelled"),

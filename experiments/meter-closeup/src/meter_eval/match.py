@@ -1,13 +1,20 @@
 """Decide whether recognizer output contains a labelled string.
 
-Meter numbers are compared through a SHA-256 digest of their normalized form, because
-CONTRIBUTING.md forbids committing meter numbers; the digest in manifest.csv lets anyone
-rerun the eval without the plaintext.
+Meter numbers are compared through an HMAC-SHA256 digest of their normalized form, because
+CONTRIBUTING.md forbids committing meter numbers. An unkeyed hash of a short number can be
+reversed by trying every number of that length, so the digest is keyed: without the key in
+KEY_PATH (or the METER_HMAC_KEY environment variable, as in CI) the committed digests do not
+reveal the numbers, and scoring a read needs the key.
 """
 
+import functools
 import hashlib
+import hmac
+import os
 import re
 from collections.abc import Sequence
+
+from meter_eval.paths import KEY_PATH
 
 # Lenient mode maps letters Vision commonly returns for digits. Applied to both the label and
 # the output, so it can only add matches.
@@ -39,8 +46,22 @@ def core(text: str) -> str:
     return re.sub(r"^[A-Z]+(?=\d)", "", normalize(text))
 
 
+@functools.cache
+def key() -> bytes:
+    if os.environ.get("METER_HMAC_KEY"):
+        return bytes.fromhex(os.environ["METER_HMAC_KEY"])
+    if not KEY_PATH.exists():
+        raise FileNotFoundError(
+            f"No HMAC key: METER_HMAC_KEY is unset (in CI, the repository secret of that name) "
+            f"and {KEY_PATH} does not exist. Ask the team for the key, or start over with "
+            "`python -m meter_eval.labels --new-key` and rebuild the manifest from the "
+            "plaintext labels."
+        )
+    return bytes.fromhex(KEY_PATH.read_text().strip())
+
+
 def digest(normalized: str) -> str:
-    return hashlib.sha256(normalized.encode()).hexdigest()
+    return hmac.new(key(), normalized.encode(), hashlib.sha256).hexdigest()
 
 
 def rows_of_text(lines: Sequence[dict]) -> list[tuple[str, list[list[float]]]]:

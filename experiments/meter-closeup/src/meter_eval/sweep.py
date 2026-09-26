@@ -2,11 +2,15 @@
 
 Only photos with an agreed number that the primary configuration read undegraded are swept,
 so every failure here is caused by the controlled degradation. The number's box comes from
-that clean read. When a degraded read fails, two second passes run (Q3): Vision on a crop
-around the tallest detected digit line, and on that crop upscaled 2x.
+that clean read, and the "label_" checks use it; the phone does not know that box, so every
+unprefixed check uses the number-finding ranking's top candidate on the degraded read. When a
+degraded read fails, two second passes run (Q3): Vision on a crop around that top candidate,
+and on that crop upscaled 2x.
 
-Rows go to DATA_DIR/sweep/rows-<shard>.jsonl; `python -m meter_eval.analyze` merges them.
-Raw recognizer output, which contains meter numbers, is not kept.
+Rows go to DATA_DIR/sweep/rows-<shard>.jsonl, each tagged with the digest of the label it was
+scored against. A photo is swept again when its label changes; `python -m meter_eval.analyze`
+merges the rows and ignores stale ones. Raw recognizer output, which contains meter numbers,
+is not kept.
 """
 
 import argparse
@@ -18,11 +22,12 @@ import time
 from PIL import Image
 
 from meter_eval.degrade import LEVELS, apply
+from meter_eval.locate import top_candidate
+from meter_eval.match import digest as match_digest
 from meter_eval.match import number_read
 from meter_eval.ocr import Reader
 from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
-from meter_eval.quality import device_checks, gray, region_checks, tallest_digit_line
-from meter_eval.retake import edge_gap
+from meter_eval.quality import device_checks, edge_gap, gray, region_checks
 
 SWEEP_DIR = DATA_DIR / "sweep"
 
@@ -36,12 +41,11 @@ def crop_around(box: list[float], width: int, height: int) -> list[float]:
 
 
 def second_pass(
-    reader: Reader, path, image: Image.Image, lines: list[dict], digest: str, length: int
+    reader: Reader, path, image: Image.Image, guess: dict | None, digest: str, length: int
 ) -> dict:
-    tallest = tallest_digit_line(lines)
-    if tallest is None:
+    if guess is None:
         return {"crop": 0, "crop_x2": 0}
-    crop = crop_around(tallest["box"], image.width, image.height)
+    crop = crop_around(guess["box"], image.width, image.height)
     cropped = reader.read(path, crop=crop)
     x0, y0 = crop[0] * image.width, crop[1] * image.height
     region = image.crop(
@@ -65,7 +69,7 @@ def second_pass(
 
 def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
     records = []
-    digest, length = row["number_sha256"], int(row["number_len"])
+    digest, length = row["number_hmac"], int(row["number_len"])
     work_path = SWEEP_DIR / f"work-{os.getpid()}.jpg"
     with Image.open(DATA_DIR / "images" / f"{row['id']}.jpg") as original:
         original.load()
@@ -76,11 +80,13 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
                 continue
             image, label_box = applied
             image.save(work_path, quality=95)
-            result = reader.read(work_path)
+            result = reader.read(work_path, barcodes=True)
             ok = number_read(result["lines"], digest, length, lenient=False)
             g = gray(image)
+            guess = top_candidate(result)
             record = {
                 "id": row["id"],
+                "label_hmac": digest,
                 "family": family,
                 "level": level,
                 "ok": int(ok),
@@ -89,12 +95,13 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
                 "label_edge_margin": edge_gap(label_box, image.width, image.height),
             }
             record |= {f"label_{k}": v for k, v in region_checks(g, label_box).items()}
-            record |= device_checks(g, result["lines"])
-            tallest = tallest_digit_line(result["lines"])
-            if tallest is not None:
-                record["edge_margin"] = edge_gap(tallest["box"], image.width, image.height)
+            record |= device_checks(g, guess and guess["box"])
+            if guess is not None:
+                record["guess_is_number"] = int(
+                    match_digest(guess["core"]) == row["number_core_hmac"]
+                )
             if not ok:
-                record |= second_pass(reader, work_path, image, result["lines"], digest, length)
+                record |= second_pass(reader, work_path, image, guess, digest, length)
             records.append(
                 {k: round(v, 4) if isinstance(v, float) else v for k, v in record.items()}
             )
@@ -116,9 +123,14 @@ def main() -> None:
 
     SWEEP_DIR.mkdir(parents=True, exist_ok=True)
     out_path = SWEEP_DIR / f"rows-{args.shard}.jsonl"
-    done = set()
+    current = {r["id"]: manifest[r["id"]]["number_hmac"] for r in targets}
+    kept = []
     if out_path.exists():
-        done = {json.loads(line)["id"] for line in out_path.open()}
+        rows = [json.loads(line) for line in out_path.open()]
+        kept = [r for r in rows if current.get(r["id"]) == r.get("label_hmac")]
+    # Rows scored against an older label are dropped, so those photos are swept again.
+    out_path.write_text("".join(json.dumps(r) + "\n" for r in kept))
+    done = {r["id"] for r in kept}
     with Reader() as reader, out_path.open("a") as out:
         for clean_row in mine:
             if clean_row["id"] in done:

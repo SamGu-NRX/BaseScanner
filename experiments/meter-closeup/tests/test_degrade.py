@@ -3,7 +3,7 @@ import pytest
 from PIL import Image
 
 from meter_eval.degrade import downscale, edge_crop, glare
-from meter_eval.retake import edge_gap
+from meter_eval.quality import edge_gap
 from meter_eval.sweep import crop_around
 
 BOX = [0.25, 0.4, 0.5, 0.1]  # on a 200 x 100 image: x 50-150, y 40-50, line height 10 px

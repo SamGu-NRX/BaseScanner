@@ -1,28 +1,40 @@
 """Merge the two readers' labels into the committed manifest.csv.
 
 Both readers are AI models that read each photo by eye (reader 1 is the experiment author,
-reader 2 an independent pass that never saw reader 1's labels). A meter number counts as
-agreed when one of reader 2's numbers equals reader 1's number after normalization, or one
-contains the other and the shorter has at least 6 characters (a barcode line such as
-ACG012345678 printing the plate number 12 345 678), and neither reader doubted a character.
-Plaintext labels stay in the data directory; the manifest keeps only digests (see match.py).
+reader 2 an independent pass that never saw reader 1's labels). The label is always reader
+1's number, so reader 1 chose which printed identifier counts as the meter number. Two
+agreement rules are recorded:
 
-A person's answers from the review page (`review.py`), when present, decide: a kept number
-counts as agreed, and a corrected one replaces the AI readers' number.
+- number_agreed (the loose rule the headline results use): reader 1's number, normalized,
+  equals any number reader 2 listed (its main number or one of its other numbers), or one
+  contains the other and the shorter has at least 6 characters (a barcode line such as
+  ACG012345678 printing the plate number 12 345 678). Neither reader may have doubted a
+  character.
+- number_agreed_strict: both readers' main numbers are identical after normalization and
+  both readers were sure.
+
+A person's answers from the review page (`review.py`), when present: "keep" makes a number
+agreed under both rules; "fix" replaces the number with the person's reading but does not
+by itself make it agreed.
+
+Plaintext labels stay in the data directory. The manifest keeps keyed digests (match.py),
+and identifier_digests.txt keeps the digest of every identifier either reader transcribed,
+so `leakcheck` can find one in the repository without the plaintext.
 """
 
 import argparse
 import csv
 import re
-import subprocess
+import secrets
 
 from meter_eval.match import core, digest, lenient_digest, normalize, normalize_class
-from meter_eval.paths import DATA_DIR, EXPERIMENT_DIR, MANIFEST
+from meter_eval.paths import DATA_DIR, EXPERIMENT_DIR, KEY_PATH, MANIFEST
 
 READER1 = DATA_DIR / "labels_reader1.csv"
 READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
 HUMAN = DATA_DIR / "labels_human.csv"
 SOURCES = DATA_DIR / "shortlist.csv"
+IDENTIFIER_DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
 # Reader 2 marked these "unsure" for a reason other than the characters of reader 1's number,
 # per its notes: which of two printed numbers is the meter's ID (m25, m30, m33, m38), or a
 # second number cut off by the frame (m63). It transcribed reader 1's number identically.
@@ -37,12 +49,13 @@ FIELDS = [
     "license_url",
     "author",
     "usable",
-    "number_sha256",
-    "number_sha256_lenient",
+    "number_hmac",
+    "number_hmac_lenient",
     "number_len",
-    "number_core_sha256",
+    "number_core_hmac",
     "number_core_len",
     "number_agreed",
+    "number_agreed_strict",
     "human_check",
     "class_label",
     "class_kind",
@@ -107,13 +120,20 @@ def build() -> list[dict]:
                 and r1["number_sure"] == "sure"
                 and r2_sure
             )
+            strict = (
+                normalize(number) == normalize(r2["meter_number"])
+                and r1["number_sure"] == "sure"
+                and r2["number_sure"] == "sure"
+            )
+            kept = verdict == "keep"
             row |= {
-                "number_sha256": digest(normalize(number)),
-                "number_sha256_lenient": lenient_digest(number),
+                "number_hmac": digest(normalize(number)),
+                "number_hmac_lenient": lenient_digest(number),
                 "number_len": len(normalize(number)),
-                "number_core_sha256": digest(core(number)),
+                "number_core_hmac": digest(core(number)),
                 "number_core_len": len(core(number)),
-                "number_agreed": "yes" if agreed or verdict else "no",
+                "number_agreed": "yes" if (agreed and verdict != "fix") or kept else "no",
+                "number_agreed_strict": "yes" if (strict and verdict != "fix") or kept else "no",
                 "human_check": verdict,
             }
         label = r1["class_label"]
@@ -145,56 +165,39 @@ def known_numbers() -> set[str]:
     return found
 
 
-def check_leaks() -> None:
-    """Fail if any transcribed identifier appears in a tracked file of this experiment.
-
-    SHA-256 digests in the CSVs are skipped. Needs the plaintext labels, so it runs locally.
-    """
-    numbers = known_numbers()
-    tracked = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "."],
-        cwd=EXPERIMENT_DIR,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
-    leaks = []
-    for name in tracked:
-        if name.endswith(".lock"):
-            continue
-        text = (EXPERIMENT_DIR / name).read_text(errors="ignore")
-        text = re.sub(r"\b[0-9a-f]{64}\b", "", text)
-        if name.endswith(".csv"):
-            # Cell by cell; decimal measurements such as 62.5152 are not identifiers.
-            cells = [c for row in csv.reader(text.splitlines()) for c in row]
-            pieces = [c for c in cells if not re.fullmatch(r"-?\d+\.\d+", c)]
-        else:
-            pieces = re.findall(r"[A-Za-z0-9][A-Za-z0-9 .\-]*", text)
-        tokens = {normalize(t) for t in pieces}
-        leaks += [(name, n) for n in numbers if any(n in t for t in tokens)]
-    for name, number in sorted(leaks):
-        print(f"{name}: a transcribed identifier ({len(number)} characters)")
-    if leaks:
+def new_key() -> None:
+    if KEY_PATH.exists():
         raise SystemExit(
-            f"{len(leaks)} meter numbers in tracked files; replace them with synthetic ones"
+            f"{KEY_PATH} exists. Every digest in manifest.csv depends on it; delete it by hand "
+            "only if you mean to re-key, then rebuild the manifest."
         )
-    print(f"no transcribed identifier in {len(tracked)} files")
+    KEY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    KEY_PATH.write_text(secrets.token_hex(32) + "\n")
+    KEY_PATH.chmod(0o600)
+    print(f"wrote a new key to {KEY_PATH}; now run `python -m meter_eval.labels`")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check-leaks", action="store_true", help="scan tracked files instead")
-    if parser.parse_args().check_leaks:
-        check_leaks()
+    parser.add_argument("--new-key", action="store_true", help="create the HMAC key instead")
+    if parser.parse_args().new_key:
+        new_key()
         return
     rows = build()
+    IDENTIFIER_DIGESTS.write_text(
+        "".join(f"{d}\n" for d in sorted({digest(n) for n in known_numbers()}))
+    )
     with MANIFEST.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS, restval="")
         writer.writeheader()
         writer.writerows(rows)
     usable = [r for r in rows if r["usable"] == "yes"]
     agreed = [r for r in usable if r.get("number_agreed") == "yes"]
-    print(f"{len(rows)} images, {len(usable)} usable, {len(agreed)} with an agreed meter number")
+    strict = [r for r in usable if r.get("number_agreed_strict") == "yes"]
+    print(
+        f"{len(rows)} images, {len(usable)} usable, {len(agreed)} with an agreed meter number "
+        f"({len(strict)} under the strict rule)"
+    )
 
 
 if __name__ == "__main__":

@@ -141,6 +141,11 @@ def score(c: dict) -> float:
     )
 
 
+def top_candidate(result: dict) -> dict | None:
+    """The phone's best guess at the number's line: the highest-scoring candidate."""
+    return best(candidates(result))
+
+
 def ranked(found: list[dict]) -> list[str]:
     """Candidate cores, best first, each core once."""
     order = sorted(found, key=score, reverse=True)
@@ -189,7 +194,7 @@ def scan(rows: list[dict]) -> dict[str, dict]:
 def barcode_stats(row: dict, result: dict) -> dict:
     barcodes = result.get("barcodes") or []
     payloads = [b["payload"] for b in barcodes if b.get("payload")]
-    target = row["number_core_sha256"]
+    target = row["number_core_hmac"]
     length = int(row["number_core_len"] or 0)
     has_number = any(
         digest(core(p)[i : i + length]) == target
@@ -199,7 +204,7 @@ def barcode_stats(row: dict, result: dict) -> dict:
     return {
         "barcode_found": int(bool(barcodes)),
         "barcode_decoded": int(bool(payloads)),
-        "barcode_has_number": int(has_number) if row["number_sha256"] else "",
+        "barcode_has_number": int(has_number) if row["number_hmac"] else "",
     }
 
 
@@ -208,15 +213,16 @@ def evaluate(row: dict, result: dict) -> dict:
         "id": row["id"],
         "split": "dev" if int(row["id"][1:]) % 2 else "test",
         "us_style": int(row["class_kind"] == "ansi_class"),
+        "strict": int(row["number_agreed_strict"] == "yes"),
     }
     out |= barcode_stats(row, result)
     if row["number_agreed"] != "yes":
         return out
     out["read"] = int(
-        number_read(result["lines"], row["number_sha256"], int(row["number_len"]), lenient=False)
+        number_read(result["lines"], row["number_hmac"], int(row["number_len"]), lenient=False)
     )
     found = candidates(result)
-    target = row["number_core_sha256"]
+    target = row["number_core_hmac"]
     order = ranked(found)
     hits = [i for i, c in enumerate(order) if digest(c) == target]
     out["rank"] = hits[0] + 1 if hits else ""
@@ -227,16 +233,23 @@ def evaluate(row: dict, result: dict) -> dict:
 
 
 def barcode_table(rows: list[dict]) -> str:
-    found = [r for r in rows if r["barcode_found"]]
-    decoded = [r for r in found if r["barcode_decoded"]]
-    with_number = [r for r in found if r["barcode_has_number"] != ""]
-    contains = [r for r in with_number if r["barcode_has_number"]]
-    return (
-        "| Photos | Barcode found | Decoded | Decode contains the meter number |\n"
-        "|---|---|---|---|\n"
-        f"| {len(rows)} | {len(found)} | {len(decoded)} | "
-        f"{len(contains)} of {len(with_number)} with a labelled number |\n"
-    )
+    out = [
+        "| Photos | Barcode found | Decoded | Decode contains the meter number |",
+        "|---|---|---|---|",
+    ]
+    for title, subset in (
+        ("All usable", rows),
+        ("US-style (CL class label)", [r for r in rows if r["us_style"]]),
+    ):
+        found = [r for r in subset if r["barcode_found"]]
+        decoded = [r for r in found if r["barcode_decoded"]]
+        with_number = [r for r in found if r["barcode_has_number"] != ""]
+        contains = [r for r in with_number if r["barcode_has_number"]]
+        out.append(
+            f"| {title}: {len(subset)} | {len(found)} | {len(decoded)} | "
+            f"{len(contains)} of {len(with_number)} with a labelled number |"
+        )
+    return "\n".join(out) + "\n"
 
 
 def rule_table(rows: list[dict], names: list[str]) -> str:
@@ -245,8 +258,14 @@ def rule_table(rows: list[dict], names: list[str]) -> str:
         "odd-numbered photos, used to write the rules": lambda r: r["split"] == "dev",
         "even-numbered photos, held out": lambda r: r["split"] == "test",
         "all photos": lambda r: True,
-        # Chosen after the held-out scoring, as a description of Base's market.
-        "US-style meters (CL class label), all photos": lambda r: r["us_style"],
+        "all photos, strict labels (readers' main numbers identical)": lambda r: r["strict"],
+        # Exploratory: chosen after the held-out scoring, as a description of Base's market.
+        "exploratory: US-style meters (CL class label), odd-numbered": lambda r: (
+            r["us_style"] and r["split"] == "dev"
+        ),
+        "exploratory: US-style meters (CL class label), held out": lambda r: (
+            r["us_style"] and r["split"] == "test"
+        ),
     }
     if {r["split"] for r in rows} == {"dev"}:
         groups = {"odd-numbered photos, used to write the rules": groups["all photos"]}

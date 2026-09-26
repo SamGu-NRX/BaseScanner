@@ -1,8 +1,9 @@
 """A local page for a person to confirm the AI-made meter-number labels.
 
-`build` writes REVIEW_DIR/review.html and a crop of each photo's number. The page shows the
-crop beside the number both AI readers settled on; the reviewer keeps it (K) or types a
-correction (F, then Enter) and downloads the answers as CSV. `ingest` copies that CSV to
+`build` writes REVIEW_DIR/review.html with each whole photo, the number the AI readers
+settled on, and below it a zoom on the line Vision read. The whole photo comes first so the
+reviewer sees every identifier on the plate, not only the one Vision found. The reviewer
+keeps the number (K) or types a correction (F, then Enter) and downloads the answers as CSV. `ingest` copies that CSV to
 DATA_DIR/labels_human.csv, where `labels.py` picks it up. Everything stays outside git,
 because the page shows plaintext meter numbers.
 """
@@ -19,22 +20,19 @@ from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR, REVIEW_DIR
 HUMAN_LABELS = DATA_DIR / "labels_human.csv"
 
 
-def crop_number(image: Image.Image, box: list[float] | None) -> Image.Image:
-    """The number's line with context around it, or the whole photo if it was never read."""
-    if box is None:
-        view = image.copy()
-    else:
-        x, y, w, h = box
-        pad_x, pad_y = 0.3 * w, 1.5 * h
-        view = image.crop(
-            (
-                round(max(0.0, x - pad_x) * image.width),
-                round(max(0.0, y - pad_y) * image.height),
-                round(min(1.0, x + w + pad_x) * image.width),
-                round(min(1.0, y + h + pad_y) * image.height),
-            )
+def crop_number(image: Image.Image, box: list[float]) -> Image.Image:
+    """The number's line with some context around it."""
+    x, y, w, h = box
+    pad_x, pad_y = 0.3 * w, 1.5 * h
+    view = image.crop(
+        (
+            round(max(0.0, x - pad_x) * image.width),
+            round(max(0.0, y - pad_y) * image.height),
+            round(min(1.0, x + w + pad_x) * image.width),
+            round(min(1.0, y + h + pad_y) * image.height),
         )
-    view.thumbnail((960, 720))
+    )
+    view.thumbnail((720, 240))
     return view
 
 
@@ -58,12 +56,17 @@ def build() -> None:
         source = DATA_DIR / "images" / f"{image_id}.jpg"
         box = json.loads(boxes[image_id]) if boxes.get(image_id) else None
         with Image.open(source) as image:
-            crop_number(image, box).save(crops / f"{image_id}.jpg", quality=85)
+            whole = image.copy()
+            whole.thumbnail((1400, 1050))
+            whole.save(crops / f"{image_id}-whole.jpg", quality=85)
+            if box is not None:
+                crop_number(image, box).save(crops / f"{image_id}.jpg", quality=85)
         number = first[image_id]["meter_number"]
         other = second[image_id]["meter_number"]
         items.append(
             {
                 "id": image_id,
+                "zoom": box is not None,
                 "number": "" if number == "NONE" else number,
                 "agreed": row["number_agreed"] == "yes",
                 "other": "" if other in ("NONE", number) else other,
@@ -141,10 +144,13 @@ TEMPLATE = """<!doctype html>
   article.current { border-color: var(--glass); }
   article[data-verdict="keep"] { opacity: 0.55; }
   article[data-verdict="fix"] { border-left: 6px solid var(--seal); }
-  article img {
-    width: 100%; height: auto; max-height: 280px; object-fit: contain; object-position: left;
+  article img.whole {
+    width: 100%; height: auto; max-height: 520px; object-fit: contain; object-position: left top;
     border-radius: 3px;
   }
+  figure { margin: 14px 0 0; }
+  figure img { max-width: 100%; max-height: 160px; border-radius: 3px; }
+  figcaption { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
   .meta { display: flex; gap: 10px; align-items: baseline; color: var(--muted); font-size: 13px; }
   .meta a { color: var(--glass); }
   .stamp {
@@ -175,7 +181,7 @@ TEMPLATE = """<!doctype html>
 <body>
 <header>
   <h1>Meter number check</h1>
-  <p>Does the stamp match the photo? <kbd>K</kbd> keep <kbd>F</kbd> fix
+  <p>Is the stamp this meter's number? <kbd>K</kbd> keep <kbd>F</kbd> fix
      <kbd>Enter</kbd> save fix <kbd>&uarr;</kbd><kbd>&darr;</kbd> move</p>
   <span class="progress" id="progress"></span>
   <button class="export" id="export">Download answers</button>
@@ -199,7 +205,7 @@ function render() {
       ? `<div class="stamp"></div>`
       : `<div class="stamp none">No number labelled</div>`;
     el.innerHTML = `
-      <img loading="lazy" alt="Photo ${item.id}, cropped to the meter number" src="crops/${item.id}.jpg">
+      <img class="whole" loading="lazy" alt="Photo ${item.id}" src="crops/${item.id}-whole.jpg">
       <div>
         <div class="meta"><b>${item.id}</b>
           <a href="${item.photo}" target="_blank">full photo</a>
@@ -207,6 +213,8 @@ function render() {
         ${stamp}
         <div class="flag" hidden></div>
         <div class="note"></div>
+        ${item.zoom ? `<figure><figcaption>Zoom on the line Vision read</figcaption>
+          <img loading="lazy" alt="Zoom on the line Vision read in ${item.id}" src="crops/${item.id}.jpg"></figure>` : ""}
         <div class="actions">
           <button class="keep" aria-pressed="${answer.verdict === "keep"}">Keep</button>
           <button class="fix" aria-pressed="${answer.verdict === "fix"}">Fix</button>

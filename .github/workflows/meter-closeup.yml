@@ -38,3 +38,8 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
+      # Looks for any transcribed meter identifier in the tracked files. The key stays in a
+      # repository secret; without it the step fails with an explanation.
+      - run: uv run python -m meter_eval.leakcheck
+        env:
+          METER_HMAC_KEY: ${{ secrets.METER_HMAC_KEY }}

@@ -10,9 +10,9 @@ check:
 	uv run ruff format --check .
 	uv run pytest -q
 
-# Needs the plaintext labels in the data directory, so it runs locally, not in CI.
+# Needs the HMAC key (file or METER_HMAC_KEY), not the plaintext labels.
 leakcheck:
-	uv run python -m meter_eval.labels --check-leaks
+	uv run python -m meter_eval.leakcheck
 
 $(OCR): meterocr/Package.swift meterocr/Sources/meterocr/main.swift
 	swift build -c release --package-path meterocr
@@ -26,7 +26,7 @@ q1: $(OCR)
 	uv run python -m meter_eval.clean
 
 # The degraded reads behind results/sweep.md, in two processes of up to 2 GB each
-# (about 15 minutes). Needs results/clean_per_image.csv from q1.
+# (about 25 minutes). Needs results/clean_per_image.csv from q1.
 sweep: $(OCR)
 	uv run python -m meter_eval.sweep --shard 0 --shards 2 & \
 	uv run python -m meter_eval.sweep --shard 1 --shards 2 & \

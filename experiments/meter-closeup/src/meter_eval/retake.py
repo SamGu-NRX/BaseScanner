@@ -1,26 +1,30 @@
-"""The retake checks the app should port, with the thresholds this experiment measured.
+"""The retake checks the app should port: the ones that survive without knowing the answer.
+
+The phone cannot know where the true number is, so every check here uses either the whole
+photo or the number-finding ranking's top candidate (locate.top_candidate). Checks measured
+on the true number's box (results/sweep.md, "label" rows) are not ported: on the top candidate
+the glare check has an AUC of 0.55 and the framing check 0.61, because a washed-out or cut
+number usually stops being the top candidate.
 
 Every check runs on the full-resolution photo after EXIF rotation, converted to 8-bit luma
-(L = 0.299 R + 0.587 G + 0.114 B, as PIL's "L" mode). `box` is the number's line as Vision
-returns it, normalized [x, y, w, h] with a top-left origin. Each threshold is the value at or
-below (or above) which 95% of the 71 swept photos had stopped reading; see
-results/sweep.md, "Retake thresholds from each photo's break point".
+(L = 0.299 R + 0.587 G + 0.114 B, as PIL's "L" mode). `box` is normalized [x, y, w, h] with
+a top-left origin, as meterocr returns Vision's boxes. Each threshold is the value at or below
+which 95% of the 71 swept photos had stopped reading; see results/sweep.md, "Retake
+thresholds from each photo's break point".
 """
 
 import numpy as np
 
-from meter_eval.quality import crop_box, downscale_long_side, laplacian_variance, saturated_fraction
+from meter_eval.quality import downscale_long_side, laplacian_variance
 
-# results/sweep.md, scale: label line height, 95% column. 15 px read on 96% of photos.
-MIN_LINE_PX = 12.0
-# results/sweep.md, blur: whole-photo sharpness at 1024 px, 95% column; rejected 0 of 75 good
-# photos (same file, last table).
+# results/sweep.md, blur, "whole-photo sharpness at up to 1024 px", 95% column. AUC 0.96;
+# rejects 0 of 75 good photos, whose lowest score is 58.7 (weak evidence: none is near 6.63).
 MIN_SHARPNESS = 6.63
-# results/sweep.md, glare: label share of pixels >= 250, 95% column; rejected 2 of 75.
-MAX_SATURATED = 0.0729
-# results/sweep.md, edge: label gap to the frame edge. A box touching the edge cannot show
-# whether digits continue past it.
-MIN_EDGE_GAP = 0.0
+# results/sweep.md, scale, "top-candidate line height in pixels", 95% column. AUC 0.86;
+# rejects 2 of 75 good photos. On the true number's box the cut would be 12 px; the top
+# candidate likely needs more because once the number is too small, a larger line takes
+# its place.
+MIN_TOP_LINE_PX = 33.9
 
 
 def line_height_px(box: list[float], image_height: int) -> float:
@@ -28,39 +32,18 @@ def line_height_px(box: list[float], image_height: int) -> float:
 
 
 def whole_photo_sharpness(g: np.ndarray) -> float:
-    """Laplacian variance of the luma image resized to a 1024 px long side (bilinear)."""
+    """Laplacian variance of the luma image shrunk to a 1024 px long side (bilinear,
+    antialiased). Photos already that small are used as they are."""
     return laplacian_variance(downscale_long_side(g, 1024))
 
 
-def label_saturated(g: np.ndarray, box: list[float]) -> float:
-    """Share of luma >= 250 in the box padded by 0.25 line heights on every side."""
-    return saturated_fraction(crop_box(g, box, pad=0.25))
-
-
-def edge_gap(box: list[float], width: int, height: int) -> float:
-    """Distance from the box to the nearest frame edge, in line heights."""
-    line = box[3] * height
-    gaps = [
-        box[0] * width,
-        box[1] * height,
-        (1 - box[0] - box[2]) * width,
-        (1 - box[1] - box[3]) * height,
-    ]
-    return min(gaps) / line
-
-
-def reasons(g: np.ndarray, box: list[float] | None) -> list[str]:
+def reasons(g: np.ndarray, top_box: list[float] | None) -> list[str]:
     """Why the app should ask for a retake; empty when the photo passes every check."""
-    height, width = g.shape
     found = []
     if whole_photo_sharpness(g) <= MIN_SHARPNESS:
         found.append("out of focus")
-    if box is None:
-        return found + ["no number found"]
-    if line_height_px(box, height) <= MIN_LINE_PX:
+    if top_box is None:
+        found.append("no number found")
+    elif line_height_px(top_box, g.shape[0]) <= MIN_TOP_LINE_PX:
         found.append("number too small")
-    if label_saturated(g, box) >= MAX_SATURATED:
-        found.append("glare on the number")
-    if edge_gap(box, width, height) <= MIN_EDGE_GAP:
-        found.append("number touches the frame edge")
     return found

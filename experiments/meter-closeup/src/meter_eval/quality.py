@@ -50,6 +50,18 @@ def union_box(boxes: list[list[float]]) -> list[float]:
     return [x0, y0, x1 - x0, y1 - y0]
 
 
+def edge_gap(box: list[float], width: int, height: int) -> float:
+    """Distance from the box to the nearest frame edge, in line heights."""
+    line = box[3] * height
+    gaps = [
+        box[0] * width,
+        box[1] * height,
+        (1 - box[0] - box[2]) * width,
+        (1 - box[1] - box[3]) * height,
+    ]
+    return min(gaps) / line
+
+
 def region_checks(g: np.ndarray, box: list[float]) -> dict[str, float]:
     """Checks on a text box: its height in pixels, and sharpness, glare and contrast inside it.
 
@@ -87,32 +99,25 @@ def tallest_digit_line(lines: list[dict]) -> dict | None:
     return max(digit_lines(lines), key=lambda line: line["box"][3], default=None)
 
 
-def device_checks(g: np.ndarray, lines: list[dict]) -> dict[str, float]:
+def device_checks(g: np.ndarray, box: list[float] | None) -> dict[str, float]:
     """Checks a phone can compute without knowing the answer.
 
-    The candidate label is the tallest recognized line holding at least 4 digits, which is
-    how the app would find a meter number before reading it. With no such line every
-    region check is 0, which the app should treat as a failed photo.
+    `box` is the phone's guess at the number's line, the number-finding ranking's top
+    candidate (locate.top_candidate). With no candidate the region checks are absent, which
+    the analysis scores as the worst value: the app should treat that photo as failed.
     """
-    tallest = tallest_digit_line(lines)
     checks = {
-        "digit_lines": float(len(digit_lines(lines))),
         "global_lap_var": laplacian_variance(downscale_long_side(g, 1024)),
         "global_saturated": saturated_fraction(g),
     }
-    if tallest is None:
-        return checks | {
-            "text_height_px": 0.0,
-            "lap_var": 0.0,
-            "lap_var_32": 0.0,
-            "saturated": 0.0,
-            "contrast": 0.0,
-            "confidence": 0.0,
-        }
-    return checks | region_checks(g, tallest["box"]) | {"confidence": float(tallest["confidence"])}
+    if box is None:
+        return checks
+    height, width = g.shape
+    return checks | region_checks(g, box) | {"edge_margin": edge_gap(box, width, height)}
 
 
 def downscale_long_side(g: np.ndarray, long_side: int) -> np.ndarray:
+    """Shrink so the long side is `long_side` pixels (bilinear, antialiased); never enlarge."""
     scale = long_side / max(g.shape)
     if scale >= 1:
         return g

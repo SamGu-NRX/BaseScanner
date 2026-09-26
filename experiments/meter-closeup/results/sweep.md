@@ -38,25 +38,23 @@ Swept photos: 71; degraded reads: 3309.
 |---|---|---|---|---|---|
 | blur | degradation level (σ / line height) | ≥ 0.06 | ≥ 0.08 | 0.1 | – |
 | blur | label sharpness, resized to a 32 px line | ≤ 39.1 | ≤ 4.92 | 1.99 | 0.96 |
-| blur | label sharpness at native size | ≤ 4.88 | ≤ 2.31 | 1.64 | 0.87 |
-| blur | detected-line sharpness, 32 px line | ≤ 338 | ≤ 25.1 | 1.94 | 0.95 |
-| blur | whole-photo sharpness at 1024 px | ≤ 6.63 | ≤ 2.89 | 1.31 | 0.96 |
+| blur | top-candidate sharpness, 32 px line | ≤ 59.6 | ≤ 10.8 | 1.68 | 0.96 |
+| blur | whole-photo sharpness at up to 1024 px | ≤ 6.63 | ≤ 2.89 | 1.31 | 0.96 |
 | motion | degradation level (streak / line height) | ≥ 0.3 | ≥ 0.3 | 0.4 | – |
 | motion | label sharpness, resized to a 32 px line | ≤ 701 | ≤ 320 | 132 | 0.69 |
-| motion | label sharpness at native size | ≤ 208 | ≤ 110 | 29.3 | 0.70 |
-| motion | detected-line sharpness, 32 px line | ≤ 721 | ≤ 369 | 111 | 0.85 |
-| motion | whole-photo sharpness at 1024 px | ≤ 190 | ≤ 107 | 52.4 | 0.75 |
+| motion | top-candidate sharpness, 32 px line | ≤ 503 | ≤ 246 | 101 | 0.85 |
+| motion | whole-photo sharpness at up to 1024 px | ≤ 190 | ≤ 107 | 52.4 | 0.75 |
 | scale | degradation level (line height px) | ≤ 12 | ≤ 10 | 8 | – |
 | scale | label line height in pixels | ≤ 12 | ≤ 10 | 8 | 0.88 |
-| scale | detected-line height in pixels | ≤ 38 | ≤ 17.9 | 9.94 | 0.88 |
+| scale | top-candidate line height in pixels | ≤ 33.9 | ≤ 16 | 6 | 0.86 |
 | glare | degradation level (peak opacity) | ≥ 1 | ≥ 1 | 1 | – |
-| glare | label RMS contrast | ≤ 0.156 | ≤ 0.14 | 0.104 | 0.83 |
 | glare | label share of pixels ≥ 250 | ≥ 0.0729 | ≥ 0.133 | 0.242 | 0.95 |
-| glare | detected-line RMS contrast | ≤ 0.215 | ≤ 0.189 | 0.142 | 0.48 |
+| glare | top-candidate share of pixels ≥ 250 | ≥ 0 | ≥ 0 | 0 | 0.55 |
+| glare | label RMS contrast | ≤ 0.156 | ≤ 0.14 | 0.104 | 0.83 |
 | glare | whole-photo share of pixels ≥ 250 | ≥ 0.0009 | ≥ 0.0025 | 0.00915 | 0.85 |
 | edge | degradation level (line heights) | ≤ -0.5 | ≤ -0.5 | -0.5 | – |
-| edge | label gap to the frame edge, in line heights | ≤ 0 | ≤ 0 | 0 | 0.90 |
-| edge | detected-line gap to the frame edge, in line heights | ≤ 3.03 | ≤ 1.14 | 0.212 | 0.61 |
+| edge | label gap to the frame edge (clipped box) | ≤ 0 | ≤ 0 | 0 | 0.90 |
+| edge | top-candidate gap to the frame edge, in line heights | ≤ 7.73 | ≤ 0.814 | 0.195 | 0.61 |
 
 - blur: 71 photos, 0 never broke; 2 of 277 reads above the break failed anyway (0.7%).
 - motion: 71 photos, 0 never broke; 6 of 361 reads above the break failed anyway (1.7%).
@@ -69,26 +67,25 @@ Swept photos: 71; degraded reads: 3309.
 | Check | Rejected at the 95% threshold | Rejected at the 80% threshold |
 |---|---|---|
 | label sharpness, resized to a 32 px line (blur) | 0/75 | 0/75 |
-| label sharpness at native size (blur) | 0/75 | 0/75 |
-| detected-line sharpness, 32 px line (blur) | 14/75 | 1/75 |
-| whole-photo sharpness at 1024 px (blur) | 0/75 | 0/75 |
+| top-candidate sharpness, 32 px line (blur) | 1/75 | 0/75 |
+| whole-photo sharpness at up to 1024 px (blur) | 0/75 | 0/75 |
 | label sharpness, resized to a 32 px line (motion) | 32/75 | 14/75 |
-| label sharpness at native size (motion) | 27/75 | 13/75 |
-| detected-line sharpness, 32 px line (motion) | 37/75 | 15/75 |
-| whole-photo sharpness at 1024 px (motion) | 21/75 | 8/75 |
+| top-candidate sharpness, 32 px line (motion) | 22/75 | 9/75 |
+| whole-photo sharpness at up to 1024 px (motion) | 21/75 | 8/75 |
 | label line height in pixels (scale) | 0/75 | 0/75 |
-| detected-line height in pixels (scale) | 1/75 | 0/75 |
-| label RMS contrast (glare) | 31/75 | 27/75 |
+| top-candidate line height in pixels (scale) | 2/75 | 0/75 |
 | label share of pixels ≥ 250 (glare) | 2/75 | 2/75 |
-| detected-line RMS contrast (glare) | 61/75 | 54/75 |
+| top-candidate share of pixels ≥ 250 (glare) | 75/75 | 75/75 |
+| label RMS contrast (glare) | 31/75 | 27/75 |
 | whole-photo share of pixels ≥ 250 (glare) | 47/75 | 37/75 |
+| top-candidate gap to the frame edge, in line heights (edge) | 37/75 | 0/75 |
 
 ### Second pass on failed reads
 
 | Degradation | Failed reads | Crop re-read recovers | Crop 2x re-read recovers | Either |
 |---|---|---|---|---|
-| blur | 435 | 8 (2%) | 6 (1%) | 9 (2%) |
-| motion | 284 | 5 (2%) | 5 (2%) | 7 (2%) |
-| scale | 187 | 12 (6%) | 22 (12%) | 23 (12%) |
-| glare | 266 | 6 (2%) | 9 (3%) | 9 (3%) |
-| edge | 188 | 4 (2%) | 6 (3%) | 6 (3%) |
+| blur | 435 | 10 (2%) | 10 (2%) | 13 (3%) |
+| motion | 284 | 6 (2%) | 7 (2%) | 9 (3%) |
+| scale | 187 | 11 (6%) | 21 (11%) | 24 (13%) |
+| glare | 266 | 6 (2%) | 6 (2%) | 7 (3%) |
+| edge | 188 | 7 (4%) | 7 (4%) | 8 (4%) |

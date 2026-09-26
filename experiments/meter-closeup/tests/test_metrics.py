@@ -125,3 +125,14 @@ def test_wilson_interval_for_8_of_10():
 def test_auc_perfect_and_tied():
     assert auc([3, 2, 1, 0], [True, True, False, False]) == 1.0
     assert auc([1, 1], [True, False]) == 0.5
+
+
+def test_digest_is_hmac_sha256_with_the_key():
+    # RFC 4231-style check: HMAC-SHA256 of "1234567" under 32 zero bytes, computed with
+    # Python's hmac module independently of meter_eval.
+    import hashlib
+    import hmac
+
+    expected = hmac.new(bytes(32), b"1234567", hashlib.sha256).hexdigest()
+    assert digest("1234567") == expected
+    assert digest("1234567") != hashlib.sha256(b"1234567").hexdigest()

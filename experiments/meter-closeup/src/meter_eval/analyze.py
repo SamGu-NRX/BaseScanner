@@ -18,7 +18,7 @@ from collections import defaultdict
 import numpy as np
 
 from meter_eval.degrade import LEVELS
-from meter_eval.paths import RESULTS_DIR
+from meter_eval.paths import MANIFEST, RESULTS_DIR
 from meter_eval.stats import auc
 from meter_eval.sweep import SWEEP_DIR
 
@@ -38,44 +38,51 @@ UNITS = {
     "edge": "line heights",
 }
 
-# (column, higher is better, description). "label" columns are measured on the number's
-# known box. "detected line" columns use the tallest recognized line with 4+ digits, which a
-# phone can find without knowing the answer but which is the meter number on only 21 of 75
-# clean photos (results/clean.md). "whole photo" columns need no locator at all.
+# (column, higher is better, description). "label" columns are measured on the number's true
+# box from the undegraded read, which the phone does not have; they bound what a perfect
+# locator would allow. For the edge family that box is clipped to the frame, so its gap is 0
+# whenever the edge cuts the number, by construction. "top candidate" columns use the
+# number-finding ranking's first pick on the degraded read, which the phone can compute.
+# "whole photo" columns need no locator.
 CHECKS = {
     "blur": [
         ("label_lap_var_32", True, "label sharpness, resized to a 32 px line"),
-        ("label_lap_var", True, "label sharpness at native size"),
-        ("lap_var_32", True, "detected-line sharpness, 32 px line"),
-        ("global_lap_var", True, "whole-photo sharpness at 1024 px"),
+        ("lap_var_32", True, "top-candidate sharpness, 32 px line"),
+        ("global_lap_var", True, "whole-photo sharpness at up to 1024 px"),
     ],
     "motion": [
         ("label_lap_var_32", True, "label sharpness, resized to a 32 px line"),
-        ("label_lap_var", True, "label sharpness at native size"),
-        ("lap_var_32", True, "detected-line sharpness, 32 px line"),
-        ("global_lap_var", True, "whole-photo sharpness at 1024 px"),
+        ("lap_var_32", True, "top-candidate sharpness, 32 px line"),
+        ("global_lap_var", True, "whole-photo sharpness at up to 1024 px"),
     ],
     "scale": [
         ("label_text_height_px", True, "label line height in pixels"),
-        ("text_height_px", True, "detected-line height in pixels"),
+        ("text_height_px", True, "top-candidate line height in pixels"),
     ],
     "glare": [
-        ("label_contrast", True, "label RMS contrast"),
         ("label_saturated", False, "label share of pixels ≥ 250"),
-        ("contrast", True, "detected-line RMS contrast"),
+        ("saturated", False, "top-candidate share of pixels ≥ 250"),
+        ("label_contrast", True, "label RMS contrast"),
         ("global_saturated", False, "whole-photo share of pixels ≥ 250"),
     ],
     "edge": [
-        ("label_edge_margin", True, "label gap to the frame edge, in line heights"),
-        ("edge_margin", True, "detected-line gap to the frame edge, in line heights"),
+        ("label_edge_margin", True, "label gap to the frame edge (clipped box)"),
+        ("edge_margin", True, "top-candidate gap to the frame edge, in line heights"),
     ],
 }
 
 
 def load_rows() -> list[dict]:
+    """Sweep rows scored against each photo's current label; stale rows are ignored."""
+    with MANIFEST.open() as handle:
+        current = {r["id"]: r["number_hmac"] for r in csv.DictReader(handle)}
     rows = []
     for path in sorted(SWEEP_DIR.glob("rows-*.jsonl")):
         rows += [json.loads(line) for line in path.open()]
+    rows = [r for r in rows if current.get(r["id"]) == r.get("label_hmac")]
+    keys = [(r["id"], r["family"], r["level"]) for r in rows]
+    if len(keys) != len(set(keys)):
+        raise SystemExit("duplicate sweep rows; delete DATA_DIR/sweep and run `make sweep`")
     return rows
 
 
