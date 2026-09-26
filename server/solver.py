@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
 
-from shapely import Geometry, LineString, Polygon, unary_union
+from shapely import Geometry, LineString, Polygon, get_coordinates, unary_union
 
 from rules import LoadedRules, Rules, Value
 from scene import EPS, Piece, Scene, SceneObject, merge_intervals
@@ -817,14 +817,23 @@ class Solver:
         # the rule's distance (and within error of it) from any part of an object, including
         # the middle of a slanted edge, and where it crosses a ground patch's edge.
         tracks = [LineString([piece.point(lo, v), piece.point(hi + W, v)]) for v in (0.0, D)]
+        strip = piece.rect(lo, hi + W, 0.0, D)
         for geom, dist in self._clearance_edges(piece):
-            boundary = geom.buffer(dist).boundary if dist != 0 else geom.boundary
+            region = geom.buffer(dist) if dist != 0 else geom
+            boundary = region.boundary
             for track in tracks:
                 if track.distance(boundary) > EPS:
                     continue
                 for x, z in _coords_of(track.intersection(boundary)):
                     u = piece.local((x, z))[0]
                     points += [u, u - W]
+            # Where the region lies inside the footprint's strip, the footprint's side edges
+            # meet it at the region's extent along the wall (an object standing a little off the
+            # wall is reached by a side edge, not a corner).
+            inside = region.intersection(strip)
+            if not inside.is_empty:
+                us = [piece.local((x, z))[0] for x, z in get_coordinates(inside)]
+                points += [min(us), max(us), min(us) - W, max(us) - W]
         pts = sorted({round(p, 9) for p in points if lo - EPS <= p <= hi + EPS})
         pts = [min(max(p, lo), hi) for p in pts]
         mids = [(a + b) / 2 for a, b in itertools.pairwise(pts) if b - a > 1e-6]
@@ -937,7 +946,7 @@ def _spot_json(solver: Solver, c: Candidate) -> dict[str, Any]:
     mx, mz = solver.scene.meter_xz
     return {
         "outcome": c.outcome,
-        "wall_id": p.wall_id,
+        "wall_id": solver.scene.wall_at((c.s0 + c.s1) / 2),
         "segment": p.index,
         "span_ft": [_round(c.s0), _round(c.s1)],
         "width_ft": _round(solver.W),
@@ -1003,17 +1012,18 @@ def _missing_json(c: Candidate) -> list[dict[str, Any]]:
     return out
 
 
-def _sweep_json(cands: list[Candidate]) -> list[dict[str, Any]]:
+def _sweep_json(cands: list[Candidate], scene: Scene) -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     for c in sorted(cands, key=lambda c: c.s0):
-        key = (c.piece.wall_id, c.piece.index, c.outcome, sorted(c.failing()), sorted(c.unsure()))
+        wall = scene.wall_at((c.s0 + c.s1) / 2)
+        key = (wall, c.piece.index, c.outcome, sorted(c.failing()), sorted(c.unsure()))
         if runs and runs[-1]["_key"] == key:
             runs[-1]["start_ft"][1] = _round(c.s0)
         else:
             runs.append(
                 {
                     "_key": key,
-                    "wall_id": c.piece.wall_id,
+                    "wall_id": wall,
                     "segment": c.piece.index,
                     "start_ft": [_round(c.s0), _round(c.s0)],
                     "outcome": c.outcome,
@@ -1207,7 +1217,7 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
         "missing_evidence": missing,
         "ends": ends,
         "sweep": sorted(
-            _sweep_json(cands) + far, key=lambda run: (run["start_ft"][0], run["segment"])
+            _sweep_json(cands, scene) + far, key=lambda run: (run["start_ft"][0], run["segment"])
         ),
         "stats": {
             "candidates": len(cands),

@@ -142,6 +142,7 @@ class Scene:
     meter_pos: tuple[float, float, float]
     meter_plus_minus: float
     meter_piece: Piece
+    wall_spans: list[tuple[str | None, float, float]]  # each wall's stretch of s, as uploaded
     objects: list[SceneObject]
     ground: list[GroundPatch]
     overheads: list[Measured]
@@ -172,6 +173,11 @@ class Scene:
     @property
     def meter_xz(self) -> Point2:
         return (self.meter_pos[0], self.meter_pos[2])
+
+    def wall_at(self, s: float) -> str:
+        """The id of the uploaded wall under s (a joined straight piece can span two)."""
+        best = min(self.wall_spans, key=lambda w: max(w[1] - s, s - w[2], 0.0))
+        return str(best[0])
 
     def piece_at(self, s: float) -> Piece:
         for p in self.pieces:
@@ -250,14 +256,27 @@ class Scene:
         return self._cache["ground"]
 
     def _unexplored_discs(self) -> list[Geometry]:
-        """Round an unexplored end the walls may turn any way, so the extension line past it
-        proves nothing: everything within reach of that end counts as unseen."""
+        """Round an unexplored end the walls may turn any way, so the straight extension past it
+        proves nothing: everything within reach of that end counts as unseen, except ground in
+        front of the scanned walls that was actually observed and the house behind them."""
         ends = {"left": self.walls[0].a, "right": self.walls[-1].b}
-        return [
+        discs = [
             Point(ends[side]).buffer(self.reach_ft)
             for side, kind in self.end_kinds.items()
             if kind == "unexplored"
         ]
+        if not discs:
+            return []
+        seen_in_front = unary_union(
+            [
+                self.band_polygon(max(a, self.s_min), min(b, self.s_max), out or 0.0)
+                for a, b, out in self.observed.get("ground", [])
+            ]
+        ).buffer(1e-6)
+        # Behind a scanned segment is the house itself, not ground a hazard could hide on.
+        behind = unary_union([p.rect(p.s0, p.s1, -self.reach_ft, 0.0) for p in self.walls])
+        known = unary_union([seen_in_front, behind])
+        return [d.difference(known) for d in discs]
 
     def unobserved_wall(self) -> Geometry:
         if "wall" not in self._cache:
@@ -312,7 +331,8 @@ def _wedge(v: Point2, n1: Point2, n2: Point2, radius: float) -> Polygon:
     return poly if poly.is_valid and poly.area > EPS else Polygon()
 
 
-# Baseline points closer than this to the line through their neighbours are one straight wall.
+# Baseline points closer than this (0.6 in) to the line through their neighbours are one straight
+# wall. Deliberately well below the tap error: a real step in the wall must stay a corner.
 COLLINEAR_FT = 0.05
 
 
@@ -321,17 +341,59 @@ def _merge_collinear(pts: list[Point2], tol: float, path: str) -> list[Point2]:
     wall's error), so a tap in the middle of a straight wall is not a corner the battery can't
     straddle."""
     out = [pts[0]]
+    dropped: list[Point2] = []
     for i in range(1, len(pts) - 1):
-        a, p, b = out[-1], pts[i], pts[i + 1]
-        ab = _sub(b, a)
-        length = _norm(ab)
-        if length < 1e-6:
-            raise SceneError(f"{path}/{i + 1}", "repeats an earlier point")
-        t_along = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / (length * length)
-        off = abs((p[0] - a[0]) * ab[1] - (p[1] - a[1]) * ab[0]) / length
-        if not (0 < t_along < 1 and off <= tol):
-            out.append(p)
+        a, b = out[-1], pts[i + 1]
+        # Every point dropped since the last kept one must stay on the new chord, so error
+        # can't accumulate along a gently curving line of taps.
+        if all(_on_chord(a, q, b, tol, f"{path}/{i + 1}") for q in [*dropped, pts[i]]):
+            dropped.append(pts[i])
+        else:
+            out.append(pts[i])
+            dropped = []
     out.append(pts[-1])
+    return out
+
+
+def _on_chord(a: Point2, p: Point2, b: Point2, tol: float, path: str) -> bool:
+    ab = _sub(b, a)
+    length = _norm(ab)
+    if length < 1e-6:
+        raise SceneError(path, "repeats an earlier point")
+    t_along = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / (length * length)
+    off = abs((p[0] - a[0]) * ab[1] - (p[1] - a[1]) * ab[0]) / length
+    return 0 < t_along < 1 and off <= tol
+
+
+def _join_straight_walls(pieces: list[Piece]) -> list[Piece]:
+    """Two walls that meet in a straight line are one straight stretch a battery can span. The
+    joined piece keeps the first wall's id; Scene.wall_at names the wall under any s."""
+    out: list[Piece] = []
+    for p in pieces:
+        prev = out[-1] if out else None
+        if (
+            prev is not None
+            and prev.kind == p.kind == "wall"
+            and prev.wall_id != p.wall_id
+            and _norm(_sub(prev.b, p.a)) <= COLLINEAR_FT
+            and _on_chord(prev.a, prev.b, p.b, COLLINEAR_FT, "/walls")
+        ):
+            length = _norm(_sub(p.b, prev.a))
+            along = ((p.b[0] - prev.a[0]) / length, (p.b[1] - prev.a[1]) / length)
+            out[-1] = Piece(
+                "wall",
+                prev.wall_id,
+                prev.index,
+                prev.a,
+                p.b,
+                prev.s0,
+                prev.s0 + length,
+                along,
+                _outward(along),
+                max(prev.plus_minus, p.plus_minus),
+            )
+        else:
+            out.append(p)
     return out
 
 
@@ -423,7 +485,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         wall_ids.add(wid)
         pts = [_xz(p, f"/walls/{wi}/baseline") for p in wall["baseline"]]
         wall_err = _error(wall, errors.wall_ft.value)
-        pts = _merge_collinear(pts, max(wall_err, COLLINEAR_FT), f"/walls/{wi}/baseline")
+        pts = _merge_collinear(pts, COLLINEAR_FT, f"/walls/{wi}/baseline")
         if prev_end is not None:
             gap = _norm(_sub(pts[0], prev_end))
             if gap > join_tol:
@@ -518,11 +580,9 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         )
         for p in pieces
     ]
-    meter_piece = next(
-        p
-        for p in pieces
-        if p.kind == "wall" and p.wall_id == best[1].wall_id and p.index == best[1].index
-    )
+    wall_spans = [(p.wall_id, p.s0, p.s1) for p in pieces if p.kind == "wall"]
+    pieces = _join_straight_walls(pieces)
+    meter_piece = next(p for p in pieces if p.kind == "wall" and p.s0 - EPS <= 0 <= p.s1 + EPS)
 
     # How far out from the walls the outdoor area matters: the largest clearance plus the battery.
     c = rules.clearances
@@ -565,6 +625,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         meter_pos=mpos,  # type: ignore[arg-type]
         meter_plus_minus=_error(meter, errors.meter_ft.value),
         meter_piece=meter_piece,
+        wall_spans=wall_spans,
         objects=[],
         ground=[],
         overheads=[],

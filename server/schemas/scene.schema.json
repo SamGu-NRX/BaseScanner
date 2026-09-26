@@ -26,6 +26,7 @@
       "description": "Wall chain in order from the left end to the right end, as seen from outside. Consecutive walls that share an endpoint meet at a corner; a gap between the end of one wall and the start of the next is a stretch with no wall, which no battery can back onto and no cable can cross. The first wall starts at the chain's left end.",
       "type": "array",
       "minItems": 1,
+      "maxItems": 50,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -36,6 +37,7 @@
             "description": "The wall's line along the ground, [x, z] points ordered left to right as seen from outside. The outward direction of each segment is therefore its direction turned 90 degrees clockwise in the x-z plane viewed from above (+y). Each straight segment is where a battery can sit flush.",
             "type": "array",
             "minItems": 2,
+            "maxItems": 500,
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
@@ -45,6 +47,7 @@
     },
     "objects": {
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -70,6 +73,7 @@
             "description": "Optional ground outline of the object in plan, [x, z] points. Give it for anything that stands off the wall (a gas regulator, pipe run, AC unit, pool edge) so clearances are measured to every part. Without it the object is the stretch of wall line over `span_ft`.",
             "type": "array",
             "minItems": 1,
+            "maxItems": 500,
             "items": {"$ref": "#/$defs/point2"}
           }
         }
@@ -77,13 +81,14 @@
     },
     "ground": {
       "type": "array",
+      "maxItems": 200,
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["type", "polygon"],
         "properties": {
           "type": {"enum": ["drive", "concrete", "gravel", "lawn", "mulch", "deck"]},
-          "polygon": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/point2"}},
+          "polygon": {"type": "array", "minItems": 3, "maxItems": 500, "items": {"$ref": "#/$defs/point2"}},
           "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft"}
         }
       }
@@ -91,6 +96,7 @@
     "overheads": {
       "description": "Anything overhead (porch roof, eave, stairs, landing) along the wall, with the clear height beneath it.",
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -106,6 +112,7 @@
     "facing": {
       "description": "Gap from the wall straight out to the nearest fence, hedge or wall.",
       "type": "array",
+      "maxItems": 500,
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -133,6 +140,7 @@
         },
         "observed": {
           "type": "array",
+          "maxItems": 500,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -153,6 +161,7 @@
     },
     "keyframes": {
       "type": "array",
+      "maxItems": 5000,
       "items": {
         "type": "object",
         "additionalProperties": false,

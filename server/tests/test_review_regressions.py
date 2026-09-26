@@ -391,3 +391,79 @@ def test_gas_clearance_needs_the_wall_observed() -> None:
     assert result["decision"] == "manual_review"
     gas = check(result, "gas_clearance")
     assert (gas["outcome"], gas.get("unsure_cause")) == ("unsure", "unobserved")
+
+
+# --- second review round ----------------------------------------------------------------------
+
+
+def test_side_edge_reaches_an_object_standing_off_the_wall() -> None:
+    # Before: starts only came from where a footprint corner's track crosses a clearance circle,
+    # so a gas meter 0.9 ft off the wall (reached by a side edge) left the pass window unfound.
+    rules = golden_rules(
+        route={
+            "confident_reach_ft": {"value": 30, "source": "t"},
+            "max_ft": {"value": 40, "source": "t"},
+        }
+    )
+    raw = shared_fixture()
+    raw["ground"] = pads_ground([(8, 17)])
+    for u in (14.005 - 3, 14.03 + W + 3):
+        raw["objects"].append(
+            {
+                "type": "gas_meter",
+                "wall_id": "w1",
+                "span_ft": [u, u],
+                "bottom_ft": 3,
+                "top_ft": 4,
+                "source": "tap",
+                "plus_minus_ft": 0,
+                "footprint": [[u, 0.9]],
+            }
+        )
+    result = run(raw, rules)
+    assert result["decision"] == "pass"
+    assert 14.005 < result["spot"]["span_ft"][0] < 14.03
+
+
+def test_curved_taps_are_not_merged_into_one_false_wall() -> None:
+    # Before: dropped points were never rechecked, so a gentle curve became one straight wall
+    # up to 1.6 ft off the taps.
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[x, 0.004 * x * x] for x in range(-40, 41)]
+    scene = parsed(raw)
+    for p in scene.walls:
+        for x in range(-40, 41):
+            s, out = p.local((x, 0.004 * x * x))
+            if p.s0 <= s <= p.s1:
+                assert abs(out) <= 0.05 + 1e-9
+
+
+def test_observed_ground_near_an_unexplored_end_still_counts() -> None:
+    # Before: everything within reach of an unexplored end was unseen, even ground the scan saw
+    # in front of the wall, so a fully observed pad asked for photos it already had.
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[-40, 0], [30, 0]]
+    raw["coverage"]["ends"]["right"] = {"kind": "unexplored"}
+    result = run(raw)
+    assert result["decision"] == "pass"
+    assert result["missing_evidence"] == []
+
+
+def test_walls_meeting_in_a_straight_line_are_one_stretch() -> None:
+    # Before: two collinear walls with different ids made a corner at the joint.
+    raw = shared_fixture()
+    raw["walls"] = [
+        {"id": "w1", "baseline": [[-40, 0], [7.5, 0]], "plus_minus_ft": 0},
+        {"id": "w2", "baseline": [[7.5, 0], [40, 0]], "plus_minus_ft": 0},
+    ]
+    result = run(raw)
+    assert result["decision"] == "pass"
+    assert result["spot"]["span_ft"] == pytest.approx([6, 6 + W])
+    assert result["spot"]["wall_id"] in {"w1", "w2"}
+
+
+def test_oversized_scene_is_refused() -> None:
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[x / 10, (x % 2) / 10] for x in range(-400, 400)]
+    with pytest.raises(SceneError, match="is too long"):
+        parsed(raw)
