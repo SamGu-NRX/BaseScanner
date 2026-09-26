@@ -15,7 +15,8 @@ datasets. Requirements: uv, and Xcode 26 or newer with an iOS Simulator runtime.
 | These tools' own tests | `make test` | pass or fail |
 | The Simulator runner against a probe app with a known sequence | `make sim-probe` | `reports/sim/<run>/` |
 
-Written results: [the UX review](ux/review.md) against [the checklist](ux/checklist.md), and
+Written results: [the UX review](ux/review.md) against [the checklist](ux/checklist.md), [the
+friction audit](ux/friction.md) of the homeowner's path, and
 [the product description](product/README.md) with its [bug triage](product/bug-triage.md).
 
 ## What the checks guarantee
