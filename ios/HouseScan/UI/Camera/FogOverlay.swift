@@ -5,7 +5,8 @@ import SwiftUI
 /// Unseen cells carry a soft frosted haze, seen cells a thinner one, covered cells none. When a
 /// cell's state changes (a new `coverage.revision`), its haze fades and drifts upward over
 /// `Motion.fogLift`, like mist lifting: the signature moment that tells the homeowner "the phone
-/// saw that" without a word. The haze is guidance, never proof that space is clear.
+/// saw that" without a word. With Reduce Motion the haze only fades. The haze is guidance, never
+/// proof that space is clear.
 ///
 /// A gap request replaces the fog on its cells with an amber highlight, so the camera itself
 /// shows where to aim.
@@ -21,10 +22,10 @@ struct FogOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || liftDeadline < .now)) { timeline in
+        TimelineView(.animation(paused: liftDeadline < .now)) { timeline in
             let frame = FogFrame(
                 coverage: coverage, wall: wall, projection: projection, highlight: highlight,
-                lifts: memory.lifts, now: timeline.date
+                lifts: memory.lifts, now: timeline.date, drift: reduceMotion ? 0 : 10
             )
             ZStack {
                 // The frost itself: a material blurs whatever the camera shows, so the haze
@@ -48,7 +49,7 @@ struct FogOverlay: View {
         .accessibilityHidden(true)
         .onAppear { memory.seed(coverage) }
         .onChange(of: coverage.revision) { _, _ in
-            if memory.update(to: coverage, at: .now, animate: !reduceMotion) {
+            if memory.update(to: coverage, at: .now) {
                 liftDeadline = Date.now.addingTimeInterval(Motion.fogLift)
             }
         }
@@ -86,6 +87,8 @@ private struct FogFrame {
     var highlight: GapRequest?
     var lifts: [FogMemory.Key: FogMemory.Lift]
     var now: Date
+    /// Points a lifting cell rises; zero with Reduce Motion, which keeps only the fade.
+    var drift: CGFloat
 
     private struct Cell {
         var quad: Path
@@ -134,7 +137,7 @@ private struct FogFrame {
             layer.addFilter(.blur(radius: 9))
             for cell in haze {
                 var shifted = layer
-                shifted.translateBy(x: 0, y: -10 * cell.lift)
+                shifted.translateBy(x: 0, y: -drift * cell.lift)
                 shifted.fill(cell.quad, with: .color(color.opacity(cell.level)))
             }
         }
@@ -202,7 +205,7 @@ final class FogMemory {
     }
 
     /// Records a lift for every cell whose haze went down. Returns true when any lift started.
-    func update(to coverage: CoverageStrip, at now: Date, animate: Bool) -> Bool {
+    func update(to coverage: CoverageStrip, at now: Date) -> Bool {
         // The strip can grow to the left, which shifts every index; realign by s.
         let shift = Int(((firstCellS - coverage.firstCellS) / coverage.cellWidth).rounded())
         let next = Self.snapshot(coverage)
@@ -210,14 +213,12 @@ final class FogMemory {
             lifts = Dictionary(uniqueKeysWithValues: lifts.map { (Key(band: $0.key.band, index: $0.key.index + shift), $0.value) })
         }
         var started = false
-        if animate {
-            for (key, state) in next {
-                let oldKey = Key(band: key.band, index: key.index - shift)
-                let old = states[oldKey] ?? .unseen
-                if FogOverlay.haze(state) < FogOverlay.haze(old) {
-                    lifts[key] = Lift(from: FogOverlay.haze(old), start: now)
-                    started = true
-                }
+        for (key, state) in next {
+            let oldKey = Key(band: key.band, index: key.index - shift)
+            let old = states[oldKey] ?? .unseen
+            if FogOverlay.haze(state) < FogOverlay.haze(old) {
+                lifts[key] = Lift(from: FogOverlay.haze(old), start: now)
+                started = true
             }
         }
         states = next
