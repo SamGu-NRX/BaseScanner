@@ -288,6 +288,9 @@ enum ScanCopy {
 
     static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
 
+    static let shareScan = "Share scan"
+    static let shareScanContents = "Your photos and measurements, for the House Scan team"
+
     static func unsureNote(_ row: CheckRow) -> String {
         row.needsPerson ? "An installer will check this" : "One more photo would settle this"
     }
