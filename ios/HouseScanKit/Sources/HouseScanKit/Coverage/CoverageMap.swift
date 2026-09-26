@@ -65,6 +65,12 @@ public struct CoverageConfig: Sendable, Equatable {
     /// between them while staying under two strides, too short to have walked around something.
     /// A hypothesis, not measured.
     public var walkStep: Float = 1.0
+    /// Two kept positions at most this many seconds apart are one stretch of walked path; further
+    /// apart, the homeowner may have gone anywhere between them. A guess, not measured: 2 s is a
+    /// `walkStep` of 1 m at 0.5 m/s, a slow scanning pace. It bounds a detour on which no frame
+    /// was kept (auto-capture keeps one every 0.5 m moved unless it skips them as blurry or
+    /// hurried) to what 2 s of walking allows; it does not rule one out.
+    public var walkGap: Double = 2
     /// A tilt-up view counts as overhead evidence only where it also shows the wall at this
     /// height, the top of the wall band, so what it shows above joins what the walk saw below
     /// without a hole between them.
@@ -108,6 +114,14 @@ public struct CoverageMap: Sendable {
     /// Tilt-up views the homeowner confirmed have nothing overhead (`recordOverhead`), oldest
     /// first. What each showed is worked out against the current wall when read.
     public private(set) var overheadCameras: [CameraFrame] = []
+    /// Per entry of `observedCameras`, the frame clock time it was kept at; nil when the caller
+    /// gave none, and such a pose is never joined into walked path.
+    private var observedTimes: [Double?] = []
+    /// Indices of `observedCameras` whose pose is not joined to the one before it
+    /// (`breakWalkedPath`).
+    private var pathStarts: Set<Int> = []
+    /// Set by `breakWalkedPath` until the next observed camera starts a new stretch.
+    private var pathBroken = false
 
     private struct Cell: Sendable {
         /// Per sample row, the camera positions that saw it, pairwise at least
@@ -182,12 +196,22 @@ public struct CoverageMap: Sendable {
 
     // MARK: Observing
 
-    /// Records a kept keyframe. Returns nothing new unless tracking was normal for it: frames with
-    /// limited tracking have poses that can be off by more than a cell.
+    /// Records a kept keyframe kept at `time` seconds on the frame clock. Returns nothing new
+    /// unless tracking was normal for it: frames with limited tracking have poses that can be off
+    /// by more than a cell, and such a frame also breaks the walked path (`breakWalkedPath`).
+    /// Without a `time` the pose still counts for the bands, but never for walked path.
     @discardableResult
-    public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool) -> Delta {
-        guard trackingNormal else { return Delta() }
+    public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool, time: Double? = nil) -> Delta {
+        guard trackingNormal else {
+            breakWalkedPath()
+            return Delta()
+        }
+        if pathBroken {
+            pathStarts.insert(observedCameras.count)
+            pathBroken = false
+        }
         observedCameras.append(camera)
+        observedTimes.append(time)
         let depthChanged = recordDepth(from: camera)
         let delta = record(visibleCells(from: camera), from: camera.position)
         // One change, one increment: `record` has counted it when the bands changed too.
@@ -381,7 +405,8 @@ public struct CoverageMap: Sendable {
 
     /// How far out from the wall a cell is known clear because the homeowner walked past it,
     /// meters. A step is the straight line between consecutive kept positions with normal
-    /// tracking, both in front of the wall and at most `walkStep` apart; it shows the space
+    /// tracking, with no `breakWalkedPath` between them, both in front of the wall, at most
+    /// `walkStep` apart and kept at most `walkGap` seconds apart; it shows the space
     /// between the wall and itself clear, out to its end nearer the wall. The cell is clear out
     /// to the largest distance d such that steps reaching at least d cover it along the wall.
     /// That distance less `positionError` at the cell's edge farther from the meter is the
@@ -433,8 +458,19 @@ public struct CoverageMap: Sendable {
         var nearest: Float
     }
 
+    /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
+    /// was lost, or the capture paused): walked-path facing does not join the poses on either
+    /// side. A straight line across an outage or a detour would claim space no one walked past.
+    public mutating func breakWalkedPath() {
+        pathBroken = true
+    }
+
     private func walkedSteps() -> [WalkedStep] {
-        zip(observedCameras, observedCameras.dropFirst()).compactMap { first, second in
+        observedCameras.indices.dropFirst().compactMap { index in
+            guard !pathStarts.contains(index),
+                  let t0 = observedTimes[index - 1], let t1 = observedTimes[index], abs(t1 - t0) <= config.walkGap else { return nil }
+            let first = observedCameras[index - 1]
+            let second = observedCameras[index]
             guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
             let a = wall.wallPoint(first.position)
             let b = wall.wallPoint(second.position)
@@ -492,11 +528,6 @@ public struct CoverageMap: Sendable {
     /// nothing is overhead there (ScanActions.answerOverhead(clear: true)): the camera cannot
     /// tell a clear view from an eave. Returns what the view showed (`overheadReach`); nothing
     /// is kept when tracking was not normal or the view showed no wall at `overheadFrom`.
-    /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
-    /// was lost, or the capture paused): walked-path facing must not join the poses on either side.
-    /// Placeholder until the package lane implements path continuity; the engine already calls it.
-    public mutating func breakWalkedPath() {}
-
     @discardableResult
     public mutating func recordOverhead(_ camera: CameraFrame, trackingNormal: Bool) -> [ObservedSpan] {
         guard trackingNormal else { return [] }
