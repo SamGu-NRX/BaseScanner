@@ -195,6 +195,11 @@ def build_app(
     return result, (app if code == 0 and app.exists() else None)
 
 
+def bundle_id_of(app: Path) -> str:
+    with (app / "Info.plist").open("rb") as f:
+        return plistlib.load(f)["CFBundleIdentifier"]
+
+
 def shorten(line: str, tree: Path) -> str:
     return line.replace(str(tree) + "/", "")
 
@@ -468,8 +473,7 @@ def main(argv: list[str] | None = None) -> int:
             rep.end_reason = "build failed"
             rep.problems.append("The app did not build; see build.log.")
         else:
-            with (app / "Info.plist").open("rb") as f:
-                bundle_id = plistlib.load(f)["CFBundleIdentifier"]
+            bundle_id = bundle_id_of(app)
             rep.device["bundle_id"] = bundle_id
             udid = device["udid"]
             prepare_display(udid, args.appearance, args.content_size)

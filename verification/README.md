@@ -9,6 +9,7 @@ workstreams push. Nothing here fixes their code; findings go back to the owning 
 | App in the Simulator, a screenshot per `STATE` | `make sim REF=origin/t3/ios-mvf ARGS="--replay <dir> --autopilot --server-url <url>"` | `~/house-scanning-data/reports/sim/<run>/index.html` |
 | Runner self-test | `make sim-probe` | same, for `fixtures/state-probe` |
 | A replay session (C3) is well formed, and how far its poses are from ground truth | `uv run python -m hsverify.replaycheck <session folder>` | printed |
+| Apple's accessibility audit on every screen the app reaches | `uv run python -m hsverify.a11yaudit --ref origin/t3/ios-mvf --replay <dir> --autopilot` | `~/house-scanning-data/reports/a11y/<run>/index.html` |
 | Scenes through the server's HTTP API, judged against C1, C2 and C5 | `uv run python -m hsverify.e2e --server-ref origin/t3/server [--real scene.zip]` | `~/house-scanning-data/reports/e2e/<run>/report.md` |
 
 Requirements: uv, Xcode 26 or newer with an iOS Simulator runtime.
@@ -70,3 +71,13 @@ coverage (no pass anywhere). Case files in `e2e/cases/` add the outcomes their g
 forces. Each one names the thresholds it assumes, and a case whose assumption differs from the
 server's rules is reported as an assumption mismatch, not as a pass or fail. Scenes passed
 with `--real` must answer within 1 s.
+
+## Accessibility audit
+
+`hsverify/a11yaudit.py` builds and installs the app as the Simulator runner does, then runs the
+UI test bundle in `fixtures/a11y-audit`. The bundle launches the installed app by bundle id with
+the C4 arguments and calls `performAccessibilityAudit(for: .all)` on each distinct screen (a
+screen is new when the labels of its texts and buttons change). Apple's audit does not object
+to a button whose label SwiftUI took from an SF Symbol name, which VoiceOver reads aloud, so the
+wrapper flags those too. The probe app's middle screen has an unlabelled 12 pt button as a
+negative control: an audit of the probe must report it, and does (hit area, symbol-name label).

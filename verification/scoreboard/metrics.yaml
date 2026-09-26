@@ -213,6 +213,19 @@ metrics:
       max_status: partial
       cap_reason: an audit exists; which screens it covers needs a read
 
+  - id: S3-6b
+    workstream: S3
+    ref: origin/t3/ios-mvf
+    text: >-
+      Independent accessibility audit (verification a11yaudit: Apple's audit on each screen the
+      run reached, plus symbol-name button labels) finds no issues; S4-2 shows how many screens
+      the app reached
+    report:
+      glob: ~/house-scanning-data/reports/a11y/*/report.json
+      key: issue_count
+      equals: 0
+      require_current_sha: true
+
   - id: S3-7
     workstream: S3
     ref: origin/t3/ios-mvf
