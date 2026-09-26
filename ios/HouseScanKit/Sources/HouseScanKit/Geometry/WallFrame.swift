@@ -223,6 +223,18 @@ public struct WallFrame: Sendable, Equatable {
         return WallPoint(s: min(max(local.s, piece.span.lowerBound), piece.span.upperBound), height: d.y, out: local.out)
     }
 
+    /// This wall moved as the walk's wall moved from `old` to `new`: by the meter's move, the
+    /// meter anchor's refinement, and the ground's change. A wall equal to `old` (scene.json
+    /// described the walk's own) is `new`. Assumes the walk's direction is unchanged, as it is
+    /// after the meter is placed.
+    public func following(_ old: WallFrame, to new: WallFrame) -> WallFrame {
+        guard self != old else { return new }
+        var moved = self
+        moved.meter += new.meter - old.meter
+        moved.groundY += new.groundY - old.groundY
+        return moved
+    }
+
     /// The s on `other` of the place at `s` on this wall: its point on the ground, projected onto
     /// the nearest piece of `other` (`wallPoint`). Two walls built from the same scan (the walk's
     /// and the one scene.json described) agree on it within the distance between their lines.

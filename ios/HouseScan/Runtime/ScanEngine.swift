@@ -25,10 +25,16 @@ final class ScanEngine {
     private(set) var coverage: CoverageMap?
     /// The 3D map under `-coverage map3d`; nil under `legacy`.
     private(set) var map3D: Map3DSession?
-    /// The wall the last scene.json described (`exportGeometry()`): the server's s runs along it.
-    /// Under `-coverage map3d` it can be the measured chain rather than `coverage.wall`. It stays
-    /// as exported: later moves of the meter anchor move `coverage.wall`, not the answer's wall.
-    private(set) var exportedWall: WallFrame?
+    /// The wall the last scene.json described (`exportGeometry()`), with the walk's wall at that
+    /// moment, so the answer's wall can follow the walk's as the meter anchor is refined.
+    private var exported: (wall: WallFrame, walk: WallFrame)?
+    /// The wall the last scene.json described, where it is now: the server's s runs along it.
+    /// Under `-coverage map3d` it can be the measured chain rather than `coverage.wall`; it moves
+    /// as the walk's wall moves (`WallFrame.following`).
+    var exportedWall: WallFrame? {
+        guard let exported, let walk = coverage?.wall else { return nil }
+        return exported.wall.following(exported.walk, to: walk)
+    }
     private var autoCapture = AutoCapture()
     private var closeUpGate = CloseUpGate()
     private var planner = GuidancePlanner()
@@ -1079,7 +1085,7 @@ final class ScanEngine {
         coverage = nil
         map3D?.reset(forgetAnchors: true)
         state.map3D = nil
-        exportedWall = nil
+        exported = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
@@ -1129,7 +1135,7 @@ final class ScanEngine {
     func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
         coverage = CoverageMap(wall: frame)
-        exportedWall = nil
+        exported = nil
         map3D?.start(wall: frame)
         // With depth the 3D map decides what is covered from the start (`applyMap3D`).
         if map3D != nil, state.depthAvailable { coverage?.setMeasuredCovered([:]) }
@@ -1149,6 +1155,8 @@ final class ScanEngine {
         guard let map = coverage else { state.wall = nil; return }
         let wall = map.wall
         state.wall = Self.geometry(wall, leftEnd: map.leftEnd, rightEnd: map.rightEnd)
+        // The result is drawn along the answer's wall, which moves with this one.
+        if state.result?.wall != nil { state.result?.wall = resultWall() }
         // Every change to the walk's wall passes here; the map ignores an unchanged one.
         map3D?.update(wall: wall)
     }
@@ -1398,7 +1406,7 @@ final class ScanEngine {
             return
         }
         // The answer's s runs along this wall; `presentation(of:)` places the result on it.
-        exportedWall = geometry.wall
+        if let walk = coverage?.wall { exported = (geometry.wall, walk) }
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1528,7 +1536,7 @@ final class ScanEngine {
         // The AR session and its anchors go on, so the mesh ARKit built stays with the map.
         map3D?.reset(forgetAnchors: false)
         state.map3D = nil
-        exportedWall = nil
+        exported = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane

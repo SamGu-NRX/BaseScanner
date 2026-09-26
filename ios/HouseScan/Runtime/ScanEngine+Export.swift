@@ -251,11 +251,6 @@ extension ScanEngine {
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
         let placedWall = exportedWall ?? coverage?.wall
-        // The marked ends are places on the walk's wall; the same places on the placed one.
-        var ends: (left: Float?, right: Float?) = (coverage?.leftEnd, coverage?.rightEnd)
-        if let placedWall, let walk = coverage?.wall, placedWall != walk {
-            ends = (ends.left.map { placedWall.wallPoint(walk.world(s: $0, height: 0)).s }, ends.right.map { placedWall.wallPoint(walk.world(s: $0, height: 0)).s })
-        }
         let sceneWall = placedWall.map {
             SceneWall(meter: $0.meter, outward: $0.outward, groundY: $0.groundY, leftCorners: $0.leftCorners, rightCorners: $0.rightCorners)
         }
@@ -373,8 +368,17 @@ extension ScanEngine {
             missing: missing,
             unseenSide: unseen,
             isSample: isSample,
-            wall: placedWall.map { Self.geometry($0, leftEnd: ends.left, rightEnd: ends.right) }
+            wall: resultWall()
         )
+    }
+
+    /// The answer's wall (`exportedWall`, or the walk's) as the result screens draw it, with the
+    /// marked ends carried onto it from the walk's wall.
+    func resultWall() -> WallGeometry? {
+        guard let walk = coverage?.wall else { return nil }
+        let wall = exportedWall ?? walk
+        return Self.geometry(
+            wall, leftEnd: coverage?.leftEnd.map { walk.s($0, along: wall) }, rightEnd: coverage?.rightEnd.map { walk.s($0, along: wall) })
     }
 
     static func outcome(_ outcome: PlacementOutcome) -> CheckOutcome {
