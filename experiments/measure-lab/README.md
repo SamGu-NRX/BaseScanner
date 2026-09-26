@@ -79,6 +79,8 @@ To run on a phone:
 2. Set `DEVELOPMENT_TEAM` to your Team ID and `BUNDLE_ID_PREFIX` to a prefix your team can register. The app id becomes `<prefix>.measurelab`.
 3. Open `MeasureLab.xcodeproj`, pick the iPhone, and run.
 
+The app icon is a placeholder drawn by `Tools/make-app-icon.swift`; the command to redraw it is at the top of that file.
+
 Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabilities tab empty; setting it there writes your team into `project.pbxproj`, and CI's drift check fails.
 
 `.github/workflows/measure-lab.yml` runs only when this folder or the workflow changes. It runs the geometry tests on Linux (Swift 6.2), regenerates the project and fails on drift, runs the tests on macOS, and builds the app unsigned.
