@@ -287,4 +287,35 @@ extension GapPlanner {
             return nil
         }
     }
+
+    /// The next item of the server's missing evidence to ask for without a tap, with its
+    /// request: the first a capture can settle whose request isn't in `skipped` and which asks
+    /// for no view already raised in this pass (`asked`, compared by
+    /// `PlacementMissingEvidence.asksForSameView(as:)`). Nil when none is left. A request the
+    /// homeowner couldn't get to is in both, so the answer that follows moves on to the next
+    /// item rather than raising it again.
+    public func nextServerRequest(
+        in missing: [PlacementMissingEvidence], leftEnd: Float?, rightEnd: Float?,
+        asked: [PlacementMissingEvidence], skipped: [GapPlan]
+    ) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+        for item in missing where !asked.contains(where: { $0.asksForSameView(as: item) }) {
+            guard let plan = self.plan(for: item, leftEnd: leftEnd, rightEnd: rightEnd), !skipped.contains(plan) else { continue }
+            return (item, plan)
+        }
+        return nil
+    }
+}
+
+extension PlacementMissingEvidence {
+    /// Whether two items ask for the same view, whatever their wording or checks. A past-end
+    /// item is known by its side alone: its request is built from where that end is marked, and
+    /// raising it clears the end, so the same item can come back with a different request.
+    public func asksForSameView(as other: PlacementMissingEvidence) -> Bool {
+        guard kind == other.kind else { return false }
+        switch kind {
+        case .pastEnd: return side == other.side
+        case .band: return band == other.band && spanFt == other.spanFt && outFt == other.outFt
+        case .unknown: return self == other
+        }
+    }
 }

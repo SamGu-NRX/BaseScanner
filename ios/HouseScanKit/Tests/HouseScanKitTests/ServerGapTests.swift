@@ -221,6 +221,31 @@ import Testing
         #expect(right.span == 4...6)
     }
 
+    /// Issue #39: the answer asks for two views and the homeowner can't get to the first. The
+    /// next answer, which still lists it, moves on to the second instead of raising the first
+    /// again or stopping; once both were raised, none is left and the result shows. The past-end
+    /// item comes back with its end cleared, so a different request, and is still not raised twice.
+    @Test func eachServerItemIsAskedForOnceAndARefusalMovesOnToTheNext() throws {
+        let planner = GapPlanner()
+        let pastEnd = try item(#"{"kind":"past_end","side":"left","message":"Walk past the left end."}"#)
+        let ground = try item(#"{"kind":"band","band":"ground","span_ft":[3.0,5.5],"message":"Film the ground."}"#)
+        let first = try #require(planner.nextServerRequest(in: [pastEnd, ground], leftEnd: -3, rightEnd: 4, asked: [], skipped: []))
+        #expect(first.item == pastEnd && first.plan.span == -5 ... -3)
+
+        // "I can't get there": raised and skipped. The end it cleared stays unmarked.
+        let reworded = try item(#"{"kind":"past_end","side":"left","message":"Keep walking past the left end."}"#)
+        let second = try #require(planner.nextServerRequest(
+            in: [reworded, ground], leftEnd: nil, rightEnd: 4, asked: [first.item], skipped: [first.plan]))
+        #expect(second.item == ground)
+
+        #expect(planner.nextServerRequest(
+            in: [reworded, ground], leftEnd: nil, rightEnd: 4, asked: [first.item, second.item], skipped: [first.plan])?.item == nil)
+        // A right past-end is a different view.
+        let right = try item(#"{"kind":"past_end","side":"right","message":"m"}"#)
+        #expect(planner.nextServerRequest(
+            in: [reworded, ground, right], leftEnd: nil, rightEnd: 4, asked: [first.item, second.item], skipped: [])?.item == right)
+    }
+
     @Test func clearingAnEndLetsCoverageGrowPastIt() throws {
         let wall = try #require(WallFrame(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), groundY: 0))
         var map = CoverageMap(wall: wall)

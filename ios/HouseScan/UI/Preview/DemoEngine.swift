@@ -758,6 +758,11 @@ final class DemoEngine: ScanActions {
         enterUpload()
     }
 
+    /// The demo's check asks for one view at most, so stopping early is skipping it.
+    func showResultNow() {
+        skipGap()
+    }
+
     func cannotAccessArea() {
         if case .seeBehind(let s) = state.guidance {
             obstructions = obstructions.map { (span: $0.span, skipped: $0.skipped || $0.span.contains(s)) }
