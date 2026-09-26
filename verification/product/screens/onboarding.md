@@ -149,9 +149,9 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
 
 - **Suspected bug: camera denied, a failed session and an unreadable replay never reach the
   screen** (triaged as [B-03](../bug-triage.md)). The engine switches to the failure screen only
-  for an unsupported phone (`Runtime/ScanEngine.swift:97-99`). A denied camera and a failed
-  session set the failure (`ScanEngine.swift:424, 426`) and an unreadable replay does too
-  (`ScanEngine.swift:111`), with no screen change. The homeowner who declines the prompt sits on
+  for an unsupported phone (`Runtime/ScanEngine.swift:105-107`). A denied camera and a failed
+  session set the failure (`ScanEngine.swift:489, 491`) and an unreadable replay does too
+  (`ScanEngine.swift:119`), with no screen change. The homeowner who declines the prompt sits on
   "Find your electric meter" with no camera image; the "Open Settings" and "Start over" buttons on
   `UI/Screens/UnsupportedScreen.swift:35-48` are unreachable outside the `-uiDemo` preview.
 - **Suspected bug: an unsupported phone has no way out.** `UnsupportedScreen.swift:44` hides
@@ -159,7 +159,7 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   it contradicts [the flow](../foundations/flow.md#summary), which says "Start over" is offered on
   the unsupported screen. One of the two needs updating.
 - **Suspected bug: "Allow camera" during replay loading starts the live camera.** On a replay,
-  `startSourceIfNeeded` (`ScanEngine.swift:175`) starts the camera whenever the replay has not
+  `startSourceIfNeeded` (`ScanEngine.swift:184`) starts the camera whenever the replay has not
   loaded yet and no failure is set. A homeowner who taps "Skip" and "Allow camera" before a slow
   recording loads gets a live session as well as the replay. Affects replays only; not observed.
 - **"The camera stopped" would show raw system error text** as its detail
@@ -173,4 +173,4 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   session error, and the Reduce Motion stills. The unsupported screen and the
   `-replay /nonexistent` case can be checked in the Simulator.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

@@ -30,13 +30,15 @@ app; everything else is this description's own term.
 - **Coverage strip.** The map along the bottom of the walk screen: the wall unrolled flat, meter at
   zero, in two rows (bands).
 - **Band.** One row of the strip. The **wall band** is the wall face from the ground up to
-  2.4 m (7 ft 10 in); the **ground band** is the ground from the foot of the wall out to 1.2 m
+  1.98 m (6 ft 6 in, the electrical code's headroom height); the **ground band** is the ground from the foot of the wall out to 1.2 m
   (3 ft 11 in).
 - **Cell.** A 6 in (0.1524 m) stretch of one band. Each cell is in one of four states:
   - **unseen**: no kept photo shows it; drawn as fog.
-  - **seen**: shown in kept photos, but not yet from two positions.
-  - **covered**: shown from two positions at least 0.25 m apart with normal tracking. Evidence
-    exists; it is not a pass.
+  - **seen**: at least one of the cell's three **sample lines** (lines across the band, at its
+    two edges and its middle) is shown in a kept photo, but not every line from two positions
+    yet.
+  - **covered**: every sample line shown from two positions at least 0.25 m apart with normal
+    tracking. Evidence exists; it is not a pass.
   - **skipped**: the homeowner said they can't get there. Drawn differently from both fog and
     covered, never evidence, and not sent to the server.
 - **Fog.** The overlay on the camera image over wall and ground not yet seen. It clears where

@@ -76,7 +76,7 @@ The instructions this screen can show, with their second lines:
 | "Take a step back" | "Your phone needs to see more of the wall at once." | None. |
 | "Tilt down to show the ground" | "The strip along the wall, 3 ft 4 in left of your meter." (the distance varies) | Ring on the ground, dots toward it. |
 | "Tilt up to show more wall" | "Around 3 ft 4 in left of your meter." (the distance varies) | Ring on the wall, dots toward it. |
-| "Walk slowly to your left" (or right) | "Keep the wall and the ground in view." | Ring on the wall past the covered stretch, dots toward it. |
+| "Walk slowly to your left" (or right) | "Keep the wall and the ground in view." | Ring on the wall 1 m past whichever is farther along that side, the unbroken covered stretch or the phone itself; dots toward it. |
 | "Is this the left end of the wall?" (or right) | "Aim where the wall stops or turns a corner, and tap Wall ends here." | Ring at the end of the covered stretch, no dots. |
 | "What's at the left end?" (or right) | "This tells the installer whether the wall keeps going." | The ring and dots of the previous instruction stay until the answer. |
 | "That's the whole wall" | "Tap Done when you're ready." | None. |
@@ -105,10 +105,12 @@ the phone losing its place for over 20 s, which throws the walk away.
 The first photo is kept by the rules in
 [coverage and guidance](../foundations/coverage-and-guidance.md#when-a-photo-is-kept). When it is
 saved, the counter's camera icon flashes green and the number rolls up by one. There is no haptic
-tap for walk photos in this build. Wall and ground cells the photo shows most of go from fog to a
-thinner haze: their fog fades over 0.7 s while drifting upward, like mist lifting. On the strip
-those cells turn from gray to amber. A cell seen a second time from a different position turns
-green on the strip and its haze clears completely.
+tap for walk photos in this build. Wall and ground cells the photo shows any sample line of go
+from fog to a thinner haze: their fog fades over 0.7 s while drifting upward, like mist lifting.
+On the strip those cells turn from gray to amber. A cell turns green on the strip, and its haze
+clears completely, once each of its three sample lines has been seen from two places
+([coverage and guidance](../foundations/coverage-and-guidance.md#while-capturing)); a wall cell
+whose top line, 1.98 m up, never came into view stays amber.
 
 ### While capturing
 
@@ -120,7 +122,7 @@ mark every foot, longer every fifth. A marked end is a tall white cap; a marked 
 icon above the rows. The strip always spans at least 3.5 m (about 11 ft), and its scale changes as
 coverage, the ends or the homeowner move outward.
 
-**The fog.** A frosted haze painted on the wall face (up to the top of the wall band) and on the
+**The fog.** A frosted haze painted on the wall face (up to the top of the wall band, 1.98 m) and on the
 ground in front of it, over what has been seen plus the fog ahead of it on each side. It is a
 thin frosted blur under a light white wash (35 % opacity), both scaled per cell: unseen cells at
 75 % strength, so the wall's shapes still show through, seen cells at 35 %, covered cells clear.
@@ -302,7 +304,7 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   A side can read 100 percent while none of it is covered and its ground is unseen.
 - Standing at the meter, VoiceOver says "You are 0 inches right of your meter".
 - "About N ft to go" can never appear on the walk instruction: the engine always passes no
-  remaining distance (`Runtime/ScanEngine.swift:699`).
+  remaining distance (`Runtime/ScanEngine.swift:784`).
 
 ## Open questions and verification
 
@@ -310,41 +312,41 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   makes the kind of a marked end truthful, but "Wall ends here" is still shown only while the
   instruction is "Is this the … end of the wall?" (`UI/Screens/WallWalkScreen.swift:101`, `:165`),
   and the planner asks that only once coverage runs unbroken to 6.1 m, about 20 ft
-  (`HouseScanKit/Guidance/GuidancePlanner.swift:27`, `:113`). A homeowner whose wall stops at a
+  (`HouseScanKit/Guidance/GuidancePlanner.swift:27`, `:119`). A homeowner whose wall stops at a
   fence 10 ft from the meter is told "Walk slowly to your left" with only "Can't get there" to
   answer, which records an unexplored end instead of a real one. A corner at 10 ft comes out right
   by accident, since a corner is unexplored anyway.
 - **Suspected bug: no "Can't get there" at "Is this the … end of the wall?".** The pill is limited
   to walk and tilt instructions (`WallWalkScreen.swift:107-112`), although the engine handles it
-  for this question (`Runtime/ScanEngine+Actions.swift:190`). A wall that goes on straight past
+  for this question (`Runtime/ScanEngine+Actions.swift:209`). A wall that goes on straight past
   20 ft can be recorded as unexplored only by marking an end where there is none and answering "It
   turns a corner". This sharpens B-06 in [bug-triage.md](../bug-triage.md).
 - **Suspected bug: "Wall ends here" aims at a circle that is not drawn.** The end goes where the
-  middle of the screen meets the wall (`ScanEngine+Actions.swift:68`), but the center circle is
+  middle of the screen meets the wall (`ScanEngine+Actions.swift:73`), but the center circle is
   drawn only while marking (`WallWalkScreen.swift:28-33`). The ring on screen is the planner's
-  guess at the end (`GuidancePlanner.swift:187-188`), so a homeowner who lines the ring up with the
+  guess at the end (`GuidancePlanner.swift:202-203`), so a homeowner who lines the ring up with the
   corner sets the end elsewhere. The hint promises "the circle in the middle of the screen".
 - **Suspected bug: "Wall ends here" is unchecked and silent on a miss.** It accepts a tap with
-  limited tracking, unlike marks (`ScanEngine+Actions.swift:66-74` against `:93`); it does nothing
-  and says nothing when the aim misses the wall (`:68`). A tap that lands gives no haptic; the end
+  limited tracking, unlike marks (`ScanEngine+Actions.swift:70-80` against `:100`); it does nothing
+  and says nothing when the aim misses the wall (`:73`). A tap that lands gives no haptic; the end
   question is its only feedback.
 - **Suspected bug: the 20 s reset keeps a mark in progress.** `resetSpatialState`
-  (`Runtime/ScanEngine.swift:431-456`) clears the wall, marks and photos but not the marking prompt
+  (`Runtime/ScanEngine.swift:496-522`) clears the wall, marks and photos but not the marking prompt
   or its placed taps. After the meter is found again, the walk opens straight into the old prompt
   ("Now tap its top-right corner"), and the finished feature joins a point from the lost world
   frame to one from the new frame.
 - **Suspected bug: two taps on "Can't get there" finish an empty walk.** On arrival each tap sets an
-  end at the meter (`ScanEngine+Actions.swift:192-194`); with both ends at the same point the
-  planner finds nothing to fill (`GuidancePlanner.swift:138`) and says "That's the whole wall".
+  end at the meter (`ScanEngine+Actions.swift:211-213`); with both ends at the same point the
+  planner finds nothing to fill (`GuidancePlanner.swift:144`) and says "That's the whole wall".
 - **Suspected bug: the AC unit prompt reads "Tap the ac unit".** The prompt lower-cases the kind's
   name (`UI/Copy/ScanCopy.swift:122`, `:137`); the picker tile's VoiceOver label has the same
   problem ("Mark ac unit", `WallWalkScreen.swift:282`).
 - **Possible bug: "That spot is behind the wall" judges the phone, not the tap.** The check is on
-  where the phone stands (`ScanEngine+Actions.swift:101`), so the message blames the spot when it is
+  where the phone stands (`ScanEngine+Actions.swift:108`), so the message blames the spot when it is
   the homeowner who is behind the wall line.
 - The kind picker slides in under Reduce Motion (`WallWalkScreen.swift:164`).
 - The reset returns to "Find your electric meter" without telling the homeowner that the walk was
-  lost. The old meter close-up stays in the scan (`Runtime/KeyframeStore.swift:79-81` clears only
+  lost. The old meter close-up stays in the scan (`Runtime/KeyframeStore.swift:84-87` clears only
   walk photos); if the second close-up is skipped, the first one is uploaded.
 - The foundations say each kept photo gives a light haptic tap. In this build walk photos give none
   (`UI/ScanRootView.swift:91`, `:101-104`); [the flow](../foundations/flow.md) and
@@ -357,4 +359,4 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   interruption recovery. The first
   Simulator pass showed this screen's chrome without text (B-05 in [bug-triage.md](../bug-triage.md)).
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

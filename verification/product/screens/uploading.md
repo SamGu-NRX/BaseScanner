@@ -97,7 +97,7 @@ screen until "Try again" succeeds.
 | The screen's own way out | None. | "Try again": zips and sends the whole scan again. |
 | Start over | Not offered. | Not offered. |
 | Tracking limited | No effect; this screen shows no coaching. | No effect. |
-| Tracking lost or relocalizing | Suspected bug: after 20 s of relocalizing on the live camera, the scan is forgotten and the app returns to finding the meter; the answer, when it comes, is dropped. | Same: the failure gives way to finding the meter. |
+| Tracking lost or relocalizing | No effect: the 20 s reset does not apply on this screen, so the scan and its answer are kept (fixed in `beede15`). | No effect; the failure and "Try again" stay. |
 | App backgrounded or a call | The app asks for no background time, so iOS may suspend the transfer; a broken connection would then show "You're offline". Unverified. | The failure stays. |
 | Camera off or session failed | No effect; the upload does not need the camera. | No effect. |
 | Network lost or upload failing | The steps give way to the failure and "Try again" (table above). | "Try again" fails the same way until the network or server is back. |
@@ -148,32 +148,27 @@ autopilot logs "upload failed; retrying once". Test identifiers: `screen.uploadi
   Simulator run at this commit ([verification](../verification.md), FLOW-02).
 - **Suspected bug: raw error text on screen.** The second line of "That didn't go through" is the
   error's developer description (`UI/Copy/ScanCopy.swift:196`, fed by
-  `Runtime/ScanEngine.swift:587, 614`): HTTP status codes, server JSON, decoder errors. B-02.
-- **Suspected bug: "You're offline" for any connection error.** `Runtime/ScanEngine.swift:614`
+  `Runtime/ScanEngine.swift:672, 699`): HTTP status codes, server JSON, decoder errors. B-02.
+- **Suspected bug: "You're offline" for any connection error.** `Runtime/ScanEngine.swift:699`
   treats every `URLError` as offline, including an unreachable host, refused connection and
   timeout. The copy then tells a homeowner with full signal to wait for signal.
 - **Suspected bug: "Checking your wall" is skipped with a real server.** Progress is capped at
   99% while sending (`Runtime/ResultClient.swift:68`) and reaches 100% only after the server has
-  answered (`:40`); the step changes only then (`Runtime/ScanEngine.swift:596, 600`). The
+  answered (`:40`); the step changes only then (`Runtime/ScanEngine.swift:681, 685`). The
   homeowner watches "Sending photos, 99%" for the whole analysis, then the result replaces
   "Checking your wall" almost at once. Only the sample result lingers on the third step, where it
   reads "Show the example".
-- **Suspected bug: a relocalization reset can wipe the scan during the upload.** The
-  relocalization check runs on every live frame whatever the screen (`Runtime/ScanEngine.swift:195`,
-  `409`). After 20 s it forgets the wall, marks and photo list and goes to `findMeter` (`:431–455`),
-  and the upload's answer is dropped (the `generation` guards at `:599, 606`). A homeowner who
-  locks the phone mid-upload and returns somewhere the phone can't recognise would lose the scan.
-  Unverified: needs a device, and whether the AR session keeps delivering frames while the camera
-  view is off screen is not settled by the code.
+- A relocalization reset can no longer wipe the scan during the upload: the reset applies only
+  on the capture screens (`Runtime/ScanEngine.swift:469-476`), fixed in `beede15`.
 - The app asks for no background execution time (no `beginBackgroundTask`), so "Keep the app
   open" is the only guard for the transfer. What iOS does to the transfer when the phone locks
   has not been tested.
 - "It takes about a minute" has no measurement behind it; no upload has been timed with a real
   scan.
-- The comment on `writeBundle` (`Runtime/KeyframeStore.swift:83–84`) says the zip stays so a
-  failed upload can be retried, but "Try again" rebuilds it (`Runtime/ScanEngine+Actions.swift:207–209`).
+- The comment on `writeBundle` (`Runtime/KeyframeStore.swift:89–90`) says the zip stays so a
+  failed upload can be retried, but "Try again" rebuilds it (`Runtime/ScanEngine+Actions.swift:226–228`).
   Harmless, but the kept zip is never reused.
 - Pass 1 (`21a63e7`) saw "That didn't go through" with no button or symbol visible
   ([verification](../verification.md) UP-01, B-05). Not rechecked at this commit.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

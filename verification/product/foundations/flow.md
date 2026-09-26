@@ -35,13 +35,13 @@ stateDiagram-v2
     wallWalk --> markFeatures : "Done with this wall" (both ends set)
     markFeatures --> gapRequest : "Looks complete", and the phone's check finds a gap
     markFeatures --> uploading : "Looks complete", no gap
-    gapRequest --> uploading : view taken, or "I can't get there"
+    gapRequest --> uploading : view taken, end marked again, or "I can't get there"
     uploading --> result : the server answered
     result --> gapRequest : "Capture it now" on a missing view
     result --> resultAR : "See it on your wall"
     resultAR --> result : "Done"
     result --> onboarding : "Start over"
-    wallWalk --> findMeter : phone lost its place for over 20 s
+    wallWalk --> findMeter : phone lost its place for over 20 s (any capture screen)
 ```
 
 The names are the screen names the app logs (see the [glossary](../glossary.md#verification-words)).
@@ -94,7 +94,7 @@ after the server has answered; nothing on `uploading` is skipped when the networ
 | The screen's own way out | See each screen. | See each screen. |
 | Start over | Not offered. The failure screen has it for failures other than an unsupported phone, but those never reach it (Open questions). | Offered only on `result`. It forgets the wall, photos, marks and result and returns to `onboarding`. |
 | Tracking limited | Coaching replaces the instruction until it clears ([coverage and guidance](coverage-and-guidance.md#one-instruction-at-a-time)). | Same; no photo counts toward coverage meanwhile. |
-| Tracking lost or relocalizing | "Point at the meter like this." (relocalizing) or "Your phone lost its place". | If the phone has not found its place within 20 s, the app forgets the wall, photos and marks and returns to `findMeter`, on any screen while the camera runs, including the result. |
+| Tracking lost or relocalizing | "Point at the meter like this." (relocalizing) or "Your phone lost its place". | If the phone has not found its place within 20 s on a capture screen (`findMeter` through `gapRequest`), the app forgets the wall, photos and marks and returns to `findMeter`. On `uploading`, `result` and `resultAR` the scan and result stay (fixed in `beede15`). |
 | App backgrounded or a call | The screen stays; coaching says "Point at the meter like this." when the camera resumes. | Same; photos and marks are kept. |
 | Camera off or session failed | Suspected dead end: see Open questions. | Suspected dead end: see Open questions. |
 | Network lost or upload failing | No effect. | Only `uploading` is affected; see [the upload](../screens/uploading.md). |
@@ -130,16 +130,16 @@ the autopilot wait on each screen until a file named after it appears, for UI te
 - **Suspected bug: camera access denied is a dead end.** The failure screen text exists ("House
   Scan needs your camera ... Turn on Camera for House Scan in Settings") but only the
   `unsupported` screen shows failures, and the app switches to it only when motion tracking is
-  unsupported (`Runtime/ScanEngine.swift:99`). A denied camera, a failed camera session and an
-  unreadable replay set the failure (`ScanEngine.swift:111, 424, 426`) without changing screen. The
+  unsupported (`Runtime/ScanEngine.swift:107`). A denied camera, a failed camera session and an
+  unreadable replay set the failure (`ScanEngine.swift:119, 489, 491`) without changing screen. The
   homeowner would stay on "Find your electric meter" with no camera and no Settings button.
   Checkable in the Simulator for the replay case: launch with `-replay /nonexistent`.
 - "Your scan is saved on this phone" is true only while the app runs: after a relaunch nothing
   reopens or retries it.
 - Photos of the home accumulate in `Caches/Scans/` across scans and Start over; the app never
-  deletes them (`Runtime/KeyframeStore.swift:25`). Worth deciding whether a finished or abandoned
+  deletes them (`Runtime/KeyframeStore.swift:27`). Worth deciding whether a finished or abandoned
   scan should be removed.
 - The 1.2 s pause after a finished step and the 20 s relocalization limit are read from code;
   neither has been timed on a device.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

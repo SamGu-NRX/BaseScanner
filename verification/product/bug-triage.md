@@ -1,8 +1,8 @@
 # Suspected defects
 
 Collected from every document's open questions and from [verification.md](verification.md),
-deduplicated. Source `t3/ios-mvf` at `0876e03` unless an entry names another commit; paths are
-under `ios/`. **Seen** means observed in the Simulator; **code** means read from the
+deduplicated. Status checked at `t3/ios-mvf` `beede15`; line references are at `0876e03` unless an
+entry names another commit; paths are under `ios/`. **Seen** means observed in the Simulator; **code** means read from the
 source and not run. Every blocker and major entry was re-read in the source by a second reader.
 
 | ID | Severity | Where the homeowner meets it | Evidence | Decision |
@@ -12,9 +12,9 @@ source and not run. Every blocker and major entry was re-read in the source by a
 | B-09 | Blocker | Feature list: "Add something" does nothing | code | fix |
 | B-06 | Major | Walk: an end closer than 20 ft can't be marked (answer half fixed at `525ea40`) | code | fix |
 | B-08 | Major | "Can't get there" is never sent to the server | code | fix (with S2) |
-| B-10 | Major | Result, upload or list: the scan resets after 20 s of relocalizing | code | fix |
-| B-11 | Major | Meter tap can land on another wall's extended plane | code | fix |
-| B-12 | Major | "Capture it now" past a wall end turns it unexplored; a request beyond a marked end can't finish | code | fix |
+| B-10 | Major | Feature list: the scan resets after 20 s of relocalizing (result and upload fixed at `beede15`) | code | fix |
+| B-11 | Major | Meter tap can land on another wall's extended plane (ground height fixed at `beede15`) | code | fix |
+| B-12 | Major | A server request beyond a still-marked wall end can't finish (past-end case fixed at `beede15`) | code | fix |
 | B-02 | Major | Upload and camera failures show raw error text | seen at `21a63e7` | fix |
 | B-13 | Minor | 3D and AR tint zones stop one battery width short | code | fix |
 | B-14 | Minor | Result rule lines hide whether a limit is a minimum or maximum | seen | fix |
@@ -62,19 +62,24 @@ so a stretch the homeowner can't reach looks to the server like one nobody looke
 screen's hint promises "An installer will look at this part instead"; the server may ask for the
 same view again. C1 has no field for it, so this needs S2 and S3 together.
 
-**B-10. The scan resets under the result.** The 20 s relocalization reset runs on every screen while
+**B-10. The scan resets after a lost world frame.** At `beede15` the reset spares the upload,
+result and AR screens; it still fires on the feature list, which shows no coaching. Before: The 20 s relocalization reset runs on every screen while
 the camera session runs (`ScanEngine.swift:189, 357-364`), including the feature list, the upload
 and the result, where no coaching is shown. After a call, the homeowner can come back to "Find your
 electric meter" with every photo, mark and the result gone. The reset also keeps a half-finished
 mark and the first close-up (`ScanEngine.swift:386-410`, `KeyframeStore.swift:79`).
 
-**B-11. The meter tap can guess a depth.** The raycast falls back to `existingPlaneInfinite`
+**B-11. The meter tap can guess a depth.** At `beede15` the ground height comes from planes as
+they arrive; the infinite-plane fallback remains (`LiveCapture.swift:76`). Before: The raycast falls back to `existingPlaneInfinite`
 (`HouseScan/Runtime/LiveCapture.swift:76`): a tap at a meter whose wall is not detected yet can pin
 it on another wall's plane extended past its edge. The code's own comment says a tap never guesses a
 depth. The ground height also stays a guess (1.4 m below the phone) if no ground plane was seen at
 the tap (`ScanEngine+Actions.swift:48-57`).
 
-**B-12. Requests past a wall end.** "Capture it now" on a past-end request first clears that end
+**B-12. Requests past a wall end.** At `beede15` marking the end again settles a past-end
+request, but only the walk offers "Wall ends here"; the gap request screen shows neither it nor
+the end question (`WallWalkScreen.swift:137-173`), so a homeowner can't use the fix. The
+band-request case below is unchanged. Before: "Capture it now" on a past-end request first clears that end
 (`ScanEngine+Actions.swift:206-209`) and nothing sets it again, so the next upload reports the side
 as unexplored even after the homeowner looked past it, and the server can ask again. A server band
 request whose stretch lies beyond an end that is still marked can never fill: the coverage map

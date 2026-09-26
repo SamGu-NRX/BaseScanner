@@ -7,7 +7,7 @@ electric meter and either taps "This is my meter", which pins the meter at the c
 middle of the screen, or taps the meter itself on the camera image. The phone accepts the tap
 only where it has detected a real vertical surface; that surface becomes the wall for the rest of
 the scan. It is the first camera screen (screen name `findMeter`), reached from "Allow camera" on
-the introduction, and again after the phone loses its place for over 20 s
+the introduction, and again after the phone loses its place for over 20 s during capture
 ([the flow](../foundations/flow.md#the-interaction-event-by-event)). Nothing is photographed here.
 An accepted tap goes straight to [the meter close-up](meter-close-up.md).
 
@@ -75,8 +75,12 @@ until a tap is accepted.
 > Technical note: when the tap is accepted, the wall's outside is the side the phone is on, and
 > the ground at the wall is the highest detected level surface at least 0.3 m (1 ft) below the
 > meter whose detected extent comes within 2 m (6 ft 7 in) of it. With no such surface yet, the
-> ground is taken as 1.4 m (4 ft 7 in) below the phone. This happens once, at the tap
-> (`Runtime/ScanEngine+Actions.swift:39`, `:51`); see Open questions.
+> ground is taken as 1.4 m (4 ft 7 in) below the phone (`Runtime/ScanEngine+Actions.swift:41-42`,
+> `:53`). The lookup runs again whenever the phone detects or grows a level surface, for the rest
+> of the scan: the first match replaces the guess, and a later one replaces the ground when it
+> differs by more than 1 cm. Every mark is re-measured against the new ground
+> (`Runtime/ScanEngine.swift:227-246`). While the ground is still a guess, the upload marks the
+> meter and each door, window, gas meter and AC unit as uncertain by ±0.3 m (`Runtime/ScanEngine+Export.swift:50-55`, `:72`).
 
 ### While capturing
 
@@ -140,18 +144,16 @@ replay logs where its wall came from when it loads.
 - Tapping past the edge of the part of the wall the phone has detected is accepted, because the
   surface counts as continuing (see Open questions).
 - A replay started with `-replay` whose homeowner taps "Allow camera" before the recording has
-  loaded starts the live camera as well (`Runtime/ScanEngine.swift:174`). Read from code only.
+  loaded starts the live camera as well (`Runtime/ScanEngine.swift:183`). Read from code only.
 - A replay that could not be opened leaves this screen dark, with no way on: every tap is
   ignored.
 
 ## Open questions and verification
 
-- **Suspected bug: the ground can be guessed for the whole scan.** If no level surface has been
-  detected near the meter when the tap is accepted, the ground is set 1.4 m below the phone and
-  never corrected, though the code's own description says "until one appears"
-  (`Runtime/ScanEngine+Actions.swift:48-57`; nothing else writes it). A homeowner who taps quickly,
-  or holds the phone low or high, gets every height and the ground strip offset for the rest of
-  the scan.
+- The chest-height ground guess is now replaced as soon as a level surface appears, fixed in
+  `beede15`. A scan where none ever appears still carries the guess, flagged only by the ±0.3 m,
+  which the code calls a hypothesis with no measured spread behind it
+  (`Runtime/ScanEngine+Export.swift:70-72`).
 - **Suspected bug: the refusal message is misleading and silent on repeat.** Both refusals show
   "Step a little closer to the wall" (`Runtime/ScanEngine+Actions.swift:26`, `:33`), though
   neither is about distance: one is tracking, and the other is a surface not yet detected, which
@@ -162,15 +164,14 @@ replay logs where its wall came from when it loads.
   continuation past what was detected (`Runtime/LiveCapture.swift:76`, `existingPlaneInfinite`). A
   tap at a meter on a surface that has not been detected yet can pin the meter on another detected
   wall's continuation, at the wrong depth. The code's comment says a tap "never guesses a depth".
-- **Suspected bug: a 20 s loss of place anywhere returns here.** The check runs on every screen
-  while the camera session exists, including the upload and the result (`Runtime/ScanEngine.swift:402-409`).
-  A homeowner who leaves the app during the upload and comes back to a phone lying face down
-  could lose the whole scan and land here. The reset also leaves an unfinished feature mark in
-  place (`Runtime/ScanEngine.swift:431-456` does not clear it).
+- A 20 s loss of place now returns here only from the capture screens (finding the meter, the
+  close-up, the walk, the list and a gap request); the upload and the result keep the scan
+  (`Runtime/ScanEngine.swift:469-476`), fixed in `beede15`. The reset still leaves an unfinished
+  feature mark in place (`Runtime/ScanEngine.swift:496-522` does not clear it).
 - **Question: "Point at the meter like this." with nothing to match.** The relocalizing coaching
   (`UI/Copy/ScanCopy.swift:65-66`) is written for the walk, which shows the saved close-up under
   it. Here no close-up exists yet and no picture is shown, so "like this" points at nothing.
 - The live tap, the refusals, the coaching and the camera prompt need the live camera and have not
   been seen running. The Simulator shows only the replay path, where every tap is accepted.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

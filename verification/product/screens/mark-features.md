@@ -96,7 +96,7 @@ it. What each kind asks for and records:
 | Gas meter, AC unit | One: "Tap the gas meter" / "Tap the ac unit", with "Put the circle on it and tap Mark, or tap it on screen." | The tapped point on the wall. The list and strip treat it as 0.3 m wide, centered on the tap; that width is nominal, not measured. |
 | Door, window | Two: "Tap the door's bottom-left corner" (or "window's"), with the same second line; then "Now tap its top-right corner". | A rectangle on the wall: from the lower tap's height (never below the ground) to the higher, and between the two taps along the wall. Any two opposite corners give the same rectangle. |
 | Driveway | Two: "Tap one end of the driveway's edge", with "Use the edge closest to the wall."; then "Now tap the other end of that edge". | The two ground points: one edge. |
-| Fence | Two: "Tap the bottom of the fence at one end", with "Where it meets the ground."; then "Now tap the bottom at the other end". | The two ground points where the fence meets the ground. |
+| Fence | Two: "Tap the bottom of the fence at one end", with "Where it meets the ground."; then "Now tap the bottom at the other end". | The two ground points where the fence meets the ground; its distance from the wall is the nearer point's. |
 
 ### While capturing
 
@@ -122,9 +122,14 @@ scene description with the scan:
 - a door or window as an opening with its span along the wall, bottom and top; for a window,
   whether it opens (yes for "It opens", no for "It stays shut", or left empty when unanswered); a door always left empty;
 - a gas meter or AC unit as the tapped point;
-- a fence as its two foot points, a driveway as its two edge points.
+- a fence as the stretch of wall it faces and its distance out from the wall, taken at the foot
+  nearer the wall, so a fence angled toward the wall is not placed farther out than its narrow
+  end (fixed in `beede15`; it was the average of the two feet);
+- a driveway as a strip along its two edge points.
 
-Heights are sent as height above the ground at the wall.
+Heights are sent as height above the ground at the wall. When the phone first measures the ground
+or the meter's position is refined, every mark's position along the wall, heights and distance out
+are recomputed from its taps ([finding the meter](find-meter.md#first-capture)).
 
 ## Modifiers
 
@@ -185,25 +190,26 @@ appears; marking itself logs nothing. Identifiers: `action.markSomething`, `acti
 
 - **Suspected bug: "Add something" does nothing visible.** The buttons start a mark
   (`UI/Screens/MarkFeaturesScreen.swift:64`, accepted on this screen by
-  `Runtime/ScanEngine+Actions.swift:86`), but the list screen never shows the circle, the prompt,
+  `Runtime/ScanEngine+Actions.swift:93`), but the list screen never shows the circle, the prompt,
   "Mark" or camera taps; those exist only on the walk (`UI/Screens/WallWalkScreen.swift:28-45,
   121-135`). The homeowner who spots a missed gas meter here presses a button and nothing
-  happens. "Looks complete" does not end the stray mark either (`ScanEngine+Actions.swift:168-171`).
+  happens. "Looks complete" does not end the stray mark either (`ScanEngine+Actions.swift:187-190`).
 - **Suspected bug: "Tap the ac unit".** The prompt lowercases the kind's name
   (`UI/Copy/ScanCopy.swift:122`), so "AC unit" becomes "ac unit" on screen, and VoiceOver hears
   "Remove ac unit", "Add ac unit", "Mark ac unit" (`MarkFeaturesScreen.swift:121, 189`,
   `WallWalkScreen.swift:282`).
-- **Suspected bug: the list can vanish without a word.** Relocalization is timed on every screen
-  (`Runtime/ScanEngine.swift:195, 402-413`), but the list shows no coaching. After a call, a
+- **Suspected bug: the list can vanish without a word.** The 20 s relocalization reset still
+  applies on the list, a capture screen (`Runtime/ScanEngine.swift:207, 458-478`), but the list
+  shows no coaching. After a call, a
   homeowner reading the list with the phone pointed away for 20 s is sent back to finding the
   meter with every mark and photo gone, never having seen "Point at the meter like this.".
 - **Suspected bug: a half-done mark survives the 20 s reset.** `resetSpatialState` clears the
-  features but not the mark in progress or its taps (`ScanEngine.swift:431-456`, taps held at
-  `ScanEngine.swift:65`). After the meter is tapped again the walk opens mid-mark, and a first tap
+  features but not the mark in progress or its taps (`ScanEngine.swift:496-522`, taps held at
+  `ScanEngine.swift:73`). After the meter is tapped again the walk opens mid-mark, and a first tap
   from the old, discarded map can be joined to a new one. The same holds for a stray mark from
   "Add something".
 - **Wrong words for the wrong-side refusal.** The check is where the phone is, not where the tap
-  lands (`ScanEngine+Actions.swift:101`). "Tap something on this side" cannot help; stepping back
+  lands (`ScanEngine+Actions.swift:108`). "Tap something on this side" cannot help; stepping back
   out in front of the wall's line does.
 - The place in a row reads "ft" to VoiceOver (`MarkFeaturesScreen.swift:107`), though the app has
   a spelled-out form for this (`UI/Copy/Distance.swift:25`).
@@ -211,4 +217,4 @@ appears; marking itself logs nothing. Identifiers: `action.markSomething`, `acti
   "Mark". MF-01 in [verification](../verification.md) was observed on an earlier commit and has
   not been rechecked here.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

@@ -82,8 +82,9 @@ loses its amber, and the bar moves.
 ### While capturing
 
 The bar shows the share of the stretch's cells that are covered, rounded to a whole percent. It
-counts only covered cells, so a cell seen from one place adds nothing until a second photo from
-0.25 m away sees it. The instruction does not change while the request is open; only
+counts only covered cells, so a cell adds nothing until each of its three sample lines has been
+seen from two places 0.25 m apart
+([coverage and guidance](../foundations/coverage-and-guidance.md#while-capturing)). The instruction does not change while the request is open; only
 [coaching](../foundations/coverage-and-guidance.md#one-instruction-at-a-time) replaces it, until
 the problem clears. The ring and the dots follow the homeowner as they move. "I can't get there"
 stays available, coaching or not.
@@ -158,34 +159,37 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
 
 - **Suspected bug: "I can't get there" is not sent.** The button's hint promises "An installer will
   look at this part instead.", and the cells turn skipped, but the upload carries only covered
-  stretches and the end kinds (`Runtime/ScanEngine+Export.swift:52-58`,
-  `HouseScanKit/.../SceneExport.swift:273-293`). The server cannot tell a skipped stretch from one
+  stretches and the end kinds (`Runtime/ScanEngine+Export.swift:57-63`,
+  `HouseScanKit/.../SceneExport.swift:283-303`). The server cannot tell a skipped stretch from one
   never looked at, and a server request the homeowner skipped can come back on the next result.
   This also contradicts the Advancing section of
   [coverage and guidance](../foundations/coverage-and-guidance.md#advancing), which says skipped
   cells are sent.
 - **Suspected bug: a past-end request turns a real end into an unexplored one.** "Capture it now"
-  forgets the end before the request starts (`Runtime/ScanEngine+Actions.swift:219-222`,
-  `Runtime/ScanEngine.swift:516-521`), and nothing marks it again. The next upload reports that
-  side as unexplored (`ScanEngine+Export.swift:53-54`) even when the homeowner has now shown the
-  ground beyond it, so the server may ask for the same view again.
+  forgets the end before the request starts (`Runtime/ScanEngine+Actions.swift:239-244`,
+  `Runtime/ScanEngine.swift:583-588`). Since `beede15` the engine lets that end be marked again
+  during the request, and marking it and answering the end question settles the request
+  (`ScanEngine+Actions.swift:71`, `:75`, `:87`; `Runtime/ScanEngine.swift:625-638`). But this screen
+  has no "Wall ends here" button and never shows the end question (both exist only on the walk,
+  `UI/Screens/WallWalkScreen.swift:137-173`), so only code can use it. For the homeowner the next
+  upload still reports that side as unexplored (`ScanEngine+Export.swift:58-59`), and the server
+  may ask for the same view again.
 - **Suspected bug: a second past-end request asks for the wrong place.** With the end forgotten,
   the plan falls back to the meter (`HouseScanKit/.../GapPlanner.swift:127, 130`): the ground from
   the meter to 2 m toward that side, "about 3 ft left of your meter", which is usually covered
   already. Checkable in the Simulator with the sample result: tap "Capture it now" on the left-end
   card twice, completing or skipping in between.
-- **Suspected bug: "Capture it now" can do nothing.** The card offers the button for any wall or
-  ground item and any past-end item (`ScanEngine+Export.swift:134`), but the request needs a span
-  or a side (`GapPlanner.swift:113, 124`). Without one, the tap is ignored with no message
-  (`ScanEngine+Actions.swift:218`).
+- "Capture it now" is offered only when a request can be built from the item: a band item needs
+  its span, a past-end item its side (`ScanEngine+Export.swift:152`, `GapPlanner.swift:113, 124`).
+  Fixed in `beede15`; before, the button could do nothing.
 - The phone's wording "This might be a spot for the battery" is stronger than its choice: it asks
   for the nearest missing ground, not a place it has judged a candidate.
-- The 20 s reset keeps the list of skipped requests (`ScanEngine.swift:431-456`); after
-  re-walking, a phone request identical to a skipped one would be passed over (`ScanEngine.swift:529`).
+- The 20 s reset keeps the list of skipped requests (`ScanEngine.swift:496-522`); after
+  re-walking, a phone request identical to a skipped one would be passed over (`ScanEngine.swift:596`).
 - **Question: "Point at the meter like this." without the picture.** The walk shows the saved
   close-up under this coaching (`UI/Screens/WallWalkScreen.swift:23-27`); this screen shows the
   words alone, even when a close-up was taken.
 - Nothing here has run in the Simulator. The completion moment, the amber highlight and the
   dots need the replay with `-autopilot`, which reaches this screen only when held-back frames exist.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

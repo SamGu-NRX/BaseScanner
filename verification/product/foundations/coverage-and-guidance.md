@@ -14,7 +14,7 @@ decides whether a battery fits; covered means evidence exists, not that a spot p
 The homeowner walks slowly along the wall with the phone pointed at it. Every half meter or so
 the phone keeps a photo; the counter at the top goes up and the fog over the wall clears where
 the camera has looked. The strip at the bottom fills in: gray where nothing has been seen, then
-covered once a stretch has been seen from two places. The instruction at the top says where to
+covered once a stretch has been seen from two places, top to bottom. The instruction at the top says where to
 go ("Walk slowly to your left") and changes only when that is done or after at least 3 s.
 
 ## The interaction, event by event
@@ -22,8 +22,8 @@ go ("Walk slowly to your left") and changes only when that is done or after at l
 ```mermaid
 stateDiagram-v2
     [*] --> unseen
-    unseen --> seen : a kept photo shows most of the cell
-    seen --> covered : a second kept photo from 0.25 m away, tracking normal
+    unseen --> seen : a kept photo shows one of the cell's three sample lines
+    seen --> covered : every sample line seen from two places 0.25 m apart
     unseen --> skipped : "I can't get there" over this cell
     seen --> skipped : "I can't get there" over this cell
 ```
@@ -52,21 +52,29 @@ A frame is kept only when all of these hold:
 - the frame is at least half as sharp as the recent frames, not too dark (mean brightness at
   least 40 of 255) and not glaring (under a quarter of the pixels clipped);
 - at least 0.33 s has passed since the last kept photo (at most about three per second);
-- the phone has moved 0.5 m or turned 15° since the last kept photo, or the frame would show at
-  least three cells nobody has seen yet.
+- the phone has moved 0.5 m or turned 15° since the last kept photo, or the frame would show a
+  sample line nobody has seen yet in at least three cells.
 
 A kept photo counts, and coverage moves, only once its file is written to the phone, so the strip
 never claims a view the upload lacks. Walk photos give no haptic; the counter flashes instead.
 
 ### While capturing
 
-A cell counts as **seen** when a kept photo shows most of it (60 % of its sample points) from no
-farther than 6 m and no more than 65° from straight on, away from the outer 3 % of the image. It
-becomes **covered** when a second kept photo, taken from at least 0.25 m away from the first,
-also sees it. Photos are kept only with normal tracking, so every kept photo counts.
+Each cell is checked along three **sample lines** across its band, evenly spaced from edge to edge.
+On the wall they sit at the foot, 0.99 m up and 1.98 m up (the top of the band); on the ground
+at the foot of the wall, 0.6 m out and 1.2 m out. A photo sees a line when both of its points, a
+quarter and three quarters of the way along the cell, are no farther than 6 m, no more than 65°
+from straight on and away from the outer 3 % of the image, and the phone is in front of the
+wall's line. A cell counts as **seen** once any kept photo sees any of its lines. It becomes
+**covered** only when every line has been seen from two places at least 0.25 m apart; different
+photos may supply different lines. A cell whose top line no photo has reached stays seen, however
+often its lower lines are photographed. Photos are kept only with normal tracking, so every kept
+photo counts. (Fixed in `beede15`: before, most of a cell's points from two places were enough,
+so a band could read covered without its top ever being in view.)
 
 The strip shows what has been seen plus 2.5 m of fog ahead on each side, and stops at a marked
-wall end.
+wall end. When the phone refines the meter's position, the seen stretches and the ends move with
+it, in whole cells.
 
 #### One instruction at a time
 
@@ -90,7 +98,10 @@ The instruction is chosen in this order, first match wins:
 4. **Aim at a lagging band**: within 1 m either side of the phone, if one band is done over at least
    0.45 m (three cells) where the other is not, "Tilt down to show the ground" or "Tilt up to show
    more wall", with a ring on the spot.
-5. **Walk to the left**, until coverage runs unbroken 6.1 m (20 ft) from the meter on the left;
+5. **Walk to the left**, until coverage runs unbroken 6.1 m (20 ft) from the meter on the left.
+   The ring and dots lead 1 m past whichever is farther along: the unbroken coverage or the
+   phone itself, so a homeowner already past a thin patch is not sent back to it (fixed in
+   `beede15`; the aim instructions ask for such patches);
    then **"Is this the left end of the wall?"**, with "Aim where the wall stops or turns a
    corner, and tap Wall ends here.", the only moment "Wall ends here" is offered. Only after the
    left end is set: the same for the right.
@@ -99,7 +110,7 @@ The instruction is chosen in this order, first match wins:
 7. **"That's the whole wall"**, with "Tap Done when you're ready".
 
 A new instruction replaces the current one only when the current one is satisfied or has been up
-for 3 s. An aim instruction is satisfied at 80 % of the cells within 0.3 m of its spot covered; a
+for 3 s of screen time. An aim instruction is satisfied at 80 % of the cells within 0.3 m of its spot covered; a
 walk instruction when that side's end is set; an end question when it is answered.
 
 ### Advancing
@@ -115,7 +126,7 @@ can't reach looks the same as one nobody looked at, and it treats both as unknow
 | Modifier | At arrival | While capturing |
 | --- | --- | --- |
 | Live camera or replay | No effect on the rules; a replay's frames go through the same checks. | Same. |
-| Autopilot | No effect on the rules. | The replay runs at three times speed, so the time-based limits (0.33 s between photos, 3 s per instruction) bite more often. |
+| Autopilot | No effect on the rules. | The replay runs at three times speed, so the 0.33 s between photos is measured on the recording's clock and bites more often. The 3 s per instruction is screen time, so instructions stay up as long as live (fixed in `beede15`). |
 | Server or sample result | No effect. | No effect. |
 | Larger text sizes | No effect on coverage. | No effect. |
 | Reduce Motion | The fog still fades as cells clear, without drifting. | Same. |
@@ -153,14 +164,15 @@ hooks.** Each instruction change logs `GUIDANCE=<name>`.
 - Coverage is on the one wall set by the meter tap; wall past a corner never becomes covered.
 - Something standing between the phone and the wall (a bush, a bin) does not stop a cell counting
   as seen: coverage records where the camera looked, not what it could see. The server re-checks
-  from the photos (`HouseScanKit/.../CoverageMap.swift:51`).
+  from the photos (`HouseScanKit/.../CoverageMap.swift:58-59`). The one hidden case the app does
+  model is the wall itself: a phone on the far side of the wall's line sees nothing.
 
 ## Open questions and verification
 
 - **Suspected bug: a blocked end nearer than 20 ft can't be recorded** (triage B-06, half
   resolved). The end question makes a marked end's kind truthful, but "Wall ends here" is still
   offered only when the walk asks for the end, at 6.1 m of coverage
-  (`HouseScanKit/.../GuidancePlanner.swift:27`, `:113`). A wall blocked by a fence sooner can only
+  (`HouseScanKit/.../GuidancePlanner.swift:27`, `:119`). A wall blocked by a fence sooner can only
   be recorded as unexplored, through "Can't get there". A wall that goes on straight past 20 ft is
   recorded as unexplored only by answering "It turns a corner", which is not what the homeowner
   sees.
@@ -170,4 +182,4 @@ hooks.** Each instruction change logs `GUIDANCE=<name>`.
   (`Runtime/ScanEngine.swift`, `step(_:)`).
 - All thresholds are the code's stated hypotheses (research note), not measured values.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).

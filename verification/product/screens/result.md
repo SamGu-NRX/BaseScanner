@@ -29,8 +29,6 @@ stateDiagram-v2
     resultAR --> result : "Done"
     result --> gapRequest : "Capture it now"
     result --> onboarding : "Start over"
-    result --> findMeter : phone relocalizing for over 20 s
-    resultAR --> findMeter : phone relocalizing for over 20 s
 ```
 
 ### Arriving
@@ -57,7 +55,7 @@ A success haptic plays, except when coming back from the AR view. The 3D model f
    the server's rules are not approved for automatic decisions.
 6. "A closer spot may exist on the left of your meter. The scan didn't reach that side." (or
    right). It shows when the server asks for a view past a wall end, or when either wall end is
-   an unexplored end.
+   an unexplored end that the server does not mark as beyond cable reach.
 7. "Your electrical panel still needs an electrician's review. This scan only covers where the
    battery can go.", on every result: the server's answer covers where the battery goes, not the
    panel.
@@ -86,8 +84,10 @@ ground; the first drag stops the opening sweep where it is. Pinching zooms betwe
 times. The model shows the wall (to the marked wall ends, or 1.5 m past everything the result
 mentions), the meter, every marked feature, the cable as a blue tube, and the battery as a white
 box with a blue light bar. The server also sends its sweep: the stretches of wall where it tried
-the battery, each with one outcome. Each stretch is a translucent tint on the ground in front of
-the wall, as deep as the battery: green where a battery passes, amber where it is unsure, red
+the battery, each with one outcome. The server gives each stretch as the range of places the
+battery's left edge can start; the app extends it by the chosen battery's width so the tint
+covers the wall the battery would stand on (without a chosen spot it covers the starts alone).
+Each stretch is a translucent tint on the ground in front of the wall, as deep as the battery: green where a battery passes, amber where it is unsure, red
 where it fails.
 
 **The AR view.** "See it on your wall" crossfades to the camera. The instruction reads "Your
@@ -107,8 +107,8 @@ from the server, its reason, and a measurement line when the server measured som
 "Measured 3 ft 1 in. The rule is 3 ft, and the measurement can be off by about 4 in." The second
 sentence drops its error clause when the server gives no error, and disappears when there is no
 rule value. An unsure row adds one note: "An installer will check this" when the doubt is a
-narrow margin, an unknown attribute or a rule that always needs review, or "One more photo would
-settle this" when the area was not seen. The rows have no buttons of their own.
+narrow margin, an unknown attribute, a rule that always needs review or no stated cause, or "One
+more photo would settle this" when the area was not seen. The rows have no buttons of their own.
 
 On the AR view the drawing is redrawn from every camera frame. Whenever tracking is not normal
 (limited, lost or relocalizing), the drawing disappears at once and the instruction reads "Point
@@ -122,8 +122,9 @@ No other coaching appears here: the homeowner is not told why tracking is limite
 "Done" returns to the result screen. The screen is built again, so the headline fades in again
 and the model replays its sweep and loses any turn or zoom.
 
-Each "Still needed" card shows the server's message. Under it is "Capture it now" when the view
-is of the wall, the ground or past a wall end, and "An installer will check this" otherwise.
+Each "Still needed" card shows the server's message. Under it is "Capture it now" when the phone
+can build a request from it (a wall or ground view with its stretch, or a view past a wall end
+with its side), and "An installer will check this" otherwise.
 "Capture it now" opens a [gap request](gap-request.md) for that stretch, using the server's
 message as the second line. For a view past a wall end, that end is forgotten first, because the
 wall may go on. When the view is taken, or the homeowner taps "I can't get there", the scan is
@@ -146,8 +147,8 @@ uploaded again and a new result replaces this one. The old result cannot be reop
 | The screen's own way out | "Start over"; "Capture it now" leaves for a gap request. | "Done", back to the result. |
 | Start over | Offered at the bottom; see [the flow](../foundations/flow.md#cancel-and-interrupt). | Not offered. |
 | Tracking limited | Nothing shown; the camera is hidden but keeps tracking. | The drawing disappears and the instruction reads "Point at your meter" with "The battery comes back once your phone finds its place." until tracking is normal. |
-| Tracking lost or relocalizing | After 20 s of relocalizing the app leaves the result for finding the meter, with the wall, photos and marks gone. Suspected bug; see Open questions. | The drawing disappears and "Point at your meter" shows, as above. After 20 s of relocalizing, the same reset as on the result. |
-| App backgrounded or a call | The screen stays. When the app returns the phone relocalizes, and the 20 s limit above applies. | Same, with the camera resuming behind the drawing. |
+| Tracking lost or relocalizing | Nothing shown; the result stays however long the phone takes (fixed in `beede15`; it used to reset to finding the meter after 20 s). | The drawing disappears and "Point at your meter" shows, as above, until the phone finds its place. No reset. |
+| App backgrounded or a call | The screen stays. When the app returns the phone relocalizes in the background; nothing is lost. | Same, with the camera resuming behind the drawing. |
 | Camera off or session failed | No visible effect. | Suspected dead end, as in [the flow](../foundations/flow.md#open-questions-and-verification): no message, no picture. |
 | Network lost or upload failing | No effect; the result is already on the phone. "Capture it now" leads to a new upload, which needs the network ([the upload](uploading.md)). | No effect. |
 | App killed | The result is lost; nothing reopens it. | The result is lost. |
@@ -186,31 +187,25 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
 
 ## Open questions and verification
 
-- **Suspected bug: the result can disappear after a call or a trip to another app.** The 20 s
-  relocalization limit runs on every screen (`Runtime/ScanEngine.swift:195`, `402-409`). The live
-  camera keeps running under the result, so a phone that fails to relocalize within 20 s sends a
-  homeowner who is reading their result back to "Find your electric meter". On the result
-  screen the camera is hidden, so nothing even tells them to aim at the meter; only the AR view
-  says "Point at your meter". The reset
-  (`ScanEngine.swift:431-455`) also leaves the old result in memory. The limit should apply only
-  to the capture screens.
-- **Suspected bug: the tinted stretches are in the wrong place.** Each sweep run's `start_ft` is
-  the range of the battery's left edge (`HouseScanKit/.../PlacementResult.swift:450`; the result
-  schema says the same). The app tints exactly that range (`Runtime/ScanEngine+Export.swift:124`),
-  so every stretch stops one battery width short on the right.
+- The 20 s relocalization reset no longer applies on the result or the AR view
+  (`Runtime/ScanEngine.swift:472-476`), fixed in `beede15`.
+- The tinted stretches now reach one battery width past the last start
+  (`Runtime/ScanEngine+Export.swift:132-141`; `start_ft` at `HouseScanKit/.../PlacementResult.swift:450`),
+  fixed in `beede15`. A result with no spot still tints only the starts, which understates each
+  stretch; the code says so.
 - The AR view now names a sample spot as an example (`UI/Screens/ResultARScreen.swift:49-51`),
   fixed in `525ea40`. It still has no badge like the result screen's
   (`UI/Screens/ResultScreen.swift:96-105`).
 - **Question: an end answered "It turns a corner" may read as unseen.** The left-or-right note
-  shows when the server reports an end as unexplored (`Runtime/ScanEngine+Export.swift:141-144`),
+  shows when the server reports an end as unexplored and not beyond cable reach
+  (`Runtime/ScanEngine+Export.swift:157-163`),
   and a corner answer is sent as unexplored. A homeowner who walked to the corner would then read
   that "the scan didn't reach that side". Depends on what the server echoes back; not checked.
 - The measurement line says "The rule is 20 ft" for a limit that is a maximum and "The rule is
   3 ft" for a minimum. The app decodes the server's `comparison` but never shows it, and ignores
   `review_threshold_ft` (`UI/Copy/ScanCopy.swift:233-237`).
-- "Capture it now" does nothing when the server's item has no stretch
-  (`Runtime/ScanEngine+Actions.swift:218`, `HouseScanKit/.../GapPlanner.swift:113`), although
-  the card offers it (`ScanEngine+Export.swift:134`).
+- "Capture it now" is offered only when the phone can build a request from the item
+  (`Runtime/ScanEngine+Export.swift:152`), fixed in `beede15`; before, it could do nothing.
 - After "Capture it now" the old result is gone from view. If the new upload fails, the homeowner
   has only "Try again" on the upload screen and cannot reread the earlier answer.
 - VoiceOver reads the model's value and the measurement lines with "ft" and "in", which it reads
@@ -222,6 +217,6 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
   scrolls the page needs a device.
 - Both screens were seen at `0876e03`, `24af434` and `525ea40` with the real server's answer, and with the sample result
   ([verification](../verification.md), RES-01 to AR-01). Whether the AR drawing lines up with a
-  real wall, and the relocalization reset, need the live camera.
+  real wall, and hiding it while the phone relocalizes, need the live camera.
 
-Verified against house-scanning commit `525ea40` (t3/ios-mvf).
+Verified against house-scanning commit `beede15` (t3/ios-mvf).
