@@ -893,7 +893,7 @@
 
 <!-- ================= 5. EVIDENCE ================= -->
 <h2 id="evidence">5. What the tests found</h2>
-<p class="prose">All results come from public datasets, not our phone. Panel-label reading isn't tested, because only 7 open photos of US panels exist and the test needs 40.</p>
+<p class="prose">All results come from public datasets, not our phone. Panel-label reading isn't tested, because a search found only 7 usable open photos of US panels and the test needs 40.</p>
 
 <div class="finding" id="finding-1">
   <h3>Tracking drift</h3>
@@ -1038,20 +1038,7 @@
 
 <!-- ================= 6. WHERE ================= -->
 <h2 id="where">6. Where things live</h2>
-<p class="prose">Files marked with a PR live on that branch until it merges. A component's README wins over this page.</p>
-<div class="scroll-x"><table>
-  <thead><tr><th>Piece</th><th>Source of truth</th><th>State</th></tr></thead>
-  <tbody>
-    <tr><td>iPhone app<br><span class="meta">client team</span></td><td><code>ios/README.md</code></td><td>Guided capture in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/10" target="_blank" rel="noopener noreferrer">PR #10</a>, live 3D map in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/21" target="_blank" rel="noopener noreferrer">PR #21</a>, stacked on it</td></tr>
-    <tr><td>Capture packet<br><span class="meta">client team</span></td><td><code>packet/README.md</code></td><td>Spec, validator and samples in <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/22" target="_blank" rel="noopener noreferrer">PR #22</a></td></tr>
-    <tr><td>Rules engine, API, capture contract<br><span class="meta">server team</span></td><td><code>server/README.md</code>, "What settles each check"</td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/11" target="_blank" rel="noopener noreferrer">PR #11</a>, live as a <a href="https://house-scanning-server.vercel.app/health" target="_blank" rel="noopener noreferrer">public demo</a> with public rules, and privately with Base's rules behind a key</td></tr>
-    <tr><td>Reconstruction worker<br><span class="meta">server team</span></td><td><code>recon/HANDOFF.md</code></td><td>Draft <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/20" target="_blank" rel="noopener noreferrer">PR #20</a>, handed to the server team</td></tr>
-    <tr><td>Accuracy evals</td><td><code>experiments/evals/README.md</code></td><td><a href="https://github.com/SamGu-NRX/house-scanning-master/pull/12" target="_blank" rel="noopener noreferrer">PR #12</a></td></tr>
-    <tr><td>Agent rules, system overview</td><td><code>AGENTS.md</code>, <code>docs/00-overview.md</code></td><td>On <code>main</code></td></tr>
-    <tr><td>Web review page</td><td></td><td>Parked, <a href="https://github.com/SamGu-NRX/house-scanning-master/pull/15" target="_blank" rel="noopener noreferrer">PR #15</a></td></tr>
-  </tbody>
-</table></div>
-<p class="prose">Plan and evidence: <a href="00-overview.md">00-overview.md</a>. Rule sources and licenses: <a href="04-prior-art-and-codes.md">04-prior-art-and-codes.md</a>.</p>
+<p class="prose"><a href="../README.md">README.md</a> maps the repository, and each component's README is the source of truth for its part. Plan and evidence: <a href="00-overview.md">00-overview.md</a>. Rule sources and licenses: <a href="04-prior-art-and-codes.md">04-prior-art-and-codes.md</a>.</p>
 
 <h3>Try it</h3>
 <div class="prose">
