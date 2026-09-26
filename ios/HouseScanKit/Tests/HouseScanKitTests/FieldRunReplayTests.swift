@@ -113,6 +113,11 @@ import Testing
         for (time, x) in [(2.0, Float(1.45)), (4, 1.37), (6, 1.1), (8, 1.2)] {
             #expect(planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: x), time: time).task == first, "at \(time) s")
         }
+        // Past a marked end the stretch can never be met, so it isn't held.
+        var ended = map
+        ended.setEnd(.right, at: 1.2)
+        var endedPlanner = planner
+        #expect(endedPlanner.update(coverage: ended, camera: GuidancePlannerTests.homeowner(x: 1.1), time: 9).task != first)
         let moved = planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 2.8), time: 10).task
         guard case .aimAtGround(let s) = moved, s > 2 else {
             Issue.record("expected the ground by the homeowner at s = 2.8, got \(moved)")
