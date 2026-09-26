@@ -4,7 +4,11 @@ import SwiftUI
 struct HouseScanApp: App {
     var body: some Scene {
         WindowGroup {
-            CaptureScreen()
+            if ProcessInfo.processInfo.arguments.contains("-uiDemo") {
+                UIDemo.makeRoot()
+            } else {
+                AppRuntime.makeRoot()
+            }
         }
     }
 }
