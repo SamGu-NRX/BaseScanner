@@ -75,13 +75,14 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
+        if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
         return ScanCopy.guidance(state.guidance)
     }
 
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, let coaching = state.coaching {
+        if state.marking == nil, state.endQuestion == nil, let coaching = state.coaching {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         return .normal
@@ -90,11 +91,12 @@ struct WallWalkScreen: View {
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
-        case marking, tray, markEnd, finish, walking
+        case marking, endQuestion, tray, markEnd, finish, walking
     }
 
     private var controlsKey: ControlsKey {
         if state.marking != nil { return .marking }
+        if state.endQuestion != nil { return .endQuestion }
         if trayOpen { return .tray }
         if case .markEnd = state.guidance { return .markEnd }
         if bothEndsMarked { return .finish }
@@ -130,6 +132,28 @@ struct WallWalkScreen: View {
                 .buttonStyle(.primary)
                 .accessibilityHint("Marks the point under the circle in the middle of the screen")
                 .accessibilityIdentifier("action.markPoint")
+            }
+            .transition(.opacity)
+        case .endQuestion:
+            // One question, two equal full-width answers that say what they mean (checklist I4).
+            VStack(spacing: 8) {
+                Button {
+                    actions.answerWallEnd(turnsCorner: true)
+                } label: {
+                    Label("It turns a corner", systemImage: "arrow.turn.up.right")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.endCorner")
+                Button {
+                    actions.answerWallEnd(turnsCorner: false)
+                } label: {
+                    Label("Something blocks it", systemImage: "xmark.octagon")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("A fence, gate, or your neighbor's yard")
+                .accessibilityIdentifier("action.endBlocked")
             }
             .transition(.opacity)
         case .tray:
@@ -173,7 +197,7 @@ struct WallWalkScreen: View {
     }
 
     private var reply: InstructionCard.Reply? {
-        guard asksForArea, state.marking == nil, state.coaching == nil, !trayOpen else { return nil }
+        guard asksForArea, state.marking == nil, state.endQuestion == nil, state.coaching == nil, !trayOpen else { return nil }
         return InstructionCard.Reply(
             title: "Can't get there",
             identifier: "action.cannotAccess",

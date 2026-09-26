@@ -83,6 +83,7 @@ final class ScanEngine {
         }
         state.isAutopilot = options.autopilot
         state.isReplay = options.replayFolder != nil
+        state.usesSampleResult = resultClient.isSample
     }
 
     // MARK: Start

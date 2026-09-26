@@ -20,10 +20,12 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-needsTexture", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "needsTexture"], "wallWalk"),
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
+        ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("uploading", ["-uiDemoPhase", "uploading"], "uploading"),
         ("uploading-offline", ["-uiDemoPhase", "uploading", "-uiDemoOffline"], "uploading"),
+        ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
@@ -33,7 +35,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "meterCloseUp-cantGetClearShot", "markFeatures", "gapRequest",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "meterCloseUp-cantGetClearShot", "markFeatures", "gapRequest",
         "uploading-offline", "result-review", "cameraDenied",
     ]
 
@@ -73,7 +75,9 @@ final class ScreenStatesUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.45)).tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.35)).tap()
         tap(app, "action.markEnd", timeout: 30)
+        tap(app, "action.endCorner")
         tap(app, "action.markEnd", timeout: 30)
+        tap(app, "action.endBlocked")
         tap(app, "action.finishWalk")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
         tap(app, "window.opens.no")

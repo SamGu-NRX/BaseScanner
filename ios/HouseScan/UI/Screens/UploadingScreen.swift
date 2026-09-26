@@ -8,7 +8,7 @@ struct UploadingScreen: View {
     let actions: any ScanActions
 
     var body: some View {
-        let copy = ScanCopy.upload(state.upload)
+        let copy = ScanCopy.upload(state.upload, sample: state.usesSampleResult)
         CenteredScroll {
             VStack(spacing: 28) {
                 UploadEmblem(upload: state.upload)

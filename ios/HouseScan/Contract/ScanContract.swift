@@ -495,6 +495,9 @@ final class ScanViewState {
     var isReplay = false
     /// True when the autopilot is driving the intents (UI tests, demos). Show a small badge.
     var isAutopilot = false
+    /// True when no server is configured and the result will be the bundled sample: nothing is
+    /// sent, and every screen that talks about the upload or shows the spot must say so.
+    var usesSampleResult = false
     /// A camera permission or session failure the homeowner can act on.
     var failure: ScanFailure?
 

@@ -45,7 +45,12 @@ struct ResultARScreen: View {
         let title = result.decision == .pass && result.policyApproved
             ? "Your battery could go here"
             : "The spot an installer will check"
-        return Instruction(title: title, detail: ScanCopy.placement(result))
+        let placement = ScanCopy.placement(result)
+        guard !result.isSample else {
+            // A sample spot drawn on the homeowner's real wall must not pass for their result.
+            return Instruction(title: "Example spot, not your result", detail: ["No server checked this scan.", placement].compactMap { $0 }.joined(separator: " "))
+        }
+        return Instruction(title: title, detail: placement)
     }
 }
 

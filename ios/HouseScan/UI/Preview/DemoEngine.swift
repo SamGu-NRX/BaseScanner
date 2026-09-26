@@ -57,6 +57,12 @@ final class DemoEngine: ScanActions {
             default: break
             }
         }
+        if arguments.contains("-uiDemoEndQuestion") {
+            state.endQuestion = .left
+        }
+        if arguments.contains("-uiDemoSample") {
+            state.usesSampleResult = true
+        }
         if arguments.contains("-uiDemoNoFeed") {
             state.feed = .none
         }
@@ -389,7 +395,13 @@ final class DemoEngine: ScanActions {
         } else {
             state.wall?.leftEnd = Self.leftEnd
         }
+        state.endQuestion = side
         refreshCoverage()
+        refreshGuidance()
+    }
+
+    func answerWallEnd(turnsCorner: Bool) {
+        state.endQuestion = nil
         refreshGuidance()
     }
 

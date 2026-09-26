@@ -13,6 +13,8 @@ import SwiftUI
 /// - `-uiDemoFailure <cameraDenied|arUnsupported>`: open on the unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
+/// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.
 enum UIDemo {
     @MainActor
     static func makeRoot() -> some View {

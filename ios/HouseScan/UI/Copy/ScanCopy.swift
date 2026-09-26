@@ -33,7 +33,7 @@ enum ScanCopy {
         case .markEnd(let side):
             Instruction(
                 title: "Is this the \(side.rawValue) end of the wall?",
-                detail: "Aim at the corner, or where something blocks your way, and tap Wall ends here."
+                detail: "Aim where the wall stops or turns a corner, and tap Wall ends here."
             )
         case .aimAtGround(let s):
             Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)).")
@@ -162,6 +162,25 @@ enum ScanCopy {
     }
 
     // MARK: Upload
+
+    /// The question after "Wall ends here". A corner means the wall goes on out of sight, which
+    /// the result must not treat as the end of usable wall.
+    static func endQuestion(_ side: WallSide) -> Instruction {
+        Instruction(title: "What's at the \(side.rawValue) end?", detail: "This tells the installer whether the wall keeps going.")
+    }
+
+    /// With no server connected nothing is sent, and the words must not say it is.
+    static func upload(_ upload: UploadState, sample: Bool) -> Instruction {
+        if sample {
+            switch upload {
+            case .idle, .packaging, .uploading, .analyzing:
+                return Instruction(title: "Making a sample result", detail: "No server is connected, so your photos stay on this phone. The result you'll see is an example, not a check of your wall.")
+            case .failed, .done:
+                break
+            }
+        }
+        return self.upload(upload)
+    }
 
     static func upload(_ upload: UploadState) -> Instruction {
         switch upload {
