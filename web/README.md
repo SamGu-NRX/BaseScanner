@@ -13,6 +13,8 @@ pnpm dev          # http://localhost:5173
 
 The page talks to the server at `VITE_PLACEMENT_API`, default `/api`. In `pnpm dev` and `pnpm preview`, `/api` is proxied to `PLACEMENT_SERVER` (default `http://localhost:8000`), so start the server first: `cd server && uv run uvicorn api:app --port 8000`. A reviewer can point the page at another server with **Change**; the choice is kept in the browser. `?sample=<id>` opens a sample directly, so a link shares an answer.
 
+Vercel previews of this page are built with `VITE_PLACEMENT_API=https://house-scanning-server.vercel.app`, the hosted server (public rules only; see `server/README.md`). It accepts request bodies up to 4.5 MB, so send `scene.json` or a zip without the photos.
+
 Without a reachable server, the bundled samples can still show the answer the server gave them when it was recorded; the page says so ("Saved answer").
 
 | Command          | What it does                                           |

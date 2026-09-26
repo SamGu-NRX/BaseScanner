@@ -66,6 +66,12 @@ describe("requestPlacement", () => {
     expect(failure).toMatchObject({ kind: "unreachable", server: "http://localhost:8000" });
   });
 
+  it("explains an upload refused for size before it reached the server", async () => {
+    stubFetch(() => new Response("Request Entity Too Large", { status: 413 }));
+    const failure = await failureOf(requestPlacement("/api", input, new AbortController().signal));
+    expect(failure).toMatchObject({ kind: "refused", code: "body_too_large" });
+  });
+
   it("calls a page that is not the placement server unreachable", async () => {
     stubFetch(() => new Response("<html>404</html>", { status: 404 }));
     const failure = await failureOf(requestPlacement("/api", input, new AbortController().signal));

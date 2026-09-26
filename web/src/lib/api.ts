@@ -100,6 +100,16 @@ async function failureFrom(response: Response, server: string): Promise<Placemen
       path: body.error.path,
     });
   }
+  if (response.status === 413) {
+    // A host in front of the server (Vercel caps request bodies at 4.5 MB) refused it first.
+    return new PlacementError({
+      kind: "refused",
+      code: "body_too_large",
+      message:
+        "The upload is larger than the server accepts. Send scene.json on its own, or a zip without the photos: the placement doesn't use them.",
+      path: null,
+    });
+  }
   return new PlacementError({
     kind: "unreachable",
     server,
