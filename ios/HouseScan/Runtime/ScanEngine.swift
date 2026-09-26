@@ -95,6 +95,7 @@ final class ScanEngine {
     private(set) var placement: PlacementResult?
 
     private var lastGuidanceLog = ""
+    private var lastGateLog = ""
     /// Taps of the feature being marked, in wall coordinates.
     var pendingTaps: [WallPoint] = []
 
@@ -156,6 +157,9 @@ final class ScanEngine {
 
     func go(_ phase: ScanPhase) {
         guard state.phase != phase else { return }
+        if state.phase == .wallWalk || state.phase == .gapRequest {
+            breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
+        }
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         switch phase {
@@ -239,7 +243,11 @@ final class ScanEngine {
         if !frame.isPoseOnly { lastFrame = frame }
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
-        if state.tracking != frame.tracking { state.tracking = frame.tracking }
+        if state.tracking != frame.tracking {
+            RuntimeLog.capture.info("tracking \(Self.name(self.state.tracking), privacy: .public) -> \(Self.name(frame.tracking), privacy: .public)")
+            if state.tracking == .normal { breakWalkedPath(because: "tracking left normal") }
+            state.tracking = frame.tracking
+        }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
             refineGround()
@@ -317,7 +325,15 @@ final class ScanEngine {
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let status = closeUpGate.evaluate(sample, meter: wall.meter)
         state.closeUpFailedAttempts = status.failedAttempts
+        if let issue = status.issue {
+            logGate("close-up held back: \(issue)")
+        } else if status.fire || closeUpPending, !frame.jpeg.isAvailable {
+            logGate("close-up waiting: no photo on this frame")
+        } else if !status.fire, !closeUpPending {
+            logGate("close-up holding")
+        }
         if status.fire || closeUpPending, status.issue == nil, frame.jpeg.isAvailable {
+            logGate("close-up taken from \(frame.id)", always: true)
             closeUpPending = false
             closeUpRetake = nil
             captureCloseUp(frame)
@@ -415,10 +431,20 @@ final class ScanEngine {
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         var skip: CaptureDecision.SkipReason?
-        if case .skip(let reason) = decision { skip = reason }
+        switch decision {
+        case .skip(let reason):
+            skip = reason
+            logGate("skipped: \(reason)")
         // The gate judges sharpness and exposure from this frame's own quality when it has one,
         // else from the last measured frame's. A kept photo must have been judged itself.
-        if decision.isKeep, frame.quality != nil, frame.jpeg.isAvailable, !keptSourceIDs.contains(frame.id) {
+        case .keep where frame.quality == nil:
+            logGate("refused: no quality measured on this frame")
+        case .keep where !frame.jpeg.isAvailable:
+            logGate("refused: no photo on this frame")
+        case .keep where keptSourceIDs.contains(frame.id):
+            logGate("refused: frame already kept")
+        case .keep(let reason):
+            logGate("kept \(frame.id) (\(reason))", always: true)
             autoCapture.didKeep(sample)
             keptSourceIDs.insert(frame.id)
             keep(frame)
@@ -502,7 +528,8 @@ final class ScanEngine {
                 return
             }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
-            coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
+            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
+            RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
@@ -746,13 +773,37 @@ final class ScanEngine {
         RuntimeLog.guidance.info("GUIDANCE=\(name, privacy: .public)")
     }
 
+    /// Logs a capture-gate decision. The gate judges about ten frames a second, so a reason is
+    /// logged when it differs from the last one logged; `always` logs every time (a kept frame,
+    /// a shot taken). `decision` holds only enum reasons and frame ids, never image content.
+    private func logGate(_ decision: String, always: Bool = false) {
+        guard always || decision != lastGateLog else { return }
+        lastGateLog = decision
+        RuntimeLog.capture.info("gate \(decision, privacy: .public)")
+    }
+
+    /// The homeowner's path is not continuous across this point (tracking left normal, the
+    /// session was interrupted, or the walk paused), so walked-path evidence must not join the
+    /// poses on either side.
+    private func breakWalkedPath(because reason: String) {
+        guard coverage != nil else { return }
+        coverage?.breakWalkedPath()
+        RuntimeLog.capture.info("walked path broken: \(reason, privacy: .public)")
+    }
+
     // MARK: Tracking recovery
 
     private func trackRelocalization(_ frame: SourceFrame) {
         guard live != nil else { return }
         guard case .limited(.relocalizing) = frame.tracking else {
+            if let since = relocalizingSince {
+                RuntimeLog.capture.info("relocalization ended after \(frame.timestamp - since, format: .fixed(precision: 1)) s: tracking \(Self.name(frame.tracking), privacy: .public)")
+            }
             relocalizingSince = nil
             return
+        }
+        if relocalizingSince == nil {
+            RuntimeLog.capture.info("relocalization started (phase \(self.state.phase.rawValue, privacy: .public))")
         }
         let since = relocalizingSince ?? frame.timestamp
         relocalizingSince = since
@@ -761,6 +812,7 @@ final class ScanEngine {
         switch state.phase {
         case .findMeter, .meterCloseUp, .wallWalk, .markFeatures, .gapRequest:
             // Capture still needs the world frame: start again from the meter.
+            RuntimeLog.capture.info("relocalization timed out after 20 s: resetting to the meter")
             resetSpatialState(reason: "relocalization timed out")
         case .uploading, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
@@ -775,8 +827,11 @@ final class ScanEngine {
         case .interrupted:
             // The phase, captures and strip stay as they are; ARKit relocalizes into the same
             // world frame when the session resumes (checklist R4).
+            RuntimeLog.capture.info("session interrupted")
+            breakWalkedPath(because: "session interrupted")
             state.coaching = .relocalizing
         case .interruptionEnded:
+            RuntimeLog.capture.info("session interruption ended")
             state.coaching = .relocalizing
         case .cameraDenied:
             fail(.cameraDenied)
@@ -1169,6 +1224,14 @@ extension ScanEngine {
         case .aimAtWall(let s): .aimAtWall(s: s)
         case .stepBack: .stepBack
         case .complete: .walkComplete
+        }
+    }
+
+    static func name(_ tracking: TrackingQuality) -> String {
+        switch tracking {
+        case .notAvailable: "notAvailable"
+        case .normal: "normal"
+        case .limited(let reason): "limited.\(reason)"
         }
     }
 
