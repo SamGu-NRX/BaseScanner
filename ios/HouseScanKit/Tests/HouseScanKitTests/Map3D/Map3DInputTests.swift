@@ -26,7 +26,8 @@ import Testing
         #expect(evidence.hits == 1)
         #expect(evidence.passes == 0)
         #expect(evidence.nearestDistance.map { abs($0 - 2.5) < 0.05 } == true)
-        #expect(evidence.bestViewAngle.map { $0 < 5 * .pi / 180 } == true)
+        // The cosine is stored in 1/255 steps, rounded down, which near square on is about 5 degrees.
+        #expect(evidence.bestViewAngle.map { $0 < 6 * .pi / 180 } == true)
         #expect(evidence.normal.map { simd_dot($0, SIMD3(0, 0, 1)) > 0.99 } == true)
         #expect(evidence.sources == .lidar)
         // One frame counts once however many of its rays pass through a voxel.
@@ -168,7 +169,8 @@ import Testing
     }
 
     /// Where the anchor sits changes nothing the map reports along the wall: the bush scene's
-    /// coverage with the anchor on the meter 1.5 m up equals it with the anchor on the ground.
+    /// coverage with the anchor on the meter 1.5 m up equals it with the anchor on the ground,
+    /// ground reach to within a row.
     @Test func coverageDoesNotDependOnTheAnchorHeight() throws {
         let scene = bushScene()
         let raised = try #require(MapFrame(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), worldGroundY: 0))
@@ -179,7 +181,15 @@ import Testing
             onMeter.integrate(frame)
             onGround.integrate(frame)
         }
-        #expect(onMeter.coverage(along: standardWall()) == onGround.coverage(along: standardWall()))
+        let a = onMeter.coverage(along: standardWall())
+        let b = onGround.coverage(along: standardWall())
+        #expect(a.wall == b.wall && a.facing == b.facing && a.overhead == b.overhead)
+        // Ground at the ends of the walk rests on rays that just cross a voxel or just stop in
+        // it, which float rounding in either frame can tip: at most one row apart.
+        for index in onGround.cellIndices {
+            let reaches = [onMeter, onGround].map { $0.groundReach(cell: index, along: standardWall()) }
+            #expect(abs((reaches[0] ?? -0.1524) - (reaches[1] ?? -0.1524)) <= 0.1525, "cell \(index): \(reaches)")
+        }
         #expect(onMeter.state(at: SIMD3(-1, -0.1, 0)) == .surface)
     }
 

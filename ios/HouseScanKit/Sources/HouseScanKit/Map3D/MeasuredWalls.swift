@@ -19,6 +19,10 @@ public struct MeasuredWall: Sendable, Equatable {
     public var source: WallSource
     /// Plan cells of vertical surface that support it.
     public var support: Int
+    /// How far the true wall line may lie from this one anywhere along the piece, meters: two
+    /// standard errors of the fit at the piece's worse end, and never less than half a voxel.
+    /// scene.json's `plus_minus_ft` for the wall.
+    public var plusMinus: Float
 
     public var length: Float { simd_distance(start, end) }
     /// Unit, from `start` to `end`: the outward turned 90 degrees, as `WallFrame.along`.
@@ -76,14 +80,31 @@ extension Map3D {
     /// piece passes within `cornerJoinDistance` of the meter.
     ///
     /// A plan cell is wall evidence where its voxels between `wallBottom` and `top` that are
-    /// surface (or carry a mesh face), have a normal within 30 degrees of horizontal, and are not
+    /// surface (or carry a mesh face or a detected plane), have a normal within 30 degrees of horizontal, and are not
     /// classified floor, ceiling, table or seat add up to `minWallHeight`. Feature points and
     /// estimated depth never make walls: they are too sparse or too uncertain for a wall line.
     /// Lines are then taken one at a time, the one with most evidence first, each fitted by
     /// least squares to the cells near it that face its way, and split where the evidence
     /// breaks for more than `maxWallGap`.
     public func measuredWalls() -> MeasuredWallChain? {
-        chain(wallPieces())
+        chain(wallPieces().filter { !isRelief($0, among: wallPieces()) })
+    }
+
+    /// Whether a piece is relief on a longer wall rather than a wall of its own: at most
+    /// `maxReliefWidth` long and lying wholly in front of another piece at least twice as long,
+    /// within `reliefDepth` of its line and alongside it. A pilaster's front and its sides are;
+    /// a bay's sides (0.7 m deep) and a corner's next wall are not.
+    func isRelief(_ piece: MeasuredWall, among pieces: [MeasuredWall]) -> Bool {
+        guard piece.length <= config.maxReliefWidth else { return false }
+        return pieces.contains { wall in
+            guard wall.length >= 2 * piece.length else { return false }
+            return [piece.start, piece.end].allSatisfy { p in
+                let out = simd_dot(p - wall.start, wall.outward)
+                let along = simd_dot(p - wall.start, wall.along)
+                return out >= -config.faceBehind && out <= config.reliefDepth
+                    && along >= -config.maxReliefWidth && along <= wall.length + config.maxReliefWidth
+            }
+        }
     }
 
     /// Every piece of wall found, unchained.
@@ -106,13 +127,8 @@ extension Map3D {
                 if weight > best?.weight ?? 0 { best = (weight, candidate.point, candidate.normal) }
             }
             guard let seed = best else { break }
-            var line = (point: seed.point, normal: seed.normal)
-            var inliers: [WallCell] = []
-            for _ in 0..<2 {
-                inliers = cells.filter { isInlier($0, point: line.point, normal: line.normal, cosTolerance: cosTolerance) }
-                line = fit(inliers, normal: line.normal)
-            }
-            inliers = cells.filter { isInlier($0, point: line.point, normal: line.normal, cosTolerance: cosTolerance) }
+            let line = robustLine(through: seed, cells: cells, cosTolerance: cosTolerance)
+            let inliers = cells.filter { isInlier($0, point: line.point, normal: line.normal, cosTolerance: cosTolerance) }
             guard inliers.count >= minCells else { break }
             cells.removeAll { isInlier($0, point: line.point, normal: line.normal, cosTolerance: cosTolerance) }
             pieces += split(inliers, line: line)
@@ -146,7 +162,7 @@ extension Map3D {
             guard voxel.sources & wallSources != 0, !excluded.contains(voxel.meshLabel) else { return }
             let height = grid.center(of: g).y - frame.groundY
             guard height >= config.wallBottom, height <= config.top else { return }
-            guard voxel.state(config) == .surface || voxel.sources & VoxelSources.mesh.rawValue != 0 else { return }
+            guard voxel.state(config) == .surface || voxel.sources & (VoxelSources.mesh.rawValue | VoxelSources.plane.rawValue) != 0 else { return }
             guard let n = voxel.normal, abs(n.y) <= maxVertical else { return }
             let plan = simd_normalize(SIMD2(n.x, n.z))
             let key = SIMD2(g.x, g.z)
@@ -169,22 +185,102 @@ extension Map3D {
         .sorted { ($0.point.x, $0.point.y) < ($1.point.x, $1.point.y) }
     }
 
-    private func isInlier(_ cell: WallCell, point: SIMD2<Float>, normal: SIMD2<Float>, cosTolerance: Float) -> Bool {
-        abs(simd_dot(cell.point - point, normal)) <= config.wallInlierDistance && abs(simd_dot(cell.normal, normal)) >= cosTolerance
+    private func isInlier(_ cell: WallCell, point: SIMD2<Float>, normal: SIMD2<Float>, cosTolerance: Float, within distance: Float? = nil) -> Bool {
+        abs(simd_dot(cell.point - point, normal)) <= distance ?? config.wallInlierDistance && abs(simd_dot(cell.normal, normal)) >= cosTolerance
     }
 
-    /// Weighted total least squares: the line through the cells' centroid along their principal
-    /// axis, its normal turned to agree with `normal`.
-    private func fit(_ cells: [WallCell], normal: SIMD2<Float>) -> (point: SIMD2<Float>, normal: SIMD2<Float>) {
-        let total = Float(cells.reduce(0) { $0 + $1.count })
+    /// The wall's line near a seed, on its dominant face. Relief standing proud of the face,
+    /// such as cladding or a sill along part of the wall, must stay out of the fit: a
+    /// least-squares line through it tilts toward wherever the relief is, and refitting from a
+    /// seed a degree off can settle on face at one end and relief at the other (ETH3D electro's
+    /// wall came out 1.76 degrees and 4.8 in off that way). So the line is found globally first:
+    /// every angle within 8 degrees of the seed's normal, in 0.2 degree steps, and at each the
+    /// offset whose band of `searchBand` either side holds the most evidence, ties going to the
+    /// angle the band's cells scatter least about. That band is
+    /// narrower than the 10 cm between voxel layers, so no line scores by taking in the face at
+    /// one end and relief a layer out at the other. Least squares on the cells within
+    /// `faceBand` of that line then refines it until those cells stop changing.
+    private func robustLine(through seed: (weight: Int, point: SIMD2<Float>, normal: SIMD2<Float>), cells: [WallCell], cosTolerance: Float) -> (point: SIMD2<Float>, normal: SIMD2<Float>) {
+        // Cells that could belong to the line at any angle swept: 8 degrees over 4.5 m is 0.6 m.
+        let reach: Float = 0.6
+        let candidates = cells.filter { abs(simd_dot($0.point - seed.point, seed.normal)) <= reach && abs(simd_dot($0.normal, seed.normal)) >= cosTolerance }
+        let base = atan2(seed.normal.y, seed.normal.x)
+        var best: (weight: Int, spread: Float, normal: SIMD2<Float>, offset: Float)?
+        for step in -40...40 {
+            let angle = base + Float(step) * 0.2 * .pi / 180
+            let normal = SIMD2(cos(angle), sin(angle))
+            let offsets = candidates.map { (offset: simd_dot($0.point - seed.point, normal), weight: $0.count) }.sorted { $0.offset < $1.offset }
+            var low = 0
+            var weight = 0
+            var window: (weight: Int, low: Int, high: Int) = (0, 0, -1)
+            for high in offsets.indices {
+                weight += offsets[high].weight
+                while offsets[high].offset - offsets[low].offset > 2 * searchBand {
+                    weight -= offsets[low].weight
+                    low += 1
+                }
+                if weight > window.weight { window = (weight, low, high) }
+            }
+            guard window.high >= window.low else { continue }
+            let slice = offsets[window.low...window.high]
+            let offset = slice.reduce(Float(0)) { $0 + $1.offset * Float($1.weight) } / Float(window.weight)
+            let spread = slice.reduce(Float(0)) { $0 + ($1.offset - offset) * ($1.offset - offset) * Float($1.weight) } / Float(window.weight)
+            // Several angles can hold the same cells; the one they scatter least about is square to the face.
+            if window.weight > best?.weight ?? 0 || (window.weight == best?.weight && spread < best?.spread ?? .infinity) {
+                best = (window.weight, spread, normal, offset)
+            }
+        }
+        guard let start = best else { return (seed.point, seed.normal) }
+        var line = (point: seed.point + start.normal * start.offset, normal: start.normal)
+        var previous: Set<Int> = []
+        for _ in 0..<8 {
+            let face = cells.indices.filter { isInlier(cells[$0], point: line.point, normal: line.normal, cosTolerance: cosTolerance, within: faceBand) }
+            let members = Set(face)
+            guard face.count >= 2, members != previous else { break }
+            previous = members
+            let faceCells = face.map { cells[$0] }
+            line = fit(faceCells, weights: faceCells.map { Float($0.count) }, normal: line.normal)
+        }
+        return line
+    }
+
+    /// Cells this close to a line are its face, meters: a plan cell's center lies at most half
+    /// a voxel's diagonal (7.1 cm) from a line through it, so this keeps the staircase a
+    /// diagonal wall makes on the grid, with room for noise, and leaves out the next layer of
+    /// cells a voxel (10 cm) out.
+    private var faceBand: Float { config.voxelSize * 0.9 }
+
+    /// Half the band the angle search scores, meters: under half the spacing of voxel layers.
+    private var searchBand: Float { config.voxelSize * 0.45 }
+
+    /// Two standard errors of a fitted line's position at the worse end of a run, meters, from
+    /// the face cells' scatter about it: offset error sigma / sqrt(n), plus the angle's
+    /// sigma / sqrt(sum of squared distances along it) times the distance to the end. Never
+    /// less than half a voxel, the resolution the cells give.
+    private func positionError(_ face: [(t: Float, offset: Float)], ends: (Float, Float)) -> Float {
+        let floor = config.voxelSize / 2
+        guard face.count >= 3 else { return max(floor, config.wallInlierDistance) }
+        let n = Float(face.count)
+        let meanT = face.reduce(0) { $0 + $1.t } / n
+        let meanOffset = face.reduce(0) { $0 + $1.offset } / n
+        let variance = face.reduce(0) { $0 + ($1.offset - meanOffset) * ($1.offset - meanOffset) } / (n - 2)
+        let spread = face.reduce(0) { $0 + ($1.t - meanT) * ($1.t - meanT) }
+        let far = max(abs(ends.0 - meanT), abs(ends.1 - meanT))
+        let standardError = (variance / n + (spread > 0 ? variance / spread * far * far : 0)).squareRoot()
+        return max(floor, 2 * standardError)
+    }
+
+    /// Weighted total least squares: the line through the cells' weighted centroid along their
+    /// principal axis, its normal turned to agree with `normal`.
+    private func fit(_ cells: [WallCell], weights: [Float], normal: SIMD2<Float>) -> (point: SIMD2<Float>, normal: SIMD2<Float>) {
+        let total = weights.reduce(0, +)
         guard total > 0 else { return (.zero, normal) }
-        let centroid = cells.reduce(SIMD2<Float>.zero) { $0 + $1.point * Float($1.count) } / total
+        let centroid = zip(cells, weights).reduce(SIMD2<Float>.zero) { $0 + $1.0.point * $1.1 } / total
         var xx: Float = 0
         var xz: Float = 0
         var zz: Float = 0
-        for cell in cells {
+        for (cell, w) in zip(cells, weights) {
             let d = cell.point - centroid
-            let w = Float(cell.count)
             xx += w * d.x * d.x
             xz += w * d.x * d.y
             zz += w * d.y * d.y
@@ -225,7 +321,10 @@ extension Map3D {
             if simd_dot(b - a, rightward) < 0 { swap(&a, &b) }
             let measured = run.reduce(0) { $0 + $1.cell.measured }
             let planes = run.reduce(0) { $0 + $1.cell.planes }
-            return MeasuredWall(start: a, end: b, outward: outward, source: measured >= planes ? .mesh : .plane, support: run.count)
+            let face = run.map { (t: $0.t, offset: simd_dot($0.cell.point - line.point, line.normal)) }.filter { abs($0.offset) <= faceBand }
+            return MeasuredWall(
+                start: a, end: b, outward: outward, source: measured >= planes ? .mesh : .plane, support: run.count,
+                plusMinus: positionError(face, ends: (first.t - half, last.t + half)))
         }
     }
 
@@ -255,10 +354,12 @@ extension Map3D {
                 case (.straight, .right):
                     current.end = current.start + current.along * simd_dot(next.end - current.start, current.along)
                     current.support += next.support
+                    current.plusMinus = max(current.plusMinus, next.plusMinus)
                     continue
                 case (.straight, .left):
                     current.start = current.end - current.along * simd_dot(current.end - next.start, current.along)
                     current.support += next.support
+                    current.plusMinus = max(current.plusMinus, next.plusMinus)
                     continue
                 case (.corner(let point), .right):
                     current.end = point

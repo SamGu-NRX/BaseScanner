@@ -20,7 +20,7 @@ public struct VoxelSources: OptionSet, Sendable, Hashable {
     public static let lidar = VoxelSources(rawValue: 1 << 0)
     /// ARKit's reconstructed mesh (labels and shape only: a mesh face carries no camera).
     public static let mesh = VoxelSources(rawValue: 1 << 1)
-    /// Rays to detected planes, cast from a camera without LiDAR.
+    /// A detected plane, where a camera without LiDAR saw it (shape only, like the mesh).
     public static let plane = VoxelSources(rawValue: 1 << 2)
     /// Rays to tracked feature points.
     public static let feature = VoxelSources(rawValue: 1 << 3)
@@ -212,11 +212,7 @@ struct VoxelGrid {
     /// Integrates one frame's rays from `camera` (map coordinates). Hits first, so a voxel both
     /// hit and passed through in one frame counts as hit (OctoMap's rule); then free space along
     /// each ray, each voxel counted once per frame.
-    ///
-    /// `measured` is false for rays whose end was not measured (drawn to a detected plane): their
-    /// hits add occupancy and a normal but no viewing distance or angle, so they never count
-    /// as seen.
-    mutating func integrate(camera: SIMD3<Float>, rays: [RaySample], sources: VoxelSources, measured: Bool, config: Map3DConfig) {
+    mutating func integrate(camera: SIMD3<Float>, rays: [RaySample], sources: VoxelSources, config: Map3DConfig) {
         frameStamp = frameStamp == .max ? 1 : frameStamp + 1
         let stamp = frameStamp
         for ray in rays where ray.hit {
@@ -226,16 +222,17 @@ struct VoxelGrid {
             let distance = simd_length(offset)
             let cosine = simd_length_squared(ray.normal) > 0 ? abs(simd_dot(ray.normal, offset / distance)) : 0
             pool[i].recordHit(
-                stamp: stamp, distance: distance, cosine: cosine, normal: ray.normal, sources: sources.rawValue,
-                measured: measured, config: config)
+                stamp: stamp, distance: distance, cosine: cosine, normal: ray.normal, sources: sources.rawValue, config: config)
         }
         for ray in rays where ray.freeLength > 0 {
             carveFree(from: camera, to: ray.end, length: ray.freeLength, stamp: stamp, config: config)
         }
     }
 
-    /// Marks the voxels a segment from `from` toward `to` passes through, up to `length`, as
-    /// passed through (3D DDA, Amanatides and Woo 1987), clipped to the grid.
+    /// Marks the voxels a segment from `from` toward `to` crosses completely within `length` as
+    /// passed through (3D DDA, Amanatides and Woo 1987), clipped to the grid. A voxel the
+    /// segment only enters is left alone: the ray ended somewhere past its free length, which
+    /// may lie inside that voxel, so only voxels it left again are known empty.
     private mutating func carveFree(from: SIMD3<Float>, to: SIMD3<Float>, length: Float, stamp: UInt16, config: Map3DConfig) {
         let span = to - from
         let total = simd_length(span)
@@ -257,9 +254,9 @@ struct VoxelGrid {
         let miss = config.missLogOdds
         let floor = config.minLogOdds
         while true {
-            pool[storedIndex(g)].recordPass(stamp: stamp, miss: miss, floor: floor)
             let axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2)
-            guard tMax[axis] < end else { return }
+            guard tMax[axis] <= end else { return }
+            pool[storedIndex(g)].recordPass(stamp: stamp, miss: miss, floor: floor, surface: config.surfaceLogOdds)
             g[axis] &+= step[axis]
             guard g[axis] >= 0, g[axis] < dims[axis] else { return }
             tMax[axis] += tDelta[axis]
@@ -318,54 +315,97 @@ struct VoxelGrid {
         }
     }
 
-    // MARK: Mesh
+    // MARK: Mesh and planes
 
-    /// Labels the voxels a mesh face falls in; returns their `pool` indices.
-    mutating func markMesh(_ triangle: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>), meshClass: MeshClass?) -> [Int32] {
+    /// Labels the voxels a mesh face falls in and gives them the face's normal where no ray
+    /// gave one; returns their `pool` indices. `retain` then marks them as mesh.
+    mutating func markMesh(_ triangle: (SIMD3<Float>, SIMD3<Float>, SIMD3<Float>), meshClass: MeshClass?) -> Set<Int32> {
         let (a, b, c) = triangle
         let normal = simd_cross(b - a, c - a)
         guard simd_length_squared(normal) > 0 else { return [] }
         let longest = max(simd_distance(a, b), simd_distance(b, c), simd_distance(c, a))
         // Samples half a voxel apart, so no voxel the face crosses is skipped.
         let n = max(1, Int((longest / (voxelSize / 2)).rounded(.up)))
-        var marked: [Int32] = []
-        var last = -1
+        var marked: Set<Int32> = []
         for i in 0...n {
             for j in 0...(n - i) {
                 let p = a + (b - a) * (Float(i) / Float(n)) + (c - a) * (Float(j) / Float(n))
                 guard let g = coordinate(of: p) else { continue }
                 let index = storedIndex(g)
-                guard index != last else { continue }
-                last = index
+                guard marked.insert(Int32(index)).inserted else { continue }
                 pool[index].recordMesh(normal: normal, meshClass: meshClass)
-                marked.append(Int32(index))
             }
         }
         return marked
     }
 
-    mutating func clearMesh(_ indices: [Int32]) {
+    /// The voxel a detected plane was seen at, given the plane's normal where no ray gave one.
+    mutating func markPlane(at point: SIMD3<Float>, normal: SIMD3<Float>) -> Int32? {
+        guard let g = coordinate(of: point) else { return nil }
+        let index = storedIndex(g)
+        if pool[index].normal == nil { pool[index].setNormal(normal) }
+        return Int32(index)
+    }
+
+    /// How many mesh chunks (x) and detected planes (y) mark each voxel. A voxel carries the
+    /// `.mesh` or `.plane` source while its count is above zero, so replacing or removing one
+    /// chunk or plane leaves the marks of the others alone.
+    private(set) var marks: [Int32: SIMD2<UInt16>] = [:]
+
+    mutating func retain(_ indices: some Sequence<Int32>, as source: VoxelSources) {
+        let lane = source == .mesh ? 0 : 1
         for index in indices {
-            pool[Int(index)].sources &= ~VoxelSources.mesh.rawValue
-            pool[Int(index)].meshLabel = 0
+            var count = marks[index] ?? .zero
+            count[lane] &+= 1
+            marks[index] = count
+            pool[Int(index)].sources |= source.rawValue
+        }
+    }
+
+    /// Undoes `retain`. At zero the source goes, with the mesh label for mesh; a voxel no ray
+    /// hit and nothing marks any more loses the normal a mark gave it.
+    mutating func release(_ indices: some Sequence<Int32>, as source: VoxelSources) {
+        let lane = source == .mesh ? 0 : 1
+        for index in indices {
+            guard var count = marks[index], count[lane] > 0 else { continue }
+            count[lane] -= 1
+            let i = Int(index)
+            if count[lane] == 0 {
+                pool[i].sources &= ~source.rawValue
+                if source == .mesh { pool[i].meshLabel = 0 }
+            }
+            if count == .zero {
+                marks[index] = nil
+                if pool[i].hits == 0 { pool[i].nx = 0; pool[i].ny = 0; pool[i].nz = 0 }
+            } else {
+                marks[index] = count
+            }
         }
     }
 }
 
 extension Voxel {
     @inline(__always)
-    mutating func recordPass(stamp: UInt16, miss: Int16, floor: Int16) {
+    /// A voxel that stops being surface loses its viewing evidence, so it counts as seen again
+    /// only on a new observation.
+    mutating func recordPass(stamp: UInt16, miss: Int16, floor: Int16, surface: Int16) {
         guard self.stamp != stamp else { return }
         self.stamp = stamp
         logOdds = max(floor, logOdds &+ miss)
         if passes < .max { passes += 1 }
+        if logOdds < surface {
+            nearestCm = .max
+            bestCos = 0
+        }
     }
 
     @inline(__always)
-    mutating func recordHit(stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, measured: Bool, config: Map3DConfig) {
+    mutating func recordHit(stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, config: Map3DConfig) {
         if self.stamp != stamp {
             self.stamp = stamp
-            logOdds = min(config.maxLogOdds, logOdds &+ config.hitLogOdds)
+            // A measured hit means something is there now, however long the space was seen
+            // empty: start from even odds, so one hit is surface, never still free.
+            logOdds = min(config.maxLogOdds, max(logOdds, 0) &+ config.hitLogOdds)
             if simd_length_squared(normal) > 0 {
                 // A running mean over up to 16 frames, so a normal keeps adapting as views improve.
                 let weight = Float(min(hits, 16))
@@ -373,15 +413,16 @@ extension Voxel {
             }
             if hits < .max { hits += 1 }
         }
-        if measured {
-            nearestCm = min(nearestCm, UInt16(min(Float(UInt16.max - 1), distance * 100)))
-            bestCos = max(bestCos, UInt8(min(255, (cosine * 255).rounded())))
+        nearestCm = min(nearestCm, UInt16(min(Float(UInt16.max - 1), distance * 100)))
+        // The best angle only from views within range, so one view is both near enough and
+        // square enough when the voxel counts as well seen.
+        if distance <= config.maxViewDistance {
+            bestCos = max(bestCos, UInt8(min(255, (cosine * 255).rounded(.down))))
         }
         self.sources |= sources
     }
 
     mutating func recordMesh(normal: SIMD3<Float>, meshClass: MeshClass?) {
-        sources |= VoxelSources.mesh.rawValue
         if let meshClass, meshClass != .none || meshLabel == 0 { meshLabel = meshClass.rawValue + 1 }
         // Mesh winding is not trusted to face the camera, so a mesh normal only fills in a
         // voxel no ray has given one.
@@ -403,12 +444,10 @@ extension Voxel {
         return .unknown
     }
 
-    /// A surface seen well enough to count as coverage: from within `maxViewDistance`, from
-    /// within `maxViewAngle` of its normal, by a ray that measured it (not a mesh face or a
-    /// feature point alone, which carry no normal).
+    /// A surface seen well enough to count as coverage: by one view from within
+    /// `maxViewDistance` and within `maxViewAngle` of its normal, a ray that measured it (not a
+    /// mesh face or a plane, and not a feature point off every plane, which carries no normal).
     func isWellSeenSurface(_ config: Map3DConfig) -> Bool {
-        state(config) == .surface
-            && Float(nearestCm) / 100 <= config.maxViewDistance
-            && Float(bestCos) / 255 >= cos(config.maxViewAngle)
+        state(config) == .surface && Float(bestCos) / 255 >= cos(config.maxViewAngle)
     }
 }

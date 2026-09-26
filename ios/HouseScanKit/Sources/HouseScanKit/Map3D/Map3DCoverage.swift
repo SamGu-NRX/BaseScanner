@@ -44,18 +44,22 @@ extension Map3D {
         var ground: [ObservedSpan] = []
         var facing: [ObservedSpan] = []
         var overhead: [ObservedSpan] = []
+        let facades = facadeOffsets(along: wall)
         for index in cellIndices {
             let range = cellRange(index)
-            if isWallSeen(cell: index, along: wall) {
+            let wallSeen = isWallSeen(cell: index, along: wall, facade: facades[index])
+            if wallSeen {
                 if let last = seenWall.last, last.upperBound == range.lowerBound {
                     seenWall[seenWall.count - 1] = last.lowerBound...range.upperBound
                 } else {
                     seenWall.append(range)
                 }
             }
-            if let out = groundReach(cell: index, along: wall) { ground.append(ObservedSpan(span: range, out: out)) }
-            if let out = facingReach(cell: index, along: wall) { facing.append(ObservedSpan(span: range, out: out)) }
-            if let height = overheadReach(cell: index, along: wall) { overhead.append(ObservedSpan(span: range, out: height)) }
+            let facade = facades[index] ?? 0
+            if let out = groundReach(cell: index, along: wall, facade: facade) { ground.append(ObservedSpan(span: range, out: out)) }
+            guard wallSeen else { continue }
+            if let out = clearReach(cell: index, along: wall, facade: facade) { facing.append(ObservedSpan(span: range, out: out)) }
+            if let height = clearHeight(cell: index, along: wall, facade: facades[index]) { overhead.append(ObservedSpan(span: range, out: height)) }
         }
         let touching = config.cellWidth * 0.01
         return Map3DCoverage(
@@ -65,22 +69,128 @@ extension Map3D {
 
     // MARK: Per cell
 
-    /// Whether the wall face over a cell was seen from `voxelSize` up to headroom: at every
-    /// sample, some voxel whose center lies from `faceBehind` behind the chain's line to
-    /// `faceFront` in front of it is a surface seen well (`Voxel.isWellSeenSurface`). Anything
-    /// standing farther out, a box on the wall or a shrub against it, hides the face. The
-    /// layer at the ground belongs to the ground band.
+    /// Whether the facade over a cell was seen from `voxelSize` up to headroom. At every sample
+    /// some well-seen surface (`Voxel.isWellSeenSurface`) must lie on the facade face, from
+    /// `recessDepth` behind the facade to `faceTolerance` in front of it, or on attached relief
+    /// (`attachedRelief`) up to `reliefDepth` in front. The facade is where the wall's surface
+    /// was measured near the cell (`facadeOffset`), so a chain line placed a few centimeters
+    /// off still finds it. Anything else standing in front of the wall, a box or a shrub, hides
+    /// it. The layer at the ground belongs to the ground band.
     public func isWallSeen(cell index: Int, along wall: WallFrame) -> Bool {
-        let heights = Array(stride(from: config.voxelSize, to: config.headroom, by: config.voxelSize / 2)) + [config.headroom]
-        let outs = Array(stride(from: -config.faceBehind, through: config.faceFront, by: config.voxelSize / 2))
-        for s in samples(in: cellRange(index)) {
-            for height in heights {
-                let seen = outs.contains { out in
-                    guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g) else { return false }
-                    let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s)
-                    return centerOut >= -config.faceBehind - 1e-4 && centerOut <= config.faceFront + 1e-4 && voxel.isWellSeenSurface(config)
+        isWallSeen(cell: index, along: wall, facade: facadeOffset(cell: index, along: wall))
+    }
+
+    private func isWallSeen(cell index: Int, along wall: WallFrame, facade: Float?) -> Bool {
+        guard let facade else { return false }
+        let heights = bandHeights()
+        return samples(in: cellRange(index)).allSatisfy { s in
+            let rows = heights.map { faceSample(wall, s: s, height: $0, facade: facade) }
+            if rows.allSatisfy(\.face) { return true }
+            guard attachedRelief(wall, s: s, rows: rows, facade: facade) else { return false }
+            return rows.allSatisfy { $0.face || $0.relief != nil }
+        }
+    }
+
+    /// Front of the facade face, meters past the facade: a voxel's center lies at most 7.1 cm
+    /// from a vertical plane through it (half a voxel's diagonal), so 7.5 cm keeps every voxel
+    /// the face runs through and turns away the next layer out. Something standing closer to
+    /// the wall than about that is part of the facade.
+    private var faceTolerance: Float { config.voxelSize * 0.75 }
+
+    /// Where the facade runs near a cell, meters out from the chain's line: the mode (2 cm bins)
+    /// of the offsets of well-seen, outward-facing surface voxels within `faceBehind` of the
+    /// line, over the cells within about a meter either side. Nil where none was seen.
+    func facadeOffset(cell index: Int, along wall: WallFrame) -> Float? {
+        facadeHistogram(cells: (index - 6)...(index + 6), along: wall).mode
+    }
+
+    private func facadeOffsets(along wall: WallFrame) -> [Int: Float] {
+        var result: [Int: Float] = [:]
+        let perCell = Dictionary(uniqueKeysWithValues: cellIndices.map { ($0, facadeHistogram(cells: $0...$0, along: wall)) })
+        for index in cellIndices {
+            var sum = Histogram()
+            for neighbour in (index - 6)...(index + 6) { if let h = perCell[neighbour] { sum.add(h) } }
+            result[index] = sum.mode
+        }
+        return result
+    }
+
+    struct Histogram {
+        /// Count per 2 cm bin of offset.
+        var bins: [Int: Int] = [:]
+        static let bin: Float = 0.02
+
+        mutating func add(_ offset: Float) { bins[Int((offset / Self.bin).rounded()), default: 0] += 1 }
+        mutating func add(_ other: Histogram) { for (k, v) in other.bins { bins[k, default: 0] += v } }
+
+        /// The most common offset, ties toward the line.
+        var mode: Float? {
+            bins.max { a, b in a.value != b.value ? a.value < b.value : abs(a.key) > abs(b.key) }.map { Float($0.key) * Self.bin }
+        }
+    }
+
+    private func facadeHistogram(cells: ClosedRange<Int>, along wall: WallFrame) -> Histogram {
+        var histogram = Histogram()
+        for index in cells {
+            for s in samples(in: cellRange(index)) {
+                let outward = frame.mapDirection(wall.segment(atS: s).outward)
+                var seen = Set<Int>()
+                for height in stride(from: config.voxelSize * 2, to: config.headroom, by: config.voxelSize * 2) {
+                    for out in stride(from: -config.faceBehind, through: config.faceBehind, by: config.voxelSize / 2) {
+                        guard let g = coordinate(wall, s: s, height: height, out: out), let i = grid.index(g), seen.insert(i).inserted else { continue }
+                        let voxel = grid.pool[i]
+                        guard voxel.isWellSeenSurface(config), simd_dot(voxel.normal ?? .zero, outward) >= cos(Float.pi / 6) else { continue }
+                        histogram.add(wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s))
+                    }
                 }
-                guard seen else { return false }
+            }
+        }
+        return histogram
+    }
+
+    /// Heights the wall band is judged at: every half voxel from one voxel up, and headroom.
+    private func bandHeights() -> [Float] {
+        Array(stride(from: config.voxelSize, to: config.headroom, by: config.voxelSize / 2)) + [config.headroom]
+    }
+
+    struct FaceSample {
+        var height: Float
+        /// A well-seen surface lies on the wall face.
+        var face: Bool
+        /// The nearest well-seen surface standing proud of the face, facing out, and how far out.
+        var relief: Float?
+    }
+
+    /// What the voxels along the wall's normal at (s, height) show, judged by voxel centers
+    /// against the facade's offset.
+    func faceSample(_ wall: WallFrame, s: Float, height: Float, facade: Float) -> FaceSample {
+        let outward = frame.mapDirection(wall.segment(atS: s).outward)
+        var sample = FaceSample(height: height, face: false, relief: nil)
+        for out in stride(from: facade - config.recessDepth, through: facade + config.reliefDepth, by: config.voxelSize / 2) {
+            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), voxel.isWellSeenSurface(config) else { continue }
+            let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s) - facade
+            if centerOut >= -config.recessDepth - 1e-4, centerOut <= faceTolerance + 1e-4 {
+                sample.face = true
+            } else if centerOut <= config.reliefDepth + 1e-4, sample.relief == nil, simd_dot(voxel.normal ?? .zero, outward) >= cos(Float.pi / 4),
+                      !Self.clutterClasses.contains(voxel.meshLabel) {
+                sample.relief = centerOut
+            }
+        }
+        return sample
+    }
+
+    /// Mesh classes that are never part of the facade (`Voxel.meshLabel` values).
+    private static let clutterClasses: Set<UInt8> = Set([MeshClass.none, .floor, .ceiling, .table, .seat].map { $0.rawValue + 1 })
+
+    /// Whether the relief at s is attached structure: it covers every height the face does not,
+    /// reaches headroom, and no free voxel was seen between it and the wall at any of those
+    /// heights (a gap would make it something standing in front of the wall).
+    private func attachedRelief(_ wall: WallFrame, s: Float, rows: [FaceSample], facade: Float) -> Bool {
+        guard let top = rows.last, top.relief != nil else { return false }
+        for row in rows where !row.face {
+            guard let front = row.relief else { return false }
+            for out in stride(from: facade + faceTolerance, to: facade + front, by: config.voxelSize / 2) {
+                if coordinate(wall, s: s, height: row.height, out: out).flatMap(grid.voxel)?.state(config) == .free { return false }
             }
         }
         return true
@@ -91,8 +201,16 @@ extension Map3D {
     /// of the wall was. Ground is checked every half voxel out (`groundHeight`), so no voxel
     /// between two rows goes unchecked.
     public func groundReach(cell index: Int, along wall: WallFrame) -> Float? {
+        groundReach(cell: index, along: wall, facade: facadeOffset(cell: index, along: wall) ?? 0)
+    }
+
+    /// Where the space in front of the facade starts, meters out from the chain's line: the
+    /// middle of the first voxel past the facade's face. Ground is judged from here.
+    private func nearStart(_ facade: Float) -> Float { facade + faceTolerance + config.voxelSize / 2 }
+
+    private func groundReach(cell index: Int, along wall: WallFrame, facade: Float) -> Float? {
         let ss = samples(in: cellRange(index))
-        guard let seen = contiguousReach(from: config.voxelSize, to: config.outDepth, { out in
+        guard let seen = contiguousReach(from: nearStart(facade), to: config.outDepth, { out in
             ss.allSatisfy { groundHeight(wall, s: $0, out: out) != nil }
         }) else { return nil }
         return (seen / config.groundRowSpacing + 1e-4).rounded(.down) * config.groundRowSpacing
@@ -100,56 +218,92 @@ extension Map3D {
 
     /// Height of the ground seen at a point in front of the wall, meters above the chain's
     /// ground; nil where it was not seen. Looking down from `groundSearch` above to as far
-    /// below, every voxel must be free until one that is a well-seen surface facing within 45
-    /// degrees of up. Ground under a bush, or under anything else taller than `groundSearch`,
-    /// is not seen.
+    /// below, the first voxel that is not free must be a well-seen surface facing within 45
+    /// degrees of up, and every voxel above it must be free, except within `groundClearance`
+    /// of it: a ray that ended on the ground leaves the last stretch before it unmarked (see
+    /// `VoxelGrid.carveFree`), and anything that low is not told apart from the ground anyway.
+    /// Ground under a bush, or under anything else taller than that, is not seen.
     func groundHeight(_ wall: WallFrame, s: Float, out: Float) -> Float? {
+        var unknownFrom: Float?
         for height in stride(from: config.groundSearch, through: -config.groundSearch, by: -config.voxelSize / 2) {
             guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g) else { return nil }
             switch voxel.state(config) {
-            case .free: continue
-            case .unknown: return nil
+            case .free:
+                guard unknownFrom == nil else { return nil }
+            case .unknown:
+                if unknownFrom == nil { unknownFrom = height }
             case .surface:
                 guard voxel.isWellSeenSurface(config), (voxel.normal?.y ?? 0) >= cos(Float.pi / 4) else { return nil }
+                if let unknownFrom, unknownFrom - height > config.groundClearance { return nil }
                 return frame.world(grid.center(of: g)).y - wall.groundY
             }
         }
         return nil
     }
 
-    /// How far out from the wall the space in front of a cell was seen clear, meters: at every
-    /// point from the first voxel in front of the wall out to the distance returned, the ground
-    /// was seen and every voxel from `groundClearance` above it to headroom is free. Nil when
-    /// the first point is not.
+    /// How far out from the wall the space in front of a cell was seen clear, meters, or nil.
+    /// Only for a cell whose facade was seen: the rays that reached it crossed the space just
+    /// in front of it, up to the last stretch before the face (`VoxelGrid.carveFree`), which is
+    /// the face's own depth. From one voxel past `faceFront` out to the distance returned, the
+    /// ground was seen and every voxel from `groundClearance` above it to headroom is free, and
+    /// a voxel is free only where a ray crossed it and ended beyond it.
     public func facingReach(cell index: Int, along wall: WallFrame) -> Float? {
-        let ss = samples(in: cellRange(index))
-        return contiguousReach(from: config.voxelSize, to: config.outDepth) { out in
-            ss.allSatisfy { isClear(wall, s: $0, out: out, upTo: config.headroom) }
-        }
+        let facade = facadeOffset(cell: index, along: wall)
+        guard let facade, isWallSeen(cell: index, along: wall, facade: facade) else { return nil }
+        return clearReach(cell: index, along: wall, facade: facade)
     }
 
-    /// How high above the ground the space over a battery at this cell was seen clear, meters:
-    /// at every point from the first voxel in front of the wall out to `overheadDepth`, the
-    /// ground was seen and every voxel from `groundClearance` above it up to the height
-    /// returned is free. Nil when not even the lowest is.
-    public func overheadReach(cell index: Int, along wall: WallFrame) -> Float? {
+    /// Space is judged from half a voxel past `nearStart`: the voxel next to the facade's face
+    /// only ever holds the last stretch of rays that ended on the face, never known free. A
+    /// reach short of `overheadDepth` (the battery's depth) is not reported: the server's
+    /// facing check needs space past the battery's front, so it could never settle anything,
+    /// and space that close to a surface is what depth measures least surely (ETH3D electro's
+    /// laser truth can't confirm or refute it within 12 to 20 cm of a face).
+    private func clearReach(cell index: Int, along wall: WallFrame, facade: Float) -> Float? {
         let ss = samples(in: cellRange(index))
-        let outs = Array(stride(from: config.voxelSize, through: config.overheadDepth, by: config.voxelSize / 2))
-        var ground: [Float] = []
-        for s in ss {
+        let reach = contiguousReach(from: nearStart(facade) + config.voxelSize / 2, to: config.outDepth) { out in
+            ss.allSatisfy { isClear(wall, s: $0, out: out, upTo: config.headroom) }
+        }
+        return reach.flatMap { $0 >= config.overheadDepth ? $0 : nil }
+    }
+
+    /// How high above the ground the space over a battery at this cell was seen clear, meters,
+    /// or nil. Only for a cell whose facade was seen, as for `facingReach`. From one voxel past
+    /// `faceFront` out to `overheadDepth`, the ground was seen and every voxel from
+    /// `groundClearance` above it up to the height returned is free; above headroom the face
+    /// must also be seen at each height, so the near stretch the rays crossed goes up with it.
+    public func overheadReach(cell index: Int, along wall: WallFrame) -> Float? {
+        let facade = facadeOffset(cell: index, along: wall)
+        return isWallSeen(cell: index, along: wall, facade: facade) ? clearHeight(cell: index, along: wall, facade: facade) : nil
+    }
+
+    /// The least, over the columns from one voxel past `faceFront` out to `overheadDepth`, of
+    /// the height seen clear above each column's own ground: every voxel from
+    /// `groundClearance` above it up to that height is free, and above headroom the facade face
+    /// is seen at that height too.
+    private func clearHeight(cell index: Int, along wall: WallFrame, facade: Float?) -> Float? {
+        guard let facade else { return nil }
+        let outs = Array(stride(from: nearStart(facade) + config.voxelSize / 2, through: config.overheadDepth, by: config.voxelSize / 2))
+        var reach: Float = .infinity
+        for s in samples(in: cellRange(index)) {
+            var faceAbove: [Float: Bool] = [:]
             for out in outs {
-                guard let height = groundHeight(wall, s: s, out: out) else { return nil }
-                ground.append(height)
+                guard let ground = groundHeight(wall, s: s, out: out) else { return nil }
+                var column: Float?
+                for height in stride(from: ground + config.groundClearance, to: config.top - config.voxelSize / 2, by: config.voxelSize / 2) {
+                    guard isFree(wall, s: s, height: height, out: out) else { break }
+                    if height > config.headroom {
+                        let face = faceAbove[height] ?? faceSample(wall, s: s, height: height, facade: facade).face
+                        faceAbove[height] = face
+                        guard face else { break }
+                    }
+                    column = height - ground
+                }
+                guard let column else { return nil }
+                reach = min(reach, column)
             }
         }
-        let floor = (ground.max() ?? 0) + config.groundClearance
-        var reach: Float?
-        for height in stride(from: floor, to: config.top - config.voxelSize / 2, by: config.voxelSize / 2) {
-            let clear = ss.allSatisfy { s in outs.allSatisfy { isFree(wall, s: s, height: height, out: $0) } }
-            guard clear else { break }
-            reach = height
-        }
-        return reach
+        return reach.isFinite ? reach : nil
     }
 
     /// The ground at a point was seen and the space above it from `groundClearance` up to
@@ -178,11 +332,14 @@ extension Map3D {
 
     // MARK: Sampling
 
-    /// s values across a cell, at most half a voxel apart and clear of its edges.
+    /// s values across a cell at most half a voxel apart, the first and last a hair inside its
+    /// edges, so every voxel column the cell overlaps is sampled.
     func samples(in range: ClosedRange<Float>) -> [Float] {
-        let width = range.upperBound - range.lowerBound
-        let n = max(1, Int((width / (config.voxelSize / 2)).rounded(.up)))
-        return (0..<n).map { range.lowerBound + (Float($0) + 0.5) * width / Float(n) }
+        let inset: Float = 1e-4
+        let low = range.lowerBound + inset
+        let high = range.upperBound - inset
+        let n = max(1, Int(((high - low) / (config.voxelSize / 2)).rounded(.up)))
+        return (0...n).map { low + Float($0) * (high - low) / Float(n) }
     }
 
     /// The voxel at wall coordinates; nil outside the bounds.

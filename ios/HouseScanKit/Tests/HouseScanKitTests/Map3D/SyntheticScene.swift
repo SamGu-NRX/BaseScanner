@@ -167,3 +167,20 @@ func bushWalk() -> [CameraFrame] {
         ]
     }
 }
+
+/// A facade with pilasters: a wall along x from -5 to 7 with pilasters 0.5 m wide standing
+/// 0.36 m proud, as ETH3D electro's do, full height, every 2.5 m, none at the meter (x = 0).
+func pilasterScene() -> SyntheticScene {
+    SyntheticScene(
+        walls: [SyntheticScene.Wall(a: SIMD2(-5, 0), b: SIMD2(7, 0))],
+        boxes: [Float(-4), -1.5, 1, 3.5, 6].map { x in SyntheticScene.Box(min: SIMD3(x - 0.25, 0, 0), max: SIMD3(x + 0.25, 3, 0.36)) })
+}
+
+/// The pilaster facade's walk: every 0.3 m from x = -4 to 6, 2.5 m out, aimed at the wall
+/// straight on, and 30 degrees to either side, so the faces between pilasters are seen.
+func pilasterWalk() -> [CameraFrame] {
+    Swift.stride(from: Float(-4), through: 6, by: 0.3).flatMap { x in
+        [Float(0), -1.4, 1.4].map { dx in lidarCamera(at: SIMD3(x, 1.4, 2.5), lookingAt: SIMD3(x + dx, 1.0, 0)) }
+    }
+}
+

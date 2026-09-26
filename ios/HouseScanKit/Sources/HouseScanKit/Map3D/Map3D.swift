@@ -26,8 +26,10 @@ public struct Map3D: Sendable {
     private(set) var grid: VoxelGrid
     /// Detected planes by id, in world coordinates as ARKit last reported them.
     public private(set) var planes: [UUID: PlaneObservation] = [:]
-    /// Per mesh chunk, the voxels its faces labelled, so an update can clear them first.
-    private var meshVoxels: [UUID: [Int32]] = [:]
+    /// Per mesh chunk and per detected plane, the voxels it marks, so an update or removal can
+    /// release them (`VoxelGrid.release`).
+    private var meshVoxels: [UUID: Set<Int32>] = [:]
+    private var planeVoxels: [UUID: Set<Int32>] = [:]
 
     /// `bounds` defaults to everything the rules can ask about (`MapBounds.around`).
     public init(frame: MapFrame, config: Map3DConfig = Map3DConfig(), bounds: MapBounds? = nil) {
@@ -126,8 +128,7 @@ public struct Map3D: Sendable {
                 }
                 let length = simd_length(p)
                 var normal = SIMD3<Float>.zero
-                // Unknown without a normal: the free margin then assumes 60 degrees.
-                var cosine: Float = 0.5
+                var cosine: Float?
                 if let dx = neighbour(1, 0).map({ $0 - p }) ?? neighbour(-1, 0).map({ p - $0 }),
                    let dy = neighbour(0, 1).map({ $0 - p }) ?? neighbour(0, -1).map({ p - $0 }) {
                     let n = simd_cross(dx, dy)
@@ -149,16 +150,18 @@ public struct Map3D: Sendable {
                 rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit))
             }
         }
-        grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, measured: true, config: config)
+        grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, config: config)
         revision += 1
     }
 
     /// How far short of a surface free space stops, meters. A ray within one voxel of a surface
     /// it meets at a glancing angle runs voxel / cos along it, through voxels the surface also
-    /// crosses; stopping that far short keeps glancing rays from erasing the surface. Capped at
-    /// four voxels.
-    private func freeMargin(cosine: Float) -> Float {
-        config.voxelSize / max(cosine, 0.25)
+    /// crosses; stopping that far short keeps glancing rays from erasing the surface. Not
+    /// capped: a cap let rays at 80 degrees carve wall voxels a meter short of their hit.
+    /// Without a normal the angle is unknown, so the ray stops `unknownNormalMargin` short.
+    private func freeMargin(cosine: Float?) -> Float {
+        guard let cosine else { return config.unknownNormalMargin }
+        return config.voxelSize / max(cosine, 1e-3)
     }
 
     // MARK: Without LiDAR
@@ -170,11 +173,12 @@ public struct Map3D: Sendable {
     /// that plane's normal, which makes it a measured surface coverage can count.
     ///
     /// Detected planes are then drawn through a grid of `planeRenderColumns` x
-    /// `planeRenderRows` pixels, where no surface already in the map is in front of them. They
-    /// add surface for wall geometry only: they carve no free space and never count as seen,
-    /// because a plane's extent says nothing about what stands in front of it. A box with no
-    /// feature points on it would otherwise read as open space and hide the wall behind it
-    /// while leaving that wall "seen".
+    /// `planeRenderRows` pixels, where no measured surface is in front of them, and the voxels
+    /// they are seen at are marked as plane for wall geometry. They add no occupancy, carve no
+    /// free space and never count as seen, because a plane's extent says nothing about what
+    /// stands in front of it: a box with no feature points on it would otherwise read as open
+    /// space and hide the wall behind it while leaving that wall "seen". An updated or removed
+    /// plane takes its marks with it.
     public mutating func integrate(_ features: FeatureFrame) {
         let camera = frame.map(features.camera.position)
         let mapPlanes = planesInMap()
@@ -187,26 +191,43 @@ public struct Map3D: Sendable {
             let normal = mapPlanes.first { plane in
                 abs(simd_dot(end - plane.point, plane.normal)) <= config.planeSnap && plane.contains(end)
             }.map { simd_dot($0.normal, direction) > 0 ? -$0.normal : $0.normal } ?? .zero
-            featureRays.append(RaySample(end: end, normal: normal, freeLength: length - 2 * config.voxelSize, hit: true))
+            let cosine = simd_length_squared(normal) > 0 ? abs(simd_dot(normal, direction)) : nil
+            featureRays.append(RaySample(end: end, normal: normal, freeLength: length - freeMargin(cosine: cosine), hit: true))
         }
-        grid.integrate(camera: camera, rays: featureRays, sources: .feature, measured: true, config: config)
-        grid.integrate(camera: camera, rays: planeRays(from: features.camera, camera: camera, planes: mapPlanes), sources: .plane, measured: false, config: config)
+        grid.integrate(camera: camera, rays: featureRays, sources: .feature, config: config)
+        for hit in planeHits(from: features.camera, camera: camera, planes: mapPlanes) {
+            guard let index = grid.markPlane(at: hit.point, normal: hit.normal), planeVoxels[hit.id, default: []].insert(index).inserted else { continue }
+            grid.retain([index], as: .plane)
+        }
         revision += 1
     }
 
     /// Adds or replaces a detected plane. It shows up in the map on the next feature frame that
-    /// views it.
+    /// views it; a plane whose pose or extent changed loses its old marks at once. The same
+    /// plane passed again unchanged keeps them. A plane wholly outside the bounds is dropped.
     public mutating func update(_ plane: PlaneObservation) {
+        if let old = planes[plane.id], old.worldFromPlane == plane.worldFromPlane, old.boundary == plane.boundary { return }
+        removePlane(id: plane.id)
+        let mapFromPlane = frame.mapFromWorld * plane.worldFromPlane
+        let corners = plane.boundary.map { p in
+            let q = mapFromPlane * SIMD4(p.x, 0, p.y, 1)
+            return SIMD3(q.x, q.y, q.z)
+        }
+        guard let first = corners.first else { return }
+        let low = corners.reduce(first, simd_min)
+        let high = corners.reduce(first, simd_max)
+        guard all(high .>= bounds.min), all(low .< bounds.max) else { return }
         planes[plane.id] = plane
-        revision += 1
     }
 
     public mutating func removePlane(id: UUID) {
         planes[id] = nil
+        if let old = planeVoxels.removeValue(forKey: id) { grid.release(old, as: .plane) }
         revision += 1
     }
 
     private struct MapPlane {
+        var id: UUID
         var point: SIMD3<Float>
         var normal: SIMD3<Float>
         var planeFromMap: simd_float4x4
@@ -225,16 +246,16 @@ public struct Map3D: Sendable {
             let normal = SIMD3(mapFromPlane.columns.1.x, mapFromPlane.columns.1.y, mapFromPlane.columns.1.z)
             guard simd_length_squared(normal) > 0 else { return nil }
             return MapPlane(
-                point: SIMD3(mapFromPlane.columns.3.x, mapFromPlane.columns.3.y, mapFromPlane.columns.3.z),
+                id: plane.id, point: SIMD3(mapFromPlane.columns.3.x, mapFromPlane.columns.3.y, mapFromPlane.columns.3.z),
                 normal: simd_normalize(normal), planeFromMap: mapFromPlane.inverse, boundary: plane.boundary)
         }
     }
 
-    /// Where each rendered pixel's ray meets the nearest plane, unless a surface already in the
-    /// map is in front of it; the normal faces the camera. No free space.
-    private func planeRays(from cameraFrame: CameraFrame, camera: SIMD3<Float>, planes mapPlanes: [MapPlane]) -> [RaySample] {
+    /// Where each rendered pixel's ray meets the nearest plane, with the plane and its normal
+    /// facing the camera, unless a measured surface is in front of it.
+    private func planeHits(from cameraFrame: CameraFrame, camera: SIMD3<Float>, planes mapPlanes: [MapPlane]) -> [(id: UUID, point: SIMD3<Float>, normal: SIMD3<Float>)] {
         guard !mapPlanes.isEmpty else { return [] }
-        var rays: [RaySample] = []
+        var hits: [(id: UUID, point: SIMD3<Float>, normal: SIMD3<Float>)] = []
         let columns = max(1, config.planeRenderColumns)
         let rows = max(1, config.planeRenderRows)
         for row in 0..<rows {
@@ -243,21 +264,21 @@ public struct Map3D: Sendable {
                     (Float(column) + 0.5) / Float(columns) * cameraFrame.imageSize.x,
                     (Float(row) + 0.5) / Float(rows) * cameraFrame.imageSize.y)
                 let direction = simd_normalize(frame.mapDirection(cameraFrame.ray(throughPixel: pixel).direction))
-                var nearest: (t: Float, normal: SIMD3<Float>)?
+                var nearest: (t: Float, plane: MapPlane, normal: SIMD3<Float>)?
                 for plane in mapPlanes {
                     let denominator = simd_dot(plane.normal, direction)
                     guard abs(denominator) > 1e-4 else { continue }
                     let t = simd_dot(plane.normal, plane.point - camera) / denominator
                     guard t >= config.minDepth, t <= config.maxDepth, t < nearest?.t ?? .infinity, plane.contains(camera + direction * t) else { continue }
-                    nearest = (t, denominator > 0 ? -plane.normal : plane.normal)
+                    nearest = (t, plane, denominator > 0 ? -plane.normal : plane.normal)
                 }
                 guard let nearest else { continue }
                 let limit = nearest.t - freeMargin(cosine: abs(simd_dot(nearest.normal, direction)))
                 guard firstSurface(from: camera, direction: direction, length: limit) == nil else { continue }
-                rays.append(RaySample(end: camera + direction * nearest.t, normal: nearest.normal, freeLength: 0, hit: true))
+                hits.append((nearest.plane.id, camera + direction * nearest.t, nearest.normal))
             }
         }
-        return rays
+        return hits
     }
 
     /// Distance along a ray at which it enters the first surface voxel, within `length`.
@@ -295,13 +316,13 @@ public struct Map3D: Sendable {
     /// classification and gives voxels no ray has given a normal the face's. It adds no
     /// occupancy: a mesh face carries no camera, so it can't say what was seen from where.
     public mutating func update(_ chunk: MeshChunk) {
-        if let old = meshVoxels.removeValue(forKey: chunk.id) { grid.clearMesh(old) }
+        if let old = meshVoxels.removeValue(forKey: chunk.id) { grid.release(old, as: .mesh) }
         let mapFromChunk = frame.mapFromWorld * chunk.worldFromChunk
         let vertices = chunk.vertices.map { v in
             let p = mapFromChunk * SIMD4(v, 1)
             return SIMD3(p.x, p.y, p.z)
         }
-        var marked: [Int32] = []
+        var marked: Set<Int32> = []
         for (index, face) in chunk.faces.enumerated() {
             guard face.x < vertices.count, face.y < vertices.count, face.z < vertices.count else { continue }
             let triangle = (vertices[Int(face.x)], vertices[Int(face.y)], vertices[Int(face.z)])
@@ -309,14 +330,17 @@ public struct Map3D: Sendable {
             let low = simd_min(triangle.0, simd_min(triangle.1, triangle.2))
             let high = simd_max(triangle.0, simd_max(triangle.1, triangle.2))
             guard all(high .>= bounds.min), all(low .< bounds.max) else { continue }
-            marked += grid.markMesh(triangle, meshClass: chunk.classes.isEmpty ? nil : chunk.classes[index])
+            marked.formUnion(grid.markMesh(triangle, meshClass: chunk.classes.isEmpty ? nil : chunk.classes[index]))
         }
-        meshVoxels[chunk.id] = Array(Set(marked))
+        if !marked.isEmpty {
+            grid.retain(marked, as: .mesh)
+            meshVoxels[chunk.id] = marked
+        }
         revision += 1
     }
 
     public mutating func removeMeshChunk(id: UUID) {
-        if let old = meshVoxels.removeValue(forKey: id) { grid.clearMesh(old) }
+        if let old = meshVoxels.removeValue(forKey: id) { grid.release(old, as: .mesh) }
         revision += 1
     }
 }

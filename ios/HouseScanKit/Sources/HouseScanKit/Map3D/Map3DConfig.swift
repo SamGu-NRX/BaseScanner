@@ -49,6 +49,10 @@ public struct Map3DConfig: Sendable, Equatable {
     /// An estimated depth marks a surface only when two standard deviations are within this,
     /// meters (one and a half voxels); free space is carved to two deviations short of it either way.
     public var maxSurfaceSigma: Float = 0.15
+    /// Free space stops this far short of a surface whose normal is unknown, meters (a feature
+    /// point off every plane, a depth pixel at an edge): rays within 11 degrees of grazing a
+    /// surface could still erase it.
+    public var unknownNormalMargin: Float = 0.5
     /// A feature point this close to a detected plane, meters, takes the plane's normal. ARKit's
     /// feature points scatter a few centimeters about the surface they lie on.
     public var planeSnap: Float = 0.05
@@ -83,6 +87,20 @@ public struct Map3DConfig: Sendable, Equatable {
     /// wall band settles the checks for boxes, vents and openings there.
     public var faceBehind: Float = 0.15
     public var faceFront: Float = 0.1
+    /// Relief: attached structure standing up to this far proud of the wall line, meters, such
+    /// as a pilaster, column or chimney breast, counts as the facade for the wall band, because
+    /// nothing can be mounted on the wall behind it. ETH3D electro's pilasters stand 0.36 m
+    /// proud (experiments/evals/results/map3d.md on t3/evals). It counts only where the
+    /// structure runs up to headroom, no free space was seen between it and the wall, and the
+    /// mesh, when it classifies, does not call it something else; a box or shrub against the
+    /// wall still hides the wall.
+    public var reliefDepth: Float = 0.5
+    /// Relief is at most this wide along the wall, meters; a wider face in front of the wall is
+    /// a wall of its own (a bump-out).
+    public var maxReliefWidth: Float = 1.0
+    /// Recess: a face seen up to this far behind the wall line, meters (a door or window set
+    /// back), is the facade there.
+    public var recessDepth: Float = 0.5
     /// Ground is looked for from this far above to this far below the meter's ground, meters,
     /// so a yard that slopes a little still has ground. Anything flat and lower than this, such
     /// as a pad or a low step, reads as ground.
