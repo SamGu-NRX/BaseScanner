@@ -245,14 +245,26 @@ class Scene:
                     for a, b, out in self.observed.get("ground", [])
                 ]
             )
-            self._cache["ground"] = outdoor.difference(seen.buffer(1e-6))
+            unseen = outdoor.difference(seen.buffer(1e-6))
+            self._cache["ground"] = unary_union([unseen, *self._unexplored_discs()])
         return self._cache["ground"]
+
+    def _unexplored_discs(self) -> list[Geometry]:
+        """Round an unexplored end the walls may turn any way, so the extension line past it
+        proves nothing: everything within reach of that end counts as unseen."""
+        ends = {"left": self.walls[0].a, "right": self.walls[-1].b}
+        return [
+            Point(ends[side]).buffer(self.reach_ft)
+            for side, kind in self.end_kinds.items()
+            if kind == "unexplored"
+        ]
 
     def unobserved_wall(self) -> Geometry:
         if "wall" not in self._cache:
             lo, hi = self.pieces[0].s0, self.pieces[-1].s1
             gaps = subtract_intervals((lo, hi), self.observed_intervals("wall"))
-            self._cache["wall"] = unary_union([self.wall_line(a, b) for a, b in gaps])
+            lines = [self.wall_line(a, b) for a, b in gaps]
+            self._cache["wall"] = unary_union([*lines, *self._unexplored_discs()])
         return self._cache["wall"]
 
 
@@ -300,6 +312,29 @@ def _wedge(v: Point2, n1: Point2, n2: Point2, radius: float) -> Polygon:
     return poly if poly.is_valid and poly.area > EPS else Polygon()
 
 
+# Baseline points closer than this to the line through their neighbours are one straight wall.
+COLLINEAR_FT = 0.05
+
+
+def _merge_collinear(pts: list[Point2], tol: float, path: str) -> list[Point2]:
+    """Drop baseline points that lie on the straight line between their neighbours (within the
+    wall's error), so a tap in the middle of a straight wall is not a corner the battery can't
+    straddle."""
+    out = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        a, p, b = out[-1], pts[i], pts[i + 1]
+        ab = _sub(b, a)
+        length = _norm(ab)
+        if length < 1e-6:
+            raise SceneError(f"{path}/{i + 1}", "repeats an earlier point")
+        t_along = ((p[0] - a[0]) * ab[0] + (p[1] - a[1]) * ab[1]) / (length * length)
+        off = abs((p[0] - a[0]) * ab[1] - (p[1] - a[1]) * ab[0]) / length
+        if not (0 < t_along < 1 and off <= tol):
+            out.append(p)
+    out.append(pts[-1])
+    return out
+
+
 def _outward(along: Point2) -> Point2:
     # Points run left to right seen from outside, so outward is `along` turned clockwise viewed
     # from above: (ux, uz) -> (-uz, ux).
@@ -332,7 +367,29 @@ def _error(item: dict[str, Any], default: float) -> float:
     return float(item["plus_minus_ft"]) if "plus_minus_ft" in item else default
 
 
+# Coordinates beyond this are not a house scan; they would only exhaust memory in the sweep.
+MAX_COORDINATE_FT = 1e5
+
+
+def _check_numbers(value: Any, path: str) -> None:
+    """JSON Schema accepts NaN and infinities as numbers; nothing in a scene may be either."""
+    if isinstance(value, dict):
+        for k, v in value.items():
+            _check_numbers(v, f"{path}/{k}")
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            _check_numbers(v, f"{path}/{i}")
+    elif isinstance(value, float | int) and not isinstance(value, bool):
+        if not math.isfinite(value):
+            raise SceneError(path or "/", f"{value!r} is not a finite number")
+        if abs(value) > MAX_COORDINATE_FT:
+            raise SceneError(
+                path or "/", f"{value} ft is beyond the {MAX_COORDINATE_FT:g} ft bound"
+            )
+
+
 def validate_schema(raw: Any) -> None:
+    _check_numbers(raw, "")
     errors = sorted(_VALIDATOR.iter_errors(raw), key=lambda e: list(e.absolute_path))
     if errors:
         e = errors[0]
@@ -358,6 +415,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     wall_ids: set[str] = set()
     s = 0.0
     prev_end: Point2 | None = None
+    prev_err = 0.0
     for wi, wall in enumerate(raw["walls"]):
         wid = wall["id"]
         if wid in wall_ids:
@@ -365,6 +423,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         wall_ids.add(wid)
         pts = [_xz(p, f"/walls/{wi}/baseline") for p in wall["baseline"]]
         wall_err = _error(wall, errors.wall_ft.value)
+        pts = _merge_collinear(pts, max(wall_err, COLLINEAR_FT), f"/walls/{wi}/baseline")
         if prev_end is not None:
             gap = _norm(_sub(pts[0], prev_end))
             if gap > join_tol:
@@ -372,8 +431,21 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                     (pts[0][0] - prev_end[0]) / gap,
                     (pts[0][1] - prev_end[1]) / gap,
                 )
+                # The gap's length is only known to within both walls' errors.
+                gap_err = prev_err + wall_err
                 pieces.append(
-                    Piece("gap", None, -1, prev_end, pts[0], s, s + gap, along, _outward(along), 0)
+                    Piece(
+                        "gap",
+                        None,
+                        -1,
+                        prev_end,
+                        pts[0],
+                        s,
+                        s + gap,
+                        along,
+                        _outward(along),
+                        gap_err,
+                    )
                 )
                 s += gap
         for i in range(len(pts) - 1):
@@ -396,7 +468,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                 )
             )
             s += length
-        prev_end = pts[-1]
+        prev_end, prev_err = pts[-1], wall_err
 
     # Place the meter: s = 0 at its projection onto its own wall.
     meter = raw["meter"]
@@ -404,7 +476,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         raise SceneError("/meter/wall_id", f"no wall with id {meter['wall_id']!r}")
     mpos = tuple(float(v) for v in meter["pos"])
     mxz = (mpos[0], mpos[2])
-    best: tuple[float, Piece, float] | None = None
+    best: tuple[float, Piece, float, float] | None = None
     for p in pieces:
         if p.wall_id != meter["wall_id"]:
             continue
@@ -412,8 +484,17 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         s_clamped = min(max(s_local, p.s0), p.s1)
         dist = _norm(_sub(mxz, p.point(s_clamped)))
         if best is None or dist < best[0]:
-            best = (dist, p, s_clamped)
+            best = (dist, p, s_clamped, abs(s_local - s_clamped))
     assert best is not None
+    meter_err = _error(meter, errors.meter_ft.value)
+    overshoot = best[3]
+    if overshoot > meter_err + best[1].plus_minus + EPS:
+        # Clamping would silently shorten every cable route by the overshoot.
+        raise SceneError(
+            "/meter/pos",
+            f"the meter is {overshoot:.2f} ft past the end of wall {meter['wall_id']!r}, more "
+            "than the meter's and the wall's errors allow; extend the wall to the meter",
+        )
     max_off = rules.sweep.meter_to_wall_max_ft.value
     if best[0] > max_off:
         raise SceneError(

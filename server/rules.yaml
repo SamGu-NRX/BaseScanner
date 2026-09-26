@@ -44,12 +44,13 @@ clearances:
   ac_ft: {value: 3.0, source: "Base help page: 3 ft from AC units, fences and other batteries"}
   opening_ft: {value: 3.0, source: "IRC 2021 R328.4: 3 ft from doors and windows directly entering the dwelling"}
   drive_ft: {value: 5.0, source: "No public value (docs/01 rules table: TBD)", placeholder: true}
-  pool_ft: {value: 10.0, source: "No public value (docs/01 rules table: TBD)", placeholder: true}
+  pool_ft: {value: 10.0, source: "No public value (docs/01 rules table: TBD); the demo ring drawn in docs/eli5.html", placeholder: true}
   # Wall-mounted equipment directly above the battery: minimum sideways gap along the wall.
   wall_equipment_ft: {value: 0.0, source: "No public value; 0 means only overlap fails", placeholder: true}
 
 openings:
-  types: [door, window]
+  # A garage door counts: a battery must not stand in front of one.
+  types: [door, garage_door, window]
   # When true, a window recorded as not operable does not count. Unknown operability always counts.
   exempt_fixed_windows: false
   # A window whose bottom edge is higher than this does not count (upper floors). null: all count.
