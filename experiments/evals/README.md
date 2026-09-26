@@ -52,6 +52,7 @@ make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a fiel
 make modern-arkit  # MARViN pose files (about 3 MB) -> results/modern_arkit.md, section 6
 make coverage      # after recon-data; the app's coverage code at a pinned commit -> results/coverage.md, section 7
 make coverage-options  # after coverage -> results/coverage_options.md, section 7b
+make map3d         # after coverage; the app's Map3D at a pinned commit -> results/map3d.md, section 7c
 ```
 
 Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -360,6 +361,24 @@ The tape test on the team's phone is still the number to trust.
 - **Phones without LiDAR:** the app cannot know what hides the wall. Either the homeowner confirms nothing stands in front of each claimed stretch (for example, by marking obstacles on a still), or checks that need clear ground treat claims from those phones as unconfirmed.
 
 Tightening the baseline or angle would only ask for more photos: 6 to 8.5 extra feet of wall here, with no guarantee that the hidden patch goes.
+
+### 7c. The app's 3D map (Map3D) against the same truth (ETH3D electro)
+
+[results/map3d.md](results/map3d.md), `make map3d`.
+
+**Question.** The app's live 3D map (`ios/HouseScanKit/Sources/HouseScanKit/Map3D`, t3/ios-map3d at 66cdcba, draft PR #21) is to replace `CoverageMap` on every phone. Does it claim wall, ground, facing or overhead space no photo saw?
+
+**Method.**
+- **The app's code, unmodified**, checked out read-only and driven by `map3d_driver/`: `Map3D.integrate(DepthFrame)` per photo, then `coverage(along:)` and `measuredWalls()`, default `Map3DConfig`.
+- **The same wall as section 7:** the map frame and the `WallFrame` coverage is read along are section 7's (meter, outward normal, ground height).
+- **LiDAR path:** one depth frame per photo, 256 x 192, rendered from the laser scan at the photo's pose (nearest scan depth along -z; 0 where nothing was scanned or ETH3D masks an object the scanner missed), with no confidence.
+- **Non-LiDAR path: not tested.** It needs ARKit's feature points and detected planes. COLMAP's tracks on 24-megapixel DSLR photos are far denser and more exact than ARKit's feature points, and ARKit's plane detector can't be reproduced from them without guessing.
+- **Truth.** Wall and ground: section 7's laser-scan visibility, on the same wall face and ground band (1.2 m, the depth `CoverageMap` claims). Map3D's ground counts as claimed where its reach is at least 1.2 m. Facing and overhead space: a point counts as seen empty when some photo within 5 m frames it and the laser scan's depth at its pixel lies beyond it by more than the section 7 tolerance, max(10 cm, 4%), so the ray passed through it.
+
+**Pre-registered, before any run.**
+- **False-observed** (claimed columns where at least 10 cm of what the band claims was seen by no photo) must be at most **0.5 ft** per band, as in section 7, where `CoverageMap` claimed 1.1 ft of wall.
+- **Missed** (wall and ground band seen from two positions 0.25 m apart but not claimed) is reported without a bar.
+- **Wall chain:** the measured wall piece through the meter against the laser's wall line (angle, offset at the meter, length), reported without a bar.
 
 ## Replay session from a real walk
 
