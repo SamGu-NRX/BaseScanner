@@ -299,9 +299,11 @@ def _with_interval(x: dict | None, iv: dict | None) -> str:
     if not x or x.get("pairs", 0) == 0 or not iv:
         return cell(x)
 
+    def num(y):
+        return f"{y:.1f}" if np.isfinite(y) else "inf"
+
     def one(v, lo, hi):
-        f = lambda y: f"{y:.1f}" if np.isfinite(y) else "inf"  # noqa: E731
-        return f"{'fails' if not np.isfinite(v) else f(v)} [{f(lo)}, {f(hi)}]"
+        return f"{'fails' if not np.isfinite(v) else num(v)} [{num(lo)}, {num(hi)}]"
 
     return f"{one(x['median_in'], *iv['median_in'])} / {one(x['p90_in'], *iv['p90_in'])}"
 
