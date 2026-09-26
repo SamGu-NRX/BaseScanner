@@ -713,8 +713,14 @@ class Solver:
             return []
         hi = max(hi, lo)
         step = self.r.sweep.step_ft.value
-        points = [lo + k * step for k in range(int((hi - lo) / step + EPS) + 1)] + [hi]
         W, D = self.W, self.D
+        # The grid is anchored at the meter, in left-edge and right-edge form (starts k * step
+        # and k * step - W), so the start positions of a scene and of its mirror image map onto
+        # each other and left and right get the same treatment.
+        k_lo, k_hi = math.floor(lo / step) - 1, math.ceil((hi + W) / step) + 1
+        points = [lo, hi]
+        for k in range(k_lo, k_hi + 1):
+            points += [k * step, k * step - W]
         # Along the wall: every place an interval can start or stop mattering.
         boundaries = [0.0, *self.ws_span]
         for o in self.scene.objects:
