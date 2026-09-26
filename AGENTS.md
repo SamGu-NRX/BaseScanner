@@ -37,6 +37,18 @@ A component's README wins over the docs. Files marked with a pull request exist 
 - **Rotate the intrinsics whenever you rotate a camera image.** Camera images are landscape sensor images, and the intrinsics match that orientation. A rotated image with unrotated intrinsics produces wrong 3D geometry without any error.
 - **Use LiDAR when present, and never require it.** Most homeowners' phones lack LiDAR, so every check must also work from the camera and the phone's poses.
 
+## Writing, planning and review
+
+The repository ships shared skills in `.agents/skills/`, which Codex reads directly. `.claude/skills/` links to the same folders for Claude Code. Agents without skill support can read each `SKILL.md` as a plain guide.
+
+- `unslop` for any prose, and `technical-writing` for docs and READMEs.
+- `pr-writing` for pull request titles and descriptions.
+- `prompt-writing` for AGENTS.md, skills and prompts that brief another agent.
+- `efficient-implementation-plans` for implementation plans.
+- `deslop` for reviewing or cleaning a diff.
+
+A user's instruction outranks a skill.
+
 ## Working in the repository
 
 - `make check` runs every suite. `make ios`, `make server` and `make web` run one each.
