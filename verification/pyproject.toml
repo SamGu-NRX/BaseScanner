@@ -5,6 +5,7 @@ description = "Independent end-to-end checks: Simulator runs, server round trips
 requires-python = ">=3.12"
 dependencies = [
     "jsonschema>=4.23",
+    "numpy>=2.5.3",
     "pyyaml>=6.0",
 ]
 
