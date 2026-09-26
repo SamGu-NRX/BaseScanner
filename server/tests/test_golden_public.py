@@ -344,6 +344,20 @@ def test_10_compound_error_adds() -> None:
     assert gas["unsure_cause"] == "margin"
 
 
+def test_10_unseen_count_leaves_out_margin_checks() -> None:
+    # Issue #45: headroom unseen at the pad and the gas gap too close to call. More views settle
+    # only the headroom, so the summary counts one unseen check and names the gas one apart.
+    raw = gas_gap_scene(3.3, 0.3)
+    observed_band(raw, "overhead", [(-40, 5), (10, 40)])
+    result = solve_valid(raw)
+    unsure = {c["id"]: c["unsure_cause"] for c in result["checks"] if c["outcome"] == "unsure"}
+    assert unsure["gas_clearance"] == "margin"
+    assert list(unsure.values()).count("unobserved") == 1
+    gas = check(result, "gas_clearance")["label"].lower()
+    assert "1 check depends on areas the scan did not see" in result["summary"]
+    assert f"; a person also needs to check {gas}." in result["summary"]
+
+
 def l_scene(variant):
     """w1 along z = 0 to a corner at s = 12, then w2 down x = 12 (outward +x) to s = 32 (s = 12 - z
     on w2). A gas pipe 1 ft in front of the battery's front face fails every spot it runs along."""

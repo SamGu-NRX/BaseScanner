@@ -1415,11 +1415,19 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             reasons.append(unexplored_reason)
             missing += past_end_requests()
         spot_at = where((best.s0 + best.s1) / 2)
-        if any(c.unsure_cause == "unobserved" for c in best.checks if c.outcome == UNSURE):
+        unseen = [c for c in best.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
+        if unseen:
+            rest = [
+                c.label.lower()
+                for c in best.checks
+                if c.outcome == UNSURE and c.unsure_cause != "unobserved"
+            ]
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "
-                + ("1 check depends" if len(ids) == 1 else f"{len(ids)} checks depend")
-                + " on areas the scan did not see."
+                + ("1 check depends" if len(unseen) == 1 else f"{len(unseen)} checks depend")
+                + " on areas the scan did not see"
+                + ("; a person also needs to check " + "; ".join(rest) if rest else "")
+                + "."
             )
         else:
             summary = (
