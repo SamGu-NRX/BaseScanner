@@ -43,6 +43,7 @@ A convincing 3D view can still miss an obstacle or get a distance wrong, so ever
 | [docs/02-implementation-plan.md](docs/02-implementation-plan.md) | How each part gets built, the schedule, and risks |
 | [docs/03-stack-research.md](docs/03-stack-research.md) | The open-source projects and libraries we build on, and the ones we skip |
 | [docs/04-prior-art-and-codes.md](docs/04-prior-art-and-codes.md) | Base's public rules, similar products, and electrical-code citations |
+| [docs/05-live-guided-survey-hld.md](docs/05-live-guided-survey-hld.md) | Proposed live guidance and automatic capture architecture, diagrams, evidence flow, and technical resources |
 | [docs/eli5.html](docs/eli5.html) | A visual walkthrough with an interactive demo of the placement search |
 
 Contributors and coding agents start with [AGENTS.md](AGENTS.md). This repository is public, so materials Base gave the team stay in the git-ignored `private/` folder.
