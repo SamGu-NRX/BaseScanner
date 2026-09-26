@@ -111,8 +111,8 @@ final class KeyframeStore {
     }
 
     /// Zips scene.json with every keyframe and still into `scan.zip` and returns its URL. The
-    /// bundle is for replay and debugging (the upload sends scene.json alone) and stays on the
-    /// phone until the next scan.
+    /// bundle is what "Share scan" offers, and a replay can be made from it; the upload sends
+    /// scene.json alone. It stays on the phone until the next scan unless the homeowner shares it.
     func writeBundle(sceneJSON: Data) async throws -> URL {
         let directory = directory
         let files = keyframes.map(\.fileName) + stills.values.sorted()

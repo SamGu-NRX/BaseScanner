@@ -12,8 +12,8 @@ protocol ResultClient: AnyObject {
 /// Posts scene.json to the placement server: `POST {serverURL}/v1/placements` with the JSON as
 /// the body and `Content-Type: application/json`. Only the JSON goes: the server's solver reads no
 /// photos and skips the image check for a bare scene.json, so the keyframes stay on the phone
-/// (and in the scan folder's `scan.zip` for replay and debugging). The response body is the
-/// result JSON.
+/// (and in the scan folder's `scan.zip`, which leaves only if the homeowner shares it). The
+/// response body is the result JSON.
 @MainActor
 final class HTTPResultClient: ResultClient {
     let serverURL: URL

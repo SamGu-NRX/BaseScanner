@@ -93,6 +93,10 @@ final class ScanEngine {
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
     private(set) var placement: PlacementResult?
+    /// The latest scan-bundle write (`saveBundle`), and a count of writes started, so only the
+    /// latest one offers its bundle.
+    private var bundleTask: Task<Void, Never>?
+    private var bundleSerial = 0
 
     private var lastGuidanceLog = ""
     private var lastGateLog = ""
@@ -876,6 +880,8 @@ final class ScanEngine {
         nextWallRefusal = nil
         resetTiltUp()
         store.discardKeyframes()
+        // A bundle packed before this holds keyframes of the world frame just discarded.
+        state.shareableScan = nil
         keptSourceIDs = []
         state.captureCount = 0
         autoCapture.reset()
@@ -1079,7 +1085,7 @@ final class ScanEngine {
             state.upload = UploadFailure.packaging(error)
             return
         }
-        saveReplayBundle(scene: scene)
+        saveBundle(scene: scene)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
@@ -1108,17 +1114,29 @@ final class ScanEngine {
         }
     }
 
-    /// Writes scene.json with the keyframes and stills into the scan folder's `scan.zip`, for
-    /// replay and debugging only: nothing uploads it, and the upload never waits for it or fails
-    /// because of it.
-    private func saveReplayBundle(scene: Data) {
+    /// Writes scene.json with the keyframes and stills into the scan folder's `scan.zip`, the
+    /// bundle "Share scan" offers (`state.shareableScan`) whatever the upload then does: it
+    /// fails, is refused or answers. Nothing uploads the bundle, and the upload never waits for
+    /// it or fails because of it. The zip is rewritten in place, so it is not offered while a
+    /// write is under way, and writes run one after another: a retry's write waits for the last
+    /// one, and a write already superseded is skipped.
+    private func saveBundle(scene: Data) {
+        state.shareableScan = nil
+        bundleSerial += 1
+        let serial = bundleSerial
+        let scan = generation
         let store = store
-        Task {
+        let previous = bundleTask
+        bundleTask = Task {
+            await previous?.value
+            guard scan == generation, serial == bundleSerial else { return }
             do {
                 let bundle = try await store.writeBundle(sceneJSON: scene)
                 RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(store.keyframes.count) keyframes (kept on the phone)")
+                guard scan == generation, serial == bundleSerial else { return }
+                state.shareableScan = bundle
             } catch {
-                RuntimeLog.engine.error("replay bundle not written: \(String(describing: error), privacy: .public)")
+                RuntimeLog.engine.error("scan bundle not written: \(String(describing: error), privacy: .public)")
             }
         }
     }
@@ -1158,6 +1176,9 @@ final class ScanEngine {
         nextWallRefusal = nil
         resetTiltUp()
         placement = nil
+        // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
+        // from offering it again.
+        state.shareableScan = nil
         state.wall = nil
         state.coverage = .empty
         state.features = []
