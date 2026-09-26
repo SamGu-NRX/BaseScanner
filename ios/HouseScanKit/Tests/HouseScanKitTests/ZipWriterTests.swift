@@ -19,6 +19,22 @@ import Testing
         #expect(try ZipWriter.archive(Self.entries) == ZipWriter.archive(Self.entries))
     }
 
+    /// Streaming to disk writes the bytes the in-memory archive would, and a failing loader leaves
+    /// no partial file behind.
+    @Test func streamedArchiveMatchesInMemory() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("zipwriter-\(UUID().uuidString).zip")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let date = Date(timeIntervalSince1970: 1_790_000_000)
+        try ZipWriter.write(Self.entries.map { entry in (entry.name, { entry.data }) }, to: url, modified: date)
+        #expect(try Data(contentsOf: url) == ZipWriter.archive(Self.entries, modified: date))
+
+        struct LoadFailed: Error {}
+        #expect(throws: LoadFailed.self) {
+            try ZipWriter.write([("a", { Data([1]) }), ("b", { throw LoadFailed() })], to: url)
+        }
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+    }
+
     @Test func rejectsBadNames() {
         #expect(throws: ZipWriterError.duplicateName("a")) {
             try ZipWriter.archive([ZipEntry(name: "a", data: Data()), ZipEntry(name: "a", data: Data())])

@@ -8,8 +8,10 @@ import Foundation
 // Unknown keys are ignored. The server adds optional fields within schema 1.0 without changing
 // schema_version: `checks[].review_threshold_ft` and `sweep[].segment` arrived that way on
 // 2026-09-26, and rejecting them stopped every real upload from reaching the result screen. An
-// unknown enum value still fails, because the app can't present a decision or outcome it doesn't
-// know.
+// unknown value of an enum the app presents (decision, outcome, unsure_cause, and the others
+// below) still fails, because the app can't show a decision or outcome it doesn't know.
+// `reasons[].code`, `policy.sources` and `route.crossings[].effect` are plain strings: the app
+// never reads them, so a value the server adds to them must not break every decode.
 
 public enum PlacementDecodingError: Error, Equatable, CustomStringConvertible {
     case unsupportedSchemaVersion(String)
@@ -33,23 +35,6 @@ public enum PlacementDecision: String, Codable, Sendable, Equatable {
     case pass
     case manualReview = "manual_review"
     case reject
-    public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
-}
-
-public enum PlacementReasonCode: String, Codable, Sendable, Equatable {
-    case allChecksPass = "all_checks_pass"
-    case policyNotApproved = "policy_not_approved"
-    case unsureChecks = "unsure_checks"
-    case unobservedArea = "unobserved_area"
-    case unexploredEnd = "unexplored_end"
-    case allSpotsFail = "all_spots_fail"
-    case noWallSegmentFits = "no_wall_segment_fits"
-    public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
-}
-
-public enum PlacementPolicySource: String, Codable, Sendable, Equatable {
-    case publicRules = "public"
-    case privateRules = "private"
     public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
 }
 
@@ -100,16 +85,9 @@ public enum PlacementEndKind: String, Codable, Sendable, Equatable {
     public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
 }
 
-public enum PlacementCrossingEffect: String, Codable, Sendable, Equatable {
-    case fail
-    case review
-    case detour
-    case allow
-    public init(from decoder: any Decoder) throws { self = try placementEnum(decoder) }
-}
-
 public struct PlacementReason: Codable, Sendable, Equatable {
-    public var code: PlacementReasonCode
+    /// A server enum the app doesn't read, kept as the raw string (see the top of this file).
+    public var code: String
     public var message: String
     public var checks: [String]?
 
@@ -117,7 +95,7 @@ public struct PlacementReason: Codable, Sendable, Equatable {
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        code = try c.decode(PlacementReasonCode.self, forKey: .code)
+        code = try c.decode(String.self, forKey: .code)
         message = try c.decode(String.self, forKey: .message)
         checks = try c.decodeIfPresent([String].self, forKey: .checks)
     }
@@ -127,7 +105,8 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
     public var id: String?
     public var version: String?
     public var autoApprove: Bool
-    public var sources: [PlacementPolicySource]
+    /// A server enum the app doesn't read, kept as raw strings (see the top of this file).
+    public var sources: [String]
     public var rulesSHA256: String
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -141,7 +120,7 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
         id = try c.decode(String?.self, forKey: .id)
         version = try c.decode(String?.self, forKey: .version)
         autoApprove = try c.decode(Bool.self, forKey: .autoApprove)
-        sources = try c.decode([PlacementPolicySource].self, forKey: .sources)
+        sources = try c.decode([String].self, forKey: .sources)
         rulesSHA256 = try c.decode(String.self, forKey: .rulesSHA256)
     }
 
@@ -238,7 +217,8 @@ public struct PlacementDetour: Codable, Sendable, Equatable {
 public struct PlacementCrossing: Codable, Sendable, Equatable {
     public var subject: String
     public var spanFt: SIMD2<Double>
-    public var effect: PlacementCrossingEffect
+    /// A server enum the app doesn't read, kept as the raw string (see the top of this file).
+    public var effect: String
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case subject, effect
@@ -249,7 +229,7 @@ public struct PlacementCrossing: Codable, Sendable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         subject = try c.decode(String.self, forKey: .subject)
         spanFt = try c.placementPair(.spanFt)
-        effect = try c.decode(PlacementCrossingEffect.self, forKey: .effect)
+        effect = try c.decode(String.self, forKey: .effect)
     }
 
     public func encode(to encoder: any Encoder) throws {

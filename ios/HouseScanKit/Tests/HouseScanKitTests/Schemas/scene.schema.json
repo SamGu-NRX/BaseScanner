@@ -61,6 +61,7 @@
           "attrs": {
             "type": "object",
             "description": "Recognised attributes. A missing attribute is unknown, never false.",
+            "additionalProperties": false,
             "properties": {
               "operable": {"type": "boolean"},
               "well": {"type": "boolean"}

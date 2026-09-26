@@ -33,7 +33,7 @@ import simd
     @Test func sampleDecodes() throws {
         let result = try PlacementResult.decode(Self.sampleData())
         #expect(result.decision == .manualReview)
-        #expect(result.policy.id == nil && result.policy.sources == [.publicRules] && !result.policy.autoApprove)
+        #expect(result.policy.id == nil && result.policy.sources == ["public"] && !result.policy.autoApprove)
         let spot = try #require(result.spot)
         #expect(spot.spanFt == SIMD2(3.0, 5.5))
         #expect(spot.footprint.count == 4)
@@ -88,6 +88,22 @@ import simd
                     try Self.sample(replacing: #""unsure_cause": "margin""#, with: #""unsure_cause": "tight""#))
         expectError(.unknownEnumValue(path: "decision", value: "maybe"),
                     try Self.sample(replacing: #""decision": "manual_review""#, with: #""decision": "maybe""#))
+        expectError(.unknownEnumValue(path: "route.outcome", value: "maybe"),
+                    try Self.sample(replacing: #""outcome": "pass",\#n    "length_ft""#, with: #""outcome": "maybe",\#n    "length_ft""#))
+    }
+
+    /// Enums the app never reads take any string, so a value the server adds doesn't stop the
+    /// result screen.
+    @Test func acceptsNewValuesTheAppDoesNotRead() throws {
+        let reason = try PlacementResult.decode(
+            try Self.sample(replacing: #""code": "unsure_checks""#, with: #""code": "new_reason""#))
+        #expect(reason.reasons.contains { $0.code == "new_reason" })
+        let source = try PlacementResult.decode(
+            try Self.sample(replacing: #""sources": ["public"]"#, with: #""sources": ["public", "regional"]"#))
+        #expect(source.policy.sources == ["public", "regional"])
+        let crossing = try PlacementResult.decode(
+            try Self.sample(replacing: #""crossings": []"#, with: #""crossings": [{"subject": "gate", "span_ft": [1, 2], "effect": "bridge"}]"#))
+        #expect(crossing.route?.crossings.first?.effect == "bridge")
     }
 
     @Test func rejectsOtherSchemaVersions() throws {

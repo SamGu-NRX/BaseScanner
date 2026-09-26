@@ -57,13 +57,44 @@ import Testing
         #expect(gate.failedAttempts == 1)
     }
 
-    @Test func goodFrameResetsTheProblemClock() {
+    /// B-04: two sharp frames then a blurry one, 10 frames a second. A 0.2 s run of sharp frames
+    /// never finishes the 0.6 s hold, so no photo fires; every 4 s of that is a failed try. (A
+    /// third of the frames blurry keeps the sharpness median at the sharp value, so each blurry
+    /// frame stays under half of it.)
+    @Test func alternatingGoodAndBlurryFramesFailEachFourSeconds() {
+        var gate = CloseUpGate()
+        let blurry = FrameQuality(sharpness: 10, meanLuma: 128, clippedFraction: 0)
+        var fired = false
+        var failedAt: [Int] = []
+        for step in 0..<90 {
+            var sample = Self.frame(Double(step) / 10)
+            if step % 3 == 2 { sample.quality = blurry }
+            let status = gate.evaluate(sample, meter: Self.meter)
+            fired = fired || status.fire
+            if status.failedAttempts > failedAt.count { failedAt.append(step) }
+        }
+        #expect(!fired)
+        // The attempt starts at 0 s. The first blurry frame at or after 4.0 s is step 41 (4.1 s);
+        // the next attempt starts there, and the first blurry frame from 8.1 s on is step 83.
+        #expect(failedAt == [41, 83])
+    }
+
+    @Test func aPhotoRestartsTheAttemptClock() {
+        var gate = CloseUpGate()
+        _ = gate.evaluate(Self.offCenter(0), meter: Self.meter)
+        for t in [3.0, 3.3, 3.6] { _ = gate.evaluate(Self.frame(t), meter: Self.meter) }
+        // The shutter fired at 3.6, so the attempt after it starts at 3.7 and 4.5 is not late.
+        _ = gate.evaluate(Self.offCenter(3.7), meter: Self.meter)
+        #expect(gate.evaluate(Self.offCenter(4.5), meter: Self.meter).failedAttempts == 0)
+        #expect(gate.evaluate(Self.offCenter(7.7), meter: Self.meter).failedAttempts == 1)
+    }
+
+    @Test func goodFramesWithoutAPhotoDoNotRestartTheClock() {
         var gate = CloseUpGate()
         _ = gate.evaluate(Self.offCenter(0), meter: Self.meter)
         _ = gate.evaluate(Self.frame(3), meter: Self.meter)
-        // The problem restarts at 3.5, so 4.5 is only 1 s in.
         _ = gate.evaluate(Self.offCenter(3.5), meter: Self.meter)
-        #expect(gate.evaluate(Self.offCenter(4.5), meter: Self.meter).failedAttempts == 0)
+        #expect(gate.evaluate(Self.offCenter(4.0), meter: Self.meter).failedAttempts == 1)
     }
 
     @Test func rejectedPhotoCountsAndRestartsTheHold() {

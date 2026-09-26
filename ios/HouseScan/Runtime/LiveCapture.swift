@@ -27,6 +27,8 @@ struct VerticalPlaneHit {
     let position: SIMD3<Float>
     let normal: SIMD3<Float>
     let transform: simd_float4x4
+    /// Which kind of plane the ray hit; the export widens the meter's error for an estimated one.
+    let source: MeterPlaneSource
 }
 
 /// The live ARKit source: RealityKit's ARView running world tracking with `.gravity` alignment and
@@ -70,15 +72,22 @@ final class LiveCapture {
         delegate.shared.withLock { $0.mode = mode }
     }
 
-    /// Raycast from a view point to detected vertical plane geometry only, never an estimated
-    /// plane, so a tap never guesses a depth.
+    /// Raycast from a view point to a vertical surface: a detected plane's extent first, then a
+    /// vertical plane ARKit estimates from feature points at the tap. Never `.existingPlaneInfinite`,
+    /// which extends a fence's or another wall's plane past its edges, so a tap beside it lands on
+    /// a surface that isn't there. The hit says which kind it was.
     func raycastExistingVerticalPlane(from point: CGPoint) -> VerticalPlaneHit? {
-        for target in [ARRaycastQuery.Target.existingPlaneGeometry, .existingPlaneInfinite] {
+        let targets: [(ARRaycastQuery.Target, MeterPlaneSource)] = [(.existingPlaneGeometry, .detectedPlane), (.estimatedPlane, .estimatedPlane)]
+        for (target, source) in targets {
             guard let result = arView.raycast(from: point, allowing: target, alignment: .vertical).first else { continue }
+            // An estimated plane has no anchor; the result's own y axis is the surface normal.
             let transform = result.worldTransform
             let planeTransform = result.anchor?.transform ?? transform
             let normal = simd_normalize(SIMD3(planeTransform.columns.1.x, planeTransform.columns.1.y, planeTransform.columns.1.z))
-            return VerticalPlaneHit(position: SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z), normal: normal, transform: transform)
+            return VerticalPlaneHit(
+                position: SIMD3(transform.columns.3.x, transform.columns.3.y, transform.columns.3.z),
+                normal: normal, transform: transform, source: source
+            )
         }
         return nil
     }
@@ -108,17 +117,32 @@ struct LiveShared: Sendable {
 /// Receives ARSession callbacks on a private serial queue. Each sampled frame is reduced to a
 /// Sendable `SourceFrame` there (pose, intrinsics, a luma quality measure and, when it could be
 /// kept, a JPEG of the unrotated sensor image) and then sent to the main actor. ARKit objects
-/// never leave the delegate queue.
+/// never leave the delegate queue, except the camera image of the one frame being encoded.
+///
+/// JPEG encoding runs on its own queue, one frame at a time. Encoding on the delegate queue held
+/// it for the length of an encode, so ARKit's next frames queued up, each holding a camera buffer
+/// from ARKit's small pool. A keyframe candidate that arrives while an encode is running is sent
+/// without a photo instead of waiting: it can't be kept, and the next sampled frame can be.
 final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     let shared = Mutex(LiveShared())
     private let onFrame: @MainActor @Sendable (SourceFrame) -> Void
     private let onEvent: @MainActor @Sendable (LiveEvent) -> Void
     private let queueState = Mutex(QueueState())
     private let context = CIContext(options: [.cacheIntermediates: false])
+    /// Serial. Every sampled frame is delivered through it, so frames reach the main actor in order
+    /// even when the one before was waiting on its JPEG.
+    private let encodeQueue = DispatchQueue(label: "dev.housescanning.housescan.jpeg", qos: .userInitiated)
 
     private struct QueueState {
         var frameCount = 0
         var lastEncode: (time: Double, camera: CameraFrame)?
+        var encoding = false
+    }
+
+    /// The camera image handed to the encode queue. CVPixelBuffer is not Sendable; ARKit doesn't
+    /// write to a delivered frame's image, and only the encode queue reads it.
+    private struct PixelBufferBox: @unchecked Sendable {
+        let buffer: CVPixelBuffer
     }
 
     /// Every sixth frame (about 10 per second at 60 fps) is sampled for capture; more adds cost,
@@ -169,20 +193,26 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 let radius = simd_length(SIMD2(plane.planeExtent.width, plane.planeExtent.height)) / 2
                 return SIMD4(center.x, center.y, center.z, radius)
             }
-        var jpeg = JPEGPayload.none
-        if tracking == .normal, shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera),
-           let data = encode(frame.capturedImage) {
-            jpeg = .data(data)
-        }
         let snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
-            quality: quality, jpeg: jpeg, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
+            quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
         )
-        Task { @MainActor [onFrame] in onFrame(snapshot) }
+        let image = tracking == .normal && shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera)
+            ? PixelBufferBox(buffer: frame.capturedImage) : nil
+        encodeQueue.async { [self] in
+            var delivered = snapshot
+            if let image {
+                if let data = encode(image.buffer) { delivered.jpeg = .data(data) }
+                queueState.withLock { $0.encoding = false }
+            }
+            Task { @MainActor [onFrame] in onFrame(delivered) }
+        }
     }
 
+    /// Whether to encode this frame; claims the single encode slot when it says yes.
     private func shouldEncode(mode: LiveMode, time: Double, camera: CameraFrame) -> Bool {
         queueState.withLock { state in
+            guard !state.encoding else { return false }
             let decision: Bool
             switch mode {
             case .idle:
@@ -198,7 +228,10 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                     decision = true
                 }
             }
-            if decision { state.lastEncode = (time, camera) }
+            if decision {
+                state.lastEncode = (time, camera)
+                state.encoding = true
+            }
             return decision
         }
     }

@@ -180,6 +180,35 @@ import simd
         #expect(errors == ["$.walls: 0 items, fewer than minItems 1"])
     }
 
+    /// A meter tapped on an estimated plane exports a wider error: 0.15 m on top of the given error,
+    /// or on top of the server's 0.3 ft default when none is given.
+    @Test func estimatedPlaneWidensTheMeterError() throws {
+        func meterError(_ plusMinus: Float?, _ plane: MeterPlaneSource) throws -> Double? {
+            var input = Self.input()
+            input.meterPlusMinus = plusMinus
+            input.meterPlane = plane
+            let data = try SceneExport.jsonData(input)
+            #expect(try SceneSchemas.scene().validate(data) == [])
+            return try Value.parse(data)["meter"]?["plus_minus_ft"]?.number
+        }
+        #expect(try meterError(nil, .detectedPlane) == nil)
+        expectClose([try meterError(0.1, .detectedPlane) ?? .nan], [0.3281])
+        expectClose([try meterError(0.1, .estimatedPlane) ?? .nan], [0.8202])  // 0.25 m
+        expectClose([try meterError(nil, .estimatedPlane) ?? .nan], [0.7921])  // 0.3 ft + 0.15 m
+    }
+
+    /// The schema closes `attrs` to operable and well: an exported window passes, another key fails.
+    @Test func attrsAcceptOnlyKnownKeys() throws {
+        let (_, v) = try Self.exported()
+        guard case .object(var document) = v, case .array(var objects)? = document["objects"],
+              case .object(var window) = objects[1] else { Issue.record("no window object"); return }
+        #expect(try SceneSchemas.scene().validate(v) == [])
+        window["attrs"] = .object(["operable": .bool(true), "locked": .bool(false)])
+        objects[1] = .object(window)
+        document["objects"] = .array(objects)
+        #expect(try !SceneSchemas.scene().validate(.object(document)).isEmpty)
+    }
+
     @Test func invalidInputThrows() {
         var input = Self.input()
         input.features = [.fence(foot: [.zero])]

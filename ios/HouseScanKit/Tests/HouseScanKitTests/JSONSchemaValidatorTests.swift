@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts. They came from origin/t3/server at 6fdb440
+/// Vendored copies of the server's contracts. They came from origin/t3/server at 739fb6f
 /// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json);
 /// `vendoredCopiesMatchServer` fails if the server's files change and these are not refreshed.
 enum SceneSchemas {

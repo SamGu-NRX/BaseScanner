@@ -98,13 +98,14 @@ final class KeyframeStore {
         let directory = directory
         let files = keyframes.map(\.fileName) + stills.values.sorted()
         return try await Task.detached(priority: .userInitiated) { () throws -> URL in
-            var entries = [ZipEntry(name: "scene.json", data: sceneJSON)]
+            // Streamed to disk one photo at a time: a long walk's JPEGs held in memory twice (the
+            // entries and the archive) is what the old in-memory build cost.
+            var entries: [(name: String, load: () throws -> Data)] = [("scene.json", { sceneJSON })]
             for name in files {
-                entries.append(ZipEntry(name: name, data: try Data(contentsOf: directory.appending(path: name))))
+                entries.append((name, { try Data(contentsOf: directory.appending(path: name)) }))
             }
-            let zip = try ZipWriter.archive(entries, modified: Date())
             let url = directory.appending(path: "scan.zip")
-            try zip.write(to: url, options: .atomic)
+            try ZipWriter.write(entries, to: url, modified: Date())
             return url
         }.value
     }
