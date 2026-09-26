@@ -238,7 +238,7 @@ def compute(
 ) -> CellCoverage:
     lo, hi = wall.s_range
     cells = np.arange(np.floor(lo / CELL_M) * CELL_M, hi - 1e-9, CELL_M)
-    wall_ok, ground_out, faces = wall_and_ground(wall, frames, depths, vol, mesh, cells)
+    wall_ok, ground_out, _ = wall_and_ground(wall, frames, depths, vol, mesh, cells)
     fg, fc, og, oc = free_space(wall, vol, cells)
     return CellCoverage(cells, wall_ok, ground_out, fg, fc, og, oc)
 

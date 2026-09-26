@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -13,9 +12,8 @@ TIMEOUT_S = 60
 
 
 def _post(url: str, body: bytes) -> tuple[int, bytes]:
+    # The public demo needs no key. The key-protected deployment's scheme is not known here.
     headers = {"Content-Type": "application/json"}
-    if key := os.environ.get("HOUSESCAN_API_KEY"):  # the key-protected deployment, when it exists
-        headers["Authorization"] = f"Bearer {key}"
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:

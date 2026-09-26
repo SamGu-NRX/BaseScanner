@@ -1,0 +1,78 @@
+{
+ "laser as LiDAR": {
+  "wall": {
+   "wall_offset_in": {
+    "left": 0.73,
+    "middle": -0.19,
+    "right": -1.12
+   },
+   "wall_angle_deg": -0.28,
+   "laser_wall_points": 95246,
+   "points_found": "3000 of 3000",
+   "point_error_in": {
+    "median": 1.41,
+    "p90": 5.77
+   },
+   "pair_error_1_3m_in": {
+    "pairs": 7954,
+    "median": 0.59,
+    "p90": 2.1
+   }
+  },
+  "coverage": {
+   "false_observed_runs_ft": [
+    [
+     1.49,
+     1.49
+    ],
+    [
+     10.15,
+     10.48
+    ]
+   ],
+   "wall_ft": 31.9,
+   "claimed_ft": 25.46,
+   "false_observed_ft": 0.46,
+   "passes": true
+  },
+  "notes": [
+   "the capture marks no electric meter: one is assumed mid-wall, 1.5 m up, so the placement is a demonstration, not an answer for this house"
+  ]
+ },
+ "MoGe-2, photos only": {
+  "wall": {
+   "wall_offset_in": {
+    "left": 2.62,
+    "middle": 1.32,
+    "right": 0.02
+   },
+   "wall_angle_deg": -0.78,
+   "laser_wall_points": 50186,
+   "points_found": "3000 of 3000",
+   "point_error_in": {
+    "median": 1.38,
+    "p90": 11.25
+   },
+   "pair_error_1_3m_in": {
+    "pairs": 11835,
+    "median": 0.52,
+    "p90": 2.84
+   }
+  },
+  "coverage": {
+   "false_observed_runs_ft": [
+    [
+     -7.86,
+     -7.53
+    ]
+   ],
+   "wall_ft": 15.8,
+   "claimed_ft": 14.83,
+   "false_observed_ft": 0.39,
+   "passes": true
+  },
+  "notes": [
+   "the capture marks no electric meter: one is assumed mid-wall, 1.5 m up, so the placement is a demonstration, not an answer for this house"
+  ]
+ }
+}

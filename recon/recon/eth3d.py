@@ -85,8 +85,16 @@ def read_views(scene_dir: Path) -> list[View]:
             continue
         f = pose.split()
         w, h, K = cams[f[8]]
-        views.append(View(Path(f[9]).stem, w, h, K, quat_wxyz(np.array(list(map(float, f[1:5])))),
-                          np.array(list(map(float, f[5:8])))))
+        views.append(
+            View(
+                Path(f[9]).stem,
+                w,
+                h,
+                K,
+                quat_wxyz(np.array(list(map(float, f[1:5])))),
+                np.array(list(map(float, f[5:8]))),
+            )
+        )
     return sorted(views, key=lambda v: v.name)
 
 
@@ -126,7 +134,9 @@ def load_scene(scene: str) -> tuple[list[View], np.ndarray, np.ndarray, Capture]
     root = ETH3D / scene
     scan_file = root / "scan_points_10mm.npy"
     if not scan_file.exists():
-        raise FileNotFoundError(f"{scan_file} missing: prepare ETH3D with `make recon-data` in experiments/evals")
+        raise FileNotFoundError(
+            f"{scan_file} missing: prepare ETH3D with `make recon-data` in experiments/evals"
+        )
     views = read_views(root)
     scan = np.concatenate([np.load(scan_file), np.load(root / "occluders_20mm.npy")])
     R, ground = level(views, np.load(scan_file)[::3].astype(np.float64))
@@ -167,8 +177,11 @@ def missing_mask(scene: str, view: View, width: int) -> np.ndarray:
     path = ETH3D / scene / "masks_for_images" / "dslr_images" / f"{view.name}.png"
     if not path.exists():
         return np.zeros((height, width), bool)
-    m = cv2.resize((cv2.imread(str(path), cv2.IMREAD_GRAYSCALE) == MISSING_FROM_SCAN).astype(np.uint8),
-                   (width, height), interpolation=cv2.INTER_NEAREST)
+    m = cv2.resize(
+        (cv2.imread(str(path), cv2.IMREAD_GRAYSCALE) == MISSING_FROM_SCAN).astype(np.uint8),
+        (width, height),
+        interpolation=cv2.INTER_NEAREST,
+    )
     k = max(1, round(13 * width / 1024))
     return cv2.dilate(m, np.ones((2 * k + 1, 2 * k + 1), np.uint8)).astype(bool)
 
@@ -180,7 +193,9 @@ def laser_depths(scene: str, views: list[View], capture: Capture, scan: np.ndarr
     for v, f in zip(views, capture.frames, strict=True):
         d = zbuffer(v, scan, LIDAR_WIDTH, 3)
         d[missing_mask(scene, v, LIDAR_WIDTH)] = np.nan
-        color = cv2.resize(cv2.imread(str(f.image)), (d.shape[1], d.shape[0]), interpolation=cv2.INTER_AREA)
+        color = cv2.resize(
+            cv2.imread(str(f.image)), (d.shape[1], d.shape[0]), interpolation=cv2.INTER_AREA
+        )
         out[f.id] = dep.Depth(d, f.intrinsics * LIDAR_WIDTH / f.width, color, "lidar")
     return out
 
@@ -188,7 +203,9 @@ def laser_depths(scene: str, views: list[View], capture: Capture, scan: np.ndarr
 # --- Geometry against the scan ---------------------------------------------------------------
 
 
-def surface_along(vol: Volume, origin: np.ndarray, dirs: np.ndarray, far: float = 8.0) -> np.ndarray:
+def surface_along(
+    vol: Volume, origin: np.ndarray, dirs: np.ndarray, far: float = 8.0
+) -> np.ndarray:
     """Where each ray from `origin` first crosses the reconstruction's surface (NaN if never)."""
     step = vol.voxel / 2
     ts = np.arange(0.3, far, step)
@@ -208,8 +225,9 @@ def surface_along(vol: Volume, origin: np.ndarray, dirs: np.ndarray, far: float 
     return out
 
 
-def geometry_errors(r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndarray,
-                    rng: np.random.Generator) -> dict:
+def geometry_errors(
+    r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndarray, rng: np.random.Generator
+) -> dict:
     wall = r["wall"]
     loc = wall.local(scan_lev)
     lo, hi = wall.s_range
@@ -217,7 +235,10 @@ def geometry_errors(r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndar
     keep &= (loc[:, 0] > lo) & (loc[:, 0] < hi)
     s, out = loc[keep, 0], loc[keep, 2]
     b, a = np.polyfit(s, out, 1)  # the laser wall face in the fitted wall's coordinates
-    ends = {name: (a + b * x) / FEET * 12 for name, x in (("left", lo), ("middle", (lo + hi) / 2), ("right", hi))}
+    ends = {
+        name: (a + b * x) / FEET * 12
+        for name, x in (("left", lo), ("middle", (lo + hi) / 2), ("right", hi))
+    }
 
     # Per-pixel correspondence: each sampled laser wall point, seen from its nearest view.
     pts = scan_lev[keep][rng.choice(keep.sum(), min(3000, keep.sum()), replace=False)]
@@ -242,10 +263,15 @@ def geometry_errors(r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndar
         "wall_angle_deg": round(float(np.degrees(np.arctan(b))), 2),
         "laser_wall_points": int(keep.sum()),
         "points_found": f"{int(ok.sum())} of {len(pts)}",
-        "point_error_in": {"median": round(float(np.median(along)) / FEET * 12, 2),
-                           "p90": round(float(np.percentile(along, 90)) / FEET * 12, 2)},
-        "pair_error_1_3m_in": {"pairs": int(sel.sum()), "median": round(float(np.median(pair)), 2),
-                               "p90": round(float(np.percentile(pair, 90)), 2)},
+        "point_error_in": {
+            "median": round(float(np.median(along)) / FEET * 12, 2),
+            "p90": round(float(np.percentile(along, 90)) / FEET * 12, 2),
+        },
+        "pair_error_1_3m_in": {
+            "pairs": int(sel.sum()),
+            "median": round(float(np.median(pair)), 2),
+            "p90": round(float(np.percentile(pair, 90)), 2),
+        },
         "laser_face": (float(a), float(b)),
     }
 
@@ -253,17 +279,51 @@ def geometry_errors(r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndar
 # --- Coverage against the scan's visibility --------------------------------------------------
 
 
-def false_observed(r: dict, scene: str, views: list[View], R: np.ndarray, scan: np.ndarray,
-                   face: tuple[float, float]) -> dict:
+def laser_face(
+    wall, scan_lev: np.ndarray, cols: np.ndarray, plane: tuple[float, float]
+) -> np.ndarray:
+    """Per 2 cm column, where the wall's laser-scanned face is, in `out`: the laser plane, or a
+    flat, full-height face in front of it (a pilaster), found as in section 7: in at least 75% of
+    the 10 cm height bins from 0.3 to 1.9 m, the front-most point within 0.6 m of the plane lies
+    within 3 cm of their median."""
+    a, b = plane
+    loc = wall.local(scan_lev)
+    s, h = loc[:, 0], loc[:, 1]
+    rel = loc[:, 2] - (a + b * s)
+    keep = (rel > -0.15) & (rel < 0.6) & (h > 0.3) & (h < 1.9)
+    col = np.floor((s[keep] - cols[0] + 0.01) / 0.02).astype(np.int64)
+    row = np.floor((h[keep] - 0.3) / 0.1).astype(np.int64)
+    ok = (col >= 0) & (col < len(cols))
+    front = np.full((len(cols), 16), -np.inf)
+    np.maximum.at(front, (col[ok], row[ok]), rel[keep][ok])
+    out = a + b * cols
+    for c in range(len(cols)):
+        f = front[c][np.isfinite(front[c])]
+        if len(f) >= 12:
+            m = float(np.median(f))
+            if np.sum(np.abs(f - m) <= 0.03) >= 12 and m > HIDE_ABS_M:
+                out[c] += m
+    return out
+
+
+def false_observed(
+    r: dict,
+    scene: str,
+    views: list[View],
+    R: np.ndarray,
+    scan: np.ndarray,
+    plane: tuple[float, float],
+    scan_lev: np.ndarray,
+) -> dict:
     """README section 7's metric on the worker's claim: claimed wall columns (2 cm) where at least
     two 5 cm samples of the band were seen by no photo, on the laser's wall face."""
     wall, cov = r["wall"], r["coverage"]
     lo, hi = wall.s_range
     cols = np.arange(lo + 0.01, hi, 0.02)
     heights = 1.9812 * (np.arange(40) + 0.5) / 40
-    a, b = face
+    face = laser_face(wall, scan_lev, cols, plane)
     S, H = np.meshgrid(cols, heights, indexing="ij")
-    pts = wall.world(S, H, a + b * S).reshape(-1, 3)
+    pts = wall.world(S, H, np.broadcast_to(face[:, None], S.shape)).reshape(-1, 3)
     X = pts @ R  # levelled -> ETH3D world
     seen = np.zeros(len(pts), bool)
     for v in views:
@@ -283,14 +343,24 @@ def false_observed(r: dict, scene: str, views: list[View], R: np.ndarray, scan: 
         nearest = buf[iv, iu]
         hidden = np.isfinite(nearest) & (nearest < z - np.maximum(HIDE_ABS_M, HIDE_REL * z))
         m = 1024 / v.width
-        hidden |= miss[np.clip(np.nan_to_num(vv * m).astype(int), 0, miss.shape[0] - 1),
-                       np.clip(np.nan_to_num(u * m).astype(int), 0, miss.shape[1] - 1)]
+        hidden |= miss[
+            np.clip(np.nan_to_num(vv * m).astype(int), 0, miss.shape[0] - 1),
+            np.clip(np.nan_to_num(u * m).astype(int), 0, miss.shape[1] - 1),
+        ]
         seen |= framed & near & front & ~hidden
     unseen = (~seen).reshape(len(cols), len(heights)).sum(axis=1)
     cell = np.floor((cols - cov.cells[0]) / CELL_M).astype(int)
     claimed = cov.wall[np.clip(cell, 0, len(cov.wall) - 1)] & (cell >= 0) & (cell < len(cov.wall))
     bad = claimed & (unseen >= 2)
+    runs, start = [], None
+    for i, x in enumerate(np.append(bad, False)):
+        if x and start is None:
+            start = i
+        elif not x and start is not None:
+            runs.append([round(cols[start] / FEET, 2), round(cols[i - 1] / FEET, 2)])
+            start = None
     return {
+        "false_observed_runs_ft": runs,
         "wall_ft": round((hi - lo) / FEET, 1),
         "claimed_ft": round(claimed.sum() * 0.02 / FEET, 2),
         "false_observed_ft": round(bad.sum() * 0.02 / FEET, 2),
@@ -312,7 +382,7 @@ def run(scene: str, work: Path) -> dict:
             report["source"] = "moge2-triangulated"
         r = reconstruct(capture, depths, report)
         geo = geometry_errors(r, views, R, scan_lev, rng)
-        cov = false_observed(r, scene, views, R, scan, geo.pop("laser_face"))
+        cov = false_observed(r, scene, views, R, scan, geo.pop("laser_face"), scan_lev)
         rows[label] = {"wall": geo, "coverage": cov, "notes": list(capture.notes)}
         capture.notes.clear()
         print(label, json.dumps(rows[label]), file=sys.stderr)
@@ -323,19 +393,22 @@ def markdown(scene: str, rows: dict) -> str:
     lines = [
         f"# Worker acceptance on ETH3D {scene} (generated by `make accept`)",
         "",
-        "Wall offset: the laser's wall face relative to the worker's fitted plane at the wall's ends "
+        "Wall offset: the laser's wall face relative to the worker's fitted plane at the wall's "
+        "ends "
         "and middle. Point error: the reconstruction's surface along each pixel's ray against the "
         "laser point seen there. Pair error: |reconstructed - laser| distance between two such "
         f"points 1 to 3 m apart. False-observed: pass at {PASS_FT} ft or less.",
         "",
-        "| Depth | Wall offset L / mid / R (in) | Angle | Point error median / p90 (in) | Pair error median / p90 (in) | Wall | Claimed | False-observed | Pass |",
+        "| Depth | Wall offset L / mid / R (in) | Angle | Point error median / p90 (in) "
+        "| Pair error median / p90 (in) | Wall | Claimed | False-observed | Pass |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for label, row in rows.items():
         w, c = row["wall"], row["coverage"]
         o = w["wall_offset_in"]
         lines.append(
-            f"| {label} | {o['left']:+.1f} / {o['middle']:+.1f} / {o['right']:+.1f} | {w['wall_angle_deg']:+.2f}° | "
+            f"| {label} | {o['left']:+.1f} / {o['middle']:+.1f} / {o['right']:+.1f} | "
+            f"{w['wall_angle_deg']:+.2f}° | "
             f"{w['point_error_in']['median']:.1f} / {w['point_error_in']['p90']:.1f} | "
             f"{w['pair_error_1_3m_in']['median']:.1f} / {w['pair_error_1_3m_in']['p90']:.1f} | "
             f"{c['wall_ft']:.1f} ft | {c['claimed_ft']:.1f} ft | {c['false_observed_ft']:.2f} ft | "

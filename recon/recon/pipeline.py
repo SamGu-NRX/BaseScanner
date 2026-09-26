@@ -1,4 +1,4 @@
-"""The worker: one capture in, a 3D model, geometry, coverage, scene.json and the server's answer out.
+"""The worker: a capture in; a 3D model, geometry, coverage, scene.json and the server's answer out.
 
 Stages, each a function of the one before, so any of them can move to another machine:
 capture (adapters) -> depth maps (LiDAR, or MoGe-2 rescaled by the AR poses) -> fused volume and
@@ -30,16 +30,16 @@ def _log(msg: str) -> None:
     print(f"recon: {msg}", file=sys.stderr, flush=True)
 
 
-def reconstruct(capture: Capture, depths: dict, depth_report: dict, move_meter: bool = False) -> dict:
-    """Everything after depth, up to coverage, returned for the writers and the acceptance checks."""
+def reconstruct(
+    capture: Capture, depths: dict, depth_report: dict, move_meter: bool = False
+) -> dict:
+    """Everything after depth, up to coverage, for the writers and the acceptance checks."""
     t0 = time.perf_counter()
     source = depth_report["source"]
     poses = {f.id: f.cam_to_world for f in capture.frames}
     vol = fusion.integrate(depths, poses)
     surface = fusion.mesh(vol)
-    _log(
-        f"fused at {vol.voxel * 100:.1f} cm voxels: {len(surface.vertices)} vertices, {len(surface.faces)} faces"
-    )
+    _log(f"fused at {vol.voxel * 100:.1f} cm voxels: {len(surface.vertices)} vertices")
     ground = geometry.fit_ground(surface, capture.ground_y)
     cams = np.array([f.center for f in capture.frames])
     lines = geometry.wall_lines(surface, ground.y, cams, np.random.default_rng(0))
@@ -151,7 +151,9 @@ def _coverage_doc(cov: coverage.CellCoverage) -> dict:
 
 def _report(capture: Capture, r: dict, geo: dict, doc: dict, result: dict | None) -> str:
     cov, dr = r["coverage"], r["depth_report"]
-    cell_ft = coverage.CELL_M / FEET
+    cell = coverage.CELL_M / FEET
+    wall, ground = geo["walls"][0], geo["ground"]
+    lo, hi = wall["s_range_ft"]
     lines = [
         f"# Reconstruction of {capture.root.name}",
         "",
@@ -159,27 +161,31 @@ def _report(capture: Capture, r: dict, geo: dict, doc: dict, result: dict | None
         f"- Depth: {r['source']}. {depth.ACCURACY_NOTE[r['source']]}",
     ]
     if r["source"] == "moge2-triangulated":
+        a, b = dr["scale_range"]
         lines.append(
-            f"- Scale fitted for {dr['fitted']} of {dr['frames']} frames: MoGe-2 x {dr['median_scale']:.3f} "
-            f"median ({dr['scale_range'][0]:.3f} to {dr['scale_range'][1]:.3f}); the rest take the median."
+            f"- Scale fitted for {dr['fitted']} of {dr['frames']} frames: MoGe-2 x "
+            f"{dr['median_scale']:.3f} median ({a:.3f} to {b:.3f}); the rest take the median."
         )
+    facing = np.isfinite(cov.facing_gap).sum() * cell
+    over = np.isfinite(cov.overhead_clearance).sum() * cell
+    obs = doc["coverage"]["observed"]
     lines += [
-        f"- Model: {len(r['mesh'].vertices)} vertices at {r['volume'].voxel * 100:.1f} cm voxels (model.glb, meter frame).",
-        f"- Wall: {geo['walls'][0]['s_range_ft'][0]:.1f} to {geo['walls'][0]['s_range_ft'][1]:.1f} ft of s, "
-        f"plane fit RMS {geo['walls'][0]['fit_rms_in']:.1f} in; {len(geo['other_walls'])} other wall stretches.",
-        f"- Ground: {geo['ground']['height_ft']:+.2f} ft, tilt {geo['ground']['tilt_deg']:.1f} deg, fit RMS {geo['ground']['fit_rms_in']:.1f} in.",
-        f"- Wall band observed: {cov.wall.sum() * cell_ft:.1f} of {len(cov.cells) * cell_ft:.1f} ft.",
-        f"- Ground seen at least 4 ft out: {(cov.ground_out >= 4 * FEET).sum() * cell_ft:.1f} ft of wall.",
-        f"- Facing: gap measured over {np.isfinite(cov.facing_gap).sum() * cell_ft:.1f} ft; "
-        f"overhead: clearance measured over {np.isfinite(cov.overhead_clearance).sum() * cell_ft:.1f} ft.",
-        f"- scene.json: {len(doc['coverage']['observed'])} observed entries, {len(doc['facing'])} facing, {len(doc['overheads'])} overheads.",
+        f"- Model: {len(r['mesh'].vertices)} vertices at {r['volume'].voxel * 100:.1f} cm voxels.",
+        f"- Wall: {lo:.1f} to {hi:.1f} ft of s, plane fit RMS {wall['fit_rms_in']:.1f} in; "
+        f"{len(geo['other_walls'])} other wall stretches.",
+        f"- Ground: {ground['height_ft']:+.2f} ft, tilt {ground['tilt_deg']:.1f} deg, "
+        f"fit RMS {ground['fit_rms_in']:.1f} in.",
+        f"- Wall band observed: {cov.wall.sum() * cell:.1f} of {len(cov.cells) * cell:.1f} ft.",
+        f"- Ground seen 4 ft out or more: {(cov.ground_out >= 4 * FEET).sum() * cell:.1f} ft.",
+        f"- Facing gap measured over {facing:.1f} ft; overhead clearance over {over:.1f} ft.",
+        f"- scene.json: {len(obs)} observed entries, {len(doc['facing'])} facing, "
+        f"{len(doc['overheads'])} overheads.",
     ]
     lines += [f"- Note: {n}" for n in capture.notes]
     if result is not None:
         lines += ["", f"## Server: {result.get('decision')}", "", result.get("summary", ""), ""]
         lines += ["| Check | Outcome | Reason |", "| --- | --- | --- |"]
         for c in result.get("checks", []):
-            lines.append(
-                f"| {c.get('check')} | {c.get('outcome')} | {str(c.get('reason', '')).replace('|', '/')} |"
-            )
+            reason = str(c.get("reason", "")).replace("|", "/")
+            lines.append(f"| {c.get('id', c.get('check'))} | {c.get('outcome')} | {reason} |")
     return "\n".join(lines) + "\n"

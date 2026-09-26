@@ -20,3 +20,16 @@ make accept                                           # ETH3D acceptance (prepar
 - **Coverage on ETH3D electro's wall**: wall the worker calls observed where at least 10 cm of the band was seen by no photo, against the laser scan's visibility, must be at most **0.5 ft**. This is the bar and metric of experiments/evals README section 7 (t3/evals), where the app's own coverage map claimed 1.1 ft.
 - **Wall geometry on ETH3D electro**: reported in inches against the laser scan, with no pass bar set in advance. It covers the fitted wall plane's offset and angle, and the reconstruction's point at each pixel where a laser wall point is seen, as point-pair errors over 1 to 3 m spans, the evals' metric.
 - **End to end**: the ADVIO replay and the app's Simulator bundle each reach a placement-server result.
+
+## Results
+
+`make accept` on ETH3D electro ([results/eth3d_electro.md](results/eth3d_electro.md)):
+
+| Depth | Wall pair error, 1–3 m, median / p90 | Wall claimed | False-observed |
+| --- | --- | --- | --- |
+| Laser scan standing in for LiDAR | 0.6 / 2.1 in | 25.5 of 31.9 ft | 0.46 ft (passes) |
+| MoGe-2 rescaled with the poses | 0.5 / 2.8 in | 14.8 of 15.8 ft | 0.39 ft (passes) |
+
+The two paths chose different stretches of wall, so their geometry rows are not directly comparable. The ADVIO replay and the app's Simulator bundle each reach a server result (`manual_review`: the ADVIO camera looks along its path, so little wall is seen head-on). The Simulator bundle needs `ARGS=--move-meter`, because its replayed wall has no surface behind it.
+
+The handoff to the server team, with everything measured and reusable, is [HANDOFF.md](HANDOFF.md).

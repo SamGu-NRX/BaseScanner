@@ -87,7 +87,8 @@ def fit_ground(mesh: Mesh, hint_y: float | None) -> Ground:
         cand = cand[np.abs(cand[:, 1] - base) < 0.3]
     if len(cand) < 50:
         raise RuntimeError(
-            f"only {len(cand)} ground points in the reconstruction; the photos need to show the ground"
+            f"only {len(cand)} ground points in the reconstruction; "
+            "the photos need to show the ground"
         )
     for _ in range(3):  # least squares, then drop points more than 3 RMS off and refit
         c = cand.mean(axis=0)
@@ -186,7 +187,10 @@ def choose_wall(lines: list[WallLine], capture: Capture, move_meter: bool) -> Wa
     allows the most-seen wall. Without a phone wall, the most-seen wall."""
     if not lines:
         raise RuntimeError("no straight vertical wall found in the reconstruction")
-    most_seen = max(lines, key=lambda line: (frames_seeing(line, capture.frames), line.extent[1] - line.extent[0]))
+    most_seen = max(
+        lines,
+        key=lambda line: (frames_seeing(line, capture.frames), line.extent[1] - line.extent[0]),
+    )
     hint = capture.wall
     if hint is None:
         return most_seen

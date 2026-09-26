@@ -162,19 +162,38 @@ class Mesh:
 
 
 def mesh(vol: Volume) -> Mesh:
+    """The zero level of the observed volume. Unobserved voxels keep the initial +1, so marching
+    cubes also finds a false surface between the last observed voxel behind a wall (-1) and the
+    unobserved one beyond it, a truncation distance behind every real surface. Every vertex lies
+    on an edge between two voxels; vertices on an edge with an unobserved end are dropped, with
+    their faces."""
     observed = vol.weight > 0
     verts, faces, normals, _ = marching_cubes(
         vol.tsdf,
         level=0.0,
         spacing=(vol.voxel,) * 3,
-        mask=observed,
         allow_degenerate=False,
-        gradient_direction="ascent",
     )
-    verts = verts + vol.origin
+    grid = verts / vol.voxel
+    hi = np.array(vol.shape) - 1
+    lo_i = np.clip(np.floor(grid + 1e-6).astype(np.int64), 0, hi)
+    hi_i = np.clip(np.ceil(grid - 1e-6).astype(np.int64), 0, hi)
+    good = observed[tuple(lo_i.T)] & observed[tuple(hi_i.T)]
+    faces = faces[good[faces].all(axis=1)]
+    used = np.unique(faces)
+    remap = np.full(len(verts), -1, np.int64)
+    remap[used] = np.arange(len(used))
+    verts, normals, faces = verts[used] + vol.origin, normals[used], remap[faces]
     idx, _ = vol.ijk(verts)
     n = vol.color_n[idx[:, 0], idx[:, 1], idx[:, 2]]
     bgr = vol.color[idx[:, 0], idx[:, 1], idx[:, 2]] / np.maximum(n, 1)[:, None]
     rgb = np.where(n[:, None] > 0, bgr[:, ::-1], 128).clip(0, 255).astype(np.uint8)
-    # With gradient_direction="ascent" the normals point from negative (inside) to positive (seen).
+    # scikit-image's normals point down the gradient, into the surface; flip them toward the seen
+    # side, and wind the faces counter-clockwise seen from there (glTF's front faces). Checked in
+    # tests/test_worker.py.
+    normals = -normals
+    v = verts[faces]
+    face_n = np.cross(v[:, 1] - v[:, 0], v[:, 2] - v[:, 0])
+    if np.median(np.einsum("ij,ij->i", face_n, normals[faces].mean(axis=1))) < 0:
+        faces = faces[:, ::-1]
     return Mesh(verts.astype(np.float32), faces.astype(np.uint32), normals.astype(np.float32), rgb)

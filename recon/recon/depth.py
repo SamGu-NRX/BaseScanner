@@ -96,9 +96,8 @@ def _image(frame: Frame) -> np.ndarray:
     if img is None:
         raise FileNotFoundError(frame.image)
     if img.shape[:2] != (frame.height, frame.width):
-        raise ValueError(
-            f"{frame.image}: {img.shape[1]}x{img.shape[0]}, keyframe says {frame.width}x{frame.height}"
-        )
+        got, want = f"{img.shape[1]}x{img.shape[0]}", f"{frame.width}x{frame.height}"
+        raise ValueError(f"{frame.image}: {got}, keyframe says {want}")
     return img
 
 
