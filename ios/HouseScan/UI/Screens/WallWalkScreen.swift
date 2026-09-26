@@ -181,7 +181,13 @@ struct WallWalkScreen: View {
             // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the
             // accessibility audit reported as not following Dynamic Type.
             HStack(spacing: 10) {
+                // While the walk asks to look past an obstruction, that step has one way out
+                // ("Can't see past it" in the card), so "Mark something" steps aside without
+                // leaving the row: it keeps its place and stays the same view.
                 markSomethingButton
+                    .opacity(isSeeingBehind ? 0 : 1)
+                    .allowsHitTesting(!isSeeingBehind)
+                    .accessibilityHidden(isSeeingBehind)
                 switch controlsKey {
                 case .nextWall:
                     Button {
@@ -241,6 +247,11 @@ struct WallWalkScreen: View {
     private var nextWallSymbol: String {
         if case .markNextWall(.left, _) = state.guidance { return "arrow.turn.up.left" }
         return "arrow.turn.up.right"
+    }
+
+    private var isSeeingBehind: Bool {
+        if case .seeBehind = state.guidance { return true }
+        return false
     }
 
     private var markSomethingButton: some View {
