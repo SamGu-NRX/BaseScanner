@@ -326,14 +326,46 @@ def _solve(payload: bytes, is_zip: bool) -> tuple[Scene, dict[str, Any]]:
     return scene, solve(scene, LOADED)
 
 
-@app.post("/v1/placements")
+# The routes read the raw body so one endpoint can take JSON, a zip or a form, so FastAPI can't
+# infer the request body; publish it explicitly for clients that read /openapi.json.
+SCENE_BODY: dict[str, Any] = {
+    "requestBody": {
+        "required": True,
+        "description": "A scene: bare scene.json, a zip bundle (scene.json plus the images it "
+        "names), or a multipart form whose one field `bundle` holds either. See "
+        "schemas/scene.schema.json.",
+        "content": {
+            "application/json": {"schema": {"type": "object", "title": "scene.json"}},
+            "application/zip": {"schema": {"type": "string", "format": "binary"}},
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "required": [_BUNDLE_FIELD],
+                    "properties": {_BUNDLE_FIELD: {"type": "string", "format": "binary"}},
+                }
+            },
+        },
+    }
+}
+
+
+@app.post(
+    "/v1/placements",
+    openapi_extra=SCENE_BODY,
+    responses={200: {"description": "The result (schemas/result.schema.json)"}},
+)
 async def placements(request: Request) -> JSONResponse:
     payload, is_zip = await _upload(request)
     _scene, result = await run_in_threadpool(_solve, payload, is_zip)
     return JSONResponse(result)
 
 
-@app.post("/v1/placements/site-plan.svg")
+@app.post(
+    "/v1/placements/site-plan.svg",
+    openapi_extra=SCENE_BODY,
+    response_class=Response,
+    responses={200: {"content": {"image/svg+xml": {}}, "description": "The site plan"}},
+)
 async def site_plan(request: Request) -> Response:
     payload, is_zip = await _upload(request)
 

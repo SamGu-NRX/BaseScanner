@@ -361,3 +361,12 @@ def test_solving_the_example_takes_under_a_second() -> None:
     started = time.perf_counter()
     solve(scene, api.LOADED)
     assert time.perf_counter() - started < 1.0
+
+
+def test_openapi_publishes_the_scene_request_body(client: TestClient) -> None:
+    # Clients (the verification harness, a future SDK) discover the upload formats here.
+    paths = client.get("/openapi.json").json()["paths"]
+    for path in ("/v1/placements", "/v1/placements/site-plan.svg"):
+        content = paths[path]["post"]["requestBody"]["content"]
+        assert set(content) == {"application/json", "application/zip", "multipart/form-data"}
+        assert content["multipart/form-data"]["schema"]["required"] == ["bundle"]
