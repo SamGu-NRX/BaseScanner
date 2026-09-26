@@ -3,8 +3,8 @@ import simd
 import Testing
 
 // Coverage with LiDAR depth on the standard wall (face z = 0, s = x, ground y = 0). Cell 0 spans
-// s [0, 0.1524]; its samples sit at s = 0.0381 and 0.1143. Wall rows are at heights 0, 0.9906 and
-// 1.9812; ground rows at 0, 0.6 and 1.2 out. Depth images are rendered from the scene mesh
+// s [0, 0.1524]; its samples sit at s = 0.0381 and 0.1143. Wall rows are every 0.1524 m from 0 to
+// 2.286; ground rows at 0, 0.6 and 1.2 out. Depth images are rendered from the scene mesh
 // (`renderDepth`), 128 x 96, so a pixel is 0.01 rad: every margin below is several pixels wide.
 @Suite struct CoverageDepthTests {
     /// A box standing in front of the wall: s in [-0.5, 0.5], 0.5 to 1.0 m out, 1.5 m tall.

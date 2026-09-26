@@ -38,24 +38,31 @@ public struct MeasuredWallChain: Sendable, Equatable {
         return [first.start] + walls.map(\.end)
     }
 
-    /// The chain as a `WallFrame` for coverage and scene.json: its meter piece passes through
-    /// `meter` (world) with the measured piece's direction, and each measured corner is a turn
-    /// at the same distance along the chain from the meter, carrying its piece's source. `frame`
-    /// is the map's frame. Nil when the chain is empty. The meter piece's source is
-    /// `walls[meterIndex].source`; a `WallFrame` has no field for it.
+    /// The chain as a `WallFrame` for coverage and scene.json. Its meter piece lies on the
+    /// measured piece's fitted line, and s = 0 is the meter's foot on that line, at the meter's
+    /// height: a meter tapped on the face of a box standing proud of the wall leaves the wall
+    /// where it was measured, so the piece's `plusMinus` still describes it, and the box's
+    /// offset stays with the meter (`wallPoint(meter).out`). Each measured corner is a turn at
+    /// the same distance along the chain from the foot, carrying its piece's source; the meter
+    /// piece's source is the frame's `source`. `meter` is in world, `frame` is the map's frame.
+    /// Nil when the chain is empty.
     public func wallFrame(meter: SIMD3<Float>, groundY: Float, frame: MapFrame) -> WallFrame? {
         guard meterIndex < walls.count else { return nil }
         func worldOutward(_ wall: MeasuredWall) -> SIMD3<Float> {
             let d = frame.worldDirection(SIMD3(wall.outward.x, 0, wall.outward.y))
             return simd_normalize(SIMD3(d.x, 0, d.z))
         }
-        guard var result = WallFrame(meter: meter, outward: worldOutward(walls[meterIndex]), groundY: groundY) else { return nil }
         let meterMap = frame.map(meter)
         let meterPiece = walls[meterIndex]
         // s of the meter's foot on its piece, from the piece's start, kept a centimeter inside
         // it so the first corner either way lies beyond the meter as `WallFrame.turn` requires.
         let inset = min(0.01, meterPiece.length / 2)
         let meterS = min(max(simd_dot(SIMD2(meterMap.x, meterMap.z) - meterPiece.start, meterPiece.along), inset), meterPiece.length - inset)
+        let foot = meterPiece.start + meterPiece.along * meterS
+        guard var result = WallFrame(
+            meter: frame.world(SIMD3(foot.x, meterMap.y, foot.y)), outward: worldOutward(meterPiece), groundY: groundY
+        ) else { return nil }
+        result.source = meterPiece.source
         var s = meterPiece.length - meterS
         for index in walls.indices.dropFirst(meterIndex + 1) {
             result.turn(.right, at: WallCorner(s: s, outward: worldOutward(walls[index]), source: walls[index].source))

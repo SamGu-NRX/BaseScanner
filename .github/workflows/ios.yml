@@ -36,6 +36,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # The package's drift tests compare the vendored schemas with the server's and the capture
+      # packet's own copies. Before those branches merge they exist only as branches, which the
+      # shallow checkout leaves out; without them the tests report as skipped, not passed.
+      - name: Fetch the contract branches
+        run: |
+          git fetch --no-tags --depth=1 origin \
+            +refs/heads/t3/server:refs/remotes/origin/t3/server \
+            +refs/heads/t3/packet:refs/remotes/origin/t3/packet \
+            || echo "::warning::t3/server or t3/packet is gone; the drift tests read the merged tree or skip"
+
       - name: Show toolchain
         run: |
           if [ ! -d "$DEVELOPER_DIR" ]; then

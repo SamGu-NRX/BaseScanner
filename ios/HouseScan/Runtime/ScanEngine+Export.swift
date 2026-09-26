@@ -18,10 +18,11 @@ extension ScanEngine {
         let wall = geometry.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         // The corners carry their pieces' sources (`markNextWall`, or the measured chain's); the
-        // meter's piece is `geometry.meterSource`.
+        // meter's piece, its own (`meterLineSource`, set on the map in `markMeter`, or the
+        // measured piece's).
         let sceneWall = SceneWall(
             meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners,
-            source: geometry.meterSource)
+            source: wall.source)
 
         // SceneExport rejects negative heights, a top below a bottom, ground points behind the
         // wall and a zero-length driveway edge, and taps can produce each of them once the ground
@@ -82,7 +83,10 @@ extension ScanEngine {
             meshOverheads: mesh.overheads,
             // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
             groundType: state.groundAnswer.flatMap(Self.sceneGroundType),
-            wallPlusMinus: geometry.plusMinus
+            wallPlusMinus: geometry.plusMinus,
+            // A measured wall lies on its fitted line; the meter stays where it was tapped, which
+            // may be on a box proud of that line.
+            meterPosition: wall.meter == map.wall.meter ? nil : map.wall.meter - drop
         )
         return try SceneExport.jsonData(input)
     }
@@ -91,8 +95,6 @@ extension ScanEngine {
     /// of its pieces' lines is known.
     struct ExportGeometry: Sendable {
         var wall: WallFrame
-        /// `SceneWall.source`: how the meter's piece was found.
-        var meterSource: WallLineSource
         var baselineS: ClosedRange<Float>
         var coverage: SceneCoverage
         /// `SceneInput.wallPlusMinus`; empty takes the server's default for every piece.
@@ -106,7 +108,7 @@ extension ScanEngine {
         guard let map = coverage else { throw ExportError.noWall }
         guard let map3D else {
             return ExportGeometry(
-                wall: map.wall, meterSource: meterLineSource, baselineS: Self.exportSpan(map),
+                wall: map.wall, baselineS: Self.exportSpan(map),
                 coverage: SceneCoverage(map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit),
                 plusMinus: [])
         }
@@ -119,17 +121,17 @@ extension ScanEngine {
             guard let map = coverage else { throw ExportError.noWall }
             guard snapshot.wall == map.wall else { continue }
             let export = try Map3DCoverageSource.export(
-                snapshot, tapWall: map.wall, tapMeterSource: meterLineSource, baselineS: Self.exportSpan(map),
+                snapshot, tapWall: map.wall, baselineS: Self.exportSpan(map),
                 leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit,
                 walkedFacing: map.facingSpans(), confirmedOverhead: map.overheadSpans())
             let why = if let reason = export.tappedBecause {
                 "tapped wall (\(reason)); walked facing and confirmed overhead merged in"
             } else {
-                "measured wall; walked facing and confirmed overhead left out, being in the tapped wall's s"
+                "measured wall; walked facing and confirmed overhead carried onto its meter piece"
             }
             RuntimeLog.engine.info("export: 3D map revision \(snapshot.revision), \(why, privacy: .public), \(export.wall.segments.count) pieces, s \(export.baselineS.lowerBound)...\(export.baselineS.upperBound)")
             return ExportGeometry(
-                wall: export.wall, meterSource: export.meterSource, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
+                wall: export.wall, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
         }
         throw ExportError.wallKeptMoving
     }
@@ -249,11 +251,6 @@ extension ScanEngine {
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
         let placedWall = exportedWall ?? coverage?.wall
-        // The marked ends are places on the walk's wall; the same places on the placed one.
-        var ends: (left: Float?, right: Float?) = (coverage?.leftEnd, coverage?.rightEnd)
-        if let placedWall, let walk = coverage?.wall, placedWall != walk {
-            ends = (ends.left.map { placedWall.wallPoint(walk.world(s: $0, height: 0)).s }, ends.right.map { placedWall.wallPoint(walk.world(s: $0, height: 0)).s })
-        }
         let sceneWall = placedWall.map {
             SceneWall(meter: $0.meter, outward: $0.outward, groundY: $0.groundY, leftCorners: $0.leftCorners, rightCorners: $0.rightCorners)
         }
@@ -344,7 +341,7 @@ extension ScanEngine {
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
                 // or answered with something overhead stays with the installer.
-                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd)
+                capturable: gapPlanner.plan(for: walkRequest(item), leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd)
                     .map { !skippedGaps.contains($0) } ?? false
             )
         }
@@ -371,8 +368,17 @@ extension ScanEngine {
             missing: missing,
             unseenSide: unseen,
             isSample: isSample,
-            wall: placedWall.map { Self.geometry($0, leftEnd: ends.left, rightEnd: ends.right) }
+            wall: resultWall()
         )
+    }
+
+    /// The answer's wall (`exportedWall`, or the walk's) as the result screens draw it, with the
+    /// marked ends carried onto it from the walk's wall.
+    func resultWall() -> WallGeometry? {
+        guard let walk = coverage?.wall else { return nil }
+        let wall = exportedWall ?? walk
+        return Self.geometry(
+            wall, leftEnd: coverage?.leftEnd.map { walk.s($0, along: wall) }, rightEnd: coverage?.rightEnd.map { walk.s($0, along: wall) })
     }
 
     static func outcome(_ outcome: PlacementOutcome) -> CheckOutcome {

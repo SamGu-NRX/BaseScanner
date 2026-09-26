@@ -200,23 +200,25 @@ public struct GapPlanner: Sendable {
     }
 
     /// The fraction of `requested` (feet) that `spans` (meters) cover, measured the way the server
-    /// reads the uploaded scene: the spans in feet at the export's four decimals, joined where
-    /// they touch within 1e-9 ft (server/scene.py `missing` on origin/t3/server).
+    /// reads the uploaded scene: the spans in feet as the export writes them, each end rounded
+    /// inward (`SceneExport.spanInward`), and gaps under the server's COVERAGE_TOLERANCE_FT
+    /// (0.01 ft, server/scene.py `missing` at t3/server 930e8e5) read as rounding, not unseen.
     static func fraction(of requested: ClosedRange<Double>, coveredBy spans: [ClosedRange<Float>]) -> Double {
-        let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
         let low = requested.lowerBound
         let high = requested.upperBound
         guard high > low else { return 0 }
         let eps = 1e-9
+        let tolerance = 0.01
         var cursor = low
         var missing = 0.0
-        for (a, b) in spans.map({ (feet($0.lowerBound), feet($0.upperBound)) }).sorted(by: { $0 < $1 }) {
+        let written = spans.compactMap { SceneExport.spanInward($0) }.map { ($0[0], $0[1]) }
+        for (a, b) in written.sorted(by: { $0 < $1 }) {
             if b <= cursor + eps { continue }
             if a >= high - eps { break }
-            if a > cursor + eps { missing += min(a, high) - cursor }
+            if a > cursor + eps, min(a, high) - cursor >= tolerance { missing += min(a, high) - cursor }
             cursor = max(cursor, b)
         }
-        if cursor < high - eps { missing += high - cursor }
+        if cursor < high - eps, high - cursor >= tolerance { missing += high - cursor }
         return max(0, 1 - missing / (high - low))
     }
 
@@ -236,7 +238,7 @@ extension GapPlanner {
         switch item.band {
         case .ground?: return out > SceneExport.feetDown(config.groundDepthReach)
         case .wall?: return out > SceneExport.feetDown(config.wallCaptureHeight)
-        case .facing?, .overhead?, nil: return false
+        case .facing?, .overhead?, .unknown?, nil: return false
         }
     }
 
@@ -248,7 +250,7 @@ extension GapPlanner {
     /// (overhead), the wall seen that high up (wall). A facing item without `out_ft` asks for a measurement of what faces the wall,
     /// which a walk can't give, so it has no request. A past-end item asks for the ground 2 m
     /// beyond that end: far enough to show whether the wall continues, near enough to stay one
-    /// instruction.
+    /// instruction. An item of a kind or band this app doesn't know has no request.
     public func plan(for item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?) -> GapPlan? {
         let metersPerFoot: Float = 0.3048
         switch item.kind {
@@ -264,7 +266,7 @@ extension GapPlanner {
                 guard let out else { return nil }
                 (band, need) = (.ground, .walkOut(out))
             case .overhead?: (band, need) = (.wall, .overhead(out))
-            case nil: return nil
+            case .unknown?, nil: return nil
             }
             let low = Float(min(span.x, span.y)) * metersPerFoot
             let high = Float(max(span.x, span.y)) * metersPerFoot
@@ -281,6 +283,26 @@ extension GapPlanner {
                 let end = rightEnd ?? 0
                 return GapPlan(band: .ground, span: end...(end + 2), reason: .server)
             }
+        case .unknown:
+            return nil
         }
+    }
+}
+
+extension PlacementMissingEvidence {
+    /// This request with its `span_ft` carried from the wall scene.json described (`exported`) to
+    /// the walk's (`walk`), where the gap planner and the coverage map measure s. Under
+    /// `-coverage map3d` the scene can describe the measured wall chain, whose s differs from the
+    /// walk's, most past a corner only one of them has.
+    public func along(_ walk: WallFrame, from exported: WallFrame) -> PlacementMissingEvidence {
+        guard walk != exported, let span = spanFt else { return self }
+        let feetPerMeter = SceneUnits.feetPerMeter
+        func carried(_ feet: Double) -> Double {
+            SceneExport.round4(Double(exported.s(Float(feet / feetPerMeter), along: walk)) * feetPerMeter)
+        }
+        var mapped = self
+        let ends = [carried(span.x), carried(span.y)]
+        mapped.spanFt = SIMD2(ends.min() ?? 0, ends.max() ?? 0)
+        return mapped
     }
 }

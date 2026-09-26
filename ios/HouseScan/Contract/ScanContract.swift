@@ -48,6 +48,16 @@ enum TrackingQuality: Equatable, Sendable {
         case relocalizing
         case unknown
     }
+
+    /// The phone doesn't know where it is in the world frame the scan was measured in: ARKit is
+    /// relocalizing, or not tracking at all. Anything tapped into the scene has to wait. The
+    /// other limited states (moving fast, a plain surface) still keep the frame.
+    var hasLostItsPlace: Bool {
+        switch self {
+        case .notAvailable, .limited(.relocalizing): true
+        case .normal, .limited: false
+        }
+    }
 }
 
 /// What the screen shows behind the overlays.
