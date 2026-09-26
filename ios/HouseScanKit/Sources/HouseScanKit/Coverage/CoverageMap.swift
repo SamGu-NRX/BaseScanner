@@ -65,6 +65,13 @@ public struct CoverageConfig: Sendable, Equatable {
     /// between them while staying under two strides, too short to have walked around something.
     /// A hypothesis, not measured.
     public var walkStep: Float = 1.0
+    /// A tilt-up view counts as overhead evidence only where it also shows the wall at this
+    /// height, the top of the wall band, so what it shows above joins what the walk saw below
+    /// without a hole between them.
+    public var overheadFrom: Float = 1.9812
+    /// Overhead heights are rounded down to 0.1 ft, so a view's cells merge into a few entries
+    /// instead of differing in the last millimetre. It costs at most 0.1 ft of the height.
+    public var overheadQuantum: Float = 0.03048
     /// Fog drawn ahead of what has been seen, so the homeowner sees where to go next.
     public var fogAhead: Float = 2.5
 
@@ -98,6 +105,9 @@ public struct CoverageMap: Sendable {
     /// Cameras of the frames `observe` recorded, oldest first, so a new wall frame can be replayed
     /// against them. Sightings recorded directly through `record` are not kept.
     public private(set) var observedCameras: [CameraFrame] = []
+    /// Tilt-up views the homeowner confirmed have nothing overhead (`recordOverhead`), oldest
+    /// first. What each showed is worked out against the current wall when read.
+    public private(set) var overheadCameras: [CameraFrame] = []
 
     private struct Cell: Sendable {
         /// Per sample row, the camera positions that saw it, pairwise at least
@@ -422,6 +432,89 @@ public struct CoverageMap: Sendable {
             guard a.out > 0, b.out > 0 else { return nil }
             return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
         }
+    }
+
+    // MARK: Overhead
+
+    /// What a view tilted up at the wall shows: per cell along the wall, the height on the wall's
+    /// plane the view reached, rounded down to `overheadQuantum`, neighbours of equal height
+    /// merged. A pure function of the camera, the wall and the marked ends; it records nothing.
+    ///
+    /// A cell counts when both its samples (a quarter and three quarters along it) are in view at
+    /// `overheadFrom`; its height is the highest point above that still in view at both, where
+    /// in view means in front of the camera, inside the image margin and within `maxDistance`.
+    /// The view of a plane is convex, so everything between the two heights is in view too.
+    /// Unlike the bands there is no limit on obliqueness: nothing is measured on this part of the
+    /// wall, the homeowner only judges whether anything is overhead. Empty when the camera is
+    /// behind the wall or does not show the wall at `overheadFrom`.
+    ///
+    /// The camera sees the wall's plane, not what is on it: it can't tell open sky above a
+    /// one-storey eave from the wall. So a reach is evidence only once the homeowner has said
+    /// nothing is overhead (`recordOverhead`).
+    public func overheadReach(from camera: CameraFrame) -> [ObservedSpan] {
+        guard wall.wallPoint(camera.position).out > 0 else { return [] }
+        func inView(_ s: Float, _ height: Float) -> Bool {
+            let point = wall.world(s: s, height: height)
+            guard simd_distance(point, camera.position) <= config.maxDistance, let pixel = camera.pixel(of: point) else { return false }
+            return camera.contains(pixel: pixel, margin: config.imageMargin)
+        }
+        func reach(_ s: Float) -> Float? {
+            guard inView(s, config.overheadFrom) else { return nil }
+            var low = config.overheadFrom
+            var high = config.overheadFrom + config.maxDistance
+            // Bisection to under a millimetre; `low` stays in view throughout.
+            for _ in 0..<14 {
+                let middle = (low + high) / 2
+                if inView(s, middle) { low = middle } else { high = middle }
+            }
+            return low
+        }
+        let items = candidateIndices(for: camera).compactMap { index -> ObservedSpan? in
+            let range = cellRange(index)
+            let width = range.upperBound - range.lowerBound
+            guard let a = reach(range.lowerBound + width * 0.25), let b = reach(range.lowerBound + width * 0.75) else { return nil }
+            let height = (min(a, b) / config.overheadQuantum).rounded(.down) * config.overheadQuantum
+            return ObservedSpan(span: range, out: height)
+        }
+        return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
+    }
+
+    /// Keeps a tilt-up view as overhead evidence. Call it only after the homeowner answered that
+    /// nothing is overhead there (ScanActions.answerOverhead(clear: true)): the camera cannot
+    /// tell a clear view from an eave. Returns what the view showed (`overheadReach`); nothing
+    /// is kept when tracking was not normal or the view showed no wall at `overheadFrom`.
+    @discardableResult
+    public mutating func recordOverhead(_ camera: CameraFrame, trackingNormal: Bool) -> [ObservedSpan] {
+        guard trackingNormal else { return [] }
+        let reach = overheadReach(from: camera)
+        guard !reach.isEmpty else { return [] }
+        overheadCameras.append(camera)
+        revision += 1
+        return reach
+    }
+
+    /// Height seen clear above a cell, meters: the highest any recorded tilt-up view reached
+    /// there. Nil when none reached it.
+    public func overheadHeight(at index: Int) -> Float? {
+        let middle = (cellRange(index).lowerBound + cellRange(index).upperBound) / 2
+        return overheadCameras.compactMap { camera in
+            overheadReach(from: camera).first { $0.span.contains(middle) }?.out
+        }.max()
+    }
+
+    /// Stretches seen clear overhead, each with the height seen (`overheadHeight(at:)`), for
+    /// scene.json's overhead band.
+    public func overheadSpans() -> [ObservedSpan] {
+        var best: [Int: Float] = [:]
+        for camera in overheadCameras {
+            for item in overheadReach(from: camera) {
+                for index in indices(overlapping: item.span) where allows(index) {
+                    best[index] = max(best[index] ?? item.out, item.out)
+                }
+            }
+        }
+        let items = best.keys.sorted().compactMap { index in best[index].map { ObservedSpan(span: cellRange(index), out: $0) } }
+        return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
     }
 
     /// A span trimmed to the marked ends. Cells overlapping an end keep only the allowed part.

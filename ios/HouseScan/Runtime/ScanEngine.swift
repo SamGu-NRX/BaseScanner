@@ -732,6 +732,23 @@ final class ScanEngine {
         }
     }
 
+    /// Keeps the tilt-up view as overhead evidence (`CoverageMap.recordOverhead`). Call it only
+    /// once the homeowner answered that nothing is overhead (`answerOverhead(clear: true)`): the
+    /// camera can't tell open sky from an eave. `frame` is the view that was tilted up; nil uses
+    /// the latest frame. Returns false when nothing was kept: tracking was not normal, or the
+    /// view did not show the wall from the top of the wall band (6.5 ft) upward. The export then
+    /// sends each stretch the view reached as an overhead entry with the height seen.
+    @discardableResult
+    func recordOverheadClear(from frame: SourceFrame? = nil) -> Bool {
+        guard var map = coverage, let frame = frame ?? lastFrame else { return false }
+        let reach = map.recordOverhead(frame.camera, trackingNormal: frame.tracking == .normal)
+        guard !reach.isEmpty else { return false }
+        coverage = map
+        RuntimeLog.engine.info("overhead: kept a view reaching \(reach.map(\.out).min() ?? 0) m over s=\(reach.first?.span.lowerBound ?? 0)...\(reach.last?.span.upperBound ?? 0)")
+        afterCoverageChange(camera: frame.camera, time: frame.timestamp)
+        return true
+    }
+
     func skipCurrentGap() {
         guard let plan = gapPlan else { return }
         coverage?.markSkipped(plan.band, plan.span)

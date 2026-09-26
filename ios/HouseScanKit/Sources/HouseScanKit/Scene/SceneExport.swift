@@ -89,23 +89,29 @@ public struct SceneCoverage: Sendable {
     /// Stretches known clear in front of the wall, each out to where the homeowner walked less
     /// the position error (`CoverageMap.facingSpans()`).
     public var facing: [ObservedSpan]
+    /// Stretches seen clear overhead, each up to the height (`out`) the tilt-up view reached
+    /// (`CoverageMap.overheadSpans()`). The height is always sent: scene.json's "no out_ft"
+    /// means seen clear all the way up, which a phone view of the wall's plane can't show.
+    public var overhead: [ObservedSpan]
 
     public init(
         leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan],
-        facing: [ObservedSpan] = []
+        facing: [ObservedSpan] = [], overhead: [ObservedSpan] = []
     ) {
         self.leftEndMarked = leftEndMarked
         self.rightEndMarked = rightEndMarked
         self.wall = wall
         self.ground = ground
         self.facing = facing
+        self.overhead = overhead
     }
 
     /// Everything `map` observed, with the ends' kinds from the homeowner's answers.
     public init(_ map: CoverageMap, leftEndMarked: Bool, rightEndMarked: Bool) {
         self.init(
             leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked,
-            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans(), facing: map.facingSpans())
+            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans(), facing: map.facingSpans(),
+            overhead: map.overheadSpans())
     }
 }
 
@@ -341,7 +347,7 @@ public enum SceneExport {
         }
 
         let coverage = input.coverage
-        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground), ("facing", coverage.facing)]
+        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground), ("facing", coverage.facing), ("overhead", coverage.overhead)]
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
