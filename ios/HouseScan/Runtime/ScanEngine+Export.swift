@@ -124,17 +124,24 @@ extension ScanEngine {
 
         var spot: BatterySpot?
         if let placed = result.spot {
-            // Placed from the offset to the meter, as result.schema.json asks, so the AR box
-            // follows the meter's anchor. The offset is split along the result's own `along` and
-            // `outward` vectors (same scene frame as the offset), which keeps the bundled sample
-            // meaningful on any wall orientation.
-            let offset = placed.meterOffsetFt
-            let centerS = meters(offset.x * placed.along.x + offset.y * placed.along.y)
-            let centerOut = meters(offset.x * placed.outward.x + offset.y * placed.outward.y)
-            let width = meters(placed.widthFt)
+            // Placed by its `span_ft`, its stretch in s along the wall chain, which the screens
+            // turn into world points piece by piece (`WallGeometry.world(s:)`), so a spot round a
+            // corner lands on the right piece and still moves with the meter's anchor. The meter
+            // offset split along the spot's own `along` gave s only on the meter's piece: past a
+            // corner it measured along the other piece's direction and drew the spot on the
+            // meter's wall. Both s and the depth below are frame-free, so the bundled sample (in
+            // its own frame) still means the same on any wall.
+            let low = meters(min(placed.spanFt.x, placed.spanFt.y))
+            let high = meters(max(placed.spanFt.x, placed.spanFt.y))
             let depth = meters(placed.depthFt)
+            // How far the footprint's centre stands out from its back edge (back-left and
+            // back-right corners come first), along the spot's own outward: the gap to the wall
+            // is what exceeds half the depth. The server puts the back on the wall line. Decoding
+            // refuses a footprint without exactly four corners.
+            let d = placed.center - (placed.footprint[0] + placed.footprint[1]) / 2
+            let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
             spot = BatterySpot(
-                span: (centerS - width / 2)...(centerS + width / 2),
+                span: low...high,
                 depth: depth, height: meters(placed.heightFt),
                 offsetFromWall: max(0, centerOut - depth / 2)
             )
