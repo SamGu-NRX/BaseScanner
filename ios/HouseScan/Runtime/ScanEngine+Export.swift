@@ -119,18 +119,25 @@ extension ScanEngine {
         let checks = result.checks.map { check in
             CheckRow(
                 id: check.id, title: check.label, outcome: Self.outcome(check.outcome), reason: check.reason,
-                needsPerson: check.outcome == .unsure && [.margin, .unknownAttribute, .ruleRequiresReview].contains(check.unsureCause),
+                // An UNSURE with no cause is unexplained, so a person has to look at it.
+                needsPerson: check.outcome == .unsure && (check.unsureCause.map { [.margin, .unknownAttribute, .ruleRequiresReview].contains($0) } ?? true),
                 measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters)
             )
         }
 
         let depth = spot?.depth ?? 0.3
+        // A run's start_ft is a range of battery LEFT edges, so the wall it describes reaches one
+        // battery width past its last start. Only the spot carries the width; without a spot the
+        // zone is drawn over the starts alone, which understates it.
+        let width = spot.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
         let clearances = result.sweep.enumerated().map { index, run in
-            ClearanceZone(
+            let first = meters(min(run.startFt.x, run.startFt.y))
+            let last = meters(max(run.startFt.x, run.startFt.y))
+            return ClearanceZone(
                 id: "sweep-\(index)",
                 label: (run.failing + run.unsure).joined(separator: ", "),
                 outcome: Self.outcome(run.outcome),
-                span: meters(run.startFt.x)...max(meters(run.startFt.x), meters(run.startFt.y)),
+                span: first...(last + width),
                 depth: depth
             )
         }
@@ -140,16 +147,19 @@ extension ScanEngine {
                 id: "missing-\(index)", text: item.message,
                 // A band of wall or ground, or the far side of an end, is something another
                 // walk can show; overhead and facing bands need a person with a tape.
-                capturable: item.kind == .pastEnd || item.band == .wall || item.band == .ground
+                // Only when a gap request can actually be built from it (a band item needs its
+                // span, a past_end item its side); otherwise the button would do nothing.
+                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd) != nil
             )
         }
 
         var unseen: WallSide?
         if let pastEnd = result.missingEvidence.first(where: { $0.kind == .pastEnd })?.side {
             unseen = pastEnd == .left ? .left : .right
-        } else if result.ends.left.kind == .unexplored {
+        } else if result.ends.left.kind == .unexplored, result.ends.left.beyondReach != true {
+            // An end beyond cable reach can't hold the battery whatever lies past it.
             unseen = .left
-        } else if result.ends.right.kind == .unexplored {
+        } else if result.ends.right.kind == .unexplored, result.ends.right.beyondReach != true {
             unseen = .right
         }
 

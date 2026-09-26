@@ -32,8 +32,10 @@ final class ScanEngine {
     private var gateProblem: (coaching: Coaching, since: Double)?
     private var gateClearSince: Double?
     private var closeUpPending = false
-    /// Keyframe writes still in flight; the bundle waits for them.
-    private var pendingSaves = 0
+    /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
+    /// for its own generation's. Keyed so a write finishing after a reset can't count against
+    /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
+    private var pendingSaves: [Int: Int] = [:]
     /// Bumped whenever the world frame or the whole scan is thrown away, so work that finishes
     /// afterwards (a keyframe write, an upload) can tell it belongs to a scan that no longer exists.
     private var generation = 0
@@ -133,6 +135,7 @@ final class ScanEngine {
             state.guidance = .holdOnMeter
             state.closeUp = .aiming(hold: 0, problem: nil)
             closeUpGate = CloseUpGate()
+            closeUpPending = false
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
             if let replay { replay.play(range: 0..<replay.frames.count, speed: replaySpeed) }
@@ -229,6 +232,16 @@ final class ScanEngine {
         groundMeasured = true
         coverage?.updateWall(wall)
         publishWall()
+        reprojectFeatures()
+    }
+
+    /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
+    /// points stay put.
+    private func reprojectFeatures() {
+        guard let wall = coverage?.wall, !state.features.isEmpty else { return }
+        var features = state.features
+        for index in features.indices { Self.project(&features[index], onto: wall) }
+        if features != state.features { state.features = features }
     }
 
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
@@ -238,6 +251,8 @@ final class ScanEngine {
         wall.meter = meter
         coverage?.updateWall(wall)
         publishWall()
+        publishCoverage()
+        reprojectFeatures()
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -350,10 +365,11 @@ final class ScanEngine {
         let index = store.nextKeyframeIndex()
         let scan = generation
         let store = store
-        pendingSaves += 1
+        pendingSaves[scan, default: 0] += 1
         Task {
             let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
-            pendingSaves -= 1
+            let left = (pendingSaves[scan] ?? 1) - 1
+            pendingSaves[scan] = left > 0 ? left : nil
             guard scan == generation, saved.stored else { return }
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)
@@ -635,7 +651,7 @@ final class ScanEngine {
         let scan = generation
         state.upload = .packaging
         // Keyframe writes still in flight belong in the bundle.
-        for _ in 0..<200 where pendingSaves > 0 {
+        for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
@@ -692,7 +708,6 @@ final class ScanEngine {
 
     func resetAll() {
         generation += 1
-        pendingSaves = 0
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil

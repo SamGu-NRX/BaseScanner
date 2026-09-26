@@ -67,6 +67,8 @@ public struct CoverageMap: Sendable {
     public private(set) var revision = 0
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
+    /// s shift from meter moves not yet applied to the cells, meters (see `updateWall`).
+    private var pendingShift: Float = 0
 
     private struct Cell: Sendable {
         /// Per sample row, the camera positions that saw it, pairwise at least
@@ -286,10 +288,26 @@ public struct CoverageMap: Sendable {
         revision += 1
     }
 
-    /// Moves the map to a new wall frame (after the meter anchor is refined). Cells keep their
-    /// s positions; camera positions keep their world positions.
+    /// Moves the map to a new wall frame (after the meter anchor is refined or the ground is
+    /// measured). s is measured from the meter, so moving the meter by d along the wall moves
+    /// every seen stretch by -d in s. Marked ends move exactly; cells move by whole cells, and
+    /// the remainder (under half a cell, 7.6 cm, below tap error) waits for later moves.
+    /// Camera positions are world points and stay. Assumes the wall's direction is unchanged.
     public mutating func updateWall(_ frame: WallFrame) {
+        let delta = simd_dot(wall.meter - frame.meter, frame.along)
         wall = frame
+        guard delta != 0 else { return }
+        leftEnd = leftEnd.map { $0 + delta }
+        rightEnd = rightEnd.map { $0 + delta }
+        pendingShift += delta
+        let whole = Int((pendingShift / config.cellWidth).rounded())
+        if whole != 0 {
+            for (band, bandCells) in cells {
+                cells[band] = Dictionary(uniqueKeysWithValues: bandCells.map { ($0.key + whole, $0.value) })
+            }
+            pendingShift -= Float(whole) * config.cellWidth
+        }
+        revision += 1
     }
 
     // MARK: Reading

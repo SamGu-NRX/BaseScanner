@@ -191,6 +191,31 @@ import Testing
         #expect(nearlyEqual(run.upperBound - run.lowerBound, Float(wallCovered) * 0.1524, 1e-3))
     }
 
+    /// The meter anchor refined 0.3048 m (two cells) to the left: every seen cell and marked end
+    /// is 0.3048 m further right of the meter than before.
+    @Test func movingTheMeterShiftsCellsAndEnds() throws {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        map.observe(wallCamera(s: 0.3), trackingNormal: true)
+        map.setEnd(.left, at: -0.5)
+        let before = try #require(map.coveredIntervals(.wall).first)
+        var moved = standardWall()
+        moved.meter.x -= 0.3048
+        map.updateWall(moved)
+        let after = try #require(map.coveredIntervals(.wall).first)
+        #expect(nearlyEqual(map.leftEnd ?? .nan, -0.1952))
+        #expect(nearlyEqual(after.upperBound, before.upperBound + 0.3048, 1e-3))
+        // Covered wall cells were -4 ... 5 (coveredIntervalsOfHandBuiltRuns); now -2 ... 7.
+        #expect(map.level(.wall, 7) == .covered && map.level(.wall, 8) != .covered)
+        // A move under half a cell leaves the cells and carries over.
+        moved.meter.x -= 0.05
+        map.updateWall(moved)
+        #expect(map.level(.wall, 7) == .covered && map.level(.wall, 8) != .covered)
+        moved.meter.x -= 0.05
+        map.updateWall(moved)
+        #expect(map.level(.wall, 8) == .covered)
+    }
+
     @Test func coveredIntervalsOfHandBuiltRuns() {
         // Wall cameras at 0 and 0.3 cover cells whose lower edge L satisfies both 0.3 <= L + 0.9405
         // and 0 >= L - 0.7881: L in [-0.6405, 0.7881], cells -4 ... 5, i.e. [-0.6096, 0.9144].

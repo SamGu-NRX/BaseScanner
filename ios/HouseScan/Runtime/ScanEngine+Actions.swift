@@ -135,21 +135,32 @@ extension ScanEngine: ScanActions {
     }
 
     private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
-        let points = taps.map { wall.world($0) }
+        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps.map { wall.world($0) }, opens: nil)
+        Self.project(&marked, onto: wall)
+        return marked
+    }
+
+    /// Sets a feature's wall coordinates from its tapped world points. Run again whenever the
+    /// wall frame moves (meter anchor refined, ground measured), since only the world points
+    /// are what was tapped.
+    static func project(_ feature: inout MarkedFeature, onto wall: WallFrame) {
+        let taps = feature.points.map { wall.wallPoint($0) }
         let ss = taps.map(\.s)
         let span = (ss.min() ?? 0)...(ss.max() ?? 0)
-        switch kind {
+        switch feature.kind {
         case .door, .window:
             let heights = taps.map(\.height)
-            return MarkedFeature(id: UUID(), kind: kind, span: span, bottom: max(0, heights.min() ?? 0), top: heights.max(), out: nil, points: points, opens: nil)
+            feature.span = span
+            feature.bottom = max(0, heights.min() ?? 0)
+            feature.top = heights.max()
         case .gasMeter, .acUnit:
             // One tap marks the object's middle; 0.3 m is a nominal width, not a measurement.
             let s = ss.first ?? 0
-            return MarkedFeature(id: UUID(), kind: kind, span: (s - 0.15)...(s + 0.15), bottom: nil, top: nil, out: nil, points: points, opens: nil)
+            feature.span = (s - 0.15)...(s + 0.15)
         case .driveway, .fence:
+            feature.span = span
             // The nearer tap, as the export uses: the narrow end must not be overstated.
-            let out = taps.map(\.out).min() ?? 0
-            return MarkedFeature(id: UUID(), kind: kind, span: span, bottom: nil, top: nil, out: out, points: points, opens: nil)
+            feature.out = taps.map(\.out).min() ?? 0
         }
     }
 
