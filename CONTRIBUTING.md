@@ -39,7 +39,7 @@ Keep workflows that run pull-request code away from production credentials and d
 
 ## Distribution
 
-`.github/workflows/testflight.yml` archives one app, signs it and uploads it to TestFlight. It runs only when someone starts it by hand. The build number is the workflow's run number, so each upload is higher than the last.
+`.github/workflows/testflight.yml` archives one app, signs it and uploads it to TestFlight. It runs only when someone starts it by hand. The build number is the workflow's run number and attempt, such as `12.1`, so each upload, reruns included, is higher than the last.
 
 | App | Project | Bundle id |
 | --- | --- | --- |

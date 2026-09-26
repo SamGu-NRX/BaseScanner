@@ -42,8 +42,10 @@ jobs:
       APP: ${{ inputs.app }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
-      # GitHub counts runs per workflow, so both apps share one increasing build number.
-      BUILD_NUMBER: ${{ github.run_number }}
+      # <run number>.<attempt>, such as 12.1. GitHub counts runs per workflow, so both apps share
+      # one increasing number, and a rerun gets a new attempt instead of a duplicate App Store
+      # Connect rejects. CFBundleVersion allows up to three dot-separated integers.
+      BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
     steps:
       # Tests only whether each value is empty; it never prints one.
       - name: Check secrets and variables
