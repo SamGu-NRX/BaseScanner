@@ -615,9 +615,8 @@ final class ScanEngine {
             skipCurrentGap(because: "something is overhead")
             return
         }
-        guard let frame, recordOverheadClear(from: frame) else {
+        if frame.map({ recordOverheadClear(from: $0) }) != true {
             RuntimeLog.engine.error("overhead answer: the view asked about could not be recorded")
-            return
         }
     }
 
@@ -655,12 +654,11 @@ final class ScanEngine {
         state.target = cue.target
         if let camera {
             let from = map.wall.wallPoint(camera.position).s
-            // A walked path settles only the cells it passes, so a walk-out line runs on to the
-            // far end of the span; the other requests only need the homeowner standing at it.
-            var to = center
-            if case .walkOut = plan.need {
-                to = abs(plan.span.lowerBound - from) > abs(plan.span.upperBound - from) ? plan.span.lowerBound : plan.span.upperBound
-            }
+            // Every request but an overhead one needs its whole span seen or walked, and the
+            // server's can run 20 ft or more (ground out to a pool's clearance), so the line runs
+            // on to the span's far end. One tilted-up view from the middle covers an overhead one.
+            let farEnd = abs(plan.span.lowerBound - from) > abs(plan.span.upperBound - from) ? plan.span.lowerBound : plan.span.upperBound
+            let to = if case .overhead = plan.need { center } else { farEnd }
             state.path = [from, to].map { map.wall.world(s: $0, height: 0, out: cue.standOut) }
         }
         logGuidance()
