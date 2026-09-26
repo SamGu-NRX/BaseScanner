@@ -2,16 +2,17 @@ import CryptoKit
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 930e8e5
+/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 074bf1d
 /// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). Since e0ee8d3
 /// requests carry `out_ft` and facing and overhead coverage may too; 737bf75 adds
 /// `walls[].source`; 930e8e5 defines a wall entry's `out_ft` as the height seen above the
-/// ground. `vendoredCopiesMatchServer` fails if the server's files change and these are not
+/// ground; 074bf1d adds the `battery` object type. `vendoredCopiesMatchServer` fails if the
+/// server's files change and these are not
 /// refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
     static let vendored: [(name: String, serverPath: String, sha256: String)] = [
         ("scene.schema.json", "server/schemas/scene.schema.json",
-         "e07f20f0487c9c9f890842230ea87114b4b385a43744c7144d881b4bdd6cbf26"),
+         "62bde2215141858cc4cc33c2206d929c37423a6638daf9dffffd48657918e4d0"),
         ("result.schema.json", "server/schemas/result.schema.json",
          "ddc7cc486945e18eaae714b4a6c29249cbd86f24960fa5df640bb5bbc340049c"),
         ("example-scene.json", "server/tests/fixtures/example-scene.json",
@@ -186,12 +187,12 @@ enum SceneSchemas {
         }
     }
 
-    /// The hashes are of `git show 930e8e5:<serverPath>`, so a copy edited by hand (or refreshed
+    /// The hashes are of `git show 074bf1d:<serverPath>`, so a copy edited by hand (or refreshed
     /// without updating the provenance above) fails here even where the server tree is absent.
     @Test func vendoredCopiesAreTheRecordedRevision() throws {
         for (name, _, sha256) in SceneSchemas.vendored {
             let digest = SHA256.hash(data: try SceneSchemas.data(name)).map { String(format: "%02x", $0) }.joined()
-            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 930e8e5")
+            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 074bf1d")
         }
     }
 
