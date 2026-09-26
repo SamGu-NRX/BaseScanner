@@ -50,7 +50,7 @@ Record a missing feature as "absent" and an unreachable one as "not measured", n
 
 ## Survey and results files
 
-The formats are in the harness README, `experiments/scoring/README.md` ([#4](https://github.com/SamGu-NRX/house-scanning/pull/4)): a rules file, one survey file per house and one results file per pipeline run. All three use feet and the survey IDs above. Keep real surveys and results beside the capture in `captures/` or `data/`, never in git. The recording's sha256 is its capture ID, and every results file carries the rules file's sha256, so a run on another recording or policy cannot be scored by mistake.
+The formats are in the harness README, `experiments/scoring/README.md` ([#4](https://github.com/SamGu-NRX/house-scanning/pull/4)): a rules file, one survey file per house and one results file per pipeline run. All three use feet and the survey IDs above. Keep real surveys and results beside the capture in `captures/` or `data/`, never in git. Use the recording's sha256 as its capture ID; every results file carries the rules file's sha256. The harness matches those IDs and the rules hash, but cannot independently verify which recording a pipeline processed.
 
 To score the AR row, write a short map after the walk from each Measure Lab measurement to its survey ID. `score import-measure-lab` turns the session and the map into a results file.
 
@@ -61,7 +61,7 @@ The harness derives each check's survey outcome from the survey value, its uncer
 Report every row at every spot. Never average away missing outputs.
 
 - **Absolute error.** |predicted - true| in inches, with the signed error. Median and maximum per house.
-- **Error relative to the deciding threshold.** With margin m = |true - threshold| and survey uncertainty u, report error / max(m, u). Above 1, the error could flip the check. If both are zero, report "at threshold".
+- **Error relative to the deciding threshold.** With margin m = |true - threshold| and survey uncertainty u, report error / max(m, u). At 1 or above, the error could put the run on a boundary or flip the check. If both are zero, report "at threshold".
 - **Missing outputs.** Against the fixed denominator, split into unsupported, failed, and not surveyed.
 - **Unsafe passes.** A pipeline PASS where the label is FAIL. This matters most. Count a PASS where the label is borderline or UNSURE separately as a missed review, and a pipeline UNSURE or FAIL where the label is PASS as over-caution. Report false rejections beside them, and count a pass or fail made without its measurement separately.
 - **Abstentions.** UNSURE rate, split into justified, when the label is borderline or evidence is missing, and avoidable.
