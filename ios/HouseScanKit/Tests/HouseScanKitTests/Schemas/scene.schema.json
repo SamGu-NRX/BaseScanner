@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/SamGu-NRX/house-scanning/server/schemas/scene.schema.json",
   "title": "House scan scene",
-  "description": "What the phone measured around the electric meter (contract C1, docs/01-feature-map.md). Every length is in feet. Plan coordinates [x, z] are the horizontal axes of one gravity-aligned scene frame (ARKit .gravity world alignment: +y up), so [x, z] ignores height. `s` is the distance along the unrolled wall chain from the meter, negative to the left as seen by someone outside facing the wall. Unknown fields are rejected so a misspelled field fails loudly instead of being ignored.",
+  "description": "What the phone measured around the electric meter (the scene contract; server/README.md, \"Writing a scene\"). Every length is in feet. Plan coordinates [x, z] are the horizontal axes of one gravity-aligned scene frame (ARKit .gravity world alignment: +y up), so [x, z] ignores height. `s` is the distance along the unrolled wall chain from the meter, negative to the left as seen by someone outside facing the wall. Unknown fields are rejected so a misspelled field fails loudly instead of being ignored.",
   "type": "object",
   "additionalProperties": false,
   "required": ["meter", "walls"],
@@ -41,7 +41,8 @@
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' wall default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
+          "source": {"enum": ["tap", "mesh", "plane"], "description": "How the wall's line was found: AR taps, the LiDAR mesh, or ARKit's detected planes. Sets the default error when plus_minus_ft is absent (errors.wall_ft, mesh_ft, plane_ft in rules.yaml). Absent means tap."},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' default for the wall's source, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
