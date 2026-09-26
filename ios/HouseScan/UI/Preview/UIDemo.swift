@@ -23,6 +23,14 @@ import SwiftUI
 /// - `-uiDemoOverheadQuestion`: the tilt-up view is in and the walk asks what is overhead.
 /// - `-uiDemoGap <groundOut|walkOut|overhead>`: the gap screen shows that server request.
 /// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.
+/// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
+/// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
+/// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
+///   and asked for one more view: the upload screen as it hands over, or the view itself.
+///
+/// Unfrozen, the demo goes back to the camera once after the first answer, as the engine does
+/// when the answer lists a view the camera can take.
 enum UIDemo {
     @MainActor
     static func makeRoot() -> some View {

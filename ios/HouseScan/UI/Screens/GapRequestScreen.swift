@@ -3,6 +3,10 @@ import SwiftUI
 /// One targeted request for a missing view. The requested cells turn amber on the camera and
 /// on the tape map instead of fog, a bar fills as they're seen, and a check lands when done.
 /// An overhead request asks what is above the wall once a tilted-up view covers it.
+///
+/// A request the finished check sent back (the scan came here from the upload, not from the
+/// review) carries "One more view to finish" above the instruction, the words the upload screen
+/// just said, and its way out says it leads to the result.
 struct GapRequestScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -26,9 +30,12 @@ struct GapRequestScreen: View {
                 reply: state.gap?.isSatisfied == true || asking ? nil : InstructionCard.Reply(
                     title: "I can't get there",
                     identifier: "action.skipGap",
-                    hint: "Skips this view. An installer will look at this part instead.",
+                    hint: followUps > 0
+                        ? "Skips this view and shows your result. An installer will look at this part instead."
+                        : "Skips this view. An installer will look at this part instead.",
                     perform: { actions.skipGap() }
                 ),
+                eyebrow: followUps > 0 && state.gap?.isSatisfied != true ? ScanCopy.followUp(remaining: followUps) : nil,
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
@@ -48,7 +55,8 @@ struct GapRequestScreen: View {
                             wall: wall,
                             features: state.features,
                             cameraS: state.projection.map { WallProjection(projection: $0, wall: wall, size: cameraSize).cameraS },
-                            highlight: state.gap
+                            highlight: state.gap,
+                            depthChecked: state.depthAvailable
                         )
                     }
                 }
@@ -62,11 +70,20 @@ struct GapRequestScreen: View {
     /// until answered, as on the walk.
     private var asking: Bool { state.overheadQuestion && state.gap?.isSatisfied != true }
 
+    /// Views the finished check still wants, counting this one, when this request is one of
+    /// them: a server request while the check's answer is in. Zero otherwise.
+    private var followUps: Int {
+        guard state.gap?.origin == .server, let result = state.result else { return 0 }
+        return max(1, result.missing.filter(\.capturable).count)
+    }
+
     private var instruction: Instruction {
         if asking { return ScanCopy.overheadQuestion }
         if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
         guard let gap = state.gap else { return ScanCopy.guidance(.gap) }
-        if gap.isSatisfied { return Instruction(title: "Got it, thanks", detail: "That's the view we needed.") }
+        if gap.isSatisfied {
+            return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
+        }
         return ScanCopy.gap(gap)
     }
 }

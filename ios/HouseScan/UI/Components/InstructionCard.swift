@@ -27,6 +27,9 @@ struct InstructionCard: View {
     var instruction: Instruction
     var tone: Tone = .normal
     var reply: Reply?
+    /// A short line above the instruction that places it in the flow ("One more view to
+    /// finish"). Read with the instruction as one VoiceOver element.
+    var eyebrow: String?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -66,6 +69,14 @@ struct InstructionCard: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 4) {
+                if let eyebrow {
+                    Label(eyebrow, systemImage: "camera.viewfinder")
+                        .font(Typeface.caption)
+                        // The requested view's amber, as on the camera and the map.
+                        .foregroundStyle(Palette.caution)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.bottom, 2)
+                }
                 Text(instruction.title)
                     .font(Typeface.instruction)
                     .foregroundStyle(Palette.chalk)
