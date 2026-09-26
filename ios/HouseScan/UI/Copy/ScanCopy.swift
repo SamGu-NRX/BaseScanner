@@ -55,7 +55,8 @@ enum ScanCopy {
         case .seeBehind(let s):
             Instruction(
                 title: "Something is in front of the wall here",
-                detail: "\(Distance.fromMeter(s).capitalizedFirst). Look at it from the side or step around it."
+                // A place to look, not a measurement: "About 5 ft", not "4 ft 11 in".
+                detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it."
             )
         case .gap:
             Instruction(title: "One more view", detail: nil)
