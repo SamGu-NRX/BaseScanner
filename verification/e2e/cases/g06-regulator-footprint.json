@@ -1,0 +1,167 @@
+{
+  "id": "g06-regulator-footprint",
+  "source": "t3-lane-c-review.md golden 06 at origin/t3/research a7d91f1",
+  "description": "The gas meter body stands 10 ft from the wall but its regulator reaches [7, 23/6], 2 ft from the front edge of any battery covering x = 7. Clearance is measured to every part of the footprint.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -3,
+            0.0
+          ],
+          [
+            16,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          6.5,
+          7.5
+        ],
+        "source": "tape",
+        "plus_minus_ft": 0.0,
+        "footprint": [
+          [
+            6.5,
+            10.5
+          ],
+          [
+            6.5,
+            9.5
+          ],
+          [
+            6.9,
+            9.5
+          ],
+          [
+            7.0,
+            3.8333333333333335
+          ],
+          [
+            7.1,
+            9.5
+          ],
+          [
+            7.5,
+            9.5
+          ],
+          [
+            7.5,
+            10.5
+          ]
+        ]
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -3,
+            0.0
+          ],
+          [
+            16,
+            0.0
+          ],
+          [
+            16,
+            10.0
+          ],
+          [
+            -3,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -3,
+          16
+        ],
+        "depth_ft": 12.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -18.0,
+            31.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -18.0,
+            31.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -18.0,
+            31.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -18.0,
+            31.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          3,
+          9
+        ],
+        "outcome": "fail",
+        "failing_match": "gas"
+      }
+    ]
+  }
+}
