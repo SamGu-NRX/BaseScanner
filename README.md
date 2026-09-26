@@ -27,8 +27,8 @@ Paths marked with a pull request exist only on that branch until it merges.
 | `packet/` | The capture packet's spec, validator and samples | PR #22 |
 | `server/` | The rules engine and placement API (Python, uv) | On `main`, a skeleton. The engine is in PR #11 |
 | `recon/` | Turns photos and depth into a 3D model and a coverage map | PR #20, handed to the server team |
-| `experiments/` | One folder per experiment | Accuracy evals in PR #12, Measure Lab in PR #7, meter reading in PR #16, panel labels in PR #17, the first device field test in PR #23 |
-| `web/` | Browser toolchain for a reviewer view | The review page (PR #15) is parked |
+| `experiments/` | One folder per experiment | Accuracy evals in PR #12, Measure Lab in PR #7, scoring in PR #4, meter reading in PR #16, the first device field test in PR #23 |
+| `web/` | Browser toolchain for a reviewer view | No page on `main` |
 | `docs/` | The overview, the walkthrough, public rules and code citations, and the live-survey design | |
 | `.agents/skills/` | Shared agent skills for writing, planning and review, linked from `.claude/skills/` | |
 | `sites/landing` | The landing page, a submodule | Change it in its own repository |
