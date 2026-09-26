@@ -116,7 +116,6 @@ class SceneObject:
     source: str
     plus_minus: float
     geom: Geometry
-    points: tuple[Point2, ...]  # vertices used to place candidate starts near the clearance edge
 
     @property
     def label(self) -> str:
@@ -143,7 +142,6 @@ class Measured:
 
 @dataclass
 class Scene:
-    raw: dict[str, Any]
     input_sha256: str
     pieces: list[Piece]  # extension, walls and gaps in chain order, extension
     meter_pos: tuple[float, float, float]
@@ -208,9 +206,9 @@ class Scene:
     def band_polygon(self, s_lo: float, s_hi: float, out: float) -> Geometry:
         """The ground strip in front of the chain from s_lo to s_hi, out to `out` from the wall,
         with the wedges that fill the outside of convex corners."""
-        parts: list[Geometry] = []
         if s_hi - s_lo <= EPS or out <= EPS:
             return Polygon()
+        parts: list[Geometry] = []
         inside = [p for p in self.pieces if p.s1 > s_lo + EPS and p.s0 < s_hi - EPS]
         for p in inside:
             parts.append(p.rect(max(s_lo, p.s0), min(s_hi, p.s1), 0.0, out))
@@ -411,7 +409,7 @@ def _outward(along: Point2) -> Point2:
     return (-along[1], along[0])
 
 
-def _xz(point: list[float], path: str) -> Point2:
+def _xz(point: list[float]) -> Point2:
     return (float(point[0]), float(point[1]))
 
 
@@ -492,7 +490,7 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         if wid in wall_ids:
             raise SceneError(f"/walls/{wi}/id", f"duplicate wall id {wid!r}")
         wall_ids.add(wid)
-        pts = [_xz(p, f"/walls/{wi}/baseline") for p in wall["baseline"]]
+        pts = [_xz(p) for p in wall["baseline"]]
         wall_err = _error(wall, errors.wall_ft.value)
         wall_drift = 0.0 if "plus_minus_ft" in wall else drift
         pts = _merge_collinear(pts, COLLINEAR_FT, f"/walls/{wi}/baseline")
@@ -548,7 +546,8 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     meter = raw["meter"]
     if meter["wall_id"] not in wall_ids:
         raise SceneError("/meter/wall_id", f"no wall with id {meter['wall_id']!r}")
-    mpos = tuple(float(v) for v in meter["pos"])
+    mx, my, mz = (float(v) for v in meter["pos"])
+    mpos = (mx, my, mz)
     mxz = (mpos[0], mpos[2])
     best: tuple[float, Piece, float, float] | None = None
     for p in pieces:
@@ -619,11 +618,10 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     pieces = [left_ext, *pieces, right_ext]
 
     scene = Scene(
-        raw=raw,
         input_sha256=hashlib.sha256(input_bytes).hexdigest(),
         pieces=pieces,
-        meter_pos=mpos,  # type: ignore[arg-type]
-        meter_plus_minus=_error(meter, errors.meter_ft.value),
+        meter_pos=mpos,
+        meter_plus_minus=meter_err,
         meter_piece=meter_piece,
         wall_spans=wall_spans,
         objects=[],
@@ -644,11 +642,9 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
         if bottom is not None and top is not None and bottom > top:
             raise SceneError(path, f"bottom_ft {bottom} is above top_ft {top}")
         if "footprint" in obj:
-            pts = [_xz(p, f"{path}/footprint") for p in obj["footprint"]]
-            geom = _geometry(pts, f"{path}/footprint")
+            geom = _geometry([_xz(p) for p in obj["footprint"]], f"{path}/footprint")
         else:
             geom = scene.wall_line(*span)
-            pts = [scene.point_at(span[0]), scene.point_at(span[1])]
         attrs = obj.get("attrs", {})
         scene.objects.append(
             SceneObject(
@@ -667,12 +663,11 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
                     + (drift * max(abs(span[0]), abs(span[1])) if obj["source"] != "tape" else 0),
                 ),
                 geom=geom,
-                points=tuple(pts),
             )
         )
 
     for i, patch in enumerate(raw.get("ground", [])):
-        poly = _geometry([_xz(p, "") for p in patch["polygon"]], f"/ground/{i}/polygon")
+        poly = _geometry([_xz(p) for p in patch["polygon"]], f"/ground/{i}/polygon")
         walked = max(abs(scene.s_of(c)) for c in poly.exterior.coords)
         default = errors.tap_ft.value + drift * walked
         scene.ground.append(GroundPatch(i, patch["type"], poly, _error(patch, default)))
@@ -700,16 +695,16 @@ def parse_scene(raw: dict[str, Any], rules: Rules, input_bytes: bytes | None = N
     for side, end in coverage.get("ends", {}).items():
         scene.end_kinds[side] = end["kind"]
 
-    _check_orientation(scene)
+    _check_orientation(scene, raw.get("keyframes", []))
     return scene
 
 
-def _check_orientation(scene: Scene) -> None:
+def _check_orientation(scene: Scene, keyframes: list[dict[str, Any]]) -> None:
     """Cameras stand outside the house. If most keyframes sit on the inward side of the wall they
     face, the baseline points were almost certainly ordered right to left."""
     walls = scene.walls
     inward = total = 0
-    for kf in scene.raw.get("keyframes", []):
+    for kf in keyframes:
         pose = kf["pose"]
         cam = (float(pose[12]), float(pose[14]))
         nearest = min(walls, key=lambda p: Point(cam).distance(LineString([p.a, p.b])))

@@ -17,11 +17,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from shapely import Geometry, LineString, Point, Polygon, box
+from shapely import Geometry, LineString, Point, Polygon, box, unary_union
+from shapely.affinity import affine_transform, translate
 from shapely.ops import nearest_points
 
 from rules import LoadedRules, load_rules
-from scene import Scene, parse_scene
+from scene import Piece, Scene, parse_scene
 from solver import solve
 from units import format_ft_in
 
@@ -81,7 +82,6 @@ DEFS = """<defs>
 <line class="poche-line" x1="0" y1="0" x2="0" y2="6"/></pattern>
 </defs>"""
 
-GROUND_CLASS = {t: t for t in ("lawn", "mulch", "gravel", "concrete", "deck", "drive")}
 OBJECT_NAMES = {
     "window": "Window",
     "door": "Door",
@@ -123,12 +123,12 @@ class _Frame:
         return min(us), min(vs), max(us), max(vs)
 
     def px(self, p: tuple[float, float]) -> tuple[float, float]:
-        u, v = self.local(p)
+        return self._page(*self.local(p))
+
+    def _page(self, u: float, v: float) -> tuple[float, float]:
         return ((u - self.minu) * self.k + PAD_PX, (v - self.minv) * self.k + PAD_PX)
 
     def to_local_geom(self, geom: Geometry) -> Geometry:
-        from shapely.affinity import affine_transform
-
         a, b = self.along, self.out
         ox, oz = self.origin
         # u = a.x*x + a.z*z - a.(o); v = b.x*x + b.z*z - b.(o)
@@ -151,10 +151,7 @@ class _Frame:
         return " ".join(parts)
 
     def _ring(self, coords: Any, close: bool) -> str:
-        pts = [
-            ((u - self.minu) * self.k + PAD_PX, (v - self.minv) * self.k + PAD_PX)
-            for u, v in coords
-        ]
+        pts = [self._page(u, v) for u, v in coords]
         d = "M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in pts)
         return d + (" Z" if close else "")
 
@@ -187,13 +184,12 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
     """The site plan for one solved scene, as a standalone SVG document."""
     r = (rules or load_rules()).rules
     spot = result.get("spot") or result.get("nearest_considered")
-    walls = [p for p in scene.walls]
+    walls = scene.walls
     focus_parts: list[Geometry] = [LineString([p.a, p.b]) for p in walls]
     focus_parts.append(Point(scene.meter_xz))
     if spot:
         focus_parts.append(Polygon(spot["footprint"]))
-    frame = _Frame(scene, _union_bounds(focus_parts))
-    k = frame.k
+    frame = _Frame(scene, unary_union(focus_parts).envelope)
     out: list[str] = []
     w, h = WIDTH_PX, frame.height
     summary = result.get("summary", "")
@@ -210,7 +206,7 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
     for g in scene.ground:
         d = frame.path(g.polygon)
         if d:
-            out.append(f'<path class="{GROUND_CLASS[g.type]}" d="{d}"/>')
+            out.append(f'<path class="{g.type}" d="{d}"/>')
     fog = frame.path(scene.unobserved_ground())
     if fog:
         out.append(f'<path class="fog" d="{fog}"/>')
@@ -248,8 +244,8 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
         if o.type in ("window", "door", "garage_door"):
             line = scene.wall_line(*o.span)
             out.append(f'<path class="opening" d="{frame.path(line)}"/>')
+            piece = scene.piece_at(sum(o.span) / 2)
             for off in (-0.25, 0.25):
-                piece = scene.piece_at(sum(o.span) / 2)
                 out.append(
                     f'<path class="opening-mark" d="{frame.path(_offset(line, piece, off))}"/>'
                 )
@@ -262,10 +258,7 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
         elif o.type != "pool":
             shape = o.geom.buffer(0.3) if not isinstance(o.geom, Polygon) else o.geom
             out.append(f'<path class="object" d="{frame.path(shape)}"/>')
-            at = _label_point(scene, o.geom, 1.2)
-            if at[0] is None:
-                at = (shape.centroid.x, shape.centroid.y)
-            _label(out, frame, at, name, "small")
+            _label(out, frame, _label_point(scene, o.geom, 1.2), name, "small")
 
     # Cable, battery and its clearance.
     route = result.get("route")
@@ -273,11 +266,11 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
         line = LineString(route["polyline"])
         out.append(f'<path class="cable" d="{frame.path(line)}"/>')
         mid = line.interpolate(0.5, normalized=True)
-        piece = scene.piece_at(scene.s_of((mid.x, mid.y)))
+        s_mid = scene.s_of((mid.x, mid.y))
         _label(
             out,
             frame,
-            piece.point(scene.s_of((mid.x, mid.y)), -2.4),
+            scene.piece_at(s_mid).point(s_mid, -2.4),
             f"Cable {short(route['length_ft'])}",
             "cable-text",
         )
@@ -285,9 +278,9 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
         fp = Polygon(spot["footprint"])
         ring = min(r.clearances.gas_ft.value, r.clearances.ac_ft.value)
         out.append(f'<path class="battery-ring" d="{frame.path(fp.buffer(ring, join_style=2))}"/>')
-        cls = "battery" if spot["outcome"] == "pass" else "battery unsure"
-        if result.get("spot") is None:
-            cls = "battery unsure"
+        # A nearest_considered spot is never drawn as a pass.
+        passed = result.get("spot") is not None and spot["outcome"] == "pass"
+        cls = "battery" if passed else "battery unsure"
         out.append(f'<path class="{cls}" d="{frame.path(fp)}"/>')
         _dimensions(out, frame, scene, fp, result)
 
@@ -296,20 +289,12 @@ def render(scene: Scene, result: dict[str, Any], rules: LoadedRules | None = Non
     out.append(f'<circle class="meter" cx="{mx:.1f}" cy="{my:.1f}" r="7"/>')
     _label(out, frame, scene.point_at(0.0, -1.6), "Meter", "label")
 
-    _legend(out, frame, k, h, result)
+    _legend(out, frame, result)
     out.append("</svg>")
     return "\n".join(out)
 
 
-def _union_bounds(parts: list[Geometry]) -> Geometry:
-    from shapely import unary_union
-
-    return unary_union(parts).envelope
-
-
-def _offset(line: Geometry, piece: Any, distance: float) -> Geometry:
-    from shapely.affinity import translate
-
+def _offset(line: Geometry, piece: Piece, distance: float) -> Geometry:
     return translate(line, piece.outward[0] * distance, piece.outward[1] * distance)
 
 
@@ -362,7 +347,6 @@ def _dimensions(
                 f'x2="{x + tx:.1f}" y2="{y + ty:.1f}"/>'
             )
         label = f"{short(c['measured_ft'])} (min {short(c['threshold_ft'])})"
-        # Label beside the line's midpoint.
         lx, ly = (x1 + x2) / 2 + tx * 3.2, (y1 + y2) / 2 + ty * 3.2 + 4
         out.append(
             f'<text class="dim-text" x="{lx:.1f}" y="{ly:.1f}" '
@@ -370,11 +354,11 @@ def _dimensions(
         )
 
 
-def _legend(out: list[str], frame: _Frame, k: float, h: float, result: dict[str, Any]) -> None:
-    y = h - LEGEND_PX + 26
+def _legend(out: list[str], frame: _Frame, result: dict[str, Any]) -> None:
+    y = frame.height - LEGEND_PX + 26
     x = PAD_PX
     # Scale bar: 5 ft.
-    bar = 5 * k
+    bar = 5 * frame.k
     out.append(
         f'<line class="ink" x1="{x}" y1="{y}" x2="{x + bar:.1f}" y2="{y}" stroke-width="2"/>'
     )

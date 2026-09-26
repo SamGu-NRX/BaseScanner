@@ -10,7 +10,10 @@ from typing import Any
 
 from rules import LoadedRules, deep_merge, public_rules_dict, rules_from_dict
 from scene import Scene, parse_scene
-from solver import solve
+from solver import Check, evaluate_start, solve
+
+W = 31 / 12  # battery width (31 in)
+D = 11 / 6  # battery depth (22 in)
 
 # Test settings, not Base policy.
 GOLDEN_RULES: dict[str, Any] = {
@@ -80,9 +83,14 @@ def shared_fixture() -> dict[str, Any]:
     }
 
 
-def run(raw: dict[str, Any], rules: LoadedRules | None = None) -> dict[str, Any]:
-    loaded = rules or golden_rules()
-    return solve(parse_scene(copy.deepcopy(raw), loaded.rules), loaded)
+def observed_band(
+    raw: dict[str, Any], band: str, spans: list[tuple[float, float]], out: float = 30
+) -> None:
+    """Replace one coverage band with the given observed spans."""
+    extra = {"out_ft": out} if band == "ground" else {}
+    raw["coverage"]["observed"] = [o for o in raw["coverage"]["observed"] if o["band"] != band] + [
+        {"band": band, "span_ft": list(s), **extra} for s in spans
+    ]
 
 
 def parsed(raw: dict[str, Any], rules: LoadedRules | None = None) -> Scene:
@@ -90,5 +98,19 @@ def parsed(raw: dict[str, Any], rules: LoadedRules | None = None) -> Scene:
     return parse_scene(copy.deepcopy(raw), loaded.rules)
 
 
+def run(raw: dict[str, Any], rules: LoadedRules | None = None) -> dict[str, Any]:
+    loaded = rules or golden_rules()
+    return solve(parsed(raw, loaded), loaded)
+
+
 def check(result: dict[str, Any], check_id: str) -> dict[str, Any]:
     return next(c for c in result["checks"] if c["id"] == check_id)
+
+
+def at_start(
+    raw: dict[str, Any], s0: float, check_id: str, rules: LoadedRules | None = None
+) -> Check:
+    """One check of the candidate starting at s0, evaluated directly."""
+    loaded = rules or golden_rules()
+    candidate = evaluate_start(parsed(raw, loaded), loaded, s0)
+    return next(c for c in candidate.checks if c.id == check_id)

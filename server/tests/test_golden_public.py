@@ -7,16 +7,19 @@ geometry. Where the review writes a scene whose walls run right to left (test 04
 listed left to right as scene.schema.json requires; the expected plan positions are unchanged.
 """
 
-import copy
 import json
 import math
 from pathlib import Path
 
 import pytest
 from helpers import (
+    D,
+    W,
+    at_start,
     check,
     everything_observed,
     golden_rules,
+    observed_band,
     pads_ground,
     parsed,
     rect,
@@ -27,8 +30,6 @@ from jsonschema import Draft202012Validator
 
 from solver import Solver, evaluate_start
 
-W = 31 / 12  # battery width (31 in)
-D = 11 / 6  # battery depth (22 in)
 RESULT = Draft202012Validator(
     json.loads((Path(__file__).parents[1] / "schemas" / "result.schema.json").read_text())
 )
@@ -46,11 +47,6 @@ def flat(values):
 
 def approx(values, expected):
     assert flat(values) == pytest.approx(flat(expected), abs=1e-6)
-
-
-def at_start(raw, s0, check_id, rules=None):
-    candidate = evaluate_start(parsed(raw, rules), rules or golden_rules(), s0)
-    return next(c for c in candidate.checks if c.id == check_id)
 
 
 def pad_runs_fail_only(result, check_id, pad=(6, 9)):
@@ -222,12 +218,7 @@ def test_07_headroom_covers_the_whole_footprint(underside, plus_minus, expected)
 
 def test_07_unobserved_headroom_is_manual_review() -> None:
     raw = shared_fixture()
-    raw["coverage"]["observed"] = [
-        o for o in raw["coverage"]["observed"] if o["band"] != "overhead"
-    ] + [
-        {"band": "overhead", "span_ft": [-40, 5]},
-        {"band": "overhead", "span_ft": [10, 40]},
-    ]
+    observed_band(raw, "overhead", [(-40, 5), (10, 40)])
     result = solve_valid(raw)
     assert result["decision"] == "manual_review"
     head = check(result, "headroom")
@@ -383,12 +374,7 @@ def l_scene(variant):
         ground.append({"type": "deck", "polygon": rect(12, 40, -40, -8), "plus_minus_ft": 0})
         with_gas(raw, [[12 + front, front], [12 + front, -1]], span=(12, 13))
         raw["coverage"] = everything_observed(-40, 40)
-        raw["coverage"]["observed"] = [
-            o for o in raw["coverage"]["observed"] if o["band"] != "ground"
-        ] + [
-            {"band": "ground", "span_ft": [-40, 14], "out_ft": 30},
-            {"band": "ground", "span_ft": [20, 40], "out_ft": 30},
-        ]
+        observed_band(raw, "ground", [(-40, 14), (20, 40)])
     raw["walls"], raw["ground"] = walls, ground
     return raw
 
@@ -508,7 +494,7 @@ def test_14_result_records_its_measurements() -> None:
 
 def test_result_is_stable_for_the_same_input() -> None:
     a = run(shared_fixture())
-    b = run(copy.deepcopy(shared_fixture()))
+    b = run(shared_fixture())
     a["stats"].pop("elapsed_ms")
     b["stats"].pop("elapsed_ms")
     assert a == b

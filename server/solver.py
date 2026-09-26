@@ -21,7 +21,7 @@ from typing import Any
 from shapely import Geometry, LineString, Polygon, get_coordinates, unary_union
 
 from rules import LoadedRules, Rules, Value
-from scene import EPS, Piece, Scene, SceneObject, merge_intervals
+from scene import EPS, Measured, Piece, Scene, SceneObject, merge_intervals
 from units import format_ft_in
 
 PASS, FAIL, UNSURE = "pass", "fail", "unsure"
@@ -121,7 +121,6 @@ class Route:
     outcome: str
     length: float
     plus_minus: float
-    near_s: float
     polyline: list[tuple[float, float]]
     detours: list[dict[str, Any]]
     crossings: list[dict[str, Any]]
@@ -147,7 +146,6 @@ class Candidate:
 class Solver:
     def __init__(self, scene: Scene, loaded: LoadedRules) -> None:
         self.scene = scene
-        self.loaded = loaded
         r: Rules = loaded.rules
         self.r = r
         self.W = r.battery.width_ft.value
@@ -258,7 +256,7 @@ class Solver:
                 return c
         if not self._covered(fp, self.unobserved_ground, ew):
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing_later = partial(self._missing_ground, fp, ew)
+            c.missing_later = partial(self._missing, "ground", fp, ew)
             c.reason = "The ground under the footprint was not seen."
             return c
         # A patch edge's error matters only where an allowed surface meets a disallowed or
@@ -283,23 +281,14 @@ class Solver:
             c.reason = "The footprint sits within measurement error of a surface boundary."
         return c
 
-    def _missing_ground(self, fp: Polygon, radius: float) -> list[tuple[str, float, float]]:
-        """The stretch of ground within `radius` of the footprint that nobody saw."""
-        region = self.unobserved_ground.intersection(fp.buffer(radius) if radius > 0 else fp)
-        extent = self.scene.s_extent(region)
-        return [("ground", *extent)] if extent else []
-
     def _unobserved(self, band: str) -> Geometry:
         return self.unobserved_ground if band == "ground" else self.unobserved_wall
 
-    def _missing_band(
-        self, band: str, fp: Polygon, radius: float
-    ) -> list[tuple[str, float, float]]:
-        if band == "ground":
-            return self._missing_ground(fp, radius)
-        region = self.unobserved_wall.intersection(fp.buffer(radius) if radius > 0 else fp)
+    def _missing(self, band: str, fp: Polygon, radius: float) -> list[tuple[str, float, float]]:
+        """The stretch of `band` within `radius` of the footprint that nobody saw."""
+        region = self._unobserved(band).intersection(fp.buffer(radius) if radius > 0 else fp)
         extent = self.scene.s_extent(region)
-        return [("wall", *extent)] if extent else []
+        return [(band, *extent)] if extent else []
 
     def check_clearance(
         self,
@@ -343,8 +332,7 @@ class Solver:
         radius = t + piece.plus_minus
         bands = ["ground", "wall"] if band == "ground+wall" else [band]
         unseen = [b for b in bands if not self._covered(fp, self._unobserved(b), radius)]
-        covered = not unseen
-        band = unseen[0] if unseen else bands[0]
+        missing_later = partial(self._missing, unseen[0], fp, radius) if unseen else None
         if c.outcome == UNSURE:
             if c.unsure_cause == "unknown_attribute":
                 c.reason = (
@@ -356,12 +344,11 @@ class Solver:
                     f"{c.subject} is {ft(c.measured or 0)} (± {ft(c.plus_minus or 0)}) from the "
                     f"battery against a {ft(t)} rule: too close to call."
                 )
-            if not covered:
-                c.missing_later = partial(self._missing_band, band, fp, radius)
+            c.missing_later = missing_later
             return c
-        if not covered:
+        if missing_later:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
-            c.missing_later = partial(self._missing_band, band, fp, radius)
+            c.missing_later = missing_later
             c.reason = (
                 f"Not everything within {ft(t)} of the battery was seen, so a {noun} could "
                 "hide there."
@@ -467,7 +454,7 @@ class Solver:
         check_id: str,
         label: str,
         band: str,
-        entries: list,
+        entries: list[Measured],
         rule_key: str,
         rule: Value,
         s0: float,
@@ -592,7 +579,6 @@ class Solver:
             None,
             rule_source="docs/02 Lane C: the cable can't cross a door, a garage or a "
             "stretch with no wall",
-            rule_placeholder=False,
         )
         if "fail" in effects:
             path.outcome = FAIL
@@ -649,7 +635,7 @@ class Solver:
             comparison="at_most",
         )
         run = f"{ft(length)} (± {ft(e)})"
-        confident = r.confident_reach_ft.value
+        confident = cr.value
         if reach.outcome == FAIL:
             reach.reason = f"The cable run is {run}, over the {ft(r.max_ft.value)} maximum."
         elif reach.outcome == UNSURE:
@@ -672,7 +658,6 @@ class Solver:
             outcome=worst([path.outcome, reach.outcome]),
             length=length,
             plus_minus=e,
-            near_s=near,
             polyline=self.scene.polyline(0.0, near),
             detours=detours,
             crossings=crossings,
@@ -824,15 +809,16 @@ class Solver:
                 boundaries += [a, b]
         for g in self.scene.gaps:
             boundaries += [g.s0, g.s1]
+        ew = piece.error_at(max(abs(lo), abs(hi)))
         offsets = {0.0}
         for m in [*self.equipment, *self.scene.overheads, *self.scene.facing]:
-            for e in (m.plus_minus, m.plus_minus + piece.error_at(max(abs(lo), abs(hi)))):
+            for e in (m.plus_minus, m.plus_minus + ew):
                 offsets |= {e, -e}
         for b in boundaries:
             for off in offsets:
                 points += [b + off, b - W - off]
         rt = self.r.route
-        e_route = self.scene.meter_plus_minus + piece.error_at(max(abs(lo), abs(hi)))
+        e_route = self.scene.meter_plus_minus + ew
         for line in (rt.confident_reach_ft.value, rt.max_ft.value):
             for x in (line - e_route, line + e_route, line):
                 points += [x, -x - W]
@@ -866,25 +852,18 @@ class Solver:
         """(geometry, offset) pairs whose offset outlines bound some check's outcome."""
         c = self.r.clearances
         ew = piece.error_at(max(abs(piece.s0), abs(piece.s1)))
+        items = [
+            *((c.gas_ft.value, o.geom, o.plus_minus) for o in self.gas),
+            *((c.ac_ft.value, o.geom, o.plus_minus) for o in self.ac),
+            *((c.pool_ft.value, o.geom, o.plus_minus) for o in self.pool),
+            *((c.opening_ft.value, o.geom, o.plus_minus) for o in self.openings),
+            *((c.drive_ft.value, g.polygon, g.plus_minus) for g in self.drives),
+        ]
         out: list[tuple[Geometry, float]] = []
-        for t, objs in (
-            (c.gas_ft.value, self.gas),
-            (c.ac_ft.value, self.ac),
-            (c.pool_ft.value, self.pool),
-            (c.opening_ft.value, self.openings),
-        ):
-            for o in objs:
-                for d in (t, t + o.plus_minus + ew, t - o.plus_minus - ew):
-                    if d > 0:
-                        out.append((o.geom, d))
-        for g in self.drives:
-            for d in (
-                c.drive_ft.value,
-                c.drive_ft.value + g.plus_minus + ew,
-                c.drive_ft.value - g.plus_minus - ew,
-            ):
+        for t, geom, err in items:
+            for d in (t, t + err + ew, t - err - ew):
                 if d > 0:
-                    out.append((g.polygon, d))
+                    out.append((geom, d))
         for g in self.scene.ground:
             for d in (0.0, g.plus_minus + ew, -(g.plus_minus + ew)):
                 out.append((g.polygon, d))
@@ -901,34 +880,27 @@ class Solver:
         """Sweep runs for wall that is not evaluated start by start: segments too short for the
         battery, and stretches too far along for any route to pass."""
         runs = []
+
+        def fail_run(piece: Piece, a: float, b: float, check_id: str) -> dict[str, Any]:
+            return {
+                "wall_id": piece.wall_id,
+                "segment": piece.index,
+                "start_ft": [_round(a), _round(b)],
+                "outcome": FAIL,
+                "failing": [check_id],
+                "unsure": [],
+            }
+
         for piece in self.scene.walls:
             limit = self.reach_limit(piece)
             lo, hi = piece.s0, piece.s1 - self.W
             if hi < lo - EPS:
                 # Too short for the battery: any start runs off the end of the segment.
-                runs.append(
-                    {
-                        "wall_id": piece.wall_id,
-                        "segment": piece.index,
-                        "start_ft": [_round(lo), _round(lo)],
-                        "outcome": FAIL,
-                        "failing": ["wall_backing"],
-                        "unsure": [],
-                    }
-                )
+                runs.append(fail_run(piece, lo, lo, "wall_backing"))
                 continue
             for a, b in ((lo, min(hi, -limit - self.W)), (max(lo, limit), hi)):
                 if b - a > EPS:
-                    runs.append(
-                        {
-                            "wall_id": piece.wall_id,
-                            "segment": piece.index,
-                            "start_ft": [_round(a), _round(b)],
-                            "outcome": FAIL,
-                            "failing": ["route_length"],
-                            "unsure": [],
-                        }
-                    )
+                    runs.append(fail_run(piece, a, b, "route_length"))
         return runs
 
 
@@ -1108,6 +1080,10 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
     reasons: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
     spot = best = nearest = None
+    unexplored_reason = {
+        "code": "unexplored_end",
+        "message": "The wall continues past an end of the scan within cable reach.",
+    }
     policy_reason = {
         "code": "policy_not_approved",
         "message": (
@@ -1152,12 +1128,7 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
                 }
             )
         if open_ends:
-            reasons.append(
-                {
-                    "code": "unexplored_end",
-                    "message": "The wall continues past an end of the scan within cable reach.",
-                }
-            )
+            reasons.append(unexplored_reason)
             missing += past_end_requests()
         spot_at = where((best.s0 + best.s1) / 2)
         if any(c.unsure_cause == "unobserved" for c in best.checks if c.outcome == UNSURE):
@@ -1170,21 +1141,19 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
                 f"A person needs to check the best spot, {spot_at}: " + "; ".join(labels) + "."
             )
     else:
-        nearest = (
-            min(fails, key=lambda c: (len(c.failing()), len(c.unsure()), c.route.length, c.s0))
-            if fails
-            else None
+        best = nearest = min(
+            fails,
+            key=lambda c: (len(c.failing()), len(c.unsure()), c.route.length, c.s0),
+            default=None,
         )
-        best = nearest
         fail_counts: dict[str, int] = {}
         for c in fails:
             for i in c.failing():
                 fail_counts[i] = fail_counts.get(i, 0) + 1
+        if far:
+            fail_counts["route_length"] = fail_counts.get("route_length", 0) + len(far)
         top = sorted(fail_counts, key=lambda i: -fail_counts[i])
         if cands or far:
-            if far:
-                fail_counts["route_length"] = fail_counts.get("route_length", 0) + len(far)
-                top = sorted(fail_counts, key=lambda i: -fail_counts[i])
             reasons.append(
                 {
                     "code": "all_spots_fail",
@@ -1202,12 +1171,7 @@ def solve(scene: Scene, loaded: LoadedRules) -> dict[str, Any]:
             )
         can_reject = auto and r.policy.allow_reject and not open_ends
         if open_ends:
-            reasons.append(
-                {
-                    "code": "unexplored_end",
-                    "message": "The wall continues past an end of the scan within cable reach.",
-                }
-            )
+            reasons.append(unexplored_reason)
             missing = past_end_requests()
         if not auto:
             reasons.append(policy_reason)

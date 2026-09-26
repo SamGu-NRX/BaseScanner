@@ -332,8 +332,7 @@ def test_the_uncut_pad_scene_passes() -> None:
 @given(case=coverage_cuts(), flip=st.booleans())
 def test_missing_coverage_never_passes(case, flip: bool) -> None:
     pad, band, mode, at, size = case
-    base = scene(pad)
-    raw = cut(base, band, mode, at, size)
+    raw = cut(scene(pad), band, mode, at, size)
     if flip:
         raw = mirror(raw)
     result = run(raw, FAST)
@@ -392,7 +391,7 @@ def test_mirror_of_a_scene_whose_pad_ends_at_its_own_edges() -> None:
     raw = scene((6.0, 9.0), [gas(-5.0), window(12.0)])
     a, b = run(raw, FAST), run(mirror(raw), FAST)
     assert a["decision"] == PASS
-    assert_mirrored(a, b, 1e-6)
+    assert_mirrored(a, b, EXACT)
 
 
 # Regression: the grid used to be anchored at the wall's left end, so with a clearance line
@@ -402,7 +401,7 @@ def test_mirror_is_exact_when_a_clearance_bounds_the_pad() -> None:
     raw["objects"] = [gas(2.3)]
     a, b = run(raw), run(mirror(raw))
     assert a["decision"] == PASS
-    assert_mirrored(a, b, 1e-6)
+    assert_mirrored(a, b, EXACT)
 
 
 # --- (d) monotonicity: more room never hurts, a stricter rule never helps

@@ -41,7 +41,7 @@
             "items": {"$ref": "#/$defs/point2"}
           },
           "height_ft": {"type": "number", "exclusiveMinimum": 0},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' default for AR taps."}
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of this wall's line. Absent means the rules' wall default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },
@@ -68,7 +68,7 @@
           },
           "source": {"enum": ["vlm", "tap", "tape"], "description": "How the position was measured: a vision model, an AR tap, or a tape measure. Sets the default error."},
           "conf": {"type": "number", "minimum": 0, "maximum": 1, "description": "Recognition confidence. Not a distance error and never used as one."},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error. Absent means the rules' default for `source`."},
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error. Absent means the rules' default for `source`; for tap and vlm it grows with distance along the walls from the meter (errors.drift_per_ft)."},
           "footprint": {
             "description": "Optional ground outline of the object in plan, [x, z] points. Give it for anything that stands off the wall (a gas regulator, pipe run, AC unit, pool edge) so clearances are measured to every part. Without it the object is the stretch of wall line over `span_ft`.",
             "type": "array",
@@ -89,7 +89,7 @@
         "properties": {
           "type": {"enum": ["drive", "concrete", "gravel", "lawn", "mulch", "deck"]},
           "polygon": {"type": "array", "minItems": 3, "maxItems": 500, "items": {"$ref": "#/$defs/point2"}},
-          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft"}
+          "plus_minus_ft": {"$ref": "#/$defs/plus_minus_ft", "description": "Position error of the outline. Absent means the rules' tap default, growing with distance along the walls from the meter (errors.drift_per_ft)."}
         }
       }
     },

@@ -284,7 +284,7 @@ def test_empty_body_is_400(client: TestClient) -> None:
     assert error(resp)["code"] == "empty_body"
 
 
-def test_multipart_without_bundle_field_is_400(client: TestClient) -> None:
+def test_multipart_with_a_field_other_than_bundle_is_400(client: TestClient) -> None:
     resp = client.post(PLACEMENTS, files={"scene": ("scene.json", EXAMPLE_BYTES)})
     assert resp.status_code == 400
     assert error(resp)["code"] == "unexpected_form_field"
@@ -361,6 +361,9 @@ def test_solving_the_example_takes_under_a_second() -> None:
     started = time.perf_counter()
     solve(scene, api.LOADED)
     assert time.perf_counter() - started < 1.0
+
+
+# --- OpenAPI --------------------------------------------------------------------------------------
 
 
 def test_openapi_publishes_the_scene_request_body(client: TestClient) -> None:

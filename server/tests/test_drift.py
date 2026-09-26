@@ -2,11 +2,8 @@
 walked from the meter (rules.yaml errors.drift_per_ft, from S1's real-data drift evals)."""
 
 import pytest
-from helpers import golden_rules, parsed, shared_fixture
+from helpers import W, at_start, golden_rules, parsed, shared_fixture
 
-from solver import evaluate_start
-
-W = 31 / 12
 RULES = golden_rules(
     errors={
         "tap_ft": {"value": 0.3, "source": "t"},
@@ -38,15 +35,14 @@ def test_object_default_error_grows_with_distance_walked() -> None:
 def test_wall_default_error_is_taken_at_the_batterys_far_edge() -> None:
     raw = shared_fixture()
     del raw["walls"][0]["plus_minus_ft"]
-    scene = parsed(raw, RULES)
     for s0 in (6.0, 12.0, -12.0):
-        reach = next(c for c in evaluate_start(scene, RULES, s0).checks if c.id == "route_length")
+        reach = at_start(raw, s0, "route_length", RULES)
         far = max(abs(s0), abs(s0 + W))
         # The meter is exact in the fixture, so the route's error is the wall's at the far edge.
         assert reach.plus_minus == pytest.approx(0.3 + 0.16 * far)
 
 
 def test_explicit_wall_error_does_not_drift() -> None:
-    scene = parsed(shared_fixture(), RULES)  # the fixture's wall has plus_minus_ft 0
-    reach = next(c for c in evaluate_start(scene, RULES, 12.0).checks if c.id == "route_length")
+    # The fixture's wall has plus_minus_ft 0.
+    reach = at_start(shared_fixture(), 12.0, "route_length", RULES)
     assert reach.plus_minus == pytest.approx(0.0)

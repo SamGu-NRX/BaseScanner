@@ -9,9 +9,12 @@ import time
 
 import pytest
 from helpers import (
+    W,
+    at_start,
     check,
     everything_observed,
     golden_rules,
+    observed_band,
     pads_ground,
     parsed,
     rect,
@@ -21,23 +24,6 @@ from helpers import (
 
 from scene import SceneError
 from solver import evaluate_start
-
-W = 31 / 12  # battery width (31 in)
-D = 11 / 6  # battery depth (22 in)
-
-
-def at_start(raw, s0, check_id, rules=None):
-    candidate = evaluate_start(parsed(raw, rules), rules or golden_rules(), s0)
-    return next(c for c in candidate.checks if c.id == check_id)
-
-
-def observed_band(raw, band, spans, out=30):
-    """Replace one coverage band with the given observed spans."""
-    extra = {"out_ft": out} if band == "ground" else {}
-    raw["coverage"]["observed"] = [o for o in raw["coverage"]["observed"] if o["band"] != band] + [
-        {"band": band, "span_ft": list(s), **extra} for s in spans
-    ]
-
 
 # --- 1. unexplored end ----------------------------------------------------------------------------
 
