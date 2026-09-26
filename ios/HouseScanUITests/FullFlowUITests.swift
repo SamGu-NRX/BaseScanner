@@ -90,9 +90,10 @@ final class FullFlowUITests: XCTestCase {
             try app.performAccessibilityAudit { issue in
                 let element = issue.element
                 let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
-                // An element without a label is otherwise impossible to find from the report.
-                let described = element.map { "type \($0.elementType.rawValue) frame \($0.frame)" } ?? "no element"
-                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "") (\(described))"
+                // Only the identifier and label: reading the element's type or frame queries it live,
+                // and an element that has gone records a snapshot failure the retry can't catch
+                // (CI run 36260279300).
+                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
                 return true
             }
             return found

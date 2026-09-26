@@ -89,10 +89,13 @@ struct ScanRootView: View {
 private struct ScanHaptics: ViewModifier {
     let state: ScanViewState
 
+    // Two steps: the five-modifier chain took 215 ms to type-check on Swift 6.4, and CI's
+    // Swift 6.2 has failed on slower expressions before.
     func body(content: Content) -> some View {
-        content
+        let captures = content
             .sensoryFeedback(.impact(weight: .light, intensity: 0.7), trigger: deliberateCaptureID) { _, new in new != nil }
             .sensoryFeedback(.success, trigger: state.phase, condition: Self.isMilestone)
+        return captures
             .sensoryFeedback(.success, trigger: state.gap?.isSatisfied ?? false) { _, new in new }
             .sensoryFeedback(.impact(weight: .medium), trigger: state.features.count) { old, new in new > old }
             .sensoryFeedback(.warning, trigger: state.marking?.refusal) { _, new in new != nil }
