@@ -1,0 +1,96 @@
+name: Measure lab
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "experiments/measure-lab/**"
+      - ".github/workflows/measure-lab.yml"
+  pull_request:
+    paths:
+      - "experiments/measure-lab/**"
+      - ".github/workflows/measure-lab.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: measure-lab-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  geometry-linux:
+    name: Measure lab geometry (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      # Swift 6.2 matches the Xcode 26 toolchain the app job uses. Pinned by digest so a retag
+      # can't change the compiler under the tests.
+      image: swift:6.2-noble@sha256:9bea530093ffff8cf6c259991715ee843fe4d0f932e612f7f4b79cca6e00db87
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Test
+        working-directory: experiments/measure-lab/Geometry
+        run: swift test
+
+  app-build:
+    name: Measure lab app build
+    # Same image and Xcode as .github/workflows/ios.yml.
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      XCODEGEN_VERSION: 2.46.0
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not on this runner image. Pick an installed Xcode from the image readme."
+            exit 1
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      - name: Generate project
+        run: xcodegen generate --spec experiments/measure-lab/project.yml
+
+      - name: Check committed project matches project.yml
+        run: |
+          if ! git diff --exit-code -- experiments/measure-lab; then
+            echo "::error::MeasureLab.xcodeproj differs from project.yml. Run 'make project' in experiments/measure-lab (XcodeGen ${XCODEGEN_VERSION}) and commit the result."
+            exit 1
+          fi
+          untracked="$(git ls-files --others --exclude-standard -- experiments/measure-lab)"
+          if [ -n "$untracked" ]; then
+            echo "::error::xcodegen generate wrote files that are not committed. Run 'make project' and commit them."
+            echo "$untracked"
+            exit 1
+          fi
+
+      - name: Test geometry on macOS
+        working-directory: experiments/measure-lab/Geometry
+        run: swift test
+
+      - name: Build
+        run: >-
+          xcodebuild -project experiments/measure-lab/MeasureLab.xcodeproj -scheme MeasureLab
+          -configuration Debug -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
