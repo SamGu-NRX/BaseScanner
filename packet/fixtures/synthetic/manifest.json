@@ -1,0 +1,516 @@
+{
+ "packet_version": "1.0",
+ "session": {
+  "id": "synthetic-0001",
+  "producer": {
+   "kind": "converter",
+   "name": "packet.samples.synthetic",
+   "version": "1"
+  },
+  "device": {
+   "model": "synthetic",
+   "ios_version": "n/a",
+   "lidar": true,
+   "scene_depth_enabled": true,
+   "mesh_enabled": true
+  },
+  "capture": {
+   "started_at": "2026-09-26T12:00:00Z",
+   "started_at_uptime": 99.5,
+   "ended_at_uptime": 102.5,
+   "distance_walked_m": 2.0
+  },
+  "world_alignment": "gravity",
+  "meter_anchor": {
+   "pose_in_world": [
+    0.866025,
+    0.0,
+    -0.5,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.5,
+    0.0,
+    0.866025,
+    0.0,
+    3.0,
+    0.2,
+    -1.5,
+    1.0
+   ],
+   "ground_y_m": -1.2
+  },
+  "consent": {
+   "location": true
+  }
+ },
+ "photos": [
+  {
+   "id": "p00001",
+   "image": {
+    "path": "photos/p00001.jpg",
+    "bytes": 2425,
+    "sha256": "eb3cc290c9aa9331c6e208de1f5e53775eadd0d61cb682f8bbd9ec9aaf20de52"
+   },
+   "width": 96,
+   "height": 72,
+   "t": 100.25,
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    -0.75,
+    0.0,
+    2.5,
+    1.0
+   ],
+   "intrinsics": [
+    80.0,
+    80.0,
+    48.0,
+    36.0
+   ],
+   "tracking": {
+    "state": "normal",
+    "reason": null
+   },
+   "exposure": {
+    "duration_s": 0.002,
+    "iso": 50
+   },
+   "lens": {
+    "focal_length_mm": 5.1,
+    "f_number": 1.8,
+    "camera": "wide"
+   },
+   "sharpness": {
+    "method": "laplacian_variance_luma_640",
+    "value": 5519.613
+   },
+   "depth": {
+    "map": {
+     "path": "depth/p00001.f32",
+     "bytes": 1728,
+     "sha256": "47a60298a1e5ad8383476e6610cbb7c18434d3267915325a74526e7c145021f8"
+    },
+    "width": 24,
+    "height": 18,
+    "confidence": {
+     "path": "depth/p00001.conf.u8",
+     "bytes": 432,
+     "sha256": "e16c284004f40c7f86530bd69913b176caca8b5146fa7bfde7ea60f647050085"
+    },
+    "source": "arkit_scene_depth"
+   }
+  },
+  {
+   "id": "p00002",
+   "image": {
+    "path": "photos/p00002.jpg",
+    "bytes": 2539,
+    "sha256": "54243a4a4a4061451112a9a423226afaac4a3d8282fc50906586cfe238d8f6d8"
+   },
+   "width": 96,
+   "height": 72,
+   "t": 101.0,
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    2.5,
+    1.0
+   ],
+   "intrinsics": [
+    80.0,
+    80.0,
+    48.0,
+    36.0
+   ],
+   "tracking": {
+    "state": "normal",
+    "reason": null
+   },
+   "exposure": {
+    "duration_s": 0.002,
+    "iso": 50
+   },
+   "lens": {
+    "focal_length_mm": 5.1,
+    "f_number": 1.8,
+    "camera": "wide"
+   },
+   "sharpness": {
+    "method": "laplacian_variance_luma_640",
+    "value": 5376.685
+   },
+   "depth": {
+    "map": {
+     "path": "depth/p00002.f32",
+     "bytes": 1728,
+     "sha256": "47a60298a1e5ad8383476e6610cbb7c18434d3267915325a74526e7c145021f8"
+    },
+    "width": 24,
+    "height": 18,
+    "confidence": {
+     "path": "depth/p00002.conf.u8",
+     "bytes": 432,
+     "sha256": "e16c284004f40c7f86530bd69913b176caca8b5146fa7bfde7ea60f647050085"
+    },
+    "source": "arkit_scene_depth"
+   }
+  },
+  {
+   "id": "p00003",
+   "image": {
+    "path": "photos/p00003.jpg",
+    "bytes": 2269,
+    "sha256": "2ba9bbba7f6e58f34a944c6c292b097cbb21859013e52276389c6d455e4b64dd"
+   },
+   "width": 96,
+   "height": 72,
+   "t": 101.75,
+   "pose": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.0,
+    0.75,
+    0.0,
+    2.5,
+    1.0
+   ],
+   "intrinsics": [
+    80.0,
+    80.0,
+    48.0,
+    36.0
+   ],
+   "tracking": {
+    "state": "normal",
+    "reason": null
+   },
+   "exposure": {
+    "duration_s": 0.002,
+    "iso": 50
+   },
+   "lens": {
+    "focal_length_mm": 5.1,
+    "f_number": 1.8,
+    "camera": "wide"
+   },
+   "sharpness": {
+    "method": "laplacian_variance_luma_640",
+    "value": 4790.699
+   },
+   "depth": {
+    "map": {
+     "path": "depth/p00003.f32",
+     "bytes": 1728,
+     "sha256": "47a60298a1e5ad8383476e6610cbb7c18434d3267915325a74526e7c145021f8"
+    },
+    "width": 24,
+    "height": 18,
+    "confidence": {
+     "path": "depth/p00003.conf.u8",
+     "bytes": 432,
+     "sha256": "e16c284004f40c7f86530bd69913b176caca8b5146fa7bfde7ea60f647050085"
+    },
+    "source": "arkit_scene_depth"
+   }
+  }
+ ],
+ "streams": {
+  "trajectory": {
+   "path": "streams/trajectory.csv",
+   "bytes": 5893,
+   "sha256": "cfc214b89d2e5ca8de240a7cc60fe53b34531b8f66307e0b6e53a8fc017d7012",
+   "rows": 121,
+   "nominal_rate_hz": 60
+  },
+  "accelerometer": {
+   "path": "streams/accelerometer.csv",
+   "bytes": 4188,
+   "sha256": "631eab513a25a4a77de5fc67394033bd97f06f0d5fed2838fac8420434801b14",
+   "rows": 200,
+   "nominal_rate_hz": 100
+  },
+  "gyroscope": {
+   "path": "streams/gyroscope.csv",
+   "bytes": 3788,
+   "sha256": "2c4e5e4502daa6fa44c4a76bfb5cc3702ba295d1ed722165f7bf5f2787158b93",
+   "rows": 200,
+   "nominal_rate_hz": 100
+  },
+  "magnetometer": {
+   "path": "streams/magnetometer.csv",
+   "bytes": 4588,
+   "sha256": "fee98d9041424b9c36e07281f1ee35c03bd4e4c9f61bbb84f0c9c4f74cc76287",
+   "rows": 200,
+   "nominal_rate_hz": 100
+  },
+  "device_motion": {
+   "path": "streams/device_motion.csv",
+   "bytes": 7923,
+   "sha256": "ec4360b2de677ec10fa9251f8eb777fb509414b526bc6268a86fee39b8a3ada7",
+   "rows": 200,
+   "nominal_rate_hz": 100
+  },
+  "barometer": {
+   "path": "streams/barometer.csv",
+   "bytes": 67,
+   "sha256": "423a7acfed9ee3329c661745d393ebc9f2f06824e4833eab8ba6d1f8fc6f248e",
+   "rows": 2,
+   "nominal_rate_hz": 1
+  },
+  "location": {
+   "path": "streams/location.csv",
+   "bytes": 101,
+   "sha256": "530db13b6df749a43830859dfc08aad197f14fe222fd84bfc8601e1ed8a18756",
+   "rows": 1,
+   "nominal_rate_hz": 1
+  },
+  "heading": {
+   "path": "streams/heading.csv",
+   "bytes": 58,
+   "sha256": "db25e169927e708b24d85081be4718cfde5bbfcfd2d893ff432d972b2deb836a",
+   "rows": 1,
+   "nominal_rate_hz": 1
+  }
+ },
+ "lidar": {
+  "mesh": {
+   "path": "lidar/mesh.ply",
+   "bytes": 369,
+   "sha256": "6424380bcc053a1e5ea20a26d196ffa5d1140e3f6e70d0def5b9b20f8c2a97b4"
+  },
+  "planes": [
+   {
+    "id": "wall",
+    "alignment": "vertical",
+    "classification": "wall",
+    "pose": [
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     -1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0
+    ],
+    "extent_m": [
+     6.0,
+     2.4
+    ]
+   },
+   {
+    "id": "ground",
+    "alignment": "horizontal",
+    "classification": "floor",
+    "pose": [
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     0.0,
+     0.0,
+     1.0,
+     0.0,
+     0.0,
+     -1.2,
+     0.0,
+     1.0
+    ],
+    "extent_m": [
+     6.0,
+     3.0
+    ]
+   }
+  ]
+ },
+ "marks": [
+  {
+   "id": "m1",
+   "kind": "meter",
+   "points": [
+    [
+     0.0,
+     0.0,
+     0.0
+    ]
+   ],
+   "t": 99.8,
+   "photo_ids": [
+    "p00001"
+   ]
+  },
+  {
+   "id": "m2",
+   "kind": "wall_end",
+   "points": [
+    [
+     -3.0,
+     0.0,
+     0.0
+    ]
+   ],
+   "t": 100.1,
+   "side": "left",
+   "end_kind": "unexplored"
+  },
+  {
+   "id": "m3",
+   "kind": "wall_end",
+   "points": [
+    [
+     3.0,
+     0.0,
+     0.0
+    ]
+   ],
+   "t": 101.9,
+   "side": "right",
+   "end_kind": "limit"
+  },
+  {
+   "id": "m4",
+   "kind": "gas_meter",
+   "points": [
+    [
+     1.5,
+     -0.6,
+     0.1
+    ]
+   ],
+   "t": 101.2
+  },
+  {
+   "id": "m5",
+   "kind": "window",
+   "points": [
+    [
+     -2.0,
+     0.2,
+     0.0
+    ],
+    [
+     -1.2,
+     1.2,
+     0.0
+    ]
+   ],
+   "t": 100.4,
+   "attrs": {
+    "operable": true
+   }
+  },
+  {
+   "id": "m6",
+   "kind": "drive_edge",
+   "points": [
+    [
+     2.0,
+     -1.2,
+     0.5
+    ],
+    [
+     2.0,
+     -1.2,
+     4.0
+    ]
+   ],
+   "t": 101.5
+  }
+ ],
+ "guidance": [
+  {
+   "id": "g1",
+   "kind": "walk",
+   "origin": "phone",
+   "message": "Walk slowly to your left",
+   "t_shown": 100.0,
+   "t_resolved": 100.8,
+   "outcome": "met"
+  },
+  {
+   "id": "g2",
+   "kind": "tilt_to_ground",
+   "origin": "phone",
+   "band": "ground",
+   "message": "Tilt down to show the ground",
+   "t_shown": 100.9,
+   "t_resolved": 101.3,
+   "outcome": "met"
+  },
+  {
+   "id": "g3",
+   "kind": "gap_band",
+   "origin": "server",
+   "band": "ground",
+   "span_m": [
+    1.0,
+    2.5
+   ],
+   "message": "Show the ground around your meter",
+   "t_shown": 101.6,
+   "t_resolved": 101.9,
+   "outcome": "cannot_reach"
+  }
+ ],
+ "scene": {
+  "path": "scene.json",
+  "bytes": 229,
+  "sha256": "5ce02038cbff4d3b38a5418830c65d22c281e291c83d116c1d8f13010230f948",
+  "schema_version": "1.0"
+ },
+ "provenance": {
+  "dataset": "synthetic",
+  "license": "same as this repository",
+  "source": "packet/packet/samples/synthetic.py",
+  "notes": [
+   "Every value is invented; nothing was measured."
+  ]
+ }
+}

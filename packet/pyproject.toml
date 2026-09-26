@@ -1,0 +1,32 @@
+[project]
+name = "house-scanning-packet"
+version = "0.1.0"
+description = "The capture packet: spec, JSON Schema, validator and sample builders"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "jsonschema>=4.23",
+    "numpy>=2.1",
+    "pillow>=11.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+]
+
+[tool.uv]
+package = false
+required-version = ">=0.11.15,<0.12"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--strict-markers", "--strict-config"]
