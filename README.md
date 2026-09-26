@@ -4,7 +4,7 @@ A homeowner walks the outside wall around their electric meter with an iPhone. T
 
 This is a four-person hackathon project for Base Power, started 2026-09-25. Success means one capture session gives Base enough to decide, with no follow-up photos.
 
-Two teams share the work. The client team (Sam with AI agents; Aiden on video and sample data) builds the iPhone app and the capture packet it sends. The server team (Hunter with his agents) turns the packet into a 3D model and checks the rules on it.
+Two teams share the work. The client team, Sam with AI agents and Aiden on video and sample data, builds the iPhone app and the capture packet it sends. The server team, Hunter with his agents, turns the packet into a 3D model and checks the rules on it.
 
 ## Where to start
 
@@ -21,7 +21,7 @@ Paths marked with a pull request exist only on that branch until it merges.
 
 | Path | What it is | State |
 | --- | --- | --- |
-| `ios/` | The iPhone app (Swift, ARKit, RealityKit) | On `main`, an AR session that shows tracking. Guided capture is in PR #10; the live 3D map is in PR #21 |
+| `ios/` | The iPhone app (Swift, ARKit, RealityKit) | On `main`, an AR session that shows tracking. Guided capture is in PR #10, and the live 3D map in PR #21 |
 | `packet/` | The capture packet's spec, validator and samples | PR #22 |
 | `server/` | The rules engine and placement API (Python, uv) | On `main`, a skeleton. The engine is in PR #11 |
 | `recon/` | Turns photos and depth into a 3D model and a coverage map | PR #20, handed to the server team |
@@ -33,7 +33,7 @@ Paths marked with a pull request exist only on that branch until it merges.
 ## What's live
 
 - The demo server at https://house-scanning-server.vercel.app runs the engine from PR #11 with public rules only, and every answer says so. `GET /health` shows which rules are loaded. A second deployment loads Base's rules and requires a key.
-- TestFlight builds of the app and Measure Lab start by hand from the Actions tab; see [CONTRIBUTING.md](CONTRIBUTING.md).
+- TestFlight builds of the app and Measure Lab start by hand from the Actions tab, as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
 - `make check` runs the server, web and iOS suites that CI runs.
 
 This repository is public. Materials Base gave the team stay in the git-ignored `private/` folder, and photos of real homes never enter git.
