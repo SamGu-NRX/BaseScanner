@@ -55,8 +55,11 @@ public struct CoverageConfig: Sendable, Equatable {
 
 /// Which cells of the wall and ground strips kept keyframes have seen.
 ///
-/// Coverage is guidance, not proof: occlusion is not modelled, so a cell behind a bush still
-/// counts as seen when the bush is in the way. The server re-checks what matters from the images.
+/// Coverage marks what the camera pointed at, not what it saw. Occlusion is not modelled: a bush
+/// or bin in front of the wall is counted as seen wall and ground. Nothing downstream corrects
+/// this; the server takes the covered intervals as given and does not read images. On ETH3D the
+/// evals lane measured 1.1 ft of a 19.3 ft wall claimed covered that no photo saw, all of it
+/// occluded at the bottom.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
     public let config: CoverageConfig
