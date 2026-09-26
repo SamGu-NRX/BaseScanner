@@ -16,6 +16,9 @@ final class ScanEngine {
 
     // Sources
     private(set) var replay: ReplayPlayer?
+    /// Which kind of plane the meter tap hit; an estimated plane widens the meter's error in the
+    /// export. A replay's wall comes from the recording, so it counts as detected.
+    var meterPlaneSource: MeterPlaneSource = .detectedPlane
     private var live: LiveCapture?
 
     // Capture logic (HouseScanKit)
@@ -263,7 +266,10 @@ final class ScanEngine {
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
         guard let anchor = frame.meterAnchor, var wall = coverage?.wall else { return }
         let meter = SIMD3(anchor.columns.3.x, anchor.columns.3.y, anchor.columns.3.z)
-        guard simd_distance(meter, wall.meter) > 0.002 else { return }
+        // A wall-frame change replays every kept camera through the coverage map on the main
+        // actor, and ARKit nudges the anchor by millimetres most frames. 2 cm is far below the
+        // 6 in cell and doesn't show in the overlays; 2 mm would rebuild nearly every frame.
+        guard simd_distance(meter, wall.meter) > 0.02 else { return }
         wall.meter = meter
         coverage?.updateWall(wall)
         publishWall()
@@ -566,7 +572,15 @@ final class ScanEngine {
         case .cameraDenied:
             fail(.cameraDenied)
         case .failed(let message):
-            fail(.sessionFailed(message))
+            // Once the scan is sent, the upload and its result no longer need the camera: keep
+            // them on screen. Only the AR view needs it, and it already hides the battery while
+            // the camera isn't tracking.
+            switch state.phase {
+            case .uploading, .result, .resultAR:
+                RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
+            default:
+                fail(.sessionFailed(message))
+            }
         }
     }
 
@@ -581,6 +595,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterPlaneSource = .detectedPlane
         state.wall = nil
         state.coverage = .empty
         state.target = nil
@@ -812,6 +827,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterPlaneSource = .detectedPlane
         store = KeyframeStore()
         keptSourceIDs = []
         autoCapture.reset()

@@ -44,7 +44,7 @@ struct SourceFrame: Sendable {
 enum JPEGPayload: Sendable {
     /// A JPEG already on disk (replay keyframes).
     case file(URL)
-    /// A JPEG encoded on the AR delegate queue.
+    /// A JPEG encoded on LiveCapture's encode queue, off the AR delegate queue.
     case data(Data)
     /// Not encoded; the frame can't be kept.
     case none

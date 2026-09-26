@@ -76,7 +76,7 @@ final class LiveCapture {
     /// vertical plane ARKit estimates from feature points at the tap. Never `.existingPlaneInfinite`,
     /// which extends a fence's or another wall's plane past its edges, so a tap beside it lands on
     /// a surface that isn't there. The hit says which kind it was.
-    func raycastExistingVerticalPlane(from point: CGPoint) -> VerticalPlaneHit? {
+    func raycastVerticalPlane(from point: CGPoint) -> VerticalPlaneHit? {
         let targets: [(ARRaycastQuery.Target, MeterPlaneSource)] = [(.existingPlaneGeometry, .detectedPlane), (.estimatedPlane, .estimatedPlane)]
         for (target, source) in targets {
             guard let result = arView.raycast(from: point, allowing: target, alignment: .vertical).first else { continue }

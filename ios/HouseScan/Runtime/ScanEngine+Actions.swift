@@ -27,13 +27,15 @@ extension ScanEngine: ScanActions {
             return
         }
         let viewPoint = point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
-        // Only real, detected vertical plane geometry sets the anchor (checklist I8): an
-        // estimated plane would guess the depth.
-        guard let hit = live.raycastExistingVerticalPlane(from: viewPoint) else {
+        // A detected vertical plane's own geometry first; failing that, ARKit's estimated vertical
+        // plane, whose wider error the export records. Never an infinite plane, which extends a
+        // fence or another wall past its edges.
+        guard let hit = live.raycastVerticalPlane(from: viewPoint) else {
             state.guidance = .aimAtWallForMeter
             RuntimeLog.engine.info("meter tap refused: no vertical plane")
             return
         }
+        meterPlaneSource = hit.source
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
         // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at

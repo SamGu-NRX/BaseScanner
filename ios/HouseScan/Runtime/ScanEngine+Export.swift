@@ -71,6 +71,7 @@ extension ScanEngine {
             wall: sceneWall,
             baselineS: low...high,
             meterPlusMinus: groundError,
+            meterPlane: meterPlaneSource,
             objectPlusMinus: groundError,
             features: features,
             coverage: SceneCoverage(
