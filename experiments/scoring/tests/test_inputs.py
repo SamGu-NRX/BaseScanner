@@ -9,6 +9,8 @@ import pytest
 from helpers import Files
 
 from scoring.inputs import InputError, load_study
+from scoring.metrics import score_run
+from scoring.report import markdown, write_csvs
 
 
 def study_error(tmp_path: Path, edit: Callable[[Files], Any]) -> str:
@@ -350,3 +352,94 @@ def test_runs_on_one_recording_share_its_capture_time(tmp_path: Path):
 def test_unreadable_file(tmp_path: Path):
     with pytest.raises(InputError, match="cannot read"):
         load_study(tmp_path / "nope.json", [], [])
+
+
+@pytest.mark.parametrize("different", ["threshold", "review_threshold"])
+def test_check_policy_must_match_across_candidates(tmp_path: Path, different: str):
+    files = Files(tmp_path)
+    files.truth["candidates"].append({"id": "c2", "marker": "chalk", "location": "wall"})
+    for check in list(files.truth["checks"]):
+        measurement = dict(surveyed(files, check["measurement"]))
+        measurement["id"] = check["measurement"].replace("c1", "c2")
+        measurement["candidate"] = "c2"
+        files.truth["measurements"].append(measurement)
+        files.truth["checks"].append(dict(check, candidate="c2", measurement=measurement["id"]))
+        files.results["measurements"].append(
+            {"id": measurement["id"], "value_ft": None, "missing": "failed"}
+        )
+        files.results["outcomes"].append(
+            {"candidate": "c2", "check": check["check"], "outcome": "unsure"}
+        )
+    if different == "threshold":
+        files.truth["checks"][2]["threshold"] = "another_gas_ft"
+        files.rules["thresholds"]["another_gas_ft"] = {
+            "value_ft": 4,
+            "pass_when": "at_least",
+            "source": "synthetic",
+        }
+    else:
+        files.truth["checks"][3]["review_threshold"] = "review_route_ft"
+    rules, truth, results = files.write_all()
+    with pytest.raises(InputError, match="every spot needs the same threshold mapping") as caught:
+        load_study(rules, [truth], [results])
+    assert str(truth) in str(caught.value)
+    assert "checks" in str(caught.value)
+
+
+@pytest.mark.parametrize("missing", ["failed", "unsupported"])
+@pytest.mark.parametrize("outcome", ["pass", "fail"])
+def test_missing_evidence_cannot_decide_check(tmp_path: Path, missing: str, outcome: str):
+    def edit(files: Files) -> None:
+        reported(files, "c1-route")["missing"] = missing
+        files.results["outcomes"][1]["outcome"] = outcome
+
+    message = study_error(tmp_path, edit)
+    assert str(tmp_path / "results.json") in message
+    assert "outcomes for route at c1" in message
+    assert "measurement 'c1-route'" in message
+    assert f"is {missing}; report 'unsure'" in message
+
+
+def test_absent_feature_can_pass_clearance(tmp_path: Path):
+    files = Files(tmp_path)
+    measurement = surveyed(files, "c1-gas")
+    measurement["status"] = "absent"
+    del measurement["value_ft"], measurement["plus_minus_ft"]
+    files.results["measurements"][0] = {"id": "c1-gas", "value_ft": None, "missing": "absent"}
+    rules, truth, results = files.write_all()
+    assert load_study(rules, [truth], [results]).houses[0].runs[0].outcomes[("c1", "gas")] == "pass"
+
+
+@pytest.mark.parametrize("field", ["value_ft", "plus_minus_ft"])
+def test_unformattable_large_length_names_input_field(tmp_path: Path, field: str):
+    def edit(files: Files) -> None:
+        reported(files, "c1-gas")[field] = 1e100
+
+    message = study_error(tmp_path, edit)
+    assert str(tmp_path / "results.json") in message
+    assert f"measurements[0] (c1-gas).{field}" in message
+    assert "at most 1000000000" in message
+
+
+def test_maximum_length_and_precision_format_in_reports(tmp_path: Path):
+    files = Files(tmp_path)
+    surveyed(files, "c1-gas").update(value_ft=3.000000000001, plus_minus_ft=0)
+    reported(files, "c1-gas").update(value_ft=1e9, plus_minus_ft=0)
+    rules, truth, results = files.write_all()
+    study = load_study(rules, [truth], [results])
+    house = study.houses[0]
+    run = score_run(house.truth, house.runs[0], study.rules.thresholds)
+    assert markdown(study, [run]).startswith("# Capture pipeline scores")
+    paths = write_csvs([run], tmp_path / "out")
+    assert len(paths) == 3
+    assert "1000000000.000" in paths[0].read_text()
+    assert "error_to_margin" in paths[1].read_text()
+
+
+def test_unformattable_ratio_precision_names_input_field(tmp_path: Path):
+    message = study_error(
+        tmp_path, lambda files: surveyed(files, "c1-gas").update(value_ft=3.0000000000001)
+    )
+    assert str(tmp_path / "truth.json") in message
+    assert "measurements[1] (c1-gas).value_ft" in message
+    assert "at most 12 decimal places" in message

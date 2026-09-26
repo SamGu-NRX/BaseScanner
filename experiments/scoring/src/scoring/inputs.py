@@ -192,7 +192,12 @@ class _Fields:
             raise self.error(f"expected a number, got {_describe(value)}", key)
         if value < 0:
             raise self.error(f"must not be negative, got {value}", key)
-        return Decimal(value)
+        # Keep derived inches and error-to-margin ratios within Decimal's 28-digit
+        # reporting precision, including a 1e-12 ft distance to a threshold.
+        number = Decimal(value)
+        if number > Decimal("1000000000") or number.as_tuple().exponent < -12:
+            raise self.error("must be at most 1000000000 with at most 12 decimal places", key)
+        return number
 
     def optional_length(self, key: str) -> Decimal | None:
         """Like length, but an explicit null is allowed. The key itself is still required."""
@@ -437,8 +442,19 @@ def _require_same_checks_at_every_spot(
     denominator and nobody would notice.
     """
     names = {candidate: set() for candidate in candidates}
+    policies: dict[str, tuple[str, str | None]] = {}
     for check in checks:
         names[check.candidate].add(check.check)
+        policy = (check.threshold, check.review_threshold)
+        previous = policies.setdefault(check.check, policy)
+        if policy != previous:
+            raise top.error(
+                f"check {check.check!r} at candidate {check.candidate!r} uses threshold "
+                f"{check.threshold!r} and review_threshold {check.review_threshold!r}, "
+                f"but other spots use {previous[0]!r} and {previous[1]!r}; "
+                "every spot needs the same threshold mapping",
+                "checks",
+            )
     every = set().union(*names.values())
     for candidate, found in names.items():
         if found != every:
@@ -624,6 +640,15 @@ def _match(results: Results, truth: Truth, rules: Rules) -> None:
             f'{path}: no outcome for {_checks_list(absent)}; report "unsure" when the run '
             "cannot decide, or set outcomes to null for a run that makes no decisions"
         )
+    for check in truth.checks:
+        outcome = results.outcomes[(check.candidate, check.check)]
+        measurement = results.measurements[check.measurement]
+        if outcome != "unsure" and measurement.missing in ("failed", "unsupported"):
+            raise InputError(
+                f"{path}: outcomes for {check.check} at {check.candidate}: cannot report "
+                f"{outcome!r} when measurement {check.measurement!r} is "
+                f"{measurement.missing}; report 'unsure'"
+            )
 
 
 def _require_same_capture_time(results: Results, earlier: list[Results]) -> None:

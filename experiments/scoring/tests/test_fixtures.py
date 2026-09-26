@@ -52,6 +52,7 @@ def by_key(rows: list[dict[str, str]], *keys: str) -> dict[tuple[str, ...], dict
 
 # Abs errors in inches, per run: see each results fixture.
 # ar-taps:     wall 2.4, c1-gas 2.4, c1-facing 4.8, c1-route 3.0, c2-gas 3.96, c2-route 4.8
+# c2-facing claims absence despite the survey's measurement, so its pass is still unsafe.
 # photo-depth: wall 24, c1-gas 12, c1-facing 14.4, c2-gas 7.44, c2-facing 4.8, c2-route 13.2
 # mesh-scaled: wall 1.2, c1-facing 1.2, c1-route 6, c2-gas 0.24, c2-facing 1.2
 EXPECTED_RUNS = {
@@ -62,8 +63,8 @@ EXPECTED_RUNS = {
         "within_reported": "3",
         "with_reported_uncertainty": "6",
         "missing_unsupported": "0",
-        "missing_failed": "1",
-        "false_absent": "0",
+        "missing_failed": "0",
+        "false_absent": "1",
         "phantom": "0",
         "absent_agreed": "1",
         "not_surveyed": "1",
@@ -165,7 +166,7 @@ def test_measurement_rows(scored):
     assert rows[("mesh-scaled", "wall-length")]["truth_within_reported"] == ""
     assert rows[("mesh-scaled", "c1-gas")]["status"] == "false_absent"
     assert rows[("photo-depth", "c1-pool")]["status"] == "phantom"
-    assert rows[("ar-taps", "c2-facing")]["status"] == "missing_failed"
+    assert rows[("ar-taps", "c2-facing")]["status"] == "false_absent"
     assert rows[("ar-taps", "c2-pool")]["status"] == "not_surveyed"
 
 
@@ -225,7 +226,7 @@ def test_markdown_summary(scored):
     assert stdout.startswith("# Capture pipeline scores\n")
     assert "left out of every error figure" in stdout
     assert "Scale reference `scale` (5.000 ft), excluded." in stdout
-    assert "| `ar-taps` | ar_poses | 6/9 | 3.48 | 4.80 | 3/6 | 0 | 1 | 0 | 0 | 1 | 1 |" in stdout
+    assert "| `ar-taps` | ar_poses | 6/9 | 3.48 | 4.80 | 3/6 | 0 | 0 | 1 | 0 | 1 | 1 |" in stdout
     assert "| `mesh-scaled` | no decisions | n/a | n/a | n/a | n/a | n/a | n/a | 0 |" in stdout
     assert "| `ar-taps` | 4/7 | 1 | 2 | 0 | 0 | 0 | 0 | 2 |" in stdout
     assert "| `mesh-scaled` | 420.0 | not recorded |" in stdout
