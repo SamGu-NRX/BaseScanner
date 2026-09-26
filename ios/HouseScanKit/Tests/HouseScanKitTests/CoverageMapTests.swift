@@ -4,8 +4,9 @@ import Testing
 
 // Cells are 0.1524 m wide: cell -1 is [-0.1524, 0], cell 0 is [0, 0.1524]. Wall rows sit every
 // 0.1524 m from 0 to 2.286 (rows 0 to 15); ground rows 0, 0.6 and 1.2 out. A row counts when both
-// its samples (a quarter and three quarters along the cell) are in view; a cell is covered when
-// every row is seen from two positions 0.25 m apart.
+// its samples (a quarter and three quarters along the cell) are in view; a wall cell is covered
+// when every row up to the walking height (1.3716 m, row 9) is seen from two positions 0.25 m
+// apart, a ground cell when every row is.
 //
 // The front camera stands 2.6 m out at height 1.4, pitched down 16 degrees. With the 3 % margin the
 // image spans atan(300.8 / 500) = 31.03 degrees above and below the view axis. Looking at s = 0:
@@ -15,8 +16,9 @@ import Testing
 //   ground out 0 / 0.6 / 1.2: -28.3 / -35.0 / -45.0, so 12.3 / 19.0 / 29.0 below -> in
 // The shallowest ground view (out 0) is acos(1.4 / 2.95) = 61.7 degrees from the normal, under 65.
 // So cells -1 and 0 see every ground row and the wall up to row 13 (1.9812 m), never its top two
-// rows: from here the wall is seen 1.9812 m up but never covered. At the 20 degree pitch a
-// walking phone often has, the view's top meets the wall at 2.0 m (see wallTopNeedsItsOwnView).
+// rows: from here the wall is covered to the walking height and seen 1.9812 m up. Pitched down
+// 35 degrees, the view's top meets the wall at 1.22 m, under the walking height (see
+// walkingBandNeedsItsOwnView).
 @Suite struct CoverageMapTests {
     static let front = SIMD3<Float>(0, 1.4, 2.6)
     static func frontCamera(x: Float = 0, pitch: Float = 16) -> CameraFrame {
@@ -40,15 +42,15 @@ import Testing
     }
 
     /// Rows seen by different frames add up, but only a row seen from two positions counts: views
-    /// that never show the top of the wall band never cover the wall, however many there are.
-    @Test func wallTopNeedsItsOwnView() {
+    /// that never show the top of the walking band never cover the wall, however many there are.
+    @Test func walkingBandNeedsItsOwnView() {
         var map = CoverageMap(wall: standardWall())
-        map.observe(Self.frontCamera(pitch: 20), trackingNormal: true)
-        map.observe(Self.frontCamera(x: 0.3, pitch: 20), trackingNormal: true)
-        map.observe(Self.frontCamera(x: 0.6, pitch: 20), trackingNormal: true)
+        map.observe(Self.frontCamera(pitch: 35), trackingNormal: true)
+        map.observe(Self.frontCamera(x: 0.3, pitch: 35), trackingNormal: true)
+        map.observe(Self.frontCamera(x: 0.6, pitch: 35), trackingNormal: true)
         #expect(map.level(.wall, 0) == .seen)
         #expect(map.level(.ground, 0) == .covered)
-        // Two level views from other places see the top row: every wall row now has two positions.
+        // Two level views from other places see row 9: the walking band now has two positions.
         map.observe(wallCamera(s: 0), trackingNormal: true)
         #expect(map.level(.wall, 0) == .seen)
         map.observe(wallCamera(s: 0.3), trackingNormal: true)
@@ -80,8 +82,9 @@ import Testing
         #expect(map.revision == 2)
         for index in [-1, 0] {
             #expect(map.level(.ground, index) == .covered, "ground \(index)")
-            // Every wall row up to 1.9812 m now has two positions; the two above it none.
-            #expect(map.level(.wall, index) == .seen, "wall \(index)")
+            // Every wall row up to 1.9812 m now has two positions, the walking band's among them;
+            // the two above it none.
+            #expect(map.level(.wall, index) == .covered, "wall \(index)")
             #expect(nearlyEqual(map.wallSeenHeight(at: index) ?? .nan, 1.9812), "wall \(index)")
         }
         #expect(map.coveredCount == delta.newlyCovered)
@@ -97,7 +100,7 @@ import Testing
         map.heightError = 0.3
         #expect(map.revision == revision + 1)
         #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, 1.6812))
-        #expect(map.level(.wall, 0) == .seen)
+        #expect(map.level(.wall, 0) == .covered)
         map.heightError = 2
         #expect(map.wallSeenHeight(at: 0) == nil)
         #expect(map.wallSeenSpans().isEmpty)
@@ -216,7 +219,8 @@ import Testing
                 #expect(map.wallSeenHeight(at: index) == span.out, "cell \(index)")
             }
         }
-        #expect(map.coveredIntervals(.wall).isEmpty)
+        // Covered to the walking height, reported to what was seen.
+        #expect(map.coveredIntervals(.wall).contains { $0.contains(0) })
     }
 
     /// Views that reach the top wall row cover the cell, and the height reported is that row's.

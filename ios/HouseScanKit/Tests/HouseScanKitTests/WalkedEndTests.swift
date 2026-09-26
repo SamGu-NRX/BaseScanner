@@ -85,11 +85,11 @@ import Testing
     }
 
     /// Device run 1 in miniature on the synthetic replay (ios/HouseScanUITests/Fixtures): the walk
-    /// goes to 5 m left and 5 m right, pitched 20 degrees down, so the wall band's 7.5 ft top is
-    /// seen only from the two level views of the meter before the walk, and no wall cell farther
-    /// than 2.5 ft from the meter is covered. The unbroken covered reach the old rule put the ends
-    /// at is then 0.762 m on both sides, and the scan would have left out the rest of the walk.
-    /// Ends where the phone stood keep its wall and ground.
+    /// goes to 5 m left and 5 m right, pitched 20 degrees down. Its views cover both bands, the
+    /// wall to the walk's 4.5 ft (`CoverageConfig.wallWalkHeight`), along the whole walk and
+    /// 0.33 m past each turn, so the unbroken covered reach is 5.334 m either side. (With the wall
+    /// band at 7.5 ft it was 0.762 m, and ends there would have left out the rest of the walk.)
+    /// Ends where the phone stood keep its wall and ground whatever the reach.
     @Test func syntheticWalkKeepsItsWallAndGround() throws {
         let folder = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -109,7 +109,7 @@ import Testing
         let planner = GuidancePlanner()
         let oldLeft = planner.reach(.left, coverage: map)
         let oldRight = planner.reach(.right, coverage: map)
-        #expect(nearlyEqual(oldLeft, 0.762) && nearlyEqual(oldRight, 0.762))
+        #expect(nearlyEqual(oldLeft, 5.334) && nearlyEqual(oldRight, 5.334))
         // Where the walk turned (frame 17, x = -5) and where it stopped (frame 37, x = 5).
         let left = WalkedEnd.end(.left, phone: cameras[17].position, walked: map.walkedPositions, wall: map.wall)
         let right = WalkedEnd.end(.right, phone: cameras[37].position, walked: map.walkedPositions, wall: map.wall)

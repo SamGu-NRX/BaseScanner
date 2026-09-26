@@ -101,7 +101,15 @@ public struct GapPlanner: Sendable {
 
     /// Prefers an uncovered ground run nearest the meter, since the ground under a candidate spot
     /// decides whether a battery can stand there; otherwise a wall run. Skipped cells are not
-    /// asked for again.
+    /// asked for again. A wall run means the walking band (`CoverageConfig.wallWalkHeight`).
+    ///
+    /// It asks for nothing above the walking band. The server's answer to the first upload names
+    /// the wall above it where a check needs that, over the stretch the check reads and to the
+    /// height it needs (a wall request with `out_ft`, `GapPlan.Need.wallUp`), and the engine
+    /// raises it at once as the next view (`ScanEngine.nextAutomaticGap`). A request from here
+    /// would have to guess both the stretch and the height (7.5 ft where the public rules need
+    /// just over 6.5), and when the guess missed the spot the server chose, the homeowner would
+    /// be asked for the wall twice.
     public func plan(_ coverage: CoverageMap) -> GapPlan? {
         guard let range = searchRange(coverage) else { return nil }
         for band in [SurfaceBand.ground, .wall] {
