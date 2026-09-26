@@ -17,6 +17,7 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 | `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with the zip as `application/zip`. |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample. This is the default when no server is given. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
+| `-uiDemo` | Runs the screens on a scripted fake engine instead of the capture engine, for design work and for auditing states a replay can't reach. The arguments it takes are listed in `HouseScan/UI/Preview/UIDemo.swift`. |
 
 Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescanning.housescan`, category `state`.
 
@@ -31,7 +32,7 @@ Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescann
 | `Config/Local.xcconfig.example` | Template for per-person signing |
 | `Config/Info.plist` | Camera prompt, `arkit` capability, portrait only, HTTP to local-network servers |
 | `HouseScanKit/` | Capture logic package with its tests |
-| `HouseScanUITests/` | Full-flow UI test and its synthetic replay fixture |
+| `HouseScanUITests/` | Full-flow UI test on a replay, its synthetic fixture, and an accessibility audit of every screen state in demo mode |
 | `Tools/make-synthetic-replay.swift` | Renders the synthetic fixture |
 | `Tools/check-app-scene.sh` | Checks a scan bundle's scene.json against the server schema |
 
