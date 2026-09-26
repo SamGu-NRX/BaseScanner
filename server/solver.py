@@ -177,12 +177,21 @@ class Solver:
         outdoor = scene.band_polygon(scene.pieces[0].s0, scene.pieces[-1].s1, scene.reach_ft)
         # Outdoor ground no patch describes; opened to drop floating point slivers.
         self._unclassified = outdoor.difference(recorded).buffer(-1e-6).buffer(1e-6)
+        self._buffers: dict[tuple[int, float], Geometry] = {}
         self._ground_error = max((g.plus_minus for g in scene.ground), default=0.0)
 
     # --- geometry helpers ----------------------------------------------------------------------
 
     def footprint(self, piece: Piece, s0: float) -> Polygon:
         return piece.rect(s0, s0 + self.W, 0.0, self.D)
+
+    def _buffered(self, geom: Geometry, distance: float) -> Geometry:
+        """geom.buffer(distance), computed once per solve: ground patches and the unclassified
+        area only depend on the wall error, not on the candidate."""
+        key = (id(geom), distance)
+        if key not in self._buffers:
+            self._buffers[key] = geom.buffer(distance)
+        return self._buffers[key]
 
     def _covered(self, fp: Polygon, unobserved: Geometry, radius: float) -> bool:
         """True when nothing unobserved lies within `radius` of the footprint. Unseen areas count
@@ -239,7 +248,7 @@ class Solver:
         )
         ew = piece.plus_minus
         for g in self.bad:
-            core = g.polygon.buffer(-(g.plus_minus + ew))
+            core = self._buffered(g.polygon, -(g.plus_minus + ew))
             if not core.is_empty and fp.intersection(core).area > _MEASURE_EPS:
                 c.outcome, c.subject = FAIL, f"ground[{g.index}] {g.type}"
                 c.reason = f"The footprint stands on {g.type}, which is not an allowed surface."
@@ -255,12 +264,12 @@ class Solver:
         # standing on it (golden test 01).
         on_good = self._good_union.covers(fp)
         near_bad = any(
-            fp.intersection(g.polygon.buffer(g.plus_minus + ew)).area > _MEASURE_EPS
+            fp.intersection(self._buffered(g.polygon, g.plus_minus + ew)).area > _MEASURE_EPS
             for g in self.bad
         )
         near_unknown = (
             not self._unclassified.is_empty
-            and fp.intersection(self._unclassified.buffer(self._ground_error + ew)).area
+            and fp.intersection(self._buffered(self._unclassified, self._ground_error + ew)).area
             > _MEASURE_EPS
         )
         if on_good and not near_bad and not near_unknown:
