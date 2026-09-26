@@ -155,8 +155,9 @@ struct ReplaySessionTests {
         #expect(try ReplaySession.decode(sessionJSON: Data(json.utf8)).declaredWall == nil)
     }
 
-    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 38 frames, wall on z = 0 facing
-    /// +z, meter at (0, 1.5, 0), and the first frame aimed straight at the meter.
+    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 41 frames (the walk's 38 and
+    /// three closing tilt-up frames), wall on z = 0 facing +z, meter at (0, 1.5, 0), and the first
+    /// frame aimed straight at the meter.
     @Test func decodesSyntheticWallFixture() throws {
         let folder = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -164,7 +165,7 @@ struct ReplaySessionTests {
             .standardizedFileURL
         let session = try ReplaySession.load(folder: folder)
         #expect(session.id == "synthetic-wall")
-        #expect(session.frames.count == 38)
+        #expect(session.frames.count == 41)
         #expect(session.frames.allSatisfy { $0.trackingNormal })
 
         let wall = try #require(session.declaredWall)
