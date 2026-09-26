@@ -32,6 +32,11 @@ final class ScanEngine {
     private var gateProblem: (coaching: Coaching, since: Double)?
     private var gateClearSince: Double?
     private var closeUpPending = false
+    /// Why the last close-up has to be retaken (from the meter-number reader, or "None of
+    /// these"), and when that was said, in screen seconds. Shown until the next shot fires.
+    private var closeUpRetake: (problem: CloseUpProblem, since: Double)?
+    /// The reader's answer for the close-up on screen, for the advice after "None of these".
+    private var meterReadout: MeterReadout?
     /// Keyframe writes still in flight, by the `generation` they started in; the bundle waits
     /// for its own generation's. Keyed so a write finishing after a reset can't count against
     /// the new scan (a plain counter went negative when `resetAll` zeroed it mid-write).
@@ -142,6 +147,9 @@ final class ScanEngine {
             state.closeUp = .aiming(hold: 0, problem: nil)
             closeUpGate = CloseUpGate()
             closeUpPending = false
+            closeUpRetake = nil
+            meterReadout = nil
+            state.meterNumber = nil
             state.closeUpFailedAttempts = 0
             live?.setMode(.closeUp)
             if let replay { replay.play(range: 0..<replay.frames.count, speed: replaySpeed) }
@@ -265,20 +273,61 @@ final class ScanEngine {
         guard let wall = coverage?.wall else { return }
         if case .captured = state.closeUp { return }
         if case .skipped = state.closeUp { return }
+        state.coaching = coaching(for: frame.tracking, skip: nil)
+        // After a retake request the shutter waits long enough for the reason to be read (and,
+        // for "move closer", acted on) before the hold can start again.
+        if let retake = closeUpRetake, screenTime - retake.since < Self.retakeNotice {
+            state.closeUp = .aiming(hold: 0, problem: retake.problem)
+            return
+        }
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let status = closeUpGate.evaluate(sample, meter: wall.meter)
         state.closeUpFailedAttempts = status.failedAttempts
-        state.coaching = coaching(for: frame.tracking, skip: nil)
         if status.fire || closeUpPending, status.issue == nil, frame.jpeg.isAvailable {
             closeUpPending = false
+            closeUpRetake = nil
             captureCloseUp(frame)
         } else {
             // A hold that finished on a frame without a photo waits for the next photo, but only
             // while the gates keep passing; any problem restarts the hold.
             closeUpPending = status.issue == nil && (closeUpPending || status.fire)
-            state.closeUp = .aiming(hold: status.hold, problem: status.issue.map(Self.problem))
+            state.closeUp = .aiming(hold: status.hold, problem: status.issue.map(Self.problem) ?? closeUpRetake?.problem)
         }
     }
+
+    /// Seconds a retake reason stays up before the next close-up can be taken. A guess to try
+    /// on a phone, not measured: long enough to read one short line.
+    private static let retakeNotice: Double = 2
+
+    private var screenTime: Double { Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000 }
+
+    /// Back to aiming because the close-up photo was not usable (not saved, no number read, or
+    /// "None of these"). Counts as a failed attempt, so "Can't get a clear shot" appears from
+    /// the second one on.
+    func retakeCloseUp(_ problem: CloseUpProblem) {
+        guard state.phase == .meterCloseUp else { return }
+        RuntimeLog.engine.info("close-up retake: \(String(describing: problem), privacy: .public)")
+        closeUpGate.photoRejected()
+        state.closeUpFailedAttempts = closeUpGate.failedAttempts
+        closeUpPending = false
+        closeUpRetake = (problem, screenTime)
+        meterReadout = nil
+        state.meterNumber = nil
+        state.closeUp = .aiming(hold: 0, problem: problem)
+    }
+
+    /// The meter number was confirmed: on to the walk once the confirmation has been seen.
+    func finishCloseUp() {
+        let scan = generation
+        Task {
+            try? await Task.sleep(for: .seconds(autoAdvanceDelay))
+            await waitForGate(.meterCloseUp)
+            if scan == generation, state.phase == .meterCloseUp { go(.wallWalk) }
+        }
+    }
+
+    /// The reader's answer for the close-up on screen, or nil while none is showing.
+    var currentMeterReadout: MeterReadout? { meterReadout }
 
     private func captureCloseUp(_ frame: SourceFrame) {
         state.closeUp = .captured(nil)
@@ -288,19 +337,41 @@ final class ScanEngine {
             let saved = await store.saveStill(frame.jpeg, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
-                closeUpGate.photoRejected()
-                state.closeUpFailedAttempts = closeUpGate.failedAttempts
-                state.closeUp = .aiming(hold: 0, problem: .blurry)
+                retakeCloseUp(.blurry)
                 return
             }
             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
+            guard scan == generation, state.phase == .meterCloseUp else { return }
             state.closeUp = .captured(thumbnail)
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
-            try? await Task.sleep(for: .seconds(autoAdvanceDelay))
-            await waitForGate(.meterCloseUp)
-            if scan == generation, state.phase == .meterCloseUp { go(.wallWalk) }
+            await readMeterNumber(scan: scan)
         }
+    }
+
+    /// Reads the meter number from the saved close-up, off the main actor, then offers the
+    /// candidates for the homeowner to pick from (never filling one in) or asks for a retake.
+    private func readMeterNumber(scan: Int) async {
+        state.meterNumber = .reading
+        let reader = MeterNumberReaders.make()
+        let photo = store.directory.appending(path: "meter_close.jpg")
+        let readout = await Task.detached(priority: .userInitiated) { () -> MeterReadout? in
+            guard let jpeg = try? Data(contentsOf: photo) else { return nil }
+            return await reader.read(jpeg: jpeg)
+        }.value
+        guard scan == generation, state.phase == .meterCloseUp, state.meterNumber == .reading else { return }
+        guard let readout else {
+            RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
+            retakeCloseUp(.noNumber)
+            return
+        }
+        guard !readout.candidates.isEmpty else {
+            retakeCloseUp(readout.retake ?? .noNumber)
+            return
+        }
+        RuntimeLog.engine.info("meter number: \(readout.candidates.count) candidates to choose from")
+        meterReadout = readout
+        state.meterNumber = .choose(readout.candidates)
     }
 
     private func walk(_ frame: SourceFrame) {
@@ -765,6 +836,9 @@ final class ScanEngine {
         state.guidance = .findMeter
         state.closeUp = .aiming(hold: 0, problem: nil)
         state.closeUpFailedAttempts = 0
+        state.meterNumber = nil
+        closeUpRetake = nil
+        meterReadout = nil
         go(.onboarding)
         replay?.show(index: 0)
     }
