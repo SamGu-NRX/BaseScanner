@@ -117,6 +117,20 @@ enum SceneSchemas {
         #expect(try errors(v, #"{"b": {"band": "ground"}}"#) == [#"$.b: missing required property "out""#])
     }
 
+    /// The manifest's `stream` def: allOf a `$ref` plus sibling constraints, all of which apply.
+    @Test func allOfAppliesEverySubschemaAndFormatOnlyAnnotates() throws {
+        let v = try validator(#"""
+        {"$defs": {"file": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
+         "allOf": [{"$ref": "#/$defs/file"}, {"properties": {"path": {"minLength": 2}}}],
+         "required": ["rows"],
+         "properties": {"at": {"type": "string", "format": "date-time"}}}
+        """#)
+        #expect(try errors(v, #"{"path": "ab", "rows": 1, "at": "not a date"}"#).isEmpty)
+        #expect(try errors(v, #"{"rows": 1}"#) == [#"$: missing required property "path""#])
+        #expect(try errors(v, #"{"path": "a"}"#) == [#"$: missing required property "rows""#, "$.path: string shorter than minLength 2"])
+        #expect(throws: JSONSchemaValidator.SchemaError.self) { try validator(#"{"allOf": []}"#) }
+    }
+
     @Test func unsupportedKeywordAndBadRefThrow() {
         #expect(throws: JSONSchemaValidator.SchemaError.self) { try validator(#"{"anyOf": [{}]}"#) }
         #expect(throws: JSONSchemaValidator.SchemaError.self) { try validator(#"{"properties": {"a": {"uniqueItems": true}}}"#) }
