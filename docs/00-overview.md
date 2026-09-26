@@ -23,10 +23,10 @@ The reconstruction worker is in `recon/` (PR #20), the accuracy evals in `experi
 ## Decisions
 
 - **Guided AR capture, not a video processed later.** Photogrammetry alone has no scale, is slow, and struggles on blank siding and stucco. COLMAP's own tutorial says to avoid texture-less walls. The packet carries ARKit's poses and any LiDAR depth, so the server's model starts at real scale.
-- **3D modeling stays central.** Learned depth alone is too rough at edges, so LiDAR and the phone's poses supply the scale.
+- **The server builds a 3D model at real scale.** Learned depth alone is 4 to 12% off in scale and 8 in or worse at edges, so LiDAR and the phone's poses supply the scale.
 - **Models build geometry and recognize things. Plain code decides placement.** The engine unrolls the walls into one line, `s`, in feet from the meter, negative to the left. It slides the battery's footprint along that line in 2 in steps and checks each rule at each position. Every answer then traces to a rule and a measurement.
 - **Every check answers PASS, FAIL or UNSURE.** A check passes only when its margin beats the measurement's error, and fails only when it misses by more than the error. Everything else is UNSURE. That includes any check on an area nobody observed, and the answer names the view that would settle it.
-- **Rule values live in rules files, each with its source.** `server/rules.yaml` (PR #11) holds the public values and two labeled placeholders: pool 10 ft and driveway 5 ft. Base's values load from a git-ignored private file. Battery sizes live there too, because models differ. Base Core is 39.5 in tall on a 30.68 × 22 in footprint, and older units are 3 × 3 ft.
+- **Rule values live in rules files, each with its source.** `server/rules.yaml` (PR #11) holds the public values and marks each value with no public source `placeholder: true`, such as pool 10 ft and driveway 5 ft. Base's values load from a git-ignored private file. `rules.yaml` also holds the battery's size, because models differ. Base Core is 39.5 in tall on a 30.68 × 22 in footprint, and older units are 3 × 3 ft.
 - **Native iOS only.** Capture needs mesh export, per-frame pose and lens data, and mesh raycasts, and Expo has no first-class ARKit support.
 - **AR results hang off the meter's anchor, with `.gravity` alignment.** ARKit corrects anchors as tracking improves, and drift runs about 2 cm a second, so a result tied to the meter moves with the correction. `.gravityAndHeading` depends on the compass, which developers report off by up to about 176° near a house.
 
@@ -34,7 +34,7 @@ The reconstruction worker is in `recon/` (PR #20), the accuracy evals in `experi
 
 These are the non-obvious facts behind numbers in the code, and where each number came from.
 
-- `capturedImage` is landscape, as the sensor reads it, and the intrinsics match it. Any rotation must also rotate the intrinsics and every image-space annotation. Gemini is the box detector, because Claude's docs call Claude's coordinates approximate. Gemini returns `[ymin, xmin, ymax, xmax]` on a 0 to 1000 scale, so apply EXIF rotation before inference and before casting a box.
+- `capturedImage` is landscape, as the sensor reads it, and the intrinsics match it. Any rotation must also rotate the intrinsics and every image-space annotation. Gemini is the planned box detector, because Claude's docs call Claude's coordinates approximate. Gemini returns `[ymin, xmin, ymax, xmax]` on a 0 to 1000 scale, so apply EXIF rotation before inference and before casting a box.
 - Depth maps are 256 × 192. Scale the intrinsics down to match.
 - ARKit camera space is x right, y up, looking down −z, with image v growing downward. The ray through pixel (u, v) points along ((u − cx)/fx, −(v − cy)/fy, −1) before the camera-to-world rotation.
 - Keyframes are kept every 0.5 m or 15° of movement.
@@ -45,7 +45,7 @@ These are the non-obvious facts behind numbers in the code, and where each numbe
 
 ## Evidence so far
 
-These results come from public datasets with laser-scanned or surveyed ground truth. Nothing here was measured on our phone yet. The sources are `experiments/evals/README.md` (PR #12), `recon/HANDOFF.md` (PR #20), `experiments/meter-closeup/README.md` (PR #16) and `experiments/panel-label/README.md` (PR #17).
+These results come from public datasets with laser-scanned or surveyed ground truth. Only the first phone run below was measured on our phone. The sources are `experiments/evals/README.md` (PR #12), `recon/HANDOFF.md` (PR #20), `experiments/meter-closeup/README.md` (PR #16), `experiments/panel-label/README.md` (PR #17) and `experiments/device-field-test/README.md` (PR #23).
 
 - **Tracking.** A current iPhone stayed inside the server's error allowance. On the MARViN dataset, an iPhone 14 Pro Max had p90 position error of 8.6, 13.4 and 18.5 in after 10, 20 and 30 ft, against an allowance of 19.2, 38.4 and 57.6 in. That phone has LiDAR, and MARViN's reference may be scaled to its tracking. A 2018 iPhone 6s on ADVIO ran two to three times over, partly from noise in that dataset's reference.
 - **Learned depth.** A model's own scale is 4 to 12% off. Rescaled with the phone's poses, walls come within about 5 in at p90 at a realistic 2% pose error, and within 2.8 in with exact poses. Edges stay at 8 in or worse, and clearances are measured from edges. MapAnything's scale shifted with input resolution.
@@ -54,6 +54,7 @@ These results come from public datasets with laser-scanned or surveyed ground tr
 - **Meter reading.** Apple's on-device text recognition read the full meter number on 71 of 73 real photos. It picked the right line on only 21 of 75, because nameplates carry several numbers. A barcode held the number on 20 of the 24 photos that had one. A list of three candidates held it on 85% of held-out photos. So the app offers three candidates to tap, barcode match first, and asks for a retake when the photo is blurry or the number too small.
 - **Panel labels.** Not tested. Only 7 open photos of US panels exist, and the test needs 40.
 - **World models.** Not evaluated yet.
+- **First phone run.** The TestFlight build's first run on a real wall (PR #23) set both wall ends at the meter, so the server placed no spot. Two of five measured features came within 4 in of the tape.
 
 ## Open questions
 

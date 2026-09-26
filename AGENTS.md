@@ -21,8 +21,8 @@ A component's README wins over the docs. Files marked with a pull request exist 
 | The capture packet | `packet/README.md` (PR #22) |
 | The rules engine, API and scene contract | `server/README.md` (PR #11), especially "What settles each check" |
 | Photos to a 3D model | `recon/HANDOFF.md` (PR #20) |
-| Accuracy evals and the field test | `experiments/evals/README.md` (PR #12) |
-| Measurement conventions the code relies on | `docs/00-overview.md` |
+| Accuracy evals and the field test | `experiments/evals/README.md` (PR #12), and the first phone run in `experiments/device-field-test/README.md` (PR #23) |
+| Measurement conventions the code relies on | `docs/00-overview.md`, section "Conventions the code relies on" |
 | Public rule values, code citations, model and imagery licenses | `docs/04-prior-art-and-codes.md` |
 | The live guided-survey design | `docs/05-live-guided-survey-hld.md` |
 | Branches, CI checks and TestFlight | `CONTRIBUTING.md` |

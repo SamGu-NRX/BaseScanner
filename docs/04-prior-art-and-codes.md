@@ -13,7 +13,7 @@ This was researched on 2026-09-25 from public sources, and Esri's imagery terms 
 
 ## Public rule values
 
-The demo's `server/rules.yaml` (PR #11) uses these values. Base's own values are private and stay out of tracked files.
+The demo's `server/rules.yaml` (PR #11) uses these values, except the 1 ft wall distance, because the solver places the battery flush against the wall. Base's own values are private and stay out of tracked files.
 
 | Rule | Value | Source |
 | --- | --- | --- |
