@@ -8,6 +8,7 @@
 4. Which photos are worth keeping?
 5. On a real field session with a tape survey, how do the phone's AR taps and the learned-depth methods compare, and what is the phone's AR scale error?
 6. How large is a current iPhone's ARKit scale error, from public data?
+7. Does the app's coverage map claim wall and ground that no photo saw?
 
 Every number comes from real data. Synthetic data appears only in the unit tests of the metric code.
 
@@ -47,6 +48,7 @@ make pose-priors   # after recon -> results/pose_priors.md
 make frames        # after recon -> results/frames.md
 make field SESSION=... TRUTH=... MAP=... RULES=... SCORING=../scoring   # a field session, section 5
 make modern-arkit  # MARViN pose files (about 3 MB) -> results/modern_arkit.md, section 6
+make coverage      # after recon-data; the app's coverage code at a pinned commit -> results/coverage.md, section 7
 ```
 
 Data lives in `~/house-scanning-data/` (override with `HOUSE_SCANNING_DATA`). `evals/datasets.py` checks each archive's size and sha256, unpacks only what the evals read, deletes the archive, and refuses to download with less than 6 GB free. Both datasets are licensed for non-commercial research: they measure accuracy here and are never committed, redistributed or used for training.
@@ -278,6 +280,30 @@ The 3 ft row in the results file is below what this reference resolves (images 0
   - the phone has LiDAR, which ARKit may use.
 
 The tape test on the team's phone is still the number to trust.
+
+## 7. Does the app's coverage map claim surface no photo saw? (ETH3D)
+
+[results/coverage.md](results/coverage.md), `make coverage`.
+
+**Why.** Every placement check rests on "unseen is not clear": the server passes a check only over the wall and ground the app exports as observed. That export is `CoverageMap.coveredIntervals` (`ios/HouseScanKit`), whose own comment says occlusion is not modelled. Nobody had tested it against what the photos actually saw.
+
+**Method.**
+- **The app's code, unmodified.** `ios/HouseScanKit` at commit beede15 of `t3/ios-mvf`, checked out read-only outside the repo and run by `coverage_driver/` with its default `CoverageConfig`. Every ETH3D photo is a kept keyframe with normal tracking, fed in capture order.
+- **The wall, as taps would give it.** Per scene, the straight stretch of wall that the most photos see within the app's 6 m. The meter sits mid-stretch, 1.5 m up. The outward normal comes from a plane fit to the scan, the ground height from the scan at the wall's foot, and the marked ends are the stretch's ends. The world is levelled on the ground plane under the cameras, because ARKit's y is up. Poses and intrinsics go in unrotated, in ARKit's camera axes.
+- **Truth.** Columns 2 cm wide along the wall, each band sampled every 5 cm up the wall or out across the ground. A photo saw a sample when all of these hold:
+  - it lands inside the full image;
+  - it is within the app's 6 m;
+  - the camera is on the room side of the wall;
+  - nothing nearer hides it. "Nearer" means more than max(10 cm, 4% of depth) in front in the laser scan's depth, with ETH3D's occlusion splats included; ETH3D's masks of objects missing from the scan (people, vegetation) also count as hiding.
+
+  Grazing angle is not part of the truth: an oblique photo still saw the surface, and the app's 65° limit shows up only as missed length.
+
+**Pass criteria, fixed before the run.**
+- **False-observed length**: wall claimed as observed where at least 10 cm of the band (2 samples) was seen by no photo. Must be at most 0.5 ft, one 6-in cell, per scene and band; that is what "about zero" means here. It is also reported as a share of claimed length, and split by the cause at the photos the app credited: occlusion, range, frame edge. Grazing angle cannot cause it under this truth. A stricter variant counts band seen from fewer than two positions 0.25 m apart, the app's own bar for "covered"; it is reported, not graded.
+- **Missed length**: band every sample of which two photos 0.25 m apart saw, which the app did not credit. No pass bar, since it costs the homeowner extra photos, not a wrong answer. It is split by why the app turned those photos down: frame edge (including its 3% margin and the band's top or bottom out of view), range, grazing angle, or only one position.
+- **Validity checks**: my replica of the app's view gates (used only to name causes) must reproduce the app's own sightings, and the wall plane must fit the scan within a few centimetres.
+
+**Results.** Not run yet.
 
 ## Replay session from a real walk
 
