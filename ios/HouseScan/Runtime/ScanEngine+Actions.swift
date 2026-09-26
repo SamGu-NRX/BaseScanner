@@ -273,10 +273,3 @@ extension ScanEngine: ScanActions {
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
     }
 }
-
-/// Stand-in for conformers that don't ask the end question yet (the UI lane's DemoEngine, until
-/// its own `answerWallEnd` lands). It ignores the answer. Delete this extension once every
-/// conformer implements the method; ScanEngine's own implementation above always wins.
-extension ScanActions {
-    func answerWallEnd(turnsCorner: Bool) {}
-}
