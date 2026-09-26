@@ -9,7 +9,7 @@ Every reported number comes from real data. Synthetic data appears only in the u
 
 ## Answers
 
-Plain answers first; the evidence and limits follow in sections 1 and 2.
+Plain answers first; the evidence and limits follow in sections 1 to 3.
 
 1. **ARKit drift: much worse than plus or minus 0.3 ft beyond a few feet, on the only phone measured.** On a 2018 iPhone 6s outdoors, a distance walked comes out a median 2.8 in off after 3 ft (p90 8.2 in), 8.6 in after 10 ft (p90 22.3), and 25.7 in after 30 ft (p90 60.1). It is mostly one steady error: ARKit read distances about 7% short against ARCore (5% to 17% short against GPS). The 0.3 ft guess holds in the median only for spans of about 3 ft, and never at p90. One of the four walks lost tracking entirely. ADVIO's own ground truth could not score this: its scale is 20% off in two walks and its random error is larger than ARKit's, so ARKit is scored against ARCore on the same rig, with GPS confirming the scale.
 2. **Photos alone: no.** Without anything measured by hand, every model's scale is off. At phone range (points within 6 m of a camera), MoGe-2 reads +4% to +12% long, Depth Anything 3 metric −7% to −11% short, and MapAnything −9% to −24% short, giving median errors of 6 to 20 in on 1 to 3 m spans and 14 to 42 in on 3 to 10 m spans.
