@@ -192,7 +192,10 @@ final class ScanEngine {
         refreshMeterFromAnchor(frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
-        guard !frame.isReview else { return }
+        guard !frame.isReview else {
+            refreshCues(camera: frame.camera)
+            return
+        }
 
         switch state.phase {
         case .meterCloseUp:
@@ -348,6 +351,15 @@ final class ScanEngine {
         state.target = output.target
         state.path = output.path
         logGuidance()
+    }
+
+    /// A frame shown for review (not captured) keeps the current task but re-aims its target and
+    /// path from the camera now on screen; otherwise the arrow points from where the walk last was.
+    private func refreshCues(camera: CameraFrame) {
+        guard state.phase == .wallWalk, state.endQuestion == nil, let map = coverage, let task = planner.current else { return }
+        let output = planner.cues(for: task, coverage: map, camera: camera)
+        state.target = output.target
+        state.path = output.path
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next

@@ -74,8 +74,14 @@ public struct GuidancePlanner: Sendable {
             current = preferred
             since = time
         }
-        let task = current ?? preferred
-        return GuidanceOutput(task: task, target: target(for: task, coverage: coverage), path: path(for: task, coverage: coverage, camera: camera))
+        return cues(for: current ?? preferred, coverage: coverage, camera: camera)
+    }
+
+    /// The target and path of `task` seen from `camera`, without choosing a task. The engine calls
+    /// this for frames that must not move the task (a replay frame shown for a tap) so the cues
+    /// never lag behind the camera the screen shows.
+    public func cues(for task: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> GuidanceOutput {
+        GuidanceOutput(task: task, target: target(for: task, coverage: coverage, camera: camera), path: path(for: task, coverage: coverage, camera: camera))
     }
 
     // MARK: Choosing
@@ -178,12 +184,21 @@ public struct GuidancePlanner: Sendable {
 
     // MARK: Cues
 
-    func target(for task: GuidanceTask, coverage: CoverageMap) -> SIMD3<Float>? {
+    /// Where a walk toward `side` heads: 1 m past whichever is farther on that side, the unbroken
+    /// coverage or the camera. Reach alone stops at the first hole, so a homeowner already past a
+    /// hole would get a target behind them, and the arrow would point against "walk right". Holes
+    /// are the job of the aim tasks, which ask for them once they are near or both ends are marked.
+    func walkGoal(_ side: WalkSide, coverage: CoverageMap, camera: CameraFrame?) -> Float {
+        var ahead = reach(side, coverage: coverage)
+        if let camera { ahead = max(ahead, side.sign * coverage.wall.wallPoint(camera.position).s) }
+        return side.sign * (ahead + 1)
+    }
+
+    func target(for task: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> SIMD3<Float>? {
         let wall = coverage.wall
         switch task {
         case .walk(let side):
-            let s = side.sign * (reach(side, coverage: coverage) + 1)
-            return wall.world(s: s, height: 1)
+            return wall.world(s: walkGoal(side, coverage: coverage, camera: camera), height: 1)
         case .markEnd(let side):
             return wall.world(s: side.sign * reach(side, coverage: coverage), height: 0.5)
         case .aimAtGround(let s):
@@ -201,7 +216,7 @@ public struct GuidancePlanner: Sendable {
         let from = wall.wallPoint(camera.position).s
         let goal: Float
         switch task {
-        case .walk(let side): goal = side.sign * (reach(side, coverage: coverage) + 1)
+        case .walk(let side): goal = walkGoal(side, coverage: coverage, camera: camera)
         case .aimAtGround(let s), .aimAtWall(let s): goal = s
         case .markEnd, .stepBack, .complete: return []
         }
