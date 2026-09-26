@@ -1,14 +1,20 @@
+import CryptoKit
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts. They came from origin/t3/server at 739fb6f
-/// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json);
-/// `vendoredCopiesMatchServer` fails if the server's files change and these are not refreshed.
+/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at e0ee8d3
+/// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). That revision
+/// added `out_ft` to missing_evidence requests and defined `out_ft` for facing and overhead
+/// coverage. `vendoredCopiesMatchServer` fails if the server's files change and these are not
+/// refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
-    static let vendored: [(name: String, serverPath: String)] = [
-        ("scene.schema.json", "server/schemas/scene.schema.json"),
-        ("result.schema.json", "server/schemas/result.schema.json"),
-        ("example-scene.json", "server/tests/fixtures/example-scene.json"),
+    static let vendored: [(name: String, serverPath: String, sha256: String)] = [
+        ("scene.schema.json", "server/schemas/scene.schema.json",
+         "e47dd28ad55dd415159ea61f0cca285f71c01e93a489cf646460f47858b27aec"),
+        ("result.schema.json", "server/schemas/result.schema.json",
+         "f5efaf372eb00426798af8e1b60bdd580af4bf04601af3e7ee3fca5261dd047f"),
+        ("example-scene.json", "server/tests/fixtures/example-scene.json",
+         "07bda024c682be365f0f7a6ad7a83fb44c0726344193e7a8b2d8d79499b4bef0"),
     ]
 
     static func data(_ name: String) throws -> Data {
@@ -123,13 +129,39 @@ enum SceneSchemas {
 
     @Test func vendoredCopiesMatchServer() throws {
         // Without the server tree (before the server branch is merged) there is nothing to compare;
-        // the vendored copies then stand as taken from origin/t3/server 6fdb440.
+        // the vendored copies then stand as taken from origin/t3/server e0ee8d3.
         guard let root = SceneSchemas.repoRoot() else { return }
-        for (name, serverPath) in SceneSchemas.vendored {
+        for (name, serverPath, _) in SceneSchemas.vendored {
             let serverFile = root.appendingPathComponent(serverPath)
             guard FileManager.default.fileExists(atPath: serverFile.path) else { continue }
             let vendored = try SceneSchemas.data(name)
             #expect(try Data(contentsOf: serverFile) == vendored, "Tests/HouseScanKitTests/Schemas/\(name) differs from \(serverPath); copy the server's file over it")
         }
+    }
+
+    /// The hashes are of `git show e0ee8d3:<serverPath>`, so a copy edited by hand (or refreshed
+    /// without updating the provenance above) fails here even where the server tree is absent.
+    @Test func vendoredCopiesAreTheRecordedRevision() throws {
+        for (name, _, sha256) in SceneSchemas.vendored {
+            let digest = SHA256.hash(data: try SceneSchemas.data(name)).map { String(format: "%02x", $0) }.joined()
+            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server e0ee8d3")
+        }
+    }
+
+    /// The e0ee8d3 contract: requests carry `out_ft`, and facing and overhead coverage may too.
+    @Test func vendoredContractCarriesOutFtOnRequestsAndCoverage() throws {
+        // A real server answer (see PlacementResultTests) with out_ft added to its requests.
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("Schemas/server-answer-synthetic-wall.json")
+        var answer = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        let requests = try #require(answer["missing_evidence"] as? [[String: Any]])
+        answer["missing_evidence"] = requests.map { item -> [String: Any] in
+            var item = item
+            if item["band"] != nil, item["band"] as? String != "wall" { item["out_ft"] = 5.13 }
+            return item
+        }
+        #expect(try SceneSchemas.result().validate(JSONSerialization.data(withJSONObject: answer)) == [])
+        let scene = #"{"meter":{"pos":[0,5,0],"wall_id":"w"},"walls":[{"id":"w","baseline":[[-5,0],[5,0]]}],"coverage":{"observed":[{"band":"facing","span_ft":[-1,1],"out_ft":5.2},{"band":"overhead","span_ft":[-1,1],"out_ft":9.1}]}}"#
+        #expect(try SceneSchemas.scene().validate(Data(scene.utf8)) == [])
     }
 }
