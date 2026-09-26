@@ -10,7 +10,7 @@ source and not run. Every blocker and major entry was re-read in the source by a
 | B-03 | Blocker | Camera denied, camera failure, unreadable replay: no message, no way on | seen (replay) | fix |
 | B-04 | Blocker | Meter close-up: "Can't get a clear shot" may never appear | code | fix |
 | B-09 | Blocker | Feature list: "Add something" does nothing | code | fix |
-| B-06 | Major | Walk: wall ends can't be recorded truthfully | code | product call |
+| B-06 | Major | Walk: an end closer than 20 ft can't be marked (answer half fixed at `525ea40`) | code | fix |
 | B-08 | Major | "Can't get there" is never sent to the server | code | fix (with S2) |
 | B-10 | Major | Result, upload or list: the scan resets after 20 s of relocalizing | code | fix |
 | B-11 | Major | Meter tap can land on another wall's extended plane | code | fix |
@@ -18,10 +18,10 @@ source and not run. Every blocker and major entry was re-read in the source by a
 | B-02 | Major | Upload and camera failures show raw error text | seen at `21a63e7` | fix |
 | B-13 | Minor | 3D and AR tint zones stop one battery width short | code | fix |
 | B-14 | Minor | Result rule lines hide whether a limit is a minimum or maximum | seen | fix |
-| B-15 | Minor | AR view does not say a sample result is a sample | seen | fix |
 | B-16 | Minor | Wording and VoiceOver: "Tap the ac unit"; "ft" and "in" read as letters | seen in part | fix |
 | B-01 | Resolved | Every upload failed with 404 | seen fixed at `0876e03` | none |
 | B-05 | Resolved | Camera-screen text missing at `21a63e7` | seen fixed | none |
+| B-15 | Resolved | AR view did not say a sample result is a sample | seen fixed at `525ea40` | none |
 | B-07 | Minor | Scan photos are never deleted from the phone | code | product call |
 
 ## Blockers
@@ -49,13 +49,12 @@ feature is what this screen is for.
 
 ## Major
 
-**B-06. Wall ends can't be recorded truthfully.** "Wall ends here" is offered only while the walk
-asks "Is this the left end of the wall?", which happens only at 6.1 m of coverage
-(`HouseScanKit/.../Guidance/GuidancePlanner.swift`, `preferredTask`), and "Can't get there" is not
-offered then (`WallWalkScreen.swift:105`, `asksForArea`). A wall that ends at 10 ft can only be recorded as
-unexplored; one that continues past 20 ft only as a real end, which lets the server reject the
-site. Decision needed: offer "Wall ends here" whenever an end is in view, and a third answer at
-20 ft ("The wall keeps going") recorded as unexplored.
+**B-06. Wall ends.** Half fixed at `525ea40`: after "Wall ends here" the walk asks "What's at the
+left end?", and only "something blocks it" records a real end; a corner or no answer stays
+unexplored. Still open: "Wall ends here" is offered only while the walk asks for the end, which
+happens at 6.1 m of coverage (`HouseScanKit/.../Guidance/GuidancePlanner.swift`, `preferredTask`),
+so a wall that ends at 10 ft can only be recorded through "Can't get there". Suggested: offer
+"Wall ends here" whenever the wall's end is in view.
 
 **B-08. "Can't get there" is never sent.** The upload carries only covered stretches and each end's
 kind (`HouseScan/Runtime/ScanEngine+Export.swift:48-58`, `HouseScanKit/.../Scene/SceneExport.swift`),
@@ -95,8 +94,6 @@ camera-failure text does the same (`ScanCopy.swift:240`) once B-03 is fixed.
 - **B-14.** Seen on the sample result: "Measured 3 ft. The rule is 20 ft, and the measurement can be
   off by about 4 in." A maximum reads like a minimum; the server's `comparison` and
   `review_threshold_ft` are not used (`UI/Copy/ScanCopy.swift:210-218`).
-- **B-15.** The AR view says "Your battery could go here" over the sample result's spot without the
-  sample badge the result screen shows (`ResultARScreen.swift:43`). Seen in pass 2.
 - **B-16.** The AC unit prompt reads "Tap the ac unit", and VoiceOver hears "Mark ac unit" and
   "Remove ac unit" (`ScanCopy.swift:122`, `WallWalkScreen.swift:258`, `MarkFeaturesScreen.swift:121`;
   "Add ac unit" seen in the accessibility audit).
@@ -107,6 +104,8 @@ camera-failure text does the same (`ScanCopy.swift:240`) once B-03 is fixed.
 - **B-01 (resolved).** Until `0876e03` the app posted to `/v1/scenes`, which the server does not
   serve, and every upload failed with 404. At `0876e03` it posts to `/v1/placements`: seen `POST
   /v1/placements 200` and a result (report `sim/20260926-050058-t3-ios-mvf-0876e03c-replay`).
+- **B-15 (resolved).** At `525ea40` the AR view on a sample result says "Example spot, not your
+  result" and "No server checked this scan.", and the upload screen says "Making a sample result".
 - **B-05 (resolved).** At `21a63e7` the camera screens' cards rendered without text; at `5520229` the
   same capture shows every word. The UI lane added the missing colour assets.
 

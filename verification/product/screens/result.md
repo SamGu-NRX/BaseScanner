@@ -91,7 +91,9 @@ the wall, as deep as the battery: green where a battery passes, amber where it i
 where it fails.
 
 **The AR view.** "See it on your wall" crossfades to the camera. The instruction reads "Your
-battery could go here" with the placement line under it. On the camera image the app draws each
+battery could go here" for an approved pass and "The spot an installer will check" otherwise,
+with the placement line under it. With the sample result it reads "Example spot, not your
+result", with "No server checked this scan." and the placement line. On the camera image the app draws each
 sweep stretch as a tinted ground strip with a dashed outline, the cable as a blue line edged in
 white, and the battery as a box with a soft shadow and a blue light bar across its front. The box
 rises out of the ground as the view opens. Everything is placed relative to the meter's anchor,
@@ -111,8 +113,8 @@ settle this" when the area was not seen. The rows have no buttons of their own.
 On the AR view the drawing is redrawn from every camera frame. Whenever tracking is not normal
 (limited, lost or relocalizing), the drawing disappears at once and the instruction reads "Point
 at your meter", with "The battery comes back once your phone finds its place." When tracking is
-normal again the drawing returns, without rising again, and the instruction goes back to "Your
-battery could go here".
+normal again the drawing returns, without rising again, and the instruction goes back to the
+headline above.
 No other coaching appears here: the homeowner is not told why tracking is limited.
 
 ### Advancing
@@ -133,7 +135,7 @@ uploaded again and a new result replaces this one. The old result cannot be reop
 | --- | --- | --- |
 | Live camera or replay | A replay shows the "Replay" badge over the model. The AR view on a replay shows one still: the recorded frame that best shows the spot, with the battery drawn on it. | On a replay the AR picture does not move. Live, the drawing follows the phone. |
 | Autopilot | The autopilot waits `-autopilotHold` seconds, opens the AR view itself (even when the result has no spot), waits again, taps "Done" and logs "AUTOPILOT done". | No effect. |
-| Server or sample result | The sample result shows "Sample result, not from the server" over the model. It is always the same: "An installer will take a look", "4 ft 3 in right of your meter, 3 ft of cable", the rules note, the left-side note, the panel note, four checks and two "Capture it now" cards. | "Capture it now" works, but the upload returns the same sample, so nothing changes. |
+| Server or sample result | The sample result shows "Sample result, not from the server" over the model. It is always the same: "An installer will take a look", "4 ft 3 in right of your meter, 3 ft of cable", the rules note, the left-side note, the panel note, four checks and two "Capture it now" cards. The AR view says "Example spot, not your result", with "No server checked this scan." | "Capture it now" works, but the upload returns the same sample, so nothing changes. |
 | Larger text sizes | The headline, notes and rows wrap and the page scrolls; the model stays 340 points tall. On the AR view the instruction grows, and at the largest sizes the chrome scrolls. | No effect. |
 | Reduce Motion | The headline fades in over 0.2 s without rising. The model starts at its resting angle with no sweep. The AR battery rises over 0.2 s instead of springing up. | Dragging and pinching the model work as usual. |
 
@@ -178,32 +180,36 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
 - The AR battery is drawn over everything in the picture, including a bush or a person standing
   in front of the spot.
 - With the sample result on a real phone, the AR view places a battery 4 ft 3 in right of the
-  real meter, whatever the wall is like.
+  real meter, whatever the wall is like, under "Example spot, not your result".
 - A "Still needed" item about the wall or the ground that comes without a stretch still shows
   "Capture it now", but the button does nothing.
 
 ## Open questions and verification
 
 - **Suspected bug: the result can disappear after a call or a trip to another app.** The 20 s
-  relocalization limit runs on every screen (`Runtime/ScanEngine.swift:189`, `357-364`). The live
+  relocalization limit runs on every screen (`Runtime/ScanEngine.swift:195`, `402-409`). The live
   camera keeps running under the result, so a phone that fails to relocalize within 20 s sends a
   homeowner who is reading their result back to "Find your electric meter". On the result
   screen the camera is hidden, so nothing even tells them to aim at the meter; only the AR view
   says "Point at your meter". The reset
-  (`ScanEngine.swift:386-409`) also leaves the old result in memory. The limit should apply only
+  (`ScanEngine.swift:431-455`) also leaves the old result in memory. The limit should apply only
   to the capture screens.
 - **Suspected bug: the tinted stretches are in the wrong place.** Each sweep run's `start_ft` is
   the range of the battery's left edge (`HouseScanKit/.../PlacementResult.swift:450`; the result
   schema says the same). The app tints exactly that range (`Runtime/ScanEngine+Export.swift:124`),
   so every stretch stops one battery width short on the right.
-- **Suspected bug: the AR view does not say a sample is a sample.** The sample badge is only on the
-  result screen (`UI/Screens/ResultScreen.swift:96-105`). The AR view says "Your battery could go
-  here" over a made-up spot (`UI/Screens/ResultARScreen.swift:43`).
+- The AR view now names a sample spot as an example (`UI/Screens/ResultARScreen.swift:49-51`),
+  fixed in `525ea40`. It still has no badge like the result screen's
+  (`UI/Screens/ResultScreen.swift:96-105`).
+- **Question: an end answered "It turns a corner" may read as unseen.** The left-or-right note
+  shows when the server reports an end as unexplored (`Runtime/ScanEngine+Export.swift:141-144`),
+  and a corner answer is sent as unexplored. A homeowner who walked to the corner would then read
+  that "the scan didn't reach that side". Depends on what the server echoes back; not checked.
 - The measurement line says "The rule is 20 ft" for a limit that is a maximum and "The rule is
   3 ft" for a minimum. The app decodes the server's `comparison` but never shows it, and ignores
-  `review_threshold_ft` (`UI/Copy/ScanCopy.swift:214-218`).
+  `review_threshold_ft` (`UI/Copy/ScanCopy.swift:233-237`).
 - "Capture it now" does nothing when the server's item has no stretch
-  (`Runtime/ScanEngine+Actions.swift:205`, `HouseScanKit/.../GapPlanner.swift:113`), although
+  (`Runtime/ScanEngine+Actions.swift:218`, `HouseScanKit/.../GapPlanner.swift:113`), although
   the card offers it (`ScanEngine+Export.swift:134`).
 - After "Capture it now" the old result is gone from view. If the new upload fails, the homeowner
   has only "Try again" on the upload screen and cannot reread the earlier answer.
@@ -214,8 +220,8 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
   path no homeowner can take.
 - Dragging the model sits inside a scrolling page; whether a vertical drag turns the model or
   scrolls the page needs a device.
-- Both screens were seen at `0876e03` with the real server's answer and with the sample result
+- Both screens were seen at `0876e03`, `24af434` and `525ea40` with the real server's answer, and with the sample result
   ([verification](../verification.md), RES-01 to AR-01). Whether the AR drawing lines up with a
   real wall, and the relocalization reset, need the live camera.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

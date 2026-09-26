@@ -34,7 +34,10 @@ final class AccessibilityAuditTests: XCTestCase {
                 emit("A11Y_SCREEN", ["index": seen.count + 1, "error": "app not running"])
                 break
             }
-            let labels = screenLabels(app)
+            guard let labels = screenLabels(app) else {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+                continue
+            }
             let key = labels.joined(separator: "\n")
             if !seen.contains(key) {
                 seen.append(key)
@@ -46,10 +49,23 @@ final class AccessibilityAuditTests: XCTestCase {
         }
     }
 
+    /// Labels from one snapshot of the accessibility tree. Querying elements and then reading
+    /// each label is two round trips, and a button that disappears in between (the screen
+    /// changing) fails the whole test.
     @MainActor
-    private func screenLabels(_ app: XCUIApplication) -> [String] {
-        let texts = app.staticTexts.allElementsBoundByIndex.map { "text:" + $0.label }
-        let buttons = app.buttons.allElementsBoundByIndex.map { "button:" + $0.label }
+    private func screenLabels(_ app: XCUIApplication) -> [String]? {
+        guard let root = try? app.snapshot() else { return nil }
+        var texts: [String] = []
+        var buttons: [String] = []
+        func walk(_ node: any XCUIElementSnapshot) {
+            switch node.elementType {
+            case .staticText: texts.append("text:" + node.label)
+            case .button: buttons.append("button:" + node.label)
+            default: break
+            }
+            node.children.forEach(walk)
+        }
+        walk(root)
         return texts + buttons
     }
 

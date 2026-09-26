@@ -86,7 +86,7 @@ screen until "Try again" succeeds.
 | --- | --- | --- |
 | Live camera or replay | A replay stops playing; the scan is zipped the same way. | On the live camera the phone still watches tracking behind this screen (see Cancel and interrupt); a replay does not. |
 | Autopilot | A badge at the top left reads "Replay · Autopilot" (in capitals). With the sample result, the `-autopilotHold` time replaces the 1.2 s in the timings below. | If no result arrives within 240 s and the upload has failed, the autopilot presses "Try again" once and waits 90 s more. With `-autopilotGate`, "Done" stays up until the test's gate file appears, at most 120 s. |
-| Server or sample result | With `-serverURL` the zip is posted to that server. Without it, or with `-sampleResult`, the scan is still zipped but not sent. | The sample shows 25%, 50% and 75% about 0.24 s apart, then "Checking your wall" for 1.2 s, then the [sample result](../glossary.md#after-the-walk). It fails only if the sample file is missing from the app. |
+| Server or sample result | With `-serverURL` the zip is posted to that server. Without it, or with `-sampleResult`, the scan is still zipped but not sent, and the screen says so: the title is "Making a sample result", with "No server is connected, so your photos stay on this phone. The result you'll see is an example, not a check of your wall.", and the steps read "Get photos ready", "Load the sample result" and "Show the example". | The title stays the same until the result. "Load the sample result" stays up for about 1 s (four pauses of 0.24 s, no percentage shown), then reads "Sample loaded", and "Show the example" holds for 1.2 s before the [sample result](../glossary.md#after-the-walk). A failure still shows the failure titles. It fails only if the sample file is missing from the app. |
 | Larger text sizes | Title, second line and steps grow and wrap; the screen scrolls when they no longer fit. The symbol stays 132 pt. | No effect. |
 | Reduce Motion | The screen fades in over 0.15 s; the symbol does not pulse. | Check marks still scale in and the symbol still swaps with an animation. |
 
@@ -118,7 +118,7 @@ each attempt. It holds `scene.json`, every kept photo as `k00001.jpg`, `k00002.j
 120 s without data. Any answer outside 200–299 is a failure; so is one that does not read as a
 result: a schema version other than 1.0, a missing required field, a wrong type, a pair of the
 wrong length, or a value outside a fixed set such as the decision or an outcome
-(`HouseScanKit/.../PlacementResult.swift:1-11`). Fields the app does not know are ignored, so the server can add
+(`HouseScanKit/.../PlacementResult.swift:3-12`). Fields the app does not know are ignored, so the server can add
 optional ones without breaking the upload. Only connection errors count as offline. **Accessibility.** The title is a header. The
 symbol is hidden from VoiceOver. The three steps are one element, read together. No change of
 step or percentage is announced, and neither is a failure. **Haptics and motion.** None on
@@ -147,20 +147,21 @@ autopilot logs "upload failed; retrying once". Test identifiers: `screen.uploadi
   posts to `/v1/placements` (`Runtime/ResultClient.swift:24`), and the server answered 200 in the
   Simulator run at this commit ([verification](../verification.md), FLOW-02).
 - **Suspected bug: raw error text on screen.** The second line of "That didn't go through" is the
-  error's developer description (`UI/Copy/ScanCopy.swift:177`, fed by
-  `Runtime/ScanEngine.swift:533, 560`): HTTP status codes, server JSON, decoder errors. B-02.
-- **Suspected bug: "You're offline" for any connection error.** `Runtime/ScanEngine.swift:560`
+  error's developer description (`UI/Copy/ScanCopy.swift:196`, fed by
+  `Runtime/ScanEngine.swift:587, 614`): HTTP status codes, server JSON, decoder errors. B-02.
+- **Suspected bug: "You're offline" for any connection error.** `Runtime/ScanEngine.swift:614`
   treats every `URLError` as offline, including an unreachable host, refused connection and
   timeout. The copy then tells a homeowner with full signal to wait for signal.
 - **Suspected bug: "Checking your wall" is skipped with a real server.** Progress is capped at
   99% while sending (`Runtime/ResultClient.swift:68`) and reaches 100% only after the server has
-  answered (`:40`); the step changes only then (`Runtime/ScanEngine.swift:542, 546`). The
+  answered (`:40`); the step changes only then (`Runtime/ScanEngine.swift:596, 600`). The
   homeowner watches "Sending photos, 99%" for the whole analysis, then the result replaces
-  "Checking your wall" almost at once. Only the sample result shows the third step.
+  "Checking your wall" almost at once. Only the sample result lingers on the third step, where it
+  reads "Show the example".
 - **Suspected bug: a relocalization reset can wipe the scan during the upload.** The
-  relocalization check runs on every live frame whatever the screen (`Runtime/ScanEngine.swift:189`,
-  `364`). After 20 s it forgets the wall, marks and photo list and goes to `findMeter` (`:386–409`),
-  and the upload's answer is dropped (the `generation` guards at `:545, 552`). A homeowner who
+  relocalization check runs on every live frame whatever the screen (`Runtime/ScanEngine.swift:195`,
+  `409`). After 20 s it forgets the wall, marks and photo list and goes to `findMeter` (`:431–455`),
+  and the upload's answer is dropped (the `generation` guards at `:599, 606`). A homeowner who
   locks the phone mid-upload and returns somewhere the phone can't recognise would lose the scan.
   Unverified: needs a device, and whether the AR session keeps delivering frames while the camera
   view is off screen is not settled by the code.
@@ -170,9 +171,9 @@ autopilot logs "upload failed; retrying once". Test identifiers: `screen.uploadi
 - "It takes about a minute" has no measurement behind it; no upload has been timed with a real
   scan.
 - The comment on `writeBundle` (`Runtime/KeyframeStore.swift:83–84`) says the zip stays so a
-  failed upload can be retried, but "Try again" rebuilds it (`Runtime/ScanEngine+Actions.swift:194–196`).
+  failed upload can be retried, but "Try again" rebuilds it (`Runtime/ScanEngine+Actions.swift:207–209`).
   Harmless, but the kept zip is never reused.
 - Pass 1 (`21a63e7`) saw "That didn't go through" with no button or symbol visible
   ([verification](../verification.md) UP-01, B-05). Not rechecked at this commit.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

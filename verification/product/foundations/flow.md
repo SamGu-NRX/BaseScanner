@@ -130,8 +130,8 @@ the autopilot wait on each screen until a file named after it appears, for UI te
 - **Suspected bug: camera access denied is a dead end.** The failure screen text exists ("House
   Scan needs your camera ... Turn on Camera for House Scan in Settings") but only the
   `unsupported` screen shows failures, and the app switches to it only when motion tracking is
-  unsupported (`Runtime/ScanEngine.swift:93`). A denied camera, a failed camera session and an
-  unreadable replay set the failure (`ScanEngine.swift:89, 338, 340`) without changing screen. The
+  unsupported (`Runtime/ScanEngine.swift:99`). A denied camera, a failed camera session and an
+  unreadable replay set the failure (`ScanEngine.swift:111, 424, 426`) without changing screen. The
   homeowner would stay on "Find your electric meter" with no camera and no Settings button.
   Checkable in the Simulator for the replay case: launch with `-replay /nonexistent`.
 - "Your scan is saved on this phone" is true only while the app runs: after a relaunch nothing
@@ -142,4 +142,4 @@ the autopilot wait on each screen until a file named after it appears, for UI te
 - The 1.2 s pause after a finished step and the 20 s relocalization limit are read from code;
   neither has been timed on a device.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

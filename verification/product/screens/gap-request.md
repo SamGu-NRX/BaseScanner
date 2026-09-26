@@ -165,8 +165,8 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
   [coverage and guidance](../foundations/coverage-and-guidance.md#advancing), which says skipped
   cells are sent.
 - **Suspected bug: a past-end request turns a real end into an unexplored one.** "Capture it now"
-  forgets the end before the request starts (`Runtime/ScanEngine+Actions.swift:206-209`,
-  `Runtime/ScanEngine.swift:463-467`), and nothing marks it again. The next upload reports that
+  forgets the end before the request starts (`Runtime/ScanEngine+Actions.swift:219-222`,
+  `Runtime/ScanEngine.swift:516-521`), and nothing marks it again. The next upload reports that
   side as unexplored (`ScanEngine+Export.swift:53-54`) even when the homeowner has now shown the
   ground beyond it, so the server may ask for the same view again.
 - **Suspected bug: a second past-end request asks for the wrong place.** With the end forgotten,
@@ -177,15 +177,15 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
 - **Suspected bug: "Capture it now" can do nothing.** The card offers the button for any wall or
   ground item and any past-end item (`ScanEngine+Export.swift:134`), but the request needs a span
   or a side (`GapPlanner.swift:113, 124`). Without one, the tap is ignored with no message
-  (`ScanEngine+Actions.swift:205`).
+  (`ScanEngine+Actions.swift:218`).
 - The phone's wording "This might be a spot for the battery" is stronger than its choice: it asks
   for the nearest missing ground, not a place it has judged a candidate.
-- The 20 s reset keeps the list of skipped requests (`ScanEngine.swift:386-410`); after
-  re-walking, a phone request identical to a skipped one would be passed over (`ScanEngine.swift:475`).
+- The 20 s reset keeps the list of skipped requests (`ScanEngine.swift:431-456`); after
+  re-walking, a phone request identical to a skipped one would be passed over (`ScanEngine.swift:529`).
 - **Question: "Point at the meter like this." without the picture.** The walk shows the saved
   close-up under this coaching (`UI/Screens/WallWalkScreen.swift:23-27`); this screen shows the
   words alone, even when a close-up was taken.
 - Nothing here has run in the Simulator. The completion moment, the amber highlight and the
   dots need the replay with `-autopilot`, which reaches this screen only when held-back frames exist.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

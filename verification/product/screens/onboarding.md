@@ -149,9 +149,9 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
 
 - **Suspected bug: camera denied, a failed session and an unreadable replay never reach the
   screen** (triaged as [B-03](../bug-triage.md)). The engine switches to the failure screen only
-  for an unsupported phone (`Runtime/ScanEngine.swift:91-93`). A denied camera and a failed
-  session set the failure (`ScanEngine.swift:379, 381`) and an unreadable replay does too
-  (`ScanEngine.swift:105`), with no screen change. The homeowner who declines the prompt sits on
+  for an unsupported phone (`Runtime/ScanEngine.swift:97-99`). A denied camera and a failed
+  session set the failure (`ScanEngine.swift:424, 426`) and an unreadable replay does too
+  (`ScanEngine.swift:111`), with no screen change. The homeowner who declines the prompt sits on
   "Find your electric meter" with no camera image; the "Open Settings" and "Start over" buttons on
   `UI/Screens/UnsupportedScreen.swift:35-48` are unreachable outside the `-uiDemo` preview.
 - **Suspected bug: an unsupported phone has no way out.** `UnsupportedScreen.swift:44` hides
@@ -159,11 +159,11 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   it contradicts [the flow](../foundations/flow.md#summary), which says "Start over" is offered on
   the unsupported screen. One of the two needs updating.
 - **Suspected bug: "Allow camera" during replay loading starts the live camera.** On a replay,
-  `startSourceIfNeeded` (`ScanEngine.swift:169`) starts the camera whenever the replay has not
+  `startSourceIfNeeded` (`ScanEngine.swift:175`) starts the camera whenever the replay has not
   loaded yet and no failure is set. A homeowner who taps "Skip" and "Allow camera" before a slow
   recording loads gets a live session as well as the replay. Affects replays only; not observed.
 - **"The camera stopped" would show raw system error text** as its detail
-  (`UI/Copy/ScanCopy.swift:241`), the same pattern as B-02, if the screen were ever reached.
+  (`UI/Copy/ScanCopy.swift:260`), the same pattern as B-02, if the screen were ever reached.
 - **Reduce Motion is applied to "Next" but not to "Skip"** (`OnboardingScreen.swift:37` versus
   `:75`). Even "Next" still slides the page sideways under Reduce Motion, only faster.
 - The page view hides its dots from VoiceOver on the grounds that it announces its own position
@@ -173,4 +173,4 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   session error, and the Reduce Motion stills. The unsupported screen and the
   `-replay /nonexistent` case can be checked in the Simulator.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

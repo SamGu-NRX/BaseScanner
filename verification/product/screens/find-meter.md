@@ -140,7 +140,7 @@ replay logs where its wall came from when it loads.
 - Tapping past the edge of the part of the wall the phone has detected is accepted, because the
   surface counts as continuing (see Open questions).
 - A replay started with `-replay` whose homeowner taps "Allow camera" before the recording has
-  loaded starts the live camera as well (`Runtime/ScanEngine.swift:168`). Read from code only.
+  loaded starts the live camera as well (`Runtime/ScanEngine.swift:174`). Read from code only.
 - A replay that could not be opened leaves this screen dark, with no way on: every tap is
   ignored.
 
@@ -163,14 +163,14 @@ replay logs where its wall came from when it loads.
   tap at a meter on a surface that has not been detected yet can pin the meter on another detected
   wall's continuation, at the wrong depth. The code's comment says a tap "never guesses a depth".
 - **Suspected bug: a 20 s loss of place anywhere returns here.** The check runs on every screen
-  while the camera session exists, including the upload and the result (`Runtime/ScanEngine.swift:357-364`).
+  while the camera session exists, including the upload and the result (`Runtime/ScanEngine.swift:402-409`).
   A homeowner who leaves the app during the upload and comes back to a phone lying face down
   could lose the whole scan and land here. The reset also leaves an unfinished feature mark in
-  place (`Runtime/ScanEngine.swift:386-410` does not clear it).
+  place (`Runtime/ScanEngine.swift:431-456` does not clear it).
 - **Question: "Point at the meter like this." with nothing to match.** The relocalizing coaching
   (`UI/Copy/ScanCopy.swift:65-66`) is written for the walk, which shows the saved close-up under
   it. Here no close-up exists yet and no picture is shown, so "like this" points at nothing.
 - The live tap, the refusals, the coaching and the camera prompt need the live camera and have not
   been seen running. The Simulator shows only the replay path, where every tap is accepted.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

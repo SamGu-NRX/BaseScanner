@@ -279,11 +279,11 @@ metrics:
     ref: origin/t3/verification
     text: Product description written from the code and checked against screenshots
     manual:
-      status: partial
+      status: met
       evidence: >-
-        verification/product: scope, glossary, both foundations and the pilot drafted from S3's
-        integration commit 21a63e7; one Simulator pass recorded (verification.md); 7 suspected
-        defects in bug-triage.md. Seven screen documents to go.
+        verification/product covers every screen of t3/ios-mvf at 525ea40, checked in the
+        Simulator there with the real server's result (verification.md); bug-triage.md has 16
+        entries, 3 resolved; ux/review.md judges every state.
 
   - id: S4-4
     workstream: S4

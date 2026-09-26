@@ -185,25 +185,25 @@ appears; marking itself logs nothing. Identifiers: `action.markSomething`, `acti
 
 - **Suspected bug: "Add something" does nothing visible.** The buttons start a mark
   (`UI/Screens/MarkFeaturesScreen.swift:64`, accepted on this screen by
-  `Runtime/ScanEngine+Actions.swift:73`), but the list screen never shows the circle, the prompt,
+  `Runtime/ScanEngine+Actions.swift:86`), but the list screen never shows the circle, the prompt,
   "Mark" or camera taps; those exist only on the walk (`UI/Screens/WallWalkScreen.swift:28-45,
-  119-133`). The homeowner who spots a missed gas meter here presses a button and nothing
-  happens. "Looks complete" does not end the stray mark either (`ScanEngine+Actions.swift:155-158`).
+  121-135`). The homeowner who spots a missed gas meter here presses a button and nothing
+  happens. "Looks complete" does not end the stray mark either (`ScanEngine+Actions.swift:168-171`).
 - **Suspected bug: "Tap the ac unit".** The prompt lowercases the kind's name
   (`UI/Copy/ScanCopy.swift:122`), so "AC unit" becomes "ac unit" on screen, and VoiceOver hears
   "Remove ac unit", "Add ac unit", "Mark ac unit" (`MarkFeaturesScreen.swift:121, 189`,
-  `WallWalkScreen.swift:258`).
+  `WallWalkScreen.swift:282`).
 - **Suspected bug: the list can vanish without a word.** Relocalization is timed on every screen
-  (`Runtime/ScanEngine.swift:189, 357-368`), but the list shows no coaching. After a call, a
+  (`Runtime/ScanEngine.swift:195, 402-413`), but the list shows no coaching. After a call, a
   homeowner reading the list with the phone pointed away for 20 s is sent back to finding the
   meter with every mark and photo gone, never having seen "Point at the meter like this.".
 - **Suspected bug: a half-done mark survives the 20 s reset.** `resetSpatialState` clears the
-  features but not the mark in progress or its taps (`ScanEngine.swift:386-410`, taps held at
-  `ScanEngine.swift:62`). After the meter is tapped again the walk opens mid-mark, and a first tap
+  features but not the mark in progress or its taps (`ScanEngine.swift:431-456`, taps held at
+  `ScanEngine.swift:65`). After the meter is tapped again the walk opens mid-mark, and a first tap
   from the old, discarded map can be joined to a new one. The same holds for a stray mark from
   "Add something".
 - **Wrong words for the wrong-side refusal.** The check is where the phone is, not where the tap
-  lands (`ScanEngine+Actions.swift:88`). "Tap something on this side" cannot help; stepping back
+  lands (`ScanEngine+Actions.swift:101`). "Tap something on this side" cannot help; stepping back
   out in front of the wall's line does.
 - The place in a row reads "ft" to VoiceOver (`MarkFeaturesScreen.swift:107`), though the app has
   a spelled-out form for this (`UI/Copy/Distance.swift:25`).
@@ -211,4 +211,4 @@ appears; marking itself logs nothing. Identifiers: `action.markSomething`, `acti
   "Mark". MF-01 in [verification](../verification.md) was observed on an earlier commit and has
   not been rechecked here.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

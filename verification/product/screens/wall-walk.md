@@ -6,8 +6,8 @@ The wall walk is where the scan collects its evidence. The homeowner walks along
 the phone pointed at it, first to the left of the meter and then to the right, and the phone keeps
 photos by itself. Fog over the camera image clears where the phone has looked, the coverage strip
 at the bottom fills in, and one instruction at the top says what to do next. The homeowner says
-where the wall stops on each side ("Wall ends here", or "Can't get there" when they cannot go
-further), can mark features on the way ("Mark something"), and leaves with "Done with this wall"
+where the wall stops on each side ("Wall ends here", then whether it turns a corner or something
+blocks it; or "Can't get there" when they cannot go further), can mark features on the way ("Mark something"), and leaves with "Done with this wall"
 once both ends are set. It follows [the meter close-up](meter-close-up.md) (screen name
 `wallWalk`) and leads to [marking features](mark-features.md). If the phone loses its place for
 too long, the scan starts again from [finding the meter](find-meter.md).
@@ -21,8 +21,10 @@ lifts off the wall and ground behind them, and the strip turns from gray to ambe
 
 When enough of the left side is covered, the instruction asks "Is this the left end of the wall?"
 and a "Wall ends here" button appears. The homeowner aims the middle of the screen at the corner
-and taps it. A white line appears on the wall there, and the instruction switches to "Walk slowly
-to your right". They walk back past the meter and do the same on the right. With both ends set,
+and taps it. A white line appears on the wall there, and the instruction asks "What's at the left
+end?", with "This tells the installer whether the wall keeps going." and two buttons, "It turns a
+corner" and "Something blocks it". They tap "It turns a corner", and the instruction switches to
+"Walk slowly to your right". They walk back past the meter and do the same on the right. With both ends set,
 "Done with this wall" appears; any stretch between the ends that is still thin gets one more aim
 instruction, and then "That's the whole wall", with "Tap Done when you're ready." Tapping "Done with
 this wall" opens the list of marks.
@@ -36,10 +38,12 @@ stateDiagram-v2
         [*] --> walkLeft
         walkLeft --> askLeftEnd : coverage runs far enough left
         walkLeft --> walkRight : "Can't get there" (unexplored left end)
-        askLeftEnd --> walkRight : "Wall ends here" (real left end)
+        askLeftEnd --> whatAtLeft : "Wall ends here"
+        whatAtLeft --> walkRight : "It turns a corner" (unexplored) or "Something blocks it" (real end)
         walkRight --> askRightEnd : coverage runs far enough right
         walkRight --> filling : "Can't get there" (unexplored right end)
-        askRightEnd --> filling : "Wall ends here" (real right end)
+        askRightEnd --> whatAtRight : "Wall ends here"
+        whatAtRight --> filling : "It turns a corner" (unexplored) or "Something blocks it" (real end)
         filling --> complete : nothing lags between the ends
     }
     walking --> kindPicker : "Mark something"
@@ -73,11 +77,12 @@ The instructions this screen can show, with their second lines:
 | "Tilt down to show the ground" | "The strip along the wall, 3 ft 4 in left of your meter." (the distance varies) | Ring on the ground, dots toward it. |
 | "Tilt up to show more wall" | "Around 3 ft 4 in left of your meter." (the distance varies) | Ring on the wall, dots toward it. |
 | "Walk slowly to your left" (or right) | "Keep the wall and the ground in view." | Ring on the wall past the covered stretch, dots toward it. |
-| "Is this the left end of the wall?" (or right) | "Aim at the corner, or where something blocks your way, and tap Wall ends here." | Ring at the end of the covered stretch, no dots. |
+| "Is this the left end of the wall?" (or right) | "Aim where the wall stops or turns a corner, and tap Wall ends here." | Ring at the end of the covered stretch, no dots. |
+| "What's at the left end?" (or right) | "This tells the installer whether the wall keeps going." | The ring and dots of the previous instruction stay until the answer. |
 | "That's the whole wall" | "Tap Done when you're ready." | None. |
 
-A distance within 3 in of the meter reads "at your meter". Coaching replaces all of these while
-the phone has a problem (see [Cancel and interrupt](#cancel-and-interrupt)).
+A distance within 3 in of the meter reads "at your meter". Coaching replaces all of these except
+the end question while the phone has a problem (see [Cancel and interrupt](#cancel-and-interrupt)).
 
 The wayfinding cues work together. The **path** is a line of blue dots on the ground, 1.5 m out
 from the wall, from where the homeowner stands toward the next place to stand; the dots shrink
@@ -116,8 +121,11 @@ icon above the rows. The strip always spans at least 3.5 m (about 11 ft), and it
 coverage, the ends or the homeowner move outward.
 
 **The fog.** A frosted haze painted on the wall face (up to the top of the wall band) and on the
-ground in front of it, over what has been seen plus the fog ahead of it on each side. Unseen cells are thick, seen cells
-thinner, covered cells clear. Skipped cells are not fogged: they get a slate tint with white
+ground in front of it, over what has been seen plus the fog ahead of it on each side. It is a
+thin frosted blur under a light white wash (35 % opacity), both scaled per cell: unseen cells at
+75 % strength, so the wall's shapes still show through, seen cells at 35 %, covered cells clear.
+These strengths were picked by eye on the demo wall and a synthetic replay; the code says to tune
+them on a phone in sun. Skipped cells are not fogged: they get a slate tint with white
 diagonal hatching, so they read neither as clear nor as unseen. Set ends are white vertical lines
 on the wall with a white dot at the foot.
 
@@ -138,11 +146,20 @@ and never while coaching is showing, the kind picker is open or a mark is in pro
 
 **"Wall ends here".** Shown, with "Mark something" beside it, only while the instruction asks "Is
 this the left end of the wall?" or the right one. Tapping it takes the point in the middle of the
-screen, finds where it meets the wall's line, and sets a real end there. Which end it sets depends
-on which side of the meter that point is, not on which end was asked for. The white end line
-appears on the camera, the cap appears on the strip, and the instruction moves on. Nothing on the
-screen marks the middle of the screen at this moment, and if the middle of the screen does not
-meet the wall line (the phone aimed away from the wall) the tap does nothing.
+screen, finds where it meets the wall's line, and sets an end there, unexplored until the
+homeowner says otherwise. Which end it sets depends on which side of the meter that point is, not
+on which end was asked for. The white end line appears on the camera, the cap appears on the
+strip, and the end question follows. Nothing on the screen marks the middle of the screen at this
+moment, and if the middle of the screen does not meet the wall line (the phone aimed away from the
+wall) the tap does nothing.
+
+**The end question.** The instruction reads "What's at the left end?" (or right, for the end just
+set), with "This tells the installer whether the wall keeps going." The buttons give way to two
+full-width answers, one above the other: "It turns a corner" and "Something blocks it". "It turns
+a corner" keeps the end unexplored: the wall may go on. "Something blocks it" makes it a real end.
+Until one is tapped the walk waits: the instruction does not change, coaching does not replace
+it, and "Mark something", "Can't get there" and "Done with this wall" are hidden. The answer gives
+no haptic; the next instruction is chosen at once.
 
 **"Mark something".** Always available while walking. It replaces the buttons with the kind
 picker: a panel headed "What do you see?", a close button, and six tiles, each an icon and a
@@ -196,7 +213,8 @@ thumbnail could not be read back, there is no photo and only the instruction sho
 
 "Done with this wall" appears once both ends are set, whatever the coverage between them. Tapping
 it ends any marking and moves to [marking features](mark-features.md). What moves with it: the
-coverage (covered, skipped and unseen cells), each end with its kind (real or unexplored), the
+coverage (covered, skipped and unseen cells), each end with its kind (real only when the
+homeowner answered "Something blocks it", otherwise unexplored), the
 features marked so far and the walk photos. Coverage between the ends that was never covered
 stays unseen; the server treats it as unknown
 ([coverage and guidance](../foundations/coverage-and-guidance.md#advancing)). There is no way back
@@ -207,19 +225,19 @@ to the walk from the next screen.
 | Modifier | At arrival | While capturing |
 | --- | --- | --- |
 | Live camera or replay | A replay starts playing its recording from the first frame (leaving out any frames the autopilot holds back for a gap request); the meter's wall comes from the recording. | When the recording ends the image freezes on its last frame and the instruction stops changing. The 20 s reset never happens on a replay. |
-| Autopilot | The walk plays at three times speed and the badge reads "Replay · Autopilot". | After the recording ends, the autopilot marks a gas meter and a window by calling the marking actions at projected points, sets both ends (falling back to setting them directly when no frame shows the spot), and finishes the walk. It never opens the kind picker or presses "Can't get there". |
+| Autopilot | The walk plays at three times speed and the badge reads "Replay · Autopilot". | After the recording ends, the autopilot marks a gas meter and a window by calling the marking actions at projected points, sets both ends, answering "It turns a corner" to each end question after `-autopilotHold` seconds (when no frame shows the spot it sets a real end directly, with no question), and finishes the walk. It never opens the kind picker or presses "Can't get there". |
 | Server or sample result | No effect. | No effect. |
-| Larger text sizes | The instruction card and buttons grow; the chrome scrolls when it no longer fits. At accessibility sizes "Mark something" fills the row. | The kind picker shows one tile per row at accessibility sizes instead of three. The strip does not grow. |
+| Larger text sizes | The instruction card and buttons grow; the chrome scrolls when it no longer fits. At accessibility sizes "Mark something" fills the row. The two end answers are stacked and full width at every size. | The kind picker shows one tile per row at accessibility sizes instead of three. The strip does not grow. |
 | Reduce Motion | The instruction crossfades instead of blurring; the button rows change with a 0.15 s fade. | The fog fades without drifting, the target ring does not pulse, the counter icon flashes without growing, the tap ring fades without expanding. The kind picker still slides up from the bottom. |
 
 ## Cancel and interrupt
 
 | Event | Before both ends are set | With both ends set |
 | --- | --- | --- |
-| The screen's own way out | "Can't get there" under a walk instruction sets an unexplored end; under a tilt instruction it skips that patch. "Cancel" leaves marking. | "Done with this wall". "Can't get there" still skips a patch under a tilt instruction; "Cancel" leaves marking. |
+| The screen's own way out | "Can't get there" under a walk instruction sets an unexplored end; under a tilt instruction it skips that patch. "Cancel" leaves marking. The end question has no way out but an answer. | "Done with this wall". "Can't get there" still skips a patch under a tilt instruction; "Cancel" leaves marking. |
 | Start over | Not offered. | Not offered. |
 | Tracking limited | Coaching ("Slow down", "Aim at a corner or somewhere with more texture", "Move your phone slowly") replaces the instruction and hides "Can't get there". The fog, path, ring and marks fade off the camera image. No photos are kept. "Wall ends here" still works. Marks are refused with "One moment, your phone is still finding its place." | Same; "Done with this wall" still works. |
-| Tracking lost or relocalizing | "Point at the meter like this.", with "Your phone lost its place for a moment." and the saved meter close-up in the middle of the screen (or "Your phone lost its place" when tracking is lost, with no photo). The fog, path, ring and marks fade off the camera image. After 20 s of relocalizing, the app forgets the wall, coverage, ends, marks and walk photos, sets the counter to 0 and goes back to "Find your electric meter", with no message saying why. | Same; the ends are lost too. |
+| Tracking lost or relocalizing | "Point at the meter like this.", with "Your phone lost its place for a moment." and the saved meter close-up in the middle of the screen (or "Your phone lost its place" when tracking is lost, with no photo). The fog, path, ring and marks fade off the camera image. After 20 s of relocalizing, the app forgets the wall, coverage, ends, an unanswered end question, marks and walk photos, sets the counter to 0 and goes back to "Find your electric meter", with no message saying why. | Same; the ends are lost too. |
 | App backgrounded or a call | The camera stops; on return the coaching reads "Point at the meter like this." over the saved close-up until the phone finds its place. Photos, coverage, ends and marks are kept. Relocalizing time counts toward the 20 s. | Same. |
 | Camera off or session failed | The screen stays with no new frames; coverage cannot grow. Suspected dead end ([the flow](../foundations/flow.md#open-questions-and-verification)). | Same; "Done with this wall" still moves on. |
 | Network lost or upload failing | No effect. | No effect. |
@@ -243,28 +261,31 @@ instruction card is one element that reads its text and marks itself as updating
 path, ring and marks are hidden from VoiceOver. Hints: "Pin a gas meter, door, window, AC unit,
 driveway or fence" on "Mark something"; "Marks the end of the wall at the circle in the middle of
 the screen" on "Wall ends here"; "Marks the point under the circle in the middle of the screen" on
-"Mark"; "Skips this part of the wall. An installer will look at it instead." on "Can't get there".
+"Mark"; "Skips this part of the wall. An installer will look at it instead." on "Can't get there";
+"A fence, gate, or your neighbor's yard" on "Something blocks it".
 The picker's heading is a header, its close button reads "Close", and each tile reads "Mark" and
 the kind in lower case. The saved close-up, while relocalizing, reads "Your photo of the meter
 from the start of the scan".
 
 **Haptics and motion.** A firm tap for each feature added and a warning for each refused mark.
-No haptic for walk photos, for setting an end or for "Can't get there". Fog lifts over 0.7 s;
+No haptic for walk photos, for setting an end, for answering the end question or for "Can't get
+there". Fog lifts over 0.7 s;
 button rows change with a spring of 0.4 s; the target ring pulses.
 
 **Verification hooks.** `STATE=wallWalk` on arrival. Each instruction change logs
 `GUIDANCE=<name>`: `walk.left`, `walk.right`, `markEnd.left`, `markEnd.right`, `aimAtGround`,
 `aimAtWall`, `stepBack`, `walkComplete`. The engine log (category `engine`) records each end
-("end left at s=… (limit)" or "(unexplored)"), "cannot access area during <name>", and "spatial
+("end left at s=… (unexplored)", or "(limit)" when the autopilot sets one directly), each answer
+("end left is limit" or "end left is unexplored"), "cannot access area during <name>", and "spatial
 reset: relocalization timed out". Accessibility identifiers: `action.markSomething`,
-`action.markEnd`, `action.finishWalk`, `action.cannotAccess`, `action.markPoint`,
+`action.markEnd`, `action.endCorner`, `action.endBlocked`, `action.finishWalk`, `action.cannotAccess`, `action.markPoint`,
 `action.cancelMarking`, `action.closeTray`, `feature.<kind>`, `wallTape`, `photoCount`,
 `instruction`, `relocalize.meterPhoto`.
 
 ## Edge cases
 
-- Asked for the left end while aiming right of the meter, "Wall ends here" sets the right end. The
-  question about the left end stays up.
+- Asked for the left end while aiming right of the meter, "Wall ends here" sets the right end and
+  asks "What's at the right end?". After the answer, "Is this the left end of the wall?" comes back.
 - A wall end or a door, window, gas meter or AC unit mark lands wherever the aim meets the wall's
   line extended, with no limit: past a corner, above the roof line or below ground. A door's bottom
   is raised to ground level.
@@ -281,44 +302,47 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   A side can read 100 percent while none of it is covered and its ground is unseen.
 - Standing at the meter, VoiceOver says "You are 0 inches right of your meter".
 - "About N ft to go" can never appear on the walk instruction: the engine always passes no
-  remaining distance (`Runtime/ScanEngine.swift:644`).
+  remaining distance (`Runtime/ScanEngine.swift:699`).
 
 ## Open questions and verification
 
-- **Suspected bug: a real wall end closer than the reach cannot be recorded.** "Wall ends here" is
-  shown only while the instruction is "Is this the … end of the wall?"
-  (`UI/Screens/WallWalkScreen.swift:99`, `:141`), and the planner asks that only once coverage
-  runs unbroken to its reach (`HouseScanKit/Guidance/GuidancePlanner.swift:113`). A homeowner
-  whose wall turns a corner 10 ft from the meter is told "Walk slowly to your left" with only
-  "Can't get there" to answer, which records an unexplored end instead of a real one.
+- **Suspected bug: a blocked end closer than the reach cannot be recorded.** The end question
+  makes the kind of a marked end truthful, but "Wall ends here" is still shown only while the
+  instruction is "Is this the … end of the wall?" (`UI/Screens/WallWalkScreen.swift:101`, `:165`),
+  and the planner asks that only once coverage runs unbroken to 6.1 m, about 20 ft
+  (`HouseScanKit/Guidance/GuidancePlanner.swift:27`, `:113`). A homeowner whose wall stops at a
+  fence 10 ft from the meter is told "Walk slowly to your left" with only "Can't get there" to
+  answer, which records an unexplored end instead of a real one. A corner at 10 ft comes out right
+  by accident, since a corner is unexplored anyway.
 - **Suspected bug: no "Can't get there" at "Is this the … end of the wall?".** The pill is limited
-  to walk and tilt instructions (`WallWalkScreen.swift:105-110`), although the engine handles it
-  for this question (`Runtime/ScanEngine+Actions.swift:177`). A wall that keeps going can only be
-  answered with "Wall ends here", a real end. This sharpens B-06 in [bug-triage.md](../bug-triage.md),
-  which assumes both answers are offered.
+  to walk and tilt instructions (`WallWalkScreen.swift:107-112`), although the engine handles it
+  for this question (`Runtime/ScanEngine+Actions.swift:190`). A wall that goes on straight past
+  20 ft can be recorded as unexplored only by marking an end where there is none and answering "It
+  turns a corner". This sharpens B-06 in [bug-triage.md](../bug-triage.md).
 - **Suspected bug: "Wall ends here" aims at a circle that is not drawn.** The end goes where the
   middle of the screen meets the wall (`ScanEngine+Actions.swift:68`), but the center circle is
   drawn only while marking (`WallWalkScreen.swift:28-33`). The ring on screen is the planner's
   guess at the end (`GuidancePlanner.swift:187-188`), so a homeowner who lines the ring up with the
   corner sets the end elsewhere. The hint promises "the circle in the middle of the screen".
-- **Suspected bug: "Wall ends here" is unchecked and silent.** It accepts a tap with limited
-  tracking, unlike marks (`ScanEngine+Actions.swift:66-70` against `:80`); it does nothing and says
-  nothing when the aim misses the wall (`:68`); and it gives no haptic when it succeeds.
+- **Suspected bug: "Wall ends here" is unchecked and silent on a miss.** It accepts a tap with
+  limited tracking, unlike marks (`ScanEngine+Actions.swift:66-74` against `:93`); it does nothing
+  and says nothing when the aim misses the wall (`:68`). A tap that lands gives no haptic; the end
+  question is its only feedback.
 - **Suspected bug: the 20 s reset keeps a mark in progress.** `resetSpatialState`
-  (`Runtime/ScanEngine.swift:386-410`) clears the wall, marks and photos but not the marking prompt
+  (`Runtime/ScanEngine.swift:431-456`) clears the wall, marks and photos but not the marking prompt
   or its placed taps. After the meter is found again, the walk opens straight into the old prompt
   ("Now tap its top-right corner"), and the finished feature joins a point from the lost world
   frame to one from the new frame.
 - **Suspected bug: two taps on "Can't get there" finish an empty walk.** On arrival each tap sets an
-  end at the meter (`ScanEngine+Actions.swift:179-181`); with both ends at the same point the
+  end at the meter (`ScanEngine+Actions.swift:192-194`); with both ends at the same point the
   planner finds nothing to fill (`GuidancePlanner.swift:138`) and says "That's the whole wall".
 - **Suspected bug: the AC unit prompt reads "Tap the ac unit".** The prompt lower-cases the kind's
   name (`UI/Copy/ScanCopy.swift:122`, `:137`); the picker tile's VoiceOver label has the same
-  problem ("Mark ac unit", `WallWalkScreen.swift:258`).
+  problem ("Mark ac unit", `WallWalkScreen.swift:282`).
 - **Possible bug: "That spot is behind the wall" judges the phone, not the tap.** The check is on
-  where the phone stands (`ScanEngine+Actions.swift:88`), so the message blames the spot when it is
+  where the phone stands (`ScanEngine+Actions.swift:101`), so the message blames the spot when it is
   the homeowner who is behind the wall line.
-- The kind picker slides in under Reduce Motion (`WallWalkScreen.swift:140`).
+- The kind picker slides in under Reduce Motion (`WallWalkScreen.swift:164`).
 - The reset returns to "Find your electric meter" without telling the homeowner that the walk was
   lost. The old meter close-up stays in the scan (`Runtime/KeyframeStore.swift:79-81` clears only
   walk photos); if the second close-up is skipped, the first one is uploaded.
@@ -329,7 +353,8 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
   (`UI/Screens/GapRequestScreen.swift:26`). The glossary uses the second for both.
 - Everything on this screen that needs the live camera is read from code: the fog's look on a real
   wall, the ring and chevron placement, the overlays hiding and the saved close-up while the phone
-finds its place, the 20 s reset, and interruption recovery. The first
+  finds its place, the end question after a real "Wall ends here", the 20 s reset, and
+  interruption recovery. The first
   Simulator pass showed this screen's chrome without text (B-05 in [bug-triage.md](../bug-triage.md)).
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

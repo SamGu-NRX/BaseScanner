@@ -72,35 +72,42 @@ wall end.
 
 The instruction is chosen in this order, first match wins:
 
-1. **Coaching** from the camera, which replaces everything else until it clears: "Move your phone
+1. **The end question** on the walk, right after "Wall ends here": "What's at the left end?" (or
+   right), with "This tells the installer whether the wall keeps going." Nothing else is chosen
+   until it is answered ([the wall walk](../screens/wall-walk.md#while-capturing)).
+2. **Coaching** from the camera, which replaces everything below it until it clears: "Move your phone
    slowly" (starting up), "Slow down" ("Walk a little slower so the photos stay sharp."), "Aim at
    a corner or somewhere with more texture" ("A plain wall or the sky gives your phone nothing to
-   follow."), "It's too dark to see the wall", "Hold steady" (the last frame was blurry or
-   moving), "Point at the meter like this." ("Your phone lost its place for a moment.",
-   relocalizing), "Your phone lost its place".
+   follow."), "It's too dark to see the wall", "Point at the meter like this." ("Your phone lost its place for a moment.",
+   relocalizing), "Your phone lost its place". During the walk, frames kept back for being blurry,
+   moving or dark show "Slow down" or "It's too dark to see the wall" only once the problem has
+   lasted 0.7 s, and the coaching clears after 0.5 s without it.
    While tracking is not normal, the walk and the gap request hide everything drawn on the camera
    image (the fog, the path, the target ring, the meter dot, the ends and the marks): drawn from
    a position the phone does not trust, they would sit in the wrong place. They fade out and back
    over 0.2 s. The strip is not drawn on the camera image and stays.
-2. **"Take a step back"** when the phone is closer than 1.2 m to the wall; satisfied at 1.4 m.
-3. **Aim at a lagging band**: within 1 m either side of the phone, if one band is done over at least
+3. **"Take a step back"** when the phone is closer than 1.2 m to the wall; satisfied at 1.4 m.
+4. **Aim at a lagging band**: within 1 m either side of the phone, if one band is done over at least
    0.45 m (three cells) where the other is not, "Tilt down to show the ground" or "Tilt up to show
    more wall", with a ring on the spot.
-4. **Walk to the left**, until coverage runs unbroken 6.1 m (20 ft) from the meter on the left;
-   then **"Is this the left end of the wall?"**, the only moment "Wall ends here" is offered.
-   Only after the left end is set: the same for the right.
-5. With both ends set, the first stretch of at least 0.45 m between them where a band is not done
+5. **Walk to the left**, until coverage runs unbroken 6.1 m (20 ft) from the meter on the left;
+   then **"Is this the left end of the wall?"**, with "Aim where the wall stops or turns a
+   corner, and tap Wall ends here.", the only moment "Wall ends here" is offered. Only after the
+   left end is set: the same for the right.
+6. With both ends set, the first stretch of at least 0.45 m between them where a band is not done
    (ground checked before wall), as an aim instruction.
-6. **"That's the whole wall"**, with "Tap Done when you're ready".
+7. **"That's the whole wall"**, with "Tap Done when you're ready".
 
 A new instruction replaces the current one only when the current one is satisfied or has been up
 for 3 s. An aim instruction is satisfied at 80 % of the cells within 0.3 m of its spot covered; a
-walk instruction when that side's end is set.
+walk instruction when that side's end is set; an end question when it is answered.
 
 ### Advancing
 
-Coverage is sent with the scan as the covered stretches of each band and the kind of each end
-(real or unexplored). Skipped cells are not sent: to the server a stretch the homeowner said they
+Coverage is sent with the scan as the covered stretches of each band and the kind of each end. An
+end is **real** only when it was marked with "Wall ends here" and answered "Something blocks it".
+It is **unexplored** when answered "It turns a corner", when left unanswered, or when set with
+"Can't get there": the wall may go on past it. Skipped cells are not sent: to the server a stretch the homeowner said they
 can't reach looks the same as one nobody looked at, and it treats both as unknown.
 
 ## Modifiers
@@ -138,7 +145,7 @@ hooks.** Each instruction change logs `GUIDANCE=<name>`.
 
 ## Edge cases
 
-- Walking faster than 1.5 m/s keeps no photos at all, with only "Hold steady" or no coaching.
+- Walking faster than 1.5 m/s keeps no photos at all; "Slow down" appears after 0.7 s.
 - A stretch closer than 0.45 m to a covered stretch on both sides is never asked for.
 - "Can't get there" is not sent to the server (see Advancing), so the server may ask for the same
   stretch again on the result.
@@ -150,14 +157,17 @@ hooks.** Each instruction change logs `GUIDANCE=<name>`.
 
 ## Open questions and verification
 
-- **Suspected bug: wall ends can't be recorded truthfully** (triage B-06). "Wall ends here" is
-  offered only when the walk asks for the end, which happens at 6.1 m of coverage; "Can't get
-  there" is not offered then. A wall that really ends sooner can only be recorded as unexplored,
-  and one that continues past 20 ft only as a real end, which lets the server reject the site.
+- **Suspected bug: a blocked end nearer than 20 ft can't be recorded** (triage B-06, half
+  resolved). The end question makes a marked end's kind truthful, but "Wall ends here" is still
+  offered only when the walk asks for the end, at 6.1 m of coverage
+  (`HouseScanKit/.../GuidancePlanner.swift:27`, `:113`). A wall blocked by a fence sooner can only
+  be recorded as unexplored, through "Can't get there". A wall that goes on straight past 20 ft is
+  recorded as unexplored only by answering "It turns a corner", which is not what the homeowner
+  sees.
 - The walk always sends the homeowner left first. Starting at the right end of a wall means walking
   past everything to the left first.
 - "About N ft to go" can never appear: the engine always passes no remaining distance
   (`Runtime/ScanEngine.swift`, `step(_:)`).
 - All thresholds are the code's stated hypotheses (research note), not measured values.
 
-Verified against house-scanning commit `0876e03` (t3/ios-mvf).
+Verified against house-scanning commit `525ea40` (t3/ios-mvf).

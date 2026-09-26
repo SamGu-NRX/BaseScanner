@@ -12,9 +12,12 @@ app; everything else is this description's own term.
   your left", "ft left of your meter".
 - **Along the wall.** Distance from the meter along the wall line, negative to the left. The app
   shows it in feet and inches; the code works in meters.
-- **Wall end.** Where the homeowner said the wall stops. A **real end** comes from "Wall ends
-  here" (the wall stops at a corner or something blocking the way); an **unexplored end** comes
-  from "Can't get there" during the walk (the wall may continue).
+- **Wall end.** Where the homeowner said the wall stops. A **real end** is one marked with "Wall
+  ends here" and answered "Something blocks it" (a fence, gate or neighbor's yard). An
+  **unexplored end** is one answered "It turns a corner", one left unanswered, or one set with
+  "Can't get there" during the walk: the wall may continue.
+- **End question.** "What's at the left end?" (or right), asked right after "Wall ends here", with
+  the answers "It turns a corner" and "Something blocks it".
 
 ## Seeing the wall
 
@@ -44,7 +47,7 @@ app; everything else is this description's own term.
 - **Instruction.** The one line (plus an optional second line) at the top of a camera screen.
   There is exactly one at a time.
 - **Coaching.** An instruction about the phone rather than the wall ("Slow down",
-  "Hold steady"). It replaces the guidance instruction until the problem clears.
+  "Move your phone slowly"). It replaces the guidance instruction until the problem clears.
 - **Reticle.** The small circle in the middle of the camera view that a tap on Mark (or "This is
   my meter") aims with, when the homeowner does not tap the image itself.
 - **Mode badge.** The yellow "REPLAY · AUTOPILOT" label shown when the app runs on a recording or

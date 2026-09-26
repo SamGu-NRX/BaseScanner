@@ -7,7 +7,11 @@ audit reports stay in `~/house-scanning-data/reports/` (replay frames are non-co
 
 | Run | What it shows |
 | --- | --- |
-| `sim/20260926-050058-t3-ios-mvf-0876e03c-replay` | Every state at `t3/ios-mvf` `0876e03` with the real server's result |
+| `sim/20260926-051323-t3-ios-mvf-24af4342-replay` | Every state at `t3/ios-mvf` `24af434` with the real server's result |
+| `sim/20260926-052535-t3-ios-mvf-525ea401-replay` | Every state at `525ea40`, the current head, with the real server's result and the end question answered |
+| `a11y/20260926-052756-t3-ios-mvf-525ea401-head-sample` | Apple's audit at `525ea40` on 21 screens, including the end question and the sample wording |
+| `a11y/20260926-051535-t3-ios-mvf-24af4342-head-sample` | Apple's audit at `24af434` on 17 screens; the gap loop closes on the replay |
+| `sim/20260926-050058-t3-ios-mvf-0876e03c-replay` | Every state at `0876e03` |
 | `sim/20260926-043152-5520229-5520229d-preview-sample` | Every state of the flow, default text size, light appearance, sample result |
 | `sim/20260926-044328-5520229-5520229d-preview-ax5-dark` | The same at the largest accessibility text size (AX5), dark appearance |
 | `sim/20260926-044527-5520229-5520229d-preview-unsupported` | The unsupported-phone screen |
@@ -33,12 +37,12 @@ missed feature.
 | `unsupported` | Pass: "This phone can't measure walls" with what to do instead. Camera denied never reaches this screen. | B-03 |
 | `findMeter` | Pass at default size: one instruction, the reticle, "This is my meter". At AX5 the button is pushed partly off screen. Refusal wording ("Step a little closer to the wall") also covers tracking refusals. | UX-01, B-11 |
 | `meterCloseUp` | Pass: one instruction, no shutter, a named fix ("Center the meter in the circle"). The problem pill fails contrast; the way out can fail to appear. | UX-03, B-04 |
-| `wallWalk` | One instruction with its reply inside the card, as the checklist asks. The strip's states differ by colour alone, the counter fails contrast, and at AX5 the card covers most of the camera and pushes "Mark something" and the strip off screen. Wall ends can't be recorded truthfully. | UX-01, UX-02, UX-03, UX-05, B-06 |
+| `wallWalk` | One instruction with its reply inside the card, as the checklist asks. The strip's states differ by colour alone, the counter fails contrast, and at AX5 the card covers most of the camera and pushes "Mark something" and the strip off screen. At `525ea40` a marked end is followed by "What's at the left end?", so its kind is truthful, but an end closer than 20 ft still can't be marked. | UX-01, UX-02, UX-03, UX-05, UX-08, B-06 |
 | `markFeatures` | Pass at default size: clear list, remove buttons labelled, window question with two full-width answers. At AX5 the list is hidden behind "Looks complete". "Add something" does nothing. | UX-01, B-09 |
 | `gapRequest` | Pass: one line with the reason and target, a progress bar, "I can't get there". The requested stretch reuses the amber that means "seen". | UX-05, UX-06, B-08 |
-| `uploading` | Pass: progress in its own steps, apart from coverage (R7). Four text elements do not scale. A failure shows raw error text. | UX-04, B-02 |
+| `uploading` | Pass: progress in its own steps, apart from coverage (R7); with no server it says "Making a sample result" (`525ea40`). Four text elements do not scale. A failure shows raw error text. | UX-04, B-02 |
 | `result` | Pass on honesty: "An installer will take a look", the rules-not-final note, the unseen side disclosed, the borderline window check with measurement, rule and error, and "An installer will check this". A maximum reads like a minimum; the first load leaves the upload screen up for over 1.2 s. | B-14, UX-07 |
-| `resultAR` | The spot and cable over the camera with one headline and "Done". It says "Your battery could go here" without the sample badge. | B-15 |
+| `resultAR` | Pass: the spot and cable over the camera with one headline and "Done". The headline says "The spot an installer will check" unless the result is an approved pass, and "Example spot, not your result" for a sample (seen at `525ea40`). | none |
 
 Checks that passed across the flow: one primary instruction per camera screen (I1); plain words,
 no jargon in any on-screen string (I3); no shutter where capture is automatic (I5); every control
@@ -62,10 +66,12 @@ homeowner with red-green colour blindness cannot tell done from not done. Sugges
 height difference per state, and "Wall" and "Ground" row labels.
 
 **UX-03. Minor. Contrast over the camera (A5).** The audit fails contrast on the photo counter
-during the walk and on the close-up's problem pill.
+during the walk, the close-up's problem pill and, at `24af434`, the walk's "Can't get there"
+reply. Failures it reported on text mid-transition (the upload steps, the result headline as it
+fades in) are left out.
 
-**UX-04. Minor. Upload text that does not scale (A4).** The audit reports four elements on the
-upload screen whose font size cannot change.
+**UX-04. Minor. Text that does not scale (A4).** The audit reports elements whose font size cannot
+change on the upload screen (four) and, at `525ea40`, on the close-up (four) and the walk (two).
 
 **UX-05. Minor. Two names for one action (V8).** The walk's reply is "Can't get there"; the gap
 request's is "I can't get there".
@@ -76,6 +82,10 @@ marks "seen but not enough" cells on the same strip.
 **UX-07. Minor. The result appears late the first time.** On the first visit the upload screen
 ("Checking your wall") was still showing 1.2 s after the app logged the result; after returning
 from AR the result appeared at once. The 3D model's first load is the likely cause.
+
+**UX-08. Minor. Text VoiceOver cannot read (A2).** At `525ea40` the audit flags text on the walk
+that is drawn rather than exposed to accessibility, probably labels drawn into the camera overlay
+or the strip.
 
 ## Fixed since the preview (`0876e03`)
 
