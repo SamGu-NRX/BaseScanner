@@ -8,6 +8,11 @@ The app photographs the electric meter so Base can read its meter number and cla
 2. Which cheap photo checks predict a failed read, and at what thresholds? A check is useful if, above its threshold, at least 95% of the photos that read correctly undegraded still read after controlled degradation.
 3. Does a second pass (crop the detected label and read again) raise the read rate?
 
+Questions 4 and 5 were added after the first run found that the phone reads the number but cannot tell which recognized line it is. Their criteria were committed before those measurements ran.
+
+4. Does Vision's barcode detection find, decode and confirm the meter number? Measured on every usable photo: photos with a barcode found, with one decoded, and with a decode that contains the labelled number. A barcode is worth reading first if a decode contains the number on at least a third of the photos where a barcode is found.
+5. Which rule picks the meter number out of the recognized lines? Each rule and the best combination are reported with precision (the pick is the number, among photos where the rule makes a pick) and recall (over photos whose number Vision read). The app can fill in the number without asking if the combination's precision is at least 95%. A tap-to-confirm screen showing the top three candidates avoids a retake if the number is among them on at least 95% of photos whose number Vision read. To limit fitting rules to the photos they are scored on, rules were written using only the odd-numbered photos (m01, m03, …) and committed before the even-numbered ones were scored; both halves are reported.
+
 ## Data and labels
 
 83 photos from Wikimedia Commons (the `Electricity meters (kWh)` category and meter-brand searches), all under CC0, public domain, CC BY or CC BY-SA. `manifest.csv` records each photo's URL, license and author. The photos are not committed; `make images` downloads them. Three are excluded: two show several meters at once, and one label shows a customer's name and address. Of the 80 usable photos, 22 carry a US-style class label (CL200, 200 CL, CL20) and 57 an IEC current rating such as `10(60)A`. Most meters are Taiwanese, European or Canadian; US residential meters are a minority.

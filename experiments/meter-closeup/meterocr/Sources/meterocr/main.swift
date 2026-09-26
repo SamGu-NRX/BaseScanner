@@ -3,9 +3,11 @@
 // driver can stream thousands of degraded images through a single process.
 //
 // Request:  {"path": "...", "level": "accurate"|"fast", "language_correction": false,
-//            "crop": [x, y, w, h]}   // crop is optional, normalized, top-left origin
+//            "crop": [x, y, w, h],   // optional, normalized, top-left origin
+//            "barcodes": false}      // true also runs VNDetectBarcodesRequest (revision 4)
 // Result:   {"path", "width", "height", "elapsed_ms", "lines": [{"text", "confidence",
-//            "box": [x, y, w, h], "candidates": [...]}]}   // box normalized, top-left origin
+//            "box": [x, y, w, h], "candidates": [...]}],   // box normalized, top-left origin
+//            "barcodes": [{"payload", "symbology", "confidence", "box"}]}   // when requested
 //
 // Usage: meterocr < requests.jsonl        or        meterocr [--fast] [--lc] image...
 
@@ -19,6 +21,7 @@ struct Request: Decodable {
     var level: String? = "accurate"
     var language_correction: Bool? = false
     var crop: [Double]? = nil
+    var barcodes: Bool? = false
 }
 
 struct Line: Encodable {
@@ -26,6 +29,13 @@ struct Line: Encodable {
     let confidence: Float
     let box: [Double]
     let candidates: [String]
+}
+
+struct Barcode: Encodable {
+    let payload: String?
+    let symbology: String
+    let confidence: Float
+    let box: [Double]
 }
 
 struct Result: Encodable {
@@ -37,6 +47,7 @@ struct Result: Encodable {
     let height: Int
     let elapsed_ms: Double
     let lines: [Line]
+    let barcodes: [Barcode]?
     let error: String?
 }
 
@@ -90,7 +101,21 @@ func read(_ request: Request) -> Result {
         // Default is already 0.0 (full resolution, per the SDK header); set it so a future
         // default change cannot silently drop small labels.
         vision.minimumTextHeight = 0
-        try VNImageRequestHandler(cgImage: image, orientation: .up).perform([vision])
+        let barcodeRequest = VNDetectBarcodesRequest()
+        barcodeRequest.revision = VNDetectBarcodesRequestRevision4
+        let wantsBarcodes = request.barcodes ?? false
+        try VNImageRequestHandler(cgImage: image, orientation: .up)
+            .perform(wantsBarcodes ? [vision, barcodeRequest] : [vision])
+        let barcodes = wantsBarcodes
+            ? (barcodeRequest.results ?? []).map { observation in
+                let b = observation.boundingBox
+                return Barcode(
+                    payload: observation.payloadStringValue,
+                    symbology: observation.symbology.rawValue,
+                    confidence: observation.confidence,
+                    box: [b.minX, 1 - b.maxY, b.width, b.height])
+            }
+            : nil
 
         let lines = (vision.results ?? []).compactMap { observation -> Line? in
             let top = observation.topCandidates(3)
@@ -106,12 +131,12 @@ func read(_ request: Request) -> Result {
         return Result(
             path: request.path, level: level, language_correction: correction, crop: request.crop,
             width: width, height: height, elapsed_ms: Date().timeIntervalSince(started) * 1000,
-            lines: lines, error: nil)
+            lines: lines, barcodes: barcodes, error: nil)
     } catch {
         return Result(
             path: request.path, level: level, language_correction: correction, crop: request.crop,
             width: width, height: height, elapsed_ms: Date().timeIntervalSince(started) * 1000,
-            lines: [], error: String(describing: error))
+            lines: [], barcodes: nil, error: String(describing: error))
     }
 }
 
