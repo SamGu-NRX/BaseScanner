@@ -579,6 +579,8 @@ final class ScanEngine {
             case .uploading, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
             default:
+                // The screen shows plain words, so the camera's own error is only recorded here.
+                RuntimeLog.engine.error("camera session failed: \(message, privacy: .public)")
                 fail(.sessionFailed(message))
             }
         }
