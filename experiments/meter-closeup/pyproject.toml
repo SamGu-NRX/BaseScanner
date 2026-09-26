@@ -1,0 +1,26 @@
+[project]
+name = "meter-closeup"
+version = "0.1.0"
+description = "How often on-device text recognition reads meter numbers and class labels, and which photo checks predict a failed read"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.1",
+    "pillow>=11.0",
+    "scipy>=1.14",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/meter_eval"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
