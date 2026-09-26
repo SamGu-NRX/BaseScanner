@@ -122,7 +122,8 @@ public struct PacketMark: Codable, Sendable, Equatable {
 
     /// The mark for one of scene.json's features, from the same inputs `SceneExport` reads.
     /// Point objects, fences and drive edges keep their taps (world points moved into the meter
-    /// frame); openings get corners from their span and heights.
+    /// frame); openings get corners from their span and heights. Boxes have no mark kind in
+    /// manifest schema 1.1 and throw.
     public static func from(
         _ feature: SceneFeature, id: String, wall: SceneWall, frame: MeterFrame, t: Double? = nil, photoIDs: [String]? = nil
     ) throws(PacketError) -> PacketMark {
@@ -131,6 +132,8 @@ public struct PacketMark: Codable, Sendable, Equatable {
             return opening(
                 kind == .door ? .door : .window, id: id, span: span, bottom: bottom, top: top, operable: operable,
                 wall: wall, frame: frame, t: t, photoIDs: photoIDs)
+        case let .box(kind, _, _, _):
+            throw .invalidMark(id: id, reason: "the packet has no mark kind for \(kind.rawValue)")
         case let .pointObject(kind, tap, _, _):
             return pointObject(kind, id: id, point: frame.point(tap), t: t, photoIDs: photoIDs)
         case let .fence(foot):

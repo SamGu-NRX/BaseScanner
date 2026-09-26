@@ -152,6 +152,8 @@ enum ScanCopy {
         case .door: "Door"
         case .window: "Window"
         case .acUnit: "AC unit"
+        case .battery: "Battery"
+        case .elecBox: "Electrical box"
         case .driveway: "Driveway"
         case .fence: "Fence"
         }
@@ -172,6 +174,8 @@ enum ScanCopy {
         case .door: "door.left.hand.closed"
         case .window: "window.vertical.closed"
         case .acUnit: "fan.fill"
+        case .battery: "minus.plus.batteryblock.fill"
+        case .elecBox: "bolt.square.fill"
         case .driveway: "car.fill"
         case .fence: "square.split.2x1"
         }
@@ -182,7 +186,11 @@ enum ScanCopy {
         switch (marking.kind, marking.step) {
         case (.door, 0), (.window, 0):
             return Instruction(title: "Tap the \(item)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
-        case (.door, _), (.window, _):
+        case (.battery, 0):
+            return Instruction(title: "Tap the battery's bottom-left corner", detail: "A battery already on the wall. Put the circle on the corner and tap Mark.")
+        case (.elecBox, 0):
+            return Instruction(title: "Tap the box's bottom-left corner", detail: "A disconnect, sub-panel, EV charger or solar box. Put the circle on the corner and tap Mark.")
+        case (.door, _), (.window, _), (.battery, _), (.elecBox, _):
             return Instruction(title: "Now tap its top-right corner", detail: nil)
         case (.driveway, 0):
             return Instruction(title: "Tap one end of the driveway's edge", detail: "Use the edge closest to the wall.")

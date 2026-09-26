@@ -139,6 +139,37 @@ import simd
         #expect(objects[3]["bottom_ft"] == nil && objects[3]["top_ft"] == nil)
     }
 
+    /// Issue #27: a battery already on the wall exports as `battery` with a plan footprint out to
+    /// 22 in, so the server holds a new one 3 ft from its front; any other box is `elec_box`,
+    /// flush with the wall.
+    @Test func existingBatteryHasAFootprintAndABoxIsFlush() throws {
+        var input = Self.input()
+        input.features = [
+            .box(kind: .battery, span: 1.5...2.3, bottom: 0, top: 1.0),
+            .box(kind: .elecBox, span: -0.8 ... -0.5, bottom: 1.2, top: 1.6),
+        ]
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let objects = try #require(try Value.parse(data)["objects"]?.array)
+        #expect(objects.map { $0["type"]?.string } == ["battery", "elec_box"])
+
+        let battery = objects[0]
+        expectClose(battery["span_ft"]?.numbers, [4.9213, 7.5459])
+        expectClose([battery["bottom_ft"]?.number ?? .nan, battery["top_ft"]?.number ?? .nan], [0, 3.2808])
+        #expect(battery["source"] == .string("tap") && battery["attrs"] == nil)
+        let footprint = (battery["footprint"]?.array ?? []).compactMap(\.numbers)
+        try #require(footprint.count == 4)
+        // Back-left on the wall line at s = 1.5 m: (1, -2) + (0.8, -0.6) * 1.5.
+        expectClose(footprint[0], [2.2 / 0.3048, -2.9 / 0.3048])
+        // Front-right at s = 2.3 m, (2.84, -3.38), then 0.5588 m out along (0.6, 0.8).
+        expectClose(footprint[2], [(2.84 + 0.6 * 0.5588) / 0.3048, (-3.38 + 0.8 * 0.5588) / 0.3048])
+
+        let box = objects[1]
+        expectClose(box["span_ft"]?.numbers, [-2.6247, -1.6404])
+        expectClose([box["bottom_ft"]?.number ?? .nan, box["top_ft"]?.number ?? .nan], [3.9370, 5.2493])
+        #expect(box["footprint"] == nil && box["attrs"] == nil)
+    }
+
     @Test func facingGroundCoverageKeyframes() throws {
         let (_, v) = try Self.exported()
         let facing = try #require(v["facing"]?[0])

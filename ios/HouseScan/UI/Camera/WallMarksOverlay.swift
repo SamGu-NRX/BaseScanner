@@ -46,7 +46,7 @@ struct WallMarksOverlay: View {
     private func drawFeature(_ feature: MarkedFeature, in context: inout GraphicsContext, _ geometry: WallProjection) {
         let color = Color.white
         switch feature.kind {
-        case .door, .window:
+        case .door, .window, .battery, .elecBox:
             if let bottom = feature.bottom, let top = feature.top,
                let outline = geometry.wallQuad(s: feature.span, height: bottom...top, out: 0.01) {
                 context.fill(outline, with: .color(Palette.signal.opacity(0.18)))
