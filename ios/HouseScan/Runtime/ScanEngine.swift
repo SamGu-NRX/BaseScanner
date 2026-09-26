@@ -54,6 +54,9 @@ final class ScanEngine {
     /// Keyframes stored when the current gap request began: a request is closed only by new views.
     private var keyframesAtGapStart = 0
     private var skippedGaps: [GapPlan] = []
+    /// The side of a server past_end request being captured: that end was cleared, and marking
+    /// it again settles the request (see `markWallEnd`).
+    var pastEndSide: WallSide?
 
     // Tracking recovery
     private var relocalizingSince: Double?
@@ -484,6 +487,7 @@ final class ScanEngine {
         state.features = []
         state.gap = nil
         gapPlan = nil
+        pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
         store.discardKeyframes()
@@ -588,8 +592,26 @@ final class ScanEngine {
     /// with the new evidence (the closed loop: gap, instruction, capture, updated result).
     private func afterGapResolved() {
         gapPlan = nil
+        pastEndSide = nil
         state.gap = nil
         startUpload()
+    }
+
+    /// The past_end request's end was marked again and its question answered: the request is
+    /// settled, so the scan goes to the upload like a closed gap.
+    func settlePastEnd() {
+        guard state.phase == .gapRequest, var request = state.gap, !request.isSatisfied else { return }
+        request.isSatisfied = true
+        request.progress = 1
+        state.gap = request
+        RuntimeLog.engine.info("gap \(request.id) settled by marking the end again")
+        let id = request.id
+        Task {
+            try? await Task.sleep(for: .seconds(autoAdvanceDelay))
+            await waitForGate(.gapRequest)
+            guard state.phase == .gapRequest, state.gap?.id == id else { return }
+            afterGapResolved()
+        }
     }
 
     func skipCurrentGap() {
@@ -683,6 +705,7 @@ final class ScanEngine {
         closeUpGate = CloseUpGate()
         gapPlan = nil
         skippedGaps = []
+        pastEndSide = nil
         endKinds = [:]
         state.endQuestion = nil
         placement = nil

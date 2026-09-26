@@ -65,10 +65,14 @@ extension ScanEngine: ScanActions {
         go(.wallWalk)
     }
 
+    /// Marks a wall end during the walk, or, during a server past_end request, marks that
+    /// request's end again at wherever the wall is now seen to stop.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
-        guard state.phase == .wallWalk, let wall = coverage?.wall, let frame = currentFrame else { return }
+        guard state.phase == .wallWalk || (state.phase == .gapRequest && pastEndSide != nil),
+              let wall = coverage?.wall, let frame = currentFrame else { return }
         guard let hit = wallHit(point, viewSize: viewSize, frame: frame, wall: wall) else { return }
         let side: WallSide = hit.s < 0 ? .left : .right
+        if state.phase == .gapRequest, side != pastEndSide { return }
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
@@ -79,6 +83,7 @@ extension ScanEngine: ScanActions {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
         if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
+        if state.phase == .gapRequest, side == pastEndSide { settlePastEnd() }
         if state.phase == .wallWalk, let frame = currentFrame {
             resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
         }
@@ -219,11 +224,15 @@ extension ScanEngine: ScanActions {
               missing.indices.contains(index) else { return }
         let item = missing[index]
         guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
+        var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
-            // The walk has to go past the end it stopped at; that end is no longer a limit.
+            // The walk has to go past the end it stopped at; that end is no longer a limit. It
+            // exports as unexplored unless the homeowner marks it again (markWallEnd).
+            pastEnd = side == .left ? .left : .right
             clearEnd(side == .left ? .left : .right)
         }
         beginGap(plan, origin: .server, reason: .server(detail: item.message))
+        pastEndSide = pastEnd
     }
 
     func showAR() {
