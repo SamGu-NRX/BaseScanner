@@ -1,14 +1,8 @@
 name: TestFlight
 
-# Run by hand from the Actions tab. Never add pull_request or push triggers: this job holds an
-# Admin App Store Connect key that can sign and upload builds for the whole team. The testflight
-# environment only admits main and waits for a required reviewer before any secret is released.
-#
-# Key handling: secrets reach only the steps that use them, through step-level env. Each step
-# that runs xcodebuild with the key decodes it into its own private directory and deletes it on
-# exit, so no key exists between steps and no key path crosses a step boundary. Nothing prints
-# the key, and no step uploads artifacts, caches or logs. Before any key exists, "Check build
-# inputs" refuses projects that could run repository code during the signed build.
+# Never add pull_request or push triggers: this job holds an Admin App Store Connect key that can
+# sign and upload for the whole team. Pass secrets only through step-level env, never print the
+# decoded key, and never upload artifacts, caches or logs. CONTRIBUTING.md > Distribution explains.
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +17,6 @@ on:
 permissions:
   contents: read
 
-# One upload at a time across both apps; a second run waits instead of cancelling the first.
 concurrency:
   group: testflight
   cancel-in-progress: false
@@ -33,8 +26,6 @@ jobs:
     name: Upload ${{ inputs.app }} to TestFlight
     runs-on: macos-26
     timeout-minutes: 45
-    # Holds ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (secrets) and APPLE_TEAM_ID, BUNDLE_ID_PREFIX
-    # (variables). CONTRIBUTING.md > Distribution lists the setup.
     environment: testflight
     env:
       # Same toolchain as .github/workflows/ios.yml; change both together.
@@ -44,12 +35,9 @@ jobs:
       APP: ${{ inputs.app }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
-      # <run number>.<attempt>, such as 12.1. GitHub counts runs per workflow, so both apps share
-      # one increasing number, and a rerun gets a new attempt instead of a duplicate App Store
-      # Connect rejects. CFBundleVersion allows up to three dot-separated integers.
+      # Includes the attempt so a rerun does not reuse a build number App Store Connect accepted.
       BUILD_NUMBER: ${{ github.run_number }}.${{ github.run_attempt }}
     steps:
-      # Tests only whether each value is empty; it never prints one.
       - name: Check secrets and variables
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -116,27 +104,23 @@ jobs:
           unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
 
-      # The build CI for each app fails on drift between project.yml and the committed project,
-      # so generating here only guards against a branch that skipped that check.
+      # Build what project.yml generates, so the guard below checks the project that is built.
       - name: Generate project
         run: xcodegen generate --spec "$PROJECT_DIR/project.yml"
 
-      # Code from the repository must not run while the key is on disk. Build-script phases, build
-      # rules, scheme pre/post actions, package plugins, macros and compiler plugins all run during
-      # xcodebuild, so any of them fails the run here. The only package allowed is an in-repo one
-      # named in ALLOWED_LOCAL_PACKAGES (set in "Select project") whose manifest declares no
-      # dependencies, plugins, macros, binary targets or unsafe flags. SwiftPM still evaluates that
-      # manifest in its macOS sandbox, which is why its contents are checked too.
+      # Repository code must not run while the key is on disk. Script phases, build rules, scheme
+      # actions, package plugins, macros and compiler plugins all run during xcodebuild. An allowed
+      # local package's manifest is still evaluated, so its contents are checked too.
       - name: Check build inputs
         run: |
           spec="$PROJECT_DIR/project.yml"
-          pbx="$PROJECT_DIR/$PROJECT_NAME.xcodeproj/project.pbxproj"
+          pbxproj="$PROJECT_DIR/$PROJECT_NAME.xcodeproj/project.pbxproj"
           failed=0
           refuse() {
             echo "::error file=$1::$2 The TestFlight job refuses anything that runs repository code while the signing key exists. See CONTRIBUTING.md > Distribution."
             failed=1
           }
-          flag() { # flag <file> <extended regex> <description>; an unreadable file also fails
+          refuse_match() { # <file> <extended regex> <description>; an unreadable file also fails
             local rc=0
             grep -nE -- "$2" "$1" > "$RUNNER_TEMP/guard-hits" || rc=$?
             case "$rc" in
@@ -145,32 +129,32 @@ jobs:
               *) refuse "$1" "Could not read this file to check it." ;;
             esac
           }
-          flag "$spec" '^[[:space:]]*(preBuildScripts|postCompileScripts|postBuildScripts|buildToolPlugins|buildRules|preActions|postActions|projectReferences):' "Build script, build rule, scheme action, plugin or project reference"
-          flag "$pbx" 'PBXShellScriptBuildPhase|PBXBuildRule|XCRemoteSwiftPackageReference|wrapper\.pb-project|productName = "?plugin:' "Shell script phase, build rule, remote package, plugin or nested project"
+          refuse_match "$spec" '^[[:space:]]*(preBuildScripts|postCompileScripts|postBuildScripts|buildToolPlugins|buildRules|preActions|postActions|projectReferences):' "Build script, build rule, scheme action, plugin or project reference"
+          refuse_match "$pbxproj" 'PBXShellScriptBuildPhase|PBXBuildRule|XCRemoteSwiftPackageReference|wrapper\.pb-project|productName = "?plugin:' "Shell script phase, build rule, remote package, plugin or nested project"
           if [ -z "$ALLOWED_LOCAL_PACKAGES" ]; then
-            flag "$spec" '^packages:' "Swift package section"
-            flag "$pbx" 'XCLocalSwiftPackageReference|XCSwiftPackageProductDependency' "Swift package dependency"
+            refuse_match "$spec" '^packages:' "Swift package section"
+            refuse_match "$pbxproj" 'XCLocalSwiftPackageReference|XCSwiftPackageProductDependency' "Swift package dependency"
           else
-            declared="$(grep -c 'isa = XCLocalSwiftPackageReference;' "$pbx" || true)"
-            refs="$(sed -nE 's/^[[:space:]]*relativePath = "?([^";]*)"?;/\1/p' "$pbx")"
+            declared="$(grep -c 'isa = XCLocalSwiftPackageReference;' "$pbxproj" || true)"
+            refs="$(sed -nE 's/^[[:space:]]*relativePath = "?([^";]*)"?;/\1/p' "$pbxproj")"
             if [ "$declared" -ne "$(printf '%s' "$refs" | grep -c . || true)" ]; then
-              refuse "$pbx" "Could not match every local package reference to a relativePath."
+              refuse "$pbxproj" "Could not match every local package reference to a relativePath."
             fi
             for ref in $refs; do
               case " $ALLOWED_LOCAL_PACKAGES " in
                 *" $ref "*) ;;
-                *) refuse "$pbx" "Local package '$ref' is not in ALLOWED_LOCAL_PACKAGES." ;;
+                *) refuse "$pbxproj" "Local package '$ref' is not in ALLOWED_LOCAL_PACKAGES." ;;
               esac
             done
             for pkg in $ALLOWED_LOCAL_PACKAGES; do
-              flag "$PROJECT_DIR/$pkg/Package.swift" '\.package\(|\.plugin\(|plugins:|\.macro\(|CompilerPluginSupport|\.binaryTarget\(|unsafeFlags' "Package dependency, plugin, macro, binary target or unsafe flag in $pkg/Package.swift"
+              refuse_match "$PROJECT_DIR/$pkg/Package.swift" '\.package\(|\.plugin\(|plugins:|\.macro\(|CompilerPluginSupport|\.binaryTarget\(|unsafeFlags' "Package dependency, plugin, macro, binary target or unsafe flag in $pkg/Package.swift"
             done
           fi
           while IFS= read -r file; do
-            flag "$file" 'load-plugin|plugin-path' "Swift compiler plugin flag"
+            refuse_match "$file" 'load-plugin|plugin-path' "Swift compiler plugin flag"
           done < <(find "$PROJECT_DIR" -name '*.xcconfig' -o -name project.yml -o -name project.pbxproj)
           while IFS= read -r scheme; do
-            flag "$scheme" 'ExecutionAction' "Scheme pre- or post-action"
+            refuse_match "$scheme" 'ExecutionAction' "Scheme pre- or post-action"
           done < <(find "$PROJECT_DIR/$PROJECT_NAME.xcodeproj" -name '*.xcscheme')
           while IFS= read -r resolved; do
             refuse "$resolved" "Package.resolved means the project pins external packages."
@@ -185,12 +169,11 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
-          # The key lives only in this step. GitHub masks the base64 secret in logs but not the
-          # decoded file, so nothing may print it; base64 and grep -q write nothing to the log.
+          # The key exists only in this step. GitHub masks the base64 secret but not the decoded
+          # file, so nothing may print it.
           umask 077
           keydir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
-          # EXIT deletes the key on success and failure. INT and TERM exit through it, so a cancelled
-          # step also fails instead of resuming after the handler.
+          # INT and TERM exit through the EXIT trap, so a cancelled step deletes the key and fails.
           trap 'rm -rf "$keydir"' EXIT
           trap 'exit 130' INT
           trap 'exit 143' TERM
@@ -244,13 +227,11 @@ jobs:
           </dict>
           </plist>
           EOF
-          plutil -lint "$plist"
-          # The key lives only in this step. GitHub masks the base64 secret in logs but not the
-          # decoded file, so nothing may print it; base64 and grep -q write nothing to the log.
+          # The key exists only in this step. GitHub masks the base64 secret but not the decoded
+          # file, so nothing may print it.
           umask 077
           keydir="$(mktemp -d "$RUNNER_TEMP/asc-key.XXXXXX")"
-          # EXIT deletes the key on success and failure. INT and TERM exit through it, so a cancelled
-          # step also fails instead of resuming after the handler.
+          # INT and TERM exit through the EXIT trap, so a cancelled step deletes the key and fails.
           trap 'rm -rf "$keydir"' EXIT
           trap 'exit 130' INT
           trap 'exit 143' TERM
@@ -271,8 +252,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           echo "Uploaded $PROJECT_NAME build $BUILD_NUMBER. It appears in TestFlight after App Store Connect finishes processing." >> "$GITHUB_STEP_SUMMARY"
 
-      # Fallback only: each key step's trap already removed its directory. A runner killed without
-      # a chance to run steps leaves cleanup to GitHub destroying the hosted runner.
+      # Fallback for a key step that died before its trap ran.
       - name: Remove App Store Connect key
         if: always()
         run: rm -rf -- "$RUNNER_TEMP"/asc-key.*

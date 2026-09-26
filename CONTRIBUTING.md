@@ -39,7 +39,7 @@ Keep workflows that run pull-request code away from production credentials and d
 
 ## Distribution
 
-`.github/workflows/testflight.yml` archives one app, signs it and uploads it to TestFlight. It runs only when someone starts it by hand. The build number is the workflow's run number and attempt, such as `12.1`, so each upload, reruns included, is higher than the last.
+`.github/workflows/testflight.yml` archives one app, signs it and uploads it to TestFlight. It runs only when started by hand from the Actions tab. The build number is `<run number>.<attempt>`, such as `12.1`.
 
 | App | Project | Bundle id |
 | --- | --- | --- |
@@ -48,25 +48,23 @@ Keep workflows that run pull-request code away from production credentials and d
 
 ### Before the first upload
 
-Each app needs an app icon, because App Store Connect rejects a build without one. Measure Lab has one in `experiments/measure-lab/MeasureLab/Assets.xcassets`, added in #7. House Scan does not yet. It needs an `AppIcon` set with a 1024×1024 image in an asset catalog inside `ios/HouseScan/`, added by the lane A owner. The project already sets `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon`.
+App Store Connect rejects a build without an app icon. House Scan needs an `AppIcon` set with a 1024×1024 image in an asset catalog inside `ios/HouseScan/`, added by the lane A owner. Measure Lab has one.
 
-Neither `Info.plist` declares `ITSAppUsesNonExemptEncryption`. Until one does, every new build waits in TestFlight under "Missing Compliance" until someone answers the encryption question on the build page. Setting the key to `false` skips that step for an app that uses only HTTPS and Apple's system encryption.
+Neither `Info.plist` sets `ITSAppUsesNonExemptEncryption`, so each build waits under "Missing Compliance" until someone answers the encryption question on its TestFlight page. Setting the key to `false` removes that step for an app that uses only HTTPS and Apple's system encryption.
 
 ### One-time setup
 
-The account holder does this once, in order.
+1. **Create an App Store Connect API key.** In [App Store Connect](https://appstoreconnect.apple.com) > Users and Access > Integrations > App Store Connect API, create a team key with the **Admin** role. The export signs with a cloud-managed distribution certificate, which non-Admin keys cannot use. Download the `.p8` file (Apple offers it once) and note the Key ID and Issuer ID.
 
-1. **Create an App Store Connect API key.** In [App Store Connect](https://appstoreconnect.apple.com) > Users and Access > Integrations > App Store Connect API, create a team key with the **Admin** role. The export step signs with a cloud-managed distribution certificate, and API keys with the App Manager role get `Cloud signing permission error` because keys have no setting to grant that access. Download the `.p8` file (Apple offers it once) and note the Key ID and the Issuer ID shown above the key list.
+   The `.p8` and its base64 text are equally sensitive: either lets anyone sign and upload as the team. Never paste either into a chat, issue, pull request, screenshot, log or commit. If either was copied, clear the clipboard (`pbcopy < /dev/null`).
+2. **Add the `testflight` environment.** In Settings > Environments, create `testflight` with two protection rules:
 
-   The `.p8` file and its base64 text are equally sensitive: either one lets anyone sign and upload as the team. Never paste either into a chat, issue, pull request, screenshot, log or commit. If either was ever copied, clear the clipboard afterwards (for example `pbcopy < /dev/null`).
-2. **Add the `testflight` environment.** In the GitHub repository, open Settings > Environments > New environment and name it `testflight`. Set two protection rules:
+   - Required reviewers: Sam. Every run waits for his approval before GitHub releases any secret. Leave "Prevent self-review" off so he can approve runs he starts.
+   - Deployment branches and tags: Selected branches, `main` only.
 
-   - Required reviewers: add Sam. Every run then pauses until he approves it, and GitHub releases no secret to the job before that. Leave "Prevent self-review" off so he can approve runs he starts.
-   - Deployment branches and tags: choose Selected branches and add `main`, so the key only signs reviewed code.
+   An Admin key is acceptable here only because both rules hold: a run needs Sam's approval and code merged to `main`.
 
-   An Admin key can sign and upload for the whole team, so it is acceptable here only because both rules hold. A run needs Sam's approval and code already merged to `main`.
-
-   Then set the secrets and variables with the [GitHub CLI](https://cli.github.com), so the key never shows on screen. The first command pipes the base64 text straight into GitHub. The next two prompt for their value without echoing it.
+   Set the secrets and variables with the [GitHub CLI](https://cli.github.com), so the key never appears on screen. `gh secret set` without `--body` prompts without echoing.
 
    ```sh
    base64 -i AuthKey_<KEY_ID>.p8 | gh secret set ASC_KEY_P8 --env testflight --repo SamGu-NRX/house-scanning
@@ -77,26 +75,20 @@ The account holder does this once, in order.
    rm AuthKey_<KEY_ID>.p8
    ```
 
-   `APPLE_TEAM_ID` is the 10-character Team ID from developer.apple.com > Account > Membership details. `BUNDLE_ID_PREFIX` is a reverse-DNS prefix the team can register, such as `com.yourname`. Delete the `.p8` as soon as the secret is set; GitHub keeps the only copy the workflow needs.
-3. **Register a device.** The archive step signs for development first and asks Apple for a development profile, which Apple refuses to a team with no registered devices. Running either app on your iPhone from Xcode once registers it. You can also add the device under Certificates, Identifiers & Profiles > Devices.
-4. **Create the app records.** App Store Connect has no API for creating apps. First register the two explicit App IDs, `<BUNDLE_ID_PREFIX>.housescan` and `<BUNDLE_ID_PREFIX>.measurelab`, under Certificates, Identifiers & Profiles > Identifiers. Then in App Store Connect > Apps > New App, create **House Scan** and **Measure Lab** for iOS and pick the matching bundle id for each. The name must be unique across the App Store, so add a suffix if Apple says it is taken.
-5. **Add internal testers.** In each app's TestFlight tab, create an internal group and add team members. Internal testers must already be users in App Store Connect. Turn on automatic distribution so new builds reach the group without another click.
-6. **Run the workflow.** Open Actions > TestFlight > Run workflow, pick `main` and the app, and start it. Sam approves the pending deployment on the run page. That approval also means he has reviewed the build inputs at the exact commit the run shows (`project.yml`, the generated project, xcconfig files and any local package manifest), because that code builds while the key is on the runner. The run summary reports the uploaded build number. The build shows in TestFlight once Apple finishes processing it.
+   `APPLE_TEAM_ID` is the 10-character Team ID from developer.apple.com > Account > Membership details. `BUNDLE_ID_PREFIX` is a reverse-DNS prefix such as `com.yourname`.
+3. **Register a device.** Archiving needs a development profile, which Apple does not issue to a team with no devices. Running either app on your iPhone from Xcode once registers it.
+4. **Create the app records.** App Store Connect has no API for this. Register the App IDs `<BUNDLE_ID_PREFIX>.housescan` and `<BUNDLE_ID_PREFIX>.measurelab` under Certificates, Identifiers & Profiles > Identifiers. Then in App Store Connect > Apps > New App, create **House Scan** and **Measure Lab** for iOS with the matching bundle ids. Add a suffix if a name is taken.
+5. **Add internal testers.** In each app's TestFlight tab, create an internal group, add team members who are App Store Connect users, and turn on automatic distribution.
+6. **Run the workflow.** Actions > TestFlight > Run workflow, pick `main` and the app. Sam approves the pending deployment on the run page. The build appears in TestFlight after Apple processes it.
 
-Measure Lab is only on its pull request branch until that merges, and the environment rule above only lets `main` use the key. Its uploads start working once it lands on `main`.
+### What approving a run means
 
-### How the key is kept in check
+Approving a run also means Sam has reviewed the build inputs at the commit the run shows: `project.yml`, the generated project, xcconfig files and any local package manifest. That code builds while the key is on the runner.
 
-The key exists only inside the two steps that call `xcodebuild`, Archive and Export and upload. Each one decodes it into its own private directory under `RUNNER_TEMP` and deletes that directory when the step exits, fails or is cancelled. The key is absent between the two steps, and no key path is passed from one step to another. A final step deletes any leftover key directory as a fallback. A runner killed without a chance to run that step, for example by a lost machine or an untrappable kill, leaves cleanup to GitHub, which destroys every hosted runner after its job.
+The workflow limits what that code can do. "Check build inputs" runs before any key exists and fails the run on shell script build phases, build rules, scheme pre- or post-actions, remote Swift packages, package plugins, `Package.resolved`, nested projects and Swift compiler plugin flags. Each app may use only the in-repo packages named in the workflow's "Select project" step (`Geometry` for Measure Lab, none for House Scan), and their manifests may not declare dependencies, plugins, macros, binary targets or unsafe flags.
 
-Before either key step, "Check build inputs" fails the run if the chosen app could run repository code during `xcodebuild`. It rejects:
-
-- shell script build phases, build rules and scheme pre- or post-actions;
-- remote Swift packages, package plugins, `Package.resolved` files and nested projects;
-- Swift compiler plugin flags.
-
-Each app may use only the in-repo packages listed for it in the workflow's "Select project" step. Measure Lab lists `Geometry`, and House Scan lists none. A listed package's manifest must not declare package dependencies, plugins, macros, binary targets or unsafe flags. Adding a package or a build script therefore means editing the workflow in a reviewed pull request.
+The key exists only inside the Archive step and the Export and upload step. Each decodes it into its own private directory under `RUNNER_TEMP` and deletes the directory when the step ends, fails or is cancelled. A final step removes any leftover. If the runner is killed before any of that runs, GitHub destroys the hosted runner after the job.
 
 ### Upkeep
 
-Each run happens on a fresh runner, so the archive step creates a new "Apple Development: Created via API" certificate every time. Revoke old ones under Certificates, Identifiers & Profiles > Certificates when the list grows. TestFlight builds carry the distribution signature, so revoking these does not affect them.
+Each run creates a new "Apple Development: Created via API" certificate. Revoke old ones under Certificates, Identifiers & Profiles > Certificates now and then. Uploaded builds are unaffected.
