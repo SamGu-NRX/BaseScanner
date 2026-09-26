@@ -30,9 +30,12 @@ struct UnavailableMeterNumberReader: MeterNumberReader {
     }
 }
 
-/// The reader the engine uses. The meter-reader lane points this at its Vision reader.
+/// The reader the engine uses.
 enum MeterNumberReaders {
     static func make() -> any MeterNumberReader {
-        UnavailableMeterNumberReader()
+        // The close-up JPEG holds the landscape sensor image unrotated (LiveCapture.encode) and the
+        // app is portrait-only, so the upright photo is the stored one turned 90° clockwise, as
+        // ImageWork.uprightThumbnail shows it: EXIF `.right`.
+        VisionMeterNumberReader(orientation: .right)
     }
 }
