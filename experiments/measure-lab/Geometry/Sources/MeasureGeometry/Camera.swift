@@ -133,8 +133,8 @@ public struct CameraFrame: Sendable, Equatable {
     /// The world ray through pixel (u, v).
     ///
     /// In camera space the pixel lies along ((u − cx)/fx, −(v − cy)/fy, −1): image v grows downward
-    /// while camera y grows upward, and the camera looks along −z. This is `pixel_ray` in
-    /// docs/02-implementation-plan.md. Throws only for a pose whose axes are zero or non-finite.
+    /// while camera y grows upward, and the camera looks along −z. This is the pixel ray in
+    /// docs/00-overview.md (Conventions the code relies on). Throws only for a pose whose axes are zero or non-finite.
     public func ray(throughPixel u: Double, _ v: Double) throws(GeometryInputError) -> Ray {
         let k = intrinsics
         let cameraDirection = SIMD3((u - k.cx) / k.fx, -(v - k.cy) / k.fy, -1)
