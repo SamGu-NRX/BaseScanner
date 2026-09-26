@@ -44,10 +44,14 @@ struct Map3DFog: Equatable, Sendable {
 /// frame: a newer one replaces an older one not yet integrated. Mesh chunks and planes are kept
 /// per anchor id, newest first, so the inbox is bounded by the anchors ARKit has.
 ///
-/// Mesh chunks and planes are world data, kept across `start` and `reset(forgetAnchors: false)`
-/// (ARKit keeps its anchors), so a map started at the meter gets the mesh ARKit built before the
-/// meter was placed. `reset(forgetAnchors: true)` drops them, for a session restarted with its
-/// anchors removed.
+/// Mesh chunks go into the map as they arrive and are not kept: a copy of every chunk would grow
+/// with the walk. Only chunks that arrive while there is no map (before the meter is placed, or
+/// after a reset) wait, newest per anchor, for the next `start`, which integrates those that reach
+/// the map's bounds and drops them all. So a map rebuilt because the ground moved, or started
+/// again after `reset(forgetAnchors: false)`, lacks the mesh ARKit sent to the map before: it has
+/// only the chunks ARKit updates afterwards, and a stretch ARKit no longer refines stays without
+/// mesh. Planes are small and kept whole across both. `reset(forgetAnchors: true)` drops the
+/// waiting chunks and the planes too, for a session restarted with its anchors removed.
 final class Map3DSession: Sendable {
     /// Two snapshots a second: the rate the fog overlay and the coverage strip were planned
     /// around. Each snapshot reads coverage and fog over the whole region of interest; no
@@ -106,8 +110,9 @@ final class Map3DSession: Sendable {
     }
 
     /// Drops the map and its wall; nothing is integrated until the next `start`. With
-    /// `forgetAnchors`, also the mesh chunks and planes kept so far: pass it when the AR session
-    /// restarts with its anchors removed.
+    /// `forgetAnchors`, also the planes and waiting mesh chunks: pass it when the AR session
+    /// restarts with its anchors removed. The mesh already in the map is lost either way (see the
+    /// type's comment).
     func reset(forgetAnchors: Bool) {
         inbox.withLock { inbox in
             inbox.generation += 1
@@ -240,7 +245,8 @@ final class Map3DSession: Sendable {
         var wall: WallFrame?
         var generation = 0
         var planes: [UUID: PlaneObservation] = [:]
-        var chunks: [UUID: MeshChunk] = [:]
+        /// Chunks that arrived while there was no map, for the next `start`.
+        var waitingChunks: [UUID: MeshChunk] = [:]
         var revision = 0
         var publishedRevision = -1
         /// `ProcessInfo.systemUptime` at which the last snapshot was started.
@@ -282,7 +288,7 @@ final class Map3DSession: Sendable {
             core.wall = nil
             if forgetAnchors {
                 core.planes = [:]
-                core.chunks = [:]
+                core.waitingChunks = [:]
             }
             changed = true
         }
@@ -291,13 +297,28 @@ final class Map3DSession: Sendable {
             if let plane { core.map?.update(plane) } else { core.map?.removePlane(id: id) }
         }
         for (id, chunk) in taken.chunks {
-            core.chunks[id] = chunk
-            if let chunk { core.map?.update(chunk) } else { core.map?.removeMeshChunk(id: id) }
+            if core.map == nil {
+                core.waitingChunks[id] = chunk
+            } else if let chunk {
+                core.map?.update(chunk)
+            } else {
+                core.map?.removeMeshChunk(id: id)
+            }
         }
         if core.map != nil, !taken.planes.isEmpty || !taken.chunks.isEmpty { changed = true }
         switch taken.command {
         case .start(let wall)?:
-            core.map = Self.newMap(at: wall, planes: core.planes, chunks: core.chunks)
+            var map = Self.newMap(at: wall, planes: core.planes)
+            var outside = 0
+            for chunk in core.waitingChunks.values {
+                if Self.reaches(chunk, map) { map.update(chunk) } else { outside += 1 }
+            }
+            let waiting = core.waitingChunks.count
+            if waiting > 0 {
+                RuntimeLog.engine.info("3D map started with \(waiting - outside) waiting mesh chunks; \(outside) wholly outside its bounds dropped")
+            }
+            core.waitingChunks = [:]
+            core.map = map
             core.wall = wall
             changed = true
         case .update(let wall)?:
@@ -340,8 +361,8 @@ final class Map3DSession: Sendable {
         core.wall = wall
         let ground = wall.groundY - wall.meter.y
         guard abs(ground - map.frame.groundY) <= Self.groundTolerance else {
-            RuntimeLog.engine.info("3D map rebuilt: the ground moved from \(map.frame.groundY) to \(ground) m below the meter")
-            core.map = Self.newMap(at: wall, planes: core.planes, chunks: core.chunks)
+            RuntimeLog.engine.info("3D map rebuilt without its rays and mesh: the ground moved from \(map.frame.groundY) to \(ground) m below the meter")
+            core.map = Self.newMap(at: wall, planes: core.planes)
             return true
         }
         guard wall.meter != old.meter else { return true }
@@ -351,11 +372,24 @@ final class Map3DSession: Sendable {
         return true
     }
 
-    private static func newMap(at wall: WallFrame, planes: [UUID: PlaneObservation], chunks: [UUID: MeshChunk]) -> Map3D {
+    private static func newMap(at wall: WallFrame, planes: [UUID: PlaneObservation]) -> Map3D {
         var map = Map3D(frame: MapFrame(wall: wall))
         for plane in planes.values { map.update(plane) }
-        for chunk in chunks.values { map.update(chunk) }
         return map
+    }
+
+    /// Whether the box around a chunk's vertices, in the map's frame, meets the map's bounds.
+    private static func reaches(_ chunk: MeshChunk, _ map: Map3D) -> Bool {
+        let mapFromChunk = map.frame.mapFromWorld * chunk.worldFromChunk
+        var low = SIMD3<Float>(repeating: .infinity)
+        var high = SIMD3<Float>(repeating: -.infinity)
+        for v in chunk.vertices {
+            let p = mapFromChunk * SIMD4(v, 1)
+            let q = SIMD3(p.x, p.y, p.z)
+            low = simd_min(low, q)
+            high = simd_max(high, q)
+        }
+        return all(high .>= map.bounds.min) && all(low .< map.bounds.max)
     }
 
     private static func translation(_ p: SIMD3<Float>) -> simd_float4x4 {
