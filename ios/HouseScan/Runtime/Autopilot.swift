@@ -32,6 +32,7 @@ final class Autopilot {
         }
         async let prepared: Void = replay.prepareHeldBack()
         await pause(hold)
+        await engine.waitForGate(.onboarding)
         engine.finishOnboarding()
         await prepared
         if let window = replay.heldBack {
@@ -41,13 +42,15 @@ final class Autopilot {
         }
         await pause(hold)
 
+        await engine.waitForGate(.findMeter)
         engine.markMeter(at: nil, viewSize: viewSize)
-        guard await waitFor(.meterCloseUp, timeout: 5) else { return fail("meter was not marked") }
+        guard await waitFor(.meterCloseUp, timeout: 10) else { return fail("meter was not marked") }
         if await !waitUntil(timeout: 4, { if case .captured = self.engine.state.closeUp { return true }; return false }) {
             log("close-up did not fire on this replay; skipping it as a homeowner would")
+            await engine.waitForGate(.meterCloseUp)
             engine.skipCloseUp()
         }
-        guard await waitFor(.wallWalk, timeout: 5) else { return fail("walk did not start") }
+        guard await waitFor(.wallWalk, timeout: 150) else { return fail("walk did not start") }
 
         await pause(0.5)
         guard await waitUntil(timeout: 120, { !replay.isPlaying }) else { return fail("walk replay did not finish") }
@@ -56,24 +59,27 @@ final class Autopilot {
         await markFeatures(replay)
         await markEnds(replay)
         await pause(1.0)
+        await engine.waitForGate(.wallWalk)
         engine.finishWalk()
         guard await waitFor(.markFeatures, timeout: 5) else { return fail("could not finish the walk (ends marked: \(engine.bothEndsMarked))") }
         await pause(hold)
 
+        await engine.waitForGate(.markFeatures)
         engine.confirmFeatures()
         await pause(0.3)
         if engine.state.phase == .gapRequest {
             if replay.heldBack == nil {
                 await pause(hold)
                 log("skipping the gap: no held-back frames to show it")
+                await engine.waitForGate(.gapRequest)
                 engine.skipGap()
-            } else if await !waitFor(.uploading, timeout: 30) {
-                log("gap not satisfied by the held-back frames within 30 s; skipping it")
+            } else if await !waitFor(.uploading, timeout: 150) {
+                log("gap not satisfied by the held-back frames; skipping it")
                 engine.skipGap()
             }
         }
-        guard await waitFor(.uploading, timeout: 5) else { return fail("upload did not start") }
-        if await !waitFor(.result, timeout: 90) {
+        guard await waitFor(.uploading, timeout: 150) else { return fail("upload did not start") }
+        if await !waitFor(.result, timeout: 240) {
             if case .failed = engine.state.upload {
                 log("upload failed; retrying once")
                 engine.retryUpload()
@@ -83,9 +89,11 @@ final class Autopilot {
             }
         }
         await pause(hold)
+        await engine.waitForGate(.result)
         engine.showAR()
         guard await waitFor(.resultAR, timeout: 5) else { return fail("AR result did not open") }
         await pause(hold)
+        await engine.waitForGate(.resultAR)
         engine.closeAR()
         _ = await waitFor(.result, timeout: 5)
         log("done")

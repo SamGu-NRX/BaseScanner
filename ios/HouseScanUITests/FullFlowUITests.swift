@@ -61,7 +61,12 @@ final class FullFlowUITests: XCTestCase {
     @MainActor
     private func runFlow(replay: String) throws {
         let app = XCUIApplication()
-        var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "3"]
+        // The app waits for a file per screen in this folder before leaving it, so the audit of a
+        // slow screen can never make the test miss the next one.
+        let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: gate) }
+        var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path]
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
@@ -80,6 +85,7 @@ final class FullFlowUITests: XCTestCase {
             shot.lifetime = .keepAlways
             add(shot)
             try audit(app, screen: phase)
+            try Data().write(to: gate.appending(path: phase))
         }
         // Closing the AR view returns to the result.
         XCTAssertTrue(app.descendants(matching: .any)["screen.result"].waitForExistence(timeout: 20), "closing AR did not return to the result")

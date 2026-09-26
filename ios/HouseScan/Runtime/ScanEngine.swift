@@ -154,6 +154,17 @@ final class ScanEngine {
     /// How long a finished step (close-up taken, gap closed) stays on screen before the next.
     private var autoAdvanceDelay: Double { options.autopilot ? max(1.2, options.autopilotHold) : 1.2 }
 
+    /// With `-autopilotGate`, waits until the UI test has finished with `phase` (its file exists),
+    /// for at most two minutes so a lost gate file can't hang the app.
+    func waitForGate(_ phase: ScanPhase) async {
+        guard options.autopilot, let gate = options.autopilotGate else { return }
+        let file = gate.appending(path: phase.rawValue)
+        let deadline = ContinuousClock.now + .seconds(120)
+        while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
     private func startSourceIfNeeded() {
         guard replay == nil, live == nil, state.failure == nil else { return }
         let capture = LiveCapture(
@@ -236,7 +247,8 @@ final class ScanEngine {
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
             try? await Task.sleep(for: .seconds(autoAdvanceDelay))
-            if state.phase == .meterCloseUp { go(.wallWalk) }
+            await waitForGate(.meterCloseUp)
+            if scan == generation, state.phase == .meterCloseUp { go(.wallWalk) }
         }
     }
 
@@ -323,6 +335,7 @@ final class ScanEngine {
             let id = request.id
             Task {
                 try? await Task.sleep(for: .seconds(autoAdvanceDelay))
+                await waitForGate(.gapRequest)
                 // Only if this same request is still showing (not skipped or replaced meanwhile).
                 guard state.phase == .gapRequest, state.gap?.id == id else { return }
                 afterGapResolved()
@@ -535,6 +548,8 @@ final class ScanEngine {
             placement = result
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.upload = .done
+            await waitForGate(.uploading)
+            guard scan == generation else { return }
             // The result appears only after the server answered (checklist R6).
             go(.result)
         } catch is CancellationError {

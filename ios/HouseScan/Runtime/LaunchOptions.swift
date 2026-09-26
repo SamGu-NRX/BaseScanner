@@ -9,12 +9,16 @@ import OSLog
 /// - `-sampleResult`: answer uploads with the bundled sample result, flagged as a sample.
 /// - `-autopilotHold <seconds>`: how long the autopilot leaves each screen up (default 1.2 s).
 ///   UI tests raise it so each screen stays long enough to screenshot and audit.
+/// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
+///   that phase exists in the folder. UI tests write it once they have screenshotted and audited
+///   the screen, so a slow audit can never miss a screen.
 struct LaunchOptions: Equatable {
     var replayFolder: URL?
     var autopilot = false
     var serverURL: URL?
     var sampleResult = false
     var autopilotHold: Double = 1.2
+    var autopilotGate: URL?
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         func value(after flag: String) -> String? {
@@ -27,6 +31,7 @@ struct LaunchOptions: Equatable {
         autopilot = arguments.contains("-autopilot")
         serverURL = value(after: "-serverURL").flatMap(URL.init(string:))
         sampleResult = arguments.contains("-sampleResult")
+        if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
     }
 }
