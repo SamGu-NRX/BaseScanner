@@ -16,17 +16,17 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 | Phone | Session setting | Feed |
 | --- | --- | --- |
-| LiDAR | `frameSemantics.insert(.sceneDepth)`, `sceneReconstruction = .meshWithClassification` | `depthFrame` → `Map3D.integrate`; `meshChunks` → `Map3D.update` |
+| LiDAR | `frameSemantics.insert(.sceneDepth)`, `sceneReconstruction = .meshWithClassification` | `depthFrame` → `Map3D.integrate`; `meshChunk` of each added or updated `ARMeshAnchor` → `Map3D.update`, removed → `removeMeshChunk` |
 | No LiDAR | plane detection (already on) | `featureFrame` → `Map3D.integrate`; `planes` → `Map3D.update` |
 
 Outputs, all against a `WallFrame` (the walk's, or one built from the map's own walls):
 
-- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`. A span is seen only where rays reached it.
+- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`. A span is seen only where rays reached it. The wall counts only within 10 cm in front of its line, so anything standing proud of it hides it, the meter included. The few cells behind the meter stay unseen.
 - `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners, each marked `mesh` or `plane`. `wallFrame(meter:groundY:frame:)` turns it into a `WallFrame`. scene.json's walls have no `source` field, so the source doesn't reach the server.
 - `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
 - `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
 
-Without LiDAR, only occluders that carry tracked feature points hide what is behind them. `DepthFrame.Kind.estimated` takes monocular depth with a per-pixel standard deviation. That depth is never used for walls.
+Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes add wall geometry only, since a plane can't show what stands in front of it. Coverage without LiDAR is therefore sparse until monocular depth arrives. `DepthFrame.Kind.estimated` takes that depth with a per-pixel standard deviation, and it is never used for walls.
 
 On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel). `swift test -c release --filter Map3DPerformanceTests` prints the current numbers.
 

@@ -147,7 +147,7 @@ public struct Map3D: Sendable {
                 rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit))
             }
         }
-        grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, config: config)
+        grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, measured: true, config: config)
         revision += 1
     }
 
@@ -161,25 +161,34 @@ public struct Map3D: Sendable {
 
     // MARK: Without LiDAR
 
-    /// Integrates a frame from a phone without LiDAR: rays to its feature points, then rays to
-    /// the detected planes (`planes`) through a grid of `planeRenderColumns` x `planeRenderRows`
-    /// pixels. A plane ray stops at the first surface already in the map, so a bush with feature
-    /// points on it hides the wall behind it. A bush the camera tracked no points on does not:
-    /// without depth, only what was measured can hide anything.
+    /// Integrates a frame from a phone without LiDAR.
+    ///
+    /// Each tracked feature point is a ray the camera really saw along: free up to just short of
+    /// the point, surface at it. A point lying on a detected plane (within `planeSnap`) takes
+    /// that plane's normal, which makes it a measured surface coverage can count.
+    ///
+    /// Detected planes are then drawn through a grid of `planeRenderColumns` x
+    /// `planeRenderRows` pixels, where no surface already in the map is in front of them. They
+    /// add surface for wall geometry only: they carve no free space and never count as seen,
+    /// because a plane's extent says nothing about what stands in front of it. A box with no
+    /// feature points on it would otherwise read as open space and hide the wall behind it
+    /// while leaving that wall "seen".
     public mutating func integrate(_ features: FeatureFrame) {
         let camera = frame.map(features.camera.position)
+        let mapPlanes = planesInMap()
         var featureRays: [RaySample] = []
         for point in features.points {
             let end = frame.map(point)
             let length = simd_distance(end, camera)
             guard length.isFinite, length >= config.minDepth, length <= config.maxDepth else { continue }
-            featureRays.append(RaySample(end: end, normal: .zero, freeLength: length - 2 * config.voxelSize, hit: true))
+            let direction = (end - camera) / length
+            let normal = mapPlanes.first { plane in
+                abs(simd_dot(end - plane.point, plane.normal)) <= config.planeSnap && plane.contains(end)
+            }.map { simd_dot($0.normal, direction) > 0 ? -$0.normal : $0.normal } ?? .zero
+            featureRays.append(RaySample(end: end, normal: normal, freeLength: length - 2 * config.voxelSize, hit: true))
         }
-        grid.integrate(camera: camera, rays: featureRays, sources: .feature, config: config)
-
-        let (planeRays, occluded) = renderPlanes(from: features.camera, camera: camera)
-        grid.integrate(camera: camera, rays: occluded, sources: .feature, config: config)
-        grid.integrate(camera: camera, rays: planeRays, sources: .plane, config: config)
+        grid.integrate(camera: camera, rays: featureRays, sources: .feature, measured: true, config: config)
+        grid.integrate(camera: camera, rays: planeRays(from: features.camera, camera: camera, planes: mapPlanes), sources: .plane, measured: false, config: config)
         revision += 1
     }
 
@@ -200,12 +209,15 @@ public struct Map3D: Sendable {
         var normal: SIMD3<Float>
         var planeFromMap: simd_float4x4
         var boundary: [SIMD2<Float>]
+
+        func contains(_ p: SIMD3<Float>) -> Bool {
+            let local = planeFromMap * SIMD4(p, 1)
+            return Map3D.polygon(boundary, contains: SIMD2(local.x, local.z))
+        }
     }
 
-    /// Rays from the camera to the nearest detected plane under each rendered pixel, split into
-    /// those that reach a plane and those stopped by a surface in the map first.
-    private func renderPlanes(from cameraFrame: CameraFrame, camera: SIMD3<Float>) -> (planes: [RaySample], occluded: [RaySample]) {
-        let mapPlanes = planes.values.compactMap { plane -> MapPlane? in
+    private func planesInMap() -> [MapPlane] {
+        planes.values.compactMap { plane in
             guard plane.boundary.count >= 3 else { return nil }
             let mapFromPlane = frame.mapFromWorld * plane.worldFromPlane
             let normal = SIMD3(mapFromPlane.columns.1.x, mapFromPlane.columns.1.y, mapFromPlane.columns.1.z)
@@ -214,8 +226,13 @@ public struct Map3D: Sendable {
                 point: SIMD3(mapFromPlane.columns.3.x, mapFromPlane.columns.3.y, mapFromPlane.columns.3.z),
                 normal: simd_normalize(normal), planeFromMap: mapFromPlane.inverse, boundary: plane.boundary)
         }
-        var reached: [RaySample] = []
-        var occluded: [RaySample] = []
+    }
+
+    /// Where each rendered pixel's ray meets the nearest plane, unless a surface already in the
+    /// map is in front of it; the normal faces the camera. No free space.
+    private func planeRays(from cameraFrame: CameraFrame, camera: SIMD3<Float>, planes mapPlanes: [MapPlane]) -> [RaySample] {
+        guard !mapPlanes.isEmpty else { return [] }
+        var rays: [RaySample] = []
         let columns = max(1, config.planeRenderColumns)
         let rows = max(1, config.planeRenderRows)
         for row in 0..<rows {
@@ -229,22 +246,16 @@ public struct Map3D: Sendable {
                     let denominator = simd_dot(plane.normal, direction)
                     guard abs(denominator) > 1e-4 else { continue }
                     let t = simd_dot(plane.normal, plane.point - camera) / denominator
-                    guard t >= config.minDepth, t <= config.maxDepth, t < nearest?.t ?? .infinity else { continue }
-                    let local = plane.planeFromMap * SIMD4(camera + direction * t, 1)
-                    guard Self.polygon(plane.boundary, contains: SIMD2(local.x, local.z)) else { continue }
+                    guard t >= config.minDepth, t <= config.maxDepth, t < nearest?.t ?? .infinity, plane.contains(camera + direction * t) else { continue }
                     nearest = (t, denominator > 0 ? -plane.normal : plane.normal)
                 }
-                let cosine = nearest.map { abs(simd_dot($0.normal, direction)) } ?? 0.5
-                let limit = (nearest?.t ?? config.maxDepth) - freeMargin(cosine: cosine)
-                if let blocked = firstSurface(from: camera, direction: direction, length: limit) {
-                    let t = blocked + config.voxelSize / 2
-                    occluded.append(RaySample(end: camera + direction * t, normal: .zero, freeLength: t - 2 * config.voxelSize, hit: true))
-                } else if let nearest {
-                    reached.append(RaySample(end: camera + direction * nearest.t, normal: nearest.normal, freeLength: limit, hit: true))
-                }
+                guard let nearest else { continue }
+                let limit = nearest.t - freeMargin(cosine: abs(simd_dot(nearest.normal, direction)))
+                guard firstSurface(from: camera, direction: direction, length: limit) == nil else { continue }
+                rays.append(RaySample(end: camera + direction * nearest.t, normal: nearest.normal, freeLength: 0, hit: true))
             }
         }
-        return (reached, occluded)
+        return rays
     }
 
     /// Distance along a ray at which it enters the first surface voxel, within `length`.

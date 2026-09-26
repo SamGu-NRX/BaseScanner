@@ -49,6 +49,9 @@ public struct Map3DConfig: Sendable, Equatable {
     /// An estimated depth marks a surface only when two standard deviations are within this,
     /// meters (one and a half voxels); free space is carved to two deviations short of it either way.
     public var maxSurfaceSigma: Float = 0.15
+    /// A feature point this close to a detected plane, meters, takes the plane's normal. ARKit's
+    /// feature points scatter a few centimeters about the surface they lie on.
+    public var planeSnap: Float = 0.05
     /// Pixel grid rendered from detected planes on each feature frame, along each axis.
     public var planeRenderColumns = 64
     public var planeRenderRows = 48
@@ -73,17 +76,21 @@ public struct Map3DConfig: Sendable, Equatable {
     /// `CoverageConfig.maxAngleFromNormal`.
     public var maxViewAngle: Float = 65 * .pi / 180
     /// How far behind and in front of the wall chain's line a surface still counts as the wall
-    /// face, meters. In front it takes in the meter and boxes on the wall (a meter stands about
-    /// 8 in proud); behind, a line placed a little in front of the real face. Something farther
-    /// out, such as a bush, hides the face instead.
+    /// face, meters: a voxel either way, plus half a voxel behind for a line placed a little in
+    /// front of the real face. Anything standing farther out hides the face, including the
+    /// meter itself and boxes on the wall, so the few cells behind the meter stay unseen. A
+    /// wider window would let a shrub against the wall stand in for the wall behind it, and the
+    /// wall band settles the checks for boxes, vents and openings there.
     public var faceBehind: Float = 0.15
-    public var faceFront: Float = 0.25
+    public var faceFront: Float = 0.1
     /// Ground is looked for from this far above to this far below the meter's ground, meters,
-    /// so a yard that slopes a little still has ground.
-    public var groundSearch: Float = 0.3
-    /// Facing and overhead space are judged from this height up, meters, so grass and ground
-    /// that is a little uneven do not read as something in front of the wall.
-    public var spaceFloor: Float = 0.3
+    /// so a yard that slopes a little still has ground. Anything flat and lower than this, such
+    /// as a pad or a low step, reads as ground.
+    public var groundSearch: Float = 0.2
+    /// Facing and overhead space are judged from this far above the ground seen under them,
+    /// meters, so grass and uneven ground do not read as something in front of the wall.
+    /// Anything lower is not told apart from the ground.
+    public var groundClearance: Float = 0.15
     /// Depth of the space over the battery that overhead judges, meters: the battery's 1.83 ft
     /// (the server's D).
     public var overheadDepth: Float = 0.5588

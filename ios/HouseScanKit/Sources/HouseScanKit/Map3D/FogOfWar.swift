@@ -80,6 +80,7 @@ extension Map3D {
     /// target. The spot seeing the most of the region's boundary past known surfaces wins,
     /// nearer spots first on a tie.
     public func nextBestView(along wall: WallFrame) -> ViewSuggestion? {
+        precondition(!config.viewDistances.isEmpty, "Map3DConfig.viewDistances is empty")
         let region = RegionOfInterest(self, wall: wall)
         // 1: unknown voxel of the region, 2: visited.
         var marks = [UInt8](repeating: 0, count: Int(grid.dims.x) * Int(grid.dims.y) * Int(grid.dims.z))
@@ -154,11 +155,12 @@ extension Map3D {
             aim: simd_normalize(target - eye), inSight: Float(chosen?.seen ?? 0) / Float(probes.count))
     }
 
-    /// Whether someone can stand at a map point: inside the bounds, in front of the chain and not
-    /// where the map holds a surface between `spaceFloor` and just above eye height.
+    /// Whether someone can stand at a map point: inside the bounds, in front of the chain by more
+    /// than a battery's depth and not
+    /// where the map holds a surface between `groundClearance` and just above eye height.
     private func canStand(at point: SIMD3<Float>, wall: WallFrame) -> Bool {
-        guard bounds.contains(SIMD3(point.x, config.eyeHeight, point.z)), RegionOfInterest.isInFront(self, wall: wall, map: point, minOut: config.faceFront) else { return false }
-        for height in Swift.stride(from: config.spaceFloor, through: config.eyeHeight + 0.3, by: config.voxelSize / 2) where state(at: SIMD3(point.x, height, point.z)) == .surface {
+        guard bounds.contains(SIMD3(point.x, config.eyeHeight, point.z)), RegionOfInterest.isInFront(self, wall: wall, map: point, minOut: config.overheadDepth) else { return false }
+        for height in Swift.stride(from: config.groundClearance, through: config.eyeHeight + 0.3, by: config.voxelSize / 2) where state(at: SIMD3(point.x, height, point.z)) == .surface {
             return false
         }
         return true
@@ -195,10 +197,10 @@ struct RegionOfInterest {
         self.wall = wall
         let grid = map.grid
         let config = map.config
-        // Layers whose centers lie from the ground to headroom, or to the top. Centers sit on
-        // whole multiples of the voxel size, so a thousandth of a voxel absorbs rounding.
-        low = max(0, Int32(((0 - grid.origin.y) / grid.voxelSize - 0.5 - 1e-3).rounded(.up)))
-        let layer = { (height: Float) in min(grid.dims.y - 1, Int32(((height - grid.origin.y) / grid.voxelSize - 0.5 + 1e-3).rounded(.down))) }
+        // From the layer holding the ground to the layer holding headroom, or the top: the
+        // voxels coverage reads (`Map3DCoverage`).
+        let layer = { (height: Float) in min(grid.dims.y - 1, max(0, Int32(((height - grid.origin.y) / grid.voxelSize).rounded(.down)))) }
+        low = layer(0)
         let headroomLayer = layer(config.headroom)
         let topLayer = layer(config.top)
         var columns = [Int32](repeating: -1, count: Int(grid.dims.x) * Int(grid.dims.z))
@@ -210,7 +212,7 @@ struct RegionOfInterest {
                 guard Self.isInFront(map, wall: wall, map: point, minOut: -config.faceBehind) else { continue }
                 let local = wall.wallPoint(map.frame.world(point))
                 guard abs(local.s) <= config.alongExtent else { continue }
-                let high = local.out <= config.overheadDepth ? topLayer : headroomLayer
+                let high = local.out <= config.overheadDepth + config.voxelSize / 2 ? topLayer : headroomLayer
                 guard high >= low else { continue }
                 columns[Int(x) + Int(grid.dims.x) * Int(z)] = high
                 count += Int(high - low + 1)

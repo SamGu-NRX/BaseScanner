@@ -71,7 +71,9 @@ struct Voxel {
         return simd_normalize(SIMD3(Float(nx), Float(ny), Float(nz)))
     }
 
+    /// Leaves the normal as it is when `n` has no direction (two opposite normals averaged).
     mutating func setNormal(_ n: SIMD3<Float>) {
+        guard simd_length_squared(n) > 1e-12 else { return }
         let q: SIMD3<Float> = (simd_normalize(n) * Float(127)).rounded(.toNearestOrAwayFromZero)
         nx = Int8(q.x)
         ny = Int8(q.y)
@@ -210,7 +212,11 @@ struct VoxelGrid {
     /// Integrates one frame's rays from `camera` (map coordinates). Hits first, so a voxel both
     /// hit and passed through in one frame counts as hit (OctoMap's rule); then free space along
     /// each ray, each voxel counted once per frame.
-    mutating func integrate(camera: SIMD3<Float>, rays: [RaySample], sources: VoxelSources, config: Map3DConfig) {
+    ///
+    /// `measured` is false for rays whose end was not measured (drawn to a detected plane): their
+    /// hits add occupancy and a normal but no viewing distance or angle, so they never count
+    /// as seen.
+    mutating func integrate(camera: SIMD3<Float>, rays: [RaySample], sources: VoxelSources, measured: Bool, config: Map3DConfig) {
         frameStamp = frameStamp == .max ? 1 : frameStamp + 1
         let stamp = frameStamp
         for ray in rays where ray.hit {
@@ -221,7 +227,7 @@ struct VoxelGrid {
             let cosine = simd_length_squared(ray.normal) > 0 ? abs(simd_dot(ray.normal, offset / distance)) : 0
             pool[i].recordHit(
                 stamp: stamp, distance: distance, cosine: cosine, normal: ray.normal, sources: sources.rawValue,
-                config: config)
+                measured: measured, config: config)
         }
         for ray in rays where ray.freeLength > 0 {
             carveFree(from: camera, to: ray.end, length: ray.freeLength, stamp: stamp, config: config)
@@ -356,7 +362,7 @@ extension Voxel {
     }
 
     @inline(__always)
-    mutating func recordHit(stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, config: Map3DConfig) {
+    mutating func recordHit(stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, measured: Bool, config: Map3DConfig) {
         if self.stamp != stamp {
             self.stamp = stamp
             logOdds = min(config.maxLogOdds, logOdds &+ config.hitLogOdds)
@@ -367,8 +373,10 @@ extension Voxel {
             }
             if hits < .max { hits += 1 }
         }
-        nearestCm = min(nearestCm, UInt16(min(Float(UInt16.max - 1), distance * 100)))
-        bestCos = max(bestCos, UInt8(min(255, (cosine * 255).rounded())))
+        if measured {
+            nearestCm = min(nearestCm, UInt16(min(Float(UInt16.max - 1), distance * 100)))
+            bestCos = max(bestCos, UInt8(min(255, (cosine * 255).rounded())))
+        }
         self.sources |= sources
     }
 

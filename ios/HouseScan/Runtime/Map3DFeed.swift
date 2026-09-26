@@ -10,9 +10,10 @@ import simd
 /// Session configuration each function needs (setting it is the engine's job):
 /// - `depthFrame`: `frameSemantics.insert(.sceneDepth)` when
 ///   `ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)`; otherwise it returns nil.
-/// - `meshChunk`, `meshChunks`: `sceneReconstruction = .meshWithClassification` when
+/// - `meshChunk`: `sceneReconstruction = .meshWithClassification` when
 ///   `ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification)`.
-///   With `.mesh`, chunks have no classes.
+///   With `.mesh`, chunks have no classes. Call it from the session's anchor add and update
+///   callbacks, not per frame: every chunk is redrawn into the map each time it is passed.
 /// - `plane`, `planes`: `planeDetection` with `.horizontal` and/or `.vertical`.
 /// - `featureFrame`: nothing extra; points are empty when ARKit has none for the frame.
 enum Map3DFeed {
@@ -111,10 +112,6 @@ enum Map3DFeed {
 
     static func planes(_ frame: ARFrame) -> [PlaneObservation] {
         frame.anchors.compactMap { $0 as? ARPlaneAnchor }.map(plane)
-    }
-
-    static func meshChunks(_ frame: ARFrame) -> [MeshChunk] {
-        frame.anchors.compactMap { $0 as? ARMeshAnchor }.map(meshChunk)
     }
 
     /// fx, fy, cx, cy of the color image; `intrinsics` is a column-major 3x3.

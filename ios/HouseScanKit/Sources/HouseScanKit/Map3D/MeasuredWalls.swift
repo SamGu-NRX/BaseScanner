@@ -53,8 +53,10 @@ public struct MeasuredWallChain: Sendable, Equatable {
         guard var result = WallFrame(meter: meter, outward: worldOutward(walls[meterIndex]), groundY: groundY) else { return nil }
         let meterMap = frame.map(meter)
         let meterPiece = walls[meterIndex]
-        // s of the meter's foot on its piece, from the piece's start.
-        let meterS = simd_dot(SIMD2(meterMap.x, meterMap.z) - meterPiece.start, meterPiece.along)
+        // s of the meter's foot on its piece, from the piece's start, kept a centimeter inside
+        // it so the first corner either way lies beyond the meter as `WallFrame.turn` requires.
+        let inset = min(0.01, meterPiece.length / 2)
+        let meterS = min(max(simd_dot(SIMD2(meterMap.x, meterMap.z) - meterPiece.start, meterPiece.along), inset), meterPiece.length - inset)
         var s = meterPiece.length - meterS
         for index in walls.indices.dropFirst(meterIndex + 1) {
             result.turn(.right, at: WallCorner(s: s, outward: worldOutward(walls[index])))
@@ -340,6 +342,12 @@ extension Map3D {
                 let point = end + current.along * t
                 let reach = simd_distance(point, end) + simd_distance(point, near)
                 guard simd_distance(point, end) <= config.cornerJoinDistance, simd_distance(point, near) <= config.cornerJoinDistance else { continue }
+                // Moving both ends to the corner must leave each piece pointing the same way and
+                // at least half the shortest piece long; a piece is never turned round.
+                let far = side == .right ? piece.end : piece.start
+                let currentFar = side == .right ? current.start : current.end
+                let keep = config.minWallLength / 2
+                guard sign * simd_dot(point - currentFar, current.along) >= keep, sign * simd_dot(far - point, piece.along) >= keep else { continue }
                 joint = .corner(point)
                 score = reach
             }

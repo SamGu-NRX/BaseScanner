@@ -66,16 +66,19 @@ extension Map3D {
     // MARK: Per cell
 
     /// Whether the wall face over a cell was seen from `voxelSize` up to headroom: at every
-    /// sample some voxel between `faceBehind` behind the chain's line and `faceFront` in front
-    /// of it is a surface seen well (`Voxel.isWellSeenSurface`). The layer at the ground itself
-    /// belongs to the ground band.
+    /// sample, some voxel whose center lies from `faceBehind` behind the chain's line to
+    /// `faceFront` in front of it is a surface seen well (`Voxel.isWellSeenSurface`). Anything
+    /// standing farther out, a box on the wall or a shrub against it, hides the face. The
+    /// layer at the ground belongs to the ground band.
     public func isWallSeen(cell index: Int, along wall: WallFrame) -> Bool {
-        let heights = stride(from: config.voxelSize, to: config.headroom, by: config.voxelSize).map { $0 } + [config.headroom]
+        let heights = Array(stride(from: config.voxelSize, to: config.headroom, by: config.voxelSize / 2)) + [config.headroom]
         let outs = Array(stride(from: -config.faceBehind, through: config.faceFront, by: config.voxelSize / 2))
         for s in samples(in: cellRange(index)) {
             for height in heights {
                 let seen = outs.contains { out in
-                    voxel(wall, s: s, height: height, out: out)?.isWellSeenSurface(config) == true
+                    guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g) else { return false }
+                    let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s)
+                    return centerOut >= -config.faceBehind - 1e-4 && centerOut <= config.faceFront + 1e-4 && voxel.isWellSeenSurface(config)
                 }
                 guard seen else { return false }
             }
@@ -84,68 +87,91 @@ extension Map3D {
     }
 
     /// How far out from the wall the ground in front of a cell was seen without a break,
-    /// meters, in whole rows of `groundRowSpacing`; nil when not even the row at the wall was.
-    /// A row is seen where, looking down from `groundSearch` above the ground, every voxel is
-    /// free until one that is a well-seen surface facing up. Ground under a bush or anything
-    /// else standing on it is not seen. The row at the wall is judged a voxel out, since the
-    /// voxels at the wall's foot hold the wall.
+    /// meters, in whole rows of `groundRowSpacing`; nil when not even the first voxel in front
+    /// of the wall was. Ground is checked every half voxel out (`groundHeight`), so no voxel
+    /// between two rows goes unchecked.
     public func groundReach(cell index: Int, along wall: WallFrame) -> Float? {
-        let rows = Int((config.outDepth / config.groundRowSpacing + 1e-3).rounded(.down))
-        var reach: Float?
-        for row in 0...rows {
-            let out = Float(row) * config.groundRowSpacing
-            let seen = samples(in: cellRange(index)).allSatisfy { s in
-                isGroundSeen(wall, s: s, out: max(out, config.voxelSize))
-            }
-            guard seen else { break }
-            reach = out
-        }
-        return reach
+        let ss = samples(in: cellRange(index))
+        guard let seen = contiguousReach(from: config.voxelSize, to: config.outDepth, { out in
+            ss.allSatisfy { groundHeight(wall, s: $0, out: out) != nil }
+        }) else { return nil }
+        return (seen / config.groundRowSpacing + 1e-4).rounded(.down) * config.groundRowSpacing
     }
 
-    private func isGroundSeen(_ wall: WallFrame, s: Float, out: Float) -> Bool {
+    /// Height of the ground seen at a point in front of the wall, meters above the chain's
+    /// ground; nil where it was not seen. Looking down from `groundSearch` above to as far
+    /// below, every voxel must be free until one that is a well-seen surface facing within 45
+    /// degrees of up. Ground under a bush, or under anything else taller than `groundSearch`,
+    /// is not seen.
+    func groundHeight(_ wall: WallFrame, s: Float, out: Float) -> Float? {
         for height in stride(from: config.groundSearch, through: -config.groundSearch, by: -config.voxelSize / 2) {
-            guard let voxel = voxel(wall, s: s, height: height, out: out) else { return false }
+            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g) else { return nil }
             switch voxel.state(config) {
             case .free: continue
-            case .unknown: return false
-            case .surface: return voxel.isWellSeenSurface(config) && (voxel.normal?.y ?? 0) >= cos(Float.pi / 4)
+            case .unknown: return nil
+            case .surface:
+                guard voxel.isWellSeenSurface(config), (voxel.normal?.y ?? 0) >= cos(Float.pi / 4) else { return nil }
+                return frame.world(grid.center(of: g)).y - wall.groundY
             }
         }
-        return false
+        return nil
     }
 
-    /// How far out from the wall the space in front of a cell was seen clear, meters: every
-    /// voxel from `spaceFloor` to headroom is free from `faceFront` out to the distance
-    /// returned, in steps of half a voxel. Nil when the first step is not. Nearer the wall than
-    /// `faceFront` is the wall band's (boxes and the meter stand there).
+    /// How far out from the wall the space in front of a cell was seen clear, meters: at every
+    /// point from the first voxel in front of the wall out to the distance returned, the ground
+    /// was seen and every voxel from `groundClearance` above it to headroom is free. Nil when
+    /// the first point is not.
     public func facingReach(cell index: Int, along wall: WallFrame) -> Float? {
-        let heights = Array(stride(from: config.spaceFloor, through: config.headroom, by: config.voxelSize / 2))
         let ss = samples(in: cellRange(index))
-        var reach: Float?
-        for out in stride(from: config.faceFront, through: config.outDepth, by: config.voxelSize / 2) {
-            let clear = ss.allSatisfy { s in
-                heights.allSatisfy { voxel(wall, s: s, height: $0, out: out)?.state(config) == .free }
-            }
-            guard clear else { break }
-            reach = out
+        return contiguousReach(from: config.voxelSize, to: config.outDepth) { out in
+            ss.allSatisfy { isClear(wall, s: $0, out: out, upTo: config.headroom) }
         }
-        return reach
     }
 
     /// How high above the ground the space over a battery at this cell was seen clear, meters:
-    /// every voxel from `faceFront` to `overheadDepth` out is free from `spaceFloor` up to the
-    /// height returned, in steps of half a voxel. Nil when the lowest step is not.
+    /// at every point from the first voxel in front of the wall out to `overheadDepth`, the
+    /// ground was seen and every voxel from `groundClearance` above it up to the height
+    /// returned is free. Nil when not even the lowest is.
     public func overheadReach(cell index: Int, along wall: WallFrame) -> Float? {
-        let outs = Array(stride(from: config.faceFront, through: config.overheadDepth, by: config.voxelSize / 2))
         let ss = samples(in: cellRange(index))
-        var reach: Float?
-        for height in stride(from: config.spaceFloor, to: config.top, by: config.voxelSize / 2) {
-            let clear = ss.allSatisfy { s in
-                outs.allSatisfy { voxel(wall, s: s, height: height, out: $0)?.state(config) == .free }
+        let outs = Array(stride(from: config.voxelSize, through: config.overheadDepth, by: config.voxelSize / 2))
+        var ground: [Float] = []
+        for s in ss {
+            for out in outs {
+                guard let height = groundHeight(wall, s: s, out: out) else { return nil }
+                ground.append(height)
             }
+        }
+        let floor = (ground.max() ?? 0) + config.groundClearance
+        var reach: Float?
+        for height in stride(from: floor, to: config.top - config.voxelSize / 2, by: config.voxelSize / 2) {
+            let clear = ss.allSatisfy { s in outs.allSatisfy { isFree(wall, s: s, height: height, out: $0) } }
             guard clear else { break }
             reach = height
+        }
+        return reach
+    }
+
+    /// The ground at a point was seen and the space above it from `groundClearance` up to
+    /// `height` is free.
+    private func isClear(_ wall: WallFrame, s: Float, out: Float, upTo height: Float) -> Bool {
+        guard let ground = groundHeight(wall, s: s, out: out) else { return false }
+        return stride(from: ground + config.groundClearance, through: height, by: config.voxelSize / 2).allSatisfy {
+            isFree(wall, s: s, height: $0, out: out)
+        }
+    }
+
+    private func isFree(_ wall: WallFrame, s: Float, height: Float, out: Float) -> Bool {
+        coordinate(wall, s: s, height: height, out: out).flatMap(grid.voxel)?.state(config) == .free
+    }
+
+    /// The largest distance, from `start` in steps of half a voxel up to `end`, up to which
+    /// `passes` holds at every step; nil when it fails at `start`.
+    private func contiguousReach(from start: Float, to end: Float, _ passes: (Float) -> Bool) -> Float? {
+        var reach: Float?
+        for distance in stride(from: start, through: end, by: config.voxelSize / 2) {
+            guard passes(distance) else { break }
+            reach = distance
         }
         return reach
     }
@@ -159,8 +185,8 @@ extension Map3D {
         return (0..<n).map { range.lowerBound + (Float($0) + 0.5) * width / Float(n) }
     }
 
-    /// The voxel at wall coordinates, nil outside the bounds or where nothing was stored.
-    func voxel(_ wall: WallFrame, s: Float, height: Float, out: Float) -> Voxel? {
-        grid.voxel(at: frame.map(wall.world(s: s, height: height, out: out)))
+    /// The voxel at wall coordinates; nil outside the bounds.
+    func coordinate(_ wall: WallFrame, s: Float, height: Float, out: Float) -> SIMD3<Int32>? {
+        grid.coordinate(of: frame.map(wall.world(s: s, height: height, out: out)))
     }
 }
