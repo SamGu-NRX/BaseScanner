@@ -67,8 +67,11 @@ public struct CoverageMap: Sendable {
     public private(set) var revision = 0
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
-    /// s shift from meter moves not yet applied to the cells, meters (see `updateWall`).
+    /// s shift from meter moves not yet applied to skipped cells, meters (see `updateWall`).
     private var pendingShift: Float = 0
+    /// Cameras of the frames `observe` recorded, oldest first, so a new wall frame can be replayed
+    /// against them. Sightings recorded directly through `record` are not kept.
+    public private(set) var observedCameras: [CameraFrame] = []
 
     private struct Cell: Sendable {
         /// Per sample row, the camera positions that saw it, pairwise at least
@@ -142,6 +145,7 @@ public struct CoverageMap: Sendable {
     @discardableResult
     public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool) -> Delta {
         guard trackingNormal else { return Delta() }
+        observedCameras.append(camera)
         return record(visibleCells(from: camera), from: camera.position)
     }
 
@@ -289,23 +293,37 @@ public struct CoverageMap: Sendable {
     }
 
     /// Moves the map to a new wall frame (after the meter anchor is refined or the ground is
-    /// measured). s is measured from the meter, so moving the meter by d along the wall moves
-    /// every seen stretch by -d in s. Marked ends move exactly; cells move by whole cells, and
-    /// the remainder (under half a cell, 7.6 cm, below tap error) waits for later moves.
-    /// Camera positions are world points and stay. Assumes the wall's direction is unchanged.
+    /// measured) and recomputes what every observed camera saw against it.
+    ///
+    /// Shifting cells is not enough: a cell records which heights a camera saw, and a corrected
+    /// ground or wall plane moves the sample rows to heights no frame may have looked at. With a
+    /// ground 0.3 m too high, shifted cells claimed wall and ground that were only ever sampled in
+    /// the air. So seen and covered cells are rebuilt by replaying `observedCameras`; marked ends
+    /// move exactly (s is measured from the meter, so moving it by d along the wall moves every
+    /// end by -d), and skipped cells move by whole cells, the remainder (under half a cell,
+    /// 7.6 cm, below tap error) waiting for later moves. The replay clips to the current ends, so
+    /// cells beyond an end seen before it was marked are gone until a new frame sees them.
+    /// Assumes the wall's direction is unchanged.
     public mutating func updateWall(_ frame: WallFrame) {
+        guard frame != wall else { return }
         let delta = simd_dot(wall.meter - frame.meter, frame.along)
         wall = frame
-        guard delta != 0 else { return }
         leftEnd = leftEnd.map { $0 + delta }
         rightEnd = rightEnd.map { $0 + delta }
         pendingShift += delta
         let whole = Int((pendingShift / config.cellWidth).rounded())
-        if whole != 0 {
-            for (band, bandCells) in cells {
-                cells[band] = Dictionary(uniqueKeysWithValues: bandCells.map { ($0.key + whole, $0.value) })
+        pendingShift -= Float(whole) * config.cellWidth
+        var skipped: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
+        for (band, bandCells) in cells {
+            for (index, cell) in bandCells where cell.skipped {
+                var kept = Cell(rowCount: config.rowsPerBand)
+                kept.skipped = true
+                skipped[band, default: [:]][index + whole] = kept
             }
-            pendingShift -= Float(whole) * config.cellWidth
+        }
+        cells = skipped
+        for camera in observedCameras {
+            record(visibleCells(from: camera), from: camera.position)
         }
         revision += 1
     }

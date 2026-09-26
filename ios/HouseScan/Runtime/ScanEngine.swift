@@ -231,8 +231,10 @@ final class ScanEngine {
         RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
         wall.groundY = y
         groundMeasured = true
+        // Rebuilds coverage from the kept cameras: the rows now sit at other heights.
         coverage?.updateWall(wall)
         publishWall()
+        publishCoverage()
         reprojectFeatures()
     }
 

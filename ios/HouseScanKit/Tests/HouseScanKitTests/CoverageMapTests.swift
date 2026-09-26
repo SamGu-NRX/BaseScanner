@@ -207,13 +207,54 @@ import Testing
         #expect(nearlyEqual(after.upperBound, before.upperBound + 0.3048, 1e-3))
         // Covered wall cells were -4 ... 5 (coveredIntervalsOfHandBuiltRuns); now -2 ... 7.
         #expect(map.level(.wall, 7) == .covered && map.level(.wall, 8) != .covered)
-        // A move under half a cell leaves the cells and carries over.
-        moved.meter.x -= 0.05
+        // Cells are replayed from the cameras, so a move under a cell counts exactly: at 0.4048 m
+        // the cameras sit at s = 0.4048 and 0.7048, covering L in [-0.2357, 1.1929], cells -1 ... 7.
+        moved.meter.x -= 0.1
         map.updateWall(moved)
+        #expect(map.level(.wall, -2) != .covered && map.level(.wall, -1) == .covered)
         #expect(map.level(.wall, 7) == .covered && map.level(.wall, 8) != .covered)
-        moved.meter.x -= 0.05
-        map.updateWall(moved)
-        #expect(map.level(.wall, 8) == .covered)
+    }
+
+    /// A level camera like `wallCamera`, 0.3 m higher: a wall sample at world height y lands on
+    /// u = 320 + 250 (1.5 - y), inside the 620.8 margin only for y >= 0.2968.
+    static func highWallCamera(s c: Float) -> CameraFrame {
+        makeCamera(at: SIMD3(c, 1.5, 2.0), forward: SIMD3(0, 0, -1), right: SIMD3(1, 0, 0))
+    }
+
+    /// The ground was guessed 0.3 m too high, so the bottom wall row sat 0.3 m up the wall, where
+    /// the cameras saw it. Measured at y = 0, that row is below every view: no cell stays covered.
+    @Test func correctingTheGroundRechecksWhichHeightsWereSeen() throws {
+        var guessed = standardWall()
+        guessed.groundY = 0.3
+        var map = CoverageMap(wall: guessed)
+        map.observe(Self.highWallCamera(s: 0), trackingNormal: true)
+        map.observe(Self.highWallCamera(s: 0.3), trackingNormal: true)
+        map.observe(Self.highWallCamera(s: 0.6), trackingNormal: false)
+        #expect(map.observedCameras.count == 2)
+        // Cells -4 ... 5, as for wallCamera: v depends only on s.
+        #expect(nearlyEqual(try #require(map.coveredIntervals(.wall).first), -0.6096...0.9144))
+        let revision = map.revision
+
+        map.updateWall(standardWall())
+        #expect(map.revision > revision)
+        #expect(map.coveredIntervals(.wall).isEmpty)
+        #expect(map.coveredCount == 0)
+        // The two upper rows are still seen from both positions; only the bottom row is unseen.
+        #expect(map.level(.wall, 0) == .seen)
+        #expect(map.visibleRows(.wall, 0, from: Self.highWallCamera(s: 0)) == [1, 2])
+    }
+
+    @Test func rebuildingKeepsSkippedCellsAndEnds() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        map.markSkipped(.ground, 1...2)
+        map.setEnd(.right, at: 3)
+        var lowered = standardWall()
+        lowered.groundY = -0.1
+        map.updateWall(lowered)
+        #expect(map.level(.ground, 7) == .skipped)
+        #expect(map.rightEnd == 3)
+        #expect(map.level(.wall, 0) == .seen)
     }
 
     @Test func coveredIntervalsOfHandBuiltRuns() {
