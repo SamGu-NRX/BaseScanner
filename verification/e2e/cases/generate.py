@@ -22,6 +22,9 @@ METER_Y = 4.0
 # so a gas strip at z = d is measured as exactly d. The margin cases need that: 3.3 - 0.3 and
 # 2.7 + 0.3 both evaluate to exactly 3.0, while 11/6 + 3.3 - 11/6 does not return 3.3.
 FRONT0 = -D
+# rules.yaml meter_working_space: 2.5 ft wide centred on the meter (NEC 110.26). A battery
+# overlapping s = (-1.25, 1.25) fails, i.e. starts in (-1.25 - W, 1.25) = (-3.833, 1.25).
+WS = "meter_working_space"
 
 
 def golden(n):
@@ -44,12 +47,33 @@ def facing(wall_id, span, depth=9.0):
     return {"wall_id": wall_id, "span_ft": list(span), "depth_ft": depth, "plus_minus_ft": 0.0}
 
 
-def coverage(span, ground=None, left="limit", right="limit", bands=("wall", "overhead", "facing")):
-    """Observed bands over `span`; the ground band over `ground` (default: `span`), 10 ft out."""
-    observed = [{"band": b, "span_ft": list(span)} for b in bands]
-    for g in [span] if ground is None else ground:
-        observed.append({"band": "ground", "span_ft": list(g), "out_ft": 10.0})
+# How far "fully observed" coverage reaches past the chain's ends and out from the wall.
+# rules.yaml (origin/t3/server) has pool_ft 10 and drive_ft 5, and an unseen pool or driveway
+# within that distance of the footprint makes the check UNSURE and asks for a photo. The
+# footprint's front is 11/6 ft out, so the ground must be seen to 10 + 11/6 ft out and 10 ft
+# along the wall past any footprint. 15 ft clears both.
+PAST = 15.0
+
+
+def coverage(
+    span,
+    ground=None,
+    left="limit",
+    right="limit",
+    bands=("wall", "overhead", "facing"),
+    past=(0.0, 0.0),
+    out=10.0,
+):
+    """Observed bands over `span` widened by `past` (left, right); ground over `ground`."""
+    wide = [span[0] - past[0], span[1] + past[1]] if any(past) else list(span)
+    observed = [{"band": b, "span_ft": wide} for b in bands]
+    for g in [wide] if ground is None else ground:
+        observed.append({"band": "ground", "span_ft": list(g), "out_ft": out})
     return {"ends": {"left": {"kind": left}, "right": {"kind": right}}, "observed": observed}
+
+
+def full_coverage(span):
+    return coverage(span, past=(PAST, PAST), out=PAST)
 
 
 def gas(wall_id, span, footprint, pm=0.0, conf=None):
@@ -151,11 +175,14 @@ def straight_scene(x0, x1, z=0.0, meter_x=0.0, objects=(), ground=None, cov=None
         "ground": [concrete(rect(x0, x1, z, z + 10))] if ground is None else ground,
         "facing": [facing("w1", (x0 - meter_x, x1 - meter_x))],
     }
-    scene["coverage"] = coverage((x0 - meter_x, x1 - meter_x)) if cov is None else cov
+    scene["coverage"] = full_coverage((x0 - meter_x, x1 - meter_x)) if cov is None else cov
     return scene
 
 
 # g01: an unseen stretch behind a garage door needs no photo, since no cable can reach it.
+# The garage ends at s = -1, inside the meter's working space, so no battery can sit between
+# garage and meter; the unseen stretch starts at s = -9, more than pool_ft (10) left of the
+# first start right of the meter (1.25).
 case(
     "g01-unseen-beyond-garage",
     golden("01"),
@@ -163,17 +190,17 @@ case(
     "reached by a cable, so the result asks for no photos, and every start beyond the garage "
     "fails its route.",
     straight_scene(
-        -14,
+        -20,
         10,
-        objects=[opening("garage_door", "w1", (-7, -3), 0.0, 7.0)],
-        cov=coverage((-7, 10)),
+        objects=[opening("garage_door", "w1", (-5.5, -1), 0.0, 7.0)],
+        cov=coverage((-9, 10), past=(0.0, PAST), out=PAST),
     ),
     {
         "missing_evidence_empty": True,
         "sweep_runs": [
             {
                 "wall_id": "w1",
-                "start_ft": [-13.9, -9.7],
+                "start_ft": [-19.9, -8.2],
                 "outcome": "fail",
                 "failing_match": "route",
             }
@@ -197,7 +224,7 @@ case(
         "objects": [],
         "ground": [offset_ground(g03_wall["baseline"])],
         "facing": [facing("w1", (-9, 10))],
-        "coverage": coverage((-9, 10)),
+        "coverage": full_coverage((-9, 10)),
     },
     {
         "spot": {"wall_id": "w1", "span_within": [-9, -6]},
@@ -269,7 +296,6 @@ case(
             {"wall_id": "w1", "start_ft": [5, 9.4], "outcome": "fail", "failing_match": "route"}
         ],
     },
-    {"opening": 3.0},
 )
 
 # g08b: a 1 ft stretch with no wall between the meter's short wall and the rest.
@@ -504,7 +530,7 @@ case(
         "objects": [],
         "ground": [offset_ground(g12b_wall["baseline"])],
         "facing": [facing("w1", (-3, 6 + W))],
-        "coverage": coverage((-3, 6 + W)),
+        "coverage": full_coverage((-3, 6 + W)),
     },
     {"spot": {"wall_id": "w1", "span_within": [6, 6 + W]}, "missing_evidence_empty": True},
 )
@@ -518,7 +544,9 @@ def g13_scene(x0):
     }
 
 
-s_edge = 0.3 - math.sqrt(3.3**2 - 3.2**2)
+# Passing spots need their right edge left of both the gas edge 0.3 - sqrt(0.65) ~ -0.506 and
+# the meter working space's left edge, -1.25 (rules.yaml meter_working_space width 2.5).
+s_edge = min(0.3 - math.sqrt(3.3**2 - 3.2**2), -1.25)
 case(
     "g13a-unsure-never-outranks-pass",
     golden("13"),
@@ -529,7 +557,10 @@ case(
     {
         "spot": {"wall_id": "w1", "span_within": [-8, s_edge]},
         "checks": [{"match": "gas", "outcome": "pass"}],
-        "sweep_runs": [{"wall_id": "w1", "start_ft": [0.5, 5], "outcome": "unsure"}],
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [-3.8, 1.2], "outcome": "fail", "failing_match": WS},
+            {"wall_id": "w1", "start_ft": [1.3, 5], "outcome": "unsure"},
+        ],
         "missing_evidence_empty": True,
     },
     {"gas": 3.0},
@@ -552,7 +583,10 @@ case(
                 "plus_minus_ft": 0.3,
             }
         ],
-        "sweep_runs": [{"wall_id": "w1", "start_ft": [-0.4, 5.3], "outcome": "unsure"}],
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [-0.4, 1.2], "outcome": "fail", "failing_match": WS},
+            {"wall_id": "w1", "start_ft": [1.3, 5.3], "outcome": "unsure"},
+        ],
         "missing_evidence_empty": True,
     },
     {"gas": 3.0},
@@ -571,7 +605,11 @@ case(
     {
         "decision_in": ["manual_review"],
         "missing_evidence_empty": False,
-        "sweep_runs": [{"wall_id": "w1", "start_ft": [-6, 7.4], "outcome": "unsure"}],
+        "sweep_runs": [
+            {"wall_id": "w1", "start_ft": [-6, -3.9], "outcome": "unsure"},
+            {"wall_id": "w1", "start_ft": [-3.8, 1.2], "outcome": "fail", "failing_match": WS},
+            {"wall_id": "w1", "start_ft": [1.3, 7.4], "outcome": "unsure"},
+        ],
     },
 )
 

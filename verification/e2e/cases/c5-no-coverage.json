@@ -77,6 +77,23 @@
         "wall_id": "w1",
         "start_ft": [
           -6,
+          -3.9
+        ],
+        "outcome": "unsure"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -3.8,
+          1.2
+        ],
+        "outcome": "fail",
+        "failing_match": "meter_working_space"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          1.3,
           7.4
         ],
         "outcome": "unsure"

@@ -188,9 +188,14 @@ def discover_endpoint(openapi: dict, override: str | None = None) -> Endpoint:
             if kind in body:
                 candidates.append((path, kind, body[kind].get("schema", {})))
     if override:
-        candidates = [c for c in candidates if c[0] == override]
-        if not candidates:
-            raise SystemExit(f"--endpoint {override} is not a POST with a JSON or multipart body")
+        declared = [c for c in candidates if c[0] == override]
+        # An endpoint that reads the raw request body declares no body schema; the caller has
+        # named it, so it takes the scene as JSON.
+        if not declared and "post" in openapi.get("paths", {}).get(override, {}):
+            declared = [(override, "application/json", {})]
+        if not declared:
+            raise SystemExit(f"--endpoint {override} is not a POST in the server's OpenAPI")
+        candidates = declared
     elif len(candidates) > 1:
         named = [c for c in candidates if re.search(r"scene|place|solve|placement", c[0])]
         candidates = named if len(named) == 1 else candidates

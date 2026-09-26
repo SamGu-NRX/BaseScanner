@@ -64,6 +64,14 @@ def test_ambiguity_is_loud():
     assert discover_endpoint(openapi({"/a": json_op(), "/b": json_op()}), "/b").path == "/b"
 
 
+def test_named_post_without_a_body_schema_takes_json():
+    raw_body = {"post": {"responses": {}}}
+    found = discover_endpoint(openapi({"/v1/placements": raw_body}), "/v1/placements")
+    assert found == Endpoint("/v1/placements", "application/json")
+    with pytest.raises(SystemExit, match="not a POST"):
+        discover_endpoint(openapi({"/v1/placements": raw_body}), "/v1/other")
+
+
 def test_case_file_is_loaded_with_its_expectations(tmp_path):
     path = tmp_path / "c.json"
     path.write_text(
