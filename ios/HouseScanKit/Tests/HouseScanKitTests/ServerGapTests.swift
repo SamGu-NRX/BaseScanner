@@ -1,5 +1,5 @@
 import Foundation
-import HouseScanKit
+@testable import HouseScanKit
 import Testing
 
 /// Server missing-evidence items become capture requests (result.schema.json missing_evidence).
@@ -55,12 +55,33 @@ import Testing
             for s: Float in [0, 0.3] { map.observe(GroundDepthTests.downCamera(s: s, out: out), trackingNormal: true) }
         }
         let planner = GapPlanner()
-        #expect(planner.isSatisfied(GapPlan(band: .ground, span: 0...0.6, reason: .server, need: .groundOut(7 * 0.3048)), map))
-        #expect(!planner.isSatisfied(GapPlan(band: .ground, span: 0...0.6, reason: .server, need: .groundOut(7.1 * 0.3048)), map))
+        #expect(planner.isSatisfied(GapPlan(band: .ground, span: 0...0.6, reason: .server, need: .groundOut(7 * 0.3048), requestedOutFt: 7), map))
+        #expect(!planner.isSatisfied(GapPlan(band: .ground, span: 0...0.6, reason: .server, need: .groundOut(7.1 * 0.3048), requestedOutFt: 7.1), map))
         // Cell 6 lies past the seen cells: 6 of 7 met would do for cells (80 %), not for a reach.
         let wider = GapPlan(band: .ground, span: 0...1.0668, reason: .server, need: .groundOut(1))
         #expect(planner.progress(of: wider, map) < 1)
         #expect(!planner.isSatisfied(wider, map))
+    }
+
+    /// The server asks for the smallest 6-decimal value strictly above its rule (solver.py
+    /// `_above` on origin/t3/server): D + r for facing is 4.833333 ft, so it asks for 4.833334.
+    /// The export reports 4.8333 ft for a clearance just under that, which does not settle the
+    /// request; 4.8334 does. Rounding the request to the export's four decimals called both met.
+    @Test func aReachJustUnderAStrictlyAboveRequestIsNotMet() throws {
+        let plan = try #require(GapPlanner().plan(
+            for: item(#"{"kind":"band","band":"facing","span_ft":[0,1],"out_ft":4.833334,"message":"m"}"#), leftEnd: nil, rightEnd: nil))
+        #expect(plan.requestedOutFt == 4.833334)
+        // A walk that leaves 4.83332 ft clear at cell 1's far edge (0.3048 m): feet down, 4.8333.
+        let under: Float = 4.83332 * 0.3048
+        let over: Float = 4.83345 * 0.3048
+        for (clear, met) in [(under, false), (over, true)] {
+            var map = CoverageMap(wall: standardWall())
+            FacingTests.walk(&map, out: clear + CoverageMap.positionError(atS: 0.3048), from: -1, to: 1.5)
+            let exported = try #require(map.walkedClearance(at: 1))
+            #expect(SceneExport.feetDown(exported) == (met ? 4.8334 : 4.8333))
+            let cell = GapPlan(band: .ground, span: 0.1524...0.3048, reason: .server, need: plan.need, requestedOutFt: plan.requestedOutFt)
+            #expect(GapPlanner().isSatisfied(cell, map) == met)
+        }
     }
 
     @Test func walkOutIsMetByWalkingPastTheSpanFarEnoughOut() {

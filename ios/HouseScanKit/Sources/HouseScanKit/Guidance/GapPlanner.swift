@@ -32,12 +32,19 @@ public struct GapPlan: Sendable, Equatable {
     public var span: ClosedRange<Float>
     public var reason: Reason
     public var need: Need
+    /// The request's `out_ft` exactly as the server sent it, for a request built by
+    /// `plan(for:leftEnd:rightEnd:)`. A reach is met against this, not against `need`'s meters:
+    /// the server asks for values strictly above its rule (4.833334 ft for 4.833333), and the trip
+    /// through Float meters and back can land a hair below what it asked. Nil for a request built
+    /// in meters, whose reach is then compared in feet exactly as converted.
+    public var requestedOutFt: Double?
 
-    public init(band: SurfaceBand, span: ClosedRange<Float>, reason: Reason, need: Need = .cells) {
+    public init(band: SurfaceBand, span: ClosedRange<Float>, reason: Reason, need: Need = .cells, requestedOutFt: Double? = nil) {
         self.band = band
         self.span = span
         self.reason = reason
         self.need = need
+        self.requestedOutFt = requestedOutFt
     }
 }
 
@@ -110,11 +117,12 @@ public struct GapPlanner: Sendable {
     /// The fraction of the request met so far: of its cells for a phone request or a reach, of
     /// its span as the exported scene will report it for a server cell request.
     public func progress(of gap: GapPlan, _ coverage: CoverageMap) -> Double {
-        // A reach meets a request in feet as the export will report it (rounded down), so the
-        // phone never calls a request met that the uploaded scene falls short of.
+        // A reach meets a request in feet as the export will report it (rounded down), against
+        // the requirement as asked: rounding the requirement too could round it down, and then
+        // 4.8333 ft met a 4.833334 ft request the uploaded scene falls short of.
         func reaches(_ value: Float?, _ needed: Float) -> Bool {
             guard let value else { return false }
-            return SceneExport.feetDown(value) >= SceneExport.round4(Double(needed) * SceneUnits.feetPerMeter)
+            return SceneExport.feetDown(value) >= gap.requestedOutFt ?? Double(needed) * SceneUnits.feetPerMeter
         }
         let met: (Int) -> Bool
         switch gap.need {
@@ -220,7 +228,7 @@ extension GapPlanner {
             }
             let low = Float(min(span.x, span.y)) * metersPerFoot
             let high = Float(max(span.x, span.y)) * metersPerFoot
-            return GapPlan(band: band, span: low...high, reason: .server, need: need)
+            return GapPlan(band: band, span: low...high, reason: .server, need: need, requestedOutFt: item.outFt)
         case .pastEnd:
             guard let side = item.side else { return nil }
             switch side {
