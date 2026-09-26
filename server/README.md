@@ -48,7 +48,7 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 | 400 | The body or zip can't be read, or a zip entry has an absolute or `..` path |
 | 413 | Over `HOUSESCAN_MAX_UPLOAD_MB` (default 256), unzipped over `HOUSESCAN_MAX_UNZIPPED_MB` (default 512), or `scene.json` itself over `HOUSESCAN_MAX_SCENE_MB` (default 10) |
 | 415 | Not JSON, zip or multipart |
-| 422 | The scene breaks `schemas/scene.schema.json`, names an image the zip lacks, can't be placed (for example the meter is far from its wall), or needs more than 50,000 positions or 20 s to check (`scene_too_complex`) |
+| 422 | The scene breaks `schemas/scene.schema.json`, names an image the zip lacks, can't be placed (for example the meter is far from its wall), or needs more than 50,000 positions or 8 s to check (`scene_too_complex`; refused as soon as the pace of the first positions shows it) |
 
 ## Writing a scene
 
@@ -57,6 +57,7 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 - Wall `baseline` points run **left to right as seen from outside**, and walls are listed in that order. That fixes each wall's outward side.
 - `s` is feet along the walls from the meter, negative to the left. `span_ft` and coverage use it.
 - `coverage` lists what the capture actually saw, and whether each end of the walk is a real `limit` or `unexplored`. Anything unseen makes the checks that depend on it UNSURE, so a scene without `coverage` can't pass.
+- A limit end (a fence, a corner) doesn't clear the ground beyond it: a pool there still counts. Ground seen past a limit end, a `span_ft` beyond the chain's end, covers both sides of the wall's continued line, so pointing the camera past the end settles it. Past an unexplored end only walking on does.
 - Give an object a plan `footprint` when it stands off the wall (a regulator, an AC unit), or clearances are measured to its stretch of wall line.
 - Omit `plus_minus_ft` and AR-placed positions get `rules.yaml`'s default error for their source plus 0.16 ft per foot along the walls from the meter, from measured ARKit drift. Send your own when you know better.
 
@@ -74,7 +75,7 @@ A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON 
 | `facing_gap`, `headroom` | Enough room in front and above |
 | `route_path`, `route_length` | The cable runs along continuous wall, and isn't too long |
 
-A check passes only when its margin exceeds its error and fails only when it misses by more than its error; anything else is UNSURE with an `unsure_cause`. `missing_evidence` lists the views that would settle an unseen area. A reject needs every spot within cable reach to fail and both ends of the walk known.
+A check passes only when its margin exceeds its error and fails only when it misses by more than its error; anything else is UNSURE with an `unsure_cause`. `missing_evidence` lists the views that would settle an unseen area; showing exactly what a `band` request names settles it, and a `past_end` request asks to walk on. When a measurement only might lie in front of or over the battery (its end is within the wall's position error of the battery's edge), `measured_ft ± plus_minus_ft` spans the values the check could have, so the numbers give the same UNSURE. A reject needs every spot within cable reach to fail and both ends of the walk known.
 
 ## Rules
 

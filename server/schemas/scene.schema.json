@@ -151,7 +151,7 @@
                 "enum": ["wall", "ground", "overhead", "facing"],
                 "description": "wall: the wall face from the ground up to headroom height (boxes and vents above the battery, openings), which also covers the cable route. ground: the ground in front of the wall out to `out_ft`. overhead: the space above the ground strip up to headroom height. facing: the gap straight out from the wall to whatever faces it."
               },
-              "span_ft": {"$ref": "#/$defs/span", "description": "Observed stretch in s. May extend past the chain's ends, continuing the end segments' lines."},
+              "span_ft": {"$ref": "#/$defs/span", "description": "Observed stretch in s. May extend past the chain's ends, continuing the end segments' lines. Past an end marked limit, observed ground covers both sides of that line."},
               "out_ft": {"type": "number", "minimum": 0, "description": "Required for the ground band: how far out from the wall the ground was seen."}
             },
             "if": {"properties": {"band": {"const": "ground"}}},

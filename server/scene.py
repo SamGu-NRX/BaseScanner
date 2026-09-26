@@ -203,15 +203,24 @@ class Scene:
         pts.append(self.point_at(hi))
         return pts if s_a <= s_b else pts[::-1]
 
+    def _past_limit(self, p: Piece) -> bool:
+        """Whether p is the straight continuation past an end the walk marked as a limit."""
+        side = "left" if p is self.pieces[0] else "right" if p is self.pieces[-1] else None
+        return side is not None and self.end_kinds.get(side) == "limit"
+
     def band_polygon(self, s_lo: float, s_hi: float, out: float) -> Geometry:
         """The ground strip in front of the chain from s_lo to s_hi, out to `out` from the wall,
-        with the wedges that fill the outside of convex corners."""
+        with the wedges that fill the outside of convex corners. Past a limit end there is no
+        house behind the continued line, so the strip there covers both sides of it: a fence or
+        corner doesn't make the ground beyond it clear, and a camera pointed past the end from
+        where the walk stopped sees both sides."""
         if s_hi - s_lo <= EPS or out <= EPS:
             return Polygon()
         parts: list[Geometry] = []
         inside = [p for p in self.pieces if p.s1 > s_lo + EPS and p.s0 < s_hi - EPS]
         for p in inside:
-            parts.append(p.rect(max(s_lo, p.s0), min(s_hi, p.s1), 0.0, out))
+            near = -out if self._past_limit(p) else 0.0
+            parts.append(p.rect(max(s_lo, p.s0), min(s_hi, p.s1), near, out))
         for prev, nxt in itertools.pairwise(inside):
             parts.append(_wedge(prev.b, prev.outward, nxt.outward, out))
         return unary_union(parts)
@@ -283,12 +292,41 @@ class Scene:
         known = unary_union([seen_in_front, behind])
         return [d.difference(known) for d in discs]
 
-    def unobserved_wall(self) -> Geometry:
-        if "wall" not in self._cache:
+    def coverable(self, band: str) -> Geometry:
+        """Where observing `band` can settle what is unseen: in front of the scanned walls, and
+        past a limit end. Past an unexplored end the walls may turn any way, so no view settles
+        it; only walking on does (a past_end request)."""
+        key = f"coverable-{band}"
+        if key not in self._cache:
+            left, right = self.pieces[0], self.pieces[-1]
+            lo = self.s_min if self.end_kinds.get("left") == "unexplored" else left.s0
+            hi = self.s_max if self.end_kinds.get("right") == "unexplored" else right.s1
+            if band == "ground":
+                self._cache[key] = self.band_polygon(lo, hi, self.reach_ft)
+            else:
+                self._cache[key] = self.wall_line(lo, hi).buffer(1e-6, cap_style="flat")
+        return self._cache[key]
+
+    def unobserved_wall_lines(self) -> Geometry:
+        """Stretches of the chain's line nobody saw, the part a view of the wall settles."""
+        if "wall-lines" not in self._cache:
             lo, hi = self.pieces[0].s0, self.pieces[-1].s1
             gaps = subtract_intervals((lo, hi), self.observed_intervals("wall"))
-            lines = [self.wall_line(a, b) for a, b in gaps]
-            self._cache["wall"] = unary_union([*lines, *self._unexplored_discs()])
+            self._cache["wall-lines"] = unary_union([self.wall_line(a, b) for a, b in gaps])
+        return self._cache["wall-lines"]
+
+    def unexplored_area(self) -> Geometry:
+        """Where the walls past an unexplored end might run: in front of the scanned walls only
+        a view of the ground there rules that out."""
+        if "unexplored" not in self._cache:
+            self._cache["unexplored"] = unary_union(self._unexplored_discs())
+        return self._cache["unexplored"]
+
+    def unobserved_wall(self) -> Geometry:
+        if "wall" not in self._cache:
+            self._cache["wall"] = unary_union(
+                [self.unobserved_wall_lines(), self.unexplored_area()]
+            )
         return self._cache["wall"]
 
 

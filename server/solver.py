@@ -26,13 +26,17 @@ from units import format_ft_in
 
 PASS, FAIL, UNSURE = "pass", "fail", "unsure"
 _SEVERITY = {PASS: 0, UNSURE: 1, FAIL: 2}
-# Areas and lengths below this are floating point slivers, not geometry.
+# Areas, lengths and distances below this are floating point noise, not geometry.
 _MEASURE_EPS = 1e-6
 SCHEMA_VERSION = "1.0"
 # Operational bounds on one request: a realistic scan needs a few thousand positions and well
-# under a second. Past these the input is refused rather than tying the server up.
+# under a second. Past these the input is refused rather than tying the server up. The budget is
+# wall-clock on the hosted server, which ran about 4x slower than the development Mac (ETH3D scene:
+# 1.6 s there against 0.4 s locally at 739fb6f), and sits far under Vercel's 300 s function limit.
 MAX_STARTS = 50_000
-SOLVE_BUDGET_S = 20.0
+SOLVE_BUDGET_S = 8.0
+# Positions evaluated before the total time is projected; enough for a stable per-position cost.
+PROJECT_AFTER = 256
 
 
 class SceneTooComplex(ValueError):
@@ -103,6 +107,19 @@ def _is_private(keys: tuple[str, ...], private_keys: frozenset[str]) -> bool:
     return any(
         k == p or p.startswith(f"{k}.") or k.startswith(f"{p}.") for k in keys for p in private_keys
     )
+
+
+# A buffer's round corners are polygons inscribed in the true circle (16 segments a quarter
+# turn), so they fall short of the radius by up to 0.12%. Scaling by 1/cos of half a segment's
+# angle makes them circumscribe it: the region reaches at least as far as the exact distance
+# test in Solver._covered.
+_BUFFER_SEGMENTS = 16
+_CIRCUMSCRIBE = 1 / math.cos(math.pi / (4 * _BUFFER_SEGMENTS))
+
+
+def _within(fp: Polygon, radius: float) -> Geometry:
+    """Every point within `radius` of the footprint, and slightly more at the corners."""
+    return fp.buffer(radius * _CIRCUMSCRIBE, quad_segs=_BUFFER_SEGMENTS) if radius > 0 else fp
 
 
 def _round(v: float | None) -> float | None:
@@ -224,19 +241,11 @@ class Solver:
         return self._buffers[key]
 
     def _covered(self, fp: Polygon, unobserved: Geometry, radius: float) -> bool:
-        """True when nothing unobserved lies within `radius` of the footprint. Unseen areas count
-        by area (touching along an edge is not overlap) and unseen wall lines by length."""
-        if unobserved.is_empty:
-            return True
-        if fp.distance(unobserved) > radius + _MEASURE_EPS:
-            return True
-        near = unobserved.intersection(fp.buffer(radius) if radius > 0 else fp)
-        for part in getattr(near, "geoms", [near]):
-            if part.geom_type.endswith("Polygon") and part.area > _MEASURE_EPS:
-                return False
-            if part.geom_type.endswith("LineString") and part.length > _MEASURE_EPS:
-                return False
-        return True
+        """True when nothing unobserved lies strictly within `radius` of the footprint: an unseen
+        area that only touches that distance (an exact shared edge) does not count. An exact
+        distance, rather than intersecting a buffered footprint, is both cheaper (this is most
+        of the solve time) and free of the buffer's polygonal approximation of a circle."""
+        return unobserved.is_empty or fp.distance(unobserved) >= radius - _MEASURE_EPS
 
     # --- checks --------------------------------------------------------------------------------
 
@@ -319,10 +328,32 @@ class Solver:
         return self.unobserved_ground if band == "ground" else self.unobserved_wall
 
     def _missing(self, band: str, fp: Polygon, radius: float) -> list[tuple[str, float, float]]:
-        """The stretch of `band` within `radius` of the footprint that nobody saw."""
-        region = self._unobserved(band).intersection(fp.buffer(radius) if radius > 0 else fp)
-        extent = self.scene.s_extent(region)
-        return [(band, *extent)] if extent else []
+        """The views that would show what nobody saw within `radius` of the footprint. Only what
+        a view can settle is requested; the rest lies past an unexplored end, which the
+        past_end request covers. For the wall band, the area past an unexplored end that lies in
+        front of the scanned walls is settled by a view of the ground there, so it is asked for
+        as ground."""
+        within = _within(fp, radius)
+        if band == "ground":
+            parts = [("ground", self.unobserved_ground)]
+        else:
+            parts = [
+                ("wall", self.scene.unobserved_wall_lines()),
+                ("ground", self.scene.unexplored_area()),
+            ]
+        out = []
+        for view, unseen in parts:
+            region = unseen.intersection(within).intersection(self.scene.coverable(view))
+            # Where that meets an unexplored end exactly, a sliver with no length along the wall
+            # is left; a request for it could never be settled.
+            extents = [
+                e
+                for part in getattr(region, "geoms", [region])
+                if (e := self.scene.s_extent(part)) and e[1] - e[0] > _MEASURE_EPS
+            ]
+            if extents:
+                out.append((view, min(a for a, _ in extents), max(b for _, b in extents)))
+        return out
 
     def _missing_bands(
         self, bands: list[str], fp: Polygon, radius: float
@@ -509,6 +540,9 @@ class Solver:
         c = Check(check_id, label, PASS, "", rule_key, rule, threshold=t, comparison="at_least")
         missing = self.scene.missing(band, s0, s1)
         worst_key: tuple[int, float] | None = None
+        # The lowest value surely under the battery, and whether the deciding entry only might be.
+        surely: tuple[float, float] | None = None
+        only_maybe = False
         for m in entries:
             # plus_minus is the error of the measured height or depth; where the stretch sits
             # along the wall is known to the wall's error. A measurement that lies under the
@@ -520,19 +554,25 @@ class Solver:
             if not possible:
                 continue
             definite = a + wall_error < s1 - EPS and b - wall_error > s0 + EPS
-            outcome = at_least(m.value - subtract, m.plus_minus, t)
-            if not definite and outcome == FAIL:
+            value = m.value - subtract
+            if definite and (surely is None or value < surely[0]):
+                surely = (value, m.plus_minus)
+            outcome = at_least(value, m.plus_minus, t)
+            maybe = not definite and outcome == FAIL
+            if maybe:
                 outcome = UNSURE
-            key = (_SEVERITY[outcome], -(m.value - m.plus_minus))
+            key = (_SEVERITY[outcome], -(value - m.plus_minus))
             if worst_key is None or key > worst_key:
-                worst_key = key
-                c.outcome, c.measured, c.plus_minus = outcome, m.value - subtract, m.plus_minus
+                worst_key, only_maybe = key, maybe
+                c.outcome, c.measured, c.plus_minus = outcome, value, m.plus_minus
                 c.subject = f"{'overheads' if band == 'overhead' else 'facing'}[{m.index}]"
         val = f"{ft(c.measured or 0)} (± {ft(c.plus_minus or 0)})"
         if c.outcome == FAIL:
             c.reason = f"The {noun} is {val}; the rule needs more than {ft(t)}."
             return c
-        if c.outcome == UNSURE:
+        if c.outcome == UNSURE and only_maybe:
+            self._report_range(c, surely, wall_error, noun)
+        elif c.outcome == UNSURE:
             c.unsure_cause = "margin"
             c.reason = f"The {noun} is {val} against a {ft(t)} rule: too close to call."
         elif missing:
@@ -545,6 +585,34 @@ class Solver:
         if missing and c.outcome == UNSURE:
             c.missing = [(band, a, b) for a, b in missing]
         return c
+
+    @staticmethod
+    def _report_range(
+        c: Check, surely: tuple[float, float] | None, wall_error: float, noun: str
+    ) -> None:
+        """The deciding entry fails the rule but only might lie over the battery: its end is
+        within the wall's position error of the battery's edge. The value is then somewhere
+        between that entry's and the lowest one surely over the battery, and is reported as
+        that range (middle ± half its width plus the larger measurement error), so the numbers
+        give UNSURE under the C5 rule as the check did."""
+        low, low_err = c.measured or 0.0, c.plus_minus or 0.0
+        c.unsure_cause = "margin"
+        maybe = (
+            f"{c.subject} ({ft(low)}) may or may not be over the battery: its end is within the "
+            f"wall's ± {ft(wall_error)} of the battery's edge"
+        )
+        if surely is None:
+            # Nothing else surely lies over the battery, so nothing bounds the value from above.
+            c.measured = c.plus_minus = None
+            c.reason = f"{maybe}, and nothing else limits the {noun} there."
+            return
+        high, high_err = surely
+        c.measured = (low + high) / 2
+        c.plus_minus = (high - low) / 2 + max(low_err, high_err)
+        c.reason = (
+            f"{maybe}. Elsewhere over the battery the {noun} is {ft(high)}, so it is between "
+            f"{ft(low)} and {ft(high)} against a {ft(c.threshold or 0)} rule: too close to call."
+        )
 
     def route_for(self, piece: Piece, s0: float, s1: float) -> tuple[Route, Check, Check]:
         r = self.r.route
@@ -926,10 +994,19 @@ class Solver:
             )
         out = []
         for i, (piece, s0) in enumerate(starts):
-            if i % 64 == 0 and time.perf_counter() - started > budget_s:
+            elapsed = time.perf_counter() - started
+            if i % 64 == 0 and elapsed > budget_s:
                 raise SceneTooComplex(
                     f"checking the scene took longer than {budget_s:g} seconds "
                     f"({i} of {len(starts)} positions done)"
+                )
+            # Refuse as soon as the pace shows the budget can't be met, rather than after
+            # spending it.
+            if i == PROJECT_AFTER and elapsed / i * len(starts) > budget_s:
+                raise SceneTooComplex(
+                    f"checking its {len(starts)} battery positions would take about "
+                    f"{elapsed / i * len(starts):.0f} seconds, more than the {budget_s:g} this "
+                    "server allows"
                 )
             out.append(self.evaluate(piece, s0))
         return out
@@ -1044,7 +1121,7 @@ _BAND_TEXT = {
 }
 
 
-def _missing_json(c: Candidate) -> list[dict[str, Any]]:
+def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[float, float, str]]] = {}
     for chk in c.checks:
         for band, a, b in chk.all_missing():
@@ -1059,10 +1136,24 @@ def _missing_json(c: Candidate) -> list[dict[str, Any]]:
                     "band": band,
                     "span_ft": _outward(a, b),
                     "checks": ids,
-                    "message": f"Show the {_BAND_TEXT[band]} from {where(a)} to {where(b)}.",
+                    "message": f"Show the {_BAND_TEXT[band]} from {where(a)} to {where(b)}."
+                    + _past_end_hint(scene, a, b),
                 }
             )
     return out
+
+
+def _past_end_hint(scene: Scene, a: float, b: float) -> str:
+    """Only a limit end has requests past it (see Scene.coverable); they are met from where the
+    walk stopped."""
+    sides = [
+        s for s, past in (("left", a < scene.s_min - EPS), ("right", b > scene.s_max + EPS)) if past
+    ]
+    if not sides:
+        return ""
+    return (
+        f" Part of it is past the {' and '.join(sides)} end: point the camera there from the end."
+    )
 
 
 def _sweep_json(cands: list[Candidate], scene: Scene, step: float) -> list[dict[str, Any]]:
@@ -1179,7 +1270,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                 + ".",
             }
         )
-        missing = _missing_json(best)
+        missing = _missing_json(best, scene)
         if missing:
             reasons.append(
                 {
