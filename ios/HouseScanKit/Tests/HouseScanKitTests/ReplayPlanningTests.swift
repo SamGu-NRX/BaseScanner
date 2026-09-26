@@ -12,8 +12,14 @@ import Testing
     /// Walk left from 0 to -5, then right to 5, in 0.5 m steps 0.55 s apart (0.91 m/s, under the
     /// 1.5 m/s limit): 11 + 20 = 31 frames.
     static func outAndBack() -> [PlannedFrame] {
-        let xs = (0...10).map { -Float($0) * 0.5 } + (1...20).map { -5 + Float($0) * 0.5 }
-        return xs.enumerated().map { planned(x: $1, t: Double($0) * 0.55) }
+        // Typed closures and two statements: Swift 6.2 (CI's Xcode 26.6) times out type-checking
+        // the one-expression form.
+        let left: [Float] = (0...10).map { (step: Int) -> Float in -Float(step) * 0.5 }
+        let right: [Float] = (1...20).map { (step: Int) -> Float in -5 + Float(step) * 0.5 }
+        let xs = left + right
+        return xs.enumerated().map { (index: Int, x: Float) -> PlannedFrame in
+            planned(x: x, t: Double(index) * 0.55)
+        }
     }
 
     @Test func assumedWallFromAStraightWalk() throws {
