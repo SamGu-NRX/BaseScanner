@@ -64,7 +64,13 @@ public enum MeterPhotoChecks {
     /// 8-bit luma L = 0.299 R + 0.587 G + 0.114 B, rounded in fixed point as PIL's "L" conversion
     /// does.
     public static func luma(red: UInt8, green: UInt8, blue: UInt8) -> UInt8 {
-        UInt8((Int(red) * 19595 + Int(green) * 38470 + Int(blue) * 7471 + 0x8000) >> 16)
+        // Separate typed terms: Swift 6.2 (CI's Xcode 26.6) times out type-checking the sum as
+        // one expression.
+        let r: Int = Int(red) * 19595
+        let g: Int = Int(green) * 38470
+        let b: Int = Int(blue) * 7471
+        let sum: Int = r + g + b + 0x8000
+        return UInt8(sum >> 16)
     }
 
     /// Laplacian variance of the photo shrunk to a 1024 px long side; smaller photos as they are.

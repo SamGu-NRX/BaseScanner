@@ -54,8 +54,12 @@ public struct ReplaySession: Sendable {
 
         let manifest = try decodeMapped(Manifest.self, from: sessionJSON, decoder: decoder)
         guard !manifest.keyframes.isEmpty else { throw ReplayError.noFrames }
-        let frames = try manifest.keyframes.map(makeFrame).sorted {
-            $0.timestamp != $1.timestamp ? $0.timestamp < $1.timestamp : $0.id < $1.id
+        // Typed steps: the one-expression form took about 1.4 s to type-check on Swift 6.4, and
+        // CI's Swift 6.2 gives up on expressions like it.
+        let unsorted: [ReplayFrame] = try manifest.keyframes.map(makeFrame)
+        let frames: [ReplayFrame] = unsorted.sorted { (a: ReplayFrame, b: ReplayFrame) -> Bool in
+            if a.timestamp != b.timestamp { return a.timestamp < b.timestamp }
+            return a.id < b.id
         }
         return ReplaySession(
             id: manifest.session.id,
