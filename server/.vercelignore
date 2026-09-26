@@ -1,0 +1,11 @@
+# Only the app and its public rules deploy. private/ holds Base's thresholds: it lives outside
+# server/, and is listed here too so a copy placed inside can never upload.
+private/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.hypothesis/
+.vercel/
+tests/
+.env*

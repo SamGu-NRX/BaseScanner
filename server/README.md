@@ -1,24 +1,130 @@
 # server
 
-The FastAPI server from `docs/02-implementation-plan.md` (lanes B and C). It will take a capture from the phone, build the wall geometry, run the recognition checks and pick a battery placement. Modules sit flat in this directory (`ingest.py`, `geometry.py`, `solver.py`, `rules.yaml` and so on) as the lanes add them.
+The placement server. It takes a scan of the wall around the electric meter and answers whether a Base Power battery fits, where, and why. The decision is plain code; every threshold lives in `rules.yaml` with its citation.
 
-For now it holds `units.py`. ARKit reports meters, while `scene.json` and the rules use feet and inches; convert with `units.py` and format lengths for people with `format_ft_in`.
+## Run
 
-## Requirements
-
-[uv](https://docs.astral.sh/uv/) 0.11. It installs Python 3.12 (`.python-version`) and the locked dev tools.
-
-## Commands
-
-Run from `server/`:
+Needs [uv](https://docs.astral.sh/uv/) 0.11. From `server/`:
 
 | Command | What it does |
 | --- | --- |
-| `uv sync --locked` | Create `.venv` from `uv.lock` |
-| `uv run ruff check .` | Lint |
-| `uv run ruff format .` | Format; CI runs `ruff format --check .` |
-| `uv run pytest -q` | Tests in `tests/` |
+| `uv sync --locked` | Install |
+| `uv run uvicorn api:app --host 0.0.0.0 --port 8000` | Serve the API |
+| `uv run python siteplan.py scene.json plan.svg` | Solve one scene and write its site plan |
+| `uv run pytest -q`, `uv run ruff check .`, `uv run ruff format .` | Test and lint (`make server` runs what CI runs) |
 
-`make server` from the repository root runs what CI (`.github/workflows/server.yml`, job "Server checks") runs. Add dependencies with `uv add <package>` and commit `uv.lock`.
+Without the web layer: `loaded = load_rules()`, then `solve(parse_scene(raw, loaded.rules), loaded)` (from `rules`, `scene` and `solver`).
 
-Recognition prompts go in `server/prompts/`, which git ignores; they are never committed.
+## Deploy
+
+Two Vercel projects deploy this directory. Neither is connected to Git, so a merge doesn't redeploy them; only `server/` uploads (`.vercelignore`), so the repository's `private/` folder never reaches a deployment.
+
+| Deployment | Rules | Access |
+| --- | --- | --- |
+| **https://house-scanning-server.vercel.app** (`house-scanning-server`) | public, under the demo policy | open |
+| **https://house-scanning-server-private.vercel.app** (`house-scanning-server-private`) | public with the private rules merged over them | `Authorization: Bearer <key>` on every route but `/health` |
+
+Redeploy the public one from this directory:
+
+```sh
+npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
+```
+
+The private one gets its rules from environment variables set in its Vercel project, never from an uploaded file: `HOUSESCAN_PRIVATE_RULES_B64` holds `private/rules.yaml` base64-encoded, and `HOUSESCAN_API_KEY` the key. While private rules are loaded, every route but `/health` answers 401 without the key and 503 if no key is set, and `/health` says only that private rules are loaded. The key is in `server/.env.private.local` (git-ignored, mode 600) on the machine that set it up. This directory is linked to the public project, so deploy the private one from a copy of it that is linked to `house-scanning-server-private`:
+
+```sh
+rsync -a --exclude .venv --exclude .vercel --exclude '.env*' --exclude tests ./ /tmp/private-deploy/
+cd /tmp/private-deploy
+npx vercel@latest link --yes --project house-scanning-server-private --scope sam-gus-projects-7a4b6082
+npx vercel@latest deploy --prod --scope sam-gus-projects-7a4b6082
+cd - && rm -rf /tmp/private-deploy   # the link leaves a Vercel token in .env.local there
+```
+
+Vercel caps a request body at 4.5 MB, so send bare `scene.json`: the solver doesn't read the images, and a zip must hold every JPEG its `scene.json` names or it is refused with 422 `missing_bundle_file`. `examples/` has scenes and `curl` commands for both deployments, and `make smoke URL=...` posts them all.
+
+## API
+
+| Endpoint | Body | Returns |
+| --- | --- | --- |
+| `GET /health` | | Which rules are loaded, and their hash |
+| `POST /v1/placements` | a scene | The result, `schemas/result.schema.json` |
+| `POST /v1/placements/site-plan.svg` | a scene | The site plan, `image/svg+xml` |
+| `GET /v1/schemas/scene.json`, `GET /v1/schemas/result.json` | | The contract this server honours |
+
+A scene is bare `scene.json` (`application/json`), a zip holding `scene.json` and the JPEGs it names (`application/zip`), or either one as the multipart field `bundle`. `/openapi.json` declares all three.
+
+```sh
+curl -s localhost:8000/v1/placements -H 'Content-Type: application/json' \
+  --data-binary @tests/fixtures/example-scene.json | jq .decision
+```
+
+A refusal is `{"error": {"code", "message", "path"}}`, where `path` is the JSON pointer of the field at fault:
+
+| Status | When |
+| --- | --- |
+| 400 | The body or zip can't be read, or a zip entry has an absolute or `..` path |
+| 413 | Over `HOUSESCAN_MAX_UPLOAD_MB` (default 256), unzipped over `HOUSESCAN_MAX_UNZIPPED_MB` (default 512), or `scene.json` itself over `HOUSESCAN_MAX_SCENE_MB` (default 10) |
+| 415 | Not JSON, zip or multipart |
+| 422 | The scene breaks `schemas/scene.schema.json`, names an image the zip lacks, can't be placed (for example the meter is far from its wall), or needs more than 50,000 positions or 8 s to check (`scene_too_complex`; refused as soon as the pace of the first positions shows it) |
+
+## Writing a scene
+
+`schemas/scene.schema.json` is the contract; it only gains optional fields. Lengths are feet.
+
+- Wall `baseline` points run **left to right as seen from outside**, and walls are listed in that order. That fixes each wall's outward side.
+- `s` is feet along the walls from the meter, negative to the left. `span_ft` and coverage use it.
+- `coverage` lists what the capture actually saw, and whether each end of the walk is a real `limit` or `unexplored`. Anything unseen makes the checks that depend on it UNSURE, so a scene without `coverage` can't pass.
+- A limit end (a fence, a corner) doesn't clear the ground beyond it: a pool there still counts. Ground seen past a limit end, a `span_ft` beyond the chain's end, covers both sides of the wall's continued line, so pointing the camera past the end settles it. Past an unexplored end only walking on does.
+- Give an object a plan `footprint` when it stands off the wall (a regulator, an AC unit), or clearances are measured to its stretch of wall line.
+- Omit `plus_minus_ft` and AR-placed positions get `rules.yaml`'s default error for their source plus 0.16 ft per foot along the walls from the meter, from measured ARKit drift. Send your own when you know better.
+
+## What settles each check
+
+A check is settled when everything it depends on is observed and measured; then it passes or fails on the numbers. What follows is the coverage (`coverage.observed`) and the measurements each check needs, so a capture that supplies exactly this gets a decision on the first upload. Values in brackets are the public rules (`rules.yaml`); private rules may differ, and a request always names the exact span and depth.
+
+Notation, all in feet: the battery stands at s from `s0` to `s1` (width W = 2.58, depth D = 1.83). `e` is the wall's position error at the battery's far edge from the meter: the wall's `plus_minus_ft`, or the default for its `source` (tap 0.3, the default when `source` is absent; mesh 0.5; plane 0.75, an untested estimate) plus 0.16 per foot along the walls from the meter. `r` is a check's rule value. A ground band "over [a, b] out to d" means an observed `{"band": "ground", "span_ft": [a, b], "out_ft": d}` (or several that together cover it). A wall band "seen higher than h" means wall entries whose `out_ft`, the height up the face the view reached, exceeds h; an entry without `out_ft` counts as seen to headroom height, which satisfies every check. Heights come from `rules.yaml` and are compared as given: nothing in the rules models a vertical error, so report a height you are sure of.
+
+| Check | Reads | Coverage that settles it |
+| --- | --- | --- |
+| `wall_backing` | `walls` | wall band over [s0, s1], seen higher than the battery (3.29) |
+| `ground_surface` | `ground` patches | ground over [s0 − e, s1 + e] out to D + e, and a patch of an allowed type under the whole footprint |
+| `meter_working_space` | `meter` | nothing to observe |
+| `gas_clearance` (r = 3) | `objects` of type `gas_meter`, with `footprint` when it stands off the wall | ground over [s0 − r − e, s1 + r + e] out to D + r + e, and wall band over the same span, seen higher than headroom height (6.5) |
+| `ac_clearance` (r = 3), `pool_clearance` (r = 10) | `objects` of type `ac`, `pool` | ground over [s0 − r − e, s1 + r + e] out to D + r + e |
+| `drive_clearance` (r = 5) | `ground` patches of type `drive` | as above |
+| `opening_clearance` (r = 3) | `objects` of type `door`, `window`, `garage_door`; `attrs.operable` and `attrs.well` for windows | wall band over [s0 − r − e, s1 + r + e], seen higher than headroom height (6.5), or than `openings.exempt_bottom_above_ft` when the rules set a lower one |
+| `wall_equipment_above` (r = 0) | `objects` of type `elec_box`, `vent` | wall band over [s0 − r, s1 + r], seen higher than headroom height (6.5) |
+| `facing_gap` (r = 3, from the battery's front) | `facing` measurements | facing band over [s0, s1]. Where no `facing` entry covers it, the band's `out_ft` must exceed D + r (4.83): a walked path proves the space clear out to where the homeowner walked. No `out_ft` means the view reached whatever faces the wall, and it is in `facing` |
+| `headroom` (r = 6.5) | `overheads` measurements | overhead band over [s0, s1]. Where no `overheads` entry covers it, the band's `out_ft` (height seen clear) must exceed r. No `out_ft` means seen clear all the way up, as from a tilt-up view of open sky |
+| `route_path` | `walls`, openings on the route | wall band from the meter to the battery's near edge, seen higher than the cable's run (`route.height_ft`, 1.0) |
+| `route_length` | `walls`, `meter` | nothing to observe |
+
+Errors: a measured value passes only when it clears the rule by more than its error. Objects take the default error for their `source` (tape 0.05, tap 0.3, vlm 1.5, plus 0.16 per foot along the walls for tap and vlm) unless they carry `plus_minus_ft`, and walls likewise (tap 0.3, mesh 0.5, plane 0.75, each plus the same drift). Send a wall's `source` when its line comes from the mesh or detected planes rather than taps, so the error bars match how it was measured; `facing` and `overheads` entries default to the mesh error, 0.5. Every `out_ft` is taken as exact, so report the distance you are sure of (for a walked path, the distance from the wall less your position error).
+
+Ends and corners:
+
+- A corner the walk follows is the next wall in `walls`, starting at the corner point; the chain is then continuous and the corner raises nothing. Keep walking until the answer's `ends.<side>.beyond_reach` is true or the wall really ends.
+- `unexplored` means the wall continues. Within cable reach it raises a `past_end` request when no spot passes, because a spot may be round it; nothing else settles it.
+- `limit` means no usable wall past it. Ground past a limit end still counts for clearances (a pool behind a fence is still a pool): show it by pointing the camera past the end, reported as a ground span beyond the chain's end, which covers both sides of the wall's continued line.
+
+Supplying exactly what a request in `missing_evidence` names settles it: a `coverage.observed` entry with its `band` and `span_ft`, and an `out_ft` at least the request's `out_ft` (ground, facing, overhead and wall requests carry one).
+
+## Reading a result
+
+`decision` is `pass`, `manual_review` or `reject`. `spot` gives the battery's plan footprint and `meter_offset_ft`, its offset from the meter for AR; `route` is the cable run. Each entry in `checks` has an outcome, a reason, the measurement, its error and the rule it was held to:
+
+| Check | Means |
+| --- | --- |
+| `wall_backing` | Flush on one straight, observed stretch of wall |
+| `ground_surface` | Standing on an allowed surface |
+| `meter_working_space` | Clear of the NEC 110.26 space in front of the meter |
+| `gas_clearance`, `ac_clearance`, `pool_clearance`, `drive_clearance`, `opening_clearance` | Far enough from every part of each object, and the area in between was seen |
+| `wall_equipment_above` | No box or vent on the wall above |
+| `facing_gap`, `headroom` | Enough room in front and above |
+| `route_path`, `route_length` | The cable runs along continuous wall, and isn't too long |
+
+A check passes only when its margin exceeds its error and fails only when it misses by more than its error; anything else is UNSURE with an `unsure_cause`. `missing_evidence` lists the views that would settle an unseen area; showing exactly what a `band` request names settles it, and a `past_end` request asks to walk on. When a measurement only might lie in front of or over the battery (its end is within the wall's position error of the battery's edge), `measured_ft ± plus_minus_ft` spans the values the check could have, so the numbers give the same UNSURE. A reject needs every spot within cable reach to fail and both ends of the walk known.
+
+## Rules
+
+`rules.yaml` holds the public values. `placeholder: true` marks a value with no public source (the pool's 10 ft and the driveway's 5 ft among them). Its `demo` policy decides automatically anyway, so the team can test real passes and rejects, and every answer says so: `policy.notice` and the end of `summary` read "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's." `HOUSESCAN_POLICY=strict` selects the earlier behaviour instead: `auto_approve: false`, so every would-be pass or reject goes to manual review. At startup the server merges private rules over the public ones when there are any: `HOUSESCAN_PRIVATE_RULES_B64` (the YAML, base64-encoded), else `HOUSESCAN_PRIVATE_RULES` (a path), else `<repo root>/private/rules.yaml` if it exists. Setting both variables is an error. Private rules replace the policy and drop the demo notice unless they set their own. Every value the private file sets must carry its own `source`, or the server refuses to start; answers show those citations only as "Private rules". Never commit Base's values. Base-derived tests live beside them in `private/tests/`: `uv run pytest ../private/tests -q`.
