@@ -78,10 +78,19 @@ def test_the_summary_counts_unseen_checks_and_names_the_rest() -> None:
             "footprint": rect(6 + 31 / 12 + 3.1, 6 + 31 / 12 + 5.1, 0, 2),
         }
     ]
-    summary = answer(raw)["summary"]
-    assert "1 check depends on areas the scan did not see, and 1 needs a person to judge" in (
-        summary
-    ), summary
+    result = answer(raw)
+    others = [
+        c["label"].lower()
+        for c in result["checks"]
+        if c["outcome"] == UNSURE and c["unsure_cause"] != "unobserved"
+    ]
+    # One unseen check is counted; the one unsure by its margin is named, as in "A person needs
+    # to check the best spot" (#50's wording).
+    assert len(others) == 1
+    assert (
+        "1 check depends on areas the scan did not see; a person also needs to check "
+        f"{others[0]}." in result["summary"]
+    ), result["summary"]
 
 
 # --- #42: an object past an unexplored end ----------------------------------------------------

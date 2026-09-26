@@ -1438,17 +1438,18 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
         spot_at = where((best.s0 + best.s1) / 2)
         unseen = [c for c in best.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
         if unseen:
-            # Only unseen checks are settled by more views; the rest need a person (issue #45).
-            others = len(ids) - len(unseen)
+            # Only unseen checks are settled by more views; the rest are named for a person, as in
+            # "A person needs to check the best spot" (issue #45, #50's wording).
+            rest = [
+                c.label.lower()
+                for c in best.checks
+                if c.outcome == UNSURE and c.unsure_cause != "unobserved"
+            ]
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "
                 + ("1 check depends" if len(unseen) == 1 else f"{len(unseen)} checks depend")
                 + " on areas the scan did not see"
-                + (
-                    f", and {others} {'needs' if others == 1 else 'need'} a person to judge"
-                    if others
-                    else ""
-                )
+                + ("; a person also needs to check " + "; ".join(rest) if rest else "")
                 + "."
             )
         else:
