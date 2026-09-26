@@ -91,6 +91,8 @@ enum ScanCopy {
         case .meterNotCentered: "Center the meter in the circle"
         case .tooFar: "Move closer to the meter"
         case .tracking: "Move slowly"
+        case .numberTooSmall: "Move closer so the numbers are bigger"
+        case .noNumber: "We couldn't read the numbers. Try again."
         }
     }
 
@@ -175,7 +177,7 @@ enum ScanCopy {
             switch upload {
             case .idle, .packaging, .uploading, .analyzing:
                 return Instruction(title: "Making a sample result", detail: "No server is connected, so your photos stay on this phone. The result you'll see is an example, not a check of your wall.")
-            case .failed, .done:
+            case .failed, .rejected, .done:
                 break
             }
         }
@@ -194,6 +196,9 @@ enum ScanCopy {
             offline
                 ? Instruction(title: "You're offline", detail: "Your scan is saved on this phone. Try again when you have signal.")
                 : Instruction(title: "That didn't go through", detail: message)
+        case .rejected(let message):
+            // Placeholder wording until the UI lane's pass on the rejected state.
+            Instruction(title: "The scan couldn't be checked", detail: message)
         case .done:
             Instruction(title: "Done", detail: nil)
         }

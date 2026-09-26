@@ -604,3 +604,9 @@ final class DemoEngine: ScanActions {
         return sample
     }()
 }
+
+// Placeholders for contract 1cc297f so the app compiles; the UI lane replaces both.
+extension DemoEngine {
+    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {}
+    func backToReview() {}
+}

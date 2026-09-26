@@ -273,3 +273,9 @@ extension ScanEngine: ScanActions {
         return wall.intersectWall(frame.camera.ray(throughPixel: pixel))
     }
 }
+
+// Placeholders for contract 1cc297f so the app compiles; the engine lane replaces both.
+extension ScanEngine {
+    func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {}
+    func backToReview() {}
+}

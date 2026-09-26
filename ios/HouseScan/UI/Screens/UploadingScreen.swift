@@ -84,6 +84,7 @@ private struct UploadEmblem: View {
         case .uploading: "arrow.up.circle"
         case .analyzing: "ruler"
         case .failed(_, let offline): offline ? "wifi.slash" : "exclamationmark.triangle"
+        case .rejected: "exclamationmark.triangle"
         case .done: "checkmark.circle"
         }
     }
@@ -118,7 +119,7 @@ private struct UploadSteps: View {
         case .uploading: 1
         case .analyzing: 2
         case .done: 3
-        case .failed: 1
+        case .failed, .rejected: 1
         }
     }
 
