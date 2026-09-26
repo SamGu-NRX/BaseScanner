@@ -84,6 +84,46 @@ import Testing
         }
     }
 
+    /// A reach request is met over its whole span as the export reports it. The export stops at
+    /// a marked end, so a request reaching past it stays open on the server; counting only the
+    /// cells inside the ends called it met.
+    @Test func aReachRequestPastAMarkedEndIsNotMet() {
+        let planner = GapPlanner()
+        var ground = CoverageMap(wall: standardWall())
+        for out: Float in [1.0, 4.0] {
+            for s: Float in [0, 0.3] { ground.observe(GroundDepthTests.downCamera(s: s, out: out), trackingNormal: true) }
+        }
+        let deep = GapPlan(band: .ground, span: 0...0.6, reason: .server, need: .groundOut(7 * 0.3048), requestedOutFt: 7)
+        #expect(planner.isSatisfied(deep, ground))
+        ground.setEnd(.right, at: 0.5)
+        #expect(!planner.isSatisfied(deep, ground))
+        #expect(abs(planner.progress(of: deep, ground) - 0.5 / 0.6) < 1e-3)
+
+        var walked = CoverageMap(wall: standardWall())
+        FacingTests.walk(&walked, out: 1.6 + CoverageMap.positionError(atS: 0.9144), from: -1, to: 1.5)
+        let facing = GapPlan(band: .ground, span: 0...0.786, reason: .server, need: .walkOut(1.5))
+        #expect(planner.isSatisfied(facing, walked))
+        walked.setEnd(.right, at: 0.5)
+        #expect(!planner.isSatisfied(facing, walked))
+    }
+
+    /// The request's span is read as the server sent it. Ground seen up to an end at 0.5 m is
+    /// exported to 1.6404 ft; the server's span_ft rounded outward is 1.64042 ft, which that
+    /// leaves 0.00002 ft short. Through Float meters and four decimals the request read 1.6404.
+    @Test func aRequestSpanIsReadInTheServersFeet() throws {
+        var map = CoverageMap(wall: standardWall())
+        for out: Float in [1.0, 4.0] {
+            for s: Float in [0, 0.3] { map.observe(GroundDepthTests.downCamera(s: s, out: out), trackingNormal: true) }
+        }
+        map.setEnd(.right, at: 0.5)
+        let short = try #require(GapPlanner().plan(
+            for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.64042],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        #expect(!GapPlanner().isSatisfied(short, map))
+        let exact = try #require(GapPlanner().plan(
+            for: item(#"{"kind":"band","band":"ground","span_ft":[0,1.6404],"out_ft":7.0,"message":"m"}"#), leftEnd: nil, rightEnd: map.rightEnd))
+        #expect(GapPlanner().isSatisfied(exact, map))
+    }
+
     @Test func walkOutIsMetByWalkingPastTheSpanFarEnoughOut() {
         var map = CoverageMap(wall: standardWall())
         FacingTests.walk(&map, out: 1.5, from: -1, to: 1.5)
