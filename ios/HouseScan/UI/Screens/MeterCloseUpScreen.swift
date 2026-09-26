@@ -19,6 +19,16 @@ struct MeterCloseUpScreen: View {
             ring
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
+            // The shutter flash lights the camera, under the chrome, so the words stay readable.
+            Color.white
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .phaseAnimator([0.0, 0.7, 0.0], trigger: flashes) { flash, opacity in
+                    flash.opacity(opacity)
+                } animation: { opacity in
+                    opacity > 0 ? .easeOut(duration: 0.06) : .easeOut(duration: 0.3)
+                }
             CameraChrome(
                 instruction: ScanCopy.guidance(.holdOnMeter),
                 photoCount: state.captureCount,
@@ -49,15 +59,6 @@ struct MeterCloseUpScreen: View {
                 .animation(Motion.text, value: problem)
                 .animation(Motion.screen, value: offerSkip)
             }
-            Color.white
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .phaseAnimator([0.0, 0.7, 0.0], trigger: flashes) { flash, opacity in
-                    flash.opacity(opacity)
-                } animation: { opacity in
-                    opacity > 0 ? .easeOut(duration: 0.06) : .easeOut(duration: 0.3)
-                }
             if let flyingThumbnail {
                 GeometryReader { proxy in
                     Image(decorative: flyingThumbnail, scale: 1)
