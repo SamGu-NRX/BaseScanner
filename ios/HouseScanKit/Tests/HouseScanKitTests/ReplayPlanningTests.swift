@@ -3,10 +3,13 @@ import simd
 import Testing
 
 @Suite struct ReplayPlanningTests {
-    /// Portrait camera 2.6 m in front of the wall z = 0 at height 1.4, pitched down 16 degrees: the
-    /// pitch at which one view holds every sample row of both bands (see CoverageMapTests).
+    /// Portrait camera 2.8 m in front of the wall z = 0 at height 1.4, pitched down 12 degrees, so
+    /// one view holds every sample row of both bands. Looking at s = x, with the image spanning
+    /// 31.03 degrees either side of its axis: the top wall row (2.286 m) is 17.6 degrees above
+    /// level, 29.6 above the axis; the ground band's far row (1.2 m out) 41.2 below level, 29.2
+    /// below the axis; the wall's foot is 63.4 degrees from the ground's normal, under 65.
     static func planned(x: Float, t: Double) -> PlannedFrame {
-        let camera = portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forwardFacingWall(pitchedDown: 16))
+        let camera = portraitCamera(at: SIMD3(x, 1.4, 2.8), forward: forwardFacingWall(pitchedDown: 12))
         return PlannedFrame(camera: camera, timestamp: t, trackingNormal: true)
     }
 
@@ -24,22 +27,21 @@ import Testing
     }
 
     @Test func assumedWallFromAStraightWalk() throws {
-        // x from -5 to 5: centroid (0, 1.4, 2.6); the covariance has only an xx term, so the walk runs
+        // x from -5 to 5: centroid (0, 1.4, 2.8); the covariance has only an xx term, so the walk runs
         // along (1, 0, 0) and the perpendicular is (0, 0, 1). The cameras look along -z, against it, so
         // outward = (0, 0, 1). Ground = 1.4 - 1.4 = 0; the path's middle is x = 0 (5 m of 10), so the
-        // meter is at (0, 1.5, 2.6 - offset).
+        // meter is at (0, 1.5, 2.8 - offset).
         let frames = (0...20).map { Self.planned(x: -5 + Float($0) * 0.5, t: Double($0) * 0.55) }
         let result = try #require(ReplayPlanning.assumedWall(frames: frames))
         #expect(nearlyEqual(result.wall.outward, SIMD3(0, 0, 1)))
         #expect(nearlyEqual(result.wall.groundY, 0))
-        #expect(nearlyEqual(result.wall.meter, SIMD3(0, 1.5, 2.6 - result.offset)))
+        #expect(nearlyEqual(result.wall.meter, SIMD3(0, 1.5, 2.8 - result.offset)))
         #expect(result.coveredCells > 0)
-        // The offset search maximises covered cells; it does not recover the true 2.6. Straight ahead,
-        // both bands stay visible from about 2.1 m (nearer, the far ground sample leaves the bottom
-        // of the image) to 3.6 m (farther, two of three ground samples pass 65 degrees from the
-        // normal). The wall footprint widens with distance while sideways ground samples pass 65
-        // degrees sooner, so the best offset lies inside that range. It is 3.25 today.
-        #expect(result.offset >= 2.25 && result.offset <= 3.5)
+        // The offset search maximises covered cells; it need not recover the true 2.8. Straight
+        // ahead, nearer than 2.70 m the ground band's far row leaves the bottom of the image (and
+        // nearer than 2.56 m the top wall row, 2.286 m, the top); past 3.0 m the ground at the
+        // wall's foot is more than 65 degrees from its normal. It is 2.75 today.
+        #expect(result.offset >= 2.5 && result.offset <= 3.0)
     }
 
     @Test func assumedMeterGoesWhereTheWalkFacesTheWall() throws {

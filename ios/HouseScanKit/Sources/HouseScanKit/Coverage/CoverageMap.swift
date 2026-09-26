@@ -30,12 +30,27 @@ public struct CoverageConfig: Sendable, Equatable {
     /// (docs/research/t3-first-try-capture.md on t3/research): fine enough that one missed
     /// stride shows as a gap, coarse enough that the strip reads at a glance.
     public var cellWidth: Float = 0.1524
-    /// Wall band height: 6.5 ft (1.9812 m). scene.schema.json defines an observed wall band as
-    /// the face "from the ground up to headroom height", and 6.5 ft is the NEC 110.26 and Austin
-    /// Energy §1.9.2 headroom (docs/04-prior-art-and-codes.md). It was 2.4 m, which a phone held
-    /// at chest height 2.6 m out never sees (the top of its view is about 2.0 m up), so the export
-    /// claimed band it had not seen. The server's own headroom value is not checked here.
-    public var wallBandHeight: Float = 1.9812
+    /// Capture setting, not a clearance: how high up the wall the walk asks the camera to see,
+    /// meters. The wall band the strip draws and the guidance asks for runs from the ground up to
+    /// here, and a wall cell is covered once every wall row up to here is (`wallRows`). What the
+    /// scene reports is how high each stretch was actually seen (`wallSeenSpans()`); the server
+    /// holds each check to its own height from its rules (server/README.md, "What settles each
+    /// check", t3/server 930e8e5), and nothing on the phone compares against those.
+    ///
+    /// 7.5 ft (2.286 m), because it has to get past the highest height the public rules ask the
+    /// wall seen above, 6.5 ft (headroom height, for gas meters, openings and equipment above
+    /// the battery): the server credits a stretch only where the reported height exceeds a
+    /// check's, so a phone that stops at 6.5 ft settles none of those. On 6 in rows the first row
+    /// above 6.5 ft is 7 ft; 7.5 ft keeps one row more, so that with a guessed ground, whose
+    /// 0.3 m (0.98 ft) error comes off every reported height (`heightError`), the top row still
+    /// reports 6.52 ft. No calibration run exists: whether homeowners' walks reach it is untested.
+    /// A phone 2.6 m out at chest height pitched 20 degrees down (the synthetic replay's walk)
+    /// sees about 2.0 m up, so the guidance has to ask it to tilt up.
+    public var wallCaptureHeight: Float = 2.286
+    /// Spacing of the wall rows from the foot up: 6 in, the cell width, as for the ground depth
+    /// rows. A seen height is a whole number of rows, so this is its resolution. A hypothesis,
+    /// not tuned.
+    public var wallRowSpacing: Float = 0.1524
     /// Ground band depth out from the wall. 1.2 m covers a unit's footprint plus its front clearance.
     /// This near band is what the coverage strip draws and what the walk's guidance asks for; how
     /// far out the ground was actually seen is `groundDepthReach` and `groundDepth(at:)`.
@@ -64,10 +79,10 @@ public struct CoverageConfig: Sendable, Equatable {
     public var maxAngleFromNormal: Float = 65 * .pi / 180
     /// Samples within this fraction of the image edge don't count, since edges blur and distort most.
     public var imageMargin: Float = 0.03
-    /// Sample rows across a band, bottom edge to top edge (wall) or wall foot to outer edge
-    /// (ground). A cell is covered only when every row is, so the first and last rows sit on the
-    /// band's edges: the band a covered cell claims is the band its rows saw. Three rows leave
-    /// 0.99 m between wall rows and 0.6 m between ground rows unsampled; a hypothesis, not tuned.
+    /// Sample rows across the ground band, wall foot to outer edge. A cell is covered only when
+    /// every row is, so the first and last rows sit on the band's edges: the band a covered cell
+    /// claims is the band its rows saw. Three rows leave 0.6 m between rows unsampled; a
+    /// hypothesis, not tuned. The wall band's rows are `wallRows`.
     public var rowsPerBand = 3
     /// Two views count as separate positions only this far apart, so parallax exists between them.
     public var coveringBaseline: Float = 0.25
@@ -83,10 +98,6 @@ public struct CoverageConfig: Sendable, Equatable {
     /// was kept (auto-capture keeps one every 0.5 m moved unless it skips them as blurry or
     /// hurried) to what 2 s of walking allows; it does not rule one out.
     public var walkGap: Double = 2
-    /// A tilt-up view counts as overhead evidence only where it also shows the wall at this
-    /// height, the top of the wall band, so what it shows above joins what the walk saw below
-    /// without a hole between them.
-    public var overheadFrom: Float = 1.9812
     /// Overhead heights are rounded down to 0.1 ft, so a view's cells merge into a few entries
     /// instead of differing in the last millimetre. It costs at most 0.1 ft of the height.
     public var overheadQuantum: Float = 0.03048
@@ -134,6 +145,14 @@ public struct CoverageMap: Sendable {
     public private(set) var limitEnds: Set<WalkSide> = []
     /// Increments on every change.
     public private(set) var revision = 0
+    /// How far the ground under the wall may lie above `wall.groundY`, meters: taken off every
+    /// height the map reports (`wallSeenHeight(at:)`, `overheadHeight(at:)`), since a row sampled
+    /// at height h over a ground guessed too low stands only h minus the error above the real
+    /// one. 0 once the ground is measured; the engine sets its chest-height guess's error until
+    /// then. The rows themselves, and which cells are covered, don't change with it.
+    public var heightError: Float = 0 {
+        didSet { if heightError != oldValue { revision += 1 } }
+    }
 
     private var cells: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
     /// Per cell, per ground depth row (0 at the wall foot, then every `groundDepthSpacing` out to
@@ -296,7 +315,7 @@ public struct CoverageMap: Sendable {
         var seen: [Sighting] = []
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) {
-                let views = rowViews(band, index, from: camera, depth: depth, among: Array(0..<config.rowsPerBand))
+                let views = rowViews(band, index, from: camera, depth: depth, among: Array(rowOffsets(band).indices))
                 if !views.seen.isEmpty || !views.hidden.isEmpty {
                     seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden))
                 }
@@ -330,7 +349,7 @@ public struct CoverageMap: Sendable {
         var delta = Delta()
         var levelChanged = false
         for sighting in sightings where allows(sighting.index) {
-            var cell = cells[sighting.band]?[sighting.index] ?? Cell(rowCount: config.rowsPerBand)
+            var cell = cells[sighting.band]?[sighting.index] ?? Cell(rowCount: rowOffsets(sighting.band).count)
             let wasSeen = cell.isSeen
             let before = cell.level
             var added = false
@@ -368,7 +387,7 @@ public struct CoverageMap: Sendable {
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) {
                 let cell = cells[band]?[index]
-                let unseenRows = (0..<config.rowsPerBand).filter { cell?.rows[$0].isEmpty ?? true }
+                let unseenRows = rowOffsets(band).indices.filter { cell?.rows[$0].isEmpty ?? true }
                 guard !unseenRows.isEmpty else { continue }
                 if !rowViews(band, index, from: camera, depth: nil, among: unseenRows).seen.isEmpty { count += 1 }
             }
@@ -381,17 +400,25 @@ public struct CoverageMap: Sendable {
         return indices(overlapping: (s - config.maxDistance)...(s + config.maxDistance)).filter(allows)
     }
 
-    /// Height (wall) or distance out (ground) of each sample row, evenly from edge to edge.
+    /// Height (wall, `wallRows`) or distance out (ground, evenly from edge to edge) of each sample
+    /// row.
     public func rowOffsets(_ band: SurfaceBand) -> [Float] {
-        let extent = band == .wall ? config.wallBandHeight : config.groundBandDepth
+        guard band == .ground else { return wallRows }
         let count = max(2, config.rowsPerBand)
-        return (0..<count).map { extent * Float($0) / Float(count - 1) }
+        return (0..<count).map { config.groundBandDepth * Float($0) / Float(count - 1) }
+    }
+
+    /// Height of each wall row: 0 at the foot, then every `wallRowSpacing` up to
+    /// `wallCaptureHeight`.
+    public var wallRows: [Float] {
+        let count = Int((config.wallCaptureHeight / config.wallRowSpacing + 1e-3).rounded(.down))
+        return (0...max(1, count)).map { Float($0) * config.wallRowSpacing }
     }
 
     /// The rows of a cell a frame sees: a row counts when both of its samples, a quarter and
     /// three quarters along the cell, are in view. Geometry only; depth is not consulted.
     public func visibleRows(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame) -> Set<Int> {
-        rowViews(band, index, from: camera, depth: nil, among: Array(0..<config.rowsPerBand)).seen
+        rowViews(band, index, from: camera, depth: nil, among: Array(rowOffsets(band).indices)).seen
     }
 
     private func rowViews(_ band: SurfaceBand, _ index: Int, from camera: CameraFrame, depth: DepthImage?, among rows: [Int]) -> RowViews {
@@ -467,6 +494,38 @@ public struct CoverageMap: Sendable {
             }
         }
         return views
+    }
+
+    // MARK: Wall height
+
+    /// How high up the wall a cell was seen, meters above the ground: the highest wall row such
+    /// that every row from the foot up to it was seen from two positions at least
+    /// `coveringBaseline` apart (with depth, and never through something nearer), less
+    /// `heightError`. It is the height the covered samples reach, never the edge of a row nobody
+    /// sampled. Nil when not even the first row above the foot is covered, nothing is left after
+    /// the error, or the cell lies beyond a marked end.
+    public func wallSeenHeight(at index: Int) -> Float? {
+        guard let rows = seenWallRowHeight(at: index) else { return nil }
+        let height = rows - heightError
+        return height > 0 ? height : nil
+    }
+
+    /// `wallSeenHeight(at:)` before `heightError`: the height of the rows themselves.
+    private func seenWallRowHeight(at index: Int) -> Float? {
+        guard allows(index), let cell = cells[.wall]?[index] else { return nil }
+        let covered = cell.rows.prefix { $0.count >= 2 }.count
+        guard covered >= 2 else { return nil }
+        return wallRows[covered - 1]
+    }
+
+    /// Stretches of wall face seen and how high each was seen (`wallSeenHeight(at:)`), merged
+    /// where neighbouring cells reached the same height, for scene.json's wall band. Every
+    /// height is a whole number of rows less the same error, so equal heights merge exactly.
+    public func wallSeenSpans() -> [ObservedSpan] {
+        let items = (cells[.wall] ?? [:]).keys.sorted().compactMap { index in
+            wallSeenHeight(at: index).map { ObservedSpan(span: cellRange(index), out: $0) }
+        }
+        return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
     }
 
     // MARK: Ground depth
@@ -740,30 +799,40 @@ public struct CoverageMap: Sendable {
 
     /// What a view tilted up at the wall shows: per cell along the wall, the height on the wall's
     /// plane the view reached, rounded down to `overheadQuantum`, neighbours of equal height
-    /// merged. A pure function of the camera, the wall and the marked ends; it records nothing.
+    /// merged. A pure function of the camera, the wall and the marked ends; it records nothing,
+    /// and it is what decides whether a view is tilted up at all (the tilt-up step, the overhead
+    /// question).
     ///
     /// A cell counts when both its samples (a quarter and three quarters along it) are in view at
-    /// `overheadFrom`; its height is the highest point above that still in view at both, where
-    /// in view means in front of the camera, inside the image margin and within `maxDistance`.
-    /// The view of a plane is convex, so everything between the two heights is in view too.
-    /// Unlike the bands there is no limit on obliqueness: nothing is measured on this part of the
-    /// wall, the homeowner only judges whether anything is overhead. Empty when the camera is
-    /// behind the wall or does not show the wall at `overheadFrom`.
+    /// `wallCaptureHeight`, the top of the band the walk asks for; its height is the highest point
+    /// above that still in view at both, where in view means in front of the camera, inside the
+    /// image margin and within `maxDistance`. The view of a plane is convex, so everything between
+    /// the two heights is in view too. Unlike the bands there is no limit on obliqueness: nothing
+    /// is measured on this part of the wall, the homeowner only judges whether anything is
+    /// overhead. Empty when the camera is behind the wall or does not show the wall at
+    /// `wallCaptureHeight`.
     ///
     /// The camera sees the wall's plane, not what is on it: it can't tell open sky above a
     /// one-storey eave from the wall. So a reach is evidence only once the homeowner has said
-    /// nothing is overhead (`recordOverhead`).
+    /// nothing is overhead (`recordOverhead`), and then only from where the walk saw the wall up
+    /// to (`overheadHeight(at:)`).
     public func overheadReach(from camera: CameraFrame) -> [ObservedSpan] {
+        overheadReach(from: camera) { _ in config.wallCaptureHeight }
+    }
+
+    /// `overheadReach(from:)` with the height each cell must be in view from given per cell; a
+    /// cell with none is left out.
+    private func overheadReach(from camera: CameraFrame, startingAt start: (Int) -> Float?) -> [ObservedSpan] {
         guard wall.wallPoint(camera.position).out > 0 else { return [] }
         func inView(_ s: Float, _ height: Float) -> Bool {
             let point = wall.world(s: s, height: height)
             guard simd_distance(point, camera.position) <= config.maxDistance, let pixel = camera.pixel(of: point) else { return false }
             return camera.contains(pixel: pixel, margin: config.imageMargin)
         }
-        func reach(_ s: Float) -> Float? {
-            guard inView(s, config.overheadFrom) else { return nil }
-            var low = config.overheadFrom
-            var high = config.overheadFrom + config.maxDistance
+        func reach(_ s: Float, from bottom: Float) -> Float? {
+            guard inView(s, bottom) else { return nil }
+            var low = bottom
+            var high = bottom + config.maxDistance
             // Bisection to under a millimetre; `low` stays in view throughout.
             for _ in 0..<14 {
                 let middle = (low + high) / 2
@@ -772,19 +841,30 @@ public struct CoverageMap: Sendable {
             return low
         }
         let items = candidateIndices(for: camera).compactMap { index -> ObservedSpan? in
+            guard let bottom = start(index) else { return nil }
             let range = cellRange(index)
             let width = range.upperBound - range.lowerBound
-            guard let a = reach(range.lowerBound + width * 0.25), let b = reach(range.lowerBound + width * 0.75) else { return nil }
+            guard let a = reach(range.lowerBound + width * 0.25, from: bottom),
+                  let b = reach(range.lowerBound + width * 0.75, from: bottom) else { return nil }
             let height = (min(a, b) / config.overheadQuantum).rounded(.down) * config.overheadQuantum
             return ObservedSpan(span: range, out: height)
         }
         return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
     }
 
+    /// What a recorded view is evidence of: its reach over each cell counted from the height the
+    /// walk saw that cell's wall up to (its rows, before `heightError`), so what the view shows
+    /// clear above joins what the walk saw below with no stretch of wall between them that
+    /// neither showed. A cell whose wall nobody saw gives nothing. A fixed start, such as the
+    /// band's top, would assume every cell had been seen that high.
+    private func overheadEvidence(from camera: CameraFrame) -> [ObservedSpan] {
+        overheadReach(from: camera) { seenWallRowHeight(at: $0) }
+    }
+
     /// Keeps a tilt-up view as overhead evidence. Call it only after the homeowner answered that
     /// nothing is overhead there (ScanActions.answerOverhead(clear: true)): the camera cannot
     /// tell a clear view from an eave. Returns what the view showed (`overheadReach`); nothing
-    /// is kept when tracking was not normal or the view showed no wall at `overheadFrom`.
+    /// is kept when tracking was not normal or the view showed no wall at `wallCaptureHeight`.
     @discardableResult
     public mutating func recordOverhead(_ camera: CameraFrame, trackingNormal: Bool) -> [ObservedSpan] {
         guard trackingNormal else { return [] }
@@ -796,13 +876,14 @@ public struct CoverageMap: Sendable {
     }
 
     /// Height seen clear above a cell, meters: the highest any recorded tilt-up view reached
-    /// there. Nil when none reached it.
+    /// there (`overheadEvidence`), less `heightError`. Nil when none reached it.
     public func overheadHeight(at index: Int) -> Float? {
         guard allows(index) else { return nil }
         let middle = (cellRange(index).lowerBound + cellRange(index).upperBound) / 2
-        return overheadCameras.compactMap { camera in
-            overheadReach(from: camera).first { $0.span.contains(middle) }?.out
+        let reached = overheadCameras.compactMap { camera in
+            overheadEvidence(from: camera).first { $0.span.contains(middle) }?.out
         }.max()
+        return reached.map { $0 - heightError }.flatMap { $0 > 0 ? $0 : nil }
     }
 
     /// Stretches seen clear overhead, each with the height seen (`overheadHeight(at:)`), for
@@ -810,13 +891,16 @@ public struct CoverageMap: Sendable {
     public func overheadSpans() -> [ObservedSpan] {
         var best: [Int: Float] = [:]
         for camera in overheadCameras {
-            for item in overheadReach(from: camera) {
+            for item in overheadEvidence(from: camera) {
                 for index in indices(overlapping: item.span) where allows(index) {
                     best[index] = max(best[index] ?? item.out, item.out)
                 }
             }
         }
-        let items = best.keys.sorted().compactMap { index in best[index].map { ObservedSpan(span: cellRange(index), out: $0) } }
+        let items = best.keys.sorted().compactMap { index -> ObservedSpan? in
+            guard let reached = best[index], reached - heightError > 0 else { return nil }
+            return ObservedSpan(span: cellRange(index), out: reached - heightError)
+        }
         return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
     }
 
@@ -869,7 +953,7 @@ public struct CoverageMap: Sendable {
     /// Marks the not-yet-covered cells of `range` as skipped ("I can't get there").
     public mutating func markSkipped(_ band: SurfaceBand, _ range: ClosedRange<Float>) {
         for index in indices(overlapping: range) where allows(index) {
-            var cell = cells[band]?[index] ?? Cell(rowCount: config.rowsPerBand)
+            var cell = cells[band]?[index] ?? Cell(rowCount: rowOffsets(band).count)
             guard !cell.covered else { continue }
             cell.skipped = true
             cells[band, default: [:]][index] = cell
@@ -943,7 +1027,7 @@ public struct CoverageMap: Sendable {
         var skipped: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
         for (band, bandCells) in cells {
             for (index, cell) in bandCells where cell.skipped {
-                var kept = Cell(rowCount: config.rowsPerBand)
+                var kept = Cell(rowCount: rowOffsets(band).count)
                 kept.skipped = true
                 skipped[band, default: [:]][index + whole] = kept
             }
