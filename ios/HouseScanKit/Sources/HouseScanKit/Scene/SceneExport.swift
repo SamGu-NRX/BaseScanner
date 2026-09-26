@@ -290,6 +290,13 @@ public enum SceneExport {
     /// scene.schema.json's `coverage.observed` maxItems.
     static let maxObserved = 500
 
+    /// How many `coverage.observed` entries each of the three bands with a reach (ground, facing,
+    /// overhead) may use. Wall stretches are few (one per unbroken run); the budget they leave
+    /// is shared equally.
+    static func reachBudget(wallEntries: Int) -> Int {
+        max(3, maxObserved - wallEntries) / 3
+    }
+
     /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
     public static func jsonData(_ input: SceneInput) throws -> Data {
         let document = try makeDocument(input)
@@ -393,10 +400,8 @@ public enum SceneExport {
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
-        // scene.schema.json allows at most `maxObserved` entries. Wall stretches are few (one per
-        // unbroken run); the budget left is shared by the bands that carry a reach.
-        let budget = max(reaches.count, maxObserved - coverage.wall.count)
-        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: budget / reaches.count)) }
+        let budget = reachBudget(wallEntries: coverage.wall.count)
+        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: budget)) }
         var observed: [SceneDocument.Observed] = coverage.wall.map { .init(band: "wall", span_ft: spanFeet($0), out_ft: nil) }
         for (band, spans) in reaches {
             observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }

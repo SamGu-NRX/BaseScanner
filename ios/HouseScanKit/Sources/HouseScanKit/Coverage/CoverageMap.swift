@@ -36,11 +36,19 @@ public struct CoverageConfig: Sendable, Equatable {
     /// This near band is what the coverage strip draws and what the walk's guidance asks for; how
     /// far out the ground was actually seen is `groundDepthReach` and `groundDepth(at:)`.
     public var groundBandDepth: Float = 1.2
-    /// How far out from the wall ground depth is sampled: 15 ft. The server asks for ground out to
-    /// D + r + e (server/README.md "What settles each check" on origin/t3/server): about 6 ft for
-    /// gas and AC, 8 ft for a driveway and 13 ft for a pool near the meter, so 15 ft settles the
-    /// pool check with up to 2 ft of position error to spare.
-    public var groundDepthReach: Float = 4.572
+    /// How far out from the wall ground depth is sampled: 17 ft (34 rows of 6 in), the deepest
+    /// ground request the public rules make within cable reach, rounded up to a whole row.
+    ///
+    /// The server asks for ground out to D + r + e (server/README.md "What settles each check" on
+    /// origin/t3/server), with D = 1.8333 ft, r = 10 ft for a pool (the largest clearance in
+    /// rules.yaml) and e = 0.3 + 0.16 x ft at the battery's far edge, x ft along the walls from
+    /// the meter. The server tries spots whose near edge is within (20 + 0.3 + 0.3 + 0.16 W) /
+    /// (1 - 0.16) = 25.02 ft of the meter (solver.py `reach_limit`: the 20 ft cable maximum plus
+    /// the default meter and wall errors, W = 2.5833 ft); past that the route fails whatever the
+    /// ground shows. The far edge is then 27.60 ft out, e = 4.72 ft, and the pool request
+    /// 16.55 ft. A larger meter or wall error, a detour round a wall object, or private rules can
+    /// ask for more; `GapPlanner.isBeyondCapture` sends such a request to review.
+    public var groundDepthReach: Float = 5.1816
     /// Spacing of the ground depth rows: 6 in, the cell width, so depth is sampled as densely out
     /// from the wall as the cells are along it. Depth is exported as a whole number of rows, so this
     /// is also the resolution of the reported depth; 6 in is under the position error the server
@@ -65,6 +73,12 @@ public struct CoverageConfig: Sendable, Equatable {
     /// between them while staying under two strides, too short to have walked around something.
     /// A hypothesis, not measured.
     public var walkStep: Float = 1.0
+    /// Two kept positions at most this many seconds apart are one stretch of walked path; further
+    /// apart, the homeowner may have gone anywhere between them. A guess, not measured: 2 s is a
+    /// `walkStep` of 1 m at 0.5 m/s, a slow scanning pace. It bounds a detour on which no frame
+    /// was kept (auto-capture keeps one every 0.5 m moved unless it skips them as blurry or
+    /// hurried) to what 2 s of walking allows; it does not rule one out.
+    public var walkGap: Double = 2
     /// A tilt-up view counts as overhead evidence only where it also shows the wall at this
     /// height, the top of the wall band, so what it shows above joins what the walk saw below
     /// without a hole between them.
@@ -80,17 +94,23 @@ public struct CoverageConfig: Sendable, Equatable {
 
 /// Which cells of the wall and ground strips kept keyframes have seen.
 ///
-/// Coverage marks what the camera pointed at, not what it saw. Occlusion is not modelled: a bush
-/// or bin in front of the wall is counted as seen wall and ground. Nothing downstream corrects
+/// Coverage marks what the camera pointed at, not what it saw. Occlusion is not modelled (whether
+/// to is a pending team decision): a bush or bin in front of the wall is counted as seen wall and
+/// ground; only the wall itself hides what lies behind it. Nothing downstream corrects
 /// this; the server takes the covered intervals as given and does not read images. On ETH3D the
 /// evals lane measured 1.1 ft of a 19.3 ft wall claimed covered that no photo saw, all of it
 /// occluded at the bottom.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
     public let config: CoverageConfig
-    /// Marked wall ends in meters of s. Nothing outside them is observed once they are set.
+    /// Marked wall ends in meters of s. Nothing outside them is observed once they are set, except
+    /// ground past a limit end (`limitEnds`).
     public private(set) var leftEnd: Float?
     public private(set) var rightEnd: Float?
+    /// Marked ends the homeowner said are real limits: no usable wall past them (a fence, a
+    /// corner the walk does not follow). Ground past one still counts for clearances, so it is
+    /// sampled and reported (`groundDepthSpans`); past any other end nothing is.
+    public private(set) var limitEnds: Set<WalkSide> = []
     /// Increments on every change.
     public private(set) var revision = 0
 
@@ -100,6 +120,12 @@ public struct CoverageMap: Sendable {
     /// apart, two at most. Separate from `cells` so the near ground band the strip draws keeps its
     /// meaning.
     private var depthCells: [Int: [[SIMD3<Float>]]] = [:]
+    /// Per limit end, per cell past it (0 touching the end, counting away from the meter), the
+    /// camera positions that saw each ground depth row on both sides of the wall's continued
+    /// line: the rows in front (out = +row), then the rows behind (out = -row). Kept like
+    /// `depthCells`. The cells start at the end itself, so what they report meets the ground
+    /// clipped to the end exactly.
+    private var pastLimitCells: [WalkSide: [Int: [[SIMD3<Float>]]]] = [:]
     /// s shift from meter moves not yet applied to skipped cells, meters (see `updateWall`).
     private var pendingShift: Float = 0
     /// Cameras of the frames `observe` recorded, oldest first, so a new wall frame can be replayed
@@ -108,6 +134,14 @@ public struct CoverageMap: Sendable {
     /// Tilt-up views the homeowner confirmed have nothing overhead (`recordOverhead`), oldest
     /// first. What each showed is worked out against the current wall when read.
     public private(set) var overheadCameras: [CameraFrame] = []
+    /// Per entry of `observedCameras`, the frame clock time it was kept at; nil when the caller
+    /// gave none, and such a pose is never joined into walked path.
+    private var observedTimes: [Double?] = []
+    /// Indices of `observedCameras` whose pose is not joined to the one before it
+    /// (`breakWalkedPath`).
+    private var pathStarts: Set<Int> = []
+    /// Set by `breakWalkedPath` until the next observed camera starts a new stretch.
+    private var pathBroken = false
 
     private struct Cell: Sendable {
         /// Per sample row, the camera positions that saw it, pairwise at least
@@ -169,7 +203,8 @@ public struct CoverageMap: Sendable {
         return first...max(first, last)
     }
 
-    /// Whether any of a cell lies between the marked ends. Cells beyond them are never observed.
+    /// Whether any of a cell lies between the marked ends. Cells beyond them are never observed;
+    /// ground past a limit end is kept apart (`groundDepthPastLimit`).
     public func isWithinEnds(_ index: Int) -> Bool { allows(index) }
 
     /// The s range allowed by the marked ends; unbounded sides are nil.
@@ -182,16 +217,27 @@ public struct CoverageMap: Sendable {
 
     // MARK: Observing
 
-    /// Records a kept keyframe. Returns nothing new unless tracking was normal for it: frames with
-    /// limited tracking have poses that can be off by more than a cell.
+    /// Records a kept keyframe kept at `time` seconds on the frame clock. Returns nothing new
+    /// unless tracking was normal for it: frames with limited tracking have poses that can be off
+    /// by more than a cell, and such a frame also breaks the walked path (`breakWalkedPath`).
+    /// Without a `time` the pose still counts for the bands, but never for walked path.
     @discardableResult
-    public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool) -> Delta {
-        guard trackingNormal else { return Delta() }
+    public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool, time: Double? = nil) -> Delta {
+        guard trackingNormal else {
+            breakWalkedPath()
+            return Delta()
+        }
+        if pathBroken {
+            pathStarts.insert(observedCameras.count)
+            pathBroken = false
+        }
         observedCameras.append(camera)
+        observedTimes.append(time)
         let depthChanged = recordDepth(from: camera)
+        let pastChanged = recordPastLimits(from: camera)
         let delta = record(visibleCells(from: camera), from: camera.position)
         // One change, one increment: `record` has counted it when the bands changed too.
-        if depthChanged, !delta.changed { revision += 1 }
+        if depthChanged || pastChanged, !delta.changed { revision += 1 }
         return delta
     }
 
@@ -360,13 +406,131 @@ public struct CoverageMap: Sendable {
         return groundDepthRows[covered - 1]
     }
 
-    /// Stretches of ground and how far out each was seen (`groundDepth(at:)`), merged where
-    /// neighbouring cells reached the same depth. Every depth is a whole number of rows, so equal
-    /// depths merge exactly and none is rounded up.
+    /// Stretches of ground and how far out each was seen (`groundDepth(at:)`, and past a limit
+    /// end `groundDepthPastLimit`), merged where neighbouring cells reached the same depth.
+    /// Every depth is a whole number of rows, so equal depths merge exactly and none is rounded up.
     public func groundDepthSpans() -> [ObservedSpan] {
-        ObservedSpan.merge(depthCells.keys.sorted().compactMap { index in
+        let inside = ObservedSpan.merge(depthCells.keys.sorted().compactMap { index in
             groundDepth(at: index).map { ObservedSpan(span: cellRange(index), out: $0) }
         }, touching: config.cellWidth * 0.01).map(clippedToEnds)
+        let past = pastLimitCells.flatMap { side, cells in
+            cells.keys.compactMap { cell -> ObservedSpan? in
+                guard let end = end(side), let depth = groundDepthPastLimit(side, cell) else { return nil }
+                return ObservedSpan(span: pastCellRange(side, cell, end: end), out: depth)
+            }
+        }
+        let all = (inside + past).sorted { $0.span.lowerBound < $1.span.lowerBound }
+        return ObservedSpan.merge(all, touching: config.cellWidth * 0.01)
+    }
+
+    // MARK: Ground past a limit end
+
+    /// How far out the ground of a cell past a limit end was seen, meters: the farthest depth row
+    /// such that every row out to it, on both sides of the wall's continued line, was seen from
+    /// two positions at least `coveringBaseline` apart. The server reads ground past a limit end
+    /// as covering both sides of that line (server/README.md "Ends and corners" on
+    /// origin/t3/server), so one side seen is not enough. Cell 0 touches the end. Nil when the
+    /// end on `side` is not a limit or not even the first row past the line is seen both ways.
+    public func groundDepthPastLimit(_ side: WalkSide, _ cell: Int) -> Float? {
+        guard limitEnds.contains(side), let rows = pastLimitCells[side]?[cell] else { return nil }
+        let count = groundDepthRows.count
+        let front = rows[0..<count].prefix { $0.count >= 2 }.count
+        let behind = rows[count...].prefix { $0.count >= 2 }.count
+        let covered = min(front, behind)
+        guard covered >= 2 else { return nil }
+        return groundDepthRows[covered - 1]
+    }
+
+    private func end(_ side: WalkSide) -> Float? { side == .left ? leftEnd : rightEnd }
+
+    /// The s range of the `cell`th cell past `end`, counting away from the meter.
+    private func pastCellRange(_ side: WalkSide, _ cell: Int, end: Float) -> ClosedRange<Float> {
+        let near = end + side.sign * Float(cell) * config.cellWidth
+        let far = end + side.sign * Float(cell + 1) * config.cellWidth
+        return min(near, far)...max(near, far)
+    }
+
+    /// The piece of wall a limit end is on. Past the end the server continues this piece's line
+    /// straight (the chain the export sends stops at the end), so past cells use it too. A
+    /// corner's own s belongs to the piece on its left, which is the chain's last piece for a
+    /// right end there; a left end there starts the piece on its right.
+    private func endPiece(_ side: WalkSide, end: Float) -> WallSegment {
+        wall.segment(atS: side == .left ? end.nextUp : end)
+    }
+
+    /// Adds a kept frame's view of the ground past each limit end; true when any row gained a
+    /// position.
+    ///
+    /// Samples are placed and seen like the ground depth rows (`sampledRows`), on the end
+    /// piece's line continued. The camera must stand in front of the wall. A sample behind the
+    /// continued line counts only when the sight line to it crosses that line past the end: one
+    /// crossing short of the end runs through the house. Nothing else hides anything: the
+    /// house's other walls are not modelled (at an inside corner, where the next wall comes
+    /// forward, ground past the end is counted though it is indoors), and neither is anything
+    /// standing on the ground (see the type's comment).
+    @discardableResult
+    private mutating func recordPastLimits(from camera: CameraFrame) -> Bool {
+        guard wall.wallPoint(camera.position).out > 0 else { return false }
+        var changed = false
+        for side in limitEnds {
+            guard let end = end(side) else { continue }
+            let piece = endPiece(side, end: end)
+            let origin = wall.origin
+            let eye = piece.coordinates(ofOffset: camera.position - origin)
+            guard eye.out > 0 else { continue }
+            // Cells whose s lies within `maxDistance` of the camera's along the end's piece.
+            let beyond = (eye.s - end) * side.sign
+            let last = Int(((beyond + config.maxDistance) / config.cellWidth).rounded(.down))
+            let first = max(0, Int(((beyond - config.maxDistance) / config.cellWidth).rounded(.down)))
+            guard last >= first else { continue }
+            let depths = groundDepthRows
+            let cosLimit = cos(config.maxAngleFromNormal)
+            func point(_ s: Float, _ out: Float) -> SIMD3<Float> {
+                origin + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out
+            }
+            func sees(_ s: Float, _ out: Float) -> Bool {
+                if out < 0 {
+                    // Where the sight line crosses the continued line (out = 0).
+                    let crossing = eye.s + (s - eye.s) * eye.out / (eye.out - out)
+                    guard (crossing - end) * side.sign >= 0 else { return false }
+                }
+                let target = point(s, out)
+                let toCamera = camera.position - target
+                let distance = simd_length(toCamera)
+                guard distance <= config.maxDistance, distance > 0,
+                      simd_dot(toCamera / distance, WallFrame.up) >= cosLimit,
+                      let pixel = camera.pixel(of: target) else { return false }
+                return camera.contains(pixel: pixel, margin: config.imageMargin)
+            }
+            for cell in first...last {
+                let range = pastCellRange(side, cell, end: end)
+                let width = range.upperBound - range.lowerBound
+                let alongs = [range.lowerBound + width * 0.25, range.lowerBound + width * 0.75]
+                var rows = pastLimitCells[side]?[cell] ?? Array(repeating: [], count: 2 * depths.count)
+                var added = false
+                for row in rows.indices {
+                    let out = row < depths.count ? depths[row] : -depths[row - depths.count]
+                    guard rows[row].count < 2,
+                          rows[row].allSatisfy({ simd_distance($0, camera.position) >= config.coveringBaseline }),
+                          alongs.allSatisfy({ sees($0, out) }) else { continue }
+                    rows[row].append(camera.position)
+                    added = true
+                }
+                if added {
+                    pastLimitCells[side, default: [:]][cell] = rows
+                    changed = true
+                }
+            }
+        }
+        return changed
+    }
+
+    /// Rebuilds the ground past the limit ends from `observedCameras`, after an end moved or
+    /// became or stopped being a limit.
+    private mutating func replayPastLimits() {
+        pastLimitCells = [:]
+        guard !limitEnds.isEmpty else { return }
+        for camera in observedCameras { recordPastLimits(from: camera) }
     }
 
     // MARK: Facing space
@@ -381,7 +545,8 @@ public struct CoverageMap: Sendable {
 
     /// How far out from the wall a cell is known clear because the homeowner walked past it,
     /// meters. A step is the straight line between consecutive kept positions with normal
-    /// tracking, both in front of the wall and at most `walkStep` apart; it shows the space
+    /// tracking, with no `breakWalkedPath` between them, both in front of the wall, at most
+    /// `walkStep` apart and kept at most `walkGap` seconds apart; it shows the space
     /// between the wall and itself clear, out to its end nearer the wall. The cell is clear out
     /// to the largest distance d such that steps reaching at least d cover it along the wall.
     /// That distance less `positionError` at the cell's edge farther from the meter is the
@@ -433,8 +598,19 @@ public struct CoverageMap: Sendable {
         var nearest: Float
     }
 
+    /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
+    /// was lost, or the capture paused): walked-path facing does not join the poses on either
+    /// side. A straight line across an outage or a detour would claim space no one walked past.
+    public mutating func breakWalkedPath() {
+        pathBroken = true
+    }
+
     private func walkedSteps() -> [WalkedStep] {
-        zip(observedCameras, observedCameras.dropFirst()).compactMap { first, second in
+        observedCameras.indices.dropFirst().compactMap { index in
+            guard !pathStarts.contains(index),
+                  let t0 = observedTimes[index - 1], let t1 = observedTimes[index], abs(t1 - t0) <= config.walkGap else { return nil }
+            let first = observedCameras[index - 1]
+            let second = observedCameras[index]
             guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
             let a = wall.wallPoint(first.position)
             let b = wall.wallPoint(second.position)
@@ -492,11 +668,6 @@ public struct CoverageMap: Sendable {
     /// nothing is overhead there (ScanActions.answerOverhead(clear: true)): the camera cannot
     /// tell a clear view from an eave. Returns what the view showed (`overheadReach`); nothing
     /// is kept when tracking was not normal or the view showed no wall at `overheadFrom`.
-    /// The homeowner's path is not continuous from the last kept pose to the next one (tracking
-    /// was lost, or the capture paused): walked-path facing must not join the poses on either side.
-    /// Placeholder until the package lane implements path continuity; the engine already calls it.
-    public mutating func breakWalkedPath() {}
-
     @discardableResult
     public mutating func recordOverhead(_ camera: CameraFrame, trackingNormal: Bool) -> [ObservedSpan] {
         guard trackingNormal else { return [] }
@@ -547,11 +718,24 @@ public struct CoverageMap: Sendable {
 
     // MARK: Homeowner input
 
+    /// Marks the wall's end on `side` at `s`. The end is unexplored until `setEndIsLimit` says
+    /// otherwise, also when it was a limit before it moved.
     public mutating func setEnd(_ side: WalkSide, at s: Float) {
         switch side {
         case .left: leftEnd = s
         case .right: rightEnd = s
         }
+        if limitEnds.remove(side) != nil { replayPastLimits() }
+        revision += 1
+    }
+
+    /// Says whether the marked end on `side` is a real limit (scene.json's `limit`) or not
+    /// (`unexplored`). Only past a limit is ground reported. Does nothing when no end is marked
+    /// on that side: a limit is a property of a marked end.
+    public mutating func setEndIsLimit(_ side: WalkSide, _ isLimit: Bool) {
+        guard end(side) != nil, limitEnds.contains(side) != isLimit else { return }
+        if isLimit { limitEnds.insert(side) } else { limitEnds.remove(side) }
+        replayPastLimits()
         revision += 1
     }
 
@@ -561,6 +745,7 @@ public struct CoverageMap: Sendable {
         case .left: leftEnd = nil
         case .right: rightEnd = nil
         }
+        if limitEnds.remove(side) != nil { replayPastLimits() }
         revision += 1
     }
 
@@ -626,6 +811,7 @@ public struct CoverageMap: Sendable {
         case .left: leftEnd = nil
         case .right: rightEnd = nil
         }
+        limitEnds.remove(side)
         replayObservedCameras(shiftingSkippedBy: 0)
         return corner
     }
@@ -647,6 +833,7 @@ public struct CoverageMap: Sendable {
             recordDepth(from: camera)
             record(visibleCells(from: camera), from: camera.position)
         }
+        replayPastLimits()
         revision += 1
     }
 
