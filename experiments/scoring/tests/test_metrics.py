@@ -289,12 +289,32 @@ class TestDecidedWithoutItsMeasurement:
         assert score.decided_without_measurement is False
         assert score.abstention == "justified"
 
-    def test_decision_on_a_claimed_absence_is_not_flagged(self):
+    def test_pass_on_a_claimed_absence_is_not_flagged(self):
         agreed = check_score(None, None, None, None, "pass", missing="absent", status="absent")
         assert agreed.decided_without_measurement is False
         wrongly_absent = check_score("2.5", "0.02", None, None, "pass", missing="absent")
         assert wrongly_absent.decided_without_measurement is False
         assert wrongly_absent.unsafe_pass is True
+
+    @pytest.mark.parametrize(
+        "survey_status, truth_value, truth_pm",
+        [
+            ("absent", None, None),
+            ("measured", "5", "0.02"),
+            ("not_measured", None, None),
+        ],
+    )
+    def test_at_least_fail_on_claimed_absence_lacks_a_deciding_distance(
+        self, survey_status, truth_value, truth_pm
+    ):
+        score = check_score(
+            truth_value, truth_pm, None, None, "fail", missing="absent", status=survey_status
+        )
+        assert score.decided_without_measurement is True
+        if survey_status == "absent":
+            assert score.false_rejection is True
+        elif survey_status == "not_measured":
+            assert score.agrees is None
 
     @pytest.mark.parametrize("outcome", ["pass", "fail"])
     def test_absent_route_cannot_support_an_at_most_decision(self, outcome):

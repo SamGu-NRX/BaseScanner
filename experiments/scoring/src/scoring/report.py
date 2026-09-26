@@ -384,9 +384,10 @@ def _checks(runs: list[RunScore]) -> list[str]:
         "pass where the survey is borderline or review. Over-cautious: unsure or fail where the "
         "survey passes; false rejections are the fails among them. Decided without its "
         "measurement: a pass or fail with the run's measurement missing as failed or "
-        "unsupported, or missing as absent on an at_most check; it is also scored as usual. "
-        "An unsure is justified when the survey is borderline or review, or the run has no "
-        "value. The error could flip a check when it is at least as large as both the survey's "
+        "unsupported; a claimed absence also cannot support an at_most decision or an at_least "
+        "fail. It is also scored as usual. An unsure is justified when the survey is borderline "
+        "or review, or the run's measurement failed or is unsupported. The error could flip a "
+        "check when it is at least as large as both the survey's "
         "distance to the nearest threshold and its ±.",
         "",
         *_table(header, rows),

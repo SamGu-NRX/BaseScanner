@@ -428,7 +428,11 @@ def test_maximum_length_and_precision_format_in_reports(tmp_path: Path):
     study = load_study(rules, [truth], [results])
     house = study.houses[0]
     run = score_run(house.truth, house.runs[0], study.rules.thresholds)
-    assert markdown(study, [run]).startswith("# Capture pipeline scores")
+    report = markdown(study, [run])
+    assert report.startswith("# Capture pipeline scores")
+    assert "a claimed absence also cannot support an at_most decision or an at_least fail" in report
+    assert "the run's measurement failed or is unsupported" in report
+    assert "or the run has no value" not in report
     paths = write_csvs([run], tmp_path / "out")
     assert len(paths) == 3
     assert "1000000000.000" in paths[0].read_text()

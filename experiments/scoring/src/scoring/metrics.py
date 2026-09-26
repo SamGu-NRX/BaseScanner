@@ -215,11 +215,11 @@ class CheckScore:
 def _decided_without_measurement(
     reported: Outcome, measurement: MeasurementScore, threshold: Threshold
 ) -> bool:
-    """A claimed absence decides an at_least clearance, but not an at_most limit."""
+    """Absence supports only a pass on an at_least clearance."""
     missing = measurement.reported.missing if measurement.reported else None
     return reported in ("pass", "fail") and (
         missing in ("failed", "unsupported")
-        or (missing == "absent" and threshold.pass_when == "at_most")
+        or (missing == "absent" and (threshold.pass_when == "at_most" or reported == "fail"))
     )
 
 
