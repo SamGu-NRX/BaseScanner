@@ -127,6 +127,27 @@ struct SyntheticScene {
             kind: .lidar(confidence: [UInt8](repeating: 2, count: width * height)))
     }
 
+    /// An estimated depth frame: every pixel's z-depth plus Gaussian noise of standard deviation
+    /// `sigma`, independent per pixel, with `sigma` reported as every pixel's uncertainty, so the
+    /// frame is honest about its error. At `sigma` = 0.07 two deviations are within
+    /// `Map3DConfig.maxSurfaceSigma` and every pixel may mark a surface: the worst noise the rule
+    /// lets through.
+    func estimatedFrame(from camera: CameraFrame, sigma: Float, seed: UInt64) -> DepthFrame {
+        var state = seed &* 6364136223846793005 &+ 1442695040888963407
+        func uniform() -> Float {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return (Float(state >> 40) + 0.5) / Float(1 << 24)
+        }
+        let exact = depthFrame(from: camera)
+        let depth = exact.depth.map { d -> Float in
+            guard d > 0 else { return 0 }
+            // Box-Muller.
+            let gaussian = (-2 * log(uniform())).squareRoot() * cos(2 * .pi * uniform())
+            return max(0, d + sigma * gaussian)
+        }
+        return DepthFrame(camera: camera, width: exact.width, height: exact.height, depth: depth, kind: .estimated(sigma: [Float](repeating: sigma, count: depth.count)))
+    }
+
     /// Surface points under a `columns` x `rows` grid of pixels, standing in for the feature
     /// points ARKit would track in the frame.
     func featurePoints(from camera: CameraFrame, columns: Int, rows: Int) -> [SIMD3<Float>] {

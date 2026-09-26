@@ -49,6 +49,23 @@ public struct Map3DConfig: Sendable, Equatable {
     /// An estimated depth marks a surface only when two standard deviations are within this,
     /// meters (one and a half voxels); free space is carved to two deviations short of it either way.
     public var maxSurfaceSigma: Float = 0.15
+    /// An estimated depth's normal is taken between samples about this far apart, meters, and
+    /// a view counts as further from square by the tilt two deviations of depth error across
+    /// that span could give it. At a voxel's 0.1 m, 7 cm of independent noise tilts a normal by
+    /// up to 45 degrees and lets views 68 degrees from the ground count as within 65
+    /// (Map3DEstimatedTests); across 0.3 m the same noise costs 33 degrees, and straight-on views
+    /// still count. Wider spans blur more edges into a normal. A guess, not measured.
+    public var estimatedNormalBaseline: Float = 0.3
+    /// An estimated ray counts against the voxels from two deviations past its depth for this
+    /// far, meters. A stray hit then escapes it only by landing more than two deviations plus
+    /// this beyond the surface the ray met: over 8 deviations at the 7.5 cm the rule lets hit.
+    /// A guess, not measured.
+    public var estimatedShadowLength: Float = 0.5
+    /// A surface only estimated depth measured counts as seen where at least this share of the
+    /// estimated rays that hit it or counted against it hit it. With independent 7.5 cm error, a
+    /// visible voxel is hit by about half the rays aimed at it and counted against by about 2%;
+    /// one behind an occluder 0.2 m in front, the reverse. A guess between the two, not measured.
+    public var minEstimatedHitShare: Float = 0.25
     /// Free space stops this far short of a surface whose normal is unknown, meters (a feature
     /// point off every plane, a depth pixel at an edge): rays within 11 degrees of grazing a
     /// surface could still erase it.

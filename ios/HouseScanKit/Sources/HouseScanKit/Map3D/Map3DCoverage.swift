@@ -77,7 +77,7 @@ extension Map3D {
 
     /// Whether the facade over a cell was seen from `voxelSize` up to headroom (`wallHeight`
     /// reaches it). At every sample
-    /// some well-seen surface (`Voxel.isWellSeenSurface`) must lie on the facade face, from
+    /// some well-seen surface (`VoxelGrid.isWellSeenSurface`) must lie on the facade face, from
     /// `recessDepth` behind the facade to `faceTolerance` in front of it, or on attached relief
     /// (`attachedRelief`) up to `reliefDepth` in front. The facade is where the wall's surface
     /// was measured near the cell (`facadeOffset`), so a chain line placed a few centimeters
@@ -176,7 +176,7 @@ extension Map3D {
                     for out in stride(from: -config.faceBehind, through: config.faceBehind, by: config.voxelSize / 2) {
                         guard let g = coordinate(wall, s: s, height: height, out: out), let i = grid.index(g), seen.insert(i).inserted else { continue }
                         let voxel = grid.pool[i]
-                        guard voxel.isWellSeenSurface(config), simd_dot(voxel.normal ?? .zero, outward) >= cos(Float.pi / 6) else { continue }
+                        guard grid.isWellSeenSurface(i, config: config), simd_dot(voxel.normal ?? .zero, outward) >= cos(Float.pi / 6) else { continue }
                         histogram.add(wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s))
                     }
                 }
@@ -200,7 +200,7 @@ extension Map3D {
         let outward = frame.mapDirection(wall.segment(atS: s).outward)
         var sample = FaceSample(height: height, face: false, relief: nil)
         for out in stride(from: facade - config.recessDepth, through: facade + config.reliefDepth, by: config.voxelSize / 2) {
-            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), voxel.isWellSeenSurface(config) else { continue }
+            guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), grid.isWellSeenSurface(g, config: config) else { continue }
             let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s) - facade
             if centerOut >= -config.recessDepth - 1e-4, centerOut <= faceTolerance + 1e-4 {
                 sample.face = true
@@ -265,7 +265,7 @@ extension Map3D {
             case .unknown:
                 if unknownFrom == nil { unknownFrom = height }
             case .surface:
-                guard voxel.isWellSeenSurface(config), (voxel.normal?.y ?? 0) >= cos(Float.pi / 4) else { return nil }
+                guard grid.isWellSeenSurface(g, config: config), (voxel.normal?.y ?? 0) >= cos(Float.pi / 4) else { return nil }
                 if let unknownFrom, unknownFrom - height > config.groundClearance { return nil }
                 return frame.world(grid.center(of: g)).y - wall.groundY
             }

@@ -14,7 +14,7 @@ import simd
 /// With LiDAR, rays come from depth frames (`integrate(_: DepthFrame)`) and ARKit's mesh adds
 /// its classification (`update(_: MeshChunk)`). Without it, rays go to tracked feature points
 /// and to detected planes (`integrate(_: FeatureFrame)`, `update(_: PlaneObservation)`), and a
-/// monocular depth model can supply estimated depth frames later. Only frames with normal
+/// monocular depth model's frames, scaled by those points (`MonocularDepth`), give estimated depth. Only frames with normal
 /// tracking should be integrated: a limited-tracking pose can put rays half a meter off.
 public struct Map3D: Sendable {
     public let config: Map3DConfig
@@ -70,7 +70,9 @@ public struct Map3D: Sendable {
     /// free up to just short of its depth, stopping at a surface there. LiDAR pixels below
     /// `minConfidence` are skipped. An estimated pixel carves free space to two standard
     /// deviations short of its depth and marks a surface only when that is within
-    /// `maxSurfaceSigma`.
+    /// `maxSurfaceSigma`. It also counts against the voxels from two deviations past its depth
+    /// for `estimatedShadowLength`: a surface it may have met is in front of them
+    /// (`VoxelGrid.isWellSeenSurface`).
     public mutating func integrate(_ depth: DepthFrame) {
         let mapFromCamera = frame.mapFromWorld * depth.camera.cameraToWorld
         let camera = SIMD3(mapFromCamera.columns.3.x, mapFromCamera.columns.3.y, mapFromCamera.columns.3.z)
@@ -113,11 +115,13 @@ public struct Map3D: Sendable {
         var rays: [RaySample] = []
         rays.reserveCapacity(columns * rows)
         let estimated: Bool = if case .estimated = depth.kind { true } else { false }
+        let baseline = estimated ? config.estimatedNormalBaseline : config.voxelSize
+        let maxReach = estimated ? 64 : 8
         for row in 0..<rows {
             for column in 0..<columns {
                 let p = points[row * columns + column]
                 guard !p.z.isNaN else { continue }
-                let reach = max(1, min(8, Int((config.voxelSize / (spacing * -p.z)).rounded())))
+                let reach = max(1, min(maxReach, Int((baseline / (spacing * -p.z)).rounded())))
                 func neighbour(_ dc: Int, _ dr: Int) -> SIMD3<Float>? {
                     let c = column + dc * reach
                     let r = row + dr * reach
@@ -139,15 +143,24 @@ public struct Map3D: Sendable {
                         normal = rotation * facing
                     }
                 }
+                let sigma = estimated ? sigmas[row * columns + column] : 0
+                if estimated, let c = cosine {
+                    // Two deviations of depth error across the samples the normal spans can tilt
+                    // it by `tilt`; the view counts as that much further from square.
+                    let across = spacing * Float(reach) * -p.z
+                    let tilt = atan(2 * Float(2).squareRoot() * sigma / across)
+                    cosine = cos(min(.pi / 2, acos(min(c, 1)) + tilt))
+                }
                 var freeLength = length - freeMargin(cosine: cosine)
                 var hit = true
+                var shadowFrom = Float.infinity
                 if estimated {
-                    let sigma = sigmas[row * columns + column]
                     freeLength = min(freeLength, (-p.z - 2 * sigma) / -p.z * length)
                     hit = 2 * sigma <= config.maxSurfaceSigma
+                    shadowFrom = (-p.z + 2 * sigma) / -p.z * length
                 }
                 let end4 = mapFromCamera * SIMD4(p, 1)
-                rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit))
+                rays.append(RaySample(end: SIMD3(end4.x, end4.y, end4.z), normal: normal, freeLength: freeLength, hit: hit, shadowFrom: shadowFrom))
             }
         }
         grid.integrate(camera: camera, rays: rays, sources: estimated ? .estimated : .lidar, config: config)

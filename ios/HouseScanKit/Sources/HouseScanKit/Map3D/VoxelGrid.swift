@@ -91,6 +91,9 @@ struct RaySample {
     var freeLength: Float
     /// Whether `end` is marked as a surface.
     var hit: Bool
+    /// For an estimated ray, distance from the camera past which its uncertainty puts every
+    /// point behind the surface it met: two deviations beyond its depth. Infinite otherwise.
+    var shadowFrom: Float = .infinity
 }
 
 /// Sparse voxels over fixed bounds: a dense index of 8 x 8 x 8 bricks, each brick stored only
@@ -109,6 +112,14 @@ struct VoxelGrid {
     private(set) var brickSlot: [Int32]
     private(set) var pool: [Voxel] = []
     private var frameStamp: UInt16 = 0
+    /// Per voxel, parallel to `pool`, once an estimated depth frame has been integrated: how many
+    /// estimated rays hit it (x) and how many stopped at a surface at least two of their
+    /// deviations in front of it, within `Map3DConfig.estimatedShadowLength` (y). Rays, not
+    /// frames, are counted: at 1.2 m about 64 rays of one frame reach a 10 cm voxel, so one in
+    /// forty landing two deviations too far puts a stray hit behind an occluder in most frames.
+    /// Empty until then, so a phone with LiDAR stores nothing more.
+    private(set) var estimatedRays: [SIMD2<UInt16>] = []
+    private var tracksEstimated = false
 
     /// Covers `bounds` with voxels one of which is centred on `center`, so the planes through it
     /// (the meter's ground and wall face) run through voxel centers rather than along voxel
@@ -125,11 +136,13 @@ struct VoxelGrid {
     /// Bytes held now: the brick index plus stored bricks.
     var allocatedBytes: Int {
         brickSlot.count * MemoryLayout<Int32>.stride + pool.capacity * MemoryLayout<Voxel>.stride
+            + estimatedRays.capacity * MemoryLayout<SIMD2<UInt16>>.stride
     }
 
-    /// Bytes with every brick stored.
+    /// Bytes with every brick stored, and 4 more a voxel once estimated depth is tracked.
     var worstCaseBytes: Int {
-        brickSlot.count * MemoryLayout<Int32>.stride + brickSlot.count * Self.brickVolume * MemoryLayout<Voxel>.stride
+        let perVoxel = MemoryLayout<Voxel>.stride + (tracksEstimated ? MemoryLayout<SIMD2<UInt16>>.stride : 0)
+        return brickSlot.count * MemoryLayout<Int32>.stride + brickSlot.count * Self.brickVolume * perVoxel
     }
 
     // MARK: Addressing
@@ -173,6 +186,10 @@ struct VoxelGrid {
                 pool.reserveCapacity(min(brickSlot.count * Self.brickVolume, max(2 * pool.capacity, 64 * Self.brickVolume)))
             }
             pool.append(contentsOf: repeatElement(Voxel(), count: Self.brickVolume))
+            if tracksEstimated {
+                if estimatedRays.capacity < pool.capacity { estimatedRays.reserveCapacity(pool.capacity) }
+                estimatedRays.append(contentsOf: repeatElement(.zero, count: Self.brickVolume))
+            }
             brickSlot[b] = slot
         }
         return Int(slot) + Self.local(g)
@@ -227,6 +244,53 @@ struct VoxelGrid {
         for ray in rays where ray.freeLength > 0 {
             carveFree(from: camera, to: ray.end, length: ray.freeLength, stamp: stamp, config: config)
         }
+        guard sources == .estimated else { return }
+        if !tracksEstimated {
+            tracksEstimated = true
+            estimatedRays = Array(repeating: .zero, count: pool.count)
+        }
+        for ray in rays where ray.hit {
+            guard let g = coordinate(of: ray.end) else { continue }
+            let i = storedIndex(g)
+            if estimatedRays[i].x < .max { estimatedRays[i].x += 1 }
+        }
+        var shadowed: [SIMD3<Int32>] = []
+        for ray in rays where ray.shadowFrom.isFinite {
+            let span = ray.end - camera
+            let total = simd_length(span)
+            guard total > 0 else { continue }
+            let direction = span / total
+            let start = camera + direction * ray.shadowFrom
+            shadowed.removeAll(keepingCapacity: true)
+            // Only voxels the ray enters past its shadow's start: the one holding the start may
+            // hold the surface itself.
+            march(from: start, direction: direction, length: config.estimatedShadowLength) { g, _, entered in
+                if entered > 0 { shadowed.append(g) }
+                return true
+            }
+            for g in shadowed {
+                let i = storedIndex(g)
+                if estimatedRays[i].y < .max { estimatedRays[i].y += 1 }
+            }
+        }
+    }
+
+    /// A surface seen well enough to count as coverage (`Voxel.isWellSeenSurface`). One whose
+    /// surface evidence is estimated depth alone must also have been hit by at least
+    /// `minEstimatedHitShare` of the estimated rays that hit it or stopped two deviations in front
+    /// of it: a visible voxel is hit by about half the rays aimed at it and counted against by the
+    /// few that fall short, while one behind an occluder is hit only by the few that land too far.
+    func isWellSeenSurface(_ index: Int, config: Map3DConfig) -> Bool {
+        let voxel = pool[index]
+        guard voxel.isWellSeenSurface(config) else { return false }
+        guard tracksEstimated, voxel.sources & (VoxelSources.lidar.rawValue | VoxelSources.feature.rawValue) == 0 else { return true }
+        let counts = estimatedRays[index]
+        let total = Float(counts.x) + Float(counts.y)
+        return total == 0 || Float(counts.x) >= config.minEstimatedHitShare * total
+    }
+
+    func isWellSeenSurface(_ g: SIMD3<Int32>, config: Map3DConfig) -> Bool {
+        index(g).map { isWellSeenSurface($0, config: config) } ?? false
     }
 
     /// Marks the voxels a segment from `from` toward `to` crosses completely within `length` as
