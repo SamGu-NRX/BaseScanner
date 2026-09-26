@@ -1,5 +1,7 @@
 # House scanning
 
+We're exploring a simpler way to survey a home for a Base Power battery. 
+
 A homeowner walks the outside of their house with a phone app. The app measures the wall around the electric meter, and our code decides whether a Base Power battery can be installed there and, if so, where. The homeowner sees the spot in AR before they put the phone away.
 
 This is a four-person hackathon project for Base Power. Success means one capture session gives Base enough to decide, with no follow-up photos. A person can still review the result.
