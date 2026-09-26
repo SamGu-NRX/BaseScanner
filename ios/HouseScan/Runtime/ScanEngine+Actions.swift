@@ -290,6 +290,9 @@ extension ScanEngine: ScanActions {
                 updateCoverage { $0.markSkipped(.ground, (s - 0.5)...(s + 0.5)) }
             case .aimAtWall(let s):
                 updateCoverage { $0.markSkipped(.wall, (s - 0.5)...(s + 0.5)) }
+            case .seeBehind(let s):
+                // Whatever is in the way can't be seen past: the hidden stretch goes to review.
+                for band in seeBehindBands { updateCoverage { $0.markSkipped(band, (s - 0.5)...(s + 0.5)) } }
             case .walk(let side, _), .markEnd(let side):
                 // The walk can't continue this way: stop the wall here, as an unexplored end.
                 let reach = GuidancePlanner().reach(side == .left ? .left : .right, coverage: map)
@@ -333,15 +336,7 @@ extension ScanEngine: ScanActions {
               missing.indices.contains(index) else { return }
         let item = missing[index]
         guard let map = coverage, let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd) else { return }
-        var pastEnd: WallSide?
-        if item.kind == .pastEnd, let side = item.side {
-            // The walk has to go past the end it stopped at; that end is no longer a limit. It
-            // exports as unexplored unless the homeowner marks it again (markWallEnd).
-            pastEnd = side == .left ? .left : .right
-            clearEnd(side == .left ? .left : .right)
-        }
-        beginGap(plan, origin: .server, reason: .server(detail: item.message))
-        pastEndSide = pastEnd
+        beginServerGap(item, plan: plan)
     }
 
     func showAR() {

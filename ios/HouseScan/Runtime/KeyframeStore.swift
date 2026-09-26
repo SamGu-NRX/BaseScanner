@@ -8,6 +8,8 @@ struct StoredKeyframe: Sendable {
     /// Also the JPEG's file name without extension, for example "k00001".
     let id: String
     let camera: CameraFrame
+    /// The depth files written beside the photo, on LiDAR phones.
+    let depth: LidarBundle.DepthEntry?
     var fileName: String { "\(id).jpg" }
 }
 
@@ -40,30 +42,32 @@ final class KeyframeStore {
     }
 
     /// Writes a keyframe's JPEG unrotated, as the sensor produced it, with `camera`, the pose of
-    /// the frame those bytes came from. Returns whether it was stored, and an upright thumbnail
-    /// for the capture acknowledgment.
+    /// the frame those bytes came from, and its LiDAR depth when there is some. Returns whether it
+    /// was stored, and an upright thumbnail for the capture acknowledgment.
     ///
     /// Bytes that don't decode are refused before anything is written: a photo no one can open
     /// is not a view, so it must not become a keyframe the coverage counts. The thumbnail is that
     /// decode. (Before, an undecodable photo was stored with a gray placeholder thumbnail.)
-    func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame) async -> (stored: Bool, thumbnail: CGImage?) {
+    func saveKeyframe(_ payload: JPEGPayload, index: Int, camera: CameraFrame, depth: DepthImage?) async -> (stored: Bool, thumbnail: CGImage?) {
         let id = String(format: "k%05d", index)
-        let url = directory.appending(path: "\(id).jpg")
+        let directory = directory
         let startedIn = epoch
-        let written = await Task.detached(priority: .utility) { () -> Result<CGImage, KeyframeWriteFailure> in
+        let written = await Task.detached(priority: .utility) { () -> Result<(CGImage, LidarBundle.DepthEntry?), KeyframeWriteFailure> in
             guard let data = Self.data(of: payload) else { return .failure(.noPhoto) }
             guard let thumbnail = ImageWork.uprightThumbnail(jpeg: data) else { return .failure(.undecodable) }
             do {
-                try data.write(to: url, options: .atomic)
+                try data.write(to: directory.appending(path: "\(id).jpg"), options: .atomic)
             } catch {
                 return .failure(.writeFailed)
             }
-            return .success(thumbnail)
+            return .success((thumbnail, depth.flatMap { Self.writeDepth($0, id: id, in: directory) }))
         }.value
         let thumbnail: CGImage
+        let depthEntry: LidarBundle.DepthEntry?
         switch written {
-        case .success(let image):
+        case .success(let (image, entry)):
             thumbnail = image
+            depthEntry = entry
         case .failure(let failure):
             RuntimeLog.capture.error("keyframe \(id, privacy: .public) not stored: \(failure.rawValue, privacy: .public)")
             return (false, nil)
@@ -73,9 +77,28 @@ final class KeyframeStore {
             RuntimeLog.capture.info("keyframe \(id, privacy: .public) not stored: its world frame was discarded")
             return (false, nil)
         }
-        keyframes.append(StoredKeyframe(id: id, camera: camera))
+        keyframes.append(StoredKeyframe(id: id, camera: camera, depth: depthEntry))
         keyframes.sort { $0.id < $1.id }
         return (true, thumbnail)
+    }
+
+    /// Writes `depth/<id>.u16` and, with confidence, `depth/<id>.conf.u8` into the scan folder,
+    /// at the paths they take in the bundle. A failed write loses only the depth: the photo is the
+    /// keyframe, and the bundle then lists no depth for it.
+    nonisolated private static func writeDepth(_ depth: DepthImage, id: String, in directory: URL) -> LidarBundle.DepthEntry? {
+        let file = "depth/\(id).u16"
+        let confidence = LidarBundle.confidenceData(depth)
+        let confidenceFile = confidence.map { _ in "depth/\(id).conf.u8" }
+        do {
+            try FileManager.default.createDirectory(at: directory.appending(path: "depth", directoryHint: .isDirectory), withIntermediateDirectories: true)
+            try LidarBundle.millimetersData(depth).write(to: directory.appending(path: file), options: .atomic)
+            if let confidence, let confidenceFile { try confidence.write(to: directory.appending(path: confidenceFile), options: .atomic) }
+        } catch {
+            RuntimeLog.capture.error("keyframe \(id, privacy: .public) depth not stored: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+        let k = depth.intrinsics
+        return LidarBundle.DepthEntry(keyframe: id, file: file, confidenceFile: confidenceFile, w: depth.width, h: depth.height, intrinsics: [k.x, k.y, k.z, k.w])
     }
 
     enum KeyframeWriteFailure: String, Error {
@@ -113,15 +136,27 @@ final class KeyframeStore {
     /// Zips scene.json with every keyframe and still into `scan.zip` and returns its URL. The
     /// bundle is what "Share scan" offers, and a replay can be made from it; the upload sends
     /// scene.json alone. It stays on the phone until the next scan unless the homeowner shares it.
-    func writeBundle(sceneJSON: Data) async throws -> URL {
+    ///
+    /// On a LiDAR phone the bundle also holds each keyframe's depth (`depth/<id>.u16`,
+    /// `depth/<id>.conf.u8`), `depth/index.json` listing them, and `mesh.ply`, the scene mesh in
+    /// scene.json's frame (`sceneMesh`). Without LiDAR none of these are written.
+    func writeBundle(sceneJSON: Data, sceneMesh: TriangleMesh?) async throws -> URL {
         let directory = directory
-        let files = keyframes.map(\.fileName) + stills.values.sorted()
+        let depth = keyframes.compactMap(\.depth)
+        let files = keyframes.map(\.fileName) + stills.values.sorted() + depth.flatMap { [$0.file] + [$0.confidenceFile].compactMap { $0 } }
         return try await Task.detached(priority: .userInitiated) { () throws -> URL in
             // Streamed to disk one photo at a time: a long walk's JPEGs held in memory twice (the
             // entries and the archive) is what the old in-memory build cost.
             var entries: [(name: String, load: () throws -> Data)] = [("scene.json", { sceneJSON })]
             for name in files {
                 entries.append((name, { try Data(contentsOf: directory.appending(path: name)) }))
+            }
+            if !depth.isEmpty {
+                let index = try LidarBundle.depthIndex(depth)
+                entries.append(("depth/index.json", { index }))
+            }
+            if let sceneMesh {
+                entries.append(("mesh.ply", { LidarBundle.ply(sceneMesh) }))
             }
             let url = directory.appending(path: "scan.zip")
             try ZipWriter.write(entries, to: url, modified: Date())
