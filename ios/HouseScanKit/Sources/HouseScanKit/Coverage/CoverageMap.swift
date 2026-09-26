@@ -124,21 +124,42 @@ public struct CoverageMap: Sendable {
     @discardableResult
     public mutating func observe(_ camera: CameraFrame, trackingNormal: Bool) -> Delta {
         guard trackingNormal else { return Delta() }
-        var delta = Delta()
+        return record(visibleCells(from: camera), from: camera.position)
+    }
+
+    /// Every cell a frame sees, before the marked ends clip anything that isn't allowed.
+    public func visibleCells(from camera: CameraFrame) -> [Sighting] {
+        var seen: [Sighting] = []
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) where isVisible(band, index, from: camera) {
-                var cell = cells[band]?[index] ?? Cell()
-                let wasSeen = !cell.positions.isEmpty
-                let isNewPosition = cell.positions.allSatisfy { simd_distance($0, camera.position) >= config.coveringBaseline }
-                guard isNewPosition else { continue }
-                cell.positions.append(camera.position)
-                if !wasSeen { delta.newlySeen += 1 }
-                if cell.positions.count >= 2, !cell.covered {
-                    cell.covered = true
-                    delta.newlyCovered += 1
-                }
-                cells[band, default: [:]][index] = cell
+                seen.append(Sighting(band: band, index: index))
             }
+        }
+        return seen
+    }
+
+    public struct Sighting: Sendable, Hashable {
+        public var band: SurfaceBand
+        public var index: Int
+    }
+
+    /// Records cells a kept keyframe with normal tracking saw from `position`: the part of
+    /// `observe` after visibility, for planners that precompute what each frame sees.
+    @discardableResult
+    public mutating func record(_ sightings: [Sighting], from position: SIMD3<Float>) -> Delta {
+        var delta = Delta()
+        for sighting in sightings where allows(sighting.index) {
+            var cell = cells[sighting.band]?[sighting.index] ?? Cell()
+            let wasSeen = !cell.positions.isEmpty
+            let isNewPosition = cell.positions.allSatisfy { simd_distance($0, position) >= config.coveringBaseline }
+            guard isNewPosition else { continue }
+            cell.positions.append(position)
+            if !wasSeen { delta.newlySeen += 1 }
+            if cell.positions.count >= 2, !cell.covered {
+                cell.covered = true
+                delta.newlyCovered += 1
+            }
+            cells[sighting.band, default: [:]][sighting.index] = cell
         }
         if delta.changed { revision += 1 }
         return delta

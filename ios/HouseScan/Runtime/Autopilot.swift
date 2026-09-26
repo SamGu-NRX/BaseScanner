@@ -23,9 +23,12 @@ final class Autopilot {
     }
 
     func run() async {
-        guard let replay = engine.replay else {
+        guard engine.options.replayFolder != nil else {
             log("needs -replay; the live camera can't be driven")
             return
+        }
+        guard await waitUntil(timeout: 60, { self.engine.replay != nil || self.engine.state.failure != nil }), let replay = engine.replay else {
+            return fail("replay did not load")
         }
         async let prepared: Void = replay.prepareHeldBack()
         await pause(hold)

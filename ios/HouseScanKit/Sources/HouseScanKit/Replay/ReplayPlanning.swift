@@ -93,35 +93,80 @@ public enum ReplayPlanning {
     }
 
     /// Chooses frames to hold back from the autopilot's walk so the gap loop has something real
-    /// to do: without them the planner finds a gap, and replaying them alone satisfies it.
-    /// Tries windows of 3 to 8 frames from the middle of the walk outward. Nil when no window
-    /// works, for example when nothing is covered at all.
+    /// to do: without them the planner finds a gap, and replaying them alone closes it.
+    ///
+    /// Candidates are contiguous windows of 3 to 10 frames, tried from the middle of the walk
+    /// outward. Each is screened on coverage rebuilt from what every frame sees (computed once),
+    /// then confirmed with the full auto-capture simulation the app runs. Nil when no window works,
+    /// for example when the planner's nearest gap is one no frame of the replay can close.
     public static func heldBackWindow(frames: [PlannedFrame], wall: WallFrame, planner: GapPlanner = GapPlanner(), config: CoverageConfig = CoverageConfig()) -> HeldBackWindow? {
         guard frames.count >= 6 else { return nil }
+        let empty = CoverageMap(wall: wall, config: config)
+        let sightings = frames.map { $0.trackingNormal ? empty.visibleCells(from: $0.camera) : [] }
+        let kept = Set(keptIndices(frames, wall: wall, config: config))
         let middle = frames.count / 2
-        let starts = (1..<(frames.count - 2)).sorted { abs($0 - middle) < abs($1 - middle) }
-        for size in [4, 6, 3, 8] {
-            for start in starts where start + size < frames.count {
+        let starts = (2..<(frames.count - 1)).sorted { abs($0 - middle) < abs($1 - middle) }
+        var confirmations = 0
+        for size in [4, 6, 3, 8, 10] {
+            for start in starts where start + size <= frames.count {
                 let window = start..<(start + size)
-                var rest = frames
-                rest.removeSubrange(window)
-                var walked = simulateWalk(rest, wall: wall, config: config)
-                let extremes = (walked.coveredIntervals(.wall) + walked.coveredIntervals(.ground))
-                guard let low = extremes.map(\.lowerBound).min(), let high = extremes.map(\.upperBound).max(), low < 0, high > 0 else { continue }
-                walked.setEnd(.left, at: low)
-                walked.setEnd(.right, at: high)
-                guard let gap = planner.plan(walked) else { continue }
-                // The app replays the window with a short lead-in so tracking is stable at its start.
-                if satisfiedWithLeadIn(frames, window: window, walked: walked, gap: gap, planner: planner) {
-                    return HeldBackWindow(frames: window, ends: low...high, gap: gap)
+                var rest = CoverageMap(wall: wall, config: config)
+                for index in kept.sorted() where !window.contains(index) {
+                    rest.record(sightings[index], from: frames[index].camera.position)
                 }
+                guard let ends = coveredExtremes(rest) else { continue }
+                rest.setEnd(.left, at: ends.lowerBound)
+                rest.setEnd(.right, at: ends.upperBound)
+                guard let gap = planner.plan(rest) else { continue }
+                var restored = rest
+                for index in window { restored.record(sightings[index], from: frames[index].camera.position) }
+                guard planner.isSatisfied(gap, restored) else { continue }
+                // Screened: confirm with the exact auto-capture path, a few times at most.
+                confirmations += 1
+                if let confirmed = confirm(frames, window: window, wall: wall, planner: planner, config: config) {
+                    return confirmed
+                }
+                if confirmations >= 12 { return nil }
             }
         }
         return nil
     }
 
-    /// The frames the app replays for a held-back window: one lead-in frame before it, so the
-    /// auto-capture's tracking-stable wait has passed when the window starts.
+    private static func keptIndices(_ frames: [PlannedFrame], wall: WallFrame, config: CoverageConfig) -> [Int] {
+        var map = CoverageMap(wall: wall, config: config)
+        var capture = AutoCapture()
+        var kept: [Int] = []
+        for (index, frame) in frames.enumerated() {
+            let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.trackingNormal ? .normal : .limited, quality: nil)
+            if capture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera)).isKeep {
+                capture.didKeep(sample)
+                map.observe(frame.camera, trackingNormal: frame.trackingNormal)
+                kept.append(index)
+            }
+        }
+        return kept
+    }
+
+    private static func coveredExtremes(_ map: CoverageMap) -> ClosedRange<Float>? {
+        let intervals = map.coveredIntervals(.wall) + map.coveredIntervals(.ground)
+        guard let low = intervals.map(\.lowerBound).min(), let high = intervals.map(\.upperBound).max(), low < 0, high > 0 else { return nil }
+        return low...high
+    }
+
+    private static func confirm(_ frames: [PlannedFrame], window: Range<Int>, wall: WallFrame, planner: GapPlanner, config: CoverageConfig) -> HeldBackWindow? {
+        var rest = frames
+        rest.removeSubrange(window)
+        var walked = simulateWalk(rest, wall: wall, config: config)
+        guard let ends = coveredExtremes(walked) else { return nil }
+        walked.setEnd(.left, at: ends.lowerBound)
+        walked.setEnd(.right, at: ends.upperBound)
+        guard let gap = planner.plan(walked),
+              satisfiedWithLeadIn(frames, window: window, walked: walked, gap: gap, planner: planner) else { return nil }
+        return HeldBackWindow(frames: window, ends: ends, gap: gap)
+    }
+
+    /// The frames the app replays for a held-back window: two lead-in frames before it, so the
+    /// auto-capture's tracking-stable wait (0.5 s) has passed when the window starts.
     public static func gapReplayRange(_ window: Range<Int>) -> Range<Int> {
         max(0, window.lowerBound - 2)..<window.upperBound
     }

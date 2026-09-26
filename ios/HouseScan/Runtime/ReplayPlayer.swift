@@ -25,25 +25,42 @@ final class ReplayPlayer {
     private let onFrame: @MainActor (SourceFrame) -> Void
     private var task: Task<Void, Never>?
 
-    init(folder: URL, onFrame: @escaping @MainActor (SourceFrame) -> Void) throws {
-        self.folder = folder
-        self.onFrame = onFrame
-        session = try ReplaySession.load(folder: folder)
-        planned = session.frames.map {
+    /// What loading a replay produces: the session, its frames as cameras, and its wall.
+    struct Loaded: Sendable {
+        let session: ReplaySession
+        let planned: [PlannedFrame]
+        let wall: WallFrame
+        let wallDescription: String
+    }
+
+    /// Reads session.json and settles the wall. Deriving an assumed wall projects every frame
+    /// against many candidate walls, so call this off the main actor.
+    nonisolated static func load(folder: URL) throws -> Loaded {
+        let session = try ReplaySession.load(folder: folder)
+        let planned = session.frames.map {
             PlannedFrame(
                 camera: CameraFrame(cameraToWorld: $0.cameraToWorld, intrinsics: $0.intrinsics, imageSize: SIMD2(Float($0.width), Float($0.height))),
                 timestamp: $0.timestamp, trackingNormal: $0.trackingNormal
             )
         }
         if let declared = session.declaredWall, let frame = WallFrame(meter: declared.meter, outward: declared.outward, groundY: declared.groundY) {
-            wall = frame
-            wallDescription = "recorded (wall taps in session.json)"
-        } else if let assumed = ReplayPlanning.assumedWall(frames: planned) {
-            wall = assumed.wall
-            wallDescription = String(format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, %d cells covered with every frame; not a measured wall", assumed.offset, assumed.coveredCells)
-        } else {
-            throw ReplayError.noFrames
+            return Loaded(session: session, planned: planned, wall: frame, wallDescription: "recorded (wall taps in session.json)")
         }
+        guard let assumed = ReplayPlanning.assumedWall(frames: planned) else { throw ReplayError.noFrames }
+        let description = String(
+            format: "assumed from the trajectory: parallel to the walk, %.2f m to the side the camera faces, %d cells covered with every frame; not a measured wall",
+            assumed.offset, assumed.coveredCells
+        )
+        return Loaded(session: session, planned: planned, wall: assumed.wall, wallDescription: description)
+    }
+
+    init(folder: URL, loaded: Loaded, onFrame: @escaping @MainActor (SourceFrame) -> Void) {
+        self.folder = folder
+        self.onFrame = onFrame
+        session = loaded.session
+        planned = loaded.planned
+        wall = loaded.wall
+        wallDescription = loaded.wallDescription
     }
 
     /// Finds the frames to hold back for the autopilot's gap loop. Heavy, so it runs off the

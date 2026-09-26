@@ -80,18 +80,23 @@ final class ScanEngine {
     func start() {
         RuntimeLog.state.info("STATE=\(self.state.phase.rawValue, privacy: .public)")
         if let folder = options.replayFolder {
-            do {
-                let player = try ReplayPlayer(folder: folder) { [weak self] frame in self?.ingest(frame) }
-                replay = player
-                player.show(index: 0)
-                RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, wall \(player.wallDescription, privacy: .public)")
-            } catch {
-                state.failure = .replayUnreadable(String(describing: error))
-                RuntimeLog.engine.error("replay unreadable: \(String(describing: error), privacy: .public)")
-            }
+            Task { await loadReplay(folder) }
         } else if !ARWorldTrackingConfiguration.isSupported {
             state.failure = .arUnsupported
             go(.unsupported)
+        }
+    }
+
+    private func loadReplay(_ folder: URL) async {
+        do {
+            let loaded = try await Task.detached(priority: .userInitiated) { try ReplayPlayer.load(folder: folder) }.value
+            let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame) }
+            replay = player
+            player.show(index: 0)
+            RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, wall \(player.wallDescription, privacy: .public)")
+        } catch {
+            state.failure = .replayUnreadable(String(describing: error))
+            RuntimeLog.engine.error("replay unreadable: \(String(describing: error), privacy: .public)")
         }
     }
 
