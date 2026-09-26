@@ -179,12 +179,12 @@ def _check_probe(mid: str, kind: str, probe: dict) -> None:
             raise MetricsError(f"{mid}: report needs exactly one of {', '.join(COMPARATORS)}")
     if kind == "manual" and probe["status"] not in MANUAL_STATUSES:
         raise MetricsError(f"{mid}: manual status must be one of {', '.join(MANUAL_STATUSES)}")
+    if kind == "grep_at_ref" and probe.get("each") and "{each}" not in probe["pattern"]:
+        raise MetricsError(f"{mid}: pattern must contain {{each}} when each is set")
     if kind in ("grep_at_ref", "pr_body"):
-        if kind == "grep_at_ref" and probe.get("each") and "{each}" not in probe["pattern"]:
-            raise MetricsError(f"{mid}: pattern must contain {{each}} when each is set")
-        for fragment in _each_items(probe) or [("", "")]:
+        for _, fragment in _each_items(probe) or [("", "")]:
             try:
-                re.compile(probe["pattern"].replace("{each}", fragment[1]))
+                re.compile(probe["pattern"].replace("{each}", fragment))
             except re.error as e:
                 raise MetricsError(f"{mid}: bad pattern: {e}") from e
     if probe.get("max_status") not in (None, "partial"):
@@ -456,7 +456,7 @@ def _read_report(path: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
-def _value_or_none(data: dict, key: str):
+def _value_or_none(data: dict, key: str) -> Any:
     try:
         return lookup(data, key)
     except KeyError:
@@ -624,9 +624,9 @@ def build_board(
         rows = []
         for m in (m for m in metrics if m.workstream == ws):
             sha = shas[m.ref]
-            o = evaluate(m, sha, ctx)
-            links = [list(link) for link in o.links]
-            rows.append(Row(m.id, m.text, m.ref, sha, o.status, o.evidence, links))
+            outcome = evaluate(m, sha, ctx)
+            links = [list(link) for link in outcome.links]
+            rows.append(Row(m.id, m.text, m.ref, sha, outcome.status, outcome.evidence, links))
         refs = list(dict.fromkeys(r.ref for r in rows))
         streams.append(
             {
@@ -664,8 +664,7 @@ def render_markdown(board: Board) -> str:
         "# Scoreboard",
         "",
         f"Generated {_local(board.generated_at)} by `make scoreboard` (`{board.command}`) in "
-        f"`verification/`; "
-        f"{slow}. Probes are defined in `verification/scoreboard/metrics.yaml`.",
+        f"`verification/`; {slow}. Probes are defined in `verification/scoreboard/metrics.yaml`.",
         "",
         "## Open pull requests",
         "",
@@ -692,7 +691,7 @@ def render_markdown(board: Board) -> str:
             else f"`{r['ref']}` (missing)"
             for r in ws["refs"]
         )
-        counts = {s: 0 for s in STATUSES}
+        counts = dict.fromkeys(STATUSES, 0)
         for m in ws["metrics"]:
             counts[m["status"]] += 1
         tally = ", ".join(f"{n} {s}" for s, n in counts.items() if n)

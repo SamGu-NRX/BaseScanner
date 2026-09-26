@@ -1,7 +1,7 @@
 """Build the iOS app from a git ref, run it in a dedicated Simulator, screenshot every STATE.
 
-    uv run python -m hsverify.simrun --ref origin/t3/ios-mvf \
-        --replay ~/house-scanning-data/replays/<session> --autopilot --server-url http://127.0.0.1:8000
+    make sim-app    # t3/ios-mvf on the ADVIO replay, uploading to a server started from t3/server
+    uv run python -m hsverify.simrun --ref <ref> --replay <session> --autopilot --server-ref <ref>
 
 The app is launched with the contract C4 arguments (`-replay <path>`, `-autopilot`,
 `-serverURL <url>`) and the runner follows its `STATE=<name>` log markers. Each state gets
@@ -102,11 +102,7 @@ def ensure_device() -> dict:
             break
     else:
         udid = simctl("create", DEVICE_NAME, DEVICE_TYPE, runtime)
-    state = json.loads(simctl("list", "devices", "-j"))["devices"][runtime]
-    booted = any(d["udid"] == udid and d["state"] == "Booted" for d in state)
-    if not booted:
-        simctl("boot", udid)
-    simctl("bootstatus", udid, "-b")
+    simctl("bootstatus", udid, "-b")  # boots the device if it isn't already booted
     return {"name": DEVICE_NAME, "udid": udid, "runtime": runtime, "type": DEVICE_TYPE}
 
 

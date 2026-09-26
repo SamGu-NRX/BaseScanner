@@ -1,83 +1,65 @@
 # Verification (S4)
 
-Independent checks of what works end to end, run against the exact commits the other
-workstreams push. Nothing here fixes their code; findings go back to the owning thread.
+Independent checks of what the other workstreams' commits do, each tied to a commit SHA. Nothing
+here fixes their code; findings go to the owning thread. Reports are written to
+`~/house-scanning-data/reports/`, outside git, because replay frames come from non-commercial
+datasets. Requirements: uv, and Xcode 26 or newer with an iOS Simulator runtime.
 
-| Check | Command | Output |
+| Check | Command, from `verification/` | Output |
 | --- | --- | --- |
-| Unit tests for these tools | `make test` | pass or fail |
-| App in the Simulator, a screenshot per `STATE` | `make sim REF=origin/t3/ios-mvf ARGS="--replay <dir> --autopilot --server-url <url>"` | `~/house-scanning-data/reports/sim/<run>/index.html` |
-| Runner self-test | `make sim-probe` | same, for `fixtures/state-probe` |
-| A replay session (C3) is well formed, and how far its poses are from ground truth | `uv run python -m hsverify.replaycheck <session folder>` | printed |
-| Apple's accessibility audit on every screen the app reaches | `uv run python -m hsverify.a11yaudit --ref origin/t3/ios-mvf --replay <dir> --autopilot` | `~/house-scanning-data/reports/a11y/<run>/index.html` |
-| Scenes through the server's HTTP API, judged against C1, C2 and C5 | `uv run python -m hsverify.e2e --server-ref origin/t3/server [--real scene.zip]` | `~/house-scanning-data/reports/e2e/<run>/report.md` |
+| The app at `t3/ios-mvf` on the real ADVIO replay, uploading to a server started from `t3/server`; a screenshot per `STATE` | `make sim-app` (`REF=`, `SERVER_REF=`, `ARGS=` to vary) | `reports/sim/<run>/index.html` |
+| Every case, the ETH3D facade scene and optional app exports through the server's API | `make e2e` (`ARGS="--app-export <scan.zip>"`) | `reports/e2e/<run>/report.md` |
+| Apple's accessibility audit on every screen the app reaches | `uv run python -m hsverify.a11yaudit --ref <ref> --replay <session> --autopilot` | `reports/a11y/<run>/index.html` |
+| A replay session is well formed; its poses against ground truth | `uv run python -m hsverify.replaycheck <session>` | printed |
+| Every open PR and plan metric with its evidence | `make scoreboard` (`ARGS=--slow` also runs test suites) | `SCOREBOARD.md` |
+| These tools' own tests | `make test` | pass or fail |
+| The Simulator runner against a probe app with a known sequence | `make sim-probe` | `reports/sim/<run>/` |
 
-Requirements: uv, Xcode 26 or newer with an iOS Simulator runtime.
+Written results: [the UX review](ux/review.md) against [the checklist](ux/checklist.md), and
+[the product description](product/README.md) with its [bug triage](product/bug-triage.md).
 
-## Simulator runner
+## What the checks guarantee
 
-`hsverify/simrun.py` checks the ref out into a detached worktree under `/tmp`, builds it for
-the Simulator, installs it on its own device ("HouseScan Verify", so it never touches a
-Simulator another worker is using), and launches it with the contract C4 arguments. It
-attaches `log stream` before launch and follows `STATE=<name>` lines from subsystem
-`dev.housescanning.housescan`, category `state`.
+**Simulator runner** (`hsverify/simrun.py`). Builds the ref in a `/tmp` worktree, installs it on
+its own Simulator ("HouseScan Verify") and launches it with the C4 arguments. It follows
+`STATE=<name>` from subsystem `dev.housescanning.housescan` and screenshots each state once it has
+settled for 1.2 s; a state replaced sooner is captured at once and marked *transient*. The report
+lists a failed build, a crash, markers logged as `<private>`, and a run with no markers as
+problems, and keeps every app log line. It waits while another `xcodebuild` compiles, because
+several workers share the Mac.
 
-A state is screenshotted after it has been on screen for `--settle` seconds (default 1.2). If
-the next state arrives first, the screenshot is taken at once and marked *transient*, since it
-may already show the next screen. The run ends at an `--until` state, after `--idle` seconds
-with no new state, or at `--timeout`. It reports a build failure, a crash, markers logged as
-`<private>`, and a run with no markers at all as problems.
+**End-to-end check** (`hsverify/e2e.py`, `hsverify/resultcheck.py`). Starts the server from a ref
+and finds its placement endpoint in the OpenAPI document, refusing to guess between candidates.
+Each scene is validated against `server/schemas/scene.schema.json` at that ref first, so bad input
+is not blamed on the server. Each answer must validate against `server/schemas/result.schema.json`
+and satisfy, for any policy:
 
-Builds wait while any other `xcodebuild` runs, because four workers share this Mac.
+- `pass` has a passing spot, all checks passing, no photo request and an approved policy;
+  `reject` has no spot; `manual_review` gives reasons.
+- Each check's outcome follows from its numbers (C5): a minimum T passes only when measured −
+  error > T and fails only when measured + error < T, a maximum mirrored, a review line also
+  cleared for a pass; an unsure labelled `margin` lies within its error of a line.
+- No battery start passes over wall, cable route or ground that was not observed, and no photo
+  request covers an observed area.
+- Counts add up, `input_sha256` is the hash of the bytes sent, the spot's offset equals its centre
+  minus the meter.
+- The same scene sent again answers the same; mirrored left to right it gives the same decision
+  and the same length of each outcome; without coverage nothing passes.
 
-The report folder holds `index.html` (screenshots in state order), `report.json`,
-`report.md`, the build log, the raw log stream and the app's stdout and stderr.
+The 40 cases in [`e2e/cases/`](e2e/cases/README.md) were written from the public goldens and C5
+without reading the server's tests. Each names the thresholds it assumes; a mismatch is reported
+as such rather than as a pass or fail. [`scenes/eth3d-facade`](scenes/eth3d-facade/README.md)
+builds a scene from real laser-scanned geometry; real scenes must answer within 1 s.
 
-`fixtures/state-probe` is a ten-line app that logs a fixed sequence, including a 0.3 s state,
-so the runner can be checked without the real app.
+**Accessibility audit** (`hsverify/a11yaudit.py`). Runs the UI test bundle in
+`fixtures/a11y-audit`, which launches the installed app by bundle id and calls
+`performAccessibilityAudit(for: .all)` on each distinct screen. It also flags buttons labelled
+with an SF Symbol name, which Apple's audit accepts. The probe app's middle screen carries an
+unlabelled 12 pt button; an audit of the probe must find it.
 
-## Replay check
+**Replay check** (`hsverify/replaycheck.py`). Checks the fields, JPEG sizes, rigid poses and
+spacing gate of a Measure Lab v2 session, then compares ARKit with `ground_truth.json` after
+aligning heading and origin. It reports the path-length ratio separately and does not say which
+track is right: ADVIO's ground truth has its own scale error.
 
-`hsverify/replaycheck.py` reads a Measure Lab v2 session and checks what the app and server
-rely on: every listed JPEG exists at the stated size, poses are rigid, timestamps increase,
-and motion keyframes respect the spacing gate the session declares. With `ground_truth.json`
-beside it, it aligns ground truth to ARKit by heading and origin (both worlds are gravity
-aligned) and reports the error after the best fit, after also removing scale, and when
-anchored at the first keyframe, as the app anchors on the meter. The ARKit-to-truth path
-length ratio is printed on its own because a scale difference dominates the other numbers.
-It does not say which track is right: ADVIO's ground truth has its own scale error (see
-`experiments/evals` on `t3/evals`).
-
-## End-to-end server check
-
-`hsverify/e2e.py` starts the server from a ref in a `/tmp` worktree, or uses `--server-url`,
-and reads the scene endpoint from its OpenAPI document. It stops rather than guesses when
-more than one POST could take a scene. Every scene is validated against the scene schema at
-the same ref first, so bad input is not blamed on the server. Every answer must validate
-against the result schema and pass `hsverify/resultcheck.py`:
-
-- `pass` needs a passing spot, every check passing, no photo request and an approved policy;
-  `reject` has no spot and no photo request; `manual_review` gives reasons.
-- Each check's outcome follows from its numbers (C5): at least T needs measured − error > T
-  to pass and measured + error < T to fail; anything else is unsure. At most T is mirrored.
-- No battery start passes unless the wall and cable route back to the meter, and the ground
-  under the battery out to its depth, were observed. No photo request covers an observed area.
-- Counts add up, `input_sha256` is the hash of the bytes sent, and the spot's offset from the
-  meter equals its centre minus the meter.
-
-Each scene is also sent again (identical result apart from timing), mirrored left to right
-(same decision and the same length of passing, unsure and failing starts), and without its
-coverage (no pass anywhere). Case files in `e2e/cases/` add the outcomes their geometry
-forces. Each one names the thresholds it assumes, and a case whose assumption differs from the
-server's rules is reported as an assumption mismatch, not as a pass or fail. Scenes passed
-with `--real` must answer within 1 s.
-
-## Accessibility audit
-
-`hsverify/a11yaudit.py` builds and installs the app as the Simulator runner does, then runs the
-UI test bundle in `fixtures/a11y-audit`. The bundle launches the installed app by bundle id with
-the C4 arguments and calls `performAccessibilityAudit(for: .all)` on each distinct screen (a
-screen is new when the labels of its texts and buttons change). Apple's audit does not object
-to a button whose label SwiftUI took from an SF Symbol name, which VoiceOver reads aloud, so the
-wrapper flags those too. The probe app's middle screen has an unlabelled 12 pt button as a
-negative control: an audit of the probe must report it, and does (hit area, symbol-name label).
+Every report records the harness's peak memory and that of the largest child it waited for.

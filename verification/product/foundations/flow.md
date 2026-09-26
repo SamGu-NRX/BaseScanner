@@ -6,7 +6,7 @@ A scan is one pass through a fixed sequence of screens, from an introduction to 
 app decides when to move on: most screens advance by themselves when their job is done, and the
 homeowner moves on with a button only where a judgment is theirs (they have finished walking,
 their marks are right, they want to see the spot in AR). There is no back button between
-screens. "Start over", on the result and on the unsupported screen, is the only way to begin again. This document owns the order
+screens. "Start over", on the result, is the only way to begin again. This document owns the order
 of the screens, what moves the app from one to the next, the launch options, and what happens
 when the camera, the replay or the phone cannot run the scan.
 
@@ -41,7 +41,6 @@ stateDiagram-v2
     result --> resultAR : "See it on your wall"
     resultAR --> result : "Done"
     result --> onboarding : "Start over"
-    unsupported --> onboarding : "Start over"
     wallWalk --> findMeter : phone lost its place for over 20 s
 ```
 
@@ -70,7 +69,7 @@ The camera stays open, without a blink, from `findMeter` through `wallWalk`, `ma
 `gapRequest`; only the instruction and controls above it change. Photos are kept continuously on
 `wallWalk` and `gapRequest` as described in
 [coverage and guidance](coverage-and-guidance.md#when-a-photo-is-kept). A counter at the top
-shows how many photos have been taken, and each new one gives a light tap of haptic feedback.
+shows how many photos have been taken; it goes up once each photo is written to the phone.
 
 ### Advancing
 
@@ -93,10 +92,10 @@ after the server has answered; nothing on `uploading` is skipped when the networ
 | Event | Before the meter is tapped | After the meter is tapped |
 | --- | --- | --- |
 | The screen's own way out | See each screen. | See each screen. |
-| Start over | Offered only on `unsupported`. | Offered only on `result`. It forgets the wall, photos, marks and result and returns to `onboarding`. |
+| Start over | Not offered. The failure screen has it for failures other than an unsupported phone, but those never reach it (Open questions). | Offered only on `result`. It forgets the wall, photos, marks and result and returns to `onboarding`. |
 | Tracking limited | Coaching replaces the instruction until it clears ([coverage and guidance](coverage-and-guidance.md#one-instruction-at-a-time)). | Same; no photo counts toward coverage meanwhile. |
-| Tracking lost or relocalizing | "Point at your meter again". | If the phone has not found its place within 20 s, the app forgets the wall, photos and marks and returns to `findMeter`. |
-| App backgrounded or a call | The screen stays; coaching says "Point at your meter again" when the camera resumes. | Same; photos and marks are kept. |
+| Tracking lost or relocalizing | "Point at the meter like this." (relocalizing) or "Your phone lost its place". | If the phone has not found its place within 20 s, the app forgets the wall, photos and marks and returns to `findMeter`, on any screen while the camera runs, including the result. |
+| App backgrounded or a call | The screen stays; coaching says "Point at the meter like this." when the camera resumes. | Same; photos and marks are kept. |
 | Camera off or session failed | Suspected dead end: see Open questions. | Suspected dead end: see Open questions. |
 | Network lost or upload failing | No effect. | Only `uploading` is affected; see [the upload](../screens/uploading.md). |
 | App killed | The scan is lost. | The scan is lost, including one "saved on this phone" after a failed upload: its files stay in the cache, but nothing reopens or retries them. |
@@ -110,10 +109,12 @@ deleted by the app and never reopened. **Upload and offline.** Only the
 upload needs the network; see [the upload](../screens/uploading.md). **Accessibility.** Every
 screen groups its elements in one accessibility container. Its identifier (`screen.<name>`) is
 for tests and is not spoken. **Haptics and motion.** A light tap
-for each photo; a success haptic when the meter is set and when the result appears; a firmer tap
-for each mark placed and a warning for a refused one. **Verification hooks.** Each screen change
+for a deliberate photo (the close-up, a requested view) but not for walk photos; a success haptic
+when the meter is set and when the result appears; a firmer tap for each mark placed and a warning
+for a refused one. **Verification hooks.** Each screen change
 logs `STATE=<name>` publicly under subsystem `dev.housescanning.housescan`, category `state`;
-guidance changes log `GUIDANCE=<name>` under category `guidance`.
+guidance changes log `GUIDANCE=<name>` under category `guidance`. `-autopilotGate <folder>` makes
+the autopilot wait on each screen until a file named after it appears, for UI tests.
 
 ## Edge cases
 
@@ -141,4 +142,4 @@ guidance changes log `GUIDANCE=<name>` under category `guidance`.
 - The 1.2 s pause after a finished step and the 20 s relocalization limit are read from code;
   neither has been timed on a device.
 
-Verified against house-scanning commit `21a63e7`.
+Verified against house-scanning commit `0876e03` (t3/ios-mvf).

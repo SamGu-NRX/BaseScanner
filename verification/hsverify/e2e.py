@@ -146,21 +146,15 @@ def find_app(server_dir: Path) -> str:
     return found[0]
 
 
-SHIM = Path(__file__).with_name("solver_shim.py")
-
-
 @contextlib.contextmanager
-def server_from_ref(sha: str, log_path: Path, via_shim: bool = False) -> Iterator[str]:
-    """The server at `sha` on a free port: its own FastAPI app, or `solver_shim` around `solve`."""
+def server_from_ref(sha: str, log_path: Path) -> Iterator[str]:
+    """The server at `sha` running its own FastAPI app on a free port."""
     with gitref.detached_worktree(sha) as tree:
         server_dir = tree / "server"
         subprocess.run(["uv", "sync", "--locked", "--quiet"], cwd=server_dir, check=True)
         port = free_port()
         url = f"http://127.0.0.1:{port}"
-        if via_shim:
-            target = ["python", str(SHIM), "--server-dir", str(server_dir), "--port", str(port)]
-        else:
-            target = ["uvicorn", find_app(server_dir), "--host", "127.0.0.1", "--port", str(port)]
+        target = ["uvicorn", find_app(server_dir), "--host", "127.0.0.1", "--port", str(port)]
         with log_path.open("w") as log:
             proc = subprocess.Popen(
                 ["uv", "run", "--quiet", *target],
@@ -414,7 +408,7 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     lines = [
         f"# End-to-end run against `{meta['server_ref']}` at `{meta['server_sha'][:12]}`",
         "",
-        f"{meta['started_at']}. Endpoint `{meta['endpoint']}` via {meta['transport']}. "
+        f"{meta['started_at']}. Endpoint `{meta['endpoint']}`. "
         f"Load average {meta['load_average_1_5_15']} on {os.cpu_count()} cores. "
         + ", ".join(f"{v} {k}" for k, v in sorted(counts.items())),
         "",
@@ -439,11 +433,6 @@ def main(argv: list[str] | None = None) -> int:
     where.add_argument("--server-url", help="use a running server instead of starting one")
     parser.add_argument("--schema-ref", help="ref for the schemas (default: --server-ref)")
     parser.add_argument("--endpoint", help="POST path, when discovery is ambiguous")
-    parser.add_argument(
-        "--via-shim",
-        action="store_true",
-        help="serve the ref's solver.solve through solver_shim (before the ref has an API)",
-    )
     parser.add_argument("--cases", type=Path, default=DEFAULT_CASES)
     parser.add_argument(
         "--scene",
@@ -470,7 +459,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     gitref.fetch()
-    schema_ref = args.schema_ref or (args.server_ref if not args.server_url else "origin/t3/server")
+    # --server-ref keeps its default when --server-url is given, so it also names the schemas then.
+    schema_ref = args.schema_ref or args.server_ref
     schema_sha = gitref.resolve(schema_ref)
     schemas = {}
     for key, path in (("scene", SCENE_SCHEMA), ("result", RESULT_SCHEMA)):
@@ -498,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with contextlib.ExitStack() as stack:
         url = args.server_url or stack.enter_context(
-            server_from_ref(server_sha, out / "server.log", via_shim=args.via_shim)
+            server_from_ref(server_sha, out / "server.log")
         )
         openapi = json.loads(urllib.request.urlopen(f"{url}/openapi.json", timeout=10).read())
         endpoint = discover_endpoint(openapi, args.endpoint)
@@ -524,9 +514,8 @@ def main(argv: list[str] | None = None) -> int:
         "server_sha": server_sha,
         "schema_ref": schema_ref,
         "schema_sha": schema_sha,
-        "sha": server_sha,
+        "sha": server_sha,  # the scoreboard matches a report to a branch head by this key
         "endpoint": f"POST {endpoint.path} ({endpoint.content_type})",
-        "transport": "solver shim (HTTP layer not tested)" if args.via_shim else "server API",
         "command": " ".join([sys.executable, "-m", "hsverify.e2e", *(argv or sys.argv[1:])]),
         # Latency on this shared Mac depends on what else runs; keep the load with the numbers.
         "load_average_1_5_15": [round(x, 1) for x in os.getloadavg()],

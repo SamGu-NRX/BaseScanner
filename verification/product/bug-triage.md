@@ -1,75 +1,116 @@
 # Suspected defects
 
-From the documents' open questions and [verification.md](verification.md), deduplicated. Source
-`21a63e7` (S3 integration commit) unless stated.
+Collected from every document's open questions and from [verification.md](verification.md),
+deduplicated. Source `t3/ios-mvf` at `0876e03` unless an entry names another commit; paths are
+under `ios/`. **Seen** means observed in the Simulator; **code** means read from the
+source and not run. Every blocker and major entry was re-read in the source by a second reader.
 
-| ID | Severity | Where the homeowner meets it | Decision |
-| --- | --- | --- | --- |
-| B-01 | Blocker | Uploading: every scan fails with 404 | fix (S3) |
-| B-02 | Major | Uploading: a failure shows raw server JSON | fix (S3) |
-| B-03 | Blocker | Camera denied, camera failure or unreadable replay: no message, no way on | fix (S3) |
-| B-04 | Blocker | Meter close-up: "Can't get a clear shot" may never appear | fix (S3) |
-| B-05 | Major, cause unconfirmed | Camera screens: cards render without text in Simulator screenshots | investigate (S3, S4) |
-| B-06 | Major | Walk at 20 ft: "Is this the left end?" has no truthful answer when the wall continues | product call |
-| B-07 | Minor | Photos of the home stay in the phone's cache after every scan | product call |
+| ID | Severity | Where the homeowner meets it | Evidence | Decision |
+| --- | --- | --- | --- | --- |
+| B-03 | Blocker | Camera denied, camera failure, unreadable replay: no message, no way on | seen (replay) | fix |
+| B-04 | Blocker | Meter close-up: "Can't get a clear shot" may never appear | code | fix |
+| B-09 | Blocker | Feature list: "Add something" does nothing | code | fix |
+| B-06 | Major | Walk: wall ends can't be recorded truthfully | code | product call |
+| B-08 | Major | "Can't get there" is never sent to the server | code | fix (with S2) |
+| B-10 | Major | Result, upload or list: the scan resets after 20 s of relocalizing | code | fix |
+| B-11 | Major | Meter tap can land on another wall's extended plane | code | fix |
+| B-12 | Major | "Capture it now" past a wall end turns it unexplored; a request beyond a marked end can't finish | code | fix |
+| B-02 | Major | Upload and camera failures show raw error text | seen at `21a63e7` | fix |
+| B-13 | Minor | 3D and AR tint zones stop one battery width short | code | fix |
+| B-14 | Minor | Result rule lines hide whether a limit is a minimum or maximum | seen | fix |
+| B-15 | Minor | AR view does not say a sample result is a sample | seen | fix |
+| B-16 | Minor | Wording and VoiceOver: "Tap the ac unit"; "ft" and "in" read as letters | seen in part | fix |
+| B-01 | Resolved | Every upload failed with 404 | seen fixed at `0876e03` | none |
+| B-05 | Resolved | Camera-screen text missing at `21a63e7` | seen fixed | none |
+| B-07 | Minor | Scan photos are never deleted from the phone | code | product call |
 
-## B-01. The app uploads to a route the server does not have
+## Blockers
 
-- **What happens.** The app posts the scan to `POST {serverURL}/v1/scenes`; the server serves
-  `POST /v1/placements`. Every upload fails with 404.
-- **Evidence.** Server log: `"POST /v1/scenes HTTP/1.1" 404 Not Found`. The same bundle posted to
-  `/v1/placements` as `application/zip` returns 200 with a result, and passes every check in
-  `hsverify/e2e.py` (report `20260926-041009-b04558df`).
-- **Cause.** `ios/HouseScan/Runtime/ResultClient.swift:27`; the comment above it calls the route a
-  placeholder. Contracts C1 and C2 fix the body and the answer but not the path.
+**B-03. Failures other than an unsupported phone never reach the screen.** Only the failure screen
+shows a failure, and the app switches to it only for an unsupported phone
+(`HouseScan/Runtime/ScanEngine.swift:91-93`). A denied camera, a failed session or an unreadable
+replay set the failure without changing screen (lines 105, 379, 381). The homeowner stays on
+"Find your electric meter" with no camera and taps do nothing; "Open Settings" is unreachable.
+Seen with `-replay /nonexistent`: the app logged "replay unreadable: cannot read
+/nonexistent/session.json" and stayed on onboarding (report
+`sim/20260926-044618-5520229-5520229d-preview-bad-replay`).
 
-## B-02. Upload failures show raw error text
+**B-04. The close-up's way out can fail to appear.** A failed try counts only when one problem
+lasts 4 s with no good frame in between (`HouseScanKit/.../Capture/CloseUpGate.swift`, `evaluate`),
+and the photo needs 0.6 s of good frames in a row. Frames that alternate between good and blurry
+satisfy neither, so "Can't get a clear shot" never appears. S3's full-flow test cannot catch it:
+its autopilot calls skip directly. Suggested: count a failed try per 4 s without a photo.
 
-- **What happens.** "That didn't go through" is followed by `The server answered 404:
-  {"error":{"code":"not_found",...}}`.
-- **Cause.** `ios/HouseScan/UI/Copy/ScanCopy.swift`, `upload(_:)` puts the error's description in
-  the detail line; `Runtime/ScanEngine.swift` passes `String(describing: error)`.
-- **Expected.** Plain words ("We couldn't reach the server. Your scan is saved; try again.") and
-  the "Try again" button, which the screenshot does not show (see B-05).
+**B-09. "Add something" on the feature list does nothing.** The six chips start a mark
+(`HouseScan/UI/Screens/MarkFeaturesScreen.swift:64`), but the list never shows marking: the circle,
+prompt and Mark button exist only on the walk (`WallWalkScreen.swift:28-45`). The homeowner taps a
+chip and nothing visible happens; "Looks complete" then uploads without it. Adding a missed
+feature is what this screen is for.
 
-## B-03. Failures other than an unsupported phone never reach the screen
+## Major
 
-- **What happens.** Only the `unsupported` screen shows a failure, and the app switches to it only
-  when motion tracking is unsupported. A denied camera, a failed camera session or an unreadable
-  replay records the failure and stays on the current screen.
-- **Cause.** `Runtime/ScanEngine.swift:89, 93, 338, 340`.
-- **Reproduce.** Launch with `-replay /nonexistent`: expected "This recording can't be opened";
-  predicted from code: onboarding, then a camera screen with nothing on it. Not yet run.
+**B-06. Wall ends can't be recorded truthfully.** "Wall ends here" is offered only while the walk
+asks "Is this the left end of the wall?", which happens only at 6.1 m of coverage
+(`HouseScanKit/.../Guidance/GuidancePlanner.swift`, `preferredTask`), and "Can't get there" is not
+offered then (`WallWalkScreen.swift:105`, `asksForArea`). A wall that ends at 10 ft can only be recorded as
+unexplored; one that continues past 20 ft only as a real end, which lets the server reject the
+site. Decision needed: offer "Wall ends here" whenever an end is in view, and a third answer at
+20 ft ("The wall keeps going") recorded as unexplored.
 
-## B-04. The close-up's way out can fail to appear
+**B-08. "Can't get there" is never sent.** The upload carries only covered stretches and each end's
+kind (`HouseScan/Runtime/ScanEngine+Export.swift:48-58`, `HouseScanKit/.../Scene/SceneExport.swift`),
+so a stretch the homeowner can't reach looks to the server like one nobody looked at. The gap
+screen's hint promises "An installer will look at this part instead"; the server may ask for the
+same view again. C1 has no field for it, so this needs S2 and S3 together.
 
-- **What happens.** A failed try counts only when one problem lasts 4 s with no good frame between.
-  Frames that alternate between good and blurry neither fill the 0.6 s ring nor count a failure,
-  so "Can't get a clear shot" never appears.
-- **Cause.** `ios/HouseScanKit/Sources/HouseScanKit/Capture/CloseUpGate.swift`, `evaluate`.
-  S3's full-flow test cannot catch it: the autopilot calls the skip action directly.
-- **Suggested fix.** Count a failed try per 4 s on the screen without a photo.
+**B-10. The scan resets under the result.** The 20 s relocalization reset runs on every screen while
+the camera session runs (`ScanEngine.swift:189, 357-364`), including the feature list, the upload
+and the result, where no coaching is shown. After a call, the homeowner can come back to "Find your
+electric meter" with every photo, mark and the result gone. The reset also keeps a half-finished
+mark and the first close-up (`ScanEngine.swift:386-410`, `KeyframeStore.swift:79`).
 
-## B-05. Camera-screen chrome renders without its text in Simulator screenshots
+**B-11. The meter tap can guess a depth.** The raycast falls back to `existingPlaneInfinite`
+(`HouseScan/Runtime/LiveCapture.swift:76`): a tap at a meter whose wall is not detected yet can pin
+it on another wall's plane extended past its edge. The code's own comment says a tap never guesses a
+depth. The ground height also stays a guess (1.4 m below the phone) if no ground plane was seen at
+the tap (`ScanEngine+Actions.swift:48-57`).
 
-- **What happens.** On `meterCloseUp` and `wallWalk` the instruction card, the pills and the strip
-  are empty panels; on `markFeatures` the text is black on the camera image with no panel; on
-  `uploading` after a failure the emblem and button are not visible.
-- **Unknown.** Whether this is the app or the capture: screenshots were taken with `simctl io
-  screenshot` with the Simulator in light appearance, while camera screens force dark. Next: the
-  same screens captured from inside the app's process (XCUITest), and in dark appearance.
+**B-12. Requests past a wall end.** "Capture it now" on a past-end request first clears that end
+(`ScanEngine+Actions.swift:206-209`) and nothing sets it again, so the next upload reports the side
+as unexplored even after the homeowner looked past it, and the server can ask again. A server band
+request whose stretch lies beyond an end that is still marked can never fill: the coverage map
+records no cells past a marked end (`HouseScanKit/.../Coverage/CoverageMap.swift:113-118`), so its
+bar stays at 0% and "I can't get there" is the only way out.
 
-## B-06. The walk asks for a wall end at 20 ft whether or not the wall ends
+**B-02. Failures show raw error text.** "That didn't go through" is followed by the error's
+description, for example `The server answered 404: {"error":{"code":"not_found",...}}` (seen at
+`21a63e7`; same code at `5520229`: `UI/Copy/ScanCopy.swift:177`, `ScanEngine.swift:533, 560`). The
+camera-failure text does the same (`ScanCopy.swift:240`) once B-03 is fixed.
 
-- **What happens.** At 6.1 m of coverage the instruction is "Is this the left end of the wall?".
-  If the wall continues, the homeowner can only answer "Wall ends here" (recorded as a real end,
-  which lets the server reject) or "I can't get there" (an unexplored end).
-- **Cause.** `ios/HouseScanKit/Sources/HouseScanKit/Guidance/GuidancePlanner.swift`,
-  `preferredTask`. A third answer ("The wall keeps going") recorded as unexplored-beyond-reach
-  would be truthful.
+## Minor
 
-## B-07. Scan photos are never deleted
+- **B-13.** Tint zones in the 3D model and the AR view use the sweep's range of battery *start*
+  positions as if it were where the battery stands, so each ends one battery width short
+  (`ScanEngine+Export.swift:124`).
+- **B-14.** Seen on the sample result: "Measured 3 ft. The rule is 20 ft, and the measurement can be
+  off by about 4 in." A maximum reads like a minimum; the server's `comparison` and
+  `review_threshold_ft` are not used (`UI/Copy/ScanCopy.swift:210-218`).
+- **B-15.** The AR view says "Your battery could go here" over the sample result's spot without the
+  sample badge the result screen shows (`ResultARScreen.swift:43`). Seen in pass 2.
+- **B-16.** The AC unit prompt reads "Tap the ac unit", and VoiceOver hears "Mark ac unit" and
+  "Remove ac unit" (`ScanCopy.swift:122`, `WallWalkScreen.swift:258`, `MarkFeaturesScreen.swift:121`;
+  "Add ac unit" seen in the accessibility audit).
+  Distances are spoken as "ft" and "in" in the 3D description and measurement lines, though
+  `Distance.spoken` exists (`ResultScene3D.swift:296-321`, `ResultScreen.swift:237`).
+- **B-07.** Each scan's photos stay in `Caches/Scans/<id>/` after upload, Start over or relaunch;
+  `discardKeyframes` forgets the list but not the files (`KeyframeStore.swift:79`).
+- **B-01 (resolved).** Until `0876e03` the app posted to `/v1/scenes`, which the server does not
+  serve, and every upload failed with 404. At `0876e03` it posts to `/v1/placements`: seen `POST
+  /v1/placements 200` and a result (report `sim/20260926-050058-t3-ios-mvf-0876e03c-replay`).
+- **B-05 (resolved).** At `21a63e7` the camera screens' cards rendered without text; at `5520229` the
+  same capture shows every word. The UI lane added the missing colour assets.
 
-- **What happens.** Each scan writes its photos to `Caches/Scans/<id>/`; nothing deletes them
-  after upload, Start over or relaunch. iOS may purge caches, but only under storage pressure.
-- **Cause.** `ios/HouseScan/Runtime/KeyframeStore.swift:25`.
+Smaller notes stay in each document's open questions: refusal wording on the meter tap, "Wall ends
+here" aiming at a circle that is not drawn, the kind picker sliding under Reduce Motion, two taps on
+"Can't get there" finishing an empty walk, and the result appearing more than 1.2 s after the app
+logs it on first load.

@@ -6,8 +6,8 @@ checks hold for any policy and any rule values, so they can run on every respons
 - decision consistency: what `pass`, `reject` and `manual_review` each require of the rest
   of the record;
 - the margin rule: a check's outcome must follow from its measurement, error and threshold
-  (PASS only when the margin beats the error, FAIL only when past the threshold by more
-  than the error, otherwise UNSURE);
+  (PASS only when the margin beats the error, and clears the review line when the check has
+  one; FAIL only when past the threshold by more than the error; otherwise UNSURE);
 - coverage: no battery position whose wall stretch, cable route or ground was never observed
   may pass, and nothing may ask for photos of an area the scene says was observed;
 - bookkeeping: counts add up, the input hash matches what was sent, the spot's offset from

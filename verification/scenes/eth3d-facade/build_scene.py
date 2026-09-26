@@ -24,6 +24,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import jsonschema
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -410,10 +411,6 @@ def extent_end(plan, h, c, d, rough_end, side):
     return c + te * d
 
 
-def chain_segments(walls):
-    return [(w.p0, w.p1, w.id) for w in walls]
-
-
 def seg_cross(a, b, c, d):
     def orient(p, q, r):
         return np.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]))
@@ -588,8 +585,9 @@ def measure_feature(feat, kfs_by_name, walls_by_id):
             )
         X = backproject(kfs_by_name[img], wall, [pts[r] for r in POINT_ROLES])
         s = wall.s_of(X[:, [0, 2]])
-        per_image[img] = np.array([s[0], s[1], X[2, 1], X[3, 1]])
-        if not (per_image[img][0] < per_image[img][1] and per_image[img][2] < per_image[img][3]):
+        s_left, s_right, bottom, top = s[0], s[1], X[2, 1], X[3, 1]
+        per_image[img] = np.array([s_left, s_right, bottom, top])
+        if not (s_left < s_right and bottom < top):
             raise SystemExit(f"{feat['label']} @ {img}: left/right or bottom/top came out swapped")
     vals = np.array(list(per_image.values()))
     mean = vals.mean(0)
@@ -598,6 +596,10 @@ def measure_feature(feat, kfs_by_name, walls_by_id):
 
 
 # --------------------------------------------------------------------------------------------
+
+
+def round3(a):
+    return [round(float(x), 3) for x in a]
 
 
 def main():
@@ -766,14 +768,17 @@ def main():
             observed.append(entry)
 
     # 7. Assemble ----------------------------------------------------------------------------
-    r3 = lambda a: [round(float(x), 3) for x in a]  # noqa: E731
     scene = {
         "schema_version": "1.0",
-        "meter": {"pos": r3(meter_pos), "wall_id": wm.id, "plus_minus_ft": mt["plus_minus_ft"]},
+        "meter": {
+            "pos": round3(meter_pos),
+            "wall_id": wm.id,
+            "plus_minus_ft": mt["plus_minus_ft"],
+        },
         "walls": [
             {
                 "id": w.id,
-                "baseline": [r3(w.p0), r3(w.p1)],
+                "baseline": [round3(w.p0), round3(w.p1)],
                 "height_ft": w.height_ft,
                 "plus_minus_ft": round(max(0.1, 3 * w.fit_rms_ft), 2),
             }
@@ -840,10 +845,11 @@ def main():
         i1, i2 = feat["left_is_bottom_left_corner_in"]
         wall = walls_by_id[feat["wall_id"]]
         X = backproject(kfs_by_name[i1], wall, [feat["points_px"][i1]["left"]])
-        u, v, _ = kfs_by_name[i2].project(X)
-        cu, cv = feat["points_px"][i2]["left"]
         k2 = kfs_by_name[i2]
+        u, v, _ = k2.project(X)
+        cu, cv = feat["points_px"][i2]["left"]
         px_ft = k2.K[0] / float(-((X[0] - k2.C) @ k2.R_c2w)[2])  # pixels per foot at that depth
+        err_px = float(np.hypot(u[0] - cu, v[0] - cv))
         repro.append(
             {
                 "label": feat["label"],
@@ -851,8 +857,8 @@ def main():
                 "into": i2,
                 "predicted_px": [round(float(u[0]), 1), round(float(v[0]), 1)],
                 "clicked_px": [cu, cv],
-                "err_px": round(float(np.hypot(u[0] - cu, v[0] - cv)), 1),
-                "err_ft_at_wall": round(float(np.hypot(u[0] - cu, v[0] - cv) / px_ft), 2),
+                "err_px": round(err_px, 1),
+                "err_ft_at_wall": round(err_px / px_ft, 2),
             }
         )
     report["reprojection"] = repro
@@ -865,8 +871,6 @@ def main():
         draw_overlays(out, kfs, walls, ann, kfs_by_name, walls_by_id)
 
     if args.schema:
-        import jsonschema
-
         jsonschema.validate(scene, json.loads(args.schema.read_text()))
         print(f"scene.json validates against {args.schema}")
 

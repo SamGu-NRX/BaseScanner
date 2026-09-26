@@ -120,7 +120,6 @@ def polyline_wall(wall_id, s_start, segments):
         x, z = pts[-1]
         pts.append((x + length * math.cos(a), z + length * math.sin(a)))
         s_marks.append(s_marks[-1] + length)
-    # Find the point at s = 0 and shift it to the origin.
     for i in range(len(segments)):
         if s_marks[i] <= 0 <= s_marks[i + 1]:
             t = (0 - s_marks[i]) / (s_marks[i + 1] - s_marks[i])
@@ -418,7 +417,7 @@ case(
 )
 
 # g11b: both walls walked to real ends, every start fails gas.
-z1 = D + 1.0
+strip_out = D + 1.0
 g11b = {
     "schema_version": "1.0",
     "meter": meter(0.0, 0.0),
@@ -427,8 +426,8 @@ g11b = {
         {"id": "w2", "baseline": [[8, 0], [8, -6]], "plus_minus_ft": 0.0},
     ],
     "objects": [
-        gas("w1", (-3, 8), rect(-10, 12, z1, z1 + 0.5)),
-        gas("w2", (8, 14), [[8 + z1, -10], [8 + z1 + 0.5, -10], [8 + z1 + 0.5, 3], [8 + z1, 3]]),
+        gas("w1", (-3, 8), rect(-10, 12, strip_out, strip_out + 0.5)),
+        gas("w2", (8, 14), rect(8 + strip_out, 8 + strip_out + 0.5, -10, 3)),
     ],
     "ground": [concrete([[-3, 0], [8, 0], [8, -6], [18, -6], [18, 10], [-3, 10]])],
     "facing": [facing("w1", (-3, 8)), facing("w2", (8, 14))],

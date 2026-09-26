@@ -10,17 +10,14 @@ wrong is collected in [bug-triage.md](bug-triage.md).
 - **Surface.** The HouseScan app, one run of the homeowner flow from onboarding to the result,
   default settings. The ARKit camera cannot run in the Simulator, so behavior that needs the live
   camera is described from code and marked unverified.
-- **Source.** `t3/ios-mvf` has not received the app yet. The source is S3's local integration
-  commit `21a63e7` (engine lane `e72d14b` merged with UI lane `1dcbf36` onto `6885b7b`). Every
-  document's footer cites it. When `t3/ios-mvf` receives the app, the documents are rechecked
-  against that commit and the footers updated.
-- **How it is run.** `make sim REF=21a63e7 ARGS="--replay <session> --autopilot --server-url
-  <url> --extra-arg=-autopilotHold --extra-arg=3"` from `verification/`, with the server from
-  `t3/server` running at the URL. The replay is `advio-20-0040-0075` (C3).
+- **Source.** `t3/ios-mvf` at `0876e03`, which has the engine and the UI lane's screens. Every
+  footer cites it.
+- **How it is run.** `make sim-app REF=<commit>` from `verification/`: the real ADVIO replay
+  `advio-20-0040-0075` (C3), the autopilot, and the server started from `t3/server`.
 - **Out of scope.** The `-uiDemo` screens (a design preview, not the product), TestFlight
   signing, the server's placement logic (checked by `hsverify/e2e.py`).
-- **Not yet built.** Panel close-ups, homeowner questions other than "does this window open",
-  and "Point at the meter like this" after an interruption. They are not described.
+- **Not yet built.** Panel close-ups and homeowner questions other than "does this window open".
+  They are not described.
 
 ## Shape of every document
 
@@ -49,7 +46,7 @@ Type, Reduce Motion); haptics and motion; verification hooks (`STATE=` logs, rep
 
 Each document then has Summary, The simple case, The interaction (with one
 `stateDiagram-v2`), Modifiers, Cancel and interrupt, Interactions with other systems, Edge cases,
-and Open questions and verification, ending with `Verified against house-scanning commit 21a63e7`.
+and Open questions and verification, ending with the commit it was verified against.
 [screens/meter-close-up.md](screens/meter-close-up.md) is the pilot every other document copies.
 
 ## Writing rules
@@ -65,15 +62,15 @@ and Open questions and verification, ending with `Verified against house-scannin
 
 | Document | What it covers | Status |
 | --- | --- | --- |
-| [foundations/flow.md](foundations/flow.md) | The screens in order, what moves between them, the launch options, Start over, failures | drafted |
-| [foundations/coverage-and-guidance.md](foundations/coverage-and-guidance.md) | The coverage strip, when a photo is kept, the one instruction and what overrides it | drafted |
-| [screens/onboarding.md](screens/onboarding.md) | The intro pages and the failure screens (camera off, unsupported phone, unreadable replay) | not started |
-| [screens/find-meter.md](screens/find-meter.md) | Finding the meter and tapping it to set the wall | not started |
-| [screens/meter-close-up.md](screens/meter-close-up.md) | The self-timed meter photo (pilot) | drafted; checked on the replay |
-| [screens/wall-walk.md](screens/wall-walk.md) | Walking the wall, marking its ends, "I can't get there" | not started |
-| [screens/mark-features.md](screens/mark-features.md) | Marking gas meters, doors, windows, AC units, driveways and fences; the window question | not started |
-| [screens/gap-request.md](screens/gap-request.md) | One targeted extra view, from the phone or the server | not started |
-| [screens/uploading.md](screens/uploading.md) | Sending the scan and waiting for the result, offline and failure | not started |
-| [screens/result.md](screens/result.md) | The result, its checks and the 3D and AR views | not started |
-| [verification.md](verification.md) | Checks against the running app and their results | pass 1 recorded |
-| [bug-triage.md](bug-triage.md) | Every suspected defect, deduplicated | 7 entries |
+| [foundations/flow.md](foundations/flow.md) | The screens in order, what moves between them, the launch options, Start over, failures | drafted; checked in the Simulator |
+| [foundations/coverage-and-guidance.md](foundations/coverage-and-guidance.md) | The coverage strip, when a photo is kept, the one instruction and what overrides it | drafted; checked in the Simulator |
+| [screens/onboarding.md](screens/onboarding.md) | The intro pages and the failure screens (camera off, unsupported phone, unreadable replay) | drafted; checked in the Simulator |
+| [screens/find-meter.md](screens/find-meter.md) | Finding the meter and tapping it to set the wall | drafted; checked in the Simulator |
+| [screens/meter-close-up.md](screens/meter-close-up.md) | The self-timed meter photo (pilot) | drafted; checked in the Simulator |
+| [screens/wall-walk.md](screens/wall-walk.md) | Walking the wall, marking its ends, "I can't get there" | drafted; checked in the Simulator |
+| [screens/mark-features.md](screens/mark-features.md) | Marking gas meters, doors, windows, AC units, driveways and fences; the window question | drafted; checked in the Simulator |
+| [screens/gap-request.md](screens/gap-request.md) | One targeted extra view, from the phone or the server | drafted; checked in the Simulator |
+| [screens/uploading.md](screens/uploading.md) | Sending the scan and waiting for the result, offline and failure | drafted; checked in the Simulator |
+| [screens/result.md](screens/result.md) | The result, its checks and the 3D and AR views | drafted; checked in the Simulator |
+| [verification.md](verification.md) | Checks against the running app and their results | current pass at `0876e03` |
+| [bug-triage.md](bug-triage.md) | Every suspected defect, deduplicated | 16 entries, 2 resolved |

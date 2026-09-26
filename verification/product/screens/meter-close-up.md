@@ -14,7 +14,7 @@ failed try.
 The circle appears in the middle of the camera view and the instruction reads "Hold your meter in
 the circle", with "Your phone takes the photo by itself." The homeowner points the phone at the
 meter from within about 1.5 m. While everything is right the circle's ring fills; after 0.6 s of
-holding still it is full, the screen flashes white, a check mark appears in the circle and the
+holding still it is full, the camera image flashes white under the words, a check mark appears in the circle and the
 photo shrinks into the counter at the top right. About 1.2 s later the walk begins
 ([the wall walk](wall-walk.md)).
 
@@ -101,7 +101,8 @@ meter close-up and an installer reads the meter instead.
 ## Interactions with other systems
 
 **Coverage and evidence.** The close-up is not a walk photo and covers no cells. **Stored
-photos.** Saved as the scan's meter close-up and uploaded with it. **Upload and offline.** No
+photos.** Saved as the scan's meter close-up and uploaded with it. The walk shows it again
+while the phone is finding its place ([the wall walk](wall-walk.md#while-capturing)). **Upload and offline.** No
 effect here. **Accessibility.** The circle is one element with a spoken progress value; the fix
 appears as a label; the button carries the hint "Skips the close-up. An installer will read the
 meter instead." **Haptics and motion.** A success haptic as the screen opens (the meter is
@@ -131,4 +132,4 @@ failed attempts" when the homeowner skips.
   its text in that screenshot; see [verification](../verification.md).
 - The circle-versus-image mismatch above is read from code; it needs a device to confirm.
 
-Verified against house-scanning commit `21a63e7`.
+Verified against house-scanning commit `0876e03` (t3/ios-mvf).
