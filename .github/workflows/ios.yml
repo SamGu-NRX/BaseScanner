@@ -23,7 +23,7 @@ jobs:
     name: iOS build
     # macos-26 (arm64) is the newest GA macOS image. The xcode-27 image is still a preview.
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       # Newest stable Xcode on macos-26 per images/macos/macos-26-arm64-Readme.md (image 20260907).
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
@@ -69,7 +69,30 @@ jobs:
             exit 1
           fi
 
+      - name: Test HouseScanKit
+        # The capture logic is a plain Swift package; its tests run on macOS without a Simulator.
+        run: swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
+
       - name: Build
         run: >-
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
           -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
+
+      - name: UI test the whole flow in the Simulator
+        # Replays the committed synthetic wall (ios/HouseScanUITests/Fixtures/synthetic-wall) with
+        # -autopilot and the bundled sample result. iPhone 17 on iOS 26.5 ships with Xcode 26.6 on
+        # macos-26 (images/macos/macos-26-arm64-Readme.md).
+        run: >-
+          xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
+          -destination "platform=iOS Simulator,name=iPhone 17,OS=26.5"
+          -resultBundlePath "$RUNNER_TEMP/HouseScanUITests.xcresult"
+          -only-testing:HouseScanUITests test
+
+      - name: Keep UI test screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-test-results
+          path: ${{ runner.temp }}/HouseScanUITests.xcresult
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,244 @@
+import Foundation
+import HouseScanKit
+import OSLog
+import simd
+
+extension ScanEngine {
+    /// scene.json for the current scan (contract C1).
+    ///
+    /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
+    /// server reads heights (meter.pos y, pose translations) as height above that ground, and
+    /// scene.json has no field for the ground's height otherwise.
+    func sceneJSON() throws -> Data {
+        guard let map = coverage else { throw ExportError.noWall }
+        let wall = map.wall
+        let drop = SIMD3<Float>(0, wall.groundY, 0)
+        let sceneWall = SceneWall(meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
+
+        let seen = map.seenExtent
+        let low = min(map.leftEnd ?? min(seen?.lowerBound ?? -1, -1), -0.1)
+        let high = max(map.rightEnd ?? max(seen?.upperBound ?? 1, 1), 0.1)
+
+        // SceneExport rejects negative heights, a top below a bottom, ground points behind the
+        // wall and a zero-length driveway edge, and taps can produce each of them once the ground
+        // or the meter anchor moves after the tap (a window tapped wholly below a guessed ground,
+        // a fence foot that ends up behind the refined wall line). Such marks are clamped to the
+        // nearest valid shape here and logged. A driveway or fence with nothing valid left fails
+        // the export instead (`ExportError.markCollapsed`): dropping it would send the ground
+        // near it as seen and clear, which can pass its clearance check with the hazard unsent.
+        let features: [SceneFeature] = try state.features.map { feature in
+            let points = feature.points.map { $0 - drop }
+            switch feature.kind {
+            case .door, .window:
+                let heights = [feature.bottom ?? 0, feature.top ?? 0]
+                let bottom = max(0, heights.min() ?? 0)
+                let top = max(bottom, heights.max() ?? 0)
+                if bottom != feature.bottom || top != feature.top {
+                    RuntimeLog.engine.info("export: \(feature.kind.rawValue, privacy: .public) heights \(feature.bottom ?? .nan)...\(feature.top ?? .nan) clamped to \(bottom)...\(top)")
+                }
+                return .opening(kind: feature.kind == .door ? .door : .window, span: feature.span, bottom: bottom, top: top,
+                                operable: feature.kind == .window ? feature.opens : nil)
+            case .gasMeter:
+                return .pointObject(kind: .gasMeter, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
+            case .acUnit:
+                return .pointObject(kind: .ac, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
+            case .fence:
+                return .fence(foot: try Self.groundLine(feature, points, wall: sceneWall))
+            case .driveway:
+                return .driveway(edge: try Self.groundLine(feature, points, wall: sceneWall))
+            }
+        }
+
+        let keyframes = store.keyframes.map { stored -> SceneKeyframe in
+            var pose = stored.camera.cameraToWorld
+            pose.columns.3.y -= wall.groundY
+            return SceneKeyframe(
+                id: stored.id, cameraToWorld: pose, intrinsics: stored.camera.intrinsics,
+                w: Int(stored.camera.imageSize.x), h: Int(stored.camera.imageSize.y), img: stored.fileName
+            )
+        }
+
+        // A guessed ground puts the same error into every height in the scene. scene.json has no
+        // field for "the ground was estimated", so the error bars say it instead.
+        let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
+        let input = SceneInput(
+            wall: sceneWall,
+            baselineS: low...high,
+            meterPlusMinus: groundError,
+            meterPlane: meterPlaneSource,
+            objectPlusMinus: groundError,
+            features: features,
+            coverage: SceneCoverage(
+                map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
+            ),
+            keyframes: keyframes,
+            stills: store.stills
+        )
+        return try SceneExport.jsonData(input)
+    }
+
+    /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held
+    /// for scanning sit roughly 1.1 to 1.7 m up, so ±0.3 m. A hypothesis; no measured spread exists.
+    static let estimatedGroundError: Float = 0.3
+
+    /// A ground point on or behind the wall line moved to 1 mm in front of it, keeping its s. The
+    /// millimetre keeps float round-off from turning an on-the-line point into a negative depth.
+    private static func inFront(of wall: SceneWall, _ point: SIMD3<Float>) -> SIMD3<Float> {
+        let c = wall.wallCoordinates(of: point)
+        return c.out >= 0.001 ? point : wall.world(s: c.s, height: c.height, out: 0.001)
+    }
+
+    /// The two ground points of a driveway edge or a fence foot, each moved in front of the wall.
+    /// Throws `markCollapsed` when they are not two points 1 cm apart in plan: a wall line refined
+    /// past both taps puts them on one point. SceneExport's own degenerate-edge tolerance is
+    /// 1e-3 ft; 1 cm keeps well clear of it.
+    private static func groundLine(_ feature: MarkedFeature, _ points: [SIMD3<Float>], wall: SceneWall) throws(ExportError) -> [SIMD3<Float>] {
+        let line = points.map { inFront(of: wall, $0) }
+        guard line.count == 2, simd_distance(SIMD2(line[0].x, line[0].z), SIMD2(line[1].x, line[1].z)) > 0.01 else {
+            RuntimeLog.engine.error("export: \(feature.kind.rawValue, privacy: .public) \(feature.id.uuidString, privacy: .public) has \(points.count) taps that don't make a line; asking for it to be marked again")
+            throw .markCollapsed(feature.kind)
+        }
+        return line
+    }
+
+    enum ExportError: Error, CustomStringConvertible {
+        case noWall
+        /// A driveway or fence whose taps no longer make a line. The homeowner has to mark it
+        /// again; `UploadFailure.packaging(_:)` says so.
+        case markCollapsed(FeatureKind)
+
+        var description: String {
+            switch self {
+            case .noWall: "There is no wall to export yet."
+            case .markCollapsed(let kind): "The \(kind.rawValue) mark's taps don't make a line."
+            }
+        }
+    }
+
+    /// The server's result in the terms the screens use (meters, wall coordinates).
+    func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
+        let meters: (Double) -> Float = { Float($0 * 0.3048) }
+        let sceneWall = coverage.map {
+            SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY, leftCorners: $0.wall.leftCorners, rightCorners: $0.wall.rightCorners)
+        }
+
+        var spot: BatterySpot?
+        if let placed = result.spot {
+            // Placed by its `span_ft`, its stretch in s along the wall chain, which the screens
+            // turn into world points piece by piece (`WallGeometry.world(s:)`), so a spot round a
+            // corner lands on the right piece and still moves with the meter's anchor. The meter
+            // offset split along the spot's own `along` gave s only on the meter's piece: past a
+            // corner it measured along the other piece's direction and drew the spot on the
+            // meter's wall. Both s and the depth below are frame-free, so the bundled sample (in
+            // its own frame) still means the same on any wall.
+            let low = meters(min(placed.spanFt.x, placed.spanFt.y))
+            let high = meters(max(placed.spanFt.x, placed.spanFt.y))
+            let depth = meters(placed.depthFt)
+            // How far the footprint's centre stands out from its back edge (back-left and
+            // back-right corners come first), along the spot's own outward: the gap to the wall
+            // is what exceeds half the depth. The server puts the back on the wall line. Decoding
+            // refuses a footprint without exactly four corners.
+            let d = placed.center - (placed.footprint[0] + placed.footprint[1]) / 2
+            let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
+            spot = BatterySpot(
+                span: low...high,
+                depth: depth, height: meters(placed.heightFt),
+                offsetFromWall: max(0, centerOut - depth / 2)
+            )
+        }
+
+        var route: [SIMD2<Float>] = []
+        if let cable = result.route {
+            let height = meters(cable.heightFt)
+            if let placed = result.spot {
+                // Relative to the meter's plan position in the result's own frame (the spot's
+                // centre minus its offset from the meter), along the result's own wall direction.
+                let meterPlan = placed.center - placed.meterOffsetFt
+                route = cable.polyline.map { point in
+                    let d = point - meterPlan
+                    return SIMD2(meters(d.x * placed.along.x + d.y * placed.along.y), height)
+                }
+            } else if let sceneWall {
+                route = cable.polyline.map { SIMD2(sceneWall.wallCoordinates(ofPlanPointFeet: $0).s, height) }
+            }
+        }
+
+        let checks = result.checks.map { check in
+            CheckRow(
+                id: check.id, title: check.label, outcome: Self.outcome(check.outcome), reason: check.reason,
+                // An UNSURE with no cause is unexplained, so a person has to look at it.
+                needsPerson: check.outcome == .unsure && (check.unsureCause.map { [.margin, .unknownAttribute, .ruleRequiresReview].contains($0) } ?? true),
+                measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters)
+            )
+        }
+
+        let depth = spot?.depth ?? 0.3
+        // A run's start_ft is a range of battery LEFT edges, so the wall it describes reaches one
+        // battery width past its last start. Only the spot carries the width; without a spot the
+        // zone is drawn over the starts alone, which understates it.
+        let width = spot.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
+        let clearances = result.sweep.enumerated().map { index, run in
+            let first = meters(min(run.startFt.x, run.startFt.y))
+            let last = meters(max(run.startFt.x, run.startFt.y))
+            return ClearanceZone(
+                id: "sweep-\(index)",
+                label: (run.failing + run.unsure).joined(separator: ", "),
+                outcome: Self.outcome(run.outcome),
+                span: first...(last + width),
+                depth: depth
+            )
+        }
+
+        let missing = result.missingEvidence.enumerated().map { index, item in
+            MissingEvidence(
+                id: "missing-\(index)", text: item.message,
+                // Only when a gap request can be built from it: a band item needs its span (and
+                // a facing item its out_ft, which a walk can reach), a past_end item its side.
+                // Otherwise the button would do nothing. A request the homeowner already skipped
+                // or answered with something overhead stays with the installer.
+                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd)
+                    .map { !skippedGaps.contains($0) } ?? false
+            )
+        }
+
+        var unseen: WallSide?
+        if let pastEnd = result.missingEvidence.first(where: { $0.kind == .pastEnd })?.side {
+            unseen = pastEnd == .left ? .left : .right
+        } else if result.ends.left.kind == .unexplored, result.ends.left.beyondReach != true {
+            // An end beyond cable reach can't hold the battery whatever lies past it.
+            unseen = .left
+        } else if result.ends.right.kind == .unexplored, result.ends.right.beyondReach != true {
+            unseen = .right
+        }
+
+        return ResultPresentation(
+            decision: Self.decision(result.decision),
+            summary: result.summary,
+            policyApproved: result.policy.autoApprove,
+            spot: spot,
+            cableRoute: route,
+            cableLength: result.route.map { meters($0.lengthFt) },
+            checks: checks,
+            clearances: clearances,
+            missing: missing,
+            unseenSide: unseen,
+            isSample: isSample
+        )
+    }
+
+    static func outcome(_ outcome: PlacementOutcome) -> CheckOutcome {
+        switch outcome {
+        case .pass: .pass
+        case .fail: .fail
+        case .unsure: .unsure
+        }
+    }
+
+    static func decision(_ decision: PlacementDecision) -> ResultPresentation.Decision {
+        switch decision {
+        case .pass: .pass
+        case .manualReview: .manualReview
+        case .reject: .reject
+        }
+    }
+}
