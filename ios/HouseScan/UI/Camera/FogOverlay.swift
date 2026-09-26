@@ -32,7 +32,7 @@ struct FogOverlay: View {
                 // reads on a white wall in sun as well as on dark brick. The canvas only
                 // decides where, and how thick.
                 Rectangle()
-                    .fill(.regularMaterial)
+                    .fill(.thinMaterial)
                     .environment(\.colorScheme, .light)
                     .mask {
                         Canvas(rendersAsynchronously: false) { context, size in
@@ -40,7 +40,7 @@ struct FogOverlay: View {
                         }
                     }
                 Canvas(rendersAsynchronously: false) { context, size in
-                    frame.drawHaze(in: &context, size: size, color: Color(white: 0.98).opacity(0.5))
+                    frame.drawHaze(in: &context, size: size, color: Color(white: 0.98).opacity(0.35))
                     frame.drawMarks(in: &context, size: size)
                 }
             }
@@ -68,13 +68,15 @@ struct FogOverlay: View {
 
     // MARK: Drawing
 
-    /// Haze strength per state. Hypothesis, picked by eye on the demo wall: unseen must read
-    /// as "not done" over a bright wall; seen must be visibly lighter than unseen but still
-    /// clearly not clear. Tune on device in sun.
+    /// Haze strength per state. Hypothesis, picked by eye on the demo wall and the synthetic
+    /// replay: unseen must read as "not done" over a bright wall; seen must be visibly lighter
+    /// than unseen but still clearly not clear. Full strength (with the regular material and a
+    /// 50% wash) whited out the wall the homeowner is walking toward, so unseen stays below it
+    /// and the wall's shapes show through. Tune on device in sun.
     nonisolated static func haze(_ state: CellState) -> Double {
         switch state {
-        case .unseen: 1
-        case .seen: 0.45
+        case .unseen: 0.75
+        case .seen: 0.35
         case .covered, .skipped: 0
         }
     }
