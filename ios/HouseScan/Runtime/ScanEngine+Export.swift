@@ -69,10 +69,12 @@ extension ScanEngine {
                 map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
             ),
             keyframes: keyframes,
-            stills: store.stills
+            stills: store.stills,
+            // Written without plus_minus_ft: the server takes its mesh error for both.
+            meshFacing: mesh.facing,
+            meshOverheads: mesh.overheads
         )
-        // Absent plus_minus_ft: the server takes its mesh error (0.5 ft) for both.
-        return try SceneExport.jsonData(input, facing: mesh.facing, overheads: mesh.overheads)
+        return try SceneExport.jsonData(input)
     }
 
     /// The stretch of wall the scene describes, meters of s: between the marked ends, or out to
@@ -92,16 +94,10 @@ extension ScanEngine {
         var overheads: [ObservedSpan] = []
     }
 
-    /// Measures a world-space mesh (meters) against the wall.
+    /// Measures a world-space mesh (meters) against the wall (world meters) over `span`, the
+    /// exported stretch of s.
     nonisolated static func measure(_ mesh: TriangleMesh, wall: WallFrame, over span: ClosedRange<Float>) -> MeshMeasurements {
-        MeshMeasurements(facing: facingDepth(mesh, wall: wall, over: span), overheads: overheadClearance(mesh, wall: wall, over: span))
-    }
-
-    /// The mesh in scene.json's frame, as mesh.ply stores it: the ground at the wall moved to
-    /// y = 0 like the keyframe poses, then meters to feet.
-    nonisolated static func sceneMesh(_ mesh: TriangleMesh, groundY: Float) -> TriangleMesh {
-        let feet = Float(SceneUnits.feetPerMeter)
-        return TriangleMesh(vertices: mesh.vertices.map { ($0 - SIMD3(0, groundY, 0)) * feet }, indices: mesh.indices)
+        MeshMeasurements(facing: mesh.facingSpans(wall: wall, over: span), overheads: mesh.overheadSpans(wall: wall, over: span))
     }
 
     /// Error of the chest-height ground guess (camera height minus 1.4 m), meters. Phones held

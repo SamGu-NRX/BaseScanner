@@ -291,8 +291,13 @@ extension ScanEngine: ScanActions {
             case .aimAtWall(let s):
                 updateCoverage { $0.markSkipped(.wall, (s - 0.5)...(s + 0.5)) }
             case .seeBehind(let s):
-                // Whatever is in the way can't be seen past: the hidden stretch goes to review.
-                for band in seeBehindBands { updateCoverage { $0.markSkipped(band, (s - 0.5)...(s + 0.5)) } }
+                // Whatever is in the way can't be seen past: its hidden cells go to review. Only
+                // those: open cells beside them can still be seen and stay asked for.
+                updateCoverage { map in
+                    for band in seeBehindBands {
+                        for index in ScanEngine.hiddenCells(map, band: band, around: s) { map.markSkipped(band, map.cellRange(index)) }
+                    }
+                }
             case .walk(let side, _), .markEnd(let side):
                 // The walk can't continue this way: stop the wall here, as an unexplored end.
                 let reach = GuidancePlanner().reach(side == .left ? .left : .right, coverage: map)

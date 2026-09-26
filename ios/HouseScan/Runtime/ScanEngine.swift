@@ -89,7 +89,8 @@ final class ScanEngine {
     static let maxAutomaticGaps = 5
 
     // LiDAR
-    /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`.
+    /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`: those with
+    /// hidden cells near its s (`hiddenCells(_:band:around:)`).
     private(set) var seeBehindBands: [SurfaceBand] = []
 
     // Tilt-up step and overhead requests
@@ -164,9 +165,10 @@ final class ScanEngine {
             let loaded = try await Task.detached(priority: .userInitiated) { try ReplayPlayer.load(folder: folder) }.value
             let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame) }
             replay = player
-            state.depthAvailable = !player.depth.isEmpty
+            let withDepth = player.frames.filter { $0.depth != nil }.count
+            state.depthAvailable = withDepth > 0
             player.show(index: 0)
-            RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, \(player.depth.count) with depth, wall \(player.wallDescription, privacy: .public)")
+            RuntimeLog.engine.info("replay \(player.session.id, privacy: .public): \(player.frames.count) frames, \(withDepth) with depth, wall \(player.wallDescription, privacy: .public)")
         } catch {
             RuntimeLog.engine.error("replay unreadable: \(String(describing: error), privacy: .public)")
             fail(.replayUnreadable(String(describing: error)))
@@ -552,7 +554,7 @@ final class ScanEngine {
             // The frame's own time lets the walked path join only poses kept close together in time.
             // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
             let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth)
-            RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
+            RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
@@ -621,6 +623,10 @@ final class ScanEngine {
     /// first open cell on its side, where the planner's reach stops, is hidden and the camera is
     /// `seeBehindPassed` beyond it: without this, a bush hiding the whole band leaves the walk
     /// saying "walk on" while its reach never moves.
+    ///
+    /// The planner raises `.seeBehind` itself when hidden cells lie near the camera; the step is
+    /// then about the bands holding hidden cells near its s. Nil when there are none, which leaves
+    /// no cell for "Can't see past it" to settle.
     private func hiddenBlock(_ task: GuidanceTask, _ map: CoverageMap, camera: CameraFrame) -> (s: Float, bands: [SurfaceBand])? {
         func open(_ band: SurfaceBand, _ index: Int) -> Bool {
             let level = map.level(band, index)
@@ -628,10 +634,13 @@ final class ScanEngine {
         }
         func mostlyHidden(_ band: SurfaceBand, around s: Float) -> Bool {
             let cells = map.indices(overlapping: (s - 0.3)...(s + 0.3)).filter { map.isWithinEnds($0) && open(band, $0) }
-            let hidden = cells.filter { map.isHidden(band, $0) }.count
+            let hidden = cells.filter { map.level(band, $0) == .hidden }.count
             return hidden > 0 && hidden * 2 >= cells.count
         }
         switch task {
+        case .seeBehind(let s):
+            let bands = SurfaceBand.allCases.filter { !Self.hiddenCells(map, band: $0, around: s).isEmpty }
+            return bands.isEmpty ? nil : (s, bands)
         case .aimAtGround(let s):
             return mostlyHidden(.ground, around: s) ? (s, [.ground]) : nil
         case .aimAtWall(let s):
@@ -639,7 +648,7 @@ final class ScanEngine {
         case .walk(let side):
             let reach = planner.reach(side, coverage: map)
             let index = map.cellIndex(forS: side.sign * (reach + map.config.cellWidth / 2))
-            let bands = SurfaceBand.allCases.filter { open($0, index) && map.isHidden($0, index) }
+            let bands = SurfaceBand.allCases.filter { map.level($0, index) == .hidden }
             let beyond = side.sign * map.wall.wallPoint(camera.position).s - reach
             guard !bands.isEmpty, beyond >= Self.seeBehindPassed else { return nil }
             let cell = map.cellRange(index)
@@ -647,6 +656,17 @@ final class ScanEngine {
         case .markEnd, .stepBack, .complete:
             return nil
         }
+    }
+
+    /// How far either side of a see-behind step's s its hidden cells are looked for: 1 m, the
+    /// half-width of the window around the camera in which the planner looks for them
+    /// (`GuidancePlanner.preferredTask`).
+    static let seeBehindReach: Float = 1
+
+    /// The hidden cells of `band` within `seeBehindReach` of `s`: what the see-behind step asks
+    /// to see past, and what "Can't see past it" hands to review.
+    static func hiddenCells(_ map: CoverageMap, band: SurfaceBand, around s: Float) -> [Int] {
+        map.indices(overlapping: (s - seeBehindReach)...(s + seeBehindReach)).filter { map.level(band, $0) == .hidden }
     }
 
     /// A frame shown for review (not captured) keeps the current task but re-aims its target and
@@ -1007,8 +1027,8 @@ final class ScanEngine {
         state.coverage = CoverageStrip(
             cellWidth: map.config.cellWidth,
             firstCellS: map.cellRange(indices.lowerBound).lowerBound,
-            wall: indices.map { Self.cellState(map, .wall, $0) },
-            ground: indices.map { Self.cellState(map, .ground, $0) },
+            wall: indices.map { Self.cell(map.level(.wall, $0)) },
+            ground: indices.map { Self.cell(map.level(.ground, $0)) },
             wallBandHeight: map.config.wallBandHeight,
             groundBandDepth: map.config.groundBandDepth,
             visibleRange: range,
@@ -1187,10 +1207,9 @@ final class ScanEngine {
             state.upload = UploadFailure.packaging(error)
             return
         }
-        // The same ground as scene.json's, read in the same main-actor turn.
-        var sceneMesh: TriangleMesh?
-        if let mesh, let groundY = coverage?.wall.groundY { sceneMesh = Self.sceneMesh(mesh, groundY: groundY) }
-        saveBundle(scene: scene, sceneMesh: sceneMesh)
+        // mesh.ply is in scene.json's frame: the same ground, read in the same main-actor turn.
+        let sceneMesh = mesh.flatMap { mesh in coverage.map { (mesh: mesh, groundY: $0.wall.groundY) } }
+        saveBundle(scene: scene, mesh: sceneMesh)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
@@ -1258,7 +1277,7 @@ final class ScanEngine {
     /// it or fails because of it. The zip is rewritten in place, so it is not offered while a
     /// write is under way, and writes run one after another: a retry's write waits for the last
     /// one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data, sceneMesh: TriangleMesh?) {
+    private func saveBundle(scene: Data, mesh: (mesh: TriangleMesh, groundY: Float)?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
@@ -1269,8 +1288,8 @@ final class ScanEngine {
             await previous?.value
             guard scan == generation, serial == bundleSerial else { return }
             do {
-                let bundle = try await store.writeBundle(sceneJSON: scene, sceneMesh: sceneMesh)
-                RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(store.keyframes.count) keyframes, \(store.keyframes.filter { $0.depth != nil }.count) with depth, \(sceneMesh == nil ? "no mesh" : "mesh", privacy: .public) (kept on the phone)")
+                let bundle = try await store.writeBundle(sceneJSON: scene, mesh: mesh)
+                RuntimeLog.engine.info("bundle \(bundle.path, privacy: .public) with \(store.keyframes.count) keyframes, \(store.keyframes.filter { $0.depth != nil }.count) with depth, \(mesh == nil ? "no mesh" : "mesh", privacy: .public) (kept on the phone)")
                 guard scan == generation, serial == bundleSerial else { return }
                 state.shareableScan = bundle
             } catch {
@@ -1369,16 +1388,13 @@ final class ScanEngine {
 // MARK: - Mapping to contract values
 
 extension ScanEngine {
-    static func cellState(_ map: CoverageMap, _ band: SurfaceBand, _ index: Int) -> CellState {
-        map.isHidden(band, index) ? .hidden : cell(map.level(band, index))
-    }
-
     static func cell(_ level: CoverageLevel) -> CellState {
         switch level {
         case .unseen: .unseen
         case .seen: .seen
         case .covered: .covered
         case .skipped: .skipped
+        case .hidden: .hidden
         }
     }
 
@@ -1389,6 +1405,7 @@ extension ScanEngine {
         case .aimAtGround(let s): .aimAtGround(s: s)
         case .aimAtWall(let s): .aimAtWall(s: s)
         case .stepBack: .stepBack
+        case .seeBehind(let s): .seeBehind(s: s)
         case .complete: .walkComplete
         }
     }

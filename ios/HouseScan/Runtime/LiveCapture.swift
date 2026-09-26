@@ -315,9 +315,10 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         return FrameQuality(LumaImage(sampling: raw, width: width, height: height, bytesPerRow: bytesPerRow, step: 8))
     }
 
-    /// The LiDAR depth map (Float32 meters, 256 x 192 on current iPhones) as whole millimeters,
-    /// with its confidence. The depth map covers the same view as the camera image at a lower
-    /// resolution, so its intrinsics are the camera's scaled by the size ratio on each axis.
+    /// The LiDAR depth map (Float32 meters, 256 x 192 on current iPhones) with its confidence,
+    /// converted by `DepthImage(meters:...)`. The depth map covers the same view as the camera
+    /// image at a lower resolution, so its intrinsics are the camera's scaled by the size ratio on
+    /// each axis (`DepthImage.intrinsics(scaling:...)`).
     private static func depthImage(_ data: ARDepthData, cameraIntrinsics k: SIMD4<Float>, imageSize: SIMD2<Float>) -> DepthImage? {
         let map = data.depthMap
         CVPixelBufferLockBaseAddress(map, .readOnly)
@@ -326,14 +327,11 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         let width = CVPixelBufferGetWidth(map)
         let height = CVPixelBufferGetHeight(map)
         let rowBytes = CVPixelBufferGetBytesPerRow(map)
-        var millimeters = [UInt16](repeating: 0, count: width * height)
+        guard width > 0, height > 0 else { return nil }
+        var meters = [Float](repeating: 0, count: width * height)
         for y in 0..<height {
             let row = UnsafeRawPointer(base).advanced(by: y * rowBytes)
-            for x in 0..<width {
-                let meters = row.loadUnaligned(fromByteOffset: x * 4, as: Float32.self)
-                // 0 means no reading. 65.535 m is far past LiDAR range, so the clamp never bites.
-                if meters.isFinite, meters > 0 { millimeters[y * width + x] = UInt16(min(meters * 1000, 65535).rounded()) }
-            }
+            for x in 0..<width { meters[y * width + x] = row.loadUnaligned(fromByteOffset: x * 4, as: Float32.self) }
         }
         var confidence: [UInt8]?
         if let levels = data.confidenceMap {
@@ -351,11 +349,9 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                 confidence = values
             }
         }
-        let sx = Float(width) / imageSize.x
-        let sy = Float(height) / imageSize.y
         return DepthImage(
-            width: width, height: height, millimeters: millimeters, confidence: confidence,
-            intrinsics: SIMD4(k.x * sx, k.y * sy, k.z * sx, k.w * sy)
+            meters: meters, width: width, height: height, confidence: confidence,
+            intrinsics: DepthImage.intrinsics(scaling: k, from: imageSize, toWidth: width, height: height)
         )
     }
 
