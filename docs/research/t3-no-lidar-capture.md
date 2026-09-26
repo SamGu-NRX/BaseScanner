@@ -79,7 +79,7 @@ Accept a measurement only when every gate, each a hypothesis, holds.
 
 `error` is a bound covering both boundaries and shared bias, not a one-sigma value. For a minimum clearance `T`:
 
-- PASS when `distance − error ≥ T`.
+- PASS when `distance − error > T`.
 - FAIL when `distance + error < T`.
 - UNSURE otherwise.
 
