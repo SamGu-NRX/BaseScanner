@@ -1,0 +1,180 @@
+name: TestFlight
+
+# Run by hand from the Actions tab. Never add pull_request or push triggers: this job holds an
+# App Store Connect key that can sign and upload builds for the whole team.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App to archive and upload
+        type: choice
+        options:
+          - house-scan
+          - measure-lab
+        default: house-scan
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-${{ inputs.app }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload ${{ inputs.app }} to TestFlight
+    runs-on: macos-26
+    timeout-minutes: 45
+    # Holds ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (secrets) and APPLE_TEAM_ID, BUNDLE_ID_PREFIX
+    # (variables). CONTRIBUTING.md > Distribution lists the setup.
+    environment: testflight
+    env:
+      # Same toolchain as .github/workflows/ios.yml; change both together.
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      XCODEGEN_VERSION: 2.46.0
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+      APP: ${{ inputs.app }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
+      # GitHub counts runs per workflow, so both apps share one increasing build number.
+      BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - name: Check secrets and variables
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          missing=0
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret $name is empty. Add it to the 'testflight' environment (Settings > Environments). See CONTRIBUTING.md > Distribution."
+              missing=1
+            fi
+          done
+          for name in APPLE_TEAM_ID BUNDLE_ID_PREFIX; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Variable $name is empty. Add it to the 'testflight' environment (Settings > Environments). See CONTRIBUTING.md > Distribution."
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          if ! [[ "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_TEAM_ID must be the 10-character Team ID from developer.apple.com > Membership details."
+            exit 1
+          fi
+          if ! [[ "$BUNDLE_ID_PREFIX" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+            echo "::error::BUNDLE_ID_PREFIX must be reverse-DNS, such as com.example.team."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select project
+        run: |
+          case "$APP" in
+            house-scan)  dir=ios;                     name=HouseScan ;;
+            measure-lab) dir=experiments/measure-lab; name=MeasureLab ;;
+            *) echo "::error::Unknown app '$APP'."; exit 1 ;;
+          esac
+          if [ ! -f "$dir/project.yml" ]; then
+            echo "::error::$dir/project.yml is not on $GITHUB_REF_NAME. Run the workflow from a branch that contains $APP."
+            exit 1
+          fi
+          {
+            echo "PROJECT_DIR=$dir"
+            echo "PROJECT_NAME=$name"
+          } >> "$GITHUB_ENV"
+
+      - name: Show toolchain
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not on this runner image. Pick an installed Xcode from the image readme."
+            exit 1
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+
+      # The build CI for each app fails on drift between project.yml and the committed project,
+      # so generating here only guards against a branch that skipped that check.
+      - name: Generate project
+        run: xcodegen generate --spec "$PROJECT_DIR/project.yml"
+
+      - name: Write App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          key="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          umask 077
+          if ! printf '%s' "$ASC_KEY_P8" | base64 --decode > "$key" 2>/dev/null \
+            || ! grep -q -- '-----BEGIN PRIVATE KEY-----' "$key"; then
+            rm -f "$key"
+            echo "::error::ASC_KEY_P8 is not a base64-encoded .p8 file. Store the output of: base64 -i AuthKey_<KEY_ID>.p8"
+            exit 1
+          fi
+          echo "ASC_KEY_PATH=$key" >> "$GITHUB_ENV"
+
+      - name: Archive
+        run: >-
+          xcodebuild archive
+          -project "$PROJECT_DIR/$PROJECT_NAME.xcodeproj"
+          -scheme "$PROJECT_NAME"
+          -configuration Release
+          -destination "generic/platform=iOS"
+          -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive"
+          -allowProvisioningUpdates
+          -authenticationKeyPath "$ASC_KEY_PATH"
+          -authenticationKeyID "$ASC_KEY_ID"
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
+          BUNDLE_ID_PREFIX="$BUNDLE_ID_PREFIX"
+          CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+
+      # destination=upload makes -exportArchive send the signed build to App Store Connect instead
+      # of writing an .ipa. manageAppVersionAndBuildNumber=false keeps the run number as the build.
+      - name: Export and upload
+        run: |
+          plist="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint "$plist"
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive" \
+            -exportOptionsPlist "$plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Uploaded $PROJECT_NAME build $BUILD_NUMBER. It appears in TestFlight after App Store Connect finishes processing." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove App Store Connect key
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
