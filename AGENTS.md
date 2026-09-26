@@ -34,5 +34,6 @@ The capture app is native Swift with ARKit and RealityKit in `ios/`, because Exp
 - `make check` runs every suite; `make ios`, `make server` and `make web` run one each. `CONTRIBUTING.md` lists the matching CI checks.
 - Branch from `main`, keep one writer per branch, and open a pull request. People merge; agents never push to `main` or merge.
 - Before editing files that an open pull request also changes, coordinate with its author.
+- Exit code 137 means the system killed the process, usually for memory. Find the allocation before rerunning; macOS swaps before it kills, so one runaway process can freeze the whole machine.
 - Don't pick a signing team in Xcode's Signing & Capabilities pane: it writes into `project.pbxproj` and fails the CI drift check. Put `DEVELOPMENT_TEAM` in `ios/Config/Local.xcconfig` instead (see `ios/README.md`).
 - After editing `ios/project.yml`, run `make ios-project` (needs XcodeGen 2.46.0) and commit the regenerated project.
