@@ -184,10 +184,8 @@ enum Map3DCoverageSource {
         // Each stretch of face with the height it was seen to (`Map3DCoverage.wallHeight`), not
         // only the stretches seen to headroom (`Map3DCoverage.wall`): the server credits each
         // entry against the height its check needs.
-        let wall = clip(coverage.wallHeight)
         return SceneCoverage(
-            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: wall.map(\.span),
-            ground: clip(coverage.ground), facing: clip(coverage.facing), overhead: clip(coverage.overhead),
-            wallSeenHeight: wall.map(\.out))
+            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: clip(coverage.wallHeight),
+            ground: clip(coverage.ground), facing: clip(coverage.facing), overhead: clip(coverage.overhead))
     }
 }

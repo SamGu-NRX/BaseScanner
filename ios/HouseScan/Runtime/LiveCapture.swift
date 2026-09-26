@@ -34,9 +34,9 @@ struct VerticalPlaneHit {
 
 /// The live ARKit source: RealityKit's ARView running world tracking with `.gravity` alignment and
 /// horizontal and vertical plane detection. On an iPhone with LiDAR it also turns on per-frame
-/// scene depth, which coverage uses to tell a wall from a bush in front of it, and the scene
-/// mesh with per-face classification, which the packet carries; without LiDAR it runs without
-/// either.
+/// scene depth, which coverage uses to tell a wall from a bush in front of it and the packet
+/// records with each photo and a few times a second between photos, and the scene mesh with
+/// per-face classification, which the packet carries; without LiDAR it runs without either.
 @MainActor
 final class LiveCapture {
     let arView: ARView
@@ -80,6 +80,9 @@ final class LiveCapture {
     struct Settings: Sendable {
         var sceneDepth: Bool
         var mesh: Bool
+        /// The mesh carries ARKit's per-face classification: `sceneReconstruction` included
+        /// `.meshWithClassification`, not only `.mesh`.
+        var meshClassification: Bool
         /// The camera's frame rate: the trajectory's nominal rate.
         var framesPerSecond: Int
     }
@@ -89,6 +92,7 @@ final class LiveCapture {
         return Settings(
             sceneDepth: running.frameSemantics.contains(.sceneDepth),
             mesh: running.sceneReconstruction.contains(.mesh),
+            meshClassification: running.sceneReconstruction.contains(.meshWithClassification),
             framesPerSecond: running.videoFormat.framesPerSecond
         )
     }
@@ -170,30 +174,35 @@ final class LiveCapture {
         return (0..<faces).map { base.load(fromByteOffset: $0 * source.stride, as: UInt8.self) }
     }
 
-    /// A plane anchor in world meters, copied off the session.
+    /// A plane anchor as ARKit reports it, copied off the session: world meters for the anchor,
+    /// the anchor's own coordinates for everything else. `PacketPlane.init(anchorToMeter:...)`
+    /// turns it into the packet's plane, whose pose sits at the extent's centre.
     struct PlaneSnapshot: Sendable {
         var id: String
         var vertical: Bool
         /// Nil for a class ARKit adds after iOS 26.
         var classification: PacketPlane.Classification?
-        /// Plane to world: the anchor's transform moved to the plane's center and turned by its
-        /// extent's rotation, so the extent runs along this pose's x and z.
-        var pose: simd_float4x4
+        /// `ARPlaneAnchor.transform`: anchor to world.
+        var anchorToWorld: simd_float4x4
+        /// `ARPlaneAnchor.center`, anchor coordinates.
+        var center: SIMD3<Float>
+        /// `ARPlaneExtent.rotationOnYAxis`, radians.
+        var rotationOnYAxis: Float
+        /// `ARPlaneExtent.width` and `height`.
         var extent: SIMD2<Float>
+        /// `ARPlaneGeometry.boundaryVertices`, anchor coordinates.
+        var boundary: [SIMD3<Float>]
     }
 
     /// Every plane ARKit has detected, as it stands now.
     func planeSnapshot() -> [PlaneSnapshot] {
         guard let anchors = arView.session.currentFrame?.anchors.compactMap({ $0 as? ARPlaneAnchor }) else { return [] }
         return anchors.map { plane in
-            let extent = plane.planeExtent
-            var center = matrix_identity_float4x4
-            center.columns.3 = SIMD4(plane.center, 1)
-            let turn = simd_float4x4(simd_quatf(angle: extent.rotationOnYAxis, axis: SIMD3(0, 1, 0)))
-            return PlaneSnapshot(
+            PlaneSnapshot(
                 id: plane.identifier.uuidString, vertical: plane.alignment == .vertical,
-                classification: Self.name(plane.classification), pose: plane.transform * center * turn,
-                extent: SIMD2(extent.width, extent.height)
+                classification: Self.name(plane.classification), anchorToWorld: plane.transform, center: plane.center,
+                rotationOnYAxis: plane.planeExtent.rotationOnYAxis,
+                extent: SIMD2(plane.planeExtent.width, plane.planeExtent.height), boundary: plane.geometry.boundaryVertices
             )
         }
     }
@@ -325,7 +334,6 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         let tracking = Self.tracking(frame.camera.trackingState)
         // Every frame's pose goes to the packet's trajectory, before any sampling.
         shared.recorder?.recordPose(t: frame.timestamp, tracking: TrackingCode(tracking), cameraToWorld: frame.camera.transform)
-        guard count % Self.poseEvery == 0 else { return }
         let intrinsics = frame.camera.intrinsics
         let resolution = frame.camera.imageResolution
         let camera = CameraFrame(
@@ -333,6 +341,10 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             intrinsics: SIMD4(intrinsics.columns.0.x, intrinsics.columns.1.y, intrinsics.columns.2.x, intrinsics.columns.2.y),
             imageSize: SIMD2(Float(resolution.width), Float(resolution.height))
         )
+        if let recorder = shared.recorder, tracking == .normal {
+            Self.recordDepthFrame(frame, camera: camera, into: recorder)
+        }
+        guard count % Self.poseEvery == 0 else { return }
         let meterAnchor = shared.meterAnchorID.flatMap { id in frame.anchors.first { $0.identifier == id }?.transform }
         guard count % Self.sampleEvery == 0 else {
             let pose = SourceFrame(
@@ -363,7 +375,9 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         if image != nil {
             snapshot.exposure = Self.exposure(frame)
             if let depth = frame.sceneDepth, let copied = Self.depthCopy(depth) {
-                snapshot.sensorDepth = copied
+                // The packet takes ARKit's depth only with its confidence (required from 1.1);
+                // coverage uses the map either way.
+                snapshot.sensorDepth = copied.confidence == nil ? nil : copied
                 snapshot.depth = DepthImage(
                     meters: copied.meters, width: copied.width, height: copied.height, confidence: copied.confidence,
                     intrinsics: DepthImage.intrinsics(scaling: camera.intrinsics, from: camera.imageSize, toWidth: copied.width, height: copied.height)
@@ -378,6 +392,20 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             }
             Task { @MainActor [onFrame] in onFrame(delivered) }
         }
+    }
+
+    /// A depth frame for the packet: LiDAR depth between photos, a few a second, from frames with
+    /// normal tracking, so each sits on the trajectory with a pose worth fusing. The recorder's
+    /// budget decides first, so a frame it would drop is never copied. The intrinsics are the
+    /// camera's scaled to the depth map's grid, which covers the same view.
+    private static func recordDepthFrame(_ frame: ARFrame, camera: CameraFrame, into recorder: CaptureRecorder) {
+        guard let depth = frame.sceneDepth, recorder.wantsDepthFrame(at: frame.timestamp),
+              let copied = depthCopy(depth), copied.confidence != nil else { return }
+        recorder.recordDepthFrame(
+            t: frame.timestamp, tracking: TrackingCode(.normal), cameraToWorld: frame.camera.transform,
+            intrinsics: DepthImage.intrinsics(scaling: camera.intrinsics, from: camera.imageSize, toWidth: copied.width, height: copied.height),
+            depth: copied
+        )
     }
 
     /// Whether to encode this frame; claims the single encode slot when it says yes.

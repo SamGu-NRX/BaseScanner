@@ -296,8 +296,10 @@ public enum ReplayPlanning {
         return kept
     }
 
+    /// The walk's extremes: wall seen any height up (a walk pitched down covers the wall band
+    /// only to where its view stops) and covered ground.
     private static func coveredExtremes(_ map: CoverageMap) -> ClosedRange<Float>? {
-        let intervals = map.coveredIntervals(.wall) + map.coveredIntervals(.ground)
+        let intervals = map.wallSeenSpans().map(\.span) + map.coveredIntervals(.ground)
         guard let low = intervals.map(\.lowerBound).min(), let high = intervals.map(\.upperBound).max(), low < 0, high > 0 else { return nil }
         return low...high
     }

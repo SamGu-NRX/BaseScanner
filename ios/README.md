@@ -126,23 +126,28 @@ Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabili
 
 ## Scan bundle
 
-`scan.zip` in the scan's folder is what Share scan sends: a capture packet, version 1.0, with `manifest.json` at the zip's root. The packet's specification is `packet/README.md` on the `t3/packet` branch, with `packet/manifest.schema.json` and a validator (`uv run python -m packet validate <scan.zip>`). The upload sends only scene.json; nothing uploads the packet.
+`scan.zip` in the scan's folder is what Share scan sends: a capture packet, version 1.1, with `manifest.json` at the zip's root. The packet's specification is `packet/README.md` on the `t3/packet` branch, with `packet/manifest.schema.json` and a validator (`uv run python -m packet validate <scan.zip>`). The upload sends only scene.json; nothing uploads the packet.
 
 Everything in the packet is in meters, seconds of device uptime (`ARFrame.timestamp`) and the meter frame (origin at the meter, +y up, +z out of the wall, +x along the wall to the right), except scene.json.
 
 | File | Contents |
 | --- | --- |
-| `manifest.json` | The session (device model, iOS version, LiDAR and what the session ran with, capture times, distance walked, the meter frame in ARKit's world), every photo's time, pose, intrinsics, tracking, exposure, lens and sharpness, the streams, plane anchors, marks and the guidance log. Every other file is named in it with its size and sha256. |
+| `manifest.json` | The session (device model, iOS version, LiDAR and what the session ran with, including whether the mesh was classified, capture times, distance walked, the meter frame in ARKit's world), every photo's time, pose, intrinsics, tracking, exposure, lens and sharpness, the depth frames, the streams, plane anchors, marks and the guidance log. Every other file is named in it with its size and sha256. |
 | `photos/pNNNNN.jpg` | Every kept keyframe and the meter close-up, in time order, landscape and unrotated as the sensor produced them. |
-| `depth/pNNNNN.f32`, `depth/pNNNNN.conf.u8` | Live LiDAR phones only. ARKit's scene depth for the photo, float32 meters along the camera's -z (0 = no reading), and its confidence (0 low, 1 medium, 2 high). |
+| `depth/pNNNNN.f32`, `depth/pNNNNN.conf.u8` | Live LiDAR phones only. ARKit's scene depth for the photo, float32 meters along the camera's -z (0 = no reading), and its confidence (0 low, 1 medium, 2 high). ARKit depth without its confidence is left out. |
+| `depth_frames/dNNNNN.f32`, `.conf.u8` | LiDAR depth between photos, with no image: 2 a second at most, frames with normal tracking only, at most 300 in a scan (`DepthFrameBudget`). Each has the pose and time of an ARFrame on the trajectory and intrinsics for the depth map's own 256 × 192 grid. The recorder writes each to disk as it arrives. On a replay that recorded depth, the same budget picks from the recording's frames, and the frames carry no `source`. |
 | `streams/trajectory.csv` | The camera at every ARFrame (60 Hz), with its tracking state. On a replay, one row per recorded frame. |
 | `streams/accelerometer.csv`, `gyroscope.csv`, `magnetometer.csv`, `device_motion.csv`, `barometer.csv` | Core Motion on the phone, 100 Hz except the barometer, from the meter search to the upload. Not recorded on a replay or in the Simulator. |
-| `lidar/mesh.ply` | LiDAR phones only. ARKit's mesh in the meter frame with each face's classification. |
+| `lidar/mesh.ply` | LiDAR phones only. ARKit's mesh in the meter frame with each face's classification, all 0 when `session.device.mesh_classification_enabled` is false. |
 | `scene.json` | The scene the server checks (contract C1), unchanged: feet, ground at y = 0. Its `img` names are the scan folder's `k<NNNNN>.jpg`, not the packet's photo names. |
 
-The app does not record location or heading, and writes `session.consent.location` as false. A replay's photos keep the recording's times; its depth is left out because it is not ARKit's own, and its capture has no wall-clock start. On a replay the guidance times follow the latest frame played, which stands still while the gap loop replays earlier frames.
+`planes` in the manifest lists ARKit's plane anchors, which every ARKit phone detects. Each plane's pose sits at the centre of its extent, turned by `planeExtent.rotationOnYAxis`, and `boundary_m` is the anchor's boundary polygon in that frame. A plane whose boundary leaves its extent keeps its extent and loses the boundary. A replay has no plane anchors.
 
-`HouseScan/Runtime/ScanEngine+Packet.swift` assembles the packet, `Runtime/CaptureRecorder.swift` records the streams and `Runtime/GuidanceLog.swift` the requests.
+`DepthPacket.estimated(meters:sigma:width:height:)` is the entry point for depth a model infers from the image on a phone without LiDAR. It carries a per-pixel standard deviation and no confidence, and goes on a photo or a depth frame. Nothing in the app produces it yet.
+
+The app does not record location or heading, and leaves `session.consent` out. A replay's photos keep the recording's times; their depth is left out because it is not ARKit's own, and its capture has no wall-clock start. On a replay the guidance times follow the latest frame played, which stands still while the gap loop replays earlier frames.
+
+`HouseScan/Runtime/ScanEngine+Packet.swift` assembles the packet, `Runtime/CaptureRecorder.swift` records the streams and depth frames, and `Runtime/GuidanceLog.swift` the requests.
 
 ## Conventions
 

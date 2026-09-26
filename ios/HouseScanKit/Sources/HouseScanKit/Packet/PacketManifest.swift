@@ -1,17 +1,21 @@
 import Foundation
 
-/// manifest.json of a capture packet, version 1.0: the field names and nesting of
-/// packet/manifest.schema.json on t3/packet (d82a903), vendored in the tests as
+/// manifest.json of a capture packet, version 1.1: the field names and nesting of
+/// packet/manifest.schema.json on t3/packet (d5439cf), vendored in the tests as
 /// Schemas/manifest.schema.json. Optional fields are left out when nil, never written as null.
 /// Lengths are meters, times seconds of device uptime, poses 16 numbers column by column in the
 /// meter frame (`MeterFrame`).
 public struct PacketManifest: Codable, Sendable, Equatable {
-    public static let version = "1.0"
+    public static let version = "1.1"
 
     public var packetVersion: String
     public var session: Session
     public var photos: [Photo]
+    /// Depth recorded between photos, without an image (1.1).
+    public var depthFrames: [DepthFrame]?
     public var streams: Streams?
+    /// `ARPlaneAnchor`s, at the top level from 1.1.
+    public var planes: [PacketPlane]?
     public var lidar: Lidar?
     public var marks: [PacketMark]?
     public var guidance: [PacketGuidanceEntry]?
@@ -21,7 +25,8 @@ public struct PacketManifest: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case packetVersion = "packet_version"
-        case session, photos, streams, lidar, marks, guidance, scene, provenance
+        case depthFrames = "depth_frames"
+        case session, photos, streams, planes, lidar, marks, guidance, scene, provenance
     }
 
     /// A file in the packet: its path relative to manifest.json, size and SHA-256 (lowercase hex).
@@ -82,13 +87,22 @@ public struct PacketManifest: Codable, Sendable, Equatable {
         public var lidar: Bool
         public var sceneDepthEnabled: Bool?
         public var meshEnabled: Bool?
+        /// The session's `sceneReconstruction` included `.meshWithClassification` (1.1). The writer
+        /// refuses a mesh while this is nil, and a mesh with any face classified while it is false:
+        /// with classification off every class is 0, which a reader could not otherwise tell from
+        /// ARKit's own "none".
+        public var meshClassificationEnabled: Bool?
 
-        public init(model: String, iosVersion: String?, lidar: Bool, sceneDepthEnabled: Bool?, meshEnabled: Bool?) {
+        public init(
+            model: String, iosVersion: String?, lidar: Bool, sceneDepthEnabled: Bool?, meshEnabled: Bool?,
+            meshClassificationEnabled: Bool?
+        ) {
             self.model = model
             self.iosVersion = iosVersion
             self.lidar = lidar
             self.sceneDepthEnabled = sceneDepthEnabled
             self.meshEnabled = meshEnabled
+            self.meshClassificationEnabled = meshClassificationEnabled
         }
 
         enum CodingKeys: String, CodingKey {
@@ -96,6 +110,7 @@ public struct PacketManifest: Codable, Sendable, Equatable {
             case iosVersion = "ios_version"
             case sceneDepthEnabled = "scene_depth_enabled"
             case meshEnabled = "mesh_enabled"
+            case meshClassificationEnabled = "mesh_classification_enabled"
         }
     }
 
@@ -162,6 +177,26 @@ public struct PacketManifest: Codable, Sendable, Equatable {
     public struct Depth: Codable, Sendable, Equatable {
         public var map: File
         public var confidence: File?
+        /// Float32 meters, one standard deviation per pixel (1.1).
+        public var sigma: File?
+        public var width: Int
+        public var height: Int
+        public var source: DepthPacket.Source?
+    }
+
+    /// Depth recorded between photos (1.1): the depth fields of `Depth` with the camera that took
+    /// it, and intrinsics in pixels of the depth map itself.
+    public struct DepthFrame: Codable, Sendable, Equatable {
+        public var id: String
+        public var t: Double
+        /// Camera to meter frame.
+        public var pose: [Double]
+        /// [fx, fy, cx, cy] in pixels of the depth map.
+        public var intrinsics: [Double]
+        public var tracking: Tracking?
+        public var map: File
+        public var confidence: File?
+        public var sigma: File?
         public var width: Int
         public var height: Int
         public var source: DepthPacket.Source?
@@ -223,6 +258,8 @@ public struct PacketManifest: Codable, Sendable, Equatable {
 
     public struct Lidar: Codable, Sendable, Equatable {
         public var mesh: File?
+        /// Where 1.0 put planes. Decoded so a 1.0 packet reads; the writer puts planes at the top
+        /// level and leaves this out, since a packet may not use both.
         public var planes: [PacketPlane]?
     }
 

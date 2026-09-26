@@ -166,7 +166,7 @@ func rightCornerWall() throws -> WallFrame {
                 .fence(foot: [w.world(s: 0.5, height: 0, out: 2), w.world(s: 1.5, height: 0, out: 2)]),
             ],
             coverage: SceneCoverage(
-                leftEndMarked: false, rightEndMarked: true, wall: [-4...6],
+                leftEndMarked: false, rightEndMarked: true, wall: [ObservedSpan(span: -4...6, out: 2.286)],
                 ground: [ObservedSpan(span: -4...6, out: 1.2)], facing: [ObservedSpan(span: 2...4, out: 1.5)]))
     }
 

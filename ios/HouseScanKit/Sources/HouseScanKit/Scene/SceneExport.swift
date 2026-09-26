@@ -136,12 +136,10 @@ public struct SceneCoverage: Sendable {
     /// True when the homeowner marked the left end as a real limit (fence, property line).
     public var leftEndMarked: Bool
     public var rightEndMarked: Bool
-    /// Stretches of wall face seen, in s meters.
-    public var wall: [ClosedRange<Float>]
-    /// Per entry of `wall`, how high above the ground the face was seen, meters: the wall
-    /// entry's `out_ft`, rounded down. Nil writes no `out_ft`, which the server reads as seen up
-    /// to headroom (the camera coverage map, whose wall band is headroom tall).
-    public var wallSeenHeight: [Float]?
+    /// Stretches of wall face seen, each with how high up it was seen, meters above the ground
+    /// (`CoverageMap.wallSeenSpans()`). Always sent as `out_ft`: scene.json's "no out_ft" means
+    /// seen up to headroom height, which would claim more than a phone's view shows.
+    public var wall: [ObservedSpan]
     /// Stretches of ground seen in front of the wall, each with how far out it was seen
     /// (`CoverageMap.groundDepthSpans()`).
     public var ground: [ObservedSpan]
@@ -154,13 +152,12 @@ public struct SceneCoverage: Sendable {
     public var overhead: [ObservedSpan]
 
     public init(
-        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ClosedRange<Float>], ground: [ObservedSpan],
-        facing: [ObservedSpan] = [], overhead: [ObservedSpan] = [], wallSeenHeight: [Float]? = nil
+        leftEndMarked: Bool, rightEndMarked: Bool, wall: [ObservedSpan], ground: [ObservedSpan],
+        facing: [ObservedSpan] = [], overhead: [ObservedSpan] = []
     ) {
         self.leftEndMarked = leftEndMarked
         self.rightEndMarked = rightEndMarked
         self.wall = wall
-        self.wallSeenHeight = wallSeenHeight
         self.ground = ground
         self.facing = facing
         self.overhead = overhead
@@ -170,7 +167,7 @@ public struct SceneCoverage: Sendable {
     public init(_ map: CoverageMap, leftEndMarked: Bool, rightEndMarked: Bool) {
         self.init(
             leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked,
-            wall: map.coveredIntervals(.wall), ground: map.groundDepthSpans(), facing: map.facingSpans(),
+            wall: map.wallSeenSpans(), ground: map.groundDepthSpans(), facing: map.facingSpans(),
             overhead: map.overheadSpans())
     }
 }
@@ -354,12 +351,10 @@ public enum SceneExport {
     /// scene.schema.json's `ground` maxItems, shared by driveway strips and ground patches.
     static let maxGround = 200
 
-    /// How many `coverage.observed` entries each of the three bands with a reach (ground, facing,
-    /// overhead) may use. Wall stretches are few (one per unbroken run); the budget they leave
-    /// is shared equally.
-    static func reachBudget(wallEntries: Int) -> Int {
-        max(3, maxObserved - wallEntries) / 3
-    }
+    /// How many `coverage.observed` entries each band (wall, ground, facing, overhead) may use:
+    /// the schema's limit shared equally. Every band carries a reach, which changes from cell to
+    /// cell, so any of them can run to many entries.
+    static let bandBudget = maxObserved / 4
 
     /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
     public static func jsonData(_ input: SceneInput) throws -> Data {
@@ -466,21 +461,14 @@ public enum SceneExport {
         }
 
         let coverage = input.coverage
-        var reaches: [(band: String, spans: [ObservedSpan])] = [("ground", coverage.ground), ("facing", coverage.facing), ("overhead", coverage.overhead)]
+        var reaches: [(band: String, spans: [ObservedSpan])] = [
+            ("wall", coverage.wall), ("ground", coverage.ground), ("facing", coverage.facing), ("overhead", coverage.overhead),
+        ]
         for (band, spans) in reaches {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
-        let budget = reachBudget(wallEntries: coverage.wall.count)
-        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: budget)) }
-        if let heights = coverage.wallSeenHeight {
-            guard heights.count == coverage.wall.count else {
-                throw SceneExportError.countMismatch(field: "coverage.wallSeenHeight", expected: coverage.wall.count, actual: heights.count)
-            }
-            for (index, height) in heights.enumerated() { try requireNonNegative(height, "coverage.wallSeenHeight[\(index)]") }
-        }
-        var observed: [SceneDocument.Observed] = coverage.wall.enumerated().map { index, span in
-            .init(band: "wall", span_ft: spanFeet(span), out_ft: coverage.wallSeenHeight.map { feetDown($0[index]) })
-        }
+        reaches = reaches.map { ($0.band, ObservedSpan.coarsened($0.spans, toAtMost: bandBudget)) }
+        var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {
             observed += spans.map { .init(band: band, span_ft: spanFeet($0.span), out_ft: feetDown($0.out)) }
         }

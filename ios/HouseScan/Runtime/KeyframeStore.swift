@@ -29,7 +29,8 @@ struct StoredDepth: Sendable {
     let confidenceFile: String?
     let width: Int
     let height: Int
-    let source: DepthPacket.Source
+    /// Nil when the depth's origin is unknown (`DepthPacket.source`); live frames say ARKit's.
+    let source: DepthPacket.Source?
 }
 
 /// Keyframe JPEGs and close-up stills of one scan, in Caches/Scans/<id>/. File work runs off the
@@ -141,15 +142,12 @@ final class KeyframeStore {
     /// size.
     nonisolated static func loadDepth(_ depth: StoredDepth, in directory: URL) -> DepthPacket? {
         guard let map = try? Data(contentsOf: directory.appending(path: depth.file)), map.count == depth.width * depth.height * 4 else { return nil }
-        let meters = map.withUnsafeBytes { raw in
-            (0..<(depth.width * depth.height)).map { Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0 * 4, as: UInt32.self))) }
-        }
         var confidence: [UInt8]?
         if let file = depth.confidenceFile {
             guard let data = try? Data(contentsOf: directory.appending(path: file)), data.count == depth.width * depth.height else { return nil }
             confidence = [UInt8](data)
         }
-        return DepthPacket(meters: meters, width: depth.width, height: depth.height, confidence: confidence, source: depth.source)
+        return DepthPacket(meters: PacketFiles.floats(littleEndian: map), width: depth.width, height: depth.height, confidence: confidence, source: depth.source)
     }
 
     enum KeyframeWriteFailure: String, Error {

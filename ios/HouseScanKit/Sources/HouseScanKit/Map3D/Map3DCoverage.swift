@@ -22,7 +22,7 @@ extension SceneCoverage {
     /// The 3D map's coverage, with the ends' kinds from the homeowner's answers.
     public init(_ coverage: Map3DCoverage, leftEndMarked: Bool, rightEndMarked: Bool) {
         self.init(
-            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: coverage.wall,
+            leftEndMarked: leftEndMarked, rightEndMarked: rightEndMarked, wall: coverage.wallHeight,
             ground: coverage.ground, facing: coverage.facing, overhead: coverage.overhead)
     }
 }

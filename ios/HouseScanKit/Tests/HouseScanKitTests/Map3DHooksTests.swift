@@ -75,7 +75,7 @@ import simd
 }
 
 /// What a scene exported from the 3D map adds: walls found on the LiDAR mesh with their line's
-/// error, and a wall band that says how high up the face was seen.
+/// error, and wall spans with the height the map saw each to.
 @Suite struct Map3DSceneTests {
     /// A measured chain with one right corner at s = 2: two mesh pieces.
     static func meshWall() -> SceneWall {
@@ -84,12 +84,14 @@ import simd
             rightCorners: [WallCorner(s: 2, outward: SIMD3(1, 0, 0), source: .mesh)], source: .mesh)
     }
 
-    static func input(plusMinus: [Float?] = [0.03048, nil], wall: [ClosedRange<Float>] = [-1...1, 1...3], heights: [Float]? = [0.9, 2.0]) -> SceneInput {
+    static func input(plusMinus: [Float?] = [0.03048, nil]) -> SceneInput {
         SceneInput(
             wall: meshWall(), baselineS: -1...3,
             coverage: SceneCoverage(
-                leftEndMarked: false, rightEndMarked: true, wall: wall, ground: [ObservedSpan(span: -1...3, out: 1.2)],
-                facing: [ObservedSpan(span: -1...3, out: 0.6)], overhead: [ObservedSpan(span: -1...1, out: 2.4)], wallSeenHeight: heights),
+                leftEndMarked: false, rightEndMarked: true,
+                wall: [ObservedSpan(span: -1...1, out: 0.9), ObservedSpan(span: 1...3, out: 2.0)],
+                ground: [ObservedSpan(span: -1...3, out: 1.2)], facing: [ObservedSpan(span: -1...3, out: 0.6)],
+                overhead: [ObservedSpan(span: -1...1, out: 2.4)]),
             wallPlusMinus: plusMinus)
     }
 
@@ -106,30 +108,22 @@ import simd
         #expect(wallEntries.map { $0["out_ft"]?.number } == [2.9527, 6.5616])
     }
 
-    @Test func withoutHeightsTheWallBandHasNoOutFt() throws {
-        let data = try SceneExport.jsonData(Self.input(plusMinus: [], heights: nil))
-        let v = try JSONSchemaValidator.Value.parse(data)
-        let wallEntries = (v["coverage"]?["observed"]?.array ?? []).filter { $0["band"] == .string("wall") }
-        #expect(wallEntries.count == 2)
-        #expect(wallEntries.allSatisfy { $0["out_ft"] == nil })
-        #expect(try #require(v["walls"]?.array).allSatisfy { $0["plus_minus_ft"] == nil })
+    @Test func noErrorsWriteNoPlusMinus() throws {
+        let data = try SceneExport.jsonData(Self.input(plusMinus: []))
+        let walls = try #require(try JSONSchemaValidator.Value.parse(data)["walls"]?.array)
+        #expect(walls.count == 2)
+        #expect(walls.allSatisfy { $0["plus_minus_ft"] == nil })
     }
 
-    @Test func listsOfTheWrongLengthAreRefused() {
+    @Test func errorsOfTheWrongCountAreRefused() {
         #expect(throws: SceneExportError.countMismatch(field: "wallPlusMinus", expected: 2, actual: 1)) {
             try SceneExport.jsonData(Self.input(plusMinus: [0.1]))
         }
-        #expect(throws: SceneExportError.countMismatch(field: "coverage.wallSeenHeight", expected: 2, actual: 1)) {
-            try SceneExport.jsonData(Self.input(heights: [1]))
-        }
     }
 
-    @Test func negativeErrorsAndHeightsAreRefused() {
+    @Test func aNegativeErrorIsRefused() {
         #expect(throws: SceneExportError.negativeValue(field: "wallPlusMinus[1]", value: -0.1)) {
             try SceneExport.jsonData(Self.input(plusMinus: [nil, -0.1]))
-        }
-        #expect(throws: SceneExportError.negativeValue(field: "coverage.wallSeenHeight[0]", value: -0.5)) {
-            try SceneExport.jsonData(Self.input(heights: [-0.5, 1]))
         }
     }
 }

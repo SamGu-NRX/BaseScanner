@@ -157,14 +157,14 @@ import simd
         #expect(try Value.parse(try SceneExport.jsonData(input))["ground"]?.array == [])
     }
 
-    /// Hundreds of separate ground spans and 60 driveway strips still fit the schema's 200 ground
+    /// Hundreds of separate ground spans and 90 driveway strips still fit the schema's 200 ground
     /// entries: the strips all stay, the patches take the room left, and every patch lies over
     /// one of the spans.
     @Test func manySpansFitTheGroundLimit() throws {
         var input = ChainExportTests.input()
         let wall = input.wall
-        for i in 0..<60 {
-            let s = -3.5 + Float(i) * 0.15
+        for i in 0..<90 {
+            let s = -3.5 + Float(i) * 0.1
             input.features.append(.driveway(edge: [wall.world(s: s, height: 0, out: 2), wall.world(s: s + 0.1, height: 0, out: 2)]))
         }
         let spans = (0..<400).map { i in
@@ -177,9 +177,11 @@ import simd
         #expect(try SceneSchemas.scene().validate(data) == [])
         let ground = try #require(try Value.parse(data)["ground"]?.array)
         #expect(ground.count <= 200)
-        #expect(ground.filter { $0["type"]?.string == "drive" }.count == 60)
+        #expect(ground.filter { $0["type"]?.string == "drive" }.count == 90)
+        // The 125 ground entries (`SceneExport.bandBudget`) are joined again to leave room for a
+        // patch per corner: 110 room less 2 corners.
         let patches = try GroundPatchExportTests.polygons(data, type: "gravel")
-        #expect(patches.count >= 130)
+        #expect(patches.count >= 100)
         for polygon in patches {
             let s = polygon.map { p in
                 wall.wallCoordinates(of: SIMD3(Float(p[0] / SceneUnits.feetPerMeter), 0, Float(p[1] / SceneUnits.feetPerMeter))).s

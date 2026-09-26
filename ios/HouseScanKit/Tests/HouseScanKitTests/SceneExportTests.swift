@@ -28,7 +28,7 @@ import simd
                 .fence(foot: [w.world(s: -1, height: 0, out: 2.0), w.world(s: 2, height: 0, out: 2.4)]),
                 .driveway(edge: [w.world(s: 4, height: 0, out: 1), w.world(s: 5, height: 0, out: 1)]),
             ],
-            coverage: SceneCoverage(leftEndMarked: true, rightEndMarked: false, wall: [-3...5], ground: [ObservedSpan(span: -3...4, out: 3)]),
+            coverage: SceneCoverage(leftEndMarked: true, rightEndMarked: false, wall: [ObservedSpan(span: -3...5, out: 2.286)], ground: [ObservedSpan(span: -3...4, out: 3)]),
             keyframes: [
                 SceneKeyframe(id: "k1", cameraToWorld: pose, intrinsics: SIMD4(1450, 1450, 960, 720), w: 1920, h: 1440, img: "k1.jpg"),
                 SceneKeyframe(id: "k2", cameraToWorld: matrix_identity_float4x4, intrinsics: SIMD4(1450, 1450, 960, 720), w: 1920, h: 1440, img: "k2.jpg"),
@@ -158,7 +158,8 @@ import simd
         #expect(coverage["ends"]?["right"]?["kind"] == .string("unexplored"))
         let observed = try #require(coverage["observed"]?.array)
         #expect(observed.map { $0["band"]?.string } == ["wall", "ground"])
-        #expect(observed[0]["out_ft"] == nil)
+        // Every wall entry says how high it was seen: 2.286 m is 7.5 ft.
+        #expect(observed[0]["out_ft"]?.number == 7.5)
         expectClose(observed[1]["out_ft"].map { [$0.number ?? .nan] }, [9.8425])
 
         let k1 = try #require(v["keyframes"]?[0])
@@ -238,7 +239,7 @@ import simd
         }
         facing += [ObservedSpan(span: 7...7.5, out: 2), ObservedSpan(span: 8...8.5, out: 2)]
         var input = Self.input()
-        input.coverage = SceneCoverage(leftEndMarked: false, rightEndMarked: false, wall: [-3...5], ground: [], facing: facing)
+        input.coverage = SceneCoverage(leftEndMarked: false, rightEndMarked: false, wall: [ObservedSpan(span: -3...5, out: 2.286)], ground: [], facing: facing)
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
         let entries = (try Value.parse(data)["coverage"]?["observed"]?.array ?? []).filter { $0["band"]?.string == "facing" }
@@ -255,6 +256,34 @@ import simd
         }
         // The two separated spans stay two.
         #expect(entries.filter { ($0["span_ft"]?.numbers?.first ?? 0) > 22 }.count == 2)
+    }
+
+    /// Every wall entry carries the height seen, rounded down, never absent (absent reads as seen
+    /// to headroom height). Many heights are joined like the other bands, each join keeping the
+    /// lower, so the band stays within its share of the schema's 500 entries.
+    @Test func wallEntriesAlwaysSayHowHighAndFitTheirShare() throws {
+        let wall = (0..<600).map { i in
+            ObservedSpan(span: (Float(i) * 0.01)...(Float(i + 1) * 0.01), out: i.isMultiple(of: 3) ? 2.0 : 2.1336)
+        }
+        var input = Self.input()
+        input.coverage = SceneCoverage(leftEndMarked: false, rightEndMarked: false, wall: wall, ground: [])
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let entries = (try Value.parse(data)["coverage"]?["observed"]?.array ?? []).filter { $0["band"]?.string == "wall" }
+        #expect(entries.count <= 125 && !entries.isEmpty)
+        for entry in entries {
+            let out = try #require(entry["out_ft"]?.number)
+            let span = try #require(entry["span_ft"]?.numbers)
+            let covered = wall.filter {
+                Double($0.span.upperBound) * SceneUnits.feetPerMeter > span[0] + 1e-3
+                    && Double($0.span.lowerBound) * SceneUnits.feetPerMeter < span[1] - 1e-3
+            }
+            #expect(out <= Double(try #require(covered.map(\.out).min())) * SceneUnits.feetPerMeter + 1e-6)
+        }
+        // 2.1336 m is 7 ft exactly; Float noise must not round it below.
+        input.coverage.wall = [ObservedSpan(span: 0...1, out: 2.1336)]
+        let one = try #require(try Value.parse(try SceneExport.jsonData(input))["coverage"]?["observed"]?.array?.first)
+        #expect(one["out_ft"]?.number == 7)
     }
 
     /// Mesh measurements become `facing` and `overheads` entries without `plus_minus_ft` (the
