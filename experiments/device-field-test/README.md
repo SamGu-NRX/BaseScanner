@@ -30,10 +30,10 @@ The first and last come from the runbook's goals before run 1. The 4 in bound is
 ## Result, run 1
 
 Run on 2026-09-26 with TestFlight build 1.1 (workflow run
-[36255760659](https://github.com/SamGu-NRX/house-scanning/actions/runs/36255760659), branch `beta` at
-[`28cd898`](https://github.com/SamGu-NRX/house-scanning/commit/28cd8988187979800f74bde78ee1b1fc246d0ec3),
+[36255760659](https://github.com/SamGu-NRX/house-scanning-master/actions/runs/36255760659), branch `beta` at
+[`28cd898`](https://github.com/SamGu-NRX/house-scanning-master/commit/28cd8988187979800f74bde78ee1b1fc246d0ec3),
 capture code `t3/ios-mvf` at
-[`657ab28`](https://github.com/SamGu-NRX/house-scanning/tree/657ab283092f1a34cc2dff87d48a0871d284f9c4/ios)).
+[`657ab28`](https://github.com/SamGu-NRX/house-scanning-master/tree/657ab283092f1a34cc2dff87d48a0871d284f9c4/ios)).
 The screen recording has not been reviewed yet, so the order of taps below is inferred from the scan
 and the code.
 
@@ -49,9 +49,9 @@ and the code.
 ### How the walk was lost
 
 "Can't get there" during the walk sets that side's end at `GuidancePlanner.reach`
-([`ScanEngine+Actions.swift`](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScan/Runtime/ScanEngine%2BActions.swift#L315-L319)).
+([`ScanEngine+Actions.swift`](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScan/Runtime/ScanEngine%2BActions.swift#L315-L319)).
 `reach`
-([`GuidancePlanner.swift`](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Guidance/GuidancePlanner.swift#L101-L117))
+([`GuidancePlanner.swift`](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Guidance/GuidancePlanner.swift#L101-L117))
 counts 6-inch cells outward from the meter. It stops at the first cell whose wall and ground are not both
 covered. A cell is covered when each of its three sample rows has been seen from two positions: the wall
 at 0, 3.25 and 6.5 ft up, and the ground at 0, 2 and 4 ft out. So if the ground right in front of the
@@ -59,14 +59,14 @@ meter hasn't been seen twice, the tap puts the end at the meter.
 
 After that, the coverage map ignores everything past the ends:
 - `record` stops adding sightings outside them
-  ([`CoverageMap.swift`](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L332));
+  ([`CoverageMap.swift`](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L332));
 - `coveredIntervals` and `groundDepthSpans` leave them out
-  ([L979](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L979),
-  [L527](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L527)).
+  ([L979](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L979),
+  [L527](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift#L527)).
 
 The walk still kept photos and accepted marks up to 19 ft away, and nothing on screen said they would be
 dropped. The export then clamps the baseline to ±0.1 m around the meter
-([`ScanEngine+Export.swift`](https://github.com/SamGu-NRX/house-scanning/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScan/Runtime/ScanEngine%2BExport.swift#L84-L85)),
+([`ScanEngine+Export.swift`](https://github.com/SamGu-NRX/house-scanning-master/blob/ff95f1cb571e2f3ef56d9faae85880665ad0ca30/ios/HouseScan/Runtime/ScanEngine%2BExport.swift#L84-L85)),
 which is the ±0.328 ft the server echoes. This code is unchanged between the build's `657ab28` and the
 branch head `ff95f1c`.
 

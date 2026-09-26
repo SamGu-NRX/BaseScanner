@@ -5,9 +5,9 @@ the live camera as unverified. This runbook collects those items in the order a 
 scanning. Every test has an ID, so a screen recording with spoken IDs can be matched back to the claim.
 
 Sources, at `t3/verification`
-[`63350b1`](https://github.com/SamGu-NRX/house-scanning/tree/63350b12495e7c69d18e6a4391e053a70f432dbd/verification/product):
+[`63350b1`](https://github.com/SamGu-NRX/house-scanning-master/tree/63350b12495e7c69d18e6a4391e053a70f432dbd/verification/product):
 the "Open questions and verification" section of each screen document, and the
-[bug triage](https://github.com/SamGu-NRX/house-scanning/blob/63350b12495e7c69d18e6a4391e053a70f432dbd/verification/product/bug-triage.md)
+[bug triage](https://github.com/SamGu-NRX/house-scanning-master/blob/63350b12495e7c69d18e6a4391e053a70f432dbd/verification/product/bug-triage.md)
 for the `B-` numbers. "Known bug" means the triage already predicts the failure. The run confirms it on a device.
 
 ## Before the run
