@@ -66,7 +66,7 @@ export function initialState() {
     verdict: null,
     review: null,
     unknownTypes: [],
-    result: { phase: "none", body: null, error: null },
+    result: { phase: "none", body: null, error: null, revision: 0 },
     preview: { phase: "none", runId: null, cloud: null, error: null },
     log: [],
   };
@@ -122,6 +122,8 @@ export function reduce(state, action) {
       // A failed refresh keeps a result already shown; it is still what the server last said.
       return { ...state, result: { ...state.result, phase: state.result.phase === "ready" ? "ready" : "error", error: action.error } };
     case "preview-loading":
+      // Re-reading the same run's model keeps the one on screen until the new one arrives.
+      if (state.preview.phase === "ready" && state.preview.runId === action.runId) return state;
       return { ...state, preview: { phase: "loading", runId: action.runId, cloud: null, error: null } };
     case "preview":
       if (action.runId !== (state.result.body?.runId ?? null)) return state; // a model for another run
@@ -252,6 +254,8 @@ function applyEvent(state, event, backlog) {
       // A retake starts from a run; if it names a newer one, that run's evidence replaces the old.
       if (str(data.runId)) state = noteRun(state, data.runId, base.seq);
       const named = views.length ? `: ${views.join(", ")}` : "";
+      // A late retake from a superseded run is logged but does not ask for views on the current one.
+      if (str(data.runId) && data.runId !== state.currentRunId) return log(state, { ...base, kind: "retake", text: `An earlier run asked for more views${named}` });
       return log({ ...state, retake: { ...base, views, runId: str(data.runId) } }, { ...base, kind: "retake", text: `Server asked for more views${named}` });
     }
     case "verdict_ready": {
@@ -335,7 +339,8 @@ function applyResult(state, body) {
   const ready = body.outcome != null || NO_OUTCOME_STATUSES.has(body.status);
   // A refreshed result that no longer offers a preview takes the earlier model with it.
   const preview = !hasPreview(body) && state.preview.runId === body.runId ? { phase: "none", runId: null, cloud: null, error: null } : state.preview;
-  return { ...state, preview, result: { phase: ready ? "ready" : "pending", body, error: null } };
+  // Each accepted result is a new revision; the preview is read again for a revision that offers one.
+  return { ...state, preview, result: { phase: ready ? "ready" : "pending", body, error: null, revision: state.result.revision + 1 } };
 }
 
 function log(state, entry) {

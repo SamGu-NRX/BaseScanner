@@ -121,8 +121,10 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
         resultAt = now();
         send({ type: "result-loading" });
         try {
-          send({ type: "result", body: await get(`/captures/${captureId}/result`) });
-          if (getState().result.phase === "ready") readyKey = key;
+          const body = await get(`/captures/${captureId}/result`);
+          send({ type: "result", body });
+          // Only a response the reducer accepted settles this key; a discarded one is read again.
+          if (getState().result.body === body && getState().result.phase === "ready") readyKey = key;
         } catch (error) {
           if (signal.aborted) return;
           send({ type: "result-error", error: error instanceof HttpError ? `${error.code} (${error.status})` : "network error" });
@@ -132,8 +134,9 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
 
       const result = getState().result;
       const runId = result.body?.runId ?? null;
-      if (result.phase === "ready" && hasPreview(result.body) && typeof runId === "string" && previewKey !== runId && now() >= previewRetryAt) {
-        previewKey = runId;
+      const revisionKey = `${runId}|${result.revision}`;
+      if (result.phase === "ready" && hasPreview(result.body) && typeof runId === "string" && previewKey !== revisionKey && now() >= previewRetryAt) {
+        previewKey = revisionKey;
         send({ type: "preview-loading", runId });
         try {
           // The relay refuses with 409 if the latest result is no longer this run's.

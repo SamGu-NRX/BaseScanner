@@ -58,9 +58,9 @@ export function parsePly(buffer, { maxPoints = 60_000 } = {}) {
 
   const read = format === "ascii" ? asciiReader(bytes, headerEnd, vertex) : binaryReader(bytes, headerEnd, vertex, format === "binary_little_endian");
   let k = 0;
-  for (let i = 0; i < count; i += 1) {
+  // Only the rows kept by the stride are decoded; the readers check the file's length up front.
+  for (let i = 0; i < count; i += stride) {
     const row = read(i);
-    if (i % stride !== 0) continue;
     positions[k * 3] = row[index.x];
     positions[k * 3 + 1] = row[index.y];
     positions[k * 3 + 2] = row[index.z];
@@ -117,6 +117,7 @@ function readScalar(view, at, type, little) {
 
 function asciiReader(bytes, offset, vertex) {
   const lines = new TextDecoder("ascii").decode(bytes.subarray(offset)).split(/\r?\n/);
+  if (lines.length < vertex.count || lines[vertex.count - 1].trim() === "") throw new PlyError("file is shorter than its vertex count");
   return (i) => {
     const line = lines[i];
     if (line == null) throw new PlyError("file is shorter than its vertex count");

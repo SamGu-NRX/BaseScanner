@@ -54,6 +54,13 @@ test("an empty cloud parses as zero points", () => {
   assert.equal(cloud.bounds, null);
 });
 
+test("rows between stride picks are not decoded", () => {
+  // Row 1 is malformed; with a stride of 2 it is skipped rather than rejected.
+  const cloud = parsePly(buf("ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nend_header\n1 2 3\nnot a row\n4 5 6\n"), { maxPoints: 2 });
+  assert.equal(cloud.kept, 2);
+  assert.deepEqual([...cloud.positions], [1, 2, 3, 4, 5, 6]);
+});
+
 test("keeps at most maxPoints by stride", () => {
   const points = Array.from({ length: 1000 }, (_, i) => [i, 0, 0, 0]);
   const cloud = parsePly(encodePly(points).buffer, { maxPoints: 100 });

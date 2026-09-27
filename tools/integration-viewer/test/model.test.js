@@ -279,6 +279,24 @@ test("discarding an older run's result keeps the current run's pending result pe
   assert.equal(s.result.body.runId, "run_b");
 });
 
+test("a late retake from a superseded run asks nothing of the current run", () => {
+  const s = run(
+    selected(),
+    events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
+    events([{ seq: 3, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn_old"], memberActions: [] } }], 3),
+  );
+  assert.equal(s.currentRunId, "run_b");
+  assert.deepEqual(viewsToShow(s), []);
+});
+
+test("each accepted result is a new revision, and a same-run model stays up while it reloads", () => {
+  const cloud = { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+  const a = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "withheld-by-viewer-relay" } }, { type: "preview", runId: "run_a", cloud });
+  const b = run(a, { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "withheld-by-viewer-relay" } }, { type: "preview-loading", runId: "run_a" });
+  assert.equal(b.result.revision, a.result.revision + 1);
+  assert.equal(b.preview.phase, "ready");
+});
+
 test("a retake names the views the server asked for", () => {
   const s = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn3", "vn4"], memberActions: [] } }]));
   assert.deepEqual(s.retake.views, ["vn3", "vn4"]);

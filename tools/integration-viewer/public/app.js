@@ -51,6 +51,7 @@ const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let motionPaused = reducedMotion.matches;
 let shownArrival = 0;
 const countTimers = new Set();
+let shownCounts = { session: -1, value: 0 };
 let clockStalled = false;
 let renderQueued = false;
 
@@ -228,9 +229,11 @@ function renderArrivals() {
     if (landsIn > 0) {
       // The counts change as the marks land. A timer does the update, so the counts stay current
       // even where the marks' animations cannot run.
+      // Each timer shows the totals as of its own batch, so a counter never runs ahead of its marks.
+      const snapshot = state;
       const timer = setTimeout(() => {
         countTimers.delete(timer);
-        writeCounts();
+        writeCounts(snapshot);
       }, landsIn);
       countTimers.add(timer);
     }
@@ -244,15 +247,18 @@ function renderArrivals() {
   $("ack-sub").textContent = parts.length ? parts.join(" · ") : counts.acknowledged ? "" : "No files acknowledged yet";
 }
 
-/** Shows the acknowledged-file totals from the current state. */
-function writeCounts() {
+/** Shows the acknowledged-file totals from `from`; never goes back to a smaller total in a session. */
+function writeCounts(from = state) {
+  if (from.session !== state.session) return;
+  if (shownCounts.session === from.session && from.counts.acknowledged < shownCounts.value) return;
+  shownCounts = { session: from.session, value: from.counts.acknowledged };
   const groups = { photo: 0, depth: 0, other: 0 };
-  for (const f of state.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
+  for (const f of from.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
   $("k-photo").textContent = groups.photo;
   $("k-depth").textContent = groups.depth;
   $("k-other").textContent = groups.other;
   const ack = $("ack");
-  const value = String(state.counts.acknowledged);
+  const value = String(from.counts.acknowledged);
   if (ack.textContent === value) return;
   ack.textContent = value;
   if (motionOn()) {
