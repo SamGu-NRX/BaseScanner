@@ -76,8 +76,30 @@ final class ScanEngine {
     private var endKinds: [WallSide: EndKind] = [:]
     /// The side whose end turns a corner the walk is to follow, while it waits for the next wall
     /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
-    var nextWallSide: WallSide?
+    var nextWallSide: WallSide? {
+        didSet { if nextWallSide == nil { pendingNextWall = nil } }
+    }
     var nextWallRefusal: NextWallRefusal?
+    /// The wall marked as the next one, waiting for "Is this the next wall?" (#70); cleared with
+    /// `nextWallSide`. Published as `ScanViewState.nextWallConfirm`.
+    var pendingNextWall: PendingNextWall? {
+        didSet {
+            let confirm = pendingNextWall.map { NextWallConfirm(side: $0.side, fromEnd: $0.fromEnd) }
+            if confirm != state.nextWallConfirm { state.nextWallConfirm = confirm }
+        }
+    }
+
+    /// What `confirmNextWall` needs to follow the corner: the marked point and facing, as
+    /// `markNextWall` found them.
+    struct PendingNextWall {
+        var side: WallSide
+        var point: SIMD3<Float>
+        var outward: SIMD3<Float>
+        var source: WallLineSource
+        var detectedPlane: Bool
+        var s: Float
+        var fromEnd: Float
+    }
 
     // Gap loop
     private(set) var gapPlan: GapPlan?
@@ -660,7 +682,9 @@ final class ScanEngine {
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         // Past an end it can't see back from, a photo adds nothing: it is refused and the screen says so.
-        let pastEnd = map.unexploredEndPassed(by: frame.camera)
+        // Not past the end whose next wall is being looked for: that is where the walk asked the
+        // homeowner to go (#70).
+        let pastEnd = map.unexploredEndPassed(by: frame.camera, ignoring: nextWallSide?.walk)
         var skip: CaptureDecision.SkipReason?
         switch decision {
         case .skip(let reason):
@@ -819,7 +843,8 @@ final class ScanEngine {
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
             state.guidanceHint = nil
-            state.target = nil
+            // While "Is this the next wall?" is up, the ring shows the point marked on it.
+            state.target = pendingNextWall?.point
             state.path = []
             logGuidance()
             return

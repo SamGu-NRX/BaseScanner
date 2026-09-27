@@ -289,6 +289,16 @@ enum ScanCopy {
         }
     }
 
+    /// Asked after the next wall is marked, before the walk follows the corner
+    /// (`ScanViewState.nextWallConfirm`, #70): a surface behind the end post passed the checks
+    /// on build 4.1. The ring is on the point marked.
+    static func nextWallConfirm(_ confirm: NextWallConfirm) -> Instruction {
+        Instruction(
+            title: "Is this the next wall?",
+            detail: "The ring is on the wall you marked. It meets this wall about \(Distance.roughFeet(confirm.fromEnd)) from where you ended it."
+        )
+    }
+
     /// A refused mark of the next wall: what went wrong, then what to do.
     static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {
         switch refusal {
