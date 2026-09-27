@@ -12,6 +12,7 @@ is taken from the command line and is never written to disk.
 
 import argparse
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -39,19 +40,22 @@ def main() -> None:
     if not photos:
         raise SystemExit(f"no .jpg, .png or .heic photos in {args.folder}")
 
-    upright = args.folder / ".upright.jpg"
     print(
         "| Photo | Read | Rank | Top candidate is the number | Top line px | Sharpness | "
         "Retake because |"
     )
     print("|---|---|---|---|---|---|---|")
     wasted = missed = 0
-    with Reader() as reader:
+    # Working copies live in a private temporary folder, never in the photo folder, so no
+    # file of the user's is overwritten, deleted or scored twice.
+    with tempfile.TemporaryDirectory() as scratch, Reader() as reader:
+        upright = Path(scratch) / "upright.jpg"
+        converted = Path(scratch) / "converted.jpg"
         for photo in photos:
             source = photo
             if photo.suffix.lower() == ".heic":
                 # PIL cannot decode HEIC; macOS sips can, and keeps the orientation tag.
-                source = args.folder / ".converted.jpg"
+                source = converted
                 subprocess.run(
                     ["sips", "-s", "format", "jpeg", str(photo), "--out", str(source)],
                     check=True,
@@ -76,8 +80,6 @@ def main() -> None:
                 f"{'yes' if rank == 1 else 'no'} | {height_px} | "
                 f"{retake.whole_photo_sharpness(g):.1f} | {', '.join(why) or '–'} |"
             )
-    upright.unlink(missing_ok=True)
-    (args.folder / ".converted.jpg").unlink(missing_ok=True)
     print(
         f"\n{len(photos)} photos; {wasted} retakes asked for photos that read; "
         f"{missed} photos accepted that did not read."

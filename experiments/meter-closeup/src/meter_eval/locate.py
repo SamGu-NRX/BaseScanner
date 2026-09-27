@@ -307,6 +307,13 @@ def rule_table(rows: list[dict], names: list[str]) -> str:
         for k in (1, 3):
             hit = sum(1 for r in read if r["rank"] != "" and r["rank"] <= k)
             out.append(f"| ranking, top {k} | {len(read)} | – | {share(hit, len(read))} |")
+        # End to end: a photo Vision did not read cannot offer the number, so it is a miss.
+        for k in (1, 3):
+            hit = sum(1 for r in subset if r["rank"] != "" and r["rank"] <= k)
+            out.append(
+                f"| ranking, top {k}, over every agreed photo (unread count as misses) | "
+                f"{len(subset)} | – | {share(hit, len(subset))} |"
+            )
         present = sum(1 for r in read if r["rank"] != "")
         out.append(
             f"| number is any candidate (ceiling) | {len(read)} | – | "

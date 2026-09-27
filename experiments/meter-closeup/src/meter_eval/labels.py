@@ -160,11 +160,19 @@ def build() -> list[dict]:
 
 
 def known_numbers() -> set[str]:
-    """Every identifier either reader transcribed, normalized, with and without its prefix."""
+    """Every identifier any reader transcribed, normalized, with and without its prefix.
+
+    Covers both AI readers and a person's corrections from the review page, because a
+    correction becomes a committed label that the leak check must also recognize.
+    """
     first = read_csv(READER1)
     second = {k: v for path in READER2 for k, v in read_csv(path).items()}
+    human = read_csv(HUMAN) if HUMAN.exists() else {}
+    corrections = [
+        {"meter_number": row["number"]} for row in human.values() if row.get("verdict") == "fix"
+    ]
     found = set()
-    for row in [*first.values(), *second.values()]:
+    for row in [*first.values(), *second.values(), *corrections]:
         for value in numbers_of(row):
             for form in (value, core(value)):
                 if sum(ch.isdigit() for ch in form) >= SHORTEST_IDENTIFIER:
