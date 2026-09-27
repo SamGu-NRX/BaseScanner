@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import HouseScanKit
+import simd
 import OSLog
 
 /// A kept photo (a keyframe, or a still such as the meter close-up): its JPEG on disk and what
@@ -22,6 +23,10 @@ struct StoredKeyframe: Sendable {
     /// its confidence (`depth/<id>.conf.u8`). Live LiDAR frames only.
     let depth: StoredDepth?
     var fileName: String { "\(id).jpg" }
+    /// The camera-to-world pose ARKit reported for the photo, in its world frame at `t`, never
+    /// corrected. scene.json and the packet use it corrected for the meter anchor's later moves
+    /// (`MeterAnchorTracking.correctedPose(_:capturedAt:)`).
+    var rawPose: simd_float4x4 { camera.cameraToWorld }
 }
 
 struct StoredDepth: Sendable {

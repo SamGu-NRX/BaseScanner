@@ -52,7 +52,7 @@ extension ScanEngine: ScanActions {
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
         // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at
-        // chest height, 1.4 m above it. `refineGround` replaces the guess as planes arrive.
+        // chest height, 1.4 m above it. `SpatialUpdate` replaces the guess as planes arrive.
         let ground = groundBelow(hit.position, along: simd_normalize(simd_cross(-outward, SIMD3(0, 1, 0))), current: nil)
         guard setWall(meter: hit.position, outward: outward, groundY: ground?.plane.y ?? frame.camera.position.y - 1.4, groundMeasured: ground != nil) else {
             state.guidance = .aimAtWallForMeter
@@ -99,9 +99,15 @@ extension ScanEngine: ScanActions {
         }
         guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
         state.meterNumber = .confirmed(chosen.text)
-        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public))")
+        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public)), brand \(self.state.meterBrand == nil ? "none" : "kept", privacy: .public)")
         observeCloseUpView()
         finishCloseUp()
+    }
+
+    func rejectMeterBrand() {
+        guard state.phase == .meterCloseUp, case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
+        RuntimeLog.engine.info("meter brand rejected")
     }
 
     /// Puts the close-up photo's view into coverage, under the same rules as a walk keyframe: a
@@ -118,8 +124,11 @@ extension ScanEngine: ScanActions {
     /// and the walk's first frame.
     private func observeCloseUpView() {
         guard let view = closeUpCredit.take() else { return }
+        // Corrected for anchor moves made while the photo was saved and read.
+        let camera = view.time.map { correctedPose(view.camera.cameraToWorld, capturedAt: $0) }
+            .map { CameraFrame(cameraToWorld: $0, intrinsics: view.camera.intrinsics, imageSize: view.camera.imageSize) } ?? view.camera
         var delta: CoverageMap.Delta?
-        updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
+        updateCoverage { delta = $0.observe(camera, trackingNormal: true, depth: view.depth) }
         RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
     }
 
@@ -414,7 +423,8 @@ extension ScanEngine: ScanActions {
     }
 
     func captureMissing(_ id: String) {
-        guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
+        // A stopped camera can't take the view: the answer stays, the request goes to review.
+        guard mayCapture, state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }
