@@ -71,6 +71,7 @@ struct CameraOverlays: View {
                         progress: progress,
                         completed: held,
                         legend: held == nil ? legend(progress: progress) : nil,
+                        legendShort: ScanCopy.aimRingLegendShort,
                         onLegendShown: {
                             if legendStep == nil { legendStep = state.guidance }
                         }

@@ -19,6 +19,8 @@ struct WayfindingOverlay: View {
     var completed: SIMD3<Float>? = nil
     /// One line saying what the ring is for, drawn beside it while it is on screen.
     var legend: String? = nil
+    /// A shorter legend, drawn where `legend` doesn't fit between the ring and the lane's edge.
+    var legendShort: String? = nil
     /// Called when the legend is drawn.
     var onLegendShown: (() -> Void)? = nil
 
@@ -62,9 +64,17 @@ struct WayfindingOverlay: View {
     /// jitter there would otherwise flip the legend across the ring every few frames.
     private static let legendSwitchMargin: CGFloat = 40
 
+    /// The gap between the ring and the legend.
+    private static let legendGap: CGFloat = 12
+
     /// The legend goes above or below the ring, whichever has more room in the lane, and moves
     /// with the ring without covering it. Once shown, it changes sides only when the other side
     /// has `legendSwitchMargin` more room.
+    ///
+    /// It keeps to the lane: the longest wording that fits between the ring and the lane's edge
+    /// on its side is drawn, and none when neither fits. At the largest text sizes the full line
+    /// runs to eight lines or more, and past the lane it went under the instruction card or the
+    /// controls, which are drawn over this layer.
     private func legendView(_ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize) -> some View {
         let width = max(120, min(300, size.width - 48))
         let x = min(max(point.x, 24 + width / 2), size.width - 24 - width / 2)
@@ -78,10 +88,30 @@ struct WayfindingOverlay: View {
         } else {
             below = roomBelow >= roomAbove
         }
-        // A tall frame pinned at the edge nearer the ring, so the text's height (it wraps, and
-        // grows with Dynamic Type) never moves its near edge onto the ring.
-        let reach: CGFloat = 400
-        return Text(text)
+        // The room on the legend's side, pinned at the edge nearer the ring, so the text's height
+        // (it wraps, and grows with Dynamic Type) never moves its near edge onto the ring.
+        let reach = max(0, (below ? roomBelow : roomAbove) - Self.legendGap)
+        return ViewThatFits(in: .vertical) {
+            legendText(text)
+            if let legendShort { legendText(legendShort) }
+            Color.clear.frame(width: 0, height: 0)
+        }
+        .onAppear {
+            legendBelow = below
+            onLegendShown?()
+        }
+        .onChange(of: below) { _, side in legendBelow = side }
+        .onDisappear { legendBelow = nil }
+        .frame(width: width, height: reach, alignment: below ? .top : .bottom)
+        .position(
+            x: x,
+            y: below ? point.y + radius + Self.legendGap + reach / 2 : point.y - radius - Self.legendGap - reach / 2
+        )
+        .transition(.opacity)
+    }
+
+    private func legendText(_ text: String) -> some View {
+        Text(text)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
@@ -90,15 +120,6 @@ struct WayfindingOverlay: View {
             .background(Color.black.opacity(0.7), in: .rect(cornerRadius: 14, style: .continuous))
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("aim.legend")
-            .onAppear {
-                legendBelow = below
-                onLegendShown?()
-            }
-            .onChange(of: below) { _, side in legendBelow = side }
-            .onDisappear { legendBelow = nil }
-            .frame(width: width, height: reach, alignment: below ? .top : .bottom)
-            .position(x: x, y: below ? point.y + radius + 12 + reach / 2 : point.y - radius - 12 - reach / 2)
-            .transition(.opacity)
     }
 
     // MARK: Path

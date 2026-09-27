@@ -18,7 +18,10 @@ extension ScanViewState {
     ///
     /// It reads the published strip, which holds the cells in view on the wall map
     /// (`CoverageMap.visibleRange`); the planner reads the whole map. Near an end of that range
-    /// the two can differ by a cell. Nil for every step but an aim task.
+    /// the two can differ by a cell. The window is narrowed by the map's own tolerance
+    /// (`CoverageMap.indices(overlapping:)`), so a cell that only touches its edge counts for
+    /// neither, and the ring can't show done while the task stays up. Nil for every step but an
+    /// aim task.
     func aimProgress(for step: GuidanceStep) -> Double? {
         let band: CoverageBand
         let s: Float
@@ -32,7 +35,7 @@ extension ScanViewState {
         default:
             return nil
         }
-        let half = GuidancePlanner.aimHalfWidth
+        let half = GuidancePlanner.aimHalfWidth - coverage.cellWidth * 1e-3
         let covered = coverage.coveredFraction(band, in: (s - half)...(s + half))
         return min(1, covered / GuidancePlanner.aimSatisfied)
     }
