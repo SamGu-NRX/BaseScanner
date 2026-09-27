@@ -5,17 +5,14 @@ import simd
 /// wall (#140).
 ///
 /// `WallFrame.intersectWall` never bounds a hit's height, and the outermost pieces of the wall run
-/// on forever. A tap aimed down at the ground meets the wall's plane under the floor; in a field
-/// run two AC taps landed 28 m and 70 m below the floor, 105 ft and 276 ft along the wall, and were
-/// exported. A hit is refused when it lies below the ground, which also covers a ray that meets the
-/// ground before the wall (from a phone above the ground, the ray crosses the ground first exactly
-/// when it meets the wall below it), or when it lies farther along the wall from the phone than a
-/// camera can see (the same bound wall-end taps use).
+/// on forever. A tap aimed down at the ground meets the wall's plane under the floor; grazing rays
+/// can put objects far along the wall. A hit below the ground is refused. From a phone above the
+/// ground, such a ray crosses the ground before reaching the wall. A hit farther along the wall
+/// than the camera can see is also refused, using the same distance bound as wall-end taps.
 public enum ObjectTap {
     /// How far below the wall's ground a hit may lie, meters, on top of the ground's own error. A
-    /// tap on something standing on the ground lands at its foot or a little below it: in the
-    /// field run a plausible AC tap landed 0.10 m below the ground. 0.15 m (about 6 in) is a guess,
-    /// not measured.
+    /// tap on something standing on the ground may land at its foot or a little below it. The
+    /// 0.15 m allowance is an unmeasured guess.
     public static let belowGroundSlack: Float = 0.15
 
     /// Why a wall hit can't be the object tapped.
