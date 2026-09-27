@@ -99,6 +99,7 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: url.path))
     }
 
+    #if canImport(Compression)
     /// Text deflates (method 8) and inflates back to the original; the CRC and the uncompressed
     /// size describe the raw data.
     @Test func textEntryIsDeflated() throws {
@@ -113,6 +114,27 @@ import Testing
         let inflated = try (Data(entry.body) as NSData).decompressed(using: .zlib) as Data
         #expect(inflated == csv)
     }
+
+    /// An entry whose compressed form spans several of the encoder's 64 KiB output chunks still
+    /// deflates and round-trips, and large noise is stored even though its first chunks were
+    /// already encoded.
+    @Test func largeEntriesCrossOutputChunks() throws {
+        let halfEntropy = Data(Self.noise(count: 400_000).map { $0 & 0x0F })  // about 200 KB deflated
+        let noise = Self.noise(count: 400_000)
+        let parsed = try Self.parse(ZipWriter.archive([
+            ZipEntry(name: "depth/k1.bin", data: halfEntropy),
+            ZipEntry(name: "depth/k2.bin", data: noise),
+        ]))
+        try #require(parsed.count == 2)
+        #expect(parsed[0].method == 8)
+        #expect(parsed[0].compressedSize > 128 * 1024, "\(parsed[0].compressedSize)")
+        #expect(parsed[0].compressedSize < parsed[0].size)
+        let inflated = try (Data(parsed[0].body) as NSData).decompressed(using: .zlib) as Data
+        #expect(inflated == halfEntropy)
+        #expect(parsed[1].method == 0)
+        #expect(Data(parsed[1].body) == noise)
+    }
+    #endif
 
     /// JPEGs are stored even when their bytes would deflate, and so is anything that wouldn't
     /// shrink: random bytes, a single byte, an empty file.

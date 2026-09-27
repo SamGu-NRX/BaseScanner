@@ -65,7 +65,8 @@ public enum ZipWriter {
     /// Builds a ZIP archive in memory, deflating each entry that shrinks and storing the rest.
     /// - Parameters:
     ///   - modified: timestamp written for every entry; nil writes the DOS epoch 1980-01-01 00:00 so
-    ///     the same inputs give byte-identical archives.
+    ///     the same inputs give byte-identical archives on the same OS build (the DEFLATE bytes come
+    ///     from Apple's encoder, which can change between releases).
     ///   - timeZone: zone the DOS local time is expressed in.
     public static func archive(_ entries: [ZipEntry], modified: Date? = nil, timeZone: TimeZone = .gmt) throws -> Data {
         var out = Data()
@@ -74,7 +75,8 @@ public enum ZipWriter {
     }
 
     /// Writes the same archive as `archive` to `url`, loading one entry at a time, so memory holds
-    /// one file and the central directory instead of the whole bundle. Replaces any file at `url`;
+    /// one file, its compressed copy and the central directory instead of the whole bundle. A
+    /// compressed copy is never allowed to reach the file's own size. Replaces any file at `url`;
     /// on a throw the partial file is removed.
     /// - Parameter entries: each entry's name and a loader called once, in order.
     public static func write(
@@ -198,24 +200,36 @@ public enum ZipWriter {
     }
 
     /// Raw DEFLATE of `data` when that is strictly smaller than `data`, else nil (store it).
+    /// Streams through a fixed 64 KiB buffer, so the only memory added next to the loaded entry is
+    /// the compressed output, and gives up as soon as that output is no smaller than the input.
     private static func deflated(_ data: Data) -> Data? {
         #if canImport(Compression)
         guard data.count > 1 else { return nil }
-        // One byte short of the input: the encoder returns 0 when the output doesn't fit, so any
-        // result is a saving and an entry that doesn't shrink falls back to stored.
-        let capacity = data.count - 1
-        var out = Data(count: capacity)
-        let produced = out.withUnsafeMutableBytes { (dst: UnsafeMutableRawBufferPointer) -> Int in
-            data.withUnsafeBytes { (src: UnsafeRawBufferPointer) -> Int in
-                guard let dstBase = dst.bindMemory(to: UInt8.self).baseAddress,
-                      let srcBase = src.bindMemory(to: UInt8.self).baseAddress else { return 0 }
-                // COMPRESSION_ZLIB is raw RFC 1951 DEFLATE, no zlib header: ZIP method 8.
-                return compression_encode_buffer(dstBase, capacity, srcBase, data.count, nil, COMPRESSION_ZLIB)
+        let chunk = 64 * 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: chunk)
+        defer { buffer.deallocate() }
+        let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
+        defer { stream.deallocate() }
+        // COMPRESSION_ZLIB is raw RFC 1951 DEFLATE, no zlib header: ZIP method 8.
+        guard compression_stream_init(stream, COMPRESSION_STREAM_ENCODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK else {
+            return nil
+        }
+        defer { compression_stream_destroy(stream) }
+        return data.withUnsafeBytes { (src: UnsafeRawBufferPointer) -> Data? in
+            guard let srcBase = src.bindMemory(to: UInt8.self).baseAddress else { return nil }
+            stream.pointee.src_ptr = srcBase
+            stream.pointee.src_size = data.count
+            var out = Data()
+            while true {
+                stream.pointee.dst_ptr = buffer
+                stream.pointee.dst_size = chunk
+                let status = compression_stream_process(stream, Int32(COMPRESSION_STREAM_FINALIZE.rawValue))
+                guard status != COMPRESSION_STATUS_ERROR else { return nil }
+                out.append(buffer, count: chunk - stream.pointee.dst_size)
+                guard out.count < data.count else { return nil }  // no saving: store it
+                if status == COMPRESSION_STATUS_END { return out }
             }
         }
-        guard produced > 0 else { return nil }
-        out.count = produced
-        return out
         #else
         return nil
         #endif
