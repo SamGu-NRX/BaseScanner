@@ -1,21 +1,21 @@
 # Scoreboard
 
-Generated 2026-09-27 01:50 CDT by `make scoreboard` (`uv run python -m hsverify.scoreboard`) in `verification/`; slow probes ran for S2-1, S2-7 only. Probes are defined in `verification/scoreboard/metrics.yaml`.
+Generated 2026-09-27 02:12 CDT by `make scoreboard` (`uv run python -m hsverify.scoreboard`) in `verification/`; slow probes ran for S2-1, S2-7 only. Probes are defined in `verification/scoreboard/metrics.yaml`.
 
 ## Open pull requests
 
 | # | Branch | Head | Draft | CI | Updated |
 | --- | --- | --- | --- | --- | --- |
-| [#124](https://github.com/SamGu-NRX/house-scanning/pull/124) | `t3/integration-viewer` | `ed87212d` | no | 3 success, 1 pending | 2026-09-27 01:48 CDT |
-| [#123](https://github.com/SamGu-NRX/house-scanning/pull/123) | `t3/hunter-integration` | `294ddecb` | yes | 2 success, 2 skipped | 2026-09-27 01:43 CDT |
-| [#122](https://github.com/SamGu-NRX/house-scanning/pull/122) | `t3/41-server-requests-text` | `a22c2d45` | yes | 3 success, 1 skipped | 2026-09-27 01:46 CDT |
-| [#120](https://github.com/SamGu-NRX/house-scanning/pull/120) | `t3/41-walk-task-hold` | `6ea58d50` | yes | 2 success, 1 failure, 1 skipped; failing: iOS build | 2026-09-27 01:46 CDT |
-| [#119](https://github.com/SamGu-NRX/house-scanning/pull/119) | `t3/41-anchored-marks` | `f141a621` | yes | 2 success, 2 skipped | 2026-09-27 00:34 CDT |
-| [#117](https://github.com/SamGu-NRX/house-scanning/pull/117) | `t3/41-target-ring` | `97048675` | yes | 2 success, 2 skipped | 2026-09-27 00:36 CDT |
-| [#109](https://github.com/SamGu-NRX/house-scanning/pull/109) | `t3/41-gap-loop-result` | `5c15da87` | yes | 2 success, 2 skipped | 2026-09-27 01:00 CDT |
-| [#108](https://github.com/SamGu-NRX/house-scanning/pull/108) | `t3/41-ground-and-meter-tap` | `9c2a5676` | yes | 2 success, 2 skipped | 2026-09-27 00:25 CDT |
-| [#104](https://github.com/SamGu-NRX/house-scanning/pull/104) | `t3/41-gate-coaching` | `9b0acc58` | yes | 2 success, 2 skipped | 2026-09-27 01:47 CDT |
-| [#102](https://github.com/SamGu-NRX/house-scanning/pull/102) | `t3/41-card-replies` | `a4b8b272` | yes | 2 success, 2 skipped | 2026-09-27 01:46 CDT |
+| [#124](https://github.com/SamGu-NRX/house-scanning/pull/124) | `t3/integration-viewer` | `980cee89` | no | 3 success, 1 pending | 2026-09-27 02:10 CDT |
+| [#123](https://github.com/SamGu-NRX/house-scanning/pull/123) | `t3/hunter-integration` | `9a2368c8` | yes | 2 success, 2 skipped | 2026-09-27 02:08 CDT |
+| [#122](https://github.com/SamGu-NRX/house-scanning/pull/122) | `t3/41-server-requests-text` | `c8d3c9d5` | yes | 3 success, 1 skipped | 2026-09-27 01:55 CDT |
+| [#120](https://github.com/SamGu-NRX/house-scanning/pull/120) | `t3/41-walk-task-hold` | `8487a02f` | yes | 2 success, 1 pending, 1 skipped | 2026-09-27 02:07 CDT |
+| [#119](https://github.com/SamGu-NRX/house-scanning/pull/119) | `t3/41-anchored-marks` | `f141a621` | yes | 2 success, 2 skipped | 2026-09-27 01:55 CDT |
+| [#117](https://github.com/SamGu-NRX/house-scanning/pull/117) | `t3/41-target-ring` | `6d82e62a` | yes | 2 success, 2 skipped | 2026-09-27 02:04 CDT |
+| [#109](https://github.com/SamGu-NRX/house-scanning/pull/109) | `t3/41-gap-loop-result` | `a44780a2` | yes | 2 success, 2 skipped | 2026-09-27 01:59 CDT |
+| [#108](https://github.com/SamGu-NRX/house-scanning/pull/108) | `t3/41-ground-and-meter-tap` | `9c2a5676` | yes | 2 success, 2 skipped | 2026-09-27 01:49 CDT |
+| [#104](https://github.com/SamGu-NRX/house-scanning/pull/104) | `t3/41-gate-coaching` | `633c26d7` | yes | 2 success, 2 skipped | 2026-09-27 02:03 CDT |
+| [#102](https://github.com/SamGu-NRX/house-scanning/pull/102) | `t3/41-card-replies` | `98d96caa` | yes | 2 success, 2 skipped | 2026-09-27 01:59 CDT |
 | [#100](https://github.com/SamGu-NRX/house-scanning/pull/100) | `t3/41-ar-canvas-fallback` | `41291e82` | yes | 2 success, 2 skipped | 2026-09-27 01:47 CDT |
 | [#99](https://github.com/SamGu-NRX/house-scanning/pull/99) | `t3/41-end-preview` | `b5006fca` | yes | 2 success, 2 skipped | 2026-09-27 01:44 CDT |
 | [#91](https://github.com/SamGu-NRX/house-scanning/pull/91) | `t3/experience-result` | `9583b129` | no | 5 success | 2026-09-27 01:46 CDT |
@@ -24,8 +24,8 @@ Generated 2026-09-27 01:50 CDT by `make scoreboard` (`uv run python -m hsverify.
 | [#88](https://github.com/SamGu-NRX/house-scanning/pull/88) | `t3/autodetect-lab` | `538f60e1` | yes | 2 success | 2026-09-26 23:00 CDT |
 | [#87](https://github.com/SamGu-NRX/house-scanning/pull/87) | `t3/41-zip-deflate` | `5150321a` | yes | 2 success, 1 skipped | 2026-09-27 01:43 CDT |
 | [#86](https://github.com/SamGu-NRX/house-scanning/pull/86) | `t3/experience` | `b442f0a0` | yes | 2 success, 1 skipped | 2026-09-27 00:00 CDT |
-| [#61](https://github.com/SamGu-NRX/house-scanning/pull/61) | `t3/app-review-docs` | `c0b628b6` | no | 4 success | 2026-09-27 01:10 CDT |
-| [#60](https://github.com/SamGu-NRX/house-scanning/pull/60) | `t3/device-test-4.1-analysis` | `c566490c` | no | 2 success | 2026-09-27 01:48 CDT |
+| [#61](https://github.com/SamGu-NRX/house-scanning/pull/61) | `t3/app-review-docs` | `c0b628b6` | no | 4 success | 2026-09-27 01:56 CDT |
+| [#60](https://github.com/SamGu-NRX/house-scanning/pull/60) | `t3/device-test-4.1-analysis` | `c566490c` | no | 2 success | 2026-09-27 02:01 CDT |
 | [#59](https://github.com/SamGu-NRX/house-scanning/pull/59) | `t3/signals-lab` | `0cde05e3` | yes | 2 success | 2026-09-26 21:38 CDT |
 | [#58](https://github.com/SamGu-NRX/house-scanning/pull/58) | `t3/ios-ci-no-preboot` | `3c1298ab` | no | 2 success, 1 failure; failing: iOS build | 2026-09-26 22:18 CDT |
 | [#56](https://github.com/SamGu-NRX/house-scanning/pull/56) | `t3/walk-guidance-gaps` | `cae4f426` | no | 3 success | 2026-09-26 23:57 CDT |
@@ -51,18 +51,18 @@ Generated 2026-09-27 01:50 CDT by `make scoreboard` (`uv run python -m hsverify.
 
 ## S2 Server and solver
 
-`origin/t3/server` at [`9176125d`](https://github.com/SamGu-NRX/house-scanning/tree/9176125df0c9890c247818d55edc82ea46053cd8). 7 met, 1 partial.
+`origin/t3/server` at [`4a9fa44f`](https://github.com/SamGu-NRX/house-scanning/tree/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf). 6 met, 1 partial, 1 gap.
 
 | Metric | Text | Status | Evidence |
 | --- | --- | --- | --- |
-| S2-1 | pytest green | met | exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 346 passed, 1 warning in 65.76s (0:01:05) |
-| S2-2 | Every public golden test 01-14 of docs/research/t3-lane-c-review.md present | met | all 14 found [server/tests/test_golden_public.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_golden_public.py) |
-| S2-3 | Property tests: missing coverage never passes, equality is unsure, left/right mirror, larger clearance never turns pass into fail | partial | found missing coverage, mirror; missing equality unsure, larger clearance [server/tests/test_coderabbit_review.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_coderabbit_review.py), [server/tests/test_properties.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_properties.py) |
-| S2-4 | Schemas published | met | present at 9176125d [server/schemas/scene.schema.json](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/schemas/scene.schema.json), [server/schemas/result.schema.json](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/schemas/result.schema.json) |
-| S2-5 | Schemas validated in tests | met | all 2 found [server/tests/test_existing_battery.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_existing_battery.py), [server/tests/test_golden_public.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_golden_public.py), [server/tests/test_schemas.py](https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_schemas.py) |
-| S2-6 | A real-derived scene returns a result in under 1 s | met | latency_ms = 239.4 (want < 1000) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json |
-| S2-7 | ruff clean | met | exit 0: Installed 33 packages in 48ms / All checks passed! / 31 files already formatted |
-| S2-8 | Black-box (verification e2e at this SHA): results valid under C2, consistent with the decision and C5 margins, coverage to each check's required radius, missing evidence complete, ordering properties, hostile inputs refused in time | met | contract_ok = true (want True) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json |
+| S2-1 | pytest green | met | exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 352 passed, 1 warning in 89.34s (0:01:29) |
+| S2-2 | Every public golden test 01-14 of docs/research/t3-lane-c-review.md present | met | all 14 found [server/tests/test_golden_public.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_golden_public.py) |
+| S2-3 | Property tests: missing coverage never passes, equality is unsure, left/right mirror, larger clearance never turns pass into fail | partial | found missing coverage, equality unsure, mirror; missing larger clearance [server/tests/test_coderabbit_review.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_coderabbit_review.py), [server/tests/test_properties.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_properties.py), [server/tests/test_final_review.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_final_review.py) |
+| S2-4 | Schemas published | met | present at 4a9fa44f [server/schemas/scene.schema.json](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/schemas/scene.schema.json), [server/schemas/result.schema.json](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/schemas/result.schema.json) |
+| S2-5 | Schemas validated in tests | met | all 2 found [server/tests/test_existing_battery.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_existing_battery.py), [server/tests/test_golden_public.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_golden_public.py), [server/tests/test_schemas.py](https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_schemas.py) |
+| S2-6 | A real-derived scene returns a result in under 1 s | met | latency_ms = 561.4 (want < 1000) at sha 4a9fa44f: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json |
+| S2-7 | ruff clean | met | exit 0: Installed 33 packages in 33ms / All checks passed! / 32 files already formatted |
+| S2-8 | Black-box (verification e2e at this SHA): results valid under C2, consistent with the decision and C5 margins, coverage to each check's required radius, missing evidence complete, ordering properties, hostile inputs refused in time | gap | contract_ok = false (want True) at sha 4a9fa44f: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json |
 
 ## S3 iOS capture app
 
@@ -78,19 +78,19 @@ Generated 2026-09-27 01:50 CDT by `make scoreboard` (`uv run python -m hsverify.
 | S3-6 | Accessibility audit on every screen | partial | 3 matches in 2 files (an audit exists; which screens it covers needs a read) [ios/HouseScanUITests/AccessibilityAudit.swift](https://github.com/SamGu-NRX/house-scanning/blob/f14947eb9bff5b707660c8d873b72e60ba056631/ios/HouseScanUITests/AccessibilityAudit.swift), [ios/HouseScanUITests/ScreenStatesUITests.swift](https://github.com/SamGu-NRX/house-scanning/blob/f14947eb9bff5b707660c8d873b72e60ba056631/ios/HouseScanUITests/ScreenStatesUITests.swift) |
 | S3-6b | Independent accessibility audit (verification a11yaudit: Apple's audit on each screen the run reached, at least nine, plus symbol-name button labels) finds no issues | stale | report for sha a39d0a50, ref at f14947eb: ~/house-scanning-data/reports/a11y/20260926-071248-t3-ios-mvf-a39d0a50-head-sample/report.json |
 | S3-7 | Screenshots of each state in the PR | no evidence yet | no open PR for t3/ios-mvf |
-| S3-8 | Exported scene.json validates against C1 | met | app_export_scene_valid = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json |
+| S3-8 | Exported scene.json validates against C1 | met | app_export_scene_valid = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json |
 | S3-9 | Design self-review against frontend-design, emil-design-eng, holistic-ux, apple-design | gap | not yet reviewed |
 
 ## S4 Verification
 
-`origin/t3/ios-mvf` at [`f14947eb`](https://github.com/SamGu-NRX/house-scanning/tree/f14947eb9bff5b707660c8d873b72e60ba056631), `origin/t3/verification` at [`36ac02f9`](https://github.com/SamGu-NRX/house-scanning/tree/36ac02f9d1fb3d654ff12dde652de65a134d1cfd). 4 met.
+`origin/t3/ios-mvf` at [`f14947eb`](https://github.com/SamGu-NRX/house-scanning/tree/f14947eb9bff5b707660c8d873b72e60ba056631), `origin/t3/verification` at [`64d70d1f`](https://github.com/SamGu-NRX/house-scanning/tree/64d70d1f34396e822adcb5d502fd3d8c55b0dca1). 3 met, 1 partial.
 
 | Metric | Text | Status | Evidence |
 | --- | --- | --- | --- |
-| S4-1 | End to end from a real replay to a placement result passes | met | app_export_passed = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json |
+| S4-1 | End to end from a real replay to a placement result passes | partial | app_export_passed = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json (met on the synthetic replay against the hosted server at f14947e (12 states, one server gap request); the real ADVIO replay is blocked by its data (the walk never covers the ground by the meter), last real run 194f2eb) |
 | S4-2 | Screenshot report per app state | met | states = length 12 (want at least 9) at sha f14947eb: ~/house-scanning-data/reports/sim/20260927-013832-t3-ios-mvf-f14947eb-replay/report.json |
 | S4-3 | Product description written from the code and checked against screenshots | met | docs/app-review/product (#61) covers every screen of t3/ios-mvf at a39d0a5, checked in the Simulator there with the real server's result; its bug triage has 16 entries, 3 resolved; docs/app-review/ux/review.md judges every state. |
-| S4-4 | Scoreboard of every PR | met | present at 36ac02f9 [verification/SCOREBOARD.md](https://github.com/SamGu-NRX/house-scanning/blob/36ac02f9d1fb3d654ff12dde652de65a134d1cfd/verification/SCOREBOARD.md) |
+| S4-4 | Scoreboard of every PR | met | present at 64d70d1f [verification/SCOREBOARD.md](https://github.com/SamGu-NRX/house-scanning/blob/64d70d1f34396e822adcb5d502fd3d8c55b0dca1/verification/SCOREBOARD.md) |
 
 ## M Maintenance
 

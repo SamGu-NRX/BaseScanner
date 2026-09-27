@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-27T01:50:01-05:00",
+  "generated_at": "2026-09-27T02:12:37-05:00",
   "command": "uv run python -m hsverify.scoreboard",
   "slow": [
     "S2-1",
@@ -10,9 +10,9 @@
       "number": 124,
       "title": "tools: viewer that films a capture reaching the server, as a labeled replay or read-only live view",
       "branch": "t3/integration-viewer",
-      "head": "ed87212dc02a87844b5240d3facd5d05616c11f9",
+      "head": "980cee892d79e27b33ac1a4a7f5696da9755abdb",
       "draft": false,
-      "updated": "2026-09-27T06:48:01Z",
+      "updated": "2026-09-27T07:10:18Z",
       "ci": {
         "counts": {
           "success": 3,
@@ -28,9 +28,9 @@
       "number": 123,
       "title": "ios: House Scan Integration records each scan as a capture packet and, with consent, uploads it while scanning",
       "branch": "t3/hunter-integration",
-      "head": "294ddecb7a1d3fe303cbf21b73bfb3f3f5392daa",
+      "head": "9a2368c86a172e8840e3fb56299d4dfb58163416",
       "draft": true,
-      "updated": "2026-09-27T06:43:08Z",
+      "updated": "2026-09-27T07:08:17Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -46,9 +46,9 @@
       "number": 122,
       "title": "server: stop requests at the wall's ends, keep placeholder distances out of them, name things without ids",
       "branch": "t3/41-server-requests-text",
-      "head": "a22c2d45351c202cff91defe9638197b5e87eb52",
+      "head": "c8d3c9d5d4575e8e52ef86052fdb9c48987fbf94",
       "draft": true,
-      "updated": "2026-09-27T06:46:29Z",
+      "updated": "2026-09-27T06:55:58Z",
       "ci": {
         "counts": {
           "success": 3,
@@ -64,20 +64,18 @@
       "number": 120,
       "title": "ios: hold a walk aim until it is met or stalls, and ask for the meter ground only near the meter",
       "branch": "t3/41-walk-task-hold",
-      "head": "6ea58d50562b0c3008b0edea57b0226c3de3aa92",
+      "head": "8487a02f811b12fd5e8eda3bd9f79e5b84089f1e",
       "draft": true,
-      "updated": "2026-09-27T06:46:35Z",
+      "updated": "2026-09-27T07:07:24Z",
       "ci": {
         "counts": {
           "success": 2,
-          "failure": 1,
-          "pending": 0,
+          "failure": 0,
+          "pending": 1,
           "skipped": 1
         },
-        "failing": [
-          "iOS build"
-        ],
-        "text": "2 success, 1 failure, 1 skipped; failing: iOS build"
+        "failing": [],
+        "text": "2 success, 1 pending, 1 skipped"
       }
     },
     {
@@ -86,7 +84,7 @@
       "branch": "t3/41-anchored-marks",
       "head": "f141a6212f3bba8c26695bf3cb5cb40ef0f1cf9d",
       "draft": true,
-      "updated": "2026-09-27T05:34:51Z",
+      "updated": "2026-09-27T06:55:12Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -102,9 +100,9 @@
       "number": 117,
       "title": "ios: aim ring fills as its stretch is captured, with a legend and an unambiguous arrow",
       "branch": "t3/41-target-ring",
-      "head": "970486757fcd13391653b93563a669710f475db9",
+      "head": "6d82e62a9c1d08a2247694d36e0b3be7ae05673c",
       "draft": true,
-      "updated": "2026-09-27T05:36:33Z",
+      "updated": "2026-09-27T07:04:02Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -120,9 +118,9 @@
       "number": 109,
       "title": "ios: gap-loop follow-ups, upload ticks, the nearer unseen end and request stretches (#39, #31, #83, #75)",
       "branch": "t3/41-gap-loop-result",
-      "head": "5c15da8705ef09bef33a71d1d1dca27deddb7480",
+      "head": "a44780a21d021b65515c61f93b6b84c1a3de97be",
       "draft": true,
-      "updated": "2026-09-27T06:00:21Z",
+      "updated": "2026-09-27T06:59:30Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -140,7 +138,7 @@
       "branch": "t3/41-ground-and-meter-tap",
       "head": "9c2a5676fff6b31b1eb1e4bde63a5473ae61b5f3",
       "draft": true,
-      "updated": "2026-09-27T05:25:24Z",
+      "updated": "2026-09-27T06:49:26Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -156,9 +154,9 @@
       "number": 104,
       "title": "ios: gate coaching keeps the task card, holds through dark flicker, and says \"Turn more slowly\" for turns",
       "branch": "t3/41-gate-coaching",
-      "head": "9b0acc5851e7fa69a1da560724c919f1d63bcc5e",
+      "head": "633c26d751fc24ecf8968756a29139fa6b969126",
       "draft": true,
-      "updated": "2026-09-27T06:47:54Z",
+      "updated": "2026-09-27T07:03:52Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -174,9 +172,9 @@
       "number": 102,
       "title": "ios: card replies name the task, stay under gate coaching, and lock after a new card",
       "branch": "t3/41-card-replies",
-      "head": "a4b8b2723736b5f2b29c5605569dcdb76c6d8a69",
+      "head": "98d96caa41b24dc3140ca5a5fbaec4a0c610205f",
       "draft": true,
-      "updated": "2026-09-27T06:46:10Z",
+      "updated": "2026-09-27T06:59:29Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -338,7 +336,7 @@
       "branch": "t3/app-review-docs",
       "head": "c0b628b6b9ec2b314ae418db956a27bc579ee642",
       "draft": false,
-      "updated": "2026-09-27T06:10:04Z",
+      "updated": "2026-09-27T06:56:32Z",
       "ci": {
         "counts": {
           "success": 4,
@@ -356,7 +354,7 @@
       "branch": "t3/device-test-4.1-analysis",
       "head": "c566490c5e3fa0d45803895bb463cb260d11a906",
       "draft": false,
-      "updated": "2026-09-27T06:48:45Z",
+      "updated": "2026-09-27T07:01:07Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -646,7 +644,7 @@
       "refs": [
         {
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8"
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf"
         }
       ],
       "metrics": [
@@ -654,22 +652,22 @@
           "id": "S2-1",
           "text": "pytest green",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
-          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 346 passed, 1 warning in 65.76s (0:01:05)",
+          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 352 passed, 1 warning in 89.34s (0:01:29)",
           "links": []
         },
         {
           "id": "S2-2",
           "text": "Every public golden test 01-14 of docs/research/t3-lane-c-review.md present",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
           "evidence": "all 14 found",
           "links": [
             [
               "server/tests/test_golden_public.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_golden_public.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_golden_public.py"
             ]
           ]
         },
@@ -677,17 +675,21 @@
           "id": "S2-3",
           "text": "Property tests: missing coverage never passes, equality is unsure, left/right mirror, larger clearance never turns pass into fail",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "partial",
-          "evidence": "found missing coverage, mirror; missing equality unsure, larger clearance",
+          "evidence": "found missing coverage, equality unsure, mirror; missing larger clearance",
           "links": [
             [
               "server/tests/test_coderabbit_review.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_coderabbit_review.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_coderabbit_review.py"
             ],
             [
               "server/tests/test_properties.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_properties.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_properties.py"
+            ],
+            [
+              "server/tests/test_final_review.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_final_review.py"
             ]
           ]
         },
@@ -695,17 +697,17 @@
           "id": "S2-4",
           "text": "Schemas published",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
-          "evidence": "present at 9176125d",
+          "evidence": "present at 4a9fa44f",
           "links": [
             [
               "server/schemas/scene.schema.json",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/schemas/scene.schema.json"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/schemas/scene.schema.json"
             ],
             [
               "server/schemas/result.schema.json",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/schemas/result.schema.json"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/schemas/result.schema.json"
             ]
           ]
         },
@@ -713,21 +715,21 @@
           "id": "S2-5",
           "text": "Schemas validated in tests",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
           "evidence": "all 2 found",
           "links": [
             [
               "server/tests/test_existing_battery.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_existing_battery.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_existing_battery.py"
             ],
             [
               "server/tests/test_golden_public.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_golden_public.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_golden_public.py"
             ],
             [
               "server/tests/test_schemas.py",
-              "https://github.com/SamGu-NRX/house-scanning/blob/9176125df0c9890c247818d55edc82ea46053cd8/server/tests/test_schemas.py"
+              "https://github.com/SamGu-NRX/house-scanning/blob/4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf/server/tests/test_schemas.py"
             ]
           ]
         },
@@ -735,27 +737,27 @@
           "id": "S2-6",
           "text": "A real-derived scene returns a result in under 1 s",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
-          "evidence": "latency_ms = 239.4 (want < 1000) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
+          "evidence": "latency_ms = 561.4 (want < 1000) at sha 4a9fa44f: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json",
           "links": []
         },
         {
           "id": "S2-7",
           "text": "ruff clean",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
           "status": "met",
-          "evidence": "exit 0: Installed 33 packages in 48ms / All checks passed! / 31 files already formatted",
+          "evidence": "exit 0: Installed 33 packages in 33ms / All checks passed! / 32 files already formatted",
           "links": []
         },
         {
           "id": "S2-8",
           "text": "Black-box (verification e2e at this SHA): results valid under C2, consistent with the decision and C5 margins, coverage to each check's required radius, missing evidence complete, ordering properties, hostile inputs refused in time",
           "ref": "origin/t3/server",
-          "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
-          "status": "met",
-          "evidence": "contract_ok = true (want True) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
+          "sha": "4a9fa44f2cadf8aacace12cce7b3b4335ad61fcf",
+          "status": "gap",
+          "evidence": "contract_ok = false (want True) at sha 4a9fa44f: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json",
           "links": []
         }
       ]
@@ -888,7 +890,7 @@
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
           "status": "met",
-          "evidence": "app_export_scene_valid = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
+          "evidence": "app_export_scene_valid = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json",
           "links": []
         },
         {
@@ -912,7 +914,7 @@
         },
         {
           "ref": "origin/t3/verification",
-          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd"
+          "sha": "64d70d1f34396e822adcb5d502fd3d8c55b0dca1"
         }
       ],
       "metrics": [
@@ -921,8 +923,8 @@
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
-          "status": "met",
-          "evidence": "app_export_passed = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
+          "status": "partial",
+          "evidence": "app_export_passed = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-020953-4a9fa44f/report.json (met on the synthetic replay against the hosted server at f14947e (12 states, one server gap request); the real ADVIO replay is blocked by its data (the walk never covers the ground by the meter), last real run 194f2eb)",
           "links": []
         },
         {
@@ -938,7 +940,7 @@
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd",
+          "sha": "64d70d1f34396e822adcb5d502fd3d8c55b0dca1",
           "status": "met",
           "evidence": "docs/app-review/product (#61) covers every screen of t3/ios-mvf at a39d0a5, checked in the Simulator there with the real server's result; its bug triage has 16 entries, 3 resolved; docs/app-review/ux/review.md judges every state.",
           "links": []
@@ -947,13 +949,13 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd",
+          "sha": "64d70d1f34396e822adcb5d502fd3d8c55b0dca1",
           "status": "met",
-          "evidence": "present at 36ac02f9",
+          "evidence": "present at 64d70d1f",
           "links": [
             [
               "verification/SCOREBOARD.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/36ac02f9d1fb3d654ff12dde652de65a134d1cfd/verification/SCOREBOARD.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/64d70d1f34396e822adcb5d502fd3d8c55b0dca1/verification/SCOREBOARD.md"
             ]
           ]
         }

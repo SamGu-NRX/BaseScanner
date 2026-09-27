@@ -388,7 +388,7 @@ sweep: {step_ft: {value: 0.166666666667}, wall_join_ft: {value: 0.6}}
     assert rules.needs["gas_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
     assert rules.needs["battery_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
     assert rules.needs["opening_clearance"] == (Need("wall", 3.0, 6.5),)
-    assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
+    assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25),)
     assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5),)
     assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5),)
     assert (rules.wall_join_ft, rules.battery_height_ft, rules.headroom_ft) == (0.6, 3.25, 6.5)
@@ -1020,3 +1020,90 @@ def test_a_view_at_headroom_does_not_settle_a_request_just_past_it():
     assert not any("lists as observed" in m for m in msgs)
     msgs = invariant_problems(with_wall_seen(6.500001), r, rules=RULES)
     assert any("lists as observed" in m for m in msgs)
+
+
+def test_a_captured_request_claims_only_the_reach_it_asked_for():
+    # Review 4114352249: a ground request out 0.5 ft was captured as seen 40 ft out.
+    r = result()
+    r["missing_evidence"] = [
+        {"kind": "band", "band": "ground", "span_ft": [0, 5], "out_ft": 0.5, "message": ""},
+        {"kind": "band", "band": "wall", "span_ft": [2, 3], "out_ft": 6.500001, "message": ""},
+        {"kind": "band", "band": "facing", "span_ft": [2, 3], "message": ""},
+    ]
+    added = with_requests_captured(SCENE, r)["coverage"]["observed"][-3:]
+    assert added == [
+        {"band": "ground", "span_ft": [0, 5], "out_ft": 0.5},
+        {"band": "wall", "span_ft": [2, 3], "out_ft": 6.500001},
+        {"band": "facing", "span_ft": [2, 3]},
+    ]
+
+
+def test_a_sweep_run_shorter_than_a_step_keeps_its_first_start():
+    # Review 4114352251: run_starts([0, 0.4], 1) returned only 0.4.
+    assert run_starts([0.0, 0.4], 1.0) == [0.0, 0.4]
+
+
+def test_a_passing_spot_must_pass_in_the_sweep_too():
+    # Review 4114352261: the spot passes but its start is in a failing run, stats consistent.
+    run = {
+        "wall_id": "w1",
+        "start_ft": [1.0, 1.0],
+        "outcome": "fail",
+        "failing": ["gas_clearance"],
+        "unsure": [],
+    }
+    r = result(sweep=[run])
+    r["stats"] |= {"pass": 0, "fail": 1}
+    assert any(
+        "spot passes but the sweep has start 1.00 on w1 as fail" in m
+        for m in invariant_problems(SCENE, r, rules=RULES)
+    )
+
+
+def test_wall_backing_needs_the_wall_seen_past_the_battery_by_its_error():
+    # Server 4a9fa44: the wall behind every place the battery may sit, [s0 - e, s1 + e].
+    backing = replace(RULES, needs={"wall_backing": (Need("wall", 0.0, 3.25),)})
+    scene = copy.deepcopy(SCENE)
+    scene["walls"][0]["plus_minus_ft"] = 0.3
+    scene["coverage"]["observed"][0] = {"band": "wall", "span_ft": [1.0, 3.6], "out_ft": 4.0}
+    r = result(checks=[passing("wall_backing")])
+    assert any("wall [0.70, 3.88]" in m for m in coverage_problems(scene, r, backing))
+    scene["coverage"]["observed"][0]["span_ft"] = [0.0, 3.9]
+    assert coverage_problems(scene, r, backing) == []
+
+
+def inside_corner(w2_out: float) -> dict:
+    # g05: w1 runs +x with its outside at +z; w2 turns up +z from its end, facing back over w1.
+    return {
+        "meter": {"pos": [-6.0, 4.0, 0.0], "wall_id": "w1"},
+        "walls": [
+            {"id": "w1", "baseline": [[-7.0, 0.0], [4.0, 0.0]], "plus_minus_ft": 0.0},
+            {"id": "w2", "baseline": [[4.0, 0.0], [4.0, 12.0]], "plus_minus_ft": 0.0},
+        ],
+        "objects": [],
+        "coverage": {
+            "ends": {"left": {"kind": "limit"}, "right": {"kind": "limit"}},
+            "observed": [
+                {"band": "wall", "span_ft": [-1.0, 22.0]},
+                {"band": "ground", "span_ft": [-7.0, 10.0], "out_ft": 10.5},
+                {"band": "ground", "span_ft": [10.0, 22.0], "out_ft": w2_out},
+            ],
+        },
+    }
+
+
+def test_ground_in_front_of_one_wall_may_be_seen_from_the_next_in_an_inside_corner():
+    # The battery at s 4.04 (x -1.96 to 0.62) needs a 10 ft pool radius, ground out to 11.83 in
+    # front; w1's band reaches 10.5. From x = 4, w2's band reaching 10.66 or more covers it.
+    pool = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
+    run = {
+        "wall_id": "w1",
+        "start_ft": [4.04, 4.04],
+        "outcome": "pass",
+        "failing": [],
+        "unsure": [],
+    }
+    r = result(spot=False, checks=[check() | {"id": "pool_clearance"}], sweep=[run])
+    assert coverage_problems(inside_corner(10.7), r, pool) == []
+    short = coverage_problems(inside_corner(4.0), r, pool)  # w2's band stops at x = 0
+    assert any("pool_clearance needs ground [4.04, 6.62] observed out to 11.83" in m for m in short)

@@ -119,7 +119,7 @@ class RuleSet:
 
         needs = {
             "ground_surface": (Need("ground", 0.0),),
-            "wall_backing": (Need("wall", 0.0, value("battery", "height_ft"), widen=False),),
+            "wall_backing": (Need("wall", 0.0, value("battery", "height_ft")),),
             "gas_clearance": (reach("gas_ft"), Need("wall", r("gas_ft"), headroom)),
             "battery_clearance": (reach("battery_ft"), Need("wall", r("battery_ft"), headroom)),
             "ac_clearance": (reach("ac_ft"),),
@@ -315,11 +315,30 @@ def invariant_problems(
         if max(abs(want[0] - got[0]), abs(want[1] - got[1])) > OFFSET_TOL_FT:
             problems.append(f"spot.meter_offset_ft {got} != centre - meter {want}")
 
+    problems += spot_sweep_problems(result)
     problems += missing_evidence_problems(scene, result, rules)
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
         problems += declared_height_problems(scene, result, rules)
     return problems
+
+
+def spot_sweep_problems(result: dict) -> list[str]:
+    """The chosen spot is one of the evaluated starts, so the sweep must give its start the
+    spot's own outcome, and a passing spot must lie in a passing run. A result could otherwise
+    report a pass at a start its own sweep says fails, with stats that agree with the sweep."""
+    spot = result.get("spot")
+    if spot is None:
+        return []
+    start = spot["span_ft"][0]
+    got = outcome_at(result, spot["wall_id"], start)
+    if got == spot["outcome"]:
+        return []
+    verb = {"pass": "passes", "fail": "fails"}.get(spot["outcome"], "is unsure")
+    where = f"start {start:.2f} on {spot['wall_id']}"
+    if got is None:
+        return [f"spot {verb} but no sweep run has {where}"]
+    return [f"spot {verb} but the sweep has {where} as {got}"]
 
 
 def required_span(lo: float, hi: float, radius: float) -> tuple[float, float]:
@@ -371,7 +390,8 @@ def reach_gaps(
     for need in rules.needs[check]:
         reach = need.radius + (battery_error(scene, rules, wall_id, lo, hi) if need.widen else 0.0)
         if need.band == "ground":
-            gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
+            plan = GroundPlan(scene, rules) if rules.wall_join_ft is not None else None
+            gap = ground_gap(scene, lo, hi, rules.depth_ft, reach, plan)
         elif need.band == "wall":
             a, b = required_span(lo, hi, reach)
             wall = observed(
@@ -426,7 +446,8 @@ def run_starts(span: list[float], step_ft: float | None) -> list[float]:
     if step_ft is None or step_ft <= 0:
         raise ValueError("checking a sweep run needs the rules' sweep.step_ft")
     a, b = span
-    count = max(0, round((b - a) / step_ft))
+    # Every step strictly before the last start, the first included however short the run.
+    count = max(0, math.ceil((b - a) / step_ft - EPS))
     return [a + k * step_ft for k in range(count)] + [b]
 
 
@@ -497,9 +518,17 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     return problems
 
 
-def ground_gap(scene: dict, lo: float, hi: float, depth: float, radius: float) -> str | None:
+def ground_gap(
+    scene: dict,
+    lo: float,
+    hi: float,
+    depth: float,
+    radius: float,
+    plan: GroundPlan | None = None,
+) -> str | None:
     """The first stretch of ground seen less far out than a battery over [lo, hi] needs (see
-    coverage_problems), or None."""
+    coverage_problems), or None. With `plan`, ground not seen in the battery's own wall's band
+    still counts where it lies in another wall's observed band in plan (GroundPlan)."""
     entries = [
         (*sorted(e["span_ft"]), e.get("out_ft", 0.0))
         for e in scene.get("coverage", {}).get("observed", [])
@@ -514,6 +543,8 @@ def ground_gap(scene: dict, lo: float, hi: float, depth: float, radius: float) -
         need = depth + radius if inside else radius - min(abs(lo - q), abs(p - hi))
         seen = max((out for x, y, out in entries if x <= p + EPS and q - EPS <= y), default=None)
         if seen is None or seen + EPS < need:
+            if plan is not None and plan.covers((lo + hi) / 2, p, q, seen or 0.0, need):
+                continue
             where = f"ground [{p:.2f}, {q:.2f}] observed"
             if seen is None:
                 return f"{where}, none seen"
@@ -584,8 +615,12 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
 END_TOL_FT = 0.1
 
 
-def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] | None:
-    """Each wall's stretch of s (the meter's projection is s = 0), or None without a meter wall.
+Point = tuple[float, float]
+
+
+def segments_s(scene: dict, rules: RuleSet) -> list[tuple[str, float, float, Point, Point]] | None:
+    """Each straight baseline segment as (wall id, s at its start, s at its end, start point,
+    end point), with s measured from the meter's projection, or None without a meter wall.
 
     s runs along every wall. The space from one wall's end to the next one's start counts only
     when it is a gap: wider than both walls' own errors together (no drift), capped at
@@ -596,17 +631,16 @@ def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] 
     walls = scene.get("walls", [])
     if not walls or "meter" not in scene:
         return None
-    raw: dict[str, tuple[float, float]] = {}
+    raw: list[tuple[str, float, float, Point, Point]] = []
     meter_s = None
     mx, _, mz = scene["meter"]["pos"]
     s, prev = 0.0, None
     for wall in walls:
-        pts = [tuple(pt) for pt in wall["baseline"]]
+        pts = [(float(pt[0]), float(pt[1])) for pt in wall["baseline"]]
         if prev is not None:
             space = math.dist(prev[0], pts[0])
             meets = min(rules.wall_join_ft, max(prev[1] + wall_error(wall, rules), SERVER_EPS))
             s += space if space > meets else 0.0
-        start = s
         for p, q in itertools.pairwise(pts):
             seg = math.dist(p, q)
             if wall["id"] == scene["meter"]["wall_id"] and seg > 0:
@@ -615,12 +649,85 @@ def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] 
                 d = math.dist((mx, mz), (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
                 if meter_s is None or d < meter_s[0]:
                     meter_s = (d, s + t * seg)
+            raw.append((wall["id"], s, s + seg, p, q))
             s += seg
-        raw[wall["id"]] = (start, s)
         prev = (pts[-1], wall_error(wall, rules))
     if meter_s is None:
         return None
-    return {wid: (a - meter_s[1], b - meter_s[1]) for wid, (a, b) in raw.items()}
+    return [(wid, a - meter_s[1], b - meter_s[1], p, q) for wid, a, b, p, q in raw]
+
+
+def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] | None:
+    """Each wall's stretch of s (see segments_s), or None without a meter wall."""
+    segments = segments_s(scene, rules)
+    if segments is None:
+        return None
+    spans: dict[str, tuple[float, float]] = {}
+    for wid, a, b, _, _ in segments:
+        lo, hi = spans.get(wid, (a, b))
+        spans[wid] = (min(lo, a), max(hi, b))
+    return spans
+
+
+class GroundPlan:
+    """The observed ground in plan: each entry's stretch of every segment it runs along, out to
+    its `out_ft` on the segment's outward side (the baseline turned 90 degrees clockwise seen
+    from above, scene.schema.json). A point in front of one wall can lie in a neighbouring
+    wall's band, as in an inside corner, where the second wall faces back over the first."""
+
+    STEP_FT = 0.05  # sampling step for coverage tests; a sliver thinner than this can be missed
+
+    def __init__(self, scene: dict, rules: RuleSet) -> None:
+        self.segments = segments_s(scene, rules) or []
+        self.strips = []  # (origin, along, outward, from s, to s, out)
+        for e in scene.get("coverage", {}).get("observed", []):
+            if e["band"] != "ground":
+                continue
+            a, b = sorted(e["span_ft"])
+            for _, s0, s1, p, q in self.segments:
+                if min(b, s1) - max(a, s0) > EPS and s1 - s0 > EPS:
+                    along, outward = self._frame(p, q)
+                    strip = (p, along, outward, max(a, s0) - s0, min(b, s1) - s0)
+                    self.strips.append((*strip, e.get("out_ft", 0.0)))
+
+    @staticmethod
+    def _frame(p: Point, q: Point) -> tuple[Point, Point]:
+        length = math.dist(p, q)
+        along = ((q[0] - p[0]) / length, (q[1] - p[1]) / length)
+        return along, (-along[1], along[0])
+
+    def point(self, s_mid: float, s: float, out: float) -> Point | None:
+        """The plan point at s along the line of the segment under s_mid, `out` in front."""
+        seg = next((g for g in self.segments if g[1] - EPS <= s_mid <= g[2] + EPS), None)
+        if seg is None:
+            return None
+        _, s0, _, p, q = seg
+        along, outward = self._frame(p, q)
+        t = s - s0
+        return (p[0] + t * along[0] + out * outward[0], p[1] + t * along[1] + out * outward[1])
+
+    def seen(self, x: Point) -> bool:
+        for origin, along, outward, t0, t1, out in self.strips:
+            dx, dz = x[0] - origin[0], x[1] - origin[1]
+            t = dx * along[0] + dz * along[1]
+            n = dx * outward[0] + dz * outward[1]
+            if t0 - EPS <= t <= t1 + EPS and -EPS <= n <= out + SERVER_EPS:
+                return True
+        return False
+
+    def covers(self, s_mid: float, p: float, q: float, out_lo: float, out_hi: float) -> bool:
+        """Every sampled point from s = p to q, out_lo to out_hi in front of the battery's
+        segment, lies in some observed ground band."""
+        if not self.strips:
+            return False
+        ns = max(1, math.ceil((q - p) / self.STEP_FT))
+        no = max(1, math.ceil((out_hi - out_lo) / self.STEP_FT))
+        for i in range(ns + 1):
+            for j in range(no + 1):
+                x = self.point(s_mid, p + (q - p) * i / ns, out_lo + (out_hi - out_lo) * j / no)
+                if x is None or not self.seen(x):
+                    return False
+        return True
 
 
 def chain_ends_s(scene: dict, rules: RuleSet) -> tuple[float, float] | None:
@@ -996,11 +1103,19 @@ def with_ground_short_of(scene: dict, rules: RuleSet, margin_ft: float = 0.1) ->
 GROUND_FAR_FT = 40.0
 
 
-def with_requests_captured(scene: dict, result: dict, out_ft: float = GROUND_FAR_FT) -> dict | None:
-    """The scene as if the homeowner had shown every band the result asked for."""
+def with_requests_captured(scene: dict, result: dict) -> dict | None:
+    """The scene as if the homeowner had shown every band the result asked for, exactly as far
+    as each request asks (its `out_ft`, which the result schema says to report back as the
+    observed entry's), never further. A ground request without one is read as far as the
+    redundancy check reads it, GROUND_FAR_FT."""
+
+    def reach(request: dict) -> dict:
+        if "out_ft" in request:
+            return {"out_ft": request["out_ft"]}
+        return {"out_ft": GROUND_FAR_FT} if request["band"] == "ground" else {}
+
     added = [
-        {"band": r["band"], "span_ft": sorted(r["span_ft"])}
-        | ({"out_ft": out_ft} if r["band"] == "ground" else {})
+        {"band": r["band"], "span_ft": sorted(r["span_ft"])} | reach(r)
         for r in result.get("missing_evidence", [])
         if r["kind"] == "band" and "band" in r and "span_ft" in r
     ]
