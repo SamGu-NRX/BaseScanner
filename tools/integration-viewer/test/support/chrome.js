@@ -52,9 +52,11 @@ export async function launchChrome(path) {
     },
     async close() {
       ws.close();
+      const exited = new Promise((r) => child.once("exit", r));
       child.kill();
-      await new Promise((r) => setTimeout(r, 200));
-      rmSync(profile, { recursive: true, force: true });
+      await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
+      // Chrome can still be flushing its profile for a moment after exit.
+      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     },
   };
 }

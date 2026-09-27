@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, resultKey, stageRows } from "../public/model.js";
+import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, resultKey, stageRows, viewsToShow } from "../public/model.js";
 
 const source = { key: "t", label: "test", kind: "synthetic" };
 
@@ -249,6 +249,34 @@ test("a stage left running when the capture settles shows no reported end", () =
   assert.equal(stageRows(s)[0].status, "unended");
   const open = run(selected(), events([stage(1, "validate", "running")], 1, "processing"));
   assert.equal(stageRows(open)[0].status, "running");
+});
+
+test("requested views show before any result exists, and the result's own list wins once it arrives", () => {
+  const retake = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn3"], memberActions: [] } }]));
+  assert.equal(retake.result.body, null);
+  assert.deepEqual(viewsToShow(retake), [{ id: "vn3", title: null }]);
+  const withResult = run(retake, { type: "result", body: { runId: "run_a", status: "needs_views", outcome: null, viewsNeeded: [{ id: "vn3", prompt: { title: "Show the ground left of the meter", body: "b" } }] } });
+  assert.deepEqual(viewsToShow(withResult), [{ id: "vn3", title: "Show the ground left of the meter" }]);
+});
+
+test("a new run clears the previous run's retake and any result read without a body", () => {
+  const a = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn3"], memberActions: [] } }]), { type: "result-loading" });
+  assert.equal(a.result.phase, "loading");
+  const b = run(a, events([{ ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }], 2));
+  assert.equal(b.retake, null);
+  assert.deepEqual(viewsToShow(b), []);
+  assert.equal(b.result.phase, "none");
+});
+
+test("discarding an older run's result keeps the current run's pending result pending", () => {
+  const s = run(
+    selected(),
+    events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
+    { type: "result", body: { runId: "run_b", status: "processing", outcome: null } },
+    { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
+  );
+  assert.equal(s.result.phase, "pending");
+  assert.equal(s.result.body.runId, "run_b");
 });
 
 test("a retake names the views the server asked for", () => {

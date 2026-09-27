@@ -190,7 +190,9 @@ function noteRun(state, runId, seq = null) {
   next = { ...next, currentRunId: current };
   if (state.currentRunId == null) return next;
   if (next.verdict && next.verdict.runId !== current) next.verdict = null;
-  if (next.result.body && next.result.body.runId !== current) next.result = { phase: "none", body: null, error: null };
+  if (next.retake && next.retake.runId !== current) next.retake = null;
+  // A result read with no body yet (loading or failed) belonged to the previous run too.
+  if (next.result.body ? next.result.body.runId !== current : next.result.phase !== "none") next.result = { phase: "none", body: null, error: null };
   if (next.preview.runId && next.preview.runId !== current) next.preview = { phase: "none", runId: null, cloud: null, error: null };
   return log(next, { seq: null, at: null, kind: "run", text: `Showing run ${current}` });
 }
@@ -327,7 +329,7 @@ function applyResult(state, body) {
   // A result for a run the view is not showing is held back; the next read will match.
   const knownRun = typeof body.runId === "string" && (state.runFirstSeq.has(body.runId) || state.declaredRun === body.runId);
   if (knownRun && state.currentRunId && body.runId !== state.currentRunId && runRank(state, body.runId) < runRank(state, state.currentRunId)) {
-    return { ...state, result: { ...state.result, phase: state.result.body ? "ready" : "none" } };
+    return state;
   }
   if (typeof body.runId === "string") state = noteRun(state, body.runId);
   const ready = body.outcome != null || NO_OUTCOME_STATUSES.has(body.status);
@@ -379,6 +381,21 @@ export function stageRows(state) {
 export function looksLikePlaceholderStages(state) {
   const done = stageRows(state).filter((r) => r.status === "done");
   return done.length >= 3 && done.every((r) => r.durationS != null && r.durationS < 0.05);
+}
+
+/**
+ * The views the server asked for, for the current run: from the result when it lists any,
+ * otherwise from a retake request. Each has the view id and the server's prompt title, if given.
+ */
+export function viewsToShow(state) {
+  const body = state.result.body;
+  const listed = [...(Array.isArray(body?.viewsNeeded) ? body.viewsNeeded : []), ...(Array.isArray(body?.outcome?.viewsNeeded) ? body.outcome.viewsNeeded : [])];
+  const seen = new Set();
+  const fromResult = listed
+    .filter((v) => isObject(v) && typeof v.id === "string" && !seen.has(v.id) && seen.add(v.id))
+    .map((v) => ({ id: v.id, title: typeof v.prompt?.title === "string" ? v.prompt.title : null }));
+  if (fromResult.length > 0) return fromResult;
+  return state.retake ? state.retake.views.map((id) => ({ id, title: null })) : [];
 }
 
 /** A non-empty preview URL; an empty string means the result has no preview. */

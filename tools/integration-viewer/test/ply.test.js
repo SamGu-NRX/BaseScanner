@@ -42,6 +42,12 @@ test("non-finite coordinates are skipped", () => {
   assert.deepEqual([...cloud.generated.slice(0, 2)], [0, 1]);
 });
 
+test("coordinates too large for a 32-bit float are skipped", () => {
+  const cloud = parsePly(buf("ply\nformat ascii 1.0\nelement vertex 2\nproperty double x\nproperty double y\nproperty double z\nend_header\n1e300 0 0\n1 2 3\n"));
+  assert.equal(cloud.kept, 1);
+  assert.deepEqual(cloud.bounds, { min: [1, 2, 3], max: [1, 2, 3] });
+});
+
 test("an empty cloud parses as zero points", () => {
   const cloud = parsePly(buf("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n"));
   assert.equal(cloud.count, 0);
