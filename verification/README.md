@@ -19,9 +19,8 @@ Reports go to `~/house-scanning-data/reports/`, outside git, because replay fram
 non-commercial datasets. What each check asserts is in the docstrings of `hsverify/e2e.py`,
 `resultcheck.py` and `simrun.py`.
 
-**Result.** At `t3/server` `4a9fa44`, with the app's upload from `f14947e` (synthetic replay, hosted
-server), 49 of 50 scenes pass (45 answered and checked; slowest real scene 0.56 s). The ETH3D scene
-fails: capturing exactly the ground the server asks for never settles it.
+**Result.** At `t3/server` `86b2b4d`, with the app's upload from `f14947e` (synthetic replay, hosted
+server), all 50 scenes pass (45 answered and checked; slowest real scene 0.52 s).
 
 **What it changed.** S2 fixed seven defects it found:
 - unseen ground passing the pool check;
