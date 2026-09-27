@@ -72,6 +72,9 @@ final class ScanEngine {
     private var groundPlanes: [GroundPlaneEvidence] = []
     /// Detected vertical planes, with their classes, normals and outlines.
     private var wallPlanes: [WallPlaneEvidence] = []
+    /// What the coverage map's far surface was last measured from (`noteFarSurface`): the planes,
+    /// the wall and the stretch seen.
+    private var farSurfaceBasis: (planes: [WallPlaneEvidence], wall: WallFrame, seen: ClosedRange<Float>?)?
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
     /// than the chest-height guess. The export widens position errors while it is a guess.
@@ -487,6 +490,7 @@ final class ScanEngine {
         // A frame made before the meter was anchored again carries the old anchor's pose.
         if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
+        noteFarSurface()
         trackRelocalization(frame)
         guard !frame.isReview else {
             refreshCues(camera: frame.camera)
@@ -1016,6 +1020,30 @@ final class ScanEngine {
         RuntimeLog.guidance.info("switch (\(reason.rawValue, privacy: .public)) to \(String(describing: output.task), privacy: .public)")
     }
 
+    // MARK: Where the space ends
+
+    /// Measures where the space in front of the wall ends from the vertical planes ARKit found
+    /// (`FarSurface.spans`) and gives it to the coverage map, again whenever the planes, the wall
+    /// or the stretch seen change: a corridor's far wall or a side yard's fence is then the end of
+    /// the space, not something to look past (#160), and a walk-out line behind it is not asked
+    /// for as if it could be walked (#164). Over the stretch seen and `maxDistance` beyond it
+    /// either way, the farthest a kept frame looks along the wall.
+    private func noteFarSurface() {
+        guard let map = coverage else { return }
+        let seen = map.seenExtent
+        if let basis = farSurfaceBasis, basis.planes == wallPlanes, basis.wall == map.wall, basis.seen == seen { return }
+        farSurfaceBasis = (wallPlanes, map.wall, seen)
+        let around = seen ?? -1...1
+        let reach = map.config.maxDistance
+        let spans = FarSurface.spans(
+            planes: wallPlanes, wall: map.wall, over: (around.lowerBound - reach)...(around.upperBound + reach), cellWidth: map.config.cellWidth)
+        if spans.isEmpty != map.farSurface.isEmpty {
+            let found = spans.map(\.out).min().map { "found, nearest \($0) m out, over \(spans.count) stretches" } ?? "none"
+            RuntimeLog.engine.info("far surface: \(found, privacy: .public)")
+        }
+        coverage?.setFarSurface(spans)
+    }
+
     // MARK: See-behind step (LiDAR)
 
     /// How far past a hidden stretch the camera must be before the walk asks to look behind it
@@ -1427,6 +1455,7 @@ final class ScanEngine {
         relocalizingSince = nil
         groundPlanes = []
         wallPlanes = []
+        farSurfaceBasis = nil
         groundMeasured = false
         lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -1991,6 +2020,7 @@ final class ScanEngine {
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
+        farSurfaceBasis = nil
         liveDots.reset()
         state.liveDots = .empty
         meterAnchorID.map { live?.removeAnchor($0) }
