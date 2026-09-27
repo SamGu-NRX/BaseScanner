@@ -90,30 +90,54 @@ struct WallTape: View {
 
     private var leavesOutWalked: Float? { endPreview?.leavesOutWalked }
 
+    /// The legend under the strip. One row when every entry fits on one line; otherwise, and at
+    /// the accessibility sizes, one entry per line. As one squeezed row, the end preview, the
+    /// hidden sections and "Depth-checked" were laid over each other on the LiDAR replay, and the
+    /// audit failed their contrast (PR run 36307476187).
+    ///
+    /// Entries come and go without a fade. They change with the walk, and the walk's controls
+    /// animate their own changes (`WallWalkScreen`, `controlsKey`); inherited here, that animation
+    /// faded a leaving entry over the one taking its place, text over text again.
     private var footer: some View {
-        let layout = typeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
-            : AnyLayout(HStackLayout(spacing: 12))
-        return layout {
-            if let leavesOutWalked {
-                LegendEntry(title: ScanCopy.endLeavesOut(leavesOutWalked, seen: endPreview?.leavesOutSeen == true)) { EndPreviewSwatch() }
-            }
-            if !hiddenSections.isEmpty {
-                LegendEntry(title: "Hidden behind something") { HiddenSwatch() }
-            }
-            if !skippedSections.isEmpty {
-                LegendEntry(title: "Skipped") { SkippedSwatch() }
-            }
-            if !typeSize.isAccessibilitySize {
-                Spacer(minLength: 0)
-            }
-            if depthChecked {
-                Label("Depth-checked", systemImage: "cube.transparent")
-                    .font(Typeface.caption)
-                    .foregroundStyle(Palette.chalk)
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 6) { legendEntries; depthLabel }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    // "Depth-checked" says how the whole strip was measured, so it sits apart, right.
+                    HStack(spacing: 12) {
+                        legendEntries
+                        Spacer(minLength: 0)
+                        depthLabel
+                    }
+                    VStack(alignment: .leading, spacing: 6) { legendEntries; depthLabel }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .transaction { $0.animation = nil }
+    }
+
+    @ViewBuilder
+    private var legendEntries: some View {
+        if let leavesOutWalked {
+            LegendEntry(title: ScanCopy.endLeavesOut(leavesOutWalked, seen: endPreview?.leavesOutSeen == true)) { EndPreviewSwatch() }
+        }
+        if !hiddenSections.isEmpty {
+            LegendEntry(title: "Hidden behind something") { HiddenSwatch() }
+        }
+        if !skippedSections.isEmpty {
+            LegendEntry(title: "Skipped") { SkippedSwatch() }
+        }
+    }
+
+    @ViewBuilder
+    private var depthLabel: some View {
+        if depthChecked {
+            Label("Depth-checked", systemImage: "cube.transparent")
+                .font(Typeface.caption)
+                .foregroundStyle(Palette.chalk)
+        }
     }
 
     // MARK: Layout

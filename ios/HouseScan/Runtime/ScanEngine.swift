@@ -356,16 +356,19 @@ final class ScanEngine {
     private var autoAdvanceDelay: Double { options.autopilot ? max(1.2, options.autopilotHold) : 1.2 }
 
     /// With `-autopilotGate`, waits until the UI test has finished with `phase` (its file exists),
-    /// for at most two minutes so a lost gate file can't hang the app. While it waits, the file
+    /// for at most four minutes so a lost gate file can't hang the app. While it waits, the file
     /// `<phase>.held` says the autopilot has finished with the screen and holds it still, for a UI
-    /// test that must audit it settled rather than while the autopilot drives it.
+    /// test that must audit it settled rather than while the autopilot drives it. A test starts
+    /// that audit only once `.held` appears, then reads the screen (the walk's map check can wait
+    /// up to 90 s), so the wait must outlast all of that; at two minutes a slow runner could have
+    /// let the app leave mid-audit.
     func waitForGate(_ phase: ScanPhase) async {
         guard options.autopilot, let gate = options.autopilotGate else { return }
         let file = gate.appending(path: phase.rawValue)
         if !FileManager.default.fileExists(atPath: file.path) {
             try? Data().write(to: gate.appending(path: "\(phase.rawValue).held"))
         }
-        let deadline = ContinuousClock.now + .seconds(120)
+        let deadline = ContinuousClock.now + .seconds(240)
         while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
         }

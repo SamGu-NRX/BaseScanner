@@ -41,6 +41,9 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
         ("wallWalk-aim", ["-uiDemoPhase", "wallWalk", "-uiDemoAim"], "wallWalk"),
         ("wallWalk-aimOffScreen", ["-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"], "wallWalk"),
+        // All three legend entries under the map at once (end preview, hidden, depth): they
+        // overlapped in one row on CI's LiDAR walk (run 36307476187).
+        ("wallWalk-fullLegend", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoHidden"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("markFeatures-lostPlace", ["-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"], "markFeatures"),
@@ -82,7 +85,7 @@ final class ScreenStatesUITests: XCTestCase {
     private static let largestTextStates: Set<String> = [
         "onboarding", "onboarding-practice", "onboarding-moves", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
-        "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
+        "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
         // The card's reply under the aim step's words and under coaching.
         "wallWalk-aim", "wallWalk-slowDown",
@@ -94,6 +97,7 @@ final class ScreenStatesUITests: XCTestCase {
     private static let expectations: [String: [(identifier: String?, text: String)]] = [
         "onboarding-practice": [("action.developerOptions", "Practice meter is on.")],
         "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
@@ -210,7 +214,11 @@ final class ScreenStatesUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 10))
         // Nothing is filled in: the homeowner picks the reading that matches the meter.
-        tap(app, "meter.candidate.0", timeout: 15)
+        // The demo's close-up shows the picker 4.5 s after it opens. 30 s, not 15: on CI run
+        // 36307476187 the Simulator's push daemon spun in a reconnect loop and the app's main
+        // thread got no time for 14.6 s (09:42:19.6 to 09:42:34.2 in its log), so the picker
+        // would have come at about 17.3 s, just after the old limit.
+        tap(app, "meter.candidate.0", timeout: 30)
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         // A window takes two taps on the camera: bottom-left corner, then top-right.
         tap(app, "action.markSomething")
