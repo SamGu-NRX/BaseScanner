@@ -121,14 +121,6 @@ struct WallWalkScreen: View {
         return .walking
     }
 
-    /// True while the guidance points at a particular stretch the homeowner might not reach.
-    private var asksForArea: Bool {
-        switch state.guidance {
-        case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall, .seeBehind: true
-        default: false
-        }
-    }
-
     /// The end preview shows only with the buttons that set it: not over a question, a mark or
     /// the feature tray.
     private var showsEndPreview: Bool {
@@ -170,7 +162,7 @@ struct WallWalkScreen: View {
             }
             .transition(.opacity)
         case .endQuestion:
-            // One question, two equal full-width answers that say what they mean (checklist I4).
+            // One question, three equal full-width answers that say what they mean (checklist I4).
             VStack(spacing: 8) {
                 Button {
                     actions.answerWallEnd(turnsCorner: true)
@@ -189,6 +181,18 @@ struct WallWalkScreen: View {
                 .buttonStyle(.secondaryProminent)
                 .accessibilityHint("A fence, gate, or your neighbor's yard")
                 .accessibilityIdentifier("action.endBlocked")
+                // A garden wall or a fence can just stop, with no corner and nothing in the way,
+                // and neither answer above fits it (#70). Ends the wall as "Something blocks it"
+                // does: the usable wall stops here.
+                Button {
+                    actions.answerWallEnd(turnsCorner: false)
+                } label: {
+                    Label("The wall just ends", systemImage: "arrow.right.to.line")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("No corner and nothing in the way. The wall stops here.")
+                .accessibilityIdentifier("action.endEnds")
             }
             .transition(.opacity)
         case .overheadQuestion:
@@ -262,11 +266,12 @@ struct WallWalkScreen: View {
     }
 
     /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
-    /// a second while the homeowner walks, and the task under it stays the same, so "Can't get
-    /// there" stays put through it: hiding it each time made the button fade in and out under the
+    /// a second while the homeowner walks, and the task under it stays the same, so the card's
+    /// reply stays put through it: hiding it each time made the button fade in and out under the
     /// homeowner's thumb, and the accessibility audit caught it half faded (CI run 36295565916).
     /// Coaching about tracking itself hides it, since where an end would land needs the phone's
-    /// place, as does being past an end.
+    /// place, as does being past an end, where the way on is to walk back (#80). No `default`:
+    /// a new coaching case has to choose.
     private var coachingHidesReply: Bool {
         switch state.coaching {
         case nil, .slowDown?, .needsTexture?, .tooDark?, .holdSteady?: false
@@ -274,31 +279,27 @@ struct WallWalkScreen: View {
         }
     }
 
+    /// The card's reply, worded for the step by `ScanCopy.reply(for:)` ("Skip this spot" on an
+    /// aim step, "Can't get there" on the walk). Its identifier is `action.cannotAccess` on
+    /// every step.
     private var reply: InstructionCard.Reply? {
-        guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion,
-              !coachingHidesReply, !trayOpen else { return nil }
-        if case .seeBehind = state.guidance {
-            return InstructionCard.Reply(
-                title: ScanCopy.cannotSeeBehind,
-                identifier: "action.cannotAccess",
-                hint: "Skips the part behind it. An installer will look at it instead.",
-                perform: { actions.cannotAccessArea() }
-            )
-        }
-        if case .walk = state.guidance {
-            return InstructionCard.Reply(
-                title: "Can't get there",
-                identifier: "action.cannotAccess",
-                hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.",
-                perform: { actions.cannotAccessArea() }
-            )
-        }
+        guard state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, !coachingHidesReply, !trayOpen,
+              let copy = ScanCopy.reply(for: state.guidance) else { return nil }
         return InstructionCard.Reply(
-            title: "Can't get there",
+            title: copy.title,
             identifier: "action.cannotAccess",
-            hint: "Skips this part of the wall. An installer will look at it instead.",
-            perform: { actions.cannotAccessArea() }
+            hint: copy.hint,
+            perform: { actions.cannotAccessArea() },
+            task: replyTask
         )
+    }
+
+    /// The step the reply answers, in words, for the card's input lock: the step's own words
+    /// while coaching shows over it, and the walk without its distance to go, which changes as
+    /// the homeowner walks and would lock "Can't get there" again each time.
+    private var replyTask: Instruction {
+        if case .walk(let side, _) = state.guidance { return ScanCopy.guidance(.walk(side: side, remaining: nil)) }
+        return ScanCopy.guidance(state.guidance)
     }
 
     private var nextWallSymbol: String {

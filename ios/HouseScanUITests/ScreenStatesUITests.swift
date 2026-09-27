@@ -27,6 +27,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
+        ("wallWalk-aim", ["-uiDemoPhase", "wallWalk", "-uiDemoAim"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
@@ -77,6 +78,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-lostPlace",
         "spotConfirm", "spotConfirm-which", "spotConfirm-ground", "spotConfirm-answered", "spotConfirm-cantMark", "spotConfirm-unconfirmable",
+        // The card's reply under the aim step's words and under coaching.
+        "wallWalk-aim", "wallWalk-slowDown",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -214,6 +217,75 @@ final class ScreenStatesUITests: XCTestCase {
         app.swipeUp()
         startOver.tap()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 10))
+    }
+
+    /// The card's reply says what it does on each step (#63): "Skip this spot" where the phone is
+    /// already at the spot, "Can't get there" where the walk asks to go somewhere. It stays under
+    /// the capture gate's coaching (#80) and goes while the phone has lost its place or is past
+    /// the end of the wall.
+    @MainActor
+    func testCardReplyFollowsTheStep() throws {
+        let steps: [(name: String, arguments: [String], reply: String?)] = [
+            ("walk", [], "Can't get there"),
+            ("aim", ["-uiDemoAim"], "Skip this spot"),
+            ("tiltUp", ["-uiDemoTiltUp"], "Skip this"),
+            ("seeBehind", ["-uiDemoSeeBehind"], "Can't see past it"),
+            ("slowDown", ["-uiDemoCoaching", "slowDown"], "Can't get there"),
+            ("tooDark", ["-uiDemoCoaching", "tooDark"], "Can't get there"),
+            ("relocalizing", ["-uiDemoCoaching", "relocalizing"], nil),
+            ("pastWallEnd", ["-uiDemoCoaching", "pastWallEnd"], nil),
+        ]
+        for step in steps {
+            let app = XCUIApplication()
+            app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + step.arguments
+            app.launch()
+            defer { app.terminate() }
+            guard element(app, "screen.wallWalk").waitForExistence(timeout: 15) else {
+                XCTFail("\(step.name): screen.wallWalk never appeared")
+                continue
+            }
+            let shown = element(app, "action.cannotAccess")
+            if let expected = step.reply {
+                XCTAssertTrue(shown.waitForExistence(timeout: 5), "\(step.name): the card has no reply")
+                // One read (`ElementRead`), as elsewhere in this file.
+                XCTAssertEqual(ElementRead.snapshot(shown)?.label, expected, "\(step.name): wrong reply")
+            } else {
+                XCTAssertFalse(shown.waitForExistence(timeout: 2), "\(step.name): the reply must not show")
+            }
+        }
+    }
+
+    /// Each reply answers its own card: "Skip this spot" on the aim card leads to the walk, whose
+    /// "Can't get there" ends the wall there. A new card's reply takes taps only after a moment
+    /// (#82), so each tap waits for it. The end question's third answer ends the wall (#70), and
+    /// the walk goes on to the other side.
+    @MainActor
+    func testRepliesAnswerTheirOwnCardAndTheWallCanJustEnd() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let tape = element(app, "wallTape")
+        XCTAssertTrue(tape.waitForExistence(timeout: 5))
+        let wallBefore = Self.rightOfMeterSeen(ElementRead.snapshot(tape)?.value as? String)
+        XCTAssertNotNil(wallBefore, "the map must say how much of the wall right of the meter is seen")
+        tapReply(app, "Skip this spot")
+        // Skipping the ground spot sends that ground to review and leaves the wall above it as it
+        // was, as in the real engine: the map shows a skipped section, and the wall seen is unchanged.
+        let afterSkip = ElementRead.waitForValue(of: tape, timeout: 5) { $0.contains("skipped") }
+        XCTAssertNotNil(afterSkip, "the skipped ground must show on the map")
+        XCTAssertEqual(Self.rightOfMeterSeen(afterSkip), wallBefore, "skipping the ground must leave the wall band alone, got \(afterSkip ?? "nil")")
+        tapReply(app, "Can't get there")
+        tap(app, "action.markEnd", timeout: 10)
+        XCTAssertTrue(element(app, "action.endCorner").waitForExistence(timeout: 5), "the end question must ask")
+        XCTAssertTrue(element(app, "action.endBlocked").exists)
+        tap(app, "action.endEnds", timeout: 5)
+        XCTAssertTrue(element(app, "action.endEnds").waitForNonExistence(timeout: 5), "the answer must close the question")
+        let walkLeft = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'to your left'")).firstMatch
+        XCTAssertTrue(walkLeft.waitForExistence(timeout: 5), "the walk must go on to the left once the right end is answered")
+        XCTAssertTrue(reply(app, "Can't get there").waitForExistence(timeout: 5), "the walk's reply must come back")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the
@@ -408,6 +480,29 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
         let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
         _ = XCTWaiter().wait(for: [hittable], timeout: 3)
+        target.tap()
+    }
+
+    /// "Right of your meter: N percent seen" from the wall map's value: the wall band only.
+    private static func rightOfMeterSeen(_ value: String?) -> String? {
+        guard let value, let range = value.range(of: "Right of your meter: [0-9]+ percent seen", options: .regularExpression) else { return nil }
+        return String(value[range])
+    }
+
+    /// The card's reply with these words.
+    @MainActor
+    private func reply(_ app: XCUIApplication, _ title: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == 'action.cannotAccess' AND label == %@", title)).firstMatch
+    }
+
+    /// Taps the card's reply once it takes taps: a new card's reply ignores them for a moment
+    /// (`InstructionCard.replyLock`), and a tap then does nothing.
+    @MainActor
+    private func tapReply(_ app: XCUIApplication, _ title: String) {
+        let target = reply(app, title)
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "missing the reply \"\(title)\"")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: target)
+        XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 5), .completed, "the reply \"\(title)\" never took taps")
         target.tap()
     }
 }

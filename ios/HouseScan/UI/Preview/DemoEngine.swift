@@ -29,7 +29,10 @@ final class DemoEngine: ScanActions {
     /// How far the walk has seen to each side of the meter, meters.
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
-    private var skippedSpan: ClosedRange<Float>?
+    /// Stretches the homeowner skipped, and in which bands, kept apart so a later skip doesn't
+    /// undo an earlier one. An aim step's skip covers only the band it asked for, as in the real
+    /// engine; skipping the rest of a walk covers both.
+    private var skippedSpans: [(span: ClosedRange<Float>, bands: Set<CoverageBand>)] = []
     /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
     /// of the walk out.
     private var walkedBack: Float?
@@ -145,6 +148,13 @@ final class DemoEngine: ScanActions {
                 state.target = DemoScene.wall.world(s: 1.5, height: 0.6)
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
+        }
+        if arguments.contains("-uiDemoAim"), state.phase == .wallWalk {
+            // The walk asks for the ground about 2 ft right of the meter, which it hasn't seen
+            // from two places; the card's reply says "Skip this spot" there.
+            state.guidance = .aimAtGround(s: 0.6)
+            state.target = DemoScene.wall.world(s: 0.6, height: 0, out: 0.5)
+            state.path = []
         }
         if arguments.contains("-uiDemoCorner") {
             // The walk followed an outside corner right of the meter, between the battery spot and
@@ -573,11 +583,12 @@ final class DemoEngine: ScanActions {
             wallCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0))
             groundCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0.35))
         }
-        if let skippedSpan {
+        for skipped in skippedSpans {
             for index in 0..<count {
                 let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
-                if skippedSpan.contains(center), wallCells[index] != .covered { wallCells[index] = .skipped }
-                if skippedSpan.contains(center), groundCells[index] != .covered { groundCells[index] = .skipped }
+                guard skipped.span.contains(center) else { continue }
+                if skipped.bands.contains(.wall), wallCells[index] != .covered { wallCells[index] = .skipped }
+                if skipped.bands.contains(.ground), groundCells[index] != .covered { groundCells[index] = .skipped }
             }
         }
         for obstruction in obstructions {
@@ -854,12 +865,25 @@ final class DemoEngine: ScanActions {
             refreshGuidance()
             return
         }
+        let aimed: (s: Float, band: CoverageBand)? = switch state.guidance {
+        case .aimAtGround(let s): (s, .ground)
+        case .aimAtWall(let s): (s, .wall)
+        default: nil
+        }
+        if let aimed {
+            // Like the real engine: that stretch of the band asked for goes to review, and the
+            // walk moves on.
+            skippedSpans.append((span: (aimed.s - 0.5)...(aimed.s + 0.5), bands: [aimed.band]))
+            refreshCoverage()
+            refreshGuidance()
+            return
+        }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
-            skippedSpan = (reachedRight + 0.1)...demoRightEnd
+            skippedSpans.append((span: (reachedRight + 0.1)...demoRightEnd, bands: Set(CoverageBand.allCases)))
             reachedRight = demoRightEnd
         } else {
-            skippedSpan = demoLeftEnd...(-reachedLeft - 0.1)
+            skippedSpans.append((span: demoLeftEnd...(-reachedLeft - 0.1), bands: Set(CoverageBand.allCases)))
             reachedLeft = -demoLeftEnd
         }
         refreshCoverage()
@@ -910,7 +934,7 @@ final class DemoEngine: ScanActions {
         reachedRight = 0.3
         demoLeftEnd = -2.9
         demoRightEnd = 4.3
-        skippedSpan = nil
+        skippedSpans = []
         obstructions = []
         seeBehindTicks = 0
         followedUp = false

@@ -25,6 +25,8 @@ import SwiftUI
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
 ///   `-uiDemoRefusal` the last mark was refused.
 /// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.
+/// - `-uiDemoAim`: with `-uiDemoPhase wallWalk`, the walk asks to tilt down to the ground
+///   about 2 ft right of the meter.
 /// - `-uiDemoOverheadQuestion`: the tilt-up view is in and the walk asks what is overhead.
 /// - `-uiDemoGap <groundOut|walkOut|overhead>`: the gap screen shows that server request.
 /// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.
