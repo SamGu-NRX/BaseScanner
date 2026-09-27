@@ -143,18 +143,18 @@ import Testing
         #expect(switched.switched == .dwell)
         #expect(planner.current == .stepBack)
 
-        // The aim task of `laggingGroundAsksToAimDown`, s = 0.1524. From s = -0.5 the walk left is
-        // preferred (the window [-1.5, -0.2] holds two lagging cells), but the stretch is 0.65 m
+        // The aim task of `laggingGroundAsksToAimDown`, s = 0.6096. From s = 0 the walk left is
+        // preferred (the window [-1, 0.3] holds two lagging cells), but the stretch is 0.61 m
         // away, inside the 1 m it is held within.
         var aiming = GuidancePlanner()
         let lagging = Self.wallOnlyCoverage()
         let aim = aiming.update(coverage: lagging, camera: Self.homeowner(x: 0.5), time: 0).task
-        guard case .aimAtGround(let s) = aim, nearlyEqual(s, 0.1524) else {
-            Issue.record("expected aimAtGround at 0.1524, got \(aim)")
+        guard case .aimAtGround(let s) = aim, nearlyEqual(s, 0.6096) else {
+            Issue.record("expected aimAtGround at 0.6096, got \(aim)")
             return
         }
         for time in [3.0, 6, 12] {
-            #expect(aiming.update(coverage: lagging, camera: Self.homeowner(x: -0.5), time: time).task == aim, "at \(time) s")
+            #expect(aiming.update(coverage: lagging, camera: Self.homeowner(x: 0), time: time).task == aim, "at \(time) s")
         }
     }
 
@@ -229,10 +229,10 @@ import Testing
     }
 
     /// Checklist I6: instructions never go A, B, A within 3 s. The camera alternates every 0.5 s
-    /// between s = 0.5 (preferred: aimAtGround at 0.1524, as in `laggingGroundAsksToAimDown`) and
+    /// between s = 0.5 (preferred: aimAtGround at 0.6096, as in `laggingGroundAsksToAimDown`) and
     /// s = 10 (no lag there, preferred: walk(.left)); neither task can be satisfied, since the map
     /// never changes. Hand trace with minDwell 3: aim from 0; at 3.0 the preference is aim again;
-    /// at 3.5 it is walk, 3.5 s have passed and the aim's stretch is 9.8 m from the camera, so
+    /// at 3.5 it is walk, 3.5 s have passed and the aim's stretch is 9.4 m from the camera, so
     /// walk; then aim again at 7.0 (3.5 s later). Switches at exactly 3.5 and 7.0. Changed
     /// deliberately from s = 0: the lagging band is now looked for only ahead of the walk, and
     /// from s = 0 walking left it lags over two cells, too few to ask.
@@ -318,7 +318,7 @@ import Testing
         #expect(output.path.isEmpty)
     }
 
-    /// The lag window slides with the camera. When the homeowner steps from s = 0.5 to -0.5 the
+    /// The lag window slides with the camera. When the homeowner steps from s = 0.5 to 0 the
     /// window no longer holds enough lagging cells and the walk is preferred, but the task's
     /// stretch is still in view: the card keeps its distance past the dwell instead of changing
     /// it. Out of view (s = 10) it gives way.
@@ -326,11 +326,11 @@ import Testing
         var planner = GuidancePlanner()
         let map = Self.wallOnlyCoverage()
         let first = planner.update(coverage: map, camera: Self.homeowner(x: 0.5), time: 0).task
-        guard case .aimAtGround(let s) = first, nearlyEqual(s, 0.1524) else {
-            Issue.record("expected aimAtGround at 0.1524, got \(first)")
+        guard case .aimAtGround(let s) = first, nearlyEqual(s, 0.6096) else {
+            Issue.record("expected aimAtGround at 0.6096, got \(first)")
             return
         }
-        #expect(planner.update(coverage: map, camera: Self.homeowner(x: -0.5), time: 3.5).task == first)
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 0), time: 3.5).task == first)
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: 10), time: 3.6).task == .walk(.left))
     }
 
@@ -339,7 +339,7 @@ import Testing
     /// it. In `wallOnlyCoverage` the ground lags over cells -4, -3 and 2 ... 5, all in the window
     /// seen from s = 0.5 (`laggingGroundAsksToAimDown`); a right end at s = 0.3 leaves only -4 and
     /// -3 between the ends, fewer than `lagRun`'s three, so the walk goes left instead of asking to
-    /// tilt down at s = 0.1524. Likewise the box's twelve hidden cells
+    /// tilt down at s = 0.6096. Likewise the box's twelve hidden cells
     /// (`hiddenCellsNearTheCameraAskToSeeBehind`) with the ends at s = -0.1 and 0.1: two lie
     /// between them, too few to ask to see behind.
     @Test func noCameraTaskPastAMarkedEnd() {
