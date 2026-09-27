@@ -741,7 +741,8 @@ final class ScanViewState {
     /// Meters of the walk the end being asked about leaves out, when "Wall ends here" put it at
     /// least a keyframe's spacing short of the farthest kept view on that side
     /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
-    /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
+    /// meaningful while `endQuestion` is set: whatever sets or clears `endQuestion` sets or clears
+    /// this too.
     var endQuestionLeavesOut: Float?
     /// Where the wall end on the side being walked would land now; nil while ending it isn't on
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something

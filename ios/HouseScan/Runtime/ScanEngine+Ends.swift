@@ -59,12 +59,14 @@ extension ScanEngine {
         // What this end leaves out of the walk shows only while the walk asks to walk this side
         // or mark its end, and not with the phone far out from the wall (#66). During a tilt or
         // step-back request the dashed line and "Wall ends here" stay; the end question says what
-        // pressing it left out (`endWallHere`).
+        // pressing it left out (`endWallHere`). Every task is listed, as in `endOnOffer`, so a new
+        // one that offers an end has to decide whether the legend shows on it.
         let onWalkTask: Bool
         switch state.guidance {
         case .walk, .markEnd:
             onWalkTask = true
-        default:
+        case .aimAtGround, .aimAtWall, .stepBack,
+             .findMeter, .aimAtWallForMeter, .holdOnMeter, .walkComplete, .tiltUp, .markNextWall, .gap, .seeBehind:
             onWalkTask = false
         }
         // The phone's distance from the wall matters only when the end is its place along it.
