@@ -1,5 +1,7 @@
 # House scanning
 
+[Live site](https://house-scanning.vercel.app/)
+
 We're exploring a simpler way to survey a home for a Base Power battery. 
 
 A homeowner walks the outside wall around their electric meter with an iPhone. The app guides the scan until it has seen everything the placement rules need, and sends what it captured. The server builds a 3D model, decides in plain code whether a Base Power battery fits and where, and the app shows the spot in AR.
