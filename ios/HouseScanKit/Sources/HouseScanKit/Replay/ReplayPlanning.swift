@@ -133,16 +133,32 @@ public enum ReplayPlanning {
         public var gap: GapPlan
     }
 
+    /// Where the walk that leaves a window out will set its ends.
+    public enum EndPolicy: Sendable, Equatable {
+        /// Marked at the covered extremes, as the autopilot's `markEnds` does.
+        case coveredExtremes
+        /// Set where the phone stood farthest each way ("Can't get there", `WalkedEnd`), after
+        /// "Can't get there" on the ground by the meter. The gap must then lie `margin` meters
+        /// inside those ends: "Can't get there" at an end also skips the cells there.
+        case walked(margin: Float)
+    }
+
     /// Chooses frames to hold back from the autopilot's walk so the gap loop has something real
     /// to do: without them the planner finds a gap, and replaying them alone closes it.
     ///
     /// Candidates are contiguous windows of 3 to 10 frames, tried from the middle of the walk
     /// outward. The gap must lie within where the rest of the walk went (`isWithinWalk`): a gap
     /// past the farthest frame the phone stood at falls outside ends set where the phone is
-    /// ("Can't get there"), and then nothing asks for it. Each is screened on coverage rebuilt from what every frame sees (computed once),
-    /// then confirmed with the full auto-capture simulation the app runs. Nil when no window works,
-    /// for example when the planner's nearest gap is one no frame of the replay can close.
-    public static func heldBackWindow(frames: [PlannedFrame], wall: WallFrame, planner: GapPlanner = GapPlanner(), config: CoverageConfig = CoverageConfig()) -> HeldBackWindow? {
+    /// ("Can't get there"), and then nothing asks for it. With `ends` `.walked`, the window is
+    /// planned against the ends that flow sets and the cells it skips, so the gap it leaves is
+    /// one that flow asks for. Each is screened on coverage rebuilt from what every frame sees
+    /// (computed once), then confirmed with the full auto-capture simulation the app runs. Nil
+    /// when no window works, for example when the planner's nearest gap is one no frame of the
+    /// replay can close.
+    public static func heldBackWindow(
+        frames: [PlannedFrame], wall: WallFrame, ends policy: EndPolicy = .coveredExtremes,
+        planner: GapPlanner = GapPlanner(), config: CoverageConfig = CoverageConfig()
+    ) -> HeldBackWindow? {
         guard frames.count >= 6 else { return nil }
         let empty = CoverageMap(wall: wall, config: config)
         let sightings = frames.map { $0.trackingNormal ? empty.visibleCells(from: $0.camera) : [] }
@@ -157,17 +173,18 @@ public enum ReplayPlanning {
                 for index in kept.sorted() where !window.contains(index) {
                     rest.record(sightings[index], from: frames[index].camera.position)
                 }
-                guard let ends = coveredExtremes(rest) else { continue }
-                rest.setEnd(.left, at: ends.lowerBound)
-                rest.setEnd(.right, at: ends.upperBound)
+                let stood = frames.indices.filter { !window.contains($0) }.map { frames[$0] }
+                guard let ends = self.ends(policy, rest, stood: stood, wall: wall) else { continue }
+                prepare(&rest, ends: ends, policy: policy)
                 guard let gap = planner.plan(rest),
-                      isWithinWalk(gap, kept.sorted().filter { !window.contains($0) }.map { frames[$0] }, wall: wall) else { continue }
+                      isWithinWalk(gap, kept.sorted().filter { !window.contains($0) }.map { frames[$0] }, wall: wall),
+                      isInside(gap, ends: ends, policy: policy) else { continue }
                 var restored = rest
                 for index in window { restored.record(sightings[index], from: frames[index].camera.position) }
                 guard planner.isSatisfied(gap, restored) else { continue }
                 // Screened: confirm with the exact auto-capture path, a few times at most.
                 confirmations += 1
-                if let confirmed = confirm(frames, window: window, wall: wall, planner: planner, config: config) {
+                if let confirmed = confirm(frames, window: window, wall: wall, policy: policy, planner: planner, config: config) {
                     return confirmed
                 }
                 if confirmations >= 12 { return nil }
@@ -199,16 +216,41 @@ public enum ReplayPlanning {
         return low...high
     }
 
-    private static func confirm(_ frames: [PlannedFrame], window: Range<Int>, wall: WallFrame, planner: GapPlanner, config: CoverageConfig) -> HeldBackWindow? {
+    private static func confirm(
+        _ frames: [PlannedFrame], window: Range<Int>, wall: WallFrame, policy: EndPolicy, planner: GapPlanner, config: CoverageConfig
+    ) -> HeldBackWindow? {
         var rest = frames
         rest.removeSubrange(window)
         var walked = simulateWalk(rest, wall: wall, config: config)
-        guard let ends = coveredExtremes(walked) else { return nil }
-        walked.setEnd(.left, at: ends.lowerBound)
-        walked.setEnd(.right, at: ends.upperBound)
-        guard let gap = planner.plan(walked), isWithinWalk(gap, rest, wall: wall),
+        guard let ends = self.ends(policy, walked, stood: rest, wall: wall) else { return nil }
+        prepare(&walked, ends: ends, policy: policy)
+        guard let gap = planner.plan(walked), isWithinWalk(gap, rest, wall: wall), isInside(gap, ends: ends, policy: policy),
               satisfiedWithLeadIn(frames, window: window, walked: walked, gap: gap, planner: planner) else { return nil }
         return HeldBackWindow(frames: window, ends: ends, gap: gap)
+    }
+
+    private static func ends(_ policy: EndPolicy, _ map: CoverageMap, stood: [PlannedFrame], wall: WallFrame) -> ClosedRange<Float>? {
+        switch policy {
+        case .coveredExtremes:
+            return coveredExtremes(map)
+        case .walked:
+            let s = stood.map { wall.wallPoint($0.camera.position).s }
+            guard let low = s.min(), let high = s.max(), low < 0, high > 0 else { return nil }
+            return low...high
+        }
+    }
+
+    /// Sets the ends, and for a walked flow skips the ground by the meter, as "Can't get there"
+    /// on the walk's first request does (`GuidancePlanner.groundByMeterDone`, ±0.5 m).
+    private static func prepare(_ map: inout CoverageMap, ends: ClosedRange<Float>, policy: EndPolicy) {
+        map.setEnd(.left, at: ends.lowerBound)
+        map.setEnd(.right, at: ends.upperBound)
+        if case .walked = policy { map.markSkipped(.ground, -0.5...0.5) }
+    }
+
+    private static func isInside(_ gap: GapPlan, ends: ClosedRange<Float>, policy: EndPolicy) -> Bool {
+        guard case .walked(let margin) = policy else { return true }
+        return ends.lowerBound + margin <= gap.span.lowerBound && gap.span.upperBound <= ends.upperBound - margin
     }
 
     /// Whether `gap` lies between the farthest positions along the wall `frames` stood at.

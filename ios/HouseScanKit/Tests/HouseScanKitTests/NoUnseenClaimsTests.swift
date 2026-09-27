@@ -221,7 +221,7 @@ import Testing
         input.coverage = SceneCoverage(
             leftEndMarked: false, rightEndMarked: false, wall: [ObservedSpan(span: -3...5, out: 2.286)],
             ground: [ObservedSpan(span: 0.30481...0.91439, out: 1.8287999)])
-        input.groundType = .lawn
+        input.groundPatches = [.everywhere(.lawn)]
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
         let v = try Value.parse(data)

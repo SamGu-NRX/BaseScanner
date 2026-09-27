@@ -155,8 +155,9 @@ struct ReplaySessionTests {
         #expect(try ReplaySession.decode(sessionJSON: Data(json.utf8)).declaredWall == nil)
     }
 
-    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 41 frames (38 for the close-up
-    /// and the walk, 3 tilted up for the tilt-up step), wall on z = 0 facing +z, meter at
+    /// The fixture written by ios/Tools/make-synthetic-replay.swift: 61 frames (38 for the close-up
+    /// and the walk, 3 tilted up for the tilt-up step, then 20 more tilted up along the wall for
+    /// the upper rows), wall on z = 0 facing +z, meter at
     /// (0, 1.5, 0), and the first frame aimed straight at the meter.
     @Test func decodesSyntheticWallFixture() throws {
         let folder = URL(fileURLWithPath: #filePath)
@@ -165,7 +166,7 @@ struct ReplaySessionTests {
             .standardizedFileURL
         let session = try ReplaySession.load(folder: folder)
         #expect(session.id == "synthetic-wall")
-        #expect(session.frames.count == 41)
+        #expect(session.frames.count == 61)
         #expect(session.frames.allSatisfy { $0.trackingNormal })
 
         let wall = try #require(session.declaredWall)
@@ -183,10 +184,10 @@ struct ReplaySessionTests {
 
     /// The app plays the fixture's closing run of tilted-up frames for the tilt-up step and for
     /// overhead requests: views reaching at least 0.7 m above the wall band's 2.286 m top
-    /// (ScanEngine.tiltUpAbove). The three closing frames do, over the stretch by the meter. The
-    /// walk before them (frames 7 to 37, pitched 20 degrees down) reaches about 2.0 m, short of
-    /// the band's top, so the run is exactly those three. The level views of the meter before the
-    /// walk may reach it.
+    /// (ScanEngine.tiltUpAbove). The closing 23 frames all do, and the three from the tilt-up
+    /// position (38 to 40) over the stretch by the meter. The walk before them (frames 7 to 37,
+    /// pitched 20 degrees down) reaches about 2.0 m, short of the band's top, so the run starts
+    /// at frame 38. The level views of the meter before the walk may reach it.
     @Test func syntheticWallFixtureEndsWithTiltUpViews() throws {
         let folder = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -203,9 +204,10 @@ struct ReplaySessionTests {
         let tilted = map.config.wallCaptureHeight + 0.7
         let walkIsNotTiltedUp = reaches[7..<38].allSatisfy { reach in reach.allSatisfy { $0.out < tilted } }
         #expect(walkIsNotTiltedUp)
-        for reach in reaches.suffix(3) {
+        for reach in reaches[38..<41] {
             let overMeter = reach.contains { $0.out >= tilted && $0.span.contains(0) && $0.span.contains(1) }
             #expect(overMeter, "\(reach)")
         }
+        #expect(reaches[38...].allSatisfy { reach in reach.contains { $0.out >= tilted } })
     }
 }

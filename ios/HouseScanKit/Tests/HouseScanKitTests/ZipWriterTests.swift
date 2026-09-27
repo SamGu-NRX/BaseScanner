@@ -20,7 +20,7 @@ import Testing
     }
 
     /// Streaming to disk writes the bytes the in-memory archive would, and a failing loader leaves
-    /// no partial file behind.
+    /// no partial file behind: the archive already there stays as it was.
     @Test func streamedArchiveMatchesInMemory() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("zipwriter-\(UUID().uuidString).zip")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -29,6 +29,14 @@ import Testing
         #expect(try Data(contentsOf: url) == ZipWriter.archive(Self.entries, modified: date))
 
         struct LoadFailed: Error {}
+        #expect(throws: LoadFailed.self) {
+            try ZipWriter.write([("a", { Data([1]) }), ("b", { throw LoadFailed() })], to: url)
+        }
+        #expect(try Data(contentsOf: url) == ZipWriter.archive(Self.entries, modified: date))
+        let partial = url.deletingLastPathComponent().appending(path: ZipWriter.temporaryName(for: url.lastPathComponent))
+        #expect(!FileManager.default.fileExists(atPath: partial.path))
+        // With no archive there before, a failing write leaves none.
+        try FileManager.default.removeItem(at: url)
         #expect(throws: LoadFailed.self) {
             try ZipWriter.write([("a", { Data([1]) }), ("b", { throw LoadFailed() })], to: url)
         }
