@@ -12,7 +12,8 @@ extension ResultPresentation {
     }
 
     var answer: ResultReading.Answer {
-        ResultReading.answer(decision: placementDecision, policyApproved: policyApproved, hasSpot: spot != nil, checks: readingChecks)
+        ResultReading.answer(decision: placementDecision, policyApproved: policyApproved, hasSpot: spot != nil, checks: readingChecks,
+                             unmeasuredMarks: !unmeasuredMarks.isEmpty)
     }
 
     /// The check lines on the result card, in the order `ResultReading.cardLines` gives.

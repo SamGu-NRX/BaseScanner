@@ -4,7 +4,8 @@ import Foundation
 // into words; the rules that pick them live here so each one has a test against a decoded answer
 // (ResultReadingTests). They read the checks as well as `decision`: a manual_review held back
 // only by rules that aren't approved yet still fits, and a spot that might stand in the meter's
-// working space goes to an installer whatever the decision says.
+// working space, or any answer to a scan with a mark nobody measured, goes to an installer
+// whatever the decision says.
 
 public enum ResultReading {
     /// The server's check for the NEC 110.26 working space in front of the meter
@@ -54,19 +55,32 @@ public enum ResultReading {
         hasSpot && !checks.isEmpty && checks.allSatisfy { $0.id != meterWorkingSpaceCheckID || $0.outcome == .pass }
     }
 
-    public static func answer(decision: PlacementDecision, policyApproved: Bool, hasSpot: Bool, checks: [Check]) -> Answer {
+    /// `unmeasuredMarks` is true when the scan sent a mark whose geometry the phone did not
+    /// measure: a battery or box on the wall, whose depth nobody measured (`SceneFeature.box`).
+    /// The server measures to its stretch of wall line and has no field saying the depth is
+    /// unknown, so neither its pass nor its reject is taken as settled: a person decides. A view
+    /// the camera can take still comes first, since the person needs it too.
+    public static func answer(
+        decision: PlacementDecision, policyApproved: Bool, hasSpot: Bool, checks: [Check], unmeasuredMarks: Bool = false
+    ) -> Answer {
         if hasSpot, !spotIsClean(hasSpot: hasSpot, checks: checks) { return .installer }
+        let answer: Answer
         switch decision {
         case .pass:
-            return .fits
+            answer = .fits
         case .reject:
-            return .notHere
+            answer = .notHere
         case .manualReview:
             // Needs at least one check: over none, "every check passes" is vacuously true.
-            if hasSpot, !policyApproved, !checks.isEmpty, checks.allSatisfy({ $0.outcome == .pass }) { return .fits }
-            if checks.contains(where: { $0.outcome == .unsure && !$0.needsPerson && $0.viewCapturable }) { return .oneMoreLook }
-            return .installer
+            if hasSpot, !policyApproved, !checks.isEmpty, checks.allSatisfy({ $0.outcome == .pass }) {
+                answer = .fits
+            } else if checks.contains(where: { $0.outcome == .unsure && !$0.needsPerson && $0.viewCapturable }) {
+                answer = .oneMoreLook
+            } else {
+                answer = .installer
+            }
         }
+        return unmeasuredMarks && answer != .oneMoreLook ? .installer : answer
     }
 
     /// Indices of the checks the result card shows, in order: every FAIL, then every UNSURE, then
@@ -152,9 +166,9 @@ extension PlacementResult {
     }
 
     /// The answer the screen leads with; see `ResultReading.answer`.
-    public func answer(capturable: (Int) -> Bool) -> ResultReading.Answer {
+    public func answer(unmeasuredMarks: Bool = false, capturable: (Int) -> Bool) -> ResultReading.Answer {
         ResultReading.answer(decision: decision, policyApproved: policy.autoApprove, hasSpot: spot != nil,
-                             checks: readingChecks(capturable: capturable))
+                             checks: readingChecks(capturable: capturable), unmeasuredMarks: unmeasuredMarks)
     }
 
     /// See `ResultReading.spotIsClean`.

@@ -139,10 +139,11 @@ import simd
         #expect(objects[3]["bottom_ft"] == nil && objects[3]["top_ft"] == nil)
     }
 
-    /// Issue #27: a battery already on the wall exports as `battery` with a plan footprint out to
-    /// 22 in, so the server holds a new one 3 ft from its front; any other box is `elec_box`,
-    /// flush with the wall.
-    @Test func existingBatteryHasAFootprintAndABoxIsFlush() throws {
+    /// Issue #27: a battery already on the wall exports as `battery`, any other box as
+    /// `elec_box`, both with the span and heights where they meet the wall and no footprint. No
+    /// depth is assumed for somebody else's unit, and scene.json has no field for an unknown one,
+    /// so the answer to such a scan goes to a person (ResultReadingTests).
+    @Test func aBatteryOrBoxGoesOutWithNoFootprint() throws {
         var input = Self.input()
         input.features = [
             .box(kind: .battery, span: 1.5...2.3, bottom: 0, top: 1.0),
@@ -157,17 +158,45 @@ import simd
         expectClose(battery["span_ft"]?.numbers, [4.9213, 7.5459])
         expectClose([battery["bottom_ft"]?.number ?? .nan, battery["top_ft"]?.number ?? .nan], [0, 3.2808])
         #expect(battery["source"] == .string("tap") && battery["attrs"] == nil)
-        let footprint = (battery["footprint"]?.array ?? []).compactMap(\.numbers)
-        try #require(footprint.count == 4)
-        // Back-left on the wall line at s = 1.5 m: (1, -2) + (0.8, -0.6) * 1.5.
-        expectClose(footprint[0], [2.2 / 0.3048, -2.9 / 0.3048])
-        // Front-right at s = 2.3 m, (2.84, -3.38), then 0.5588 m out along (0.6, 0.8).
-        expectClose(footprint[2], [(2.84 + 0.6 * 0.5588) / 0.3048, (-3.38 + 0.8 * 0.5588) / 0.3048])
+        #expect(battery["footprint"] == nil)
 
         let box = objects[1]
         expectClose(box["span_ft"]?.numbers, [-2.6247, -1.6404])
         expectClose([box["bottom_ft"]?.number ?? .nan, box["top_ft"]?.number ?? .nan], [3.9370, 5.2493])
         #expect(box["footprint"] == nil && box["attrs"] == nil)
+    }
+
+    /// Review of #52: a mark's taps meet the wall's plane (`WallFrame.intersectWall`), so a box's
+    /// front corner, tapped from off to one side, lands somewhere else on the wall. A battery at
+    /// s = 1.0...1.8 m, 1.0 m tall and 0.9 m deep (deeper than Base's own), seen from s = -0.5 m,
+    /// 2 m out: its front corners land at s = 2.23 and 3.68 m, clear of the real battery. The
+    /// back corners, where it meets the wall, land where they are, which is what the prompts ask
+    /// for. Either way the export claims no depth.
+    @Test func anOffAxisBoxIsMarkedWhereItMeetsTheWall() throws {
+        let frame = standardWall()
+        let camera = SIMD3<Float>(-0.5, 1.5, 2.0)
+        let depth: Float = 0.9
+        func tap(_ corner: SIMD3<Float>) throws -> WallPoint {
+            try #require(frame.intersectWall(Ray(origin: camera, direction: simd_normalize(corner - camera))))
+        }
+
+        let front = [try tap(SIMD3(1.0, 0, depth)), try tap(SIMD3(1.8, 1.0, depth))]
+        #expect(abs(front[0].s - (-0.5 + 1.5 * 2.0 / 1.1)) < 1e-3 && abs(front[1].s - (-0.5 + 2.3 * 2.0 / 1.1)) < 1e-3)
+        #expect(front.allSatisfy { $0.s > 1.8 }, "a front corner tapped off-axis misses the battery's stretch of wall")
+
+        let back = [try tap(SIMD3(1.0, 0, 0)), try tap(SIMD3(1.8, 1.0, 0))]
+        #expect(abs(back[0].s - 1.0) < 1e-4 && abs(back[0].height) < 1e-4)
+        #expect(abs(back[1].s - 1.8) < 1e-4 && abs(back[1].height - 1.0) < 1e-4)
+
+        let input = SceneInput(
+            wall: SceneWall(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), groundY: 0), baselineS: -3...5,
+            features: [.box(kind: .battery, span: back[0].s...back[1].s, bottom: max(0, back[0].height), top: back[1].height)],
+            coverage: SceneCoverage(leftEndMarked: true, rightEndMarked: true, wall: [], ground: []))
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let battery = try #require(try Value.parse(data)["objects"]?.array?.first)
+        expectClose(battery["span_ft"]?.numbers, [1.0 / 0.3048, 1.8 / 0.3048])
+        #expect(battery["footprint"] == nil, "0.9 m out was never measured, and none is sent")
     }
 
     @Test func facingGroundCoverageKeyframes() throws {

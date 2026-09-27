@@ -202,16 +202,22 @@ extension ScanEngine {
             gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
         }
         let settles = plans.map { plan in plan.map { !skippedGaps.contains($0) && captureCanSettle($0) } ?? false }
-        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { item in
+        return Self.presentation(of: result, isSample: isSample, wall: sceneWall, unmeasuredMarks: Self.unmeasuredMarks(state.features)) { item in
             result.missingEvidence.firstIndex(of: item).map { settles[$0] } ?? false
         }
     }
 
+    /// The kinds among `features` whose depth nobody measured, once each in tray order: the
+    /// scene carries them with no footprint, so the answer goes to a person.
+    static func unmeasuredMarks(_ features: [MarkedFeature]) -> [FeatureKind] {
+        FeatureKind.allCases.filter { kind in kind.depthUnmeasured && features.contains { $0.kind == kind } }
+    }
+
     /// `presentation(of:isSample:)` without an engine, for the UI demo: `wall` is the scan's wall
-    /// in world meters (nil draws no route off a sample's frame), `capturable` says whether a
-    /// requested view can be taken now.
+    /// in world meters (nil draws no route off a sample's frame), `unmeasuredMarks` the kinds of
+    /// the scan's marks nobody measured, `capturable` says whether a requested view can be taken now.
     static func presentation(
-        of result: PlacementResult, isSample: Bool, wall sceneWall: SceneWall?,
+        of result: PlacementResult, isSample: Bool, wall sceneWall: SceneWall?, unmeasuredMarks: [FeatureKind] = [],
         capturable: (PlacementMissingEvidence) -> Bool
     ) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
@@ -310,6 +316,7 @@ extension ScanEngine {
             clearances: clearances,
             missing: missing,
             unseenSide: unseen,
+            unmeasuredMarks: unmeasuredMarks,
             isSample: isSample
         )
     }

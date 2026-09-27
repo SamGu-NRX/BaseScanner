@@ -127,8 +127,9 @@ public enum SceneFeature: Sendable {
     /// A door or window on the wall. `span` is in s meters; `bottom` and `top` are meters above the
     /// ground. `operable` nil means the homeowner was not asked, and it is then left out.
     case opening(kind: SceneOpeningKind, span: ClosedRange<Float>, bottom: Float, top: Float, operable: Bool?)
-    /// A box against the wall, measured as an opening is. A battery also gets a plan footprint
-    /// out to `SceneExport.batteryDepth`; any other box is flush with the wall.
+    /// A box against the wall, with `span`, `bottom` and `top` where it meets the wall, as an
+    /// opening's are. How far it stands out is not measured, so it goes out with no footprint,
+    /// and the answer to a scan with one needs a person (`ResultReading.answer`, `unmeasuredMarks`).
     case box(kind: SceneBoxKind, span: ClosedRange<Float>, bottom: Float, top: Float)
     /// Something tapped once that stands off the wall (gas meter, AC unit). `tap` is a world point.
     case pointObject(kind: ScenePointObjectKind, tap: SIMD3<Float>, bottom: Float?, top: Float?)
@@ -333,10 +334,6 @@ public enum SceneExport {
     static let pointObjectHalfWidth: Float = 0.15
     /// How far a tapped point object is assumed to stand off the wall, same 0.3 m hypothesis.
     static let pointObjectDepth: Float = 0.3
-    /// How far an existing battery stands off the wall. Its corners are tapped on the wall plane,
-    /// which gives no depth, so this is Base's own battery, 22 in (the server's D): nominal, not
-    /// measured. A deeper footprint only holds a new battery farther away.
-    static let batteryDepth: Float = 0.5588
     /// Width of the strip drawn along a tapped driveway edge, feet. The tap marks only the edge
     /// line; the strip gives the polygon the area the schema requires. Illustrative, not measured.
     static let drivewayStripFeet: Double = 0.5
@@ -433,15 +430,16 @@ public enum SceneExport {
                     attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil,
                     plus_minus_ft: objectError))
             case let .box(kind, span, bottom, top):
+                // No footprint: the taps are wall-plane hits, which say where the box meets the
+                // wall but not how far it stands out, and no depth is assumed for somebody else's
+                // unit. The server then measures to the box's stretch of wall line, which can
+                // understate a deep box near a corner, so the app sends every answer to a scan
+                // with a box to a person (`ResultReading.answer`, `unmeasuredMarks`).
                 try requireNonNegative(bottom, "\(name).bottom")
                 guard top >= bottom else { throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top) }
-                let left = span.lowerBound
-                let right = span.upperBound
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: wallIDAt((left + right) / 2), span_ft: spanFeet(span),
-                    bottom_ft: feet(bottom), top_ft: feet(top), attrs: nil, source: "tap",
-                    footprint: kind == .battery
-                        ? [plan(left, 0), plan(right, 0), plan(right, batteryDepth), plan(left, batteryDepth)] : nil,
+                    type: kind.rawValue, wall_id: wallIDAt((span.lowerBound + span.upperBound) / 2), span_ft: spanFeet(span),
+                    bottom_ft: feet(bottom), top_ft: feet(top), attrs: nil, source: "tap", footprint: nil,
                     plus_minus_ft: objectError))
             case let .pointObject(kind, tap, bottom, top):
                 if let bottom { try requireNonNegative(bottom, "\(name).bottom") }

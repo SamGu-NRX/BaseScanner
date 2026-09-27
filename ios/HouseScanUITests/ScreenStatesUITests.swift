@@ -228,7 +228,7 @@ final class ScreenStatesUITests: XCTestCase {
     }
 
     /// Issue #27: a battery already on the wall and any other box (disconnect, sub-panel, EV
-    /// charger) are marked from the review by two corners, like a window.
+    /// charger) are marked from the review by two corners where they meet the wall.
     @MainActor
     func testReviewMarksAnExistingBatteryAndABox() throws {
         continueAfterFailure = false
@@ -237,14 +237,14 @@ final class ScreenStatesUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
-        for (kind, prompt) in [("battery", "Tap the battery's bottom-left corner"), ("elec_box", "Tap the box's bottom-left corner")] {
+        for (kind, prompt) in [("battery", "Tap where the battery meets the wall"), ("elec_box", "Tap where the box meets the wall")] {
             tap(app, "feature.\(kind)")
             let first = app.descendants(matching: .any)
                 .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS %@", prompt)).firstMatch
             XCTAssertTrue(first.waitForExistence(timeout: 5), "marking \(kind) must ask for \(prompt)")
             tap(app, "action.markPoint", timeout: 5)
             let second = app.descendants(matching: .any)
-                .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'top-right corner'")).firstMatch
+                .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'meets the wall, top right'")).firstMatch
             XCTAssertTrue(second.waitForExistence(timeout: 5), "a \(kind) takes a second corner")
             tap(app, "action.markPoint", timeout: 5)
             XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")

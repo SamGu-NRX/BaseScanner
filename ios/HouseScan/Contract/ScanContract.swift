@@ -429,6 +429,13 @@ enum FeatureKind: String, Equatable, Sendable, CaseIterable, Identifiable {
         case .gasMeter, .acUnit: 1
         }
     }
+
+    /// True for a mark whose size off the wall the phone doesn't measure and the server can't be
+    /// told is unknown: a battery or box, tapped where it meets the wall. The answer to a scan
+    /// with one goes to a person (`ResultPresentation.unmeasuredMarks`).
+    var depthUnmeasured: Bool {
+        self == .battery || self == .elecBox
+    }
 }
 
 struct MarkedFeature: Identifiable, Equatable, Sendable {
@@ -637,6 +644,9 @@ struct ResultPresentation: Equatable, Sendable {
     var missing: [MissingEvidence]
     /// A side of the meter the walk didn't reach, so a closer spot may exist there.
     var unseenSide: WallSide? = nil
+    /// The kinds of the scan's marks whose depth nobody measured (`FeatureKind.depthUnmeasured`),
+    /// once each. Any at all sends the answer to a person (`ResultReading.answer`).
+    var unmeasuredMarks: [FeatureKind] = []
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool

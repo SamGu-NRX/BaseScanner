@@ -157,7 +157,7 @@ enum ScanCopy {
         case .window: "Window"
         case .acUnit: "AC unit"
         case .battery: "Battery"
-        case .elecBox: "Electrical box"
+        case .elecBox: "Box on the wall"
         case .driveway: "Driveway"
         case .fence: "Fence"
         }
@@ -193,12 +193,18 @@ enum ScanCopy {
         switch (marking.kind, marking.step) {
         case (.door, 0), (.window, 0):
             return Instruction(title: "Tap the \(item)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+        // A battery or box is tapped where it meets the wall: a tap lands on the wall's plane
+        // (`markFeaturePoint`), so a front corner, standing out from the wall, would land
+        // somewhere else. How far it stands out is not measured, and the answer then goes to a
+        // person (`FeatureKind.depthUnmeasured`).
         case (.battery, 0):
-            return Instruction(title: "Tap the battery's bottom-left corner", detail: "A battery already on the wall. Put the circle on the corner and tap Mark.")
+            return Instruction(title: "Tap where the battery meets the wall, bottom left", detail: "A battery already on the wall. Tap its back corner against the wall, not the front one.")
         case (.elecBox, 0):
-            return Instruction(title: "Tap the box's bottom-left corner", detail: "A disconnect, sub-panel, EV charger or solar box. Put the circle on the corner and tap Mark.")
-        case (.door, _), (.window, _), (.battery, _), (.elecBox, _):
+            return Instruction(title: "Tap where the box meets the wall, bottom left", detail: "A disconnect, sub-panel, EV charger or solar box. Tap its back corner against the wall, not the front one.")
+        case (.door, _), (.window, _):
             return Instruction(title: "Now tap its top-right corner", detail: nil)
+        case (.battery, _), (.elecBox, _):
+            return Instruction(title: "Now where it meets the wall, top right", detail: "The back corner again, against the wall.")
         case (.driveway, 0):
             return Instruction(title: "Tap one end of the driveway's edge", detail: "Use the edge closest to the wall.")
         case (.driveway, _):
@@ -445,6 +451,16 @@ enum ScanCopy {
 
     static func unseenSide(_ side: WallSide) -> String {
         "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side."
+    }
+
+    /// Why a scan with a battery or box marked goes to an installer (`ResultPresentation.unmeasuredMarks`).
+    /// Nil without one.
+    static func unmeasuredMarks(_ kinds: [FeatureKind]) -> String? {
+        guard !kinds.isEmpty else { return nil }
+        let things = kinds.map { $0 == .elecBox ? "box" : noun($0) }
+        let listed = things.count == 1 ? "the \(things[0])" : things.dropLast().map { "the \($0)" }.joined(separator: ", ") + " and the \(things.last ?? "")"
+        let stands = things.count == 1 ? "it stands" : "they stand"
+        return "An installer will check the spot against \(listed) you marked. The phone can't measure how far \(stands) out from the wall."
     }
 
     static let shareScan = "Share scan"

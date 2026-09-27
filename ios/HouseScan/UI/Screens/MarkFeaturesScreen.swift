@@ -86,7 +86,7 @@ struct MarkFeaturesScreen: View {
                 .font(Typeface.screenTitle)
                 .foregroundStyle(.primary)
                 .accessibilityAddTraits(.isHeader)
-            Text("Gas meters, doors, windows, AC units, other batteries, electrical boxes, driveways and fences all change where a battery can go.")
+            Text("Gas meters, doors, windows, AC units, other batteries, boxes on the wall, driveways and fences all change where a battery can go.")
                 .font(Typeface.hint)
                 .foregroundStyle(Palette.muted)
         }
