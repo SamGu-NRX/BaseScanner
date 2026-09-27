@@ -28,6 +28,10 @@ public struct CaptureSourceState: Sendable, Equatable {
     }
 
     public private(set) var source: Source = .none
+    /// Counts sources started. Each source's callbacks carry the number it started with, and
+    /// only the running source's are accepted (`accepts`): a frame or event queued by a source
+    /// that failed or was replaced must not reach the scan.
+    public private(set) var generation = 0
     /// The failure the screen shows; nil after a failure that kept the answer.
     public private(set) var failure: Failure?
     /// Whether the camera's view of the world can be trusted for spatial content (the AR result,
@@ -40,10 +44,25 @@ public struct CaptureSourceState: Sendable, Equatable {
     /// A source may start only when none exists and no failure is on screen.
     public var mayStartSource: Bool { source == .none && failure == nil }
 
-    public mutating func sourceStarted() {
+    /// A new source starts; its callbacks carry the returned generation.
+    @discardableResult
+    public mutating func sourceStarted() -> Int {
+        generation += 1
         source = .running
         spatialAvailable = true
+        return generation
     }
+
+    /// Whether a callback from the source started as `generation` may reach the scan: only while
+    /// that source is the one running. A failed source's queued frames are refused, so none can
+    /// set tracking back to normal after the failure.
+    public func accepts(_ generation: Int) -> Bool {
+        source == .running && generation == self.generation
+    }
+
+    /// Whether anything may ask the homeowner to point the camera (a capture, a gap request):
+    /// only with a running source.
+    public var mayCapture: Bool { source == .running }
 
     /// The source failed. Before the scan is sent the flow can't go on, so the failure shows;
     /// after it, the answer doesn't need the camera and stays, but nothing spatial may.

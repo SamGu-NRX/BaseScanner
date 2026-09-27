@@ -592,6 +592,9 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// The `MissingEvidence.id` of the first view that would settle this check, when the server
+    /// named one.
+    var settledBy: String? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -599,6 +602,8 @@ struct MissingEvidence: Identifiable, Equatable, Sendable {
     var text: String
     /// True when another view can resolve it now; false means it goes to installer review.
     var capturable: Bool
+    /// The `CheckRow.id`s this view settles, as the server listed them.
+    var checkIDs: [String] = []
 }
 
 struct BatterySpot: Equatable, Sendable {
@@ -628,12 +633,23 @@ struct ResultPresentation: Equatable, Sendable {
     }
 
     var decision: Decision
-    /// The server's one-sentence summary.
+    /// The server's one-sentence summary, without `rulesNotice`.
     var summary: String = ""
     /// False while the server's rules hold placeholder values: every would-be pass or reject is
     /// then manual_review, and the screen should say the rules aren't final.
     var policyApproved: Bool = true
+    /// Whose rules decided, from the server ("Demo rules: ... not Base's."), to show with the
+    /// answer. Nil when the rules need no such label.
+    var rulesNotice: String? = nil
+    /// The first eight characters of the rules' SHA-256 (`policy.rules_sha256`), so a reviewer
+    /// can tell which rules answered.
+    var rulesHash: String? = nil
     var spot: BatterySpot?
+    /// When there is no spot: the spot the server found closest to passing.
+    var nearestSpot: BatterySpot? = nil
+    /// The `CheckRow.id` of the first check `nearestSpot` fails. Without a spot, `checks` are the
+    /// checks at `nearestSpot`.
+    var nearestFailingCheck: String? = nil
     /// Cable route as (s, height) points along the wall, meters, from the meter to the spot.
     var cableRoute: [SIMD2<Float>]
     var cableLength: Float?
@@ -645,9 +661,6 @@ struct ResultPresentation: Equatable, Sendable {
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
-    /// The answer's `policy.rules_sha256`: which rules judged the scan, for matching a screenshot
-    /// to the scan stamp (`ScanStamp`).
-    var rulesSHA256: String? = nil
 }
 
 // MARK: - Spot check

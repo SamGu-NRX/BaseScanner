@@ -44,7 +44,7 @@ struct InstructionCard: View {
                     .foregroundStyle(Palette.chalk)
                     .padding(.horizontal, 16)
                     .frame(minHeight: Metrics.minTarget)
-                    .background(.white.opacity(0.14), in: .capsule)
+                    .background(Palette.replyFill, in: .capsule)
                     .contentShape(.capsule)
                     .buttonStyle(PressableStyle())
                     .accessibilityHint(reply.hint)

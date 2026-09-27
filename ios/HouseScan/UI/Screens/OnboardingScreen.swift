@@ -16,11 +16,13 @@ struct OnboardingScreen: View {
             art: .walk
         ),
         // What leaves the phone is said before the camera is asked for: uploads carry the wall's
-        // measurements; the photos stay in the app until the scan is started over.
+        // measurements, and the photos stay in the app. It keeps the two latest finished scans
+        // (`ScanFolderCleanup.defaultKeepCompleted`) and deletes older and unfinished ones, so the
+        // note says that, not that starting over deletes them.
         OnboardingPage(
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
-            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
+            note: "Only the wall's measurements are sent. Your photos stay on this phone, which keeps your two latest finished scans and deletes older ones.",
             art: .fog
         ),
         OnboardingPage(
