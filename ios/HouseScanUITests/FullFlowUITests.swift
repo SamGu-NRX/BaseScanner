@@ -237,10 +237,11 @@ final class FullFlowUITests: XCTestCase {
         var drawn: CGRect?
         var app: XCUIApplication?
         try runFlow(replay: Self.fixture, practice: true, onAppear: { running, phase in
-            // The close-up replays the recording from the start: frames aimed at the meter from 1 to
-            // 2.6 m, then the walk's first frame at the meter, pitched 20 degrees down. The drawn
-            // sample must show on one of them, across the middle of the view; how high depends on
-            // which frame is up when it is found (run 36310614834 found it on the pitched one).
+            // The close-up replays the recording from the start, and the replay runs on at 3x
+            // while this polls, so which frame shows the sample first varies from run to run (runs
+            // 36310614834 and 36320980419 caught it on walk frames, high and off to the right). The
+            // check is that it is drawn on screen, the plate's shape; where the corners land is
+            // HouseScanKit's PracticeMeterTests.
             guard phase == "meterCloseUp" else { return }
             let sample = running.descendants(matching: .any)["practiceMeter"]
             let screen = running.frame
@@ -274,8 +275,8 @@ final class FullFlowUITests: XCTestCase {
         XCTAssertNotNil(readNumber, "the reader never offered the sample meter's number \(Self.sampleNumber)")
         XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
         let sample = try XCTUnwrap(drawn, "the sample meter was never drawn on screen at the close-up")
-        let middle = try XCTUnwrap(app).frame
-        XCTAssertLessThan(abs(sample.midX - middle.midX), middle.width / 4, "sample meter at \(sample), far from the middle of \(middle)")
+        // A 0.20 by 0.30 m plate seen nearly square on: about 2:3, whatever the distance.
+        XCTAssertEqual(sample.width / sample.height, 2.0 / 3.0, accuracy: 0.12, "sample meter drawn \(sample.width) by \(sample.height)")
 
         let running = try XCTUnwrap(app)
         running.buttons["action.startOver"].firstMatch.tap()
