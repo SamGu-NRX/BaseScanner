@@ -550,7 +550,10 @@ extension ScanEngine: ScanActions {
     }
 
     func captureMissing(_ id: String) {
+        // Once the camera failed after the scan was sent, a capture would get no frames; the
+        // result screen doesn't offer one then either (ResultCardActions).
         guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
+              state.spatialResultAvailable,
               let missing = placement?.missingEvidence,
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }

@@ -1521,7 +1521,8 @@ final class ScanEngine {
         // it has. It hangs on the meter's anchor, so it follows the anchor's corrections anyway.
         if !rising, let built = resultBuiltFor, Self.movedLittle(from: built, to: wall) { return }
         let model = ResultARModel.build(wall: wall, result: result)
-        // The battery's middle, or the meter without a spot, in the model's coordinates.
+        // The battery's middle (the outline's, on the ground, for a spot that isn't clean), or the
+        // meter without a spot, in the model's coordinates.
         let focus = (result.spotCenter(on: wall) ?? wall.meter) - wall.meter
         guard live.showResult(model, builtFor: pose, focus: focus) else {
             resultBuiltFor = nil

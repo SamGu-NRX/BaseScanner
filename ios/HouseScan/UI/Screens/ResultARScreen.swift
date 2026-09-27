@@ -1,3 +1,4 @@
+import HouseScanKit
 import simd
 import SwiftUI
 
@@ -53,7 +54,10 @@ struct ResultARScreen: View {
     }
 
     private static func overlayLabel(_ result: ResultPresentation) -> String {
-        result.spot == nil ? "The cable run and clearances, drawn on your wall" : "The battery, drawn on your wall at its spot"
+        guard result.spot != nil else { return "The cable run and clearances, drawn on your wall" }
+        return result.spotIsClean
+            ? "The battery, drawn on your wall at its spot"
+            : "An outline of the spot an installer will check, drawn on your wall"
     }
 
     private var instruction: Instruction {
@@ -65,7 +69,7 @@ struct ResultARScreen: View {
         }
         // Only a pass under approved rules may sound settled; a spot an installer still has to
         // check says so, as the result screen does.
-        let title = result.decision == .pass && result.policyApproved
+        let title = result.decision == .pass && result.policyApproved && result.spotIsClean
             ? "Your battery could go here"
             : "The spot an installer will check"
         let placement = ScanCopy.placement(result)
@@ -78,13 +82,16 @@ struct ResultARScreen: View {
 }
 
 extension ResultPresentation {
-    /// The middle of the battery on `wall`, in world meters; nil without a spot. The point
-    /// "See it on your wall" has to get on screen: the edge chevron points to it while it is off
-    /// screen, and the engine checks the AR scene puts it in view (`LiveCapture.resultIsDrawn`).
+    /// The middle of the battery on `wall`, or of the footprint outline on the ground for a spot
+    /// that isn't a clean fit (`ResultMarkLayout.focusHeight`), in world meters; nil without a
+    /// spot. The point "See it on your wall" has to get on screen: the edge chevron points to it
+    /// while it is off screen, and the engine checks the AR scene puts it in view
+    /// (`LiveCapture.resultIsDrawn`).
     func spotCenter(on wall: WallGeometry) -> SIMD3<Float>? {
         guard let spot else { return nil }
         let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
-        return wall.world(s: middle, height: spot.height / 2, out: spot.offsetFromWall + spot.depth / 2)
+        let height = ResultMarkLayout.focusHeight(mark: ResultMarkLayout.spotMark(spotIsClean: spotIsClean), batteryHeight: spot.height)
+        return wall.world(s: middle, height: height, out: spot.offsetFromWall + spot.depth / 2)
     }
 }
 
@@ -143,7 +150,7 @@ private struct SpotDirection: View {
 }
 
 /// Canvas drawing of the battery box, cable and footprint. `rise` 0...1 lifts the box out of the
-/// ground for the entrance.
+/// ground for the entrance. A spot that isn't a clean fit gets only the outline of its footprint.
 struct BatteryOverlay: View, Animatable {
     var projection: CameraProjection
     var wall: WallGeometry
@@ -165,8 +172,13 @@ struct BatteryOverlay: View, Animatable {
             drawClearances(in: &context, geometry)
             drawCable(in: &context, geometry)
             if let spot = result.spot {
-                drawShadow(spot, in: &context, geometry)
-                drawBox(spot, in: &context, geometry)
+                switch ResultMarkLayout.spotMark(spotIsClean: result.spotIsClean) {
+                case .battery:
+                    drawShadow(spot, in: &context, geometry)
+                    drawBox(spot, in: &context, geometry)
+                case .outline:
+                    drawOutline(spot, in: &context, geometry)
+                }
             }
         }
         .allowsHitTesting(false)
@@ -188,6 +200,17 @@ struct BatteryOverlay: View, Animatable {
         line.addLines(points)
         context.stroke(line, with: .color(.white.opacity(0.9)), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
         context.stroke(line, with: .color(Palette.signal), style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round))
+    }
+
+    /// A spot that isn't a clean fit: the dashed outline of its footprint on the ground and no
+    /// battery, as the result card draws it (`ResultScene3D`).
+    private func drawOutline(_ spot: BatterySpot, in context: inout GraphicsContext, _ geometry: WallProjection) {
+        let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
+        guard let quad = geometry.groundQuad(s: spot.span, out: out, height: 0.02) else { return }
+        let dash: [CGFloat] = [14, 9]
+        context.stroke(quad, with: .color(.white.opacity(0.9 * rise)), style: StrokeStyle(lineWidth: 7, dash: dash))
+        context.stroke(quad, with: .color(Palette.outcome(result.workingSpaceOutcome).opacity(rise)),
+                       style: StrokeStyle(lineWidth: 4, dash: dash))
     }
 
     private func drawShadow(_ spot: BatterySpot, in context: inout GraphicsContext, _ geometry: WallProjection) {
