@@ -79,6 +79,18 @@ class Capture:
     scene: dict | None = None  # the bundle's scene.json, updated in place of rebuilt
     notes: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Depth maps and poses are looked up by id, while coverage walks every frame record, so a
+        # repeated id would let one depth view count from two camera positions and fake two-view
+        # coverage. Every capture is refused with one, however it was built.
+        seen: set[str] = set()
+        for f in self.frames:
+            if f.id in seen:
+                raise DuplicateFrameId(
+                    f"keyframe id {f.id!r} appears more than once in {self.root}"
+                )
+            seen.add(f.id)
+
 
 ROTATION_TOL = 1e-2  # scene.json rounds poses to 4 decimals; anything further off is not a pose
 
@@ -162,6 +174,10 @@ def inside(root: Path, ref: str, field: str) -> Path:
 
 class BadFrameId(ValueError):
     """A keyframe id that is not a single safe file-name component."""
+
+
+class DuplicateFrameId(ValueError):
+    """Two keyframes share an id."""
 
 
 FRAME_ID = re.compile(r"[A-Za-z0-9._-]+")
