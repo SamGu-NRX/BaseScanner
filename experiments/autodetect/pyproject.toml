@@ -8,6 +8,9 @@ dependencies = [
     "pillow>=11",
     "onnxruntime>=1.22",
     "tokenizers>=0.21",
+    "onnx>=1.23.0",
+    "torch==2.14.0",
+    "transformers>=5.17.0",
 ]
 
 [dependency-groups]

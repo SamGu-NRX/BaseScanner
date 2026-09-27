@@ -132,8 +132,9 @@ def class_entries(
     iou_thr: float = IOU,
     near_min_side: float | None = None,
 ) -> ClassEntries:
-    """Entries over a set. With near_min_side, boxes narrower or shorter than that fraction of
-    the image are difficult."""
+    """Entries over a set. With near_min_side, ground-truth boxes narrower or shorter than that
+    fraction of the image are difficult, and detections that small are dropped, as an app that
+    only proposes near objects would drop them."""
     scores: list[float] = []
     tps: list[bool] = []
     num_gt = 0
@@ -145,6 +146,7 @@ def class_entries(
         num_images += 1
         if near_min_side is not None:
             boxes = _mark_small(boxes, near_min_side)
+            dets = [x for x in dets if min(x["box"][2] - x["box"][0], x["box"][3] - x["box"][1]) >= near_min_side]
         s, t, n = image_entries(boxes if status == 1 else [], dets, iou_thr)
         scores += s
         tps += t

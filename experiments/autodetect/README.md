@@ -12,14 +12,21 @@ Prompts, thresholds and detector settings are in `autodetect/config.py`.
 
 ## Rerun
 
+Needs about 400 MB in `~/house-scanning-data/autodetect/` plus about 350 MB for one model's weights at a time, and the ETH3D electro packet and scan from the evals lane for the 3D step.
+
 ```sh
-uv sync
+uv sync && uv run pytest
 uv run python -m autodetect.openimages select && uv run python -m autodetect.openimages download
 uv run python -m autodetect.cmp
-uv run pytest
+swift build -c release --package-path vision   # copy rects, coremldet, trainod to ~/house-scanning-data/autodetect/bin
+uv run python -m autodetect.run_vision oi_tune oi_eval cmp electro
+uv run python -m autodetect.owl oi_tune oi_eval cmp electro      # needs weights/owlv2/model_fp16.onnx
+uv run python -m autodetect.gdino                                # needs weights/gdino/model_fp16.onnx
+uv run python -m autodetect.student prepare && uv run python -m autodetect.student train transfer
+uv run python -m autodetect.student crop transfer && uv run python -m autodetect.student predict transfer <crop>
+uv run python -m autodetect.score                                # results/proposals.md
+uv run python -m autodetect.extent_gt save && uv run python -m autodetect.extent   # results/extent.md
 ```
-
-Scoring commands are listed in `results/`, next to each table.
 
 ## Result
 

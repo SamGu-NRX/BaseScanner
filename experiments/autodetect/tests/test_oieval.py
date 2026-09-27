@@ -141,8 +141,10 @@ def test_detection_on_a_difficult_box_is_ignored_and_the_box_is_not_a_miss():
 def test_near_sized_filter_marks_boxes_below_the_minimum_side():
     tiny = [0.1, 0.1, 0.15, 0.4]  # 5% wide
     gts = {"i": {"verified": {"window": 1}, "boxes": [gt(tiny), gt(B)]}}
-    preds = {"i": [det(tiny, 0.9), det([0.0, 0.0, 0.05, 0.05], 0.7)]}
+    near_miss = [0.0, 0.0, 0.2, 0.2]
+    preds = {"i": [det(tiny, 0.9), det([0.0, 0.0, 0.05, 0.05], 0.8), det(near_miss, 0.7)]}
     e = class_entries(gts, preds, "window", near_min_side=0.10)
     assert e.num_gt == 1
+    # the tiny detection is dropped by size, the near-sized miss stays a false positive
     assert list(e.scores) == [0.7]
     assert list(e.tp) == [False]

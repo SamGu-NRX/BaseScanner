@@ -14,7 +14,8 @@ IOU = 0.5
 # Diagnostic only, not a pass criterion: at 1 to 3 m an iPhone frame holds a window or door at
 # roughly 15% or more of the frame's width. Boxes smaller than this fraction of the image in
 # either dimension are treated as "difficult" (detections on them ignored, not counted as missed)
-# in the "near-sized" tables.
+# in the "near-sized" tables, and detections that small are dropped there (added after the first
+# scored run; see results/proposals.md).
 NEAR_MIN_SIDE = 0.10
 
 # OWLv2 text queries, one per wall object. Scored classes are window and door; the others are in

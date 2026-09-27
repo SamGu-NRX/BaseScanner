@@ -1,8 +1,12 @@
 """CMP Facade base set (Tylecek and Sara, GCPR 2013; CC BY-SA) as a second, frontal eval set.
 
 Every facade element is annotated, so window and door count as verified in every image: an
-image with no door rectangle is a verified negative for door. Rectangles are [x0, x1, y0, y1],
-normalized, top-left origin. There are no group-of boxes.
+image with no door rectangle is a verified negative for door. There are no group-of boxes.
+
+In the XML, the two <x> values are the rectangle's vertical extent and the two <y> values its
+horizontal extent, both normalized with a top-left origin. Read as labelled, window rectangles
+cover 18% window pixels in the set's own label maps on average; swapped, they cover 87% (the
+rest is blinds and railings drawn over windows), and they sit on the windows by eye.
 
 The images are rectified frontal facades, often several storeys, shot from across a street.
 The app sees one wall from 1 to 3 m at an angle, so this set tests recognition on a different
@@ -36,11 +40,11 @@ def parse(xml_path: Path) -> list[dict]:
         (name,) = _field(block, "labelname")
         if name not in ("window", "door"):
             continue
-        xs = sorted(float(v) for v in _field(block, "x"))
-        ys = sorted(float(v) for v in _field(block, "y"))
-        if len(xs) != 2 or len(ys) != 2:
-            raise ValueError(f"{xml_path.name}: expected 2 x and 2 y values, got {xs} {ys}")
-        boxes.append({"label": name, "box": [xs[0], ys[0], xs[1], ys[1]], "group": False})
+        rows = sorted(float(v) for v in _field(block, "x"))  # vertical, despite the tag
+        cols = sorted(float(v) for v in _field(block, "y"))  # horizontal
+        if len(rows) != 2 or len(cols) != 2:
+            raise ValueError(f"{xml_path.name}: expected 2 <x> and 2 <y> values, got {rows} {cols}")
+        boxes.append({"label": name, "box": [cols[0], rows[0], cols[1], rows[1]], "group": False})
     return boxes
 
 
