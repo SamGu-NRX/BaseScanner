@@ -36,7 +36,7 @@ curl -s https://house-scanning-server.vercel.app/health
 ## How it fits together
 
 <p align="center">
-  <img alt="Architecture. The iPhone app guides a walk and builds a capture packet. It posts scene.json to the placement API, and sends photos and poses to the reconstruction worker, which posts a rebuilt scene.json to the same API. The rules engine checks every spot along the wall and returns PASS, FAIL or UNSURE. The result shows in AR, pinned to the meter, and an UNSURE check sends the homeowner back for one more view." src="docs/readme/architecture.svg" width="100%">
+  <img alt="Architecture, in seven steps. On the iPhone: find the meter, walk the wall, mark what is near, and send the capture. The phone posts scene.json to the server, and the full packet can go to the reconstruction worker, which rebuilds the wall and posts a rebuilt scene.json. The server checks every spot along the wall and returns PASS, FAIL or UNSURE. The phone shows the spot in AR, pinned to the meter, and an UNSURE check sends the homeowner back to walk the wall for one more view." src="docs/readme/architecture.svg" width="100%">
 </p>
 
 Models build the geometry and recognize things. Plain code passes or fails each check, so every answer points back to a rule and a measurement. The clearance numbers live in a rules file with their sources, never in code.
