@@ -17,5 +17,8 @@
 BUNDLE_ID_SUFFIX = .integration
 HOUSESCAN_DISPLAY_NAME = House Scan Integration
 HOUSESCAN_INTEGRATION_BUILD = YES
+// Compiles the integration code paths in: the client build doesn't contain the consent sheet or
+// the capture recording at all, whatever its Info.plist says.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HOUSESCAN_INTEGRATION
 
 #include? "Integration.local.xcconfig"

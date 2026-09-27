@@ -1,6 +1,7 @@
 import HouseScanKit
 import SwiftUI
 
+#if HOUSESCAN_INTEGRATION
 /// One line under the status bar in the integration build: what the capture API has
 /// acknowledged, as counts and the server's own status, never a made-up percentage. Hidden when
 /// the build has no capture API or the homeowner said no.
@@ -56,7 +57,7 @@ struct CaptureConsentSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Send this scan to the test server?")
+            Text("Send this scan to the House Scan team?")
                 .font(Typeface.sectionTitle)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
@@ -66,11 +67,11 @@ struct CaptureConsentSheet: View {
                 Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
             }
             .font(Typeface.hint)
-            Text("It goes to the House Scan team's test server. This covers this scan only. Sending is optional, and your result stays the same if you skip.")
+            Text("It goes to the House Scan team's test server, for this scan only. Skipping changes nothing about your result.")
                 .font(Typeface.hint)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle("Send this scan's photos, measurements and 3D data to the test server", isOn: $agreed)
+            Toggle("I agree to send this scan", isOn: $agreed)
                 .font(Typeface.hint)
                 .accessibilityIdentifier("captureConsent.agree")
             Spacer(minLength: 0)
@@ -79,18 +80,24 @@ struct CaptureConsentSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!agreed)
+            // The whole button dims while it can't be pressed, so its label never sits at low
+            // contrast on a still-colored fill.
+            .opacity(agreed ? 1 : 0.45)
             .accessibilityIdentifier("captureConsent.send")
             Button { answer(false) } label: {
                 Text("Skip").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderless)
             .accessibilityIdentifier("captureConsent.skip")
         }
         .padding(Metrics.edge + 8)
-        .presentationDetents([.large])
+        // Medium, so the camera stays in view behind the question about the scan it is about to take.
+        .presentationDetents([.medium])
         .interactiveDismissDisabled()
     }
 }
+
+#endif
 
 /// The integration build's two additions: the consent question when a scan that can be sent
 /// starts (before the meter is marked), and the sync line while a capture is being sent.
@@ -100,11 +107,14 @@ struct CaptureIntegrationOverlay: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
+        #if HOUSESCAN_INTEGRATION
         content
-            .overlay(alignment: .top) {
+            // Trailing: the replay and sample badges sit top-leading.
+            .overlay(alignment: .topTrailing) {
                 if let status = integration.status {
                     CaptureSyncLine(status: status)
                         .padding(.top, 4)
+                        .padding(.trailing, Metrics.edge)
                         .transition(.opacity)
                 }
             }
@@ -113,5 +123,8 @@ struct CaptureIntegrationOverlay: ViewModifier {
             .sheet(isPresented: Binding(get: { phase == .findMeter && integration.needsConsent }, set: { _ in })) {
                 CaptureConsentSheet { integration.answerConsent($0) }
             }
+        #else
+        content
+        #endif
     }
 }

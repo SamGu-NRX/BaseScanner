@@ -34,11 +34,15 @@ final class CaptureIntegration {
     @ObservationIgnored private var resumed: [CaptureUploader] = []
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main) {
+        #if HOUSESCAN_INTEGRATION
         let argument = arguments.firstIndex(of: "-captureAPIURL").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
         let mode = CaptureIntegrationMode.resolve(
             integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
             endpoint: argument ?? bundle.object(forInfoDictionaryKey: "HouseScanCaptureAPIURL") as? String,
             sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String)
+        #else
+        let mode = CaptureIntegrationMode.off("not the integration build")
+        #endif
         let modeName = switch mode {
         case .off: "off"
         case .recordOnly: "record only"
@@ -64,7 +68,7 @@ final class CaptureIntegration {
                 device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
         }
         coordinator = CaptureSessionCoordinator(environment: environment)
-        coordinator.onStatus = { [weak self] in self?.status = $0 }
+        coordinator.onStatus = { [weak self] in self?.publish($0) }
         resumed = coordinator.resumeSealedCaptures()
         if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
     }
@@ -75,6 +79,26 @@ final class CaptureIntegration {
         RuntimeLog.engine.info("capture upload consent: \(yes ? "yes" : "no", privacy: .public)")
         coordinator.answerConsent(yes)
         revision += 1
+    }
+
+    /// At most one status change a second reaches the screen; the last one always does.
+    @ObservationIgnored private var lastPublished = Date.distantPast
+    @ObservationIgnored private var pendingStatus: Task<Void, Never>?
+
+    private func publish(_ next: CaptureUploadStatus?) {
+        pendingStatus?.cancel()
+        let wait = 1 - Date().timeIntervalSince(lastPublished)
+        guard next != nil, wait > 0 else {
+            status = next
+            lastPublished = Date()
+            return
+        }
+        pendingStatus = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard let self, !Task.isCancelled else { return }
+            self.status = next
+            self.lastPublished = Date()
+        }
     }
 
     // MARK: Engine hooks

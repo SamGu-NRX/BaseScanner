@@ -292,15 +292,27 @@ struct NativeCaptureFixture: Sendable {
             try? FileManager.default.removeItem(at: source)
             try makeJPEG(width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, at: source, shift: 7)
             let refusedBytes = try Data(contentsOf: source)
+            // Its depth too lives in files the retake overwrites: 4 x 3 meters and confidence.
+            let depthFile = fixture.folder.appending(path: "meter_close.f32"), confidenceFile = fixture.folder.appending(path: "meter_close.conf.u8")
+            func writeDepth(_ meters: Float, _ confidence: UInt8) throws {
+                try PacketFiles.depthData(meters: [Float](repeating: meters, count: 12)).write(to: depthFile)
+                try Data(repeating: confidence, count: 12).write(to: confidenceFile)
+            }
+            try writeDepth(1.5, 2)
             func closeUp(at t: Double) -> KeptPhoto {
                 KeptPhoto(
                     t: t, cameraToWorld: fixture.pose(t), cameraIntrinsics: NativeCaptureFixture.k, cameraImageSize: SIMD2(1920, 1440),
-                    width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, tracking: .normal, exposure: nil, jpeg: source, purpose: "meter_close")
+                    width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, tracking: .normal, exposure: nil, jpeg: source, purpose: "meter_close",
+                    depth: {
+                        guard let map = try? Data(contentsOf: depthFile), let confidence = try? Data(contentsOf: confidenceFile) else { return nil }
+                        return Packet04Depth(meters: PacketFiles.floats(littleEndian: map), confidence: [UInt8](confidence), width: 4, height: 3)
+                    })
             }
             coordinator.kept(closeUp(at: fixture.start + 2))
-            // The retake overwrites the same file before the first shot's sealing has run.
+            // The retake overwrites the same files before the first shot's sealing has run.
             try FileManager.default.removeItem(at: source)
             try makeJPEG(width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, at: source, shift: 101)
+            try writeDepth(0.9, 1)
             let retakeBytes = try Data(contentsOf: source)
             coordinator.kept(closeUp(at: fixture.start + 4))
             coordinator.captureEnded(acceptedCloseUpAt: accepted ? fixture.start + 4 : nil)
@@ -311,6 +323,10 @@ struct NativeCaptureFixture: Sendable {
             #expect(packet.stills?.map(\.id) == ["meter_close", "meter_close-2"])
             #expect(try Data(contentsOf: session.folder.appending(path: "stills/meter_close.jpg")) == refusedBytes)
             #expect(try Data(contentsOf: session.folder.appending(path: "stills/meter_close-2.jpg")) == retakeBytes)
+            // Each shot keeps its own depth and confidence.
+            #expect(try Data(contentsOf: session.folder.appending(path: "keyframes/k00001.depth.f32")) == PacketFiles.depthData(meters: [Float](repeating: 1.5, count: 12)))
+            #expect(try Data(contentsOf: session.folder.appending(path: "keyframes/k00001.confidence.u8")) == Data(repeating: 2, count: 12))
+            #expect(try Data(contentsOf: session.folder.appending(path: "keyframes/k00002.depth.f32")) == PacketFiles.depthData(meters: [Float](repeating: 0.9, count: 12)))
             #expect(Packet04Check.problems(packet, folder: session.folder).isEmpty)
             if accepted {
                 #expect(packet.scaleReference.meterCloseUp.still == "meter_close-2")

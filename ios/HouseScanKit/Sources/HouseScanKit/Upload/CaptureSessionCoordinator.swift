@@ -18,7 +18,8 @@ public struct KeptPhoto: Sendable {
     public var jpeg: URL
     /// The still's purpose ("meter_close"); nil for a keyframe.
     public var purpose: String?
-    /// Reads the photo's ARKit depth; called off the main actor.
+    /// Reads the photo's ARKit depth. Called once, when the photo is kept, because the app writes a
+    /// retaken close-up's depth over the same files.
     public var depth: @Sendable () -> Packet04Depth?
 
     public init(
@@ -251,8 +252,9 @@ public final class CaptureSessionCoordinator {
 
     public func kept(_ photo: KeptPhoto) {
         guard let session, !session.sealing, let environment else { return }
-        // The app writes a retaken close-up over the same file, so the bytes are taken now (an
-        // APFS clone), not when the queued work gets to them.
+        // The app writes a retaken close-up (JPEG and depth) over the same files, so both are taken
+        // now, the JPEG as an APFS clone, not when the queued work gets to them.
+        let depth = photo.depth()
         let staged = environment.capturesFolder.appending(path: "staging/\(UUID().uuidString).jpg")
         do {
             try FileManager.default.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -265,7 +267,7 @@ public final class CaptureSessionCoordinator {
             defer { try? FileManager.default.removeItem(at: staged) }
             do {
                 let producer = try session.producer(first: (photo.t, photo.cameraImageSize), info: environment.sessionInfo)
-                let (data, depth) = try await Task.detached(priority: .utility) { (try Data(contentsOf: staged), photo.depth()) }.value
+                let data = try await Task.detached(priority: .utility) { try Data(contentsOf: staged) }.value
                 var files: [SealedFile] = []
                 if await producer.keyframeID(at: photo.t) == nil {
                     files += try await producer.sealKeyframe(
