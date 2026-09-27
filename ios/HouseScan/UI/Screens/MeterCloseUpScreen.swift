@@ -209,6 +209,8 @@ private struct MeterNumberPicker: View {
     var choose: (MeterNumberCandidate?) -> Void
     var rejectBrand: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(spacing: 8) {
             if let brand {
@@ -270,6 +272,7 @@ private struct MeterNumberPicker: View {
             .accessibilityIdentifier("action.noneOfThese")
         }
         // "Not <brand>" fades the chip out, and the numbers close the gap in the same 0.2 s.
-        .animation(Motion.text, value: brand)
+        // With Reduce Motion the chip goes and the numbers take its place at once.
+        .animation(reduceMotion ? nil : Motion.text, value: brand)
     }
 }

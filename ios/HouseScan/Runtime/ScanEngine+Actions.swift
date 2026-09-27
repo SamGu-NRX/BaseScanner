@@ -83,6 +83,10 @@ extension ScanEngine: ScanActions {
         guard state.phase == .meterCloseUp else { return }
         state.closeUp = .skipped
         state.meterNumber = .skipped
+        // A photo on disk (one the reader turned down, or one confirmed just before the skip)
+        // stays a plain photo of the scan: scene.json doesn't list it and the meter mark doesn't
+        // link it.
+        store.withdrawStill("meter_close.jpg")
         RuntimeLog.engine.info("close-up skipped after \(self.state.closeUpFailedAttempts) failed attempts")
         observeCloseUpView()
         go(.wallWalk)
@@ -100,6 +104,9 @@ extension ScanEngine: ScanActions {
         }
         guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
         state.meterNumber = .confirmed(chosen.text)
+        // The photo the number was read from is now the meter's close-up. A shot the reader or
+        // the homeowner turned down never gets here, so it is never listed as one.
+        store.acceptStill("meter_close.jpg")
         RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public)), brand \(self.state.meterBrand == nil ? "none" : "kept", privacy: .public)")
         observeCloseUpView()
         finishCloseUp()

@@ -112,9 +112,11 @@ extension ScanEngine {
     // MARK: Marks
 
     /// The meter, the marked wall ends and every marked feature, in the meter frame.
+    /// The meter links the close-up only when the homeowner accepted it (`KeyframeStore.stills`);
+    /// a rejected or skipped shot stays among the photos, linked to nothing.
     private func packetMarks(_ map: CoverageMap, wall: SceneWall, frame: MeterFrame) -> [PacketMark] {
         var marks = [PacketMark.meter(
-            id: "meter", t: markTimes[MarkKey.meter], photoIDs: store.stillFrames["meter_close"] == nil ? nil : ["meter_close"]
+            id: "meter", t: markTimes[MarkKey.meter], photoIDs: store.stills["meter_close"] == nil ? nil : ["meter_close"]
         )]
         for (side, s) in [(WallSide.left, map.leftEnd), (.right, map.rightEnd)] {
             guard let s else { continue }

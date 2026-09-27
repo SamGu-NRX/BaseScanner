@@ -4,12 +4,14 @@ import UIKit
 /// When the scan can't run: camera access is off, the phone can't track motion, the camera
 /// stopped, or a recording can't be read. Says what happened and the one thing to do about it:
 /// Settings for camera access, a fresh start for a stopped camera or a bad recording. A phone
-/// that can't measure has nothing to retry, so it gets advice and no button.
+/// that can't measure has nothing to retry, so it gets advice and no button. Coming back from
+/// Settings with Camera turned on picks the scan up again (`recheckCameraAccess`).
 struct UnsupportedScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         let failure = state.failure ?? .arUnsupported
@@ -60,6 +62,10 @@ struct UnsupportedScreen: View {
                 .padding(.horizontal, 24)
         }
         .background(Palette.canvas.ignoresSafeArea())
+        // Back from Settings: if Camera was turned on there, the scan goes on by itself.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { actions.recheckCameraAccess() }
+        }
     }
 
     private func symbol(_ failure: ScanFailure) -> String {

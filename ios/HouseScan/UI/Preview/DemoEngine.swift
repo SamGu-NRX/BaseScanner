@@ -1011,6 +1011,9 @@ final class DemoEngine: ScanActions {
         state.phase = .result
     }
 
+    /// The demo has no camera, so there is no access to recheck: its failure screen stays.
+    func recheckCameraAccess() {}
+
     func startOver() {
         script?.cancel()
         state.phase = .onboarding
