@@ -77,10 +77,6 @@ extension ScanEngine {
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
             meshOverheads: mesh.overheads,
-            // Without the mesh's measurement, the surface ARKit's planes found facing the wall,
-            // where the walk went up to it (#164). The mesh measures the gap itself, and anything
-            // standing in it, so it goes alone where there is one.
-            planeFacing: mesh.facing.isEmpty ? map.walkedToFarSurface() : [],
             // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
             groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
         )

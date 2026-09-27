@@ -231,13 +231,6 @@ public struct SceneInput: Sendable {
     /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
     /// written as `overheads` entries.
     public var meshOverheads: [ObservedSpan]
-    /// Where the walk went up to a surface ARKit found facing the wall (#164,
-    /// `CoverageMap.walkedToFarSurface()`): stretches in s meters, each with the gap to the
-    /// surface in meters. Written as `facing` entries whose `plus_minus_ft` is the wall's
-    /// position error at the stretch's end farther from the meter plus a detected plane's
-    /// default error (`ServerErrorDefaults`), since both the wall's line and the surface's
-    /// were placed by ARKit.
-    public var planeFacing: [ObservedSpan]
     /// What the homeowner said the ground along the wall is. With a type, the ground the ground
     /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
     /// and the server treats the surface as unknown.
@@ -247,8 +240,7 @@ public struct SceneInput: Sendable {
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
-        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], planeFacing: [ObservedSpan] = [],
-        groundType: SceneGroundType? = nil
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -263,7 +255,6 @@ public struct SceneInput: Sendable {
         self.stills = stills
         self.meshFacing = meshFacing
         self.meshOverheads = meshOverheads
-        self.planeFacing = planeFacing
         self.groundType = groundType
     }
 }
@@ -542,15 +533,6 @@ public enum SceneExport {
         facing += try measured(input.meshFacing, "meshFacing", room: maxMeasured - facing.count).map {
             SceneDocument.Facing(wall_id: $0.id, span_ft: $0.span, depth_ft: $0.value)
         }
-        // Where the walk went up to a surface ARKit found facing the wall (#164), with its error
-        // written out: the server's default for `facing` is the mesh's.
-        facing += try measured(input.planeFacing, "planeFacing", room: maxMeasured - facing.count).map { item in
-            let far = Float(max(abs(item.span[0]), abs(item.span[1])) / SceneUnits.feetPerMeter)
-            let middle = Float((item.span[0] + item.span[1]) / 2 / SceneUnits.feetPerMeter)
-            let source = chain.segments[WallSegment.index(in: chain.segments, atS: middle)].source
-            let error = ServerErrorDefaults.wall(source, atS: far) + ServerErrorDefaults.wall(.plane)
-            return SceneDocument.Facing(wall_id: item.id, span_ft: item.span, depth_ft: item.value, plus_minus_ft: feet(error))
-        }
         let overheads = try measured(input.meshOverheads, "meshOverheads", room: maxMeasured).map {
             SceneDocument.Overhead(wall_id: $0.id, span_ft: $0.span, clearance_ft: $0.value)
         }
@@ -814,8 +796,6 @@ private struct SceneDocument: Encodable {
         var wall_id: String
         var span_ft: [Double]
         var depth_ft: Double
-        /// Absent means the server's mesh default.
-        var plus_minus_ft: Double? = nil
     }
     struct Overhead: Encodable {
         var wall_id: String

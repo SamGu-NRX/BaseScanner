@@ -145,9 +145,8 @@ public struct CoverageConfig: Sendable, Equatable {
     public var farSurfaceTolerance: Float = 0.15
     /// How near the surface where the space ends (`CoverageMap.farSurface`) a homeowner holding
     /// the phone toward the wall can bring it: they stand behind the phone. A walk-out line nearer
-    /// that surface than this can't be walked (`GapPlanner.walkOutBlock`, #164), and a walk this
-    /// near it shows the space up to it (`CoverageMap.walkedToFarSurface()`). 0.3 m is a guess,
-    /// not measured.
+    /// that surface than this can't be walked (`GapPlanner.walkOutBlock`, #164). 0.3 m is a
+    /// guess, not measured.
     public var walkerDepth: Float = 0.3
 
     public init() {}
@@ -977,16 +976,6 @@ public struct CoverageMap: Sendable {
     }
 
     private func walkedClearance(at index: Int, steps: [WalkedStep]) -> Float? {
-        guard let depth = walkedDepth(at: index, steps: steps) else { return nil }
-        let cell = cellRange(index)
-        let clear = depth - max(positionError(atS: cell.lowerBound), positionError(atS: cell.upperBound))
-        return clear > 0 ? clear : nil
-    }
-
-    /// `walkedClearance(at:)` before the position error: the largest distance out such that
-    /// steps reaching at least that far cover the cell along the wall. Nil as there, except that
-    /// the error takes nothing off.
-    private func walkedDepth(at index: Int, steps: [WalkedStep]) -> Float? {
         guard allows(index), !withdrawnCells.contains(index) else { return nil }
         let cell = cellRange(index)
         let tolerance: Float = 1e-5
@@ -997,28 +986,11 @@ public struct CoverageMap: Sendable {
             for step in over.filter({ $0.nearest >= depth }).sorted(by: { $0.low < $1.low }) where step.low <= reached + tolerance {
                 reached = max(reached, step.high)
             }
-            if reached >= cell.upperBound - tolerance { return depth }
+            guard reached >= cell.upperBound - tolerance else { continue }
+            let clear = depth - max(positionError(atS: cell.lowerBound), positionError(atS: cell.upperBound))
+            return clear > 0 ? clear : nil
         }
         return nil
-    }
-
-    /// Stretches where the walk went up to where the space ends (#164): cells with a far surface
-    /// (`farSurface`) whose walked path (`walkedClearance(at:)` before the position error) came
-    /// within `walkerDepth` of it, each with the surface's distance out, meters, neighbours of
-    /// equal distance merged. The homeowner stood in what was left between the phone and the
-    /// surface, so the space is clear up to the surface as far as a walked path shows anything
-    /// (the type's bounded exceptions); the surface is the gap to what faces the wall. The
-    /// distance's error is the export's to add (`SceneInput.planeFacing`). On build 7.1 a 6 ft
-    /// corridor was walked to 5.5 ft with its far wall found 5.4 to 5.6 ft out, and the server
-    /// heard only of the walk, less its error.
-    public func walkedToFarSurface() -> [ObservedSpan] {
-        let steps = walkedSteps()
-        let items = farSurfaceByCell.keys.sorted().compactMap { index -> ObservedSpan? in
-            guard let far = farSurfaceByCell[index], let walked = walkedDepth(at: index, steps: steps),
-                  walked >= far - config.walkerDepth else { return nil }
-            return ObservedSpan(span: cellRange(index), out: far)
-        }
-        return ObservedSpan.merge(items, touching: config.cellWidth * 0.01).map(clippedToEnds)
     }
 
     /// Stretches known clear in front of the wall from the walked path (`walkedClearance(at:)`),

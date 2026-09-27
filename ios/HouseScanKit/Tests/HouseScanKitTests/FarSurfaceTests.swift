@@ -142,24 +142,6 @@ import Testing
         #expect(planner.walkOutBlock(gap, wide) == nil)
     }
 
-    /// A walk that went up to the far wall shows the space clear up to it (#164): walked 1.65 m
-    /// out from s = -1 to 2 with the far wall 1.798 m out, within the 0.3 m a homeowner stands
-    /// behind the phone, over the cells the walk covers (-0.9144 to 1.9812). Walked 1.2 m out it
-    /// shows nothing of the kind: the 0.6 m between the walk and the far wall was never seen.
-    @Test func aWalkUpToTheFarWallShowsTheSpaceUpToIt() throws {
-        var map = Self.ended(at: 1.8)
-        FacingTests.walk(&map, out: 1.65, from: -1, to: 2)
-        let spans = map.walkedToFarSurface()
-        let span = try #require(spans.first)
-        #expect(spans.count == 1)
-        #expect(nearlyEqual(span.out, 59 * 0.03048))
-        #expect(nearlyEqual(span.span, -0.9144...1.9812, 1e-3))
-
-        var short = Self.ended(at: 1.8)
-        FacingTests.walk(&short, out: 1.2, from: -1, to: 2)
-        #expect(short.walkedToFarSurface().isEmpty)
-    }
-
     /// Something standing nearer the wall than where the space ends still hides it: the box of
     /// `CoverageDepthTests` (0.5 to 1.0 m out, 1.5 m tall) in a space that ends 2.5 m out, seen
     /// straight on from 2 m. What the depth met is the box's front, 1 m out, well short of the
