@@ -228,6 +228,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(label.contains("Walk slowly to your right"), "the task must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+        XCTAssertTrue(label.contains("flashlight"), "the dark coaching must say what would help, got \(label)")
     }
 
     /// #80, as on the walk: the capture gate's coaching keeps a gap request on the card. The dark
@@ -245,6 +246,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(label.contains("Show the ground"), "the request must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("a clear look from two places"), "the request's second line must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+        XCTAssertTrue(label.contains("flashlight"), "the dark coaching must say what would help, got \(label)")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the
