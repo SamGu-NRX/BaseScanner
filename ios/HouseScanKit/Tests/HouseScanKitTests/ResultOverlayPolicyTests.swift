@@ -57,6 +57,46 @@ import Testing
         #expect(answers == [false, false, false, true])
     }
 
+    /// Review of #100: once the AR scene has taken over, turning to the meter puts the battery
+    /// out of view, but the scene still holds the result, so the Canvas stays off. Losing the
+    /// anchor or the model hands it back at once.
+    @Test func confirmedThenOutOfViewButHeldStaysOnRealityKit() {
+        var policy = ResultOverlayPolicy()
+        var answers: [Bool] = []
+        for look in Self.polled(drawn: true, from: 0, count: 6) {
+            answers.append(policy.update(drawn: look.drawn, held: true, time: look.time))
+        }
+        answers.append(policy.update(drawn: false, held: true, time: 0.6))
+        answers.append(policy.update(drawn: false, held: true, time: 5))
+        answers.append(policy.update(drawn: false, held: false, time: 5.1))
+        #expect(answers == [false, false, false, false, false, true, true, true, false])
+    }
+
+    /// Review of #132: after a take-over, a model rebuilt for a moved wall, or a moment of lost
+    /// tracking, lets go of the result for a look or two, with the phone still on the meter and
+    /// the battery out of view. The AR scene takes it back as soon as it holds it again, without
+    /// the battery on screen, so the Canvas's second copy doesn't stay.
+    @Test func afterATakeOverHoldingAgainTakesOverWithoutTheBatteryInView() {
+        var policy = ResultOverlayPolicy()
+        for look in Self.polled(drawn: true, from: 0, count: 6) {
+            policy.update(drawn: look.drawn, held: true, time: look.time)
+        }
+        let answers = [
+            policy.update(drawn: false, held: true, time: 1),
+            policy.update(drawn: false, held: false, time: 1.1),
+            policy.update(drawn: false, held: true, time: 1.2),
+            policy.update(drawn: false, held: true, time: 1.3),
+        ]
+        #expect(answers == [true, false, true, true])
+    }
+
+    /// Held alone never takes over: the AR scene has to be seen drawing the result first.
+    @Test func heldButNeverDrawnKeepsTheCanvas() {
+        var policy = ResultOverlayPolicy()
+        let answers = (0..<20).map { policy.update(drawn: false, held: true, time: Double($0) * 0.1) }
+        #expect(answers.allSatisfy { !$0 })
+    }
+
     @Test func usesRealityKitMatchesTheLastAnswer() {
         var policy = ResultOverlayPolicy()
         for look in Self.polled(drawn: true, from: 0, count: 6) {

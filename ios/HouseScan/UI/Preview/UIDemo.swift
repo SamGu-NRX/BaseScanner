@@ -26,7 +26,8 @@ import SwiftUI
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
 ///   where they stand leaves part of the walk out.
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
-///   `-uiDemoRefusal` the last mark was refused.
+///   `-uiDemoRefusal` the last mark was refused, and with `-uiDemoNextWallConfirm` a wall was
+///   marked and "Is this the next wall?" is up.
 /// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.
 /// - `-uiDemoAim`: with `-uiDemoPhase wallWalk`, the walk asks to tilt down to the ground
 ///   about 2 ft right of the meter.
@@ -43,6 +44,9 @@ import SwiftUI
 /// - `-uiDemoCorner`: the wall turns an outside corner 1.8 m right of the meter and the walk
 ///   followed it, so the window and part of its clearance zone are round the corner. For the
 ///   result model: `-uiDemoPhase result -uiDemoCorner`.
+/// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
+/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
+///   answered and says what happens next.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

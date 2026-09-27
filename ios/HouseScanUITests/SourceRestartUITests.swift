@@ -19,7 +19,9 @@ final class SourceRestartUITests: XCTestCase {
         try Data("{}".utf8).write(to: folder.appending(path: "session.json"))
 
         let app = XCUIApplication()
-        app.launchArguments = ["-replay", folder.path, "-sampleResult"]
+        // The practice meter switch can be left on by an earlier test; this one needs the real
+        // close-up, whose unreadable photo asks for a retake.
+        app.launchArguments = ["-replay", folder.path, "-sampleResult", "-practiceMeter", "NO"]
         app.launch()
         let any = app.descendants(matching: .any)
         XCTAssertTrue(any["screen.unsupported"].waitForExistence(timeout: 30), "the unreadable replay never showed the failure")

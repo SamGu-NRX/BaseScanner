@@ -193,9 +193,9 @@ extension ScanEngine {
         // its span (and a facing item its out_ft, which a walk can reach), a past_end item its
         // side. Otherwise the button would do nothing. A request the homeowner already skipped
         // or answered with something overhead stays with the installer.
-        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { [gapPlanner, coverage, skippedGaps] item in
+        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { [self, gapPlanner, coverage, skippedGaps] item in
             gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
-                .map { plan in !skippedGaps.contains { plan.asksForSameView(as: $0) } } ?? false
+                .map { plan in !skippedGaps.contains { plan.asksForSameView(as: $0) } && captureCanSettle(plan) } ?? false
         }
     }
 
@@ -299,7 +299,8 @@ extension ScanEngine {
             clearances: clearances,
             missing: missing,
             unseenEnd: unseen,
-            isSample: isSample
+            isSample: isSample,
+            rulesSHA256: result.policy.rulesSHA256
         )
     }
 

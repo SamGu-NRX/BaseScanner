@@ -63,6 +63,9 @@ final class ScanEngine {
     /// The meter anchor's pose the wall and everything captured agree with, and the corrections
     /// still to apply to them as ARKit refines it (`refreshMeterFromAnchor`). Nil on a replay.
     private var meterTracking: MeterAnchorTracking?
+    /// Which frames carried the meter's anchor since it was anchored, for the drift log
+    /// (`noteMeterAnchor`). Starts again with `meterTracking`.
+    private var meterAnchorPresence = MeterAnchorPresence()
     /// Whether a frame source may start, and what a failure and Start over do to it.
     private var sourceState = CaptureSourceState()
     /// Detected horizontal planes, with their classes and outlines.
@@ -76,8 +79,34 @@ final class ScanEngine {
     private var endKinds: [WallSide: EndKind] = [:]
     /// The side whose end turns a corner the walk is to follow, while it waits for the next wall
     /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
-    var nextWallSide: WallSide?
+    var nextWallSide: WallSide? {
+        didSet { if nextWallSide == nil { pendingNextWall = nil } }
+    }
     var nextWallRefusal: NextWallRefusal?
+    /// The wall marked as the next one, waiting for "Is this the next wall?" (#70); cleared with
+    /// `nextWallSide`. Published as `ScanViewState.nextWallConfirm`.
+    var pendingNextWall: PendingNextWall? {
+        didSet {
+            let confirm = pendingNextWall.map { NextWallConfirm(side: $0.side, fromEnd: $0.fromEnd) }
+            if confirm != state.nextWallConfirm { state.nextWallConfirm = confirm }
+        }
+    }
+
+    /// Meters up the wall the ring on a proposed corner sits: about chest height, where it shows
+    /// in the view of a homeowner aiming at the next wall.
+    static let cornerRingHeight: Float = 1
+
+    /// What `confirmNextWall` needs to follow the corner: the marked point and facing, as
+    /// `markNextWall` found them.
+    struct PendingNextWall {
+        var side: WallSide
+        var point: SIMD3<Float>
+        var outward: SIMD3<Float>
+        var source: WallLineSource
+        var detectedPlane: Bool
+        var s: Float
+        var fromEnd: Float
+    }
 
     // Gap loop
     private(set) var gapPlan: GapPlan?
@@ -163,6 +192,8 @@ final class ScanEngine {
     private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
+    /// The spot check (`ScanEngine+Confirm.swift`).
+    var spotConfirm = SpotConfirmState()
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -243,8 +274,10 @@ final class ScanEngine {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
         if state.phase == .resultAR { hideResultInCamera() }
+        let previous = state.phase
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
+        logMeterAnchorSummary(from: previous, to: phase)
         switch phase {
         case .findMeter:
             state.guidance = .findMeter
@@ -283,7 +316,7 @@ final class ScanEngine {
                     replay.play(range: range, speed: replaySpeed)
                 }
             }
-        case .markFeatures, .uploading, .result:
+        case .markFeatures, .uploading, .spotConfirm, .result:
             live?.setMode(.idle)
             replay?.stop()
         case .resultAR:
@@ -381,11 +414,11 @@ final class ScanEngine {
             case .failed, .rejected: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
-        case .onboarding, .result, .resultAR, .unsupported: false
+        case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         let depthFrames = switch state.phase {
         case .meterCloseUp, .wallWalk, .gapRequest: true
-        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        case .onboarding, .findMeter, .markFeatures, .uploading, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
@@ -416,6 +449,7 @@ final class ScanEngine {
             wallPlanes = frame.wallPlanes
             refitWallToDetectedPlane()
         }
+        noteMeterAnchor(frame)
         // A frame made before the meter was anchored again carries the old anchor's pose.
         if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
@@ -513,15 +547,21 @@ final class ScanEngine {
         if features != state.features { state.features = features }
         publishWall()
         publishCoverage()
-        logAnchorCorrection(correction, step: step)
+        logAnchorCorrection(correction, step: step, frame: frame)
     }
 
-    /// One line per correction applied, with the total since the meter was anchored, for telling
-    /// a map ARKit corrected (the marks and the meter move together) from drift it never
-    /// corrected (no line, and the marks sit off their objects) on a walk away and back (#73).
+    // The drift log (#73). Its lines are `.notice`, which the unified log keeps on the device, so
+    // `log collect` after a walk and Console without "Include Info Messages" both show them. On a
+    // walk away and back, the lines that are there settle it, never a line being absent:
+    // corrections with the marks on their objects mean ARKit corrected its map and the marks
+    // followed; frames that had the anchor, no corrections, and marks off their objects mean
+    // drift ARKit never corrected, which no anchor can fix; frames that lost the anchor mean
+    // nothing could follow it. `t` is the capture clock the packet's manifest times use.
+
+    /// One line per correction applied, with the total since the meter was anchored.
     /// `MeterAnchorTracking` already limits the rate: a correction is applied only once the anchor
     /// has moved 2 cm or turned 0.4 degrees since the last one.
-    private func logAnchorCorrection(_ correction: YawCorrection, step: Float) {
+    private func logAnchorCorrection(_ correction: YawCorrection, step: Float, frame: SourceFrame) {
         guard let tracking = meterTracking else { return }
         let total = tracking.sinceAnchored
         let turned = correction.yaw * 180 / .pi
@@ -529,8 +569,54 @@ final class ScanEngine {
         let totalTurned = total.yaw * 180 / .pi
         let count = tracking.corrections
         let marks = state.features.count
-        RuntimeLog.capture.info(
-            "meter anchor corrected: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(self.state.phase.rawValue, privacy: .public))"
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor corrected at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// One line when the frames stop carrying the meter's anchor, and one when they carry it
+    /// again: while it is missing, no correction can reach the wall or the marks. The first frame
+    /// after the meter is anchored writes one too. Live only: a replay has no anchor.
+    private func noteMeterAnchor(_ frame: SourceFrame) {
+        guard let id = meterAnchorID, let tracking = meterTracking else { return }
+        let sighting: MeterAnchorPresence.Sighting =
+            frame.meterAnchorID != id ? .otherAnchor : frame.meterAnchor == nil ? .missing : .present
+        guard let change = meterAnchorPresence.observe(sighting) else { return }
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let count = tracking.corrections
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor in frames: \(change.rawValue, privacy: .public) at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter (\(count) corrections so far, phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// The tracking's totals on every phase change once the meter is anchored, zero corrections
+    /// included, and whether the latest frame carried the anchor. Sending the scan and opening the
+    /// AR result always write one, with no anchor too (a replay), so a walk's log ends with it.
+    private func logMeterAnchorSummary(from previous: ScanPhase, to phase: ScanPhase) {
+        let from = previous.rawValue, to = phase.rawValue
+        let t = captureClock.map { String(format: "%.2f", $0) } ?? "none"
+        guard let tracking = meterTracking else {
+            guard phase == .uploading || phase == .resultAR else { return }
+            RuntimeLog.capture.notice(
+                "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): not tracked (no meter anchor)"
+            )
+            return
+        }
+        let total = tracking.sinceAnchored
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let frames = meterAnchorPresence
+        let last = frames.last?.rawValue ?? "no frame yet"
+        let wall = coverage == nil ? "no wall" : "wall set"
+        let marks = state.features.count
+        RuntimeLog.capture.notice(
+            "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): \(count) corrections since anchored, moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; latest frame: \(last, privacy: .public); frames with the anchor \(frames.present), without it \(frames.missing), naming another \(frames.otherAnchor); \(wall, privacy: .public), \(marks) marks"
         )
     }
 
@@ -612,7 +698,10 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let saved = await store.saveStill(frame, name: "meter_close.jpg")
+            let photo = await closeUpPhoto(frame)
+            // Drawing a practice photo suspends: a reset meanwhile must not save into the new scan.
+            guard scan == generation, state.phase == .meterCloseUp else { return }
+            let saved = await store.saveStill(photo, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
                 retakeCloseUp(.blurry)
@@ -660,7 +749,9 @@ final class ScanEngine {
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         // Past an end it can't see back from, a photo adds nothing: it is refused and the screen says so.
-        let pastEnd = map.unexploredEndPassed(by: frame.camera)
+        // Not past the end whose next wall is being looked for: that is where the walk asked the
+        // homeowner to go (#70).
+        let pastEnd = map.unexploredEndPassed(by: frame.camera, ignoring: nextWallSide?.walk)
         var skip: CaptureDecision.SkipReason?
         switch decision {
         case .skip(let reason):
@@ -819,7 +910,9 @@ final class ScanEngine {
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
             state.guidanceHint = nil
-            state.target = nil
+            // While "Is this the next wall?" is up, the ring shows the corner: where the marked
+            // wall meets this one, on the wall chain so it moves with the meter's anchor.
+            state.target = pendingNextWall.map { map.wall.world(s: $0.s, height: Self.cornerRingHeight) }
             state.path = []
             logGuidance()
             return
@@ -1237,7 +1330,7 @@ final class ScanEngine {
             // "Add something", which taps into the world frame, waits for tracking to return
             // (`beginMarking`). Nothing is thrown away.
             break
-        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+        case .uploading, .spotConfirm, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
             // tracking is not normal and shows it again if ARKit does relocalize.
@@ -1296,6 +1389,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
         state.wall = nil
         state.coverage = .empty
@@ -1320,6 +1414,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
         placement = nil
@@ -1410,7 +1505,12 @@ final class ScanEngine {
             var policy = ResultOverlayPolicy()
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
-                let usesRealityKit = policy.update(drawn: live.resultIsDrawn(), time: self.screenTime)
+                let look = live.resultIsDrawn()
+                // While tracking is limited the model is disabled and the screen draws neither
+                // layer, so the AR scene keeps the result: when tracking comes back the two switch
+                // on together, rather than the Canvas showing until the next look.
+                let held = look.held || (look.anchored && self.state.tracking != .normal)
+                let usesRealityKit = policy.update(drawn: look.drawn, held: held, time: self.screenTime)
                 if self.state.resultInCamera != usesRealityKit {
                     RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
                     self.state.resultInCamera = usesRealityKit
@@ -1676,6 +1776,7 @@ final class ScanEngine {
             updateRecording()
             return
         }
+        writeScanStamp(answer: placement)
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1700,6 +1801,8 @@ final class ScanEngine {
                 guard scan == generation, state.phase == .uploading else { return }
             }
             placement = result
+            noteExchange(scene: scene, answer: data)
+            writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.followUps = automaticGapQueue(result).count
             state.upload = .done
@@ -1720,8 +1823,8 @@ final class ScanEngine {
             // replaces the screen: going on in the same turn never drew the tick (issue #31).
             try await Task.sleep(for: .seconds(Self.resultHold))
             guard scan == generation, state.phase == .uploading else { return }
-            // The result appears only after the server answered (checklist R6).
-            go(.result)
+            // Keep the completion tick, then ask about the proposed spot before showing it.
+            presentAnswer()
         } catch is CancellationError {
             return
         } catch {
@@ -1741,8 +1844,14 @@ final class ScanEngine {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
         let asked = automaticGaps + (asking.map { [$0] } ?? [])
+        // A new view cannot settle an area the homeowner has already said is obstructed.
+        // Filter before the request limit so refused areas do not consume the remaining slots.
+        let capturable = result.missingEvidence.filter { item in
+            gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
+                .map { captureCanSettle($0) } ?? false
+        }
         return gapPlanner.serverRequests(
-            in: result.missingEvidence, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
+            in: capturable, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
             asked: asked, skipped: skippedGaps, limit: Self.maxAutomaticGaps - automaticGaps.count)
     }
 
@@ -1791,7 +1900,7 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
@@ -1836,6 +1945,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
@@ -1860,6 +1970,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
@@ -1884,6 +1995,7 @@ final class ScanEngine {
         state.meterNumber = nil
         closeUpRetake = nil
         meterReadout = nil
+        state.isPracticeScan = false
         go(.onboarding)
         replay?.show(index: 0)
     }
@@ -1905,6 +2017,7 @@ final class ScanEngine {
     func setMeterAnchor(_ id: UUID?, pose: simd_float4x4?) {
         meterAnchorID = id
         meterTracking = pose.map(MeterAnchorTracking.init)
+        meterAnchorPresence = MeterAnchorPresence()
     }
 
     var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
@@ -1961,6 +2074,15 @@ final class ScanEngine {
     func resolveGuidance(_ outcome: GuidanceLog.Outcome) {
         guard let t = captureClock else { return }
         guidanceLog.resolve(outcome, at: t)
+    }
+
+    /// Closes the open request and takes it off the log's screen, so the same step shown again
+    /// is a new request: after Back on the next-wall step, "It turns a corner" asks for the next
+    /// wall again while `state.guidance` never left it (review of #136).
+    func withdrawGuidance(_ outcome: GuidanceLog.Outcome) {
+        guard let t = captureClock else { return }
+        guidanceLog.resolve(outcome, at: t)
+        guidanceLog.show(nil, at: t) { _, _ in outcome }
     }
 }
 

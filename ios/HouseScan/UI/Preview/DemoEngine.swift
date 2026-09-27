@@ -43,6 +43,9 @@ final class DemoEngine: ScanActions {
     /// like the real engine does; the next answer goes to the result.
     private var followedUp = false
     private var followUpSkipped = false
+    /// The spot check was answered; the next answer goes straight to the result, as the engine's
+    /// does for a spot an earlier answer settles.
+    private var spotChecked = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -123,6 +126,8 @@ final class DemoEngine: ScanActions {
             state.guidance = .markNextWall(side: .right, refusal: arguments.contains("-uiDemoRefusal") ? .notAtCorner : nil)
             state.target = nil
             state.path = []
+            // With `-uiDemoNextWallConfirm`: the next wall marked, "Is this the next wall?" up (#70).
+            if arguments.contains("-uiDemoNextWallConfirm") { markNextWall(at: nil, viewSize: .zero) }
         }
         if arguments.contains("-uiDemoOverheadQuestion"), state.phase == .gapRequest {
             // An overhead request whose tilted-up view just came in.
@@ -163,6 +168,9 @@ final class DemoEngine: ScanActions {
                 span: corner...Float.infinity, along: SIMD3(0, 0, -1), outward: SIMD3(1, 0, 0),
                 anchor: SIMD3(corner, 0, 0), anchorS: corner)]
             state.wall?.rightEnd = corner + 1.6
+        }
+        if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
+            state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
         }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
@@ -220,6 +228,10 @@ final class DemoEngine: ScanActions {
             placeMeter()
             finishedWalkState()
             enterUpload()
+        case .spotConfirm:
+            placeMeter()
+            finishedWalkState()
+            enterSpotCheck()
         case .result:
             placeMeter()
             finishedWalkState()
@@ -371,6 +383,22 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.uploadScript() }
     }
 
+    /// The spot check of the answer's spot, before the result. The made-up zones don't hold the
+    /// spot, so the area is the footprint alone, as the engine would draw it.
+    private func enterSpotCheck() {
+        let result = sample
+        state.shareableScan = Self.demoScan
+        state.upload = .done
+        state.result = result
+        guard let spot = result.spot else { return showResult() }
+        let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
+        state.spotCheck = SpotCheck(
+            id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound,
+            photo: DemoScene.image.map { SpotCheck.Photo(image: $0, projection: DemoScene.projection) },
+            answer: nil, isSample: result.isSample)
+        state.phase = .spotConfirm
+    }
+
     private func showResult() {
         state.shareableScan = Self.demoScan
         state.upload = .done
@@ -520,7 +548,7 @@ final class DemoEngine: ScanActions {
         // Like the real engine's `resultHold`: every step ticked before the result (#31).
         state.upload = .done
         guard await pause(0.8) else { return }
-        showResult()
+        if spotChecked { showResult() } else { enterSpotCheck() }
     }
 
     /// The check's answer, before or after its follow-up view.
@@ -792,9 +820,35 @@ final class DemoEngine: ScanActions {
         refreshGuidance()
     }
 
-    /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
+    /// Like the real engine: a marked next wall waits for "Is this the next wall?" (#70). The
+    /// made-up corner is where the end was marked.
     func markNextWall(at point: CGPoint?, viewSize: CGSize) {
-        guard case .markNextWall(let side, _) = state.guidance, var wall = state.wall else { return }
+        guard case .markNextWall(let side, _) = state.guidance, state.nextWallConfirm == nil else { return }
+        let end = side == .right ? demoRightEnd : demoLeftEnd
+        state.nextWallConfirm = NextWallConfirm(side: side, fromEnd: 0.4)
+        // On the corner, where the next wall meets the demo wall's line.
+        state.target = SIMD3(end, 1, 0)
+    }
+
+    func confirmNextWall(_ isNextWall: Bool) {
+        guard let confirm = state.nextWallConfirm else { return }
+        state.nextWallConfirm = nil
+        state.target = nil
+        if isNextWall { followCorner(confirm.side) }
+    }
+
+    /// Like the real engine: back to the question about that end.
+    func cancelNextWall() {
+        guard case .markNextWall(let side, _) = state.guidance else { return }
+        state.nextWallConfirm = nil
+        state.target = nil
+        state.endQuestion = side
+        state.endQuestionLeavesOut = nil
+    }
+
+    /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
+    private func followCorner(_ side: WallSide) {
+        guard var wall = state.wall else { return }
         let end = side == .right ? demoRightEnd : demoLeftEnd
         // Facing back across the demo wall's front, running toward the camera (+z).
         let outward = SIMD3<Float>(side == .right ? -1 : 1, 0, 0)
@@ -841,9 +895,10 @@ final class DemoEngine: ScanActions {
         state.features.removeAll { $0.id == id }
     }
 
-    func setWindowOpens(_ id: UUID, opens: Bool) {
+    func setWindowOpens(_ id: UUID, opens: Bool?) {
         guard let index = state.features.firstIndex(where: { $0.id == id }) else { return }
         state.features[index].opens = opens
+        state.features[index].opensNotSure = opens == nil
     }
 
     func finishWalk() {
@@ -956,6 +1011,8 @@ final class DemoEngine: ScanActions {
         seeBehindTicks = 0
         followedUp = false
         followUpSkipped = false
+        spotChecked = false
+        state.spotCheck = nil
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -1142,6 +1199,17 @@ private extension ResultPresentation {
 }
 
 extension DemoEngine {
+    /// Like the engine: the answer stays up a moment, then the result, or the check again.
+    func answerSpotCheck(clear: Bool) {
+        guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
+        state.spotCheck?.answer = clear ? .clear : .somethingThere
+        spotChecked = true
+        run { engine in
+            guard await engine.pause(1.2) else { return }
+            if clear { engine.showResult() } else { engine.enterUpload() }
+        }
+    }
+
     /// Nothing to record in the demo: either answer ends the step, as in the real engine.
     func answerGround(_ answer: GroundAnswer) {
         guard state.phase == .markFeatures else { return }

@@ -14,6 +14,13 @@ struct Instruction: Hashable {
 enum ScanCopy {
     // MARK: Guidance
 
+    /// Finding the meter on a practice scan (`ScanViewState.isPracticeScan`): any wall will do.
+    static let practiceFindMeter = Instruction(
+        title: "Tap a spot on a wall",
+        detail: "A sample meter goes there, so you can practice the scan without a real one."
+    )
+    static let practiceMarkMeter = "Put the sample meter here"
+
     /// `hint` changes the words of an aim step only (`aim(_:ground:hint:)`).
     static func guidance(_ step: GuidanceStep, hint: GuidanceHint? = nil) -> Instruction {
         switch step {
@@ -262,6 +269,24 @@ enum ScanCopy {
         }
     }
 
+    /// Under an AC unit on the review: one tap gives no size, so the scene sends it as a square
+    /// of `SceneExport.acAssumedSide` (#72), and the homeowner is told the size is assumed.
+    static let acAssumedSize: String = {
+        let side = Distance.feetAndInches(SceneExport.acAssumedSide)
+        return "Assumed about \(side) \u{00D7} \(side)"
+    }()
+    /// `acAssumedSize` for VoiceOver, which reads "ft" as letters.
+    static let acAssumedSizeSpoken: String = {
+        let side = Distance.spoken(SceneExport.acAssumedSide)
+        return "Assumed about \(side) by \(side)"
+    }()
+
+    /// The window question's way out: sent as unknown, like no answer.
+    static let windowNotSure = "Not sure"
+
+    /// Over "Looks complete" after its first tap found a question unanswered (#65).
+    static let reviewUnanswered = "A question above has no answer yet. Answer it, or tap Looks complete again to send."
+
     /// Under a reviewed mark that lies wholly past a marked end (`ScanViewState.featuresPastEnds`).
     static let featurePastEnd = "Past the end of your scan"
 
@@ -292,6 +317,17 @@ enum ScanCopy {
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
         }
+    }
+
+    /// Asked after the next wall is marked, before the walk follows the corner
+    /// (`ScanViewState.nextWallConfirm`, #70): a surface behind the end post passed the checks
+    /// on build 4.1. The ring is on the corner that wall makes with this one, so a wrong surface
+    /// shows as a corner in the wrong place.
+    static func nextWallConfirm(_ confirm: NextWallConfirm) -> Instruction {
+        Instruction(
+            title: "Is this the next wall?",
+            detail: "The ring shows where it meets this wall, about \(Distance.roughFeet(confirm.fromEnd)) from where you ended it. Tap Yes only if that's the corner."
+        )
     }
 
     /// A refused mark of the next wall: what went wrong, then what to do.
@@ -337,11 +373,11 @@ enum ScanCopy {
     // MARK: Gap
 
     /// The card for a gap request. A server request can run along much of the wall, so its
-    /// stretch is named by its two ends, clipped to the wall's marked `ends` (issue #75); the
-    /// phone's own requests are short and named by their middle.
-    static func gap(_ gap: GapRequest, ends: (left: Float?, right: Float?) = (nil, nil)) -> Instruction {
+    /// stretch is named by its two ends, all of it (issue #75, `Distance.range`); the phone's own
+    /// requests are short and named by their middle.
+    static func gap(_ gap: GapRequest) -> Instruction {
         let place = Distance.aroundFromMeter(gap.span)
-        let stretch = Distance.range(gap.span, clippedTo: ends)
+        let stretch = Distance.range(gap.span)
         switch gap.reason {
         case .groundNearCandidate:
             return Instruction(title: "Show the ground \(place)", detail: "This might be a spot for the battery, so the ground there needs a clear look from two places.")
