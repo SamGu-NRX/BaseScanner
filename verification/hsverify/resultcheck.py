@@ -221,6 +221,30 @@ def covers(intervals: list[tuple[float, float]], a: float, b: float, slack: floa
     return any(lo - slack <= a + EPS and b - EPS <= hi + slack for lo, hi in intervals)
 
 
+# A gap in a 1D band narrower than this is rounding between the capture's spans and the unrolled
+# walls, not an unseen stretch (server/scene.py COVERAGE_TOLERANCE_FT and missing() at 3baa338).
+COVERAGE_TOLERANCE_FT = 0.01
+
+
+def gaps_over(
+    intervals: list[tuple[float, float]], a: float, b: float
+) -> list[tuple[float, float]]:
+    """The parts of [a, b] no interval covers, as the server's missing() finds them: gaps
+    narrower than COVERAGE_TOLERANCE_FT don't count."""
+    gaps, at = [], a
+    for lo, hi in sorted(intervals):
+        if hi <= at:
+            continue
+        if lo > at:
+            gaps.append((at, min(lo, b)))
+        at = max(at, hi)
+        if at >= b:
+            break
+    if at < b:
+        gaps.append((at, b))
+    return [(x, y) for x, y in gaps if y - x >= COVERAGE_TOLERANCE_FT]
+
+
 # --- Invariants ------------------------------------------------------------------------------
 
 
@@ -603,7 +627,7 @@ def reach_gaps(
             wall = observed(
                 scene, "wall", need.height, beyond=True, wall_default_ft=rules.headroom_ft
             )
-            seen = covers(wall, a, b)
+            seen = not gaps_over(wall, a, b)
             gap = None if seen else f"wall [{a:.2f}, {b:.2f}] observed higher than {need.height} ft"
         else:
             a, b = required_span(lo, hi, reach)
@@ -636,6 +660,8 @@ def measured_band_gap(
         seen = [out for x, y, out in entries if x <= p + EPS and q - EPS <= y]
         where = f"{band} [{p:.2f}, {q:.2f}] observed"
         if not seen:
+            if q - p < COVERAGE_TOLERANCE_FT:
+                continue
             return f"{where}, none seen"
         settled = any(x <= p + EPS and q - EPS <= y for x, y in measured)
         # Strictly beyond, as the server requires (server/solver.py at 6c7ca23).
@@ -708,7 +734,7 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         ends = chain_ends_s(scene, rules) or (-math.inf, math.inf)
         route_lo = max(min(lo, -m), ends[0])
         route_hi = min(max(hi, m), ends[1])
-        if not covers(route_wall, route_lo, route_hi):
+        if gaps_over(route_wall, route_lo, route_hi):
             problems.append(
                 f"sweep pass for starts {run['start_ft']} but the wall and cable route "
                 f"[{route_lo:.2f}, {route_hi:.2f}] were not all observed higher than "

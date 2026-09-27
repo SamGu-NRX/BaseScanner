@@ -18,6 +18,7 @@ from hsverify.resultcheck import (
     expectation_problems,
     expected_checks,
     footprint_problems,
+    gaps_over,
     invariant_problems,
     less_coverage_problems,
     margin_problem,
@@ -1469,3 +1470,12 @@ def test_manual_review_needs_a_spot_that_does_not_fail():
     assert "the spot is pass but its check gas_clearance fails" in invariant_problems(
         SCENE, passing_spot, rules=RULES
     )
+
+
+def test_a_band_gap_under_the_coverage_tolerance_is_rounding():
+    # The app scan at c820cf1, less coverage: wall seen to 18.0, needed to 18.0037 for
+    # wall_equipment_above. The server's missing() drops gaps under 0.01 ft; 0.011 stays.
+    assert gaps_over([(-6.5, 18.0)], 9.94, 18.0037) == []
+    assert gaps_over([(-6.5, 18.0)], 9.94, 18.011) == [(18.0, 18.011)]
+    assert gaps_over([(0.0, 1.0), (1.009, 3.0)], 0.5, 2.0) == []
+    assert gaps_over([(0.0, 1.0), (1.011, 3.0)], 0.5, 2.0) == [(1.0, 1.011)]

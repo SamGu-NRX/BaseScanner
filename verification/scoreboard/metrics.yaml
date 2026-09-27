@@ -277,9 +277,9 @@ metrics:
       sha_key: app_sha
       max_status: partial
       cap_reason: >-
-        met on the synthetic replay against the hosted server at f14947e (12 states, one server
-        gap request); the real ADVIO replay is blocked by its data (the walk never covers the
-        ground by the meter), last real run 194f2eb
+        met on the app's synthetic replay against the hosted server (17 states, a server gap
+        request, three spot checks, the result and AR); the real ADVIO replay is blocked by its
+        data (the walk never covers the ground by the meter), last real run 194f2eb
 
   - id: S4-2
     workstream: S4
