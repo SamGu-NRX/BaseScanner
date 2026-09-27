@@ -7,15 +7,19 @@ public enum SurfaceBand: String, Sendable, CaseIterable {
     case ground
 }
 
-/// How well a cell has been seen. Only `.covered` counts as evidence.
+/// How well a cell has been observed. Only `.covered` counts as evidence. Without depth, "in
+/// view" below means inside a kept photo's view with nothing but the wall modelled in front of
+/// it, which is not the same as seen (`CoverageMap`, "Bounded exceptions").
 public enum CoverageLevel: UInt8, Sendable, Equatable {
     case unseen
-    /// Some row seen by a kept keyframe, but not every row from two separate positions yet.
+    /// Some row in view of a kept keyframe (with depth: confirmed by it), but not every row from
+    /// two separate positions yet.
     case seen
-    /// Every sample row seen from two camera positions at least `CoverageConfig.coveringBaseline`
-    /// apart (the rows may be seen by different frames).
+    /// Every sample row in view from two camera positions at least
+    /// `CoverageConfig.coveringBaseline` apart (the rows may be in view of different frames).
     case covered
-    /// The homeowner said they cannot get there. Never evidence.
+    /// The homeowner said they cannot get there, or said something stands there when asked about
+    /// the chosen spot (`CoverageMap.withdrawClaims`). Never evidence.
     case skipped
     /// LiDAR only: not covered, and a row still short of two positions was hidden in some kept
     /// frame by a nearer depth reading (a bush, a bin). Views that clear the obstruction can
@@ -136,13 +140,8 @@ public struct CoverageConfig: Sendable, Equatable {
     public init() {}
 }
 
-/// Which cells of the wall and ground strips kept keyframes have seen.
-///
-/// Without depth, coverage marks what the camera pointed at, not what it saw: a bush or bin in
-/// front of the wall is counted as seen wall and ground; only the wall itself hides what lies
-/// behind it. Nothing downstream corrects this; the server takes the covered intervals as given
-/// and does not read images. On ETH3D the evals lane measured 1.1 ft of a 19.3 ft wall claimed
-/// covered that no photo saw, all of it occluded at the bottom.
+/// Which cells of the wall and ground strips kept keyframes have observed, and what the scan
+/// claims about them.
 ///
 /// With a frame's LiDAR depth (`observe(_:trackingNormal:time:depth:)`), a sample counts only
 /// when the depth at its pixel matches its own distance (`CoverageConfig.depthTolerance`). A
@@ -151,6 +150,26 @@ public struct CoverageConfig: Sendable, Equatable {
 /// holds for the bands, the ground depth rows and the ground past a limit end alike, and a later
 /// view without depth adds nothing to a row a depth frame found hidden: it can't see past what
 /// stands there either.
+///
+/// Bounded exceptions. Two claims the map makes are inferred, not seen, and would break "unseen
+/// stays unsure" on their own:
+///
+/// - Without depth, a sample counts when it is in a photo's view: in front of the camera, inside
+///   the image and not behind the wall. Nothing else is modelled, so wall and ground behind a bush
+///   or a bin are claimed as if the photo showed them. On ETH3D the evals lane measured 1.1 ft of
+///   a 19.3 ft wall claimed covered that no photo saw, all of it occluded at the bottom.
+/// - The walked path (`walkedClearance(at:)`) is claimed as clear space between the wall and the
+///   phone, although something lower than the phone (a bush under chest height) can stand under
+///   it.
+///
+/// The server takes both claims as given and reads no images. They are allowed only because the
+/// homeowner confirms the chosen spot before the result is shown: the spot check (`SpotPhoto`,
+/// `SpotConfirmations`; the app's `ScanEngine+Confirm.swift`) shows a kept photo of the spot and
+/// its clearance area and asks whether anything stands in front of the wall or on the ground
+/// there. "It's clear" backs the claims over that area. "Something's there" withdraws them
+/// (`withdrawClaims(over:)`): the area's wall, ground and walked-path claims export as unseen and
+/// the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
+/// where the server looks for a spot, and any spot it chooses is checked in turn.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
     public let config: CoverageConfig
@@ -213,6 +232,9 @@ public struct CoverageMap: Sendable {
     private var depthHidden: [Int: Set<Int>] = [:]
     /// As `depthHidden`, for the rows past each limit end (`pastLimitCells`).
     private var pastLimitHidden: [WalkSide: [Int: Set<Int>]] = [:]
+    /// Cells whose wall, ground and walked-path claims the homeowner withdrew
+    /// (`withdrawClaims(over:)`). Kept through rebuilds and moved with skipped cells.
+    public private(set) var withdrawnCells: Set<Int> = []
 
     /// One camera position that saw a sample row, and whether that frame's depth confirmed it.
     private struct Sight: Sendable {
@@ -314,7 +336,8 @@ public struct CoverageMap: Sendable {
     }
 
     public func level(_ band: SurfaceBand, _ index: Int) -> CoverageLevel {
-        cells[band]?[index]?.level ?? .unseen
+        if withdrawnCells.contains(index) { return .skipped }
+        return cells[band]?[index]?.level ?? .unseen
     }
 
     /// Indices of every cell overlapping `range` by more than a thousandth of a cell.
@@ -588,9 +611,9 @@ public struct CoverageMap: Sendable {
     /// `coveringBaseline` apart (with depth, and never through something nearer), less
     /// `heightError`. It is the height the covered samples reach, never the edge of a row nobody
     /// sampled. Nil when not even the first row above the foot is covered, nothing is left after
-    /// the error, or the cell lies beyond a marked end.
+    /// the error, the cell lies beyond a marked end, or its claims were withdrawn.
     public func wallSeenHeight(at index: Int) -> Float? {
-        guard let rows = seenWallRowHeight(at: index) else { return nil }
+        guard !withdrawnCells.contains(index), let rows = seenWallRowHeight(at: index) else { return nil }
         let height = rows - heightError
         return height > 0 ? height : nil
     }
@@ -665,9 +688,10 @@ public struct CoverageMap: Sendable {
     /// How far out from the wall the ground of a cell was seen, meters: the farthest depth row
     /// such that every row from the wall foot out to it was seen from two positions at least
     /// `coveringBaseline` apart (occlusion only with depth; see the type's comment). Nil when
-    /// not even the first row past the foot is, or the cell lies beyond a marked end.
+    /// not even the first row past the foot is, the cell lies beyond a marked end, or its claims
+    /// were withdrawn.
     public func groundDepth(at index: Int) -> Float? {
-        guard allows(index), let rows = depthCells[index] else { return nil }
+        guard allows(index), !withdrawnCells.contains(index), let rows = depthCells[index] else { return nil }
         let covered = rows.prefix { $0.count >= 2 }.count
         guard covered >= 2 else { return nil }
         return groundDepthRows[covered - 1]
@@ -847,17 +871,18 @@ public struct CoverageMap: Sendable {
     /// That distance less `positionError` at the cell's edges (the larger: farther from the
     /// meter, or on the piece with the larger default) is the clearance, which the contract takes as exact ("for a walked path, the distance from the
     /// wall less your position error"). Nil when no steps cover the cell, nothing is left after
-    /// the error, or the cell lies beyond a marked end.
+    /// the error, the cell lies beyond a marked end, or its claims were withdrawn.
     ///
     /// Only the phone's path is known, so this is the space between the wall and the phone; the
-    /// homeowner's body is behind it, farther out. Something low the phone passed over (a bush
-    /// under chest height) is not seen; occlusion is not modelled here either.
+    /// homeowner's body is behind it, farther out. Nothing observed the space under the path: the
+    /// claim that it is clear is inferred, one of the type's bounded exceptions, which the spot
+    /// check backs for the chosen spot and `withdrawClaims(over:)` takes back.
     public func walkedClearance(at index: Int) -> Float? {
         walkedClearance(at: index, steps: walkedSteps())
     }
 
     private func walkedClearance(at index: Int, steps: [WalkedStep]) -> Float? {
-        guard allows(index) else { return nil }
+        guard allows(index), !withdrawnCells.contains(index) else { return nil }
         let cell = cellRange(index)
         let tolerance: Float = 1e-5
         let over = steps.filter { $0.low < cell.upperBound - tolerance && $0.high > cell.lowerBound + tolerance }
@@ -889,7 +914,7 @@ public struct CoverageMap: Sendable {
     private struct WalkedStep {
         var low: Float
         var high: Float
-        /// Distance from the wall of the step's end nearer to it.
+        /// The least distance out from the wall anywhere along the step (`nearestOut`).
         var nearest: Float
     }
 
@@ -919,8 +944,42 @@ public struct CoverageMap: Sendable {
         guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
         let a = wall.wallPoint(first.position)
         let b = wall.wallPoint(second.position)
-        guard a.out > 0, b.out > 0 else { return nil }
-        return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
+        guard let nearest = Self.nearestOut(from: first.position, to: second.position, wall: wall), nearest > 0 else { return nil }
+        return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: nearest)
+    }
+
+    /// How far in front of the wall the straight step from `p` to `q` stays, meters: over every
+    /// piece of the chain, the least distance out from that piece's line of the part of the step
+    /// that lies in front of the piece's stretch (its s within the piece's span). Distance out is
+    /// linear along the step, so the least is at an end of that part. Nil when no part of the
+    /// step lies in front of any piece.
+    ///
+    /// Taking only the two ends' distances out, each from the piece nearest it, overstated it at
+    /// a corner: poses 0.4 m out from each of two pieces of a convex corner, 0.85 m apart, have a
+    /// step between them that passes the corner 0.2 m out, and the cell by the corner reported
+    /// the 0.4 m as walked clear. The part of a step outside a convex corner, in front of neither
+    /// piece, claims nothing.
+    static func nearestOut(from p: SIMD3<Float>, to q: SIMD3<Float>, wall: WallFrame) -> Float? {
+        var least: Float?
+        for piece in wall.segments {
+            let a = piece.coordinates(ofOffset: p - wall.origin)
+            let b = piece.coordinates(ofOffset: q - wall.origin)
+            // t in [0, 1] along the step where s lies within the piece's span.
+            var low: Float = 0, high: Float = 1
+            let ds = b.s - a.s
+            if abs(ds) < 1e-9 {
+                guard piece.span.contains(a.s) else { continue }
+            } else {
+                let t0 = (piece.span.lowerBound - a.s) / ds
+                let t1 = (piece.span.upperBound - a.s) / ds
+                low = max(low, min(t0, t1))
+                high = min(high, max(t0, t1))
+                guard low <= high else { continue }
+            }
+            let outs = [a.out + (b.out - a.out) * low, a.out + (b.out - a.out) * high]
+            least = min(least ?? .infinity, outs.min() ?? .infinity)
+        }
+        return least
     }
 
     // MARK: Overhead
@@ -1089,6 +1148,28 @@ public struct CoverageMap: Sendable {
         revision += 1
     }
 
+    /// Withdraws what the map claims over every cell overlapping `range`: the wall face and the
+    /// ground, near band and depth rows alike, and the walked-path clearance. The cells read
+    /// `.skipped` in both bands, and the export reports none of them (`wallSeenSpans`,
+    /// `groundDepthSpans`, `facingSpans`), so the server treats the stretch as unseen. For the
+    /// homeowner's "Something's there" in the spot check: the camera-only and walked-path claims
+    /// there were wrong (see the type's "Bounded exceptions").
+    ///
+    /// It lasts for the scan, through rebuilds, and later views add nothing there: a photo taken
+    /// without depth would claim the same stretch past the same obstruction. Overhead views are
+    /// left alone: the question asks what stands in front of the wall and on the ground, not what
+    /// is overhead. So is ground past a limit end, which lies outside the ends a spot stands
+    /// between.
+    public mutating func withdrawClaims(over range: ClosedRange<Float>) {
+        withdrawnCells.formUnion(indices(overlapping: range))
+        revision += 1
+    }
+
+    /// Whether any cell overlapping `range` has its claims withdrawn.
+    public func hasWithdrawnClaims(overlapping range: ClosedRange<Float>) -> Bool {
+        indices(overlapping: range).contains { withdrawnCells.contains($0) }
+    }
+
     /// Moves the map to a new wall frame (after the meter anchor is refined or the ground is
     /// measured) and recomputes what every observed camera saw against it.
     ///
@@ -1102,9 +1183,14 @@ public struct CoverageMap: Sendable {
     /// cells beyond an end seen before it was marked are gone until a new frame sees them.
     /// Corners the walk followed move like the ends, so they keep their place in the world: pass
     /// `frame` with the corners it had (a copy of `wall` with a new meter or ground).
-    /// Assumes the wall's direction is unchanged.
+    ///
+    /// The wall must run the same way: a turned wall has no single shift of s that keeps the ends
+    /// and corners where they were, and the cameras would be replayed against axes they weren't
+    /// seen with. A moved or turned meter anchor moves everything captured with it (`apply(_:)`);
+    /// a frame with other axes stops here.
     public mutating func updateWall(_ frame: WallFrame) {
         guard frame != wall else { return }
+        precondition(frame.hasSameAxes(as: wall), "updateWall got a wall turned from \(wall.outward) to \(frame.outward); a turned anchor is apply(_:)")
         let delta = simd_dot(wall.meter - frame.meter, frame.along)
         var frame = frame
         frame.shiftCorners(by: delta)
@@ -1115,6 +1201,34 @@ public struct CoverageMap: Sendable {
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
         replayObservedCameras(shiftingSkippedBy: whole)
+    }
+
+    /// Moves everything the map holds with the world, as one rigid body: the wall (its meter,
+    /// ground, pieces and corners) and every kept camera. Used when ARKit corrects the meter's
+    /// anchor (`MeterAnchorTracking`): what was captured moves with the meter, so the relations
+    /// between the wall and the views of it, and every s (cells, ends, corners), stay exactly as
+    /// they were, and nothing is rebuilt.
+    ///
+    /// The positions each row's sightings were made from move too, their depth flags kept: a
+    /// sighting left where it was would sit the correction's distance from the camera that made
+    /// it, so the same view seen again after a 0.30 m shift counted as a second position.
+    public mutating func apply(_ correction: YawCorrection) {
+        wall.apply(correction)
+        observedCameras = observedCameras.map { correction.moved($0) }
+        overheadCameras = overheadCameras.map { correction.moved($0) }
+        func moved(_ rows: [[Sight]]) -> [[Sight]] {
+            rows.map { row in row.map { Sight(position: correction.point($0.position), depthVerified: $0.depthVerified) } }
+        }
+        for (band, bandCells) in cells {
+            for (index, cell) in bandCells {
+                var cell = cell
+                cell.rows = moved(cell.rows)
+                cells[band]?[index] = cell
+            }
+        }
+        depthCells = depthCells.mapValues(moved)
+        pastLimitCells = pastLimitCells.mapValues { $0.mapValues(moved) }
+        revision += 1
     }
 
     /// How far from the marked end on its side (or, with none marked, the far edge of what was
@@ -1150,7 +1264,7 @@ public struct CoverageMap: Sendable {
     }
 
     /// Rebuilds seen and covered cells by replaying `observedCameras` against the current wall,
-    /// keeping skipped cells, moved by `whole` cells.
+    /// keeping skipped and withdrawn cells, moved by `whole` cells.
     private mutating func replayObservedCameras(shiftingSkippedBy whole: Int) {
         var skipped: [SurfaceBand: [Int: Cell]] = [.wall: [:], .ground: [:]]
         for (band, bandCells) in cells {
@@ -1161,6 +1275,7 @@ public struct CoverageMap: Sendable {
             }
         }
         cells = skipped
+        withdrawnCells = Set(withdrawnCells.map { $0 + whole })
         depthCells = [:]
         depthHidden = [:]
         for index in captureOrder {
@@ -1195,7 +1310,7 @@ public struct CoverageMap: Sendable {
     /// Covered stretches of a band, merged, in meters of s. Only covered cells count: a cell seen
     /// from one position has no parallax behind it.
     public func coveredIntervals(_ band: SurfaceBand) -> [ClosedRange<Float>] {
-        let indices = (cells[band] ?? [:]).filter { $0.value.covered && allows($0.key) }.keys.sorted()
+        let indices = (cells[band] ?? [:]).filter { $0.value.covered && allows($0.key) && !withdrawnCells.contains($0.key) }.keys.sorted()
         var runs: [ClosedRange<Float>] = []
         for index in indices {
             let range = cellRange(index)
@@ -1237,7 +1352,7 @@ public struct CoverageMap: Sendable {
 
     /// Total covered cells over both bands.
     public var coveredCount: Int {
-        cells.values.reduce(0) { $0 + $1.values.filter(\.covered).count }
+        cells.values.reduce(0) { $0 + $1.filter { $0.value.covered && !withdrawnCells.contains($0.key) }.count }
     }
 }
 

@@ -2,9 +2,12 @@ import HouseScanKit
 import simd
 import Testing
 
-/// Device runs 1 and 2 (2026-09-26) replayed on the standard wall (s = x, meter at 0), for #24,
-/// #28 and #29. Run 2's mock wall ended about 17 ft (5.18 m) right of the meter; its window was
-/// about 7 ft and its AC stand-in about 16 ft right.
+/// Synthetic planner and end-helper cases modeled on the symptoms of device runs 1 and 2
+/// (2026-09-26), on the standard wall (s = x, meter at 0), for #24, #28 and #29. They build
+/// cameras and coverage by hand and call `WalkedEnd.end` and `GuidancePlanner.update` directly:
+/// they don't run the app's "Can't get there" or "Wall ends here" actions, and don't replay
+/// recorded frames. Run 2's mock wall ended about 17 ft (5.18 m) right of the meter; its window
+/// was about 7 ft and its AC stand-in about 16 ft right.
 @Suite struct FieldRunReplayTests {
     static let wallEnd: Float = 5.18
 
@@ -12,7 +15,9 @@ import Testing
     static func phone(_ x: Float) -> SIMD3<Float> { SIMD3(x, 1.4, 2.6) }
 
     /// Run 2 up to 2:40: one view of the ground in front of the meter (left amber, seen once),
-    /// then a walk to the wall's end on the right with views kept every 0.5 m.
+    /// then a walk to the wall's end on the right with the phone's position kept every 0.5 m. The
+    /// walk's views look away from the wall, so they add walked path and no coverage: these cases
+    /// test where an end lands, not how the wall is recorded along the way.
     static func run2Walk() -> CoverageMap {
         var map = CoverageMap(wall: standardWall())
         map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)

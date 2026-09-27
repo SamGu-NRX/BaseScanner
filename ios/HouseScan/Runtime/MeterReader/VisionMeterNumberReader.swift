@@ -66,7 +66,8 @@ struct VisionMeterNumberReader: MeterNumberReader {
             },
             retake: nil,
             numberTooSmall: choices.numberTooSmall,
-            photoPassedChecks: true
+            photoPassedChecks: true,
+            brand: MeterBrand.read(lines)
         )
     }
 
