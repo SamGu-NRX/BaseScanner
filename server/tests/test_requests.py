@@ -140,21 +140,46 @@ def test_a_request_inside_the_ends_has_no_past_end_hint() -> None:
     assert ground and not any("past the" in m["message"] for m in ground)
 
 
+def spot_beside_an_unexplored_end() -> dict:
+    """spot_beside_a_limit_end() with the walk stopped where the wall goes on."""
+    raw = spot_beside_a_limit_end()
+    raw["coverage"]["ends"]["right"] = {"kind": "unexplored"}
+    return raw
+
+
 @pytest.mark.parametrize(
-    "scene", [spot_beside_a_limit_end, facing_and_overhead_past_the_end], ids=["wall", "bands"]
+    "scene",
+    [spot_beside_a_limit_end, facing_and_overhead_past_the_end, spot_beside_an_unexplored_end],
+    ids=["wall", "bands", "unexplored"],
 )
 def test_capturing_the_requests_settles_every_check_they_name(scene) -> None:
-    # Round 2 of the gap loop beside a limit end. What the checks left to a person need lies
-    # past the end, so before the summary read "More views are needed ... 2 checks depend on
-    # areas the scan did not see" with nothing left to show.
+    # Round 2 of the gap loop beside an end: the homeowner showed exactly what round 1's band
+    # requests asked for.
     raw = scene()
     first = run(raw)
     assert named(first), first["missing_evidence"]
     second = run(captured_exactly(raw, first))
-    assert not named(first) & unseen(second), second["checks"]
-    assert second["missing_evidence"] == [], second["missing_evidence"]
-    assert second["summary"].startswith("A person needs to check"), second["summary"]
-    assert unseen(second)  # left for a person, not asked for
+    left = named(first) & unseen(second)
+    if raw["coverage"]["ends"]["right"]["kind"] == "limit":
+        # What the checks left to a person need lies past the limit end, so before the summary
+        # read "More views are needed ... 2 checks depend on areas the scan did not see" with
+        # nothing left to show.
+        assert not left, second["checks"]
+        assert second["missing_evidence"] == [], second["missing_evidence"]
+        assert second["summary"].startswith("A person needs to check"), second["summary"]
+        assert unseen(second)  # left for a person, not asked for
+    else:
+        # The band requests settle the checks they name together with the past_end request:
+        # what those checks still lack lies past the unexplored end, and walking on shows it.
+        # Before, this summary sent them to a person, as a past_end request named no checks.
+        (walk_on,) = second["missing_evidence"]
+        assert walk_on["kind"] == "past_end", walk_on
+        assert left == {"ac_clearance", "gas_clearance", "opening_clearance"}, left
+        assert set(walk_on["checks"]) == left, walk_on
+        assert second["summary"].startswith("More views are needed"), second["summary"]
+        assert f"{len(left)} checks depend" in second["summary"], second["summary"]
+        for label in ("gas equipment", "AC units", "doors and windows"):
+            assert label not in second["summary"], second["summary"]
 
 
 def test_a_small_ground_request_settles_its_checks() -> None:

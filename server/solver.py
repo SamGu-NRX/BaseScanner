@@ -90,12 +90,18 @@ class Check:
     # is a placeholder doesn't: that number would set how far out the ground must be shown
     # (issue #75). The check still reads the area; a person settles what nobody saw.
     asks_for_views: bool = True
+    # The unexplored ends past which part of the area the check reads lies unseen, deferred
+    # like missing_later. No view can show that part; walking on can (see walk_on_settles).
+    past_ends_later: Callable[[], set[str]] | None = None
     # Other rule keys whose values or citation the check uses; if the private file set any of
     # them, the citation is withheld.
     cites: tuple[str, ...] = ()
+    _all_missing: list[View] | None = field(default=None, repr=False, compare=False)
 
     def all_missing(self) -> list[View]:
-        return self.missing + (self.missing_later() if self.missing_later else [])
+        if self._all_missing is None:
+            self._all_missing = self.missing + (self.missing_later() if self.missing_later else [])
+        return self._all_missing
 
     def rule_keys(self) -> tuple[str, ...]:
         return (self.rule_key, *self.cites)
@@ -489,6 +495,7 @@ class Solver:
         if not self._covered(fp, self.unobserved_ground, ew):
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
             c.missing_later = partial(self._missing, "ground", fp, ew)
+            c.past_ends_later = partial(self._past_unexplored, ["ground"], fp, ew, None)
             c.reason = "The ground under the footprint was not seen."
             return c
         # A patch edge's error matters only where an allowed surface meets a disallowed or
@@ -525,16 +532,14 @@ class Solver:
         front of the scanned walls is settled by a view of the ground there, so it is asked for
         as ground."""
         within = _within(fp, radius)
-        if band == "ground":
-            parts = [("ground", self.unobserved_ground)]
-        else:
-            parts = [
-                ("wall", self.scene.unobserved_wall_lines(up_to)),
-                ("ground", self.scene.unexplored_area()),
-            ]
         out = []
-        for view, unseen in parts:
-            region = _meet(_meet(unseen, within), self.scene.coverable(view))
+        for view, unseen in self._unseen_parts(band, up_to):
+            coverable = self.scene.coverable(view)
+            if self._covered(fp, _meet(unseen, coverable), radius):
+                # What a view could show here is all outside the radius (between it and the
+                # polygon `within` circumscribes it with): nothing to ask for.
+                continue
+            region = _meet(_meet(unseen, within), coverable)
             # Where that meets an unexplored end exactly, a sliver with no length along the wall
             # is left; a request for it could never be settled.
             extents = []
@@ -552,8 +557,6 @@ class Solver:
             if extents:
                 a, b = min(a for a, _ in extents), max(b for _, b in extents)
                 if view == "ground":
-                    coverable = self.scene.coverable("ground")
-
                     # The check's own test: nothing it reads here, that a view can show, is
                     # left strictly within its radius.
                     def settled(
@@ -567,6 +570,38 @@ class Solver:
                     depth = None if up_to is None else _above(up_to)
                 out.append(View(view, a, b, depth))
         return out
+
+    def _unseen_parts(self, band: str, up_to: float | None) -> list[tuple[str, Geometry]]:
+        """What a check reading `band` sees as unseen, by the band a view of it would show. For
+        the wall band, the area past an unexplored end that lies in front of the scanned walls
+        is settled by a view of the ground there."""
+        if band == "ground":
+            return [("ground", self.unobserved_ground)]
+        return [
+            ("wall", self.scene.unobserved_wall_lines(up_to)),
+            ("ground", self.scene.unexplored_area()),
+        ]
+
+    def _past_unexplored(
+        self, bands: list[str], fp: Polygon, radius: float, up_to: float | None
+    ) -> set[str]:
+        """The unexplored ends past which something unseen lies within `radius` of the
+        footprint, where no view can show it (outside Scene.coverable): walking on past the end
+        can."""
+        scene = self.scene
+        within = _within(fp, radius)
+        sides: set[str] = set()
+        for band in bands:
+            for view, unseen in self._unseen_parts(band, up_to):
+                rest = shapely.difference(
+                    _meet(unseen, within), scene.coverable(view), grid_size=_OVERLAY_GRID
+                )
+                for part in getattr(rest, "geoms", [rest]):
+                    if part.is_empty or fp.distance(part) >= radius - _MEASURE_EPS:
+                        continue
+                    lo, hi = scene.s_extent(part) or (0.0, 0.0)
+                    sides |= _sides_past(scene, lo, hi, "unexplored")
+        return sides
 
     def _missing_bands(
         self, bands: list[str], fp: Polygon, radius: float, up_to: float | None
@@ -628,6 +663,9 @@ class Solver:
         ]
         missing_later = (
             partial(self._missing_bands, unseen, fp, radius, wall_height) if unseen else None
+        )
+        c.past_ends_later = (
+            partial(self._past_unexplored, unseen, fp, radius, wall_height) if unseen else None
         )
         if c.outcome == UNSURE:
             if c.unsure_cause == "unknown_attribute":
@@ -1621,6 +1659,18 @@ _BAND_TEXT = {
 }
 
 
+def _sides_past(scene: Scene, lo: float, hi: float, kind: str) -> set[str]:
+    """The ends of this kind that the stretch [lo, hi] reaches past by more than the coverage
+    tolerance."""
+    left, right = scene.end_kinds.get("left"), scene.end_kinds.get("right")
+    sides = set()
+    if left == kind and lo < scene.s_min - COVERAGE_TOLERANCE_FT:
+        sides.add("left")
+    if right == kind and hi > scene.s_max + COVERAGE_TOLERANCE_FT:
+        sides.add("right")
+    return sides
+
+
 def settled_by_views(chk: Check, scene: Scene) -> bool:
     """Whether views can settle the check, so that requests ask for and name it. Not one on a
     placeholder distance (issue #75), nor one whose view of the wall, the gap in front of it or
@@ -1629,15 +1679,23 @@ def settled_by_views(chk: Check, scene: Scene) -> bool:
     unseen for the check. solve() names those for a person."""
     if not chk.asks_for_views:
         return False
-    left, right = scene.end_kinds.get("left"), scene.end_kinds.get("right")
     return not any(
-        v.band != "ground"
-        and (
-            (left == "limit" and v.a < scene.s_min - COVERAGE_TOLERANCE_FT)
-            or (right == "limit" and v.b > scene.s_max + COVERAGE_TOLERANCE_FT)
-        )
-        for v in chk.all_missing()
+        v.band != "ground" and _sides_past(scene, v.a, v.b, "limit") for v in chk.all_missing()
     )
+
+
+def walk_on_settles(chk: Check, scene: Scene) -> set[str]:
+    """The unexplored ends past which part of what the check reads lies unseen. No view can
+    show it until the walk goes on past that end (a past_end request), after which the next
+    answer asks for it: views of the wall, the gap or the space overhead that reach past the
+    end, and ground or wall there that Scene.coverable leaves out."""
+    sides = set()
+    for v in chk.all_missing():
+        if v.band != "ground":
+            sides |= _sides_past(scene, v.a, v.b, "unexplored")
+    if chk.past_ends_later:
+        sides |= chk.past_ends_later()
+    return sides
 
 
 def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
@@ -1786,19 +1844,31 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
         }
     open_ends = [s for s, e in ends.items() if e["kind"] == "unexplored" and not e["beyond_reach"]]
 
-    def past_end_requests() -> list[dict[str, Any]]:
-        return [
-            {
+    def past_end_requests(best: Candidate | None = None) -> list[dict[str, Any]]:
+        out = []
+        for side in open_ends:
+            request: dict[str, Any] = {
                 "kind": "past_end",
                 "side": side,
                 "span_ft": [ends[side]["s_ft"], ends[side]["s_ft"]],
-                "message": (
-                    f"Keep walking past the {side} end of the scan ({where(ends[side]['s_ft'])}): "
-                    "a spot within reach may be there."
-                ),
             }
-            for side in open_ends
-        ]
+            if best is not None:
+                # The checks at the spot whose unseen area lies past this end: walking on shows
+                # it, and the next answer asks for the views.
+                request["checks"] = sorted(
+                    c.id
+                    for c in best.checks
+                    if c.outcome == UNSURE
+                    and c.unsure_cause == "unobserved"
+                    and settled_by_views(c, scene)
+                    and side in walk_on_settles(c, scene)
+                )
+            request["message"] = (
+                f"Keep walking past the {side} end of the scan ({where(ends[side]['s_ft'])}): "
+                "a spot within reach may be there."
+            )
+            out.append(request)
+        return out
 
     reasons: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
@@ -1852,13 +1922,14 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             )
         if open_ends:
             reasons.append(unexplored_reason)
-            missing += past_end_requests()
+            missing += past_end_requests(best)
         spot_at = where((best.s0 + best.s1) / 2)
-        # Only a check that an emitted view request names is settled by more views. The rest are
-        # named for a person, as in "A person needs to check the best spot" (issue #45, #50's
-        # wording): unseen checks on a placeholder distance (issue #75), and unseen checks whose
-        # remaining views lie past an end mark, which no request asks for (issue #78).
-        requested = {i for m in missing if m["kind"] == "band" for i in m["checks"]}
+        # Only a check a request names is settled by more views: a band request, or a past_end
+        # request when its unseen area lies past that end. The rest are named for a person, as
+        # in "A person needs to check the best spot" (issue #45, #50's wording): unseen checks
+        # on a placeholder distance (issue #75), and unseen checks that need the wall past a
+        # limit end (issue #78).
+        requested = {i for m in missing for i in m.get("checks", [])}
         unseen = [
             c
             for c in best.checks
