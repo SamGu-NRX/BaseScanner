@@ -67,6 +67,8 @@ struct CaptureConsentSheet: View {
                 Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
             }
             .font(Typeface.hint)
+            // Consent text wraps; a line cut short would hide part of what is sent.
+            .fixedSize(horizontal: false, vertical: true)
             Text("It goes to the House Scan team's test server, for this scan only. Skipping changes nothing about your result.")
                 .font(Typeface.hint)
                 .foregroundStyle(.secondary)
@@ -93,6 +95,8 @@ struct CaptureConsentSheet: View {
         .padding(Metrics.edge + 8)
         // Medium, so the camera stays in view behind the question about the scan it is about to take.
         .presentationDetents([.medium])
+        // Opaque enough that the camera screen's own buttons don't show through behind Skip.
+        .presentationBackground(.thickMaterial)
         .interactiveDismissDisabled()
     }
 }

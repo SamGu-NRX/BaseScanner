@@ -75,12 +75,8 @@ targets:
         type: syncedFolder
         excludes:
           - Fixtures
-      # The capture API stand-in the package tests use, reused as the integration UI tests'
-      # local receiver (IntegrationUITests).
-      - path: HouseScanKit/Tests/HouseScanKitTests/LoopbackCaptureAPI.swift
     dependencies:
       - target: HouseScan
-      - package: HouseScanKit
     settings:
       base:
         # The integration build's runner has its own id too, so neither install replaces the other's.

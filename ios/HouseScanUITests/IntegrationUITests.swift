@@ -1,10 +1,10 @@
 #if HOUSESCAN_INTEGRATION
-import HouseScanKit
 import XCTest
 
 /// The integration build's capture gates in the running app, on the synthetic replay: what it
-/// asks, when, and what reaches a capture API. The API is `LoopbackCaptureAPI`, a receiver in this
-/// test process on 127.0.0.1 that records every request; nothing here talks to a remote server.
+/// asks, when, and what reaches a capture API. The API is ios/Tools/capture-receiver.py on this
+/// Mac's loopback, which logs every request per run; start it before the tests. Nothing here
+/// talks to a remote server.
 ///
 /// Compiled only into the Integration configurations (`HOUSESCAN_INTEGRATION`), so the client
 /// scheme's test run never contains it. A replay is sent only to a receiver on this machine and
@@ -13,6 +13,44 @@ import XCTest
 final class IntegrationUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
+    }
+
+    /// One test's endpoint on the receiver, and the requests it logged for it.
+    struct Receiver {
+        static let environment = ProcessInfo.processInfo.environment
+        static let base = environment["HSI_CAPTURE_RECEIVER"] ?? "http://127.0.0.1:8767"
+        static let logDir = environment["HSI_CAPTURE_RECEIVER_LOG"] ?? "/Users/Shared/hsi-capture-receiver"
+        let run = UUID().uuidString.lowercased()
+
+        var endpoint: URL { URL(string: "\(Self.base)/\(run)/v1")! }
+
+        /// Every logged request of this run, as the receiver wrote them.
+        func requests(_ route: String? = nil) -> [[String: Any]] {
+            guard let text = try? String(contentsOfFile: "\(Self.logDir)/\(run).jsonl", encoding: .utf8) else { return [] }
+            return text.split(separator: "\n").compactMap { line in
+                (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
+            }.filter { route == nil || $0["route"] as? String == route }
+        }
+
+        /// Fails the test unless the receiver answers, so "nothing was sent" can't pass because
+        /// nothing could have been.
+        static func started() throws -> Receiver {
+            var request = URLRequest(url: URL(string: "\(base)/health")!)
+            request.timeoutInterval = 5
+            let answered = XCTestExpectation(description: "receiver health")
+            var status = 0
+            URLSession.shared.dataTask(with: request) { _, response, _ in
+                status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                answered.fulfill()
+            }.resume()
+            _ = XCTWaiter().wait(for: [answered], timeout: 6)
+            guard status == 200 else {
+                // A failure, not a skip: a run whose tests all skipped would still report success.
+                XCTFail("Start ios/Tools/capture-receiver.py first: \(base)/health did not answer 200 (got \(status)).")
+                throw URLError(.cannotConnectToHost)
+            }
+            return Receiver()
+        }
     }
 
     /// Screens the autopilot walks through, up to the result.
@@ -59,27 +97,27 @@ final class IntegrationUITests: XCTestCase {
     /// No endpoint in the build or the launch: nothing is asked, nothing shown, nothing sent.
     @MainActor
     func testWithoutAnEndpointNothingIsAskedOrSent() throws {
-        let server = try LoopbackCaptureAPI()
+        let server = try Receiver.started()
         let run = try launch(endpoint: nil, sendReplay: true)
         try run.pass("onboarding")
         run.waitFor("findMeter")
         XCTAssertFalse(run.send.waitForExistence(timeout: 3), "the consent question appeared without an endpoint")
         try finish(run, from: "findMeter")
         XCTAssertFalse(run.app.descendants(matching: .any)["captureSyncLine"].exists)
-        XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
+        XCTAssertTrue(server.requests().isEmpty)
     }
 
     /// An endpoint, but a capture that may not be sent there (the replay without its switch, as a
     /// camera capture without the device-data switch): recorded on the phone, nothing asked or sent.
     @MainActor
     func testACaptureThatMayNotBeSentStaysOnThePhone() throws {
-        let server = try LoopbackCaptureAPI()
-        let run = try launch(endpoint: server.base, sendReplay: false)
+        let server = try Receiver.started()
+        let run = try launch(endpoint: server.endpoint, sendReplay: false)
         try run.pass("onboarding")
         run.waitFor("findMeter")
         XCTAssertFalse(run.send.waitForExistence(timeout: 3), "the consent question appeared for a capture that may not be sent")
         try finish(run, from: "findMeter")
-        XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
+        XCTAssertTrue(server.requests().isEmpty)
     }
 
     /// `-replay` with no folder after it starts no replay (the engine's own parse), so the replay's
@@ -87,20 +125,20 @@ final class IntegrationUITests: XCTestCase {
     /// camera session, so this run stops at the unsupported screen.
     @MainActor
     func testADanglingReplayFlagGetsNoReplayException() throws {
-        let server = try LoopbackCaptureAPI()
+        let server = try Receiver.started()
         let app = XCUIApplication()
-        app.launchArguments = ["-sampleResult", "-captureAPIURL", server.base.absoluteString, "-captureSendReplayToLocalReceiver", "-replay"]
+        app.launchArguments = ["-sampleResult", "-captureAPIURL", server.endpoint.absoluteString, "-captureSendReplayToLocalReceiver", "-replay"]
         app.launch()
         XCTAssertFalse(app.buttons["captureConsent.send"].waitForExistence(timeout: 8), "a dangling -replay got the replay's send exception")
-        XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
+        XCTAssertTrue(server.requests().isEmpty)
     }
 
     /// The question comes before the meter is marked, with the toggle off and Send disabled; Skip
     /// sends nothing for the whole scan.
     @MainActor
     func testTheQuestionStartsOffAndSkipSendsNothing() throws {
-        let server = try LoopbackCaptureAPI()
-        let run = try launch(endpoint: server.base, sendReplay: true)
+        let server = try Receiver.started()
+        let run = try launch(endpoint: server.endpoint, sendReplay: true)
         try run.pass("onboarding")
         run.waitFor("findMeter")
         XCTAssertTrue(run.send.waitForExistence(timeout: 20), "no consent question before the meter was marked")
@@ -110,14 +148,14 @@ final class IntegrationUITests: XCTestCase {
         run.skip.tap()
         XCTAssertTrue(run.send.waitForNonExistence(timeout: 10), "Skip left the question up")
         try finish(run, from: "findMeter")
-        XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
+        XCTAssertTrue(server.requests().isEmpty)
     }
 
     /// A yes before the scan sends its photos during the walk; the next scan asks again.
     @MainActor
     func testAYesSendsDuringTheScanAndANewScanAsksAgain() throws {
-        let server = try LoopbackCaptureAPI()
-        let run = try launch(endpoint: server.base, sendReplay: true)
+        let server = try Receiver.started()
+        let run = try launch(endpoint: server.endpoint, sendReplay: true)
         try run.pass("onboarding")
         run.waitFor("findMeter")
         XCTAssertTrue(run.send.waitForExistence(timeout: 20))
@@ -132,13 +170,11 @@ final class IntegrationUITests: XCTestCase {
         // Still scanning: the photos kept so far are already acknowledged by the receiver.
         run.waitFor("markFeatures", timeout: 150)
         let committed = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            server.requests("POST captures/files:commit").contains { request in
-                ((try? JSONSerialization.jsonObject(with: request.body)) as? [String: Any]).map { ($0["files"] as? [Any])?.isEmpty == false } ?? false
-            }
+            server.requests("POST captures/files:commit").contains { ($0["commitFiles"] as? Int ?? 0) > 0 }
         }, object: nil)
         XCTAssertEqual(XCTWaiter().wait(for: [committed], timeout: 60), .completed, "no photo was committed while the scan was under way")
         XCTAssertEqual(server.requests("POST captures").count, 1)
-        XCTAssertTrue(server.requests("PUT upload").allSatisfy { $0.headers["authorization"] == nil })
+        XCTAssertTrue(server.requests("PUT upload").allSatisfy { $0["authorization"] as? Bool == false && $0["contentMD5"] as? Bool == true })
         attach(run.app, "sending-during-scan")
         try finish(run, from: "markFeatures")
 
