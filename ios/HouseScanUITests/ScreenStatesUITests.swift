@@ -71,6 +71,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
+        // #75: a server request's stretch by its two ends, not its middle.
+        "gapRequest-groundOut": ("instruction", "From 4 ft to 7 ft right of your meter."),
         "uploading-followUp": (nil, "One more view to finish"),
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),

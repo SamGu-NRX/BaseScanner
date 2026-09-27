@@ -108,7 +108,7 @@ struct GapRequestScreen: View {
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
-        return ScanCopy.gap(gap)
+        return ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd))
     }
 }
 
