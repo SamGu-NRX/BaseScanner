@@ -343,6 +343,13 @@ public enum SceneExport {
     static let maxObserved = 500
     /// scene.schema.json's `facing` and `overheads` maxItems.
     static let maxMeasured = 500
+    /// The ground entries as written, before each is cut at the corners: joined to the band's
+    /// budget less one entry per corner, which the cutting adds back. The phone's gap settlement
+    /// reads ground through this too (`GapPlanner`), so what it settles is what is sent.
+    public static func groundEntries(_ spans: [ObservedSpan], corners: Int) -> [ObservedSpan] {
+        ObservedSpan.coarsened(spans, toAtMost: max(1, bandBudget - corners))
+    }
+
     /// scene.schema.json's `ground` maxItems, shared by driveway strips and ground patches.
     static let maxGround = 200
 
@@ -491,7 +498,7 @@ public enum SceneExport {
         // for one more entry per corner.
         let serverCorners = Self.serverCornerS(writtenWalls, meterPlan: SIMD2(meterFeet[0], meterFeet[2]), meterWallID: input.wallID)
         reaches = reaches.map { band, spans in
-            (band, ObservedSpan.coarsened(spans, toAtMost: band == "ground" ? max(1, bandBudget - corners.count) : bandBudget))
+            (band, band == "ground" ? groundEntries(spans, corners: corners.count) : ObservedSpan.coarsened(spans, toAtMost: bandBudget))
         }
         var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {
