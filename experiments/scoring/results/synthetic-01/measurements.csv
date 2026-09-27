@@ -1,0 +1,31 @@
+house,capture,pipeline,measurement,candidate,from,to,survey_status,survey_ft,survey_plus_minus_ft,run_ft,run_plus_minus_ft,run_missing,status,signed_error_in,abs_error_in,truth_within_reported
+synthetic-01,synthetic-01-walk-1,ar-taps,scale,,scale mark A on the south wall,scale mark B on the south wall,measured,5.000,0.005,6.000,0.300,,scale_reference,,,
+synthetic-01,synthetic-01-walk-1,ar-taps,wall-length,,southwest exterior corner,southeast exterior corner,measured,32.500,0.010,32.300,0.300,,scored,-2.40,2.40,true
+synthetic-01,synthetic-01-walk-1,ar-taps,c1-gas,c1,footprint edge,gas regulator,measured,4.500,0.010,4.700,0.300,,scored,2.40,2.40,true
+synthetic-01,synthetic-01-walk-1,ar-taps,c1-facing,c1,wall,"facing fence, minimum of three points across the footprint",measured,5.000,0.020,4.600,0.300,,scored,-4.80,4.80,false
+synthetic-01,synthetic-01-walk-1,ar-taps,c1-route,c1,meter connection point,"battery connection point, along the supported route",measured,12.000,0.050,12.250,0.300,,scored,3.00,3.00,true
+synthetic-01,synthetic-01-walk-1,ar-taps,c1-pool,c1,footprint edge,pool edge,absent,,,,,absent,absent_agreed,,,
+synthetic-01,synthetic-01-walk-1,ar-taps,c2-gas,c2,footprint edge,gas meter,measured,3.020,0.030,3.350,0.300,,scored,3.96,3.96,false
+synthetic-01,synthetic-01-walk-1,ar-taps,c2-facing,c2,wall,"facing hedge, minimum of three points across the footprint",measured,2.500,0.020,,,failed,missing_failed,,,
+synthetic-01,synthetic-01-walk-1,ar-taps,c2-route,c2,meter connection point,"battery connection point, along the supported route",measured,19.900,0.050,19.500,0.300,,scored,-4.80,4.80,false
+synthetic-01,synthetic-01-walk-1,ar-taps,c2-pool,c2,footprint edge,pool edge,not_measured,,,,,failed,not_surveyed,,,
+synthetic-01,synthetic-01-walk-1,photo-depth,scale,,scale mark A on the south wall,scale mark B on the south wall,measured,5.000,0.005,,,,scale_reference,,,
+synthetic-01,synthetic-01-walk-1,photo-depth,wall-length,,southwest exterior corner,southeast exterior corner,measured,32.500,0.010,30.500,1.500,,scored,-24.00,24.00,false
+synthetic-01,synthetic-01-walk-1,photo-depth,c1-gas,c1,footprint edge,gas regulator,measured,4.500,0.010,5.500,1.500,,scored,12.00,12.00,true
+synthetic-01,synthetic-01-walk-1,photo-depth,c1-facing,c1,wall,"facing fence, minimum of three points across the footprint",measured,5.000,0.020,3.800,1.500,,scored,-14.40,14.40,true
+synthetic-01,synthetic-01-walk-1,photo-depth,c1-route,c1,meter connection point,"battery connection point, along the supported route",measured,12.000,0.050,,,unsupported,missing_unsupported,,,
+synthetic-01,synthetic-01-walk-1,photo-depth,c1-pool,c1,footprint edge,pool edge,absent,,,12.000,1.500,,phantom,,,
+synthetic-01,synthetic-01-walk-1,photo-depth,c2-gas,c2,footprint edge,gas meter,measured,3.020,0.030,2.400,1.500,,scored,-7.44,7.44,true
+synthetic-01,synthetic-01-walk-1,photo-depth,c2-facing,c2,wall,"facing hedge, minimum of three points across the footprint",measured,2.500,0.020,2.900,1.500,,scored,4.80,4.80,true
+synthetic-01,synthetic-01-walk-1,photo-depth,c2-route,c2,meter connection point,"battery connection point, along the supported route",measured,19.900,0.050,21.000,1.500,,scored,13.20,13.20,true
+synthetic-01,synthetic-01-walk-1,photo-depth,c2-pool,c2,footprint edge,pool edge,not_measured,,,,,unsupported,not_surveyed,,,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,scale,,scale mark A on the south wall,scale mark B on the south wall,measured,5.000,0.005,5.000,,,scale_reference,,,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,wall-length,,southwest exterior corner,southeast exterior corner,measured,32.500,0.010,32.600,,,scored,1.20,1.20,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c1-gas,c1,footprint edge,gas regulator,measured,4.500,0.010,,,absent,false_absent,,,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c1-facing,c1,wall,"facing fence, minimum of three points across the footprint",measured,5.000,0.020,5.100,0.500,,scored,1.20,1.20,true
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c1-route,c1,meter connection point,"battery connection point, along the supported route",measured,12.000,0.050,11.500,0.500,,scored,-6.00,6.00,true
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c1-pool,c1,footprint edge,pool edge,absent,,,,,absent,absent_agreed,,,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c2-gas,c2,footprint edge,gas meter,measured,3.020,0.030,3.000,0.500,,scored,-0.24,0.24,true
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c2-facing,c2,wall,"facing hedge, minimum of three points across the footprint",measured,2.500,0.020,2.600,0.500,,scored,1.20,1.20,true
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c2-route,c2,meter connection point,"battery connection point, along the supported route",measured,19.900,0.050,,,failed,missing_failed,,,
+synthetic-01,synthetic-01-walk-1,mesh-scaled,c2-pool,c2,footprint edge,pool edge,not_measured,,,,,absent,not_surveyed,,,

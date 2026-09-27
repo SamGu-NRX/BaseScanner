@@ -1,0 +1,28 @@
+[project]
+name = "edge-geometry"
+version = "0.1.0"
+description = "How learned depth's error at object edges splits along and across a wall, and whether a ray to the wall plane, a snapped tap or a second photo places an edge better"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.1",
+    "opencv-python-headless>=4.10",
+    "scipy>=1.14",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--strict-markers", "--strict-config"]

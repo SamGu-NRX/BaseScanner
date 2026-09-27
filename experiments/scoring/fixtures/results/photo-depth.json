@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "photo-depth",
+  "capture": "synthetic-01-walk-1",
+  "rules_sha256": "487132e2ce0f1d686eb92dcd27efc2e2ce0af8a4c58681cbffb92a626064b89a",
+  "scale_source": "native_metric",
+  "measurements": [
+    {"id": "wall-length", "value_ft": 30.500, "plus_minus_ft": 1.5},
+    {"id": "c1-gas", "value_ft": 5.500, "plus_minus_ft": 1.5},
+    {"id": "c1-facing", "value_ft": 3.800, "plus_minus_ft": 1.5},
+    {"id": "c1-route", "value_ft": null, "missing": "unsupported"},
+    {"id": "c1-pool", "value_ft": 12.000, "plus_minus_ft": 1.5},
+    {"id": "c2-gas", "value_ft": 2.400, "plus_minus_ft": 1.5},
+    {"id": "c2-facing", "value_ft": 2.900, "plus_minus_ft": 1.5},
+    {"id": "c2-route", "value_ft": 21.000, "plus_minus_ft": 1.5},
+    {"id": "c2-pool", "value_ft": null, "missing": "unsupported"}
+  ],
+  "outcomes": [
+    {"candidate": "c1", "check": "gas", "outcome": "pass"},
+    {"candidate": "c1", "check": "facing_gap", "outcome": "fail"},
+    {"candidate": "c1", "check": "route", "outcome": "unsure"},
+    {"candidate": "c1", "check": "pool", "outcome": "pass"},
+    {"candidate": "c2", "check": "gas", "outcome": "fail"},
+    {"candidate": "c2", "check": "facing_gap", "outcome": "unsure"},
+    {"candidate": "c2", "check": "route", "outcome": "fail"},
+    {"candidate": "c2", "check": "pool", "outcome": "unsure"}
+  ],
+  "timing": {"capture_s": 420, "processing_s": 95.0}
+}

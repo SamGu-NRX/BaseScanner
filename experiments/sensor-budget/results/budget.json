@@ -1,0 +1,434 @@
+{
+  "rows": [
+    {
+      "name": "Dual-camera disparity, depth per pixel",
+      "kind": "length",
+      "operating": "2.5 m",
+      "model": "Z\u00b2 \u03c3d / (f B)",
+      "uses": [
+        "standoff_m",
+        "dual_f_px",
+        "dual_baseline_m",
+        "dual_disp_px"
+      ],
+      "p90_opt": 4.035020745529604,
+      "p90_cons": 42.03146609926671,
+      "p90_range": 18.79972245076351,
+      "verdict": "drop"
+    },
+    {
+      "name": "Focus distance from lens position",
+      "kind": "length",
+      "operating": "2.5 m",
+      "model": "Z\u00b2 \u03c3\u0394 / f\u00b2",
+      "uses": [
+        "standoff_m",
+        "focal_mm",
+        "lens_pos_um"
+      ],
+      "p90_opt": 8.483664857900104,
+      "p90_cons": 37.29522473542235,
+      "p90_range": 21.560929072268088,
+      "verdict": "drop"
+    },
+    {
+      "name": "Barometer, height of a feature",
+      "kind": "length",
+      "operating": "one height",
+      "model": "\u03c3P / (\u03c1 g)",
+      "uses": [
+        "baro_pa",
+        "rho_g"
+      ],
+      "p90_opt": 5.387221754315046,
+      "p90_cons": 33.728692722668114,
+      "p90_range": 21.12037323984991,
+      "verdict": "drop"
+    },
+    {
+      "name": "UWB range to a phone at the meter",
+      "kind": "length",
+      "operating": "20 ft along the wall",
+      "model": "\u03c3r \u00b7 r / s",
+      "uses": [
+        "uwb_sigma_m",
+        "uwb_span_ft",
+        "standoff_m"
+      ],
+      "p90_opt": 3.5007244679755622,
+      "p90_cons": 14.002897871902249,
+      "p90_range": 9.287109006158909,
+      "verdict": "in between"
+    },
+    {
+      "name": "Finger tap, no snap (the app today)",
+      "kind": "length",
+      "operating": "2.5 m",
+      "model": "\u03c3_tap \u00b7 px/mm \u00b7 Z / f",
+      "uses": [
+        "tap_sigma_mm",
+        "screen_px_per_mm",
+        "standoff_m",
+        "f_px"
+      ],
+      "p90_opt": 2.078843813449602,
+      "p90_cons": 5.543583502532272,
+      "p90_range": 3.9341304795744287,
+      "verdict": "in between"
+    },
+    {
+      "name": "Tap snapped to an image edge",
+      "kind": "length",
+      "operating": "2.5 m",
+      "model": "\u03c3_snap \u00b7 Z / f",
+      "uses": [
+        "snap_px",
+        "standoff_m",
+        "f_px"
+      ],
+      "p90_opt": 0.05600534664353872,
+      "p90_cons": 0.22402138657415488,
+      "p90_range": 0.148578569316956,
+      "verdict": "worth a device test"
+    },
+    {
+      "name": "The app's wall plane: one normal at the meter",
+      "kind": "length",
+      "operating": "edge 6 ft away, seen 35\u00b0 off",
+      "model": "s \u00b7 tan \u03c8 \u00b7 tan \u03b1",
+      "uses": [
+        "anchor_yaw_deg",
+        "tap_view_deg",
+        "tap_span_ft"
+      ],
+      "p90_opt": 3.108386125237517,
+      "p90_cons": 9.824847616643064,
+      "p90_range": 6.7720751830406085,
+      "verdict": "in between"
+    },
+    {
+      "name": "One photo holds both ends, LiDAR",
+      "kind": "length",
+      "operating": "6 ft span from 3 m",
+      "model": "scale \u00b7 s and yaw through d\u00b7tan",
+      "uses": [
+        "span_ft",
+        "one_photo_standoff_m",
+        "lidar_scale",
+        "wall_yaw_lidar_deg"
+      ],
+      "p90_opt": 0.536670361631079,
+      "p90_cons": 1.3421860758694923,
+      "p90_range": 0.964574551264537,
+      "verdict": "worth a device test"
+    },
+    {
+      "name": "One photo holds both ends, no LiDAR",
+      "kind": "length",
+      "operating": "6 ft span from 3 m",
+      "model": "scale \u00b7 s and yaw through d\u00b7tan",
+      "uses": [
+        "span_ft",
+        "one_photo_standoff_m",
+        "vio_scale",
+        "wall_yaw_vio_deg"
+      ],
+      "p90_opt": 1.3406195452947756,
+      "p90_cons": 4.366952280587392,
+      "p90_range": 2.9766006632291786,
+      "verdict": "in between"
+    },
+    {
+      "name": "Meter cover, maker unknown",
+      "kind": "scale",
+      "operating": "at the meter",
+      "model": "size spread",
+      "uses": [
+        "meter_cover_unknown_maker"
+      ],
+      "p90_opt": 4.7804990805547,
+      "p90_cons": 4.7804990805547,
+      "p90_range": 4.7804990805547,
+      "verdict": "drop"
+    },
+    {
+      "name": "Meter cover, maker read from the nameplate",
+      "kind": "scale",
+      "operating": "at the meter",
+      "model": "maker's drawing",
+      "uses": [
+        "meter_cover_known_maker"
+      ],
+      "p90_opt": 0.4935524522616822,
+      "p90_cons": 1.6451748408722737,
+      "p90_range": 1.1222033876541635,
+      "verdict": "in between"
+    },
+    {
+      "name": "Brick coursing",
+      "kind": "scale",
+      "operating": "any brick wall",
+      "model": "course spacing",
+      "uses": [
+        "brick_course"
+      ],
+      "p90_opt": 0.8203599227316022,
+      "p90_cons": 2.625151752741127,
+      "p90_range": 1.8086253556050726,
+      "verdict": "in between"
+    },
+    {
+      "name": "Exterior door height",
+      "kind": "scale",
+      "operating": "any door in view",
+      "model": "slab vs opening",
+      "uses": [
+        "door_slab"
+      ],
+      "p90_opt": 0.9856119453078988,
+      "p90_cons": 2.135492548167114,
+      "p90_range": 1.59577642556761,
+      "verdict": "in between"
+    },
+    {
+      "name": "US Letter sheet held to the wall",
+      "kind": "scale",
+      "operating": "at the meter",
+      "model": "sheet size",
+      "uses": [
+        "letter_sheet"
+      ],
+      "p90_opt": 0.4929727582387478,
+      "p90_cons": 0.9859455164774956,
+      "p90_range": 0.7515821601013287,
+      "verdict": "worth a device test"
+    },
+    {
+      "name": "ID-1 card held to the wall",
+      "kind": "scale",
+      "operating": "at the meter, 0.5 m",
+      "model": "card size and edges",
+      "uses": [
+        "id1_card"
+      ],
+      "p90_opt": 0.329565834322981,
+      "p90_cons": 0.9886975029689428,
+      "p90_range": 0.6861139567035768,
+      "verdict": "worth a device test"
+    },
+    {
+      "name": "Acoustic echo to a facing fence",
+      "kind": "length",
+      "operating": "3 ft gap",
+      "model": "\u03c3 range",
+      "uses": [
+        "echo_m"
+      ],
+      "p90_opt": 0.970525949325062,
+      "p90_cons": 6.4701729955004135,
+      "p90_range": 4.109319437691939,
+      "verdict": "in between"
+    },
+    {
+      "name": "Phone as a contact probe",
+      "kind": "length",
+      "operating": "any reachable corner",
+      "model": "tracking at contact",
+      "uses": [
+        "probe_m"
+      ],
+      "p90_opt": 0.3233242127106719,
+      "p90_cons": 1.9399452762640312,
+      "p90_range": 1.2436081952724634,
+      "verdict": "worth a device test"
+    }
+  ],
+  "params": {
+    "standoff_m": {
+      "opt": 2.5,
+      "cons": 2.5,
+      "unit": "m",
+      "source": "app guidance: stand 1 to 3 m from the wall (docs/00)"
+    },
+    "f_px": {
+      "opt": 1450.0,
+      "cons": 1450.0,
+      "unit": "px",
+      "source": "wide camera focal length at 1920 px, typical ARKit capturedImage intrinsics"
+    },
+    "dual_f_px": {
+      "opt": 500.0,
+      "cons": 400.0,
+      "unit": "px",
+      "source": "depth map about 640 px wide: the 1450 px focal length scaled down (assumed)"
+    },
+    "dual_baseline_m": {
+      "opt": 0.02,
+      "cons": 0.012,
+      "unit": "m",
+      "source": "wide to ultra-wide spacing, assumed; the idea lab estimated 1.5 to 2 cm; no Apple spec"
+    },
+    "dual_disp_px": {
+      "opt": 0.1,
+      "cons": 0.5,
+      "unit": "px",
+      "source": "disparity noise, assumed; sub-pixel stereo range"
+    },
+    "focal_mm": {
+      "opt": 6.9,
+      "cons": 5.7,
+      "unit": "mm",
+      "source": "iPhone main camera focal lengths, 13 to 15 Pro (Apple tech specs)"
+    },
+    "lens_pos_um": {
+      "opt": 1.0,
+      "cons": 3.0,
+      "unit": "um",
+      "source": "lens position repeatability including heat and gravity sag, assumed; AVCaptureDevice.lensPosition is not calibrated to distance"
+    },
+    "baro_pa": {
+      "opt": 1.0,
+      "cons": 6.0,
+      "unit": "Pa",
+      "source": "relative pressure noise plus wind gusts; 1 Pa is a quiet sensor, 6 Pa a 3 m/s gust's dynamic pressure (assumed)"
+    },
+    "rho_g": {
+      "opt": 12.0,
+      "cons": 11.5,
+      "unit": "Pa/m",
+      "source": "air density times g near sea level"
+    },
+    "uwb_sigma_m": {
+      "opt": 0.05,
+      "cons": 0.2,
+      "unit": "m",
+      "source": "arXiv 2303.11220: errors under 20 cm in tested conditions; 5 cm assumed line of sight"
+    },
+    "uwb_span_ft": {
+      "opt": 20.0,
+      "cons": 20.0,
+      "unit": "ft",
+      "source": "operating distance along the wall"
+    },
+    "tap_sigma_mm": {
+      "opt": 1.5,
+      "cons": 4.0,
+      "unit": "mm",
+      "source": "finger landing spread, assumed; Apple's HIG minimum target is 44 pt (about 7 mm)"
+    },
+    "screen_px_per_mm": {
+      "opt": 12.4,
+      "cons": 12.4,
+      "unit": "px/mm",
+      "source": "iPhone 15 aspect-fill: 1920 px on 852 pt, 5.5 pt/mm, so 2.25 image px per pt"
+    },
+    "snap_px": {
+      "opt": 0.5,
+      "cons": 2.0,
+      "unit": "px",
+      "source": "sub-pixel edge localization: Steger reports under 0.1 px on clean edges; 2 px allows for texture"
+    },
+    "anchor_yaw_deg": {
+      "opt": 2.15,
+      "cons": 6.72,
+      "unit": "deg",
+      "source": "added after the run: median and p90 yaw of a 0.3 m depth-patch plane on ETH3D electro (experiments/edge-geometry), a proxy for one ARKit raycast normal; the first run assumed 1 to 5"
+    },
+    "tap_view_deg": {
+      "opt": 35.0,
+      "cons": 35.0,
+      "unit": "deg",
+      "source": "view angle off face-on for an edge 5 ft from the meter tapped from 7 ft out"
+    },
+    "tap_span_ft": {
+      "opt": 6.0,
+      "cons": 6.0,
+      "unit": "ft",
+      "source": "edge distance from the meter"
+    },
+    "span_ft": {
+      "opt": 6.0,
+      "cons": 6.0,
+      "unit": "ft",
+      "source": "a window or gas meter 6 ft from the meter"
+    },
+    "one_photo_standoff_m": {
+      "opt": 3.0,
+      "cons": 3.0,
+      "unit": "m",
+      "source": "step back so both ends fit in a landscape frame"
+    },
+    "lidar_scale": {
+      "opt": 0.004,
+      "cons": 0.01,
+      "unit": "fraction",
+      "source": "iPhone LiDAR range error, about 1 cm at 3 m (assumed from Measure-style apps); 1% conservative"
+    },
+    "vio_scale": {
+      "opt": 0.01,
+      "cons": 0.03,
+      "unit": "fraction",
+      "source": "MARViN: 30 of 35 iPhone 14 Pro Max walks within 2% (evals section 6); 3% for a phone without LiDAR, assumed"
+    },
+    "wall_yaw_lidar_deg": {
+      "opt": 0.2,
+      "cons": 0.5,
+      "unit": "deg",
+      "source": "plane fitted to thousands of LiDAR points, assumed"
+    },
+    "wall_yaw_vio_deg": {
+      "opt": 0.5,
+      "cons": 2.0,
+      "unit": "deg",
+      "source": "plane from feature points or vanishing lines, assumed"
+    },
+    "meter_cover_unknown_maker": {
+      "opt": 0.029,
+      "cons": 0.029,
+      "unit": "fraction",
+      "source": "covers span 6.29 to 6.95 in across Itron, Aclara, Elster (maker drawings): \u00b15% uniform"
+    },
+    "meter_cover_known_maker": {
+      "opt": 0.003,
+      "cons": 0.01,
+      "unit": "fraction",
+      "source": "one maker's drawing, assumed moulding tolerance"
+    },
+    "brick_course": {
+      "opt": 0.005,
+      "cons": 0.016,
+      "unit": "fraction",
+      "source": "3 courses = 8 in (BIA 9A); a mason's story pole holds coursing, 1/8 in per 8 in taken as the conservative end"
+    },
+    "door_slab": {
+      "opt": 0.006,
+      "cons": 0.013,
+      "unit": "fraction",
+      "source": "exterior slab 79.5 in, opening 80 in: which edge the photo shows is 0.5 to 1 in (Mastercraft)"
+    },
+    "letter_sheet": {
+      "opt": 0.003,
+      "cons": 0.006,
+      "unit": "fraction",
+      "source": "11 in sheet; cut tolerance unknown, assumed 1/32 to 1/16 in"
+    },
+    "id1_card": {
+      "opt": 0.002,
+      "cons": 0.006,
+      "unit": "fraction",
+      "source": "ISO 7810 85.60 mm, new cards 85.47 to 85.72 (\u00b10.15%), plus 0.3 to 1 px edges at 0.5 m"
+    },
+    "echo_m": {
+      "opt": 0.015,
+      "cons": 0.1,
+      "unit": "m",
+      "source": "BatMapper: 1 to 2 cm at p80 indoors to 3.5 m; 10 cm assumed outdoors"
+    },
+    "probe_m": {
+      "opt": 0.005,
+      "cons": 0.03,
+      "unit": "m",
+      "source": "tracking error while the camera faces the wall at contact, assumed; device geometry adds about 1 mm"
+    }
+  }
+}

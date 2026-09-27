@@ -1,0 +1,527 @@
+{
+ "scene": "electro",
+ "evals_commit": "190ed339f41924ae0244e0b88c5ebe647ddd9eb4",
+ "housescankit_commit": "beede15f568b3a4d694fb275caf9eaaa882c546b",
+ "noise_sigma_measured": 0.5728785556214293,
+ "noise_sigma_fixed": 0.573,
+ "plain_std": 0.9059925496382406,
+ "validity": {
+  "claimed_ft": 19.291338582677167,
+  "false_observed_ft": 1.1154855643044619,
+  "missed_ft": 0.0,
+  "evals_section_7": {
+   "claimed_ft": 19.3,
+   "false_observed_ft": 1.1,
+   "missed_ft": 0.0
+  }
+ },
+ "wall_ft": 19.311015888810974,
+ "runs": [
+  {
+   "setting": "exact",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 11.67979002624672,
+    "false_observed_ft": 0.7217847769028871,
+    "missed_ft": 7.086614173228346
+   },
+   "row_sightings": 876,
+   "row_sightings_kept": 557,
+   "dropped_row_causes": {
+    "disagreed": 239,
+    "too plain": 216
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 5.577427821522309,
+    "disagreed": 1.5091863517060367,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 0.7217847769028871,
+   "footing_still_claimed_s_m": [
+    [
+     -2.94,
+     -2.74
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.39370078740157477,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 2.2965879265091864,
+   "pilaster_accepted_delta_samples": {
+    "0": 74,
+    "0.1": 21,
+    "0.2": 9,
+    "0.3": 51,
+    "0.4": 115
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 4.0682414698162725
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.57742782152231
+    },
+    "0.6": {
+     "false_observed_ft": 0.7217847769028871,
+     "missed_ft": 7.086614173228346
+    },
+    "0.7": {
+     "false_observed_ft": 0.5905511811023622,
+     "missed_ft": 8.530183727034121
+    },
+    "0.8": {
+     "false_observed_ft": 0.0,
+     "missed_ft": 11.417322834645669
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 10.62992125984252,
+    "false_observed_ft": 0.6561679790026247,
+    "missed_ft": 8.005249343832022,
+    "pairs": 198,
+    "pairs_refined": 34
+   }
+  },
+  {
+   "setting": "modern_assumed draw 0",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 10.695538057742782,
+    "false_observed_ft": 0.6561679790026247,
+    "missed_ft": 8.136482939632545
+   },
+   "row_sightings": 867,
+   "row_sightings_kept": 462,
+   "dropped_row_causes": {
+    "disagreed": 359,
+    "too plain": 215
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 5.05249343832021,
+    "disagreed": 3.083989501312336,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 0.6561679790026247,
+   "footing_still_claimed_s_m": [
+    [
+     -2.8,
+     -2.62
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.4593175853018373,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 2.1653543307086616,
+   "pilaster_accepted_delta_samples": {
+    "0": 68,
+    "0.1": 48,
+    "0.2": 29,
+    "0.3": 63,
+    "0.4": 32
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.05249343832021
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.511811023622047
+    },
+    "0.6": {
+     "false_observed_ft": 0.6561679790026247,
+     "missed_ft": 8.136482939632545
+    },
+    "0.7": {
+     "false_observed_ft": 0.5905511811023622,
+     "missed_ft": 11.15485564304462
+    },
+    "0.8": {
+     "false_observed_ft": 0.5905511811023622,
+     "missed_ft": 14.63254593175853
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 12.270341207349082,
+    "false_observed_ft": 0.6561679790026247,
+    "missed_ft": 6.561679790026247,
+    "pairs": 202,
+    "pairs_refined": 35
+   }
+  },
+  {
+   "setting": "modern_assumed draw 1",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 12.729658792650918,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 6.561679790026247
+   },
+   "row_sightings": 866,
+   "row_sightings_kept": 514,
+   "dropped_row_causes": {
+    "disagreed": 283,
+    "too plain": 214
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 5.05249343832021,
+    "disagreed": 1.5091863517060367,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 1.1154855643044619,
+   "footing_still_claimed_s_m": [
+    [
+     -2.94,
+     -2.62
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.0,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 3.280839895013123,
+   "pilaster_accepted_delta_samples": {
+    "0": 56,
+    "0.1": 49,
+    "0.2": 38,
+    "0.3": 64,
+    "0.4": 83
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.05249343832021
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.05249343832021
+    },
+    "0.6": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 6.561679790026247
+    },
+    "0.7": {
+     "false_observed_ft": 0.6561679790026247,
+     "missed_ft": 9.186351706036746
+    },
+    "0.8": {
+     "false_observed_ft": 0.6561679790026247,
+     "missed_ft": 13.779527559055119
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 12.729658792650918,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 6.561679790026247,
+    "pairs": 202,
+    "pairs_refined": 32
+   }
+  },
+  {
+   "setting": "modern_assumed draw 2",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 13.779527559055119,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 5.511811023622047
+   },
+   "row_sightings": 867,
+   "row_sightings_kept": 559,
+   "dropped_row_causes": {
+    "disagreed": 233,
+    "too plain": 198
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 4.986876640419947,
+    "disagreed": 0.5249343832020997,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 1.1154855643044619,
+   "footing_still_claimed_s_m": [
+    [
+     -2.94,
+     -2.62
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.0,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 3.805774278215223,
+   "pilaster_accepted_delta_samples": {
+    "0": 61,
+    "0.1": 49,
+    "0.2": 30,
+    "0.3": 94,
+    "0.4": 102
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 3.543307086614173
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 4.4619422572178475
+    },
+    "0.6": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 5.511811023622047
+    },
+    "0.7": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 6.561679790026247
+    },
+    "0.8": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 10.236220472440944
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 13.779527559055119,
+    "false_observed_ft": 1.0498687664041995,
+    "missed_ft": 5.380577427821522,
+    "pairs": 202,
+    "pairs_refined": 32
+   }
+  },
+  {
+   "setting": "modern_assumed draw 3",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 10.10498687664042,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 9.186351706036746
+   },
+   "row_sightings": 870,
+   "row_sightings_kept": 479,
+   "dropped_row_causes": {
+    "disagreed": 358,
+    "too plain": 210
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 5.05249343832021,
+    "disagreed": 4.133858267716535,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 1.1154855643044619,
+   "footing_still_claimed_s_m": [
+    [
+     -2.94,
+     -2.62
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.0,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 1.7060367454068242,
+   "pilaster_accepted_delta_samples": {
+    "0": 63,
+    "0.1": 19,
+    "0.2": 55,
+    "0.3": 45,
+    "0.4": 46
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 4.4619422572178475
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 6.561679790026247
+    },
+    "0.6": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 9.186351706036746
+    },
+    "0.7": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 10.761154855643044
+    },
+    "0.8": {
+     "false_observed_ft": 0.5905511811023622,
+     "missed_ft": 14.10761154855643
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 13.254593175853017,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 6.036745406824147,
+    "pairs": 202,
+    "pairs_refined": 33
+   }
+  },
+  {
+   "setting": "modern_assumed draw 4",
+   "app_driver_agrees": true,
+   "app": {
+    "claimed_ft": 19.291338582677167,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 0.0
+   },
+   "filter": {
+    "claimed_ft": 12.664041994750656,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 6.627296587926509
+   },
+   "row_sightings": 868,
+   "row_sightings_kept": 514,
+   "dropped_row_causes": {
+    "disagreed": 324,
+    "too plain": 200
+   },
+   "missed_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 3.0183727034120733,
+    "disagreed": 3.608923884514436,
+    "the app itself": 0.0
+   },
+   "footing_ft": 1.1154855643044619,
+   "footing_still_claimed_ft": 1.1154855643044619,
+   "footing_still_claimed_s_m": [
+    [
+     -2.94,
+     -2.62
+    ],
+    [
+     2.38,
+     2.4
+    ]
+   ],
+   "footing_dropped_by_cause_ft": {
+    "no qualifying pair": 0.0,
+    "too plain": 0.0,
+    "disagreed": 0.0,
+    "the app itself": 0.0
+   },
+   "false_outside_footing_ft": 0.0,
+   "pilaster_ft": 3.805774278215223,
+   "pilaster_claimed_app_ft": 3.805774278215223,
+   "pilaster_claimed_filter_ft": 1.7060367454068242,
+   "pilaster_accepted_delta_samples": {
+    "0": 72,
+    "0.1": 35,
+    "0.2": 34,
+    "0.3": 74,
+    "0.4": 45
+   },
+   "ncc_sweep": {
+    "0.4": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 3.543307086614173
+    },
+    "0.5": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 3.543307086614173
+    },
+    "0.6": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 6.627296587926509
+    },
+    "0.7": {
+     "false_observed_ft": 1.1154855643044619,
+     "missed_ft": 10.10498687664042
+    },
+    "0.8": {
+     "false_observed_ft": 1.0498687664041995,
+     "missed_ft": 13.58267716535433
+    }
+   },
+   "feature_refined": {
+    "claimed_ft": 16.27296587926509,
+    "false_observed_ft": 1.1154855643044619,
+    "missed_ft": 3.0183727034120733,
+    "pairs": 202,
+    "pairs_refined": 33
+   }
+  }
+ ],
+ "seconds": 130,
+ "peak_rss_mb": 882
+}

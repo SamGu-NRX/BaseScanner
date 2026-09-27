@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "measure-lab",
+  "session": "synthetic-session-01",
+  "notes": "Synthetic example. plus_minus_ft_by_key is the plan's untested 0.3 ft error bar for an AR tap (docs/00-overview.md, Conventions the code relies on), not a measured error bar. Routes are unsupported: Measure Lab records no routed cable path, and an along-wall distance is not a route length.",
+  "plus_minus_ft_by_key": {
+    "straight": 0.3,
+    "horizontal": 0.3,
+    "vertical": 0.3,
+    "alongWall": 0.3,
+    "gapToWall": 0.3,
+    "heightAboveGround": 0.3
+  },
+  "measurements": {
+    "scale": {
+      "session_measurement": "m1",
+      "key": "straight"
+    },
+    "wall-length": {
+      "session_measurement": "m2",
+      "key": "alongWall"
+    },
+    "c1-gas": {
+      "session_measurement": "m3",
+      "key": "straight"
+    },
+    "c1-facing": {
+      "session_measurement": "m4",
+      "key": "gapToWall"
+    },
+    "c1-route": "unsupported",
+    "c1-pool": "absent",
+    "c2-gas": {
+      "session_measurement": "m6",
+      "key": "straight"
+    },
+    "c2-facing": {
+      "refusal": "r1"
+    },
+    "c2-route": "unsupported",
+    "c2-pool": "unsupported"
+  }
+}

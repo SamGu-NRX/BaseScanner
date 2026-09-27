@@ -1,0 +1,66 @@
+name: Meter close-up experiment
+
+# The leak check needs METER_HMAC_KEY. Pull-request code must never receive it, because the key
+# lets anyone reverse the short meter numbers behind the committed digests. So pull requests get
+# lint and tests only, and the keyed job runs only on main: after merge, or dispatched from main.
+# A dispatch from any other branch would run that branch's code with the key, so it is skipped.
+# Before asking for review, run `make leakcheck` locally.
+on:
+  workflow_dispatch:
+  # Every push to main, not only experiment changes: the keyed leak check scans the whole
+  # repository, and a copied meter number can land in any file.
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "experiments/meter-closeup/**"
+      - ".github/workflows/meter-closeup.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meter-closeup-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Meter close-up checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/meter-closeup
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/meter-closeup
+      # The unit tests cover the metric code only; the Vision reader needs macOS and the photos.
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+  leakcheck:
+    name: Meter close-up leak check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/meter-closeup
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/meter-closeup
+      - run: uv sync --locked
+      # Looks for any transcribed meter identifier in the tracked files.
+      - run: uv run python -m meter_eval.leakcheck
+        env:
+          METER_HMAC_KEY: ${{ secrets.METER_HMAC_KEY }}

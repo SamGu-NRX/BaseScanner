@@ -330,4 +330,6 @@ Anything marked with a pull request exists only on that PR's branch until it mer
 
 If you want to go deeper, start with [the walkthrough](docs/how-it-works.html). It takes about ten minutes and has plenty of pictures. After that, [docs/00-overview.md](docs/00-overview.md) covers the plan, the decisions we made and the evidence behind them. If you're going to change anything, read [AGENTS.md](AGENTS.md) for the rules of the repository and [CONTRIBUTING.md](CONTRIBUTING.md) for branches, CI and TestFlight.
 
-The repository is public. Most pictures in this README come from the [live site](https://house-scanning.vercel.app/). We drew the rebuild animation and the gas-meter figure for this README, in the same style.
+The server team's research handoff, with its findings, tested prototypes and the field work still to do, is in [docs/06-research-handoff.md](docs/06-research-handoff.md). TestFlight builds of the app and Measure Lab start by hand from the Actions tab, as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
+
+The repository is public. Most pictures in this README come from the [live site](https://house-scanning.vercel.app/). We drew the rebuild animation and the gas-meter figure for this README, in the same style. Materials Base gave the team stay in the git-ignored `private/` folder, and photos of real homes never enter git.

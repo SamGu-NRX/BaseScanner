@@ -1,0 +1,59 @@
+--- a/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift
++++ b/ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift
+@@ -310,6 +310,56 @@
+         revision += 1
+     }
+ 
++    /// A narrow ground-replay boundary; does not admit/qualify observations or repair anchor shifts.
++    public enum GroundReplayError: Error {
++        case invalidHeight
++        case horizontalFrameChanged
++        case unresolvedCellShift
++    }
++
++    /// Re-evaluates all caller-qualified accepted cameras in their original acceptance order.
++    /// The caller owns source-ID deduplication, successful storage, tracking and generation checks.
++    /// Include zero-delta observations. Never pass speculative planner cameras or all stored frames.
++    /// Returns true only when photographic rows were rebuilt; false preserves unchanged samples.
++    ///
++    /// Only groundY and meter.y may differ. Nonzero pendingShift refuses a ground change without
++    /// mutation: existing rounded skip cells have no exact annotation coordinates to reproject.
++    /// A successful rebuild starts a fresh zero-residual grid, retains latent skip flags and ends,
++    /// and publishes revision old+1, independent of how many observe calls changed the fresh map.
++    /// The caller must still publish the map/geometry together, and handle refusal as unresolved.
++    @discardableResult
++    public mutating func replayGround(_ frame: WallFrame, acceptedCameras: [CameraFrame]) throws -> Bool {
++        guard frame.groundY.isFinite, frame.meter.y.isFinite else {
++            throw GroundReplayError.invalidHeight
++        }
++        guard frame.meter.x == wall.meter.x, frame.meter.z == wall.meter.z,
++              frame.outward == wall.outward else {
++            throw GroundReplayError.horizontalFrameChanged
++        }
++        guard frame.groundY != wall.groundY else {
++            wall = frame
++            return false
++        }
++        guard pendingShift == 0 else { throw GroundReplayError.unresolvedCellShift }
++
++        var rebuilt = CoverageMap(wall: frame, config: config)
++        rebuilt.leftEnd = leftEnd
++        rebuilt.rightEnd = rightEnd
++        for (band, bandCells) in cells {
++            for (index, cell) in bandCells where cell.skipped {
++                var retained = Cell(rowCount: config.rowsPerBand)
++                retained.skipped = true
++                rebuilt.cells[band, default: [:]][index] = retained
++            }
++        }
++        for camera in acceptedCameras {
++            rebuilt.observe(camera, trackingNormal: true)
++        }
++        rebuilt.revision = revision + 1
++        self = rebuilt
++        return true
++    }
++
+     // MARK: Reading
+ 
+     /// s extent of seen or covered cells, or nil when nothing has been seen.

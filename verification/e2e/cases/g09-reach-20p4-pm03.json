@@ -1,0 +1,154 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g09-reach-20p4-pm03",
+  "source": "t3-lane-c-review.md golden 09 at origin/t3/research a7d91f1",
+  "description": "Route 20.4 +/- 0.3 ft (meter tap error): 20.4 - 0.3 = 20.1 is above 20, so fail.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.3
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -1,
+            0.0
+          ],
+          [
+            22.983333333333,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "deck",
+        "polygon": [
+          [
+            -1,
+            0
+          ],
+          [
+            20.4,
+            0
+          ],
+          [
+            20.4,
+            10
+          ],
+          [
+            -1,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      },
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            20.4,
+            0
+          ],
+          [
+            22.983333333333,
+            0
+          ],
+          [
+            22.983333333333,
+            10
+          ],
+          [
+            20.4,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -1.0,
+          22.983333333333
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -16.0,
+            37.983333333333
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -16.0,
+            37.983333333333
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -16.0,
+            37.983333333333
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -16.0,
+            37.983333333333
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "route_length": 20.0
+  },
+  "expect": {
+    "missing_evidence_empty": true,
+    "spot": null,
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          20.399,
+          20.401
+        ],
+        "outcome": "fail",
+        "failing_match": "route_length"
+      }
+    ],
+    "decision_not": [
+      "pass"
+    ]
+  }
+}
