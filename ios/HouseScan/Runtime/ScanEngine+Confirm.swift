@@ -379,7 +379,8 @@ extension ScanEngine {
         case .acUnit: .ac
         case .window: .window
         case .door: .door
-        case .driveway, .fence: nil
+        // Only equipment the spot check asks about (`ScanCopy.spotUnmarkedKinds`).
+        case .battery, .elecBox, .driveway, .fence: nil
         }
     }
 
