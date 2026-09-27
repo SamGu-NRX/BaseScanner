@@ -49,7 +49,7 @@
       "threshold_ft": 3.0,
       "comparison": "at_least",
       "subject": "objects[0] gas_meter",
-      "rule": {"key": "sample_gas_clearance_ft", "source": "Sample value, not a rule citation", "placeholder": true}
+      "rule": {"key": "clearances.gas_ft", "source": "Sample value, not a rule citation", "placeholder": true}
     },
     {
       "id": "window_clearance",
@@ -62,7 +62,7 @@
       "threshold_ft": 3.0,
       "comparison": "at_least",
       "subject": "objects[1] window",
-      "rule": {"key": "sample_window_clearance_ft", "source": "Sample value, not a rule citation", "placeholder": true}
+      "rule": {"key": "clearances.opening_ft", "source": "Sample value, not a rule citation", "placeholder": true}
     },
     {
       "id": "front_clearance",
@@ -75,7 +75,7 @@
       "threshold_ft": 3.0,
       "comparison": "at_least",
       "subject": null,
-      "rule": {"key": "sample_front_clearance_ft", "source": "Sample value, not a rule citation", "placeholder": true}
+      "rule": {"key": "facing.min_ft", "source": "Sample value, not a rule citation", "placeholder": true}
     },
     {
       "id": "route_length",
@@ -87,7 +87,7 @@
       "threshold_ft": 20.0,
       "comparison": "at_most",
       "subject": null,
-      "rule": {"key": "sample_route_length_ft", "source": "Sample value, not a rule citation", "placeholder": true}
+      "rule": {"key": "route.max_ft", "source": "Sample value, not a rule citation", "placeholder": true}
     }
   ],
   "nearest_considered": null,

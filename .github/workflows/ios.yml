@@ -138,7 +138,8 @@ jobs:
       - name: Build
         run: >-
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
-          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+          HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}" build
 
       - name: Wait for the Simulator
         timeout-minutes: 10
@@ -159,7 +160,7 @@ jobs:
             -destination "id=$SIM_UDID" \
             -resultBundlePath "$RUNNER_TEMP/HouseScanUITests.xcresult" \
             -only-testing:HouseScanUITests "${skip[@]}" \
-            COMPILER_INDEX_STORE_ENABLE=NO test
+            COMPILER_INDEX_STORE_ENABLE=NO HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}" test
 
       - name: Keep UI test screenshots
         if: always()

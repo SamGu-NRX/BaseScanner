@@ -52,11 +52,20 @@ public enum MeterBrand {
 
     /// Every spelling with its maker, longest first, so `LANDIS & GYR` is tried before `LANDIS`
     /// and `GENERAL ELECTRIC` before `GE`. Equal lengths keep list order, as Python's stable sort.
-    private static let spellings: [(spelling: String, maker: String)] = makers
-        .flatMap { maker in maker.spellings.map { (spelling: $0, maker: maker.name) } }
-        .enumerated()
-        .sorted { $0.element.spelling.count != $1.element.spelling.count ? $0.element.spelling.count > $1.element.spelling.count : $0.offset < $1.offset }
-        .map(\.element)
+    private static let spellings: [(spelling: String, maker: String)] = {
+        // Typed steps: the one-expression chain took about 300 ms to type-check, and CI's older
+        // compiler has timed out on expressions like it.
+        var all: [(spelling: String, maker: String)] = []
+        for maker in makers {
+            for spelling in maker.spellings { all.append((spelling: spelling, maker: maker.name)) }
+        }
+        let order: [Int] = all.indices.sorted { (a: Int, b: Int) -> Bool in
+            let lengthA = all[a].spelling.count
+            let lengthB = all[b].spelling.count
+            return lengthA != lengthB ? lengthA > lengthB : a < b
+        }
+        return order.map { (index: Int) in all[index] }
+    }()
 
     /// The maker to show for the close-up: the one named on the tallest line that names any, or
     /// nil. Equal heights go to the maker whose name sorts last, as brands.py's `max` over

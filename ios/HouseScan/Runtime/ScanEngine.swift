@@ -1083,13 +1083,21 @@ final class ScanEngine {
             fail(.cameraDenied)
         case .failed(let message):
             // Once the scan is sent, the upload and its result no longer need the camera: keep
-            // them on screen. Only the AR view needs it, and it already hides the battery while
-            // the camera isn't tracking.
+            // them on screen. So does the spot check, which shows a stored photo; with tracking
+            // gone, unmarked equipment can't be marked there and its area is left out. Only the AR
+            // view needs the camera, and it already hides the battery while it isn't tracking.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
+            case .markFeatures where spotConfirmIsMarking:
+                // Marking unmarked equipment from the spot check: back to its photo, where the
+                // thing can't be marked now and its area is left out.
+                RuntimeLog.engine.error("camera session failed while marking for the spot check: \(message, privacy: .public)")
+                _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
+                loseSpatialResult()
+                cancelMarking()
             default:
                 // The screen shows plain words, so the camera's own error is only recorded here.
                 RuntimeLog.engine.error("camera session failed: \(message, privacy: .public)")
@@ -1098,8 +1106,8 @@ final class ScanEngine {
         }
     }
 
-    /// Forgets everything tied to the old world frame and asks for the meter again. What
-    /// describes the house rather than a place in the old frame stays: the ground answer. The
+    /// Forgets everything tied to the old world frame and asks for the meter again, the spot
+    /// check's answers with it: even the ground answer is about a footprint in that frame. The
     /// close-up's own state (gate, readout, view) is reset when the close-up starts again
     /// (`go(.meterCloseUp)`).
     func resetSpatialState(reason: String) {
@@ -1629,7 +1637,6 @@ final class ScanEngine {
         state.wall = nil
         state.coverage = .empty
         state.features = []
-        state.groundAnswer = nil
         state.marking = nil
         state.gap = nil
         state.result = nil
