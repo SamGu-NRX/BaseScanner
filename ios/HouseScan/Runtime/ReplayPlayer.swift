@@ -83,11 +83,17 @@ final class ReplayPlayer {
 
     /// Finds the frames to hold back for the autopilot's gap loop. Heavy, so it runs off the
     /// main actor; call once before the walk.
-    func prepareHeldBack() async {
-        let planned = planned
+    /// Planned over the walk's frames only: the recording's closing tilt-up run is played for the
+    /// tilt-up step and for requests above the walk (`ScanEngine.tiltUpFrames`), never in the walk.
+    /// With `endsWherePhoneStood`, against the ends a walk ended by "Can't get there" sets,
+    /// 1 m inside them (the cells skipped there are within 0.5 m of the phone).
+    func prepareHeldBack(endsWherePhoneStood: Bool = false) async {
+        let walkEnd = ScanEngine.tiltUpFrames(in: self, map: CoverageMap(wall: wall)).lowerBound
+        let planned = Array(planned[..<walkEnd])
         let wall = wall
+        let policy: ReplayPlanning.EndPolicy = endsWherePhoneStood ? .walked(margin: 1) : .coveredExtremes
         heldBack = await Task.detached(priority: .userInitiated) {
-            ReplayPlanning.heldBackWindow(frames: planned, wall: wall)
+            ReplayPlanning.heldBackWindow(frames: planned, wall: wall, ends: policy)
         }.value
     }
 
