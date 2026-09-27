@@ -143,11 +143,40 @@ struct ResultScreen: View {
         } label: {
             Text(ScanCopy.details)
                 .font(Typeface.sectionTitle)
-                .foregroundStyle(Color.primary)
-                .frame(minHeight: Metrics.minTarget)
         }
-        .tint(Palette.signalText)
-        .accessibilityIdentifier("result.details")
+        .disclosureGroupStyle(DetailsDisclosureStyle())
+    }
+}
+
+/// The Details header as one plain button with the identifier on it. The system style put
+/// `result.details` on an element a tap didn't open. The content appears without animation:
+/// the card's reveal is the screen's only motion.
+private struct DetailsDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                configuration.isExpanded.toggle()
+            } label: {
+                HStack {
+                    configuration.label
+                        .foregroundStyle(Color.primary)
+                    Spacer()
+                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Palette.signalText)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: Metrics.minTarget)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Open" : "Closed")
+            .accessibilityHint(configuration.isExpanded ? "Hides every check and what's still needed." : "Shows every check and what's still needed.")
+            .accessibilityIdentifier("result.details")
+            if configuration.isExpanded {
+                configuration.content
+            }
+        }
     }
 }
 
