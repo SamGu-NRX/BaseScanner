@@ -10,12 +10,17 @@ extension ScanEngine {
     /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
     /// server reads heights (meter.pos y, pose translations) as height above that ground, and
     /// scene.json has no field for the ground's height otherwise.
-    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
-        guard let map = coverage else { throw ExportError.noWall }
-        let wall = map.wall
+    ///
+    /// Everything is placed against `geometry.wall` (`exportGeometry()`): marks are read again
+    /// from their tapped world points when that is the measured chain rather than the walk's wall.
+    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements(), geometry: ExportGeometry) throws -> Data {
+        guard coverage != nil else { throw ExportError.noWall }
+        let wall = geometry.wall
+        let walk = geometry.walk
         let drop = SIMD3<Float>(0, wall.groundY, 0)
-        // The corners carry their pieces' sources (`markNextWall`); the meter's piece, its own
-        // (`meterLineSource`, set on the map in `markMeter`).
+        // The corners carry their pieces' sources (`markNextWall`, or the measured chain's); the
+        // meter's piece, its own (`meterLineSource`, set on the map in `markMeter`, or the
+        // measured piece's).
         let sceneWall = SceneWall(
             meter: wall.meter - drop, outward: wall.outward, groundY: 0, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners,
             source: wall.source)
@@ -27,7 +32,9 @@ extension ScanEngine {
         // nearest valid shape here and logged. A driveway or fence with nothing valid left fails
         // the export instead (`ExportError.markCollapsed`): dropping it would send the ground
         // near it as seen and clear, which can pass its clearance check with the hazard unsent.
-        let features: [SceneFeature] = try state.features.map { feature in
+        let features: [SceneFeature] = try state.features.map { marked in
+            var feature = marked
+            if wall != walk { Self.project(&feature, onto: wall) }
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
             case .door, .window:
@@ -64,23 +71,85 @@ extension ScanEngine {
         let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
         let input = SceneInput(
             wall: sceneWall,
-            baselineS: Self.exportSpan(map),
+            baselineS: geometry.baselineS,
             meterPlusMinus: groundError,
             meterPlane: meterPlaneSource,
             objectPlusMinus: groundError,
             features: features,
-            coverage: SceneCoverage(
-                map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
-            ),
+            coverage: geometry.coverage,
             keyframes: keyframes,
             stills: store.stills,
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
             meshOverheads: mesh.overheads,
             // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
-            groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
+            groundType: state.groundAnswer.flatMap(Self.sceneGroundType),
+            wallPlusMinus: geometry.plusMinus,
+            // A measured wall lies on its fitted line; the meter stays where it was tapped, which
+            // may be on a box proud of that line.
+            meterPosition: wall.meter == walk.meter ? nil : walk.meter - drop
         )
         return try SceneExport.jsonData(input)
+    }
+
+    /// The wall scene.json describes, the stretch of it, what was seen along it, and how well each
+    /// of its pieces' lines is known.
+    struct ExportGeometry: Sendable {
+        var wall: WallFrame
+        /// The walk's wall this was built against: the meter, ends and marks are read from it.
+        var walk: WallFrame
+        var baselineS: ClosedRange<Float>
+        var coverage: SceneCoverage
+        /// `SceneInput.wallPlusMinus`; empty takes the server's default for every piece.
+        var plusMinus: [Float?]
+    }
+
+    /// Under `-coverage legacy`, the walk's tapped wall and the coverage map's sightings. Under
+    /// `map3d`, the 3D map's (`Map3DCoverageSource.export`): the measured wall chain when it
+    /// matches the walk, and coverage read along whichever wall is written.
+    ///
+    /// The 3D map is used only once some depth went into it (LiDAR, a replay's, or estimated
+    /// with `-estimatedDepth on` and the model present). Without, it holds only feature points
+    /// and planes and would report near-empty coverage, so the camera coverage map decides here
+    /// as it does for the walk on such a phone.
+    ///
+    /// Everything is read from one state of the walk's wall (`ExportGeometry.walk`); the caller
+    /// must check it is still the walk's wall after any await (`upload`).
+    func exportGeometry() async throws -> ExportGeometry {
+        guard let start = coverage else { throw ExportError.noWall }
+        func camera(_ map: CoverageMap, because reason: String) -> ExportGeometry {
+            RuntimeLog.engine.info("export: camera coverage map, \(reason, privacy: .public)")
+            return ExportGeometry(
+                wall: map.wall, walk: map.wall, baselineS: Self.exportSpan(map),
+                coverage: SceneCoverage(map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit),
+                plusMinus: [])
+        }
+        guard let map3D else { return camera(start, because: "-coverage legacy") }
+        // The snapshot is computed off the main actor, and meanwhile the meter anchor can move the
+        // wall. One read along another wall than the current one is taken again; the next read
+        // includes the move. Three tries, then the export fails rather than mix two walls.
+        for _ in 0..<3 {
+            let snapshot = await Task.detached(priority: .userInitiated) { map3D.finalSnapshot() }.value
+            guard let snapshot else { throw ExportError.noMap3D }
+            guard let map = coverage else { throw ExportError.noWall }
+            guard snapshot.wall == map.wall else { continue }
+            guard snapshot.integratedDepth else {
+                return camera(map, because: "the 3D map integrated no depth (no LiDAR, and estimated depth off or without its model)")
+            }
+            let export = try Map3DCoverageSource.export(
+                snapshot, tapWall: map.wall, baselineS: Self.exportSpan(map),
+                leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit,
+                walkedFacing: map.facingSpans(), confirmedOverhead: map.overheadSpans())
+            let why = if let reason = export.tappedBecause {
+                "tapped wall (\(reason)); walked facing and confirmed overhead merged in"
+            } else {
+                "measured wall; walked facing and confirmed overhead carried onto its meter piece"
+            }
+            RuntimeLog.engine.info("export: 3D map revision \(snapshot.revision), \(why, privacy: .public), \(export.wall.segments.count) pieces, s \(export.baselineS.lowerBound)...\(export.baselineS.upperBound)")
+            return ExportGeometry(
+                wall: export.wall, walk: map.wall, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
+        }
+        throw ExportError.wallKeptMoving
     }
 
     static func sceneGroundType(_ answer: GroundAnswer) -> SceneGroundType? {
@@ -104,8 +173,10 @@ extension ScanEngine {
     /// where along that line the meter is. On an estimated plane there is no anchor: ARKit fits a
     /// plane to the feature points around the tapped pixel for that one raycast, which is what an
     /// AR tap is, and the schema's `plane` means detected planes, so it is `tap`. Nothing in the
-    /// capture takes a wall line from the LiDAR mesh (`MeshProbe` only measures in front of and
-    /// above a line already set), so no piece is `mesh`.
+    /// walk takes a wall line from the LiDAR mesh (`MeshProbe` only measures in front of and
+    /// above a line already set), so no tapped piece is `mesh`. Under `-coverage map3d` the export
+    /// can write the 3D map's measured chain instead, whose pieces are `mesh` or `plane`
+    /// (`exportGeometry()`).
     ///
     /// A replay's wall is `tap`: a recorded measure-lab wall runs through two tapped ground
     /// contacts (its `contacts`), and a wall assumed from the trajectory was never measured at
@@ -172,6 +243,10 @@ extension ScanEngine {
 
     enum ExportError: Error, CustomStringConvertible {
         case noWall
+        /// Under `-coverage map3d` there is a wall but no 3D map: `setWall` starts both.
+        case noMap3D
+        /// The wall moved during each of three reads of the 3D map.
+        case wallKeptMoving
         /// A driveway or fence whose taps no longer make a line. The homeowner has to mark it
         /// again; `UploadFailure.packaging(_:)` says so.
         case markCollapsed(FeatureKind)
@@ -179,16 +254,21 @@ extension ScanEngine {
         var description: String {
             switch self {
             case .noWall: "There is no wall to export yet."
+            case .noMap3D: "The 3D map was never started for this wall."
+            case .wallKeptMoving: "The wall moved while the 3D map was read, three times running."
             case .markCollapsed(let kind): "The \(kind.rawValue) mark's taps don't make a line."
             }
         }
     }
 
-    /// The server's result in the terms the screens use (meters, wall coordinates).
+    /// The server's result in the terms the screens use (meters, wall coordinates), along the
+    /// wall scene.json described (`exportedWall`), which under `-coverage map3d` can be the
+    /// measured chain rather than the walk's.
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
-        let sceneWall = coverage.map {
-            SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY, leftCorners: $0.wall.leftCorners, rightCorners: $0.wall.rightCorners)
+        let placedWall = exportedWall ?? coverage?.wall
+        let sceneWall = placedWall.map {
+            SceneWall(meter: $0.meter, outward: $0.outward, groundY: $0.groundY, leftCorners: $0.leftCorners, rightCorners: $0.rightCorners)
         }
 
         var spot: BatterySpot?
@@ -278,7 +358,7 @@ extension ScanEngine {
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
                 // or answered with something overhead stays with the installer.
-                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
+                capturable: gapPlanner.plan(for: walkRequest(item), leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
                     .map { !skippedGaps.contains($0) } ?? false
             )
         }
@@ -304,8 +384,18 @@ extension ScanEngine {
             clearances: clearances,
             missing: missing,
             unseenSide: unseen,
-            isSample: isSample
+            isSample: isSample,
+            wall: resultWall()
         )
+    }
+
+    /// The answer's wall (`exportedWall`, or the walk's) as the result screens draw it, with the
+    /// marked ends carried onto it from the walk's wall.
+    func resultWall() -> WallGeometry? {
+        guard let walk = coverage?.wall else { return nil }
+        let wall = exportedWall ?? walk
+        return Self.geometry(
+            wall, leftEnd: coverage?.leftEnd.map { walk.s($0, along: wall) }, rightEnd: coverage?.rightEnd.map { walk.s($0, along: wall) })
     }
 
     static func outcome(_ outcome: PlacementOutcome) -> CheckOutcome {

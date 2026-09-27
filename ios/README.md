@@ -8,12 +8,66 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 - `HouseScan/Runtime/` is the engine: ARKit and replay frame sources, the state machine behind `ScanActions`, keyframe storage, upload and the autopilot.
 - `HouseScan/UI/` holds the screens. They read `ScanViewState` and call `ScanActions`; `HouseScan/Contract/ScanContract.swift` is the boundary between the two.
 
+## 3D map
+
+`HouseScanKit/Sources/HouseScanKit/Map3D/` keeps a live occupancy map of the space around the meter. A ray from the camera marks the voxels it passes through as free and the voxel it stops in as surface. Voxels no ray reached stay unknown, so a wall behind a bush stays unseen until some view gets past the bush. The map uses 10 cm voxels in 8³ bricks, stored only once a ray reaches them. The default bounds hold at most 32 MB. `MapFrame` is the capture packet's meter frame (`packet/README.md`): origin at the meter anchor, +z the wall's outward normal, +y up, and the ground's height below the anchor as `groundY`. `DepthFrame` uses the packet's depth encoding, and a packet's mesh is one `MeshChunk` placed at `MapFrame.poseInWorld`.
+
+`Runtime/Map3DFeed.swift` converts ARKit data into the map's inputs on the AR delegate queue. `Runtime/Map3DSession.swift` owns one map for the app. The delegate queue only converts and hands inputs over, keeping the newest pending frame. The session integrates on its own queue and publishes a `Map3DSnapshot` (coverage, measured walls, fog, next view) at most twice a second. `Runtime/Map3DCoverageSource.swift` is what the export reads: the measured wall chain with each piece's `source` and `plus_minus_ft` when it matches the walk (its meter piece within 0.3 m of the meter, its corners within 0.5 m of the tapped chain, reaching both ends), otherwise the tapped wall. Each wall span goes out with the height its face was seen to. `UI/Camera/Map3DOverlay.swift` draws the fog and the next-view cue. Integrate only frames with normal tracking.
+
+The 3D map is the coverage model by default (`-coverage map3d`); `-coverage legacy` keeps the camera coverage map alone. Under map3d:
+
+- scene.json's coverage, walls and wall sources come from the map once measured depth went into it (LiDAR or a replay's). Estimated depth doesn't count, since it certifies nothing. Without measured depth the export and the walk use the camera coverage map, and the export logs which path it took. The walk's own facing (the walked path) and overhead (tilt-up views confirmed clear) are merged in, taking the larger reach. When the measured chain is written they are first restated along it, on the meter's piece only (`ObservedSpan.carried`).
+- On a phone or replay with depth, the strip and the gap planner count a cell covered only where the map saw it (`CoverageMap.setMeasuredCovered`). Without depth the map is too sparse to walk by, and the camera sightings keep deciding.
+- The result is placed along the wall the scene described, which can be the measured chain.
+- A replay's frames go into the map only on the walk and in a gap request: for the close-up a replay plays its whole recording.
+
+| Phone | Session setting | Feed |
+| --- | --- | --- |
+| LiDAR | `frameSemantics.insert(.sceneDepth)`, `sceneReconstruction = .meshWithClassification` | `depthFrame` → `Map3D.integrate`; `meshChunk` of each added or updated `ARMeshAnchor` → `Map3D.update`, removed → `removeMeshChunk` |
+| No LiDAR | plane detection (already on) | `featureFrame` → `Map3D.integrate`; `planes` → `Map3D.update` |
+
+Outputs, all against a `WallFrame` (the walk's, or one built from the map's own walls):
+
+- `coverage(along:)`: wall, ground, facing and overhead spans for `SceneCoverage(_:leftEndMarked:rightEndMarked:)`.
+  - A span is seen only where rays reached it. A voxel is free only where a ray crossed it completely and ended beyond it.
+  - The wall is judged against where the facade was measured around each cell, not the chain's line. Its face counts within 7.5 cm, and a recessed face up to 0.5 m behind also counts.
+  - Attached relief up to 0.5 m proud, such as a pilaster, counts as the facade, because nothing can be mounted behind it. It must reach headroom, no gap may have been seen behind it, and one of its side faces must show from its front back to the wall: an unseen gap is not evidence it is attached.
+  - Anything else standing in front hides the wall: a box, a shrub, or the meter itself, so the few cells behind the meter stay unseen.
+  - Facing reaches shorter than the battery's depth are not reported.
+- `measuredWalls()`: the outline near the meter as a chain of straight pieces with real corners.
+  - Each piece is marked `mesh` or `plane` and carries `plusMinus`, its line's position error. The server takes both as `walls[].source` and `plus_minus_ft`.
+  - Lines are found by an angle sweep over the densest band of wall evidence, so relief along part of a wall doesn't tilt them.
+  - `wallFrame(meter:groundY:frame:)` turns the chain into a `WallFrame`.
+- `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
+- `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
+- `spotView(span:along:)`: whether the battery's volume in front of a chosen span is blocked (`occluder`: a measured surface hit at least twice), seen `clear` (wall and ground seen, every voxel measured free), or `unknown`. `SpotDecision.decide` turns that and the homeowner's answer into the next step: an occluder always asks for another view and the homeowner can't override it, while unknown asks the homeowner. `Map3DCoverageSource.spotDecision` runs it on the live map; nothing in the app calls it yet, because the confirmation screen belongs to the engine.
+
+Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse, and a replay without depth gives the map nothing.
+
+Estimated depth (`-estimatedDepth on`, off by default) runs Apple's Core ML Depth Anything V2 Small on each kept keyframe of a phone without LiDAR (`Runtime/DepthEstimator.swift`). The model gives inverse depth up to an unknown scale and shift, so each frame is scaled by its own ARKit geometry: `MonocularDepth` fits 1/depth = a · prediction + b to the frame's feature points and to points on detected planes, robustly. A plane point counts only where a feature point on that plane shows it in view nearby: a plane's extent can run behind something standing in front of it. A frame with too few of them gets no depth. Each pixel gets a standard deviation that grows where nothing checked the model:
+
+- the fit's robust residual scale;
+- the local scale of anchors within 8% of the image width;
+- the fit's own uncertainty where it extrapolates;
+- half of any depth jump within two pixels.
+
+Pixels with no anchor nearby get no depth. `Map3D` then treats a pixel as a ray with that uncertainty:
+
+- It carves free space to two deviations short of the depth.
+- It marks a surface only when two deviations are within 15 cm.
+
+That tells seen from unknown for the fog of war and the next view, and nothing more: estimated evidence never certifies coverage. A surface counts as seen only where a LiDAR or feature ray measured it, space counts as free for the facing and overhead bands only where one passed through it, and an estimated ray never lowers a voxel a measured ray hit (`VoxelGrid.integrate`). A review of the first version made estimated hits claim walls behind occluders several ways (`Map3DEstimatedEvidenceTests`). Estimated depth never makes walls. On ETH3D electro, photos only, it claimed nothing: at the photos' 3.8 m median distance two deviations are about 60 cm. The model is not in the repository. The locator looks for it in the app bundle, then in Application Support/Models.
+
+On an M4 Pro, one 256×192 LiDAR frame integrates in about 6 ms (release build, every second pixel), and reading coverage takes about 25 ms. `swift test -c release --filter Map3DPerformanceTests` prints the current numbers. The map assumes nothing moves: an object that appears in space seen empty earlier becomes surface where its face is measured, but its inside keeps the earlier free reading.
+
 ## Launch arguments
 
 | Argument | Effect |
 | --- | --- |
 | `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. Keyframes with a `depth` entry (`{file, confidenceFile, w, h}`, Float32 meters) play their LiDAR depth into coverage as a LiDAR phone would. |
-| `-autopilot` | Drives every step on a replay, answering the ground question with mulch. It holds some walk frames back to close one gap request before the upload. After each upload it also drives the requests the server's answer raises, closing each with the replay's frames, until the result shows. A request the frames don't close gets "I can't get there", as a homeowner would answer. |
+| `-coverage map3d\|legacy` | Where coverage comes from (default `map3d`): see "3D map". Any other value stops the app. |
+| `-estimatedDepth on\|off` | On a live phone without LiDAR under map3d, runs the depth model on kept keyframes into the 3D map, where it clears the fog of war and feeds the next view. It certifies no coverage, so the strip, the planners and the export keep using the camera coverage map on such a phone (default `off`, see "3D map"). Without the model it stays off. Any other value stops the app. |
+| `-autopilot` | Drives every step on a replay, answering the ground question with mulch. It holds some walk frames back to close one gap request before the upload: under map3d on a replay with depth, frames whose depth alone shows a gap the map keeps without them (`ReplayPlanning.heldBackWindow(frames:depths:wall:)`), otherwise frames the camera coverage map needs. On the LiDAR fixture no window qualifies under map3d: the bin's shadow is always the nearest gap, and the autopilot answers it "I can't get there". Under map3d it waits for the map to catch up before each step that reads coverage. After each upload it also drives the requests the server's answer raises, closing each with the replay's frames, until the result shows. A request the frames don't close gets "I can't get there", as a homeowner would answer. |
 | `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Photos stay on the phone unless someone uses Share scan, which shares the scan as a capture packet (see "Scan bundle"). |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |

@@ -95,7 +95,7 @@ struct ResultScreen: View {
     @ViewBuilder
     private func diorama(_ result: ResultPresentation) -> some View {
         ZStack(alignment: .topLeading) {
-            if let wall = state.wall {
+            if let wall = result.wall ?? state.wall {
                 ResultScene3D(wall: wall, result: result, features: state.features, wallHeight: max(state.coverage.wallBandHeight, 2.4))
             } else {
                 Palette.canvas

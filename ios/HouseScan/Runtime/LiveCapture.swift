@@ -56,9 +56,13 @@ final class LiveCapture {
     private var result: AnchorEntity?
     private var occludesPeople = false
 
-    init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
+    /// `map3D` gets every sampled frame and every mesh and plane anchor; nil under `-coverage legacy`.
+    init(
+        onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void,
+        map3D: Map3DSession?
+    ) {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
-        delegate = LiveSessionDelegate(onFrame: onFrame, onEvent: onEvent)
+        delegate = LiveSessionDelegate(onFrame: onFrame, onEvent: onEvent, map3D: map3D)
         arView.session.delegateQueue = DispatchQueue(label: "dev.housescanning.housescan.ar-delegate", qos: .userInitiated)
         arView.session.delegate = delegate
         arView.renderOptions.insert(.disableMotionBlur)
@@ -100,6 +104,11 @@ final class LiveCapture {
             meshClassification: running.sceneReconstruction.contains(.meshWithClassification),
             framesPerSecond: running.videoFormat.framesPerSecond
         )
+    }
+
+    /// Where keyframe candidates of a phone without LiDAR go for estimated depth; nil for none.
+    func setDepthEstimator(_ estimator: DepthEstimator?) {
+        delegate.shared.withLock { $0.depthEstimator = estimator }
     }
 
     /// Where every ARFrame's pose goes as it arrives (`CaptureRecorder.recordPose`).
@@ -321,6 +330,7 @@ struct LiveShared: Sendable {
     var mode: LiveMode = .idle
     var meterAnchorID: UUID?
     var recorder: CaptureRecorder?
+    var depthEstimator: DepthEstimator?
 }
 
 /// Receives ARSession callbacks on a private serial queue. Each sampled frame is reduced to a
@@ -336,6 +346,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     let shared = Mutex(LiveShared())
     private let onFrame: @MainActor @Sendable (SourceFrame) -> Void
     private let onEvent: @MainActor @Sendable (LiveEvent) -> Void
+    private let map3D: Map3DSession?
     private let queueState = Mutex(QueueState())
     private let context = CIContext(options: [.cacheIntermediates: false])
     /// Serial, and every frame the main actor gets passes through it, pose-only ones too, then
@@ -373,9 +384,13 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     /// standing still costs little; not measured on a phone.
     private static let encodeStill = 1.0
 
-    init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
+    init(
+        onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void,
+        map3D: Map3DSession?
+    ) {
         self.onFrame = onFrame
         self.onEvent = onEvent
+        self.map3D = map3D
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
@@ -407,6 +422,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             encodeQueue.async { [self, pose] in deliver(pose) }
             return
         }
+        // The map takes the sampled frames: about 10 a second, and it drops any it can't keep up with.
+        map3D?.ingest(frame, trackingNormal: tracking == .normal)
         let quality = Self.quality(frame.capturedImage)
         let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.alignment == .horizontal }
@@ -429,6 +446,10 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
                     meters: copied.meters, width: copied.width, height: copied.height, confidence: copied.confidence,
                     intrinsics: DepthImage.intrinsics(scaling: camera.intrinsics, from: camera.imageSize, toWidth: copied.width, height: copied.height)
                 )
+            } else if let estimator = shared.depthEstimator, let input = DepthEstimator.input(from: frame, id: snapshot.id, context: context) {
+                // Without LiDAR: a copy of the image and the frame's geometry, so the model can
+                // run once the engine keeps the frame, without holding the ARFrame.
+                estimator.offer(input)
             }
         }
         encodeQueue.async { [self, snapshot] in
@@ -584,6 +605,20 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             @unknown default: .limited(.unknown)
             }
         }
+    }
+
+    // MARK: Anchors
+
+    func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+        map3D?.ingest(updated: anchors)
+    }
+
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        map3D?.ingest(updated: anchors)
+    }
+
+    func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+        map3D?.ingest(removed: anchors)
     }
 
     /// A horizontal plane as the ground choice reads it (`GroundPlaneChoice`): its height, its

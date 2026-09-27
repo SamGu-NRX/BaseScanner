@@ -618,6 +618,10 @@ struct ResultPresentation: Equatable, Sendable {
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
+    /// The wall the answer's s runs along: the one scene.json described. The result screens draw
+    /// along it rather than `ScanViewState.wall`, which is the walk's and can differ from it under
+    /// `-coverage map3d`. Nil in the UI demo, which uses the state's wall.
+    var wall: WallGeometry? = nil
 }
 
 // MARK: - State and intents
@@ -639,6 +643,9 @@ final class ScanViewState {
 
     var wall: WallGeometry?
     var coverage: CoverageStrip = .empty
+    /// The 3D map's unseen space and where to look next, for `Map3DOverlay`. Nil under
+    /// `-coverage legacy` and until the first snapshot after the meter is placed.
+    var map3D: Map3DFog?
     var closeUp: CloseUpState = .aiming(hold: 0, problem: nil)
     /// Close-up attempts that ended without a usable photo. "Can't get a clear shot" appears
     /// from the second one on, never earlier.

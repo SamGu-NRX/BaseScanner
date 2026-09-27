@@ -323,3 +323,21 @@ extension GapPlanner {
         side == .left ? min(plan.span.lowerBound, old) : max(plan.span.upperBound, old)
     }
 }
+
+extension PlacementMissingEvidence {
+    /// This request with its `span_ft` carried from the wall scene.json described (`exported`) to
+    /// the walk's (`walk`), where the gap planner and the coverage map measure s. Under
+    /// `-coverage map3d` the scene can describe the measured wall chain, whose s differs from the
+    /// walk's, most past a corner only one of them has.
+    public func along(_ walk: WallFrame, from exported: WallFrame) -> PlacementMissingEvidence {
+        guard walk != exported, let span = spanFt else { return self }
+        let feetPerMeter = SceneUnits.feetPerMeter
+        func carried(_ feet: Double) -> Double {
+            SceneExport.round4(Double(exported.s(Float(feet / feetPerMeter), along: walk)) * feetPerMeter)
+        }
+        var mapped = self
+        let ends = [carried(span.x), carried(span.y)]
+        mapped.spanFt = SIMD2(ends.min() ?? 0, ends.max() ?? 0)
+        return mapped
+    }
+}

@@ -176,6 +176,114 @@ public enum ReplayPlanning {
         return nil
     }
 
+    /// `heldBackWindow` for a replay whose coverage comes from the 3D map (`-coverage map3d`), which
+    /// counts what LiDAR depth saw from every frame, not only what kept frames pointed at. `depths`
+    /// holds each frame's depth, nil where it has none.
+    ///
+    /// A window is held back only if the map is left with a gap without it, and the window's own
+    /// frames close it: a map built from every other frame, in replay order, leaves the planner a
+    /// gap between the covered extremes, and integrating the frames the app replays for the gap
+    /// (`gapReplayRange`) satisfies it. Frames with limited tracking add nothing, as in the app.
+    ///
+    /// Building a map costs one integration per frame, so windows are tried in order of how many
+    /// cells their frames' depth alone shows (`CoverageMap.visibleCells(from:depth:)` with nothing
+    /// else seeing the cell) between the cells the other frames show: ground before wall, nearest
+    /// the meter first, as `GapPlanner.plan` chooses its gap. A window whose gap would come after
+    /// one the map keeps with every frame is not tried: the planner would ask for that one. At
+    /// most `maxTries` are built. Nil when none works, as on a replay whose nearest gap is a
+    /// stretch no frame's depth reaches.
+    public static func heldBackWindow(
+        frames: [PlannedFrame], depths: [DepthImage?], wall: WallFrame, planner: GapPlanner = GapPlanner(),
+        config: CoverageConfig = CoverageConfig(), mapConfig: Map3DConfig = Map3DConfig(), maxTries: Int = 4
+    ) -> HeldBackWindow? {
+        precondition(depths.count == frames.count, "\(depths.count) depth entries for \(frames.count) frames")
+        guard frames.count >= 6 else { return nil }
+        let depthFrames = frames.indices.map { index -> DepthFrame? in
+            guard frames[index].trackingNormal, let image = depths[index] else { return nil }
+            return DepthFrame(image: image, pose: frames[index].camera)
+        }
+        let empty = CoverageMap(wall: wall, config: config)
+        struct Cell: Hashable {
+            var band: SurfaceBand
+            var index: Int
+        }
+        let seen: [Set<Cell>] = frames.indices.map { index in
+            guard let image = depths[index], frames[index].trackingNormal else { return [] }
+            let sightings = empty.visibleCells(from: frames[index].camera, depth: CoverageMap.storedDepth(image))
+            return Set(sightings.filter { !$0.rows.isEmpty }.map { Cell(band: $0.band, index: $0.index) })
+        }
+        var seenBy: [Cell: Int] = [:]
+        for cells in seen { for cell in cells { seenBy[cell, default: 0] += 1 } }
+        let reach = planner.config.reach
+        var candidates: [(window: Range<Int>, band: Int, distance: Float, only: Int)] = []
+        for size in [4, 6, 3, 8, 10] {
+            for start in 2..<max(2, frames.count - 1) where start + size <= frames.count {
+                let window = start..<(start + size)
+                var inWindow: [Cell: Int] = [:]
+                for index in window { for cell in seen[index] { inWindow[cell, default: 0] += 1 } }
+                // The walk's ends go at what the other frames cover, so only a hole between those
+                // is a gap; cells past them would just move an end.
+                let outside = seenBy.filter { cell, count in count > inWindow[cell, default: 0] }.map(\.key.index)
+                guard let low = outside.min(), let high = outside.max() else { continue }
+                let only = inWindow.keys.filter { cell in
+                    seenBy[cell] == inWindow[cell] && cell.index > low && cell.index < high && abs(empty.cellRange(cell.index).lowerBound) <= reach
+                }
+                // The planner asks for the ground run nearest the meter first, then the wall's, so
+                // a window is only useful if its gap is nearer than any stretch no frame shows.
+                let nearest = only.map { cell in
+                    (cell.band == .ground ? 0 : 1, abs(empty.cellRange(cell.index).lowerBound + empty.config.cellWidth / 2))
+                }.min { $0 < $1 }
+                if let nearest, only.count >= 2 { candidates.append((window, nearest.0, nearest.1, only.count)) }
+            }
+        }
+        candidates.sort { a, b in
+            (a.band, a.distance, -a.only, a.window.count) < (b.band, b.distance, -b.only, b.window.count)
+        }
+
+        func measured(_ map: Map3D, into coverage: inout CoverageMap) {
+            coverage.setMeasuredCovered(coverage.cells(seenIn: map.coverage(along: wall)))
+        }
+        // A gap the map has with every frame (a stretch behind a bin that no view gets past) is
+        // one no window removes, and the planner asks for it before any gap farther out or on the
+        // wall. One map of every frame finds it; only windows whose gap would come first are tried.
+        var full = Map3D(frame: MapFrame(wall: wall), config: mapConfig)
+        for depth in depthFrames.compactMap({ $0 }) { full.integrate(depth) }
+        var fullCoverage = CoverageMap(wall: wall, config: config)
+        measured(full, into: &fullCoverage)
+        if let ends = coveredExtremes(fullCoverage) {
+            fullCoverage.setEnd(.left, at: ends.lowerBound)
+            fullCoverage.setEnd(.right, at: ends.upperBound)
+            if let standing = planner.plan(fullCoverage) {
+                let band = standing.band == .ground ? 0 : 1
+                let span = standing.span
+                let distance: Float = span.contains(0) ? 0 : min(abs(span.lowerBound), abs(span.upperBound))
+                candidates.removeAll { ($0.band, $0.distance) >= (band, distance) }
+            }
+        }
+        for candidate in candidates.prefix(maxTries) {
+            let window = candidate.window
+            var rest = Map3D(frame: MapFrame(wall: wall), config: mapConfig)
+            for index in frames.indices where !window.contains(index) {
+                if let depth = depthFrames[index] { rest.integrate(depth) }
+            }
+            var walked = CoverageMap(wall: wall, config: config)
+            measured(rest, into: &walked)
+            guard let ends = coveredExtremes(walked) else { continue }
+            walked.setEnd(.left, at: ends.lowerBound)
+            walked.setEnd(.right, at: ends.upperBound)
+            guard let gap = planner.plan(walked) else { continue }
+            var restored = rest
+            for index in gapReplayRange(window) {
+                if let depth = depthFrames[index] { restored.integrate(depth) }
+            }
+            var after = walked
+            measured(restored, into: &after)
+            guard planner.isSatisfied(gap, after) else { continue }
+            return HeldBackWindow(frames: window, ends: ends, gap: gap)
+        }
+        return nil
+    }
+
     private static func keptIndices(_ frames: [PlannedFrame], wall: WallFrame, config: CoverageConfig) -> [Int] {
         var map = CoverageMap(wall: wall, config: config)
         var capture = AutoCapture()

@@ -18,13 +18,29 @@ import OSLog
 ///   also writes the scan's scene.json there, for the test to check.
 /// - `-autopilotCantGetThere`: the autopilot ends the walk with "Can't get there" instead of
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
+/// - `-coverage map3d|legacy`: where coverage comes from (default `map3d`). `map3d` is the 3D
+///   occupancy map (`Map3DSession`): scene.json's coverage and walls, the fog overlay, and on a
+///   phone with depth the strip's and planners' covered cells. `legacy` is the camera-sighting
+///   `CoverageMap` alone. Any other value stops the app: a mistyped flag must not run the other model.
+/// - `-estimatedDepth on|off`: on a phone without LiDAR under `map3d`, run the depth model on
+///   kept keyframes into the 3D map, for its fog of war and next view. Coverage stays with the
+///   camera coverage map: estimated depth certifies none (default `off`:
+///   `ScanEngine.estimatedDepthByDefault`). Without the model it stays off. Any other value
+///   stops the app.
 struct LaunchOptions: Equatable {
+    enum CoverageModel: String {
+        case map3d
+        case legacy
+    }
+
     var replayFolder: URL?
     var autopilot = false
     var serverURL: URL?
     var sampleResult = false
     var autopilotHold: Double = 1.2
     var autopilotGate: URL?
+    var coverage: CoverageModel = .map3d
+    var estimatedDepth = ScanEngine.estimatedDepthByDefault
     var autopilotCantGetThere = false
 
     init(
@@ -44,6 +60,14 @@ struct LaunchOptions: Equatable {
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+        if let model = value(after: "-coverage") {
+            guard let parsed = CoverageModel(rawValue: model) else { preconditionFailure("-coverage takes map3d or legacy, not \(model)") }
+            coverage = parsed
+        }
+        if let setting = value(after: "-estimatedDepth") {
+            guard setting == "on" || setting == "off" else { preconditionFailure("-estimatedDepth takes on or off, not \(setting)") }
+            estimatedDepth = setting == "on"
+        }
     }
 
     /// An http(s) URL with a host, or nil. An empty build setting leaves the plist value empty,

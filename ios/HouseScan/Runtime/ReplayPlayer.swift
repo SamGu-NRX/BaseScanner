@@ -82,12 +82,20 @@ final class ReplayPlayer {
     }
 
     /// Finds the frames to hold back for the autopilot's gap loop. Heavy, so it runs off the
-    /// main actor; call once before the walk.
-    func prepareHeldBack() async {
+    /// main actor; call once before the walk. With `map3D` (the 3D map is the coverage model) and a
+    /// recording with depth, the window is planned against the map the app will count coverage
+    /// with; otherwise against the camera coverage map.
+    func prepareHeldBack(map3D: Bool) async {
         let planned = planned
         let wall = wall
+        let session = session
+        let folder = folder
         heldBack = await Task.detached(priority: .userInitiated) {
-            ReplayPlanning.heldBackWindow(frames: planned, wall: wall)
+            guard map3D, session.frames.contains(where: { $0.depth != nil }) else {
+                return ReplayPlanning.heldBackWindow(frames: planned, wall: wall)
+            }
+            let depths = session.frames.map { Self.loadDepth($0, folder: folder) }
+            return ReplayPlanning.heldBackWindow(frames: planned, depths: depths, wall: wall)
         }.value
     }
 

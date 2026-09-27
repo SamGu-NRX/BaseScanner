@@ -9,6 +9,6 @@ xcuserdata/
 DerivedData/
 build/
 
-# SwiftPM build output of the capture package.
-HouseScanKit/.build/
+# SwiftPM build output, of the capture package or of a swift command run from here.
+.build/
 HouseScanKit/.swiftpm/

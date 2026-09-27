@@ -18,8 +18,14 @@ struct CameraOverlays: View {
         // path and pins would sit in the wrong place (checklist T3). They fade back on recovery.
         if state.tracking == .normal, let projection = state.projection, let wall = state.wall {
             ZStack {
-                FogOverlay(coverage: state.coverage, wall: wall, projection: projection, highlight: highlight)
-                    .ignoresSafeArea()
+                // Under `-coverage map3d` the 3D map's frost replaces the wall strip's.
+                if let map3D = state.map3D {
+                    Map3DOverlay(fog: map3D.fog, nextView: map3D.nextView, frame: map3D.frame, projection: projection)
+                        .ignoresSafeArea()
+                } else {
+                    FogOverlay(coverage: state.coverage, wall: wall, projection: projection, highlight: highlight)
+                        .ignoresSafeArea()
+                }
                 WallMarksOverlay(
                     projection: projection,
                     wall: wall,

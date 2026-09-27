@@ -33,10 +33,29 @@ final class FullFlowUITests: XCTestCase {
 
     static var environment: [String: String] { ProcessInfo.processInfo.environment }
 
+    /// On the synthetic replay, which has no depth, the 3D map (the default) sees nothing, so the
+    /// export takes the camera coverage map's path (`ScanEngine.exportGeometry`): the scene reports
+    /// the wall the walk saw rather than the map's empty coverage.
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        var wallEntries = 0
+        try runFlow(replay: replay, onScene: { data in
+            let scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+            let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+            wallEntries = observed.filter { $0["band"] as? String == "wall" }.count
+        })
+        if replay == Self.fixture {
+            XCTAssertGreaterThan(wallEntries, 0, "a replay without depth exported the 3D map's empty coverage")
+        }
+    }
+
+    /// The same flow with the camera coverage map alone (`-coverage legacy`), the model the 3D map
+    /// replaced as the default.
+    @MainActor
+    func testFullFlowFromReplayLegacyCoverage() throws {
+        try runFlow(replay: Self.fixture, extraArguments: ["-coverage", "legacy"])
     }
 
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
@@ -44,8 +63,19 @@ final class FullFlowUITests: XCTestCase {
     /// gap loop, on the gap request.
     @MainActor
     func testFullFlowFromLidarReplay() throws {
+        try runLidarFlow(coverage: nil)
+    }
+
+    @MainActor
+    func testFullFlowFromLidarReplayLegacyCoverage() throws {
+        try runLidarFlow(coverage: "legacy")
+    }
+
+    /// `coverage` is the `-coverage` launch argument; nil leaves the app's default.
+    @MainActor
+    private func runLidarFlow(coverage: String?) throws {
         var showedHidden = false
-        try runFlow(replay: Self.lidarFixture) { app, phase in
+        try runFlow(replay: Self.lidarFixture, extraArguments: coverage.map { ["-coverage", $0] } ?? []) { app, phase in
             guard !showedHidden else { return }
             switch phase {
             // At the autopilot's 3x the walk plays in about 6 s. No other frame sees the wall

@@ -231,6 +231,13 @@ public struct SceneInput: Sendable {
     /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
     /// written as `overheads` entries.
     public var meshOverheads: [ObservedSpan]
+    /// Position error of each piece's line, meters, one per piece of `wall.chain` in the same
+    /// order; nil, or an empty list, leaves the server's default for the piece's source.
+    public var wallPlusMinus: [Float?]
+    /// Where the meter is, world meters, when it is not on the wall's line: a meter tapped on the
+    /// face of a box proud of a measured wall. Its foot on the meter's piece must be the chain's
+    /// origin (s = 0), as the server places it. Nil writes `wall.meter`.
+    public var meterPosition: SIMD3<Float>?
     /// What the homeowner said the ground along the wall is. With a type, the ground the ground
     /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
     /// and the server treats the surface as unknown.
@@ -240,7 +247,8 @@ public struct SceneInput: Sendable {
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
-        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil,
+        wallPlusMinus: [Float?] = [], meterPosition: SIMD3<Float>? = nil
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -256,6 +264,8 @@ public struct SceneInput: Sendable {
         self.meshFacing = meshFacing
         self.meshOverheads = meshOverheads
         self.groundType = groundType
+        self.wallPlusMinus = wallPlusMinus
+        self.meterPosition = meterPosition
     }
 }
 
@@ -273,6 +283,10 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     case nonFiniteNumber(String)
     /// Left corners must run from the meter leftward (s falling below 0), right corners rightward.
     case cornersOutOfOrder([Float])
+    /// A list that must be empty or hold one entry per item of another has neither.
+    case countMismatch(field: String, expected: Int, actual: Int)
+    /// `meterPosition` projects onto the chain this far from the origin, meters.
+    case meterOffChainOrigin(s: Float)
 
     public var description: String {
         switch self {
@@ -288,6 +302,8 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .invalidKeyframe(let id, let r): "keyframe \(id): \(r)"
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
+        case .countMismatch(let f, let e, let a): "\(f) has \(a) entries, expected \(e)"
+        case .meterOffChainOrigin(let s): "meterPosition projects onto the wall at s = \(s) m, not at the chain's origin"
         }
     }
 }
@@ -377,6 +393,17 @@ public enum SceneExport {
         if let h = input.wallHeight, !(h > 0) { throw SceneExportError.nonPositiveWallHeight(h) }
         if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
         if let pm = input.objectPlusMinus { try requireNonNegative(pm, "objectPlusMinus") }
+        // The server puts s = 0 at the meter's projection onto its wall; a millimeter covers
+        // Float rounding of a point built on the chain.
+        if let position = input.meterPosition, abs(wall.wallCoordinates(of: position).s) > 0.001 {
+            throw SceneExportError.meterOffChainOrigin(s: wall.wallCoordinates(of: position).s)
+        }
+        guard input.wallPlusMinus.isEmpty || input.wallPlusMinus.count == chain.segments.count else {
+            throw SceneExportError.countMismatch(field: "wallPlusMinus", expected: chain.segments.count, actual: input.wallPlusMinus.count)
+        }
+        for (index, pm) in input.wallPlusMinus.enumerated() {
+            if let pm { try requireNonNegative(pm, "wallPlusMinus[\(index)]") }
+        }
         let objectError = input.objectPlusMinus.map(feet)
         let meterError: Float? = switch input.meterPlane {
         case .detectedPlane: input.meterPlusMinus
@@ -460,7 +487,7 @@ public enum SceneExport {
             for (index, item) in spans.enumerated() { try requireNonNegative(item.out, "coverage.\(band)[\(index)].out") }
         }
         let corners = chain.segments.dropLast().map(\.span.upperBound)
-        let writtenWalls = walls(chain.segments, ids: wallIDs, sources: chain.segments.map(\.source), baselineS: input.baselineS, height: input.wallHeight, plan: plan)
+        let writtenWalls = walls(chain.segments, ids: wallIDs, sources: chain.segments.map(\.source), plusMinus: input.wallPlusMinus, baselineS: input.baselineS, height: input.wallHeight, plan: plan)
         let meterFeet = point3Feet(wall.meter)
         // Ground entries stop short of every corner, after all joining. The server draws a ground
         // entry as the strip in front of the chain over its span and, where the span crosses a
@@ -518,7 +545,7 @@ public enum SceneExport {
 
         return SceneDocument(
             schema_version: "1.0",
-            meter: .init(pos: point3Feet(wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
+            meter: .init(pos: point3Feet(input.meterPosition ?? wall.meter), wall_id: input.wallID, plus_minus_ft: meterError.map(feet)),
             walls: writtenWalls,
             objects: objects, ground: ground, overheads: overheads.isEmpty ? nil : overheads, facing: facing,
             coverage: .init(
@@ -534,19 +561,20 @@ public enum SceneExport {
     /// previous one ends (the same numbers, computed once), so the server reads the chain as
     /// continuous and each corner as a corner.
     private static func walls(
-        _ segments: [WallSegment], ids: [String], sources: [WallLineSource], baselineS: ClosedRange<Float>, height: Float?,
+        _ segments: [WallSegment], ids: [String], sources: [WallLineSource], plusMinus: [Float?], baselineS: ClosedRange<Float>, height: Float?,
         plan: (Float, Float) -> [Double]
     ) -> [SceneDocument.Wall] {
-        let pieces = segments.indices.compactMap { index -> (id: String, source: WallLineSource, span: ClosedRange<Float>)? in
+        let pieces = segments.indices.compactMap { index -> (id: String, source: WallLineSource, plusMinus: Float?, span: ClosedRange<Float>)? in
             let low = max(segments[index].span.lowerBound, baselineS.lowerBound)
             let high = min(segments[index].span.upperBound, baselineS.upperBound)
-            return low < high ? (ids[index], sources[index], low...high) : nil
+            return low < high ? (ids[index], sources[index], plusMinus.isEmpty ? nil : plusMinus[index], low...high) : nil
         }
         let points = ([pieces.first?.span.lowerBound] + pieces.map(\.span.upperBound)).compactMap { $0 }.map { plan($0, 0) }
         // The source is always written, also `tap`, so the scene says how every line was found.
         return pieces.enumerated().map { index, piece in
             SceneDocument.Wall(
-                id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet), source: piece.source.rawValue)
+                id: piece.id, baseline: [points[index], points[index + 1]], height_ft: height.map(feet), source: piece.source.rawValue,
+                plus_minus_ft: piece.plusMinus.map(feet))
         }
     }
 
@@ -750,6 +778,7 @@ private struct SceneDocument: Encodable {
         var baseline: [[Double]]
         var height_ft: Double?
         var source: String
+        var plus_minus_ft: Double?
     }
     struct Attrs: Encodable {
         var operable: Bool
