@@ -83,14 +83,23 @@ jobs:
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
       # The package's drift tests compare the vendored schemas with the server's and the capture
-      # packet's own copies. Before those branches merge they exist only as branches, which the
-      # shallow checkout leaves out; without them the tests report as skipped, not passed.
+      # packet's own copies: the checkout's server/ and packet/ once merged, else the t3/server and
+      # t3/packet branches, which the shallow checkout leaves out. Either source is required here:
+      # a failed fetch fails the run, and HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather
+      # than skip, so CI can't go green without comparing.
       - name: Fetch the contract branches
         run: |
-          git fetch --no-tags --depth=1 origin \
-            +refs/heads/t3/server:refs/remotes/origin/t3/server \
-            +refs/heads/t3/packet:refs/remotes/origin/t3/packet \
-            || echo "::warning::t3/server or t3/packet is gone; the drift tests read the merged tree or skip"
+          for pair in server:t3/server packet:t3/packet; do
+            folder="${pair%%:*}" branch="${pair#*:}"
+            if [ -d "$folder" ]; then
+              echo "$folder/ is in the checkout; the drift tests read it."
+              continue
+            fi
+            if ! git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
+              echo "::error::Neither $folder/ nor $branch is available, so the vendored $folder schemas can't be compared."
+              exit 1
+            fi
+          done
 
       - name: Install XcodeGen
         run: |
@@ -118,6 +127,8 @@ jobs:
 
       - name: Test HouseScanKit
         # The capture logic is a plain Swift package; its tests run on macOS without a Simulator.
+        env:
+          HOUSESCAN_REQUIRE_UPSTREAM: "1"
         run: swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
 
       # CI builds once from clean, so the index Xcode keeps for editing is wasted work.

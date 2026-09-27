@@ -801,9 +801,10 @@ private func photoJPEG() throws -> URL {
         #expect(digest == PacketSchema.sha256, "Schemas/\(PacketSchema.name) is not the copy taken from t3/packet d5439cf")
     }
 
-    /// Skipped, not passed, where neither packet/ nor origin/t3/packet can be read (CI).
+    /// Skipped, not passed, where neither packet/ nor origin/t3/packet can be read, except under
+    /// `SceneSchemas.requireUpstream` (CI), where that fails.
     @Test(.enabled(
-        if: SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch) != nil,
+        if: SceneSchemas.requireUpstream || SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch) != nil,
         "neither packet/ nor \(PacketSchema.branch) is available to compare against"))
     func vendoredManifestSchemaMatchesThePacketTree() throws {
         let upstream = try #require(SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch))
