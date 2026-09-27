@@ -182,7 +182,10 @@ final class IntegrationUITests: XCTestCase {
         let creates = server.requests("POST captures").count
         run.app.buttons["action.startOver"].firstMatch.tap()
         run.waitFor("onboarding")
+        // Skip jumps to the last page; the scan starts from its "Allow camera" button.
         run.app.buttons["action.onboardingSkip"].tap()
+        XCTAssertTrue(run.app.buttons["action.finishOnboarding"].waitForExistence(timeout: 10))
+        run.app.buttons["action.finishOnboarding"].tap()
         run.waitFor("findMeter")
         XCTAssertTrue(run.send.waitForExistence(timeout: 20), "the new scan did not ask again")
         XCTAssertEqual(run.agree.value as? String, "0")
