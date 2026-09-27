@@ -32,6 +32,9 @@ import SwiftUI
 /// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
 /// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
 /// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoCorner`: the wall turns an outside corner 1.8 m right of the meter and the walk
+///   followed it, so the window and part of its clearance zone are round the corner. For the
+///   result model: `-uiDemoPhase result -uiDemoCorner`.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///
