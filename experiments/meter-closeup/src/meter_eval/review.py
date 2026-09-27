@@ -4,14 +4,16 @@
 settled on, and below it a zoom on the line Vision read. The whole photo comes first so the
 reviewer sees every identifier on the plate, not only the one Vision found. The reviewer
 keeps the number (K) or types a correction (F, then Enter) and downloads the answers as CSV.
-`ingest` copies that CSV to DATA_DIR/labels_human.csv, where `labels.py` picks it up.
+`ingest` merges that CSV into DATA_DIR/labels_human.csv, where `labels.py` picks it up.
+A rebuilt page starts from the answers already ingested and shows a corrected number in place
+of the readers', so a correction survives a rebuild, a new browser and a later Keep.
 Everything stays outside git, because the page shows plaintext meter numbers.
 """
 
 import argparse
 import csv
 import json
-import shutil
+from pathlib import Path
 
 from PIL import Image
 
@@ -47,6 +49,7 @@ def build() -> None:
             second |= {r["id"]: r for r in csv.DictReader(handle)}
     with (RESULTS_DIR / "clean_per_image.csv").open() as handle:
         boxes = {r["id"]: r["number_box"] for r in csv.DictReader(handle)}
+    answers = read_answers(HUMAN_LABELS)
 
     crops = REVIEW_DIR / "crops"
     crops.mkdir(parents=True, exist_ok=True)
@@ -63,11 +66,15 @@ def build() -> None:
                 crop_number(image, box).save(crops / f"{image_id}.jpg", quality=85)
         number = first[image_id]["meter_number"]
         other = second[image_id]["meter_number"]
+        answer = answers.get(image_id)
+        corrected = answer["number"] if answer and answer["number"] else ""
         items.append(
             {
                 "id": image_id,
                 "zoom": box is not None,
-                "number": "" if number == "NONE" else number,
+                "number": corrected or ("" if number == "NONE" else number),
+                "corrected": bool(corrected),
+                "answer": answer,
                 "agreed": row["number_agreed"] == "yes",
                 "other": "" if other in ("NONE", number) else other,
                 "note": first[image_id]["notes"],
@@ -81,17 +88,42 @@ def build() -> None:
     print(f"{len(items)} photos -> {REVIEW_DIR / 'review.html'}")
 
 
-def ingest(path: str) -> None:
-    with open(path) as handle:
+def read_answers(path) -> dict[str, dict]:
+    """A person's answers by photo id; photos without a verdict are left out."""
+    if not path.exists():
+        return {}
+    with path.open() as handle:
         rows = list(csv.DictReader(handle))
-    missing = {"id", "verdict", "number"} - set(rows[0])
-    if missing:
+    if rows and (missing := {"id", "verdict", "number"} - set(rows[0])):
         raise SystemExit(f"{path} lacks columns {sorted(missing)}; export it from review.html")
-    shutil.copyfile(path, HUMAN_LABELS)
-    fixed = [r for r in rows if r["verdict"] == "fix"]
-    print(f"{len(rows)} answers, {len(fixed)} corrections -> {HUMAN_LABELS}")
-    for r in fixed:
-        print(f"  {r['id']}: corrected")
+    return {r["id"]: {"verdict": r["verdict"], "number": r["number"]} for r in rows if r["verdict"]}
+
+
+def merge(earlier: dict[str, dict], new: dict[str, dict]) -> dict[str, dict]:
+    """New answers replace earlier ones photo by photo; photos not answered again keep theirs.
+
+    A Keep that carries no number confirms what the page showed, which is the earlier
+    correction when there is one, so it keeps that number rather than dropping it.
+    """
+    merged = dict(earlier)
+    for image_id, answer in new.items():
+        before = earlier.get(image_id, {})
+        if answer["verdict"] == "keep" and not answer["number"] and before.get("number"):
+            answer = {"verdict": "keep", "number": before["number"]}
+        merged[image_id] = answer
+    return merged
+
+
+def ingest(path: str) -> None:
+    merged = merge(read_answers(HUMAN_LABELS), read_answers(Path(path)))
+    with HUMAN_LABELS.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["id", "verdict", "number"])
+        writer.writerows([i, a["verdict"], a["number"]] for i, a in sorted(merged.items()))
+    fixed = [i for i, a in merged.items() if a["verdict"] == "fix"]
+    print(f"{len(merged)} answers, {len(fixed)} corrections -> {HUMAN_LABELS}")
+    for image_id in sorted(fixed):
+        print(f"  {image_id}: corrected")
     print("Rebuild the manifest with `python -m meter_eval.labels`, then rerun the tables.")
 
 
@@ -190,7 +222,15 @@ TEMPLATE = """<!doctype html>
 <script type="application/json" id="items">__ITEMS__</script>
 <script>
 const items = JSON.parse(document.getElementById("items").textContent);
-const saved = JSON.parse(localStorage.getItem("meter-check") || "{}");
+// Answers already ingested ship with the page, so a new browser starts from them; answers
+// saved in this browser since then take precedence.
+function startingAnswers(items, stored) {
+  const answers = {};
+  for (const item of items) if (item.answer) answers[item.id] = item.answer;
+  return Object.assign(answers, stored);
+}
+
+const saved = startingAnswers(items, JSON.parse(localStorage.getItem("meter-check") || "{}"));
 const list = document.getElementById("list");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let current = 0;
@@ -224,7 +264,10 @@ function render() {
       </div>`;
     if (item.number) el.querySelector(".stamp").textContent = item.number;
     const flag = el.querySelector(".flag");
-    if (item.other) {
+    if (item.corrected) {
+      flag.textContent = "A person corrected this number";
+      flag.hidden = false;
+    } else if (item.other) {
       flag.textContent = `Reader 2 read ${item.other}`;
       flag.hidden = false;
     } else if (item.number && !item.agreed) {
@@ -271,12 +314,20 @@ function store(i, answer) {
   progress();
 }
 
-// Keeping after a correction confirms the corrected number, not the AI readers' one.
-function keepAnswer(previous) {
-  return { verdict: "keep", number: (previous && previous.number) || "" };
+// Keep confirms the number shown: a correction typed here, else an ingested correction, else
+// the AI readers' number (an empty number, which labels.py reads as the readers').
+function keepAnswer(previous, item) {
+  const number = (previous && previous.number) || (item.corrected ? item.number : "");
+  return { verdict: "keep", number };
 }
 
-function keep(i) { store(i, keepAnswer(saved[items[i].id])); select(i + 1); }
+function keep(i) { store(i, keepAnswer(saved[items[i].id], items[i])); select(i + 1); }
+
+function answerRows(items, saved) {
+  return [["id", "verdict", "number"]].concat(
+    items.map((item) => [item.id, saved[item.id]?.verdict || "", saved[item.id]?.number || ""])
+  );
+}
 
 function fix(i) {
   select(i, false);
@@ -309,9 +360,7 @@ document.addEventListener("keydown", (event) => {
 
 document.getElementById("export").onclick = () => {
   const quote = (value) => `"${String(value).replaceAll('"', '""')}"`;
-  const rows = [["id", "verdict", "number"]].concat(
-    items.map((item) => [item.id, saved[item.id]?.verdict || "", saved[item.id]?.number || ""])
-  );
+  const rows = answerRows(items, saved);
   const blob = new Blob([rows.map((row) => row.map(quote).join(",")).join("\\n") + "\\n"],
                         { type: "text/csv" });
   const link = document.createElement("a");

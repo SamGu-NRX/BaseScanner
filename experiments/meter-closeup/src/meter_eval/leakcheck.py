@@ -18,12 +18,12 @@ import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
-from meter_eval.labels import SHORTEST_IDENTIFIER
+from meter_eval.labels import LONGEST_IDENTIFIER, SHORTEST_IDENTIFIER
 from meter_eval.match import digest, normalize
 from meter_eval.paths import EXPERIMENT_DIR
 
 DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
-SHORTEST, LONGEST = SHORTEST_IDENTIFIER, 24
+SHORTEST, LONGEST = SHORTEST_IDENTIFIER, LONGEST_IDENTIFIER
 # Columns of the generated results CSVs that hold image measurements or degradation levels.
 MEASUREMENT_COLUMNS = {
     "contrast",

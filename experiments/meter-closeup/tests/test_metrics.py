@@ -138,10 +138,35 @@ def test_digest_is_hmac_sha256_with_the_key():
     assert digest("1234567") != hashlib.sha256(b"1234567").hexdigest()
 
 
-def test_scrub_removes_four_digit_runs_and_keeps_model_codes():
+def leaves_nothing_to_find(text: str) -> bool:
+    """The leak check's view: no window it would digest survives in the text."""
+    from meter_eval.leakcheck import windows
+    from meter_eval.match import normalize
+
+    return not any(windows(normalize(text)))
+
+
+def test_scrub_catches_slashes_and_colons():
     from meter_eval.labels import scrub
 
-    assert (
-        scrub("utility plate No. 1234; type D4S, CL200") == "utility plate No. #; type D4S, CL200"
-    )
-    assert scrub("serial 12 345 678 and 9.876") == "serial # and #"
+    note = "meter 12/345; alternate 12:345"
+    assert scrub(note) == "meter ##/###; alternate ##:###"
+    assert leaves_nothing_to_find(scrub(note))
+
+
+def test_scrub_catches_every_separator_the_leak_check_drops():
+    from meter_eval.labels import scrub
+
+    for sep in (" ", ".", "-", "/", "_", ":", ";", "|", ",", "\\", "\t", "\n", "#", "*"):
+        note = f"see 123{sep}4567 here"
+        assert leaves_nothing_to_find(scrub(note)), repr(sep)
+        assert "4567" not in scrub(note), repr(sep)
+
+
+def test_scrub_catches_digits_split_by_letters_and_keeps_short_codes():
+    from meter_eval.labels import scrub
+
+    assert leaves_nothing_to_find(scrub("plate 1 ABC00 12 and 34"))
+    assert scrub("utility plate No. 1234") == "utility plate No. ####"
+    # Fewer than four digits within the leak check's window stay readable.
+    assert scrub("a CL200 meter, two plates") == "a CL200 meter, two plates"

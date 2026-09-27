@@ -12,9 +12,11 @@ that decoded JPEG too, never on the pixels before encoding.
 
 Each photo's rows go to DATA_DIR/sweep/rows/<id>.jsonl, written to a temporary file and
 renamed into place, so a photo's file exists only once all its degradations were read. Rows
-carry the digest of the label they were scored against and of the measurement code that made
-them. A photo is swept again unless its file holds exactly the levels `degrade.expected_levels`
-gives for that photo, all scored against its current label by the current code. Raw recognizer output, which contains meter numbers, is not kept.
+carry three digests: of the label they were scored against, of the measurement code, and of
+the measurement inputs (the photo's bytes, its number box and the degradation levels). A photo
+is swept again unless its file holds exactly the levels `degrade.expected_levels` gives for
+that photo, all with the current three digests. Raw recognizer output, which contains meter
+numbers, is not kept.
 """
 
 import argparse
@@ -74,22 +76,34 @@ def rows_path(image_id: str):
     return ROWS_DIR / f"{image_id}.jsonl"
 
 
+def input_digest(image_id: str, box: list[float]) -> str:
+    """SHA-256 over what the degradations are applied to: the photo, its box and the levels.
+
+    The box sets every level's size (a blur is a fraction of the line height), so a changed
+    box changes the degraded images even when the set of levels stays the same.
+    """
+    hasher = hashlib.sha256((DATA_DIR / "images" / f"{image_id}.jpg").read_bytes())
+    hasher.update(json.dumps({"box": box, "levels": LEVELS}, sort_keys=True).encode())
+    return hasher.hexdigest()
+
+
 def expected_for(image_id: str, box: list[float]) -> set[tuple[str, float]]:
     """The (family, level) set the sweep runs on this photo, from its size and number box."""
     with Image.open(DATA_DIR / "images" / f"{image_id}.jpg") as image:
         return expected_levels(box, image.width, image.height)
 
 
-def check_rows(
-    image_id: str, rows: list[dict], label_hmac: str, expected: set[tuple[str, float]]
-) -> list[str]:
+def check_rows(image_id: str, rows: list[dict], label_hmac: str, box: list[float]) -> list[str]:
     """What is wrong with one photo's rows; empty when they are exactly the expected set."""
+    expected, inputs = expected_for(image_id, box), input_digest(image_id, box)
     keys = [(r["family"], r["level"]) for r in rows]
     problems = []
     if any(r.get("label_hmac") != label_hmac for r in rows):
         problems.append(f"{image_id}: scored against another label")
     if any(r.get("code_digest") != code_digest() for r in rows):
         problems.append(f"{image_id}: measured by other code")
+    if any(r.get("input_digest") != inputs for r in rows):
+        problems.append(f"{image_id}: measured on another photo, box or level set")
     if len(keys) != len(set(keys)):
         problems.append(f"{image_id}: duplicate rows")
     if missing := expected - set(keys):
@@ -99,13 +113,13 @@ def check_rows(
     return problems
 
 
-def problems_with(image_id: str, label_hmac: str, expected: set[tuple[str, float]]) -> list[str]:
+def problems_with(image_id: str, label_hmac: str, box: list[float]) -> list[str]:
     """Why this photo must be swept again; empty when its rows file is complete and current."""
     path = rows_path(image_id)
     if not path.exists():
         return [f"{image_id}: not swept"]
     rows = [json.loads(line) for line in path.open()]
-    return check_rows(image_id, rows, label_hmac, expected)
+    return check_rows(image_id, rows, label_hmac, box)
 
 
 def write_rows(image_id: str, records: list[dict]) -> None:
@@ -154,6 +168,7 @@ def second_pass(
 def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
     records = []
     digest, length = row["number_hmac"], int(row["number_len"])
+    inputs = input_digest(row["id"], box)
     SWEEP_DIR.mkdir(parents=True, exist_ok=True)
     work_path = SWEEP_DIR / f"work-{os.getpid()}.jpg"
     with Image.open(DATA_DIR / "images" / f"{row['id']}.jpg") as original:
@@ -175,6 +190,7 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
                 "id": row["id"],
                 "label_hmac": digest,
                 "code_digest": code_digest(),
+                "input_digest": inputs,
                 "family": family,
                 "level": level,
                 "ok": int(ok),
@@ -205,7 +221,7 @@ def main() -> None:
     mine = targets()[args.shard :: args.shards]
     with Reader() as reader:
         for row, box in mine:
-            if not problems_with(row["id"], row["number_hmac"], expected_for(row["id"], box)):
+            if not problems_with(row["id"], row["number_hmac"], box):
                 continue
             started = time.time()
             write_rows(row["id"], sweep_image(reader, row, box))

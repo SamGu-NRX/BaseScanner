@@ -35,8 +35,9 @@ READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
 HUMAN = DATA_DIR / "labels_human.csv"
 SOURCES = DATA_DIR / "shortlist.csv"
 IDENTIFIER_DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
-# The shortest identifier either reader transcribed has four digits; leakcheck scans from here.
-SHORTEST_IDENTIFIER = 4
+# The shortest identifier either reader transcribed has four digits. The leak check digests every
+# window of SHORTEST to LONGEST letters and digits holding that many digits; scrub() uses the same.
+SHORTEST_IDENTIFIER, LONGEST_IDENTIFIER = 4, 24
 # Reader 2 marked these "unsure" for a reason other than the characters of reader 1's number,
 # per its notes: which of two printed numbers is the meter's ID (m25, m30, m33, m38), or a
 # second number cut off by the frame (m63). It transcribed reader 1's number identically.
@@ -89,14 +90,30 @@ def class_kind(label: str) -> str:
     return "ansi_class" if "CL" in label.upper() else "current_rating"
 
 
-# Meter numbers can be as short as four digits (a utility plate such as "No. 1234"), so a note
-# loses any run of four or more digits, however it is spaced or punctuated.
-DIGIT_RUN = re.compile(r"\d(?:[ .\-]?\d)+")
-
-
 def scrub(note: str) -> str:
-    """Drop digit runs of four or more digits from free-text notes."""
-    return DIGIT_RUN.sub(lambda m: "#" if sum(c.isdigit() for c in m[0]) >= 4 else m[0], note)
+    """Replace digits in free-text notes until the leak check could find no identifier there.
+
+    Uses the leak check's own view of text: normalize() drops every character but A-Z and 0-9,
+    so "12/345", "12:345" and "12 A 34" all read as runs. Any digit inside a window of up to
+    LONGEST_IDENTIFIER normalized characters holding SHORTEST_IDENTIFIER or more digits becomes
+    "#". Dropping digits pulls the rest closer together, so this repeats until no window is left.
+    """
+    chars = list(note)
+    while True:
+        # (position in the note, normalized character) for every character normalize() keeps.
+        kept = [(i, n) for i, c in enumerate(chars) for n in normalize(c)]
+        digits = [0]
+        for _, n in kept:
+            digits.append(digits[-1] + n.isdigit())
+        marked = set()
+        for start in range(len(kept)):
+            end = min(start + LONGEST_IDENTIFIER, len(kept))
+            if digits[end] - digits[start] >= SHORTEST_IDENTIFIER:
+                marked |= {i for i, n in kept[start:end] if n.isdigit()}
+        if not marked:
+            return "".join(chars)
+        for i in marked:
+            chars[i] = "#"
 
 
 def build() -> list[dict]:

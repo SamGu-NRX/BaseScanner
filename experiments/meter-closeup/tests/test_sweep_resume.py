@@ -30,12 +30,13 @@ def fresh_data(tmp_path, monkeypatch):
     return tmp_path
 
 
-def rows_for(expected, label="h1", code=None):
+def rows_for(expected, label="h1", code=None, box=BOX):
     return [
         {
             "id": "m01",
             "label_hmac": label,
             "code_digest": code or sweep.code_digest(),
+            "input_digest": sweep.input_digest("m01", box),
             "family": f,
             "level": level,
             "ok": 1,
@@ -67,7 +68,7 @@ def test_expected_levels_skip_only_what_the_photo_cannot_take():
 def test_complete_current_rows_need_no_new_sweep(fresh_data):
     expected = sweep.expected_for("m01", BOX)
     sweep.write_rows("m01", rows_for(expected))
-    assert sweep.problems_with("m01", "h1", expected) == []
+    assert sweep.problems_with("m01", "h1", BOX) == []
 
 
 @pytest.mark.parametrize(
@@ -81,7 +82,7 @@ def test_complete_current_rows_need_no_new_sweep(fresh_data):
 def test_partial_files_with_the_current_label_are_swept_again(fresh_data, keep, reason):
     expected = sweep.expected_for("m01", BOX)
     sweep.write_rows("m01", keep(rows_for(expected)))
-    problems = sweep.problems_with("m01", "h1", expected)
+    problems = sweep.problems_with("m01", "h1", BOX)
     assert problems and reason in problems[0]
 
 
@@ -90,14 +91,14 @@ def test_stale_label_duplicates_and_unknown_levels_are_named(fresh_data):
     rows = rows_for(expected)
     rows.append(dict(rows[0]))
     rows.append({**rows[0], "level": 0.99})
-    problems = " ".join(sweep.check_rows("m01", rows, "h2", expected))
+    problems = " ".join(sweep.check_rows("m01", rows, "h2", BOX))
     assert "another label" in problems
     assert "duplicate" in problems
     assert "unexpected" in problems
 
 
 def test_never_swept_photo_is_reported(fresh_data):
-    assert sweep.problems_with("m02", "h1", set()) == ["m02: not swept"]
+    assert sweep.problems_with("m02", "h1", BOX) == ["m02: not swept"]
 
 
 def test_an_interrupted_write_leaves_no_rows_file(fresh_data, monkeypatch):
@@ -119,7 +120,27 @@ def test_rows_file_is_json_lines(fresh_data):
 def test_rows_measured_by_other_code_are_swept_again(fresh_data):
     expected = sweep.expected_for("m01", BOX)
     sweep.write_rows("m01", rows_for(expected, code="0" * 64))
-    assert "other code" in " ".join(sweep.problems_with("m01", "h1", expected))
+    assert "other code" in " ".join(sweep.problems_with("m01", "h1", BOX))
+
+
+def test_rows_measured_on_another_box_are_swept_again(fresh_data):
+    # A 20 px line becomes 22 px: the same levels run, but every degraded image differs.
+    taller = [0.25, 0.4, 0.5, 0.11]
+    assert sweep.expected_for("m01", taller) == sweep.expected_for("m01", BOX)
+    sweep.write_rows("m01", rows_for(sweep.expected_for("m01", BOX)))
+    assert "another photo, box" in " ".join(sweep.problems_with("m01", "h1", taller))
+
+
+def test_rows_measured_on_other_photo_bytes_are_swept_again(fresh_data):
+    sweep.write_rows("m01", rows_for(sweep.expected_for("m01", BOX)))
+    Image.new("RGB", (400, 200), "gray").save(fresh_data / "images" / "m01.jpg")
+    assert "another photo" in " ".join(sweep.problems_with("m01", "h1", BOX))
+
+
+def test_fresh_rows_carry_the_input_digest(fresh_data):
+    row = {"id": "m01", "number_hmac": "h1", "number_len": "7", "number_core_hmac": "c1"}
+    records = sweep.sweep_image(BlankReader(), row, BOX)
+    assert {r["input_digest"] for r in records} == {sweep.input_digest("m01", BOX)}
 
 
 def test_code_digest_covers_every_measurement_file():

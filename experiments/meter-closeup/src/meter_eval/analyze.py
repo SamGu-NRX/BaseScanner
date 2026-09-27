@@ -20,7 +20,7 @@ import numpy as np
 from meter_eval.degrade import LEVELS
 from meter_eval.paths import RESULTS_DIR
 from meter_eval.stats import auc
-from meter_eval.sweep import expected_for, problems_with, rows_path, targets
+from meter_eval.sweep import problems_with, rows_path, targets
 
 FAMILY_NAMES = {
     "blur": "Gaussian blur, σ as a fraction of the number's line height",
@@ -81,7 +81,7 @@ def load_rows() -> list[dict]:
     rows, problems = [], []
     for row, box in targets():
         image_id = row["id"]
-        found = problems_with(image_id, row["number_hmac"], expected_for(image_id, box))
+        found = problems_with(image_id, row["number_hmac"], box)
         if found:
             problems += found
             continue

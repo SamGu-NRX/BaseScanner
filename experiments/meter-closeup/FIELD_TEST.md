@@ -3,7 +3,7 @@
 The thresholds in [PORTING.md](PORTING.md) come from processed Commons JPEGs, not from the app's camera. Sharpening and noise reduction change sharpness values, so the focus threshold may move. Test both thresholds on one real meter before relying on them.
 
 1. Take the photos below with the app's capture path, or the iPhone camera if the app is not ready.
-2. Copy them into one folder. JPEG and HEIC both work.
+2. Copy them into one folder. JPEG and HEIC both work. The command measures each photo's own pixels and never re-encodes them, because a JPEG round trip can lift sharpness across the threshold.
 3. From this folder, run:
 
 	```sh

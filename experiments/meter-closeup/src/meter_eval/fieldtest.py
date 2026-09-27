@@ -26,6 +26,26 @@ from meter_eval.quality import gray
 SUFFIXES = {".jpg", ".jpeg", ".png", ".heic"}
 
 
+def upright_pixels(photo: Path, scratch: Path) -> Image.Image:
+    """The photo's own decoded pixels, turned upright by its orientation tag.
+
+    Never re-encoded lossily: a JPEG round trip smooths fine detail, and on a synthetic low
+    contrast photo it lifted sharpness from 6.45 to 6.71, across the 6.68 retake threshold.
+    PIL cannot decode HEIC, so macOS sips decodes it to PNG, which is lossless and keeps the
+    orientation tag.
+    """
+    source = photo
+    if photo.suffix.lower() == ".heic":
+        source = scratch / "decoded.png"
+        subprocess.run(
+            ["sips", "-s", "format", "png", str(photo), "--out", str(source)],
+            check=True,
+            capture_output=True,
+        )
+    with Image.open(source) as image:
+        return ImageOps.exif_transpose(image).convert("RGB")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -49,26 +69,17 @@ def main() -> None:
     # Working copies live in a private temporary folder, never in the photo folder, so no
     # file of the user's is overwritten, deleted or scored twice.
     with tempfile.TemporaryDirectory() as scratch, Reader() as reader:
-        upright = Path(scratch) / "upright.jpg"
-        converted = Path(scratch) / "converted.jpg"
+        # Vision ignores the orientation tag, so it reads the upright pixels, saved as PNG
+        # (lossless) so that it sees exactly the pixels the checks measure.
+        upright = Path(scratch) / "upright.png"
         for photo in photos:
-            source = photo
-            if photo.suffix.lower() == ".heic":
-                # PIL cannot decode HEIC; macOS sips can, and keeps the orientation tag.
-                source = converted
-                subprocess.run(
-                    ["sips", "-s", "format", "jpeg", str(photo), "--out", str(source)],
-                    check=True,
-                    capture_output=True,
-                )
-            with Image.open(source) as image:
-                ImageOps.exif_transpose(image).convert("RGB").save(upright, quality=95)
+            image = upright_pixels(photo, Path(scratch))
+            image.save(upright)
+            g = gray(image)
             result = reader.read(upright, barcodes=True)
             read = number_boxes(result["lines"], target, length, lenient=False) is not None
             order = ranked(candidates(result))
             rank = next((i + 1 for i, c in enumerate(order) if digest(c) == target_core), None)
-            with Image.open(upright) as image:
-                g = gray(image)
             guess = top_candidate(result)
             box = guess and guess["box"]
             why = retake.reasons(g, box)
