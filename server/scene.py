@@ -360,17 +360,21 @@ class Scene:
 
     def coverable(self, band: str) -> Geometry:
         """Where observing `band` can settle what is unseen: in front of the scanned walls, and
-        past a limit end. Past an unexplored end the walls may turn any way, so no view settles
-        it; only walking on does (a past_end request)."""
+        for the ground also past a limit end, where a pool or a driveway can still lie and a
+        camera pointed past the end from where the walk stopped sees it. The wall band stops at
+        both end marks: past a limit end there is no wall to show (issue #78). Past an
+        unexplored end the walls may turn any way, so no view settles it; only walking on does
+        (a past_end request)."""
         key = f"coverable-{band}"
         if key not in self._cache:
-            left, right = self.pieces[0], self.pieces[-1]
-            lo = self.s_min if self.end_kinds.get("left") == "unexplored" else left.s0
-            hi = self.s_max if self.end_kinds.get("right") == "unexplored" else right.s1
             if band == "ground":
+                left, right = self.pieces[0], self.pieces[-1]
+                lo = self.s_min if self.end_kinds.get("left") == "unexplored" else left.s0
+                hi = self.s_max if self.end_kinds.get("right") == "unexplored" else right.s1
                 self._cache[key] = self.band_polygon(lo, hi, self.reach_ft)
             else:
-                self._cache[key] = self.wall_line(lo, hi).buffer(1e-6, cap_style="flat")
+                line = self.wall_line(self.s_min, self.s_max)
+                self._cache[key] = line.buffer(1e-6, cap_style="flat")
         return self._cache[key]
 
     def unobserved_wall_lines(self, up_to: float | None = None) -> Geometry:

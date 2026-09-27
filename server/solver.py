@@ -1430,6 +1430,15 @@ def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[View, str]]] = {}
     for chk in c.checks:
         for view in chk.all_missing():
+            if view.band != "ground":
+                # Only the ground is asked for past an end mark: past a limit end there is no
+                # wall, gap in front of it or space over it to show, and past an unexplored end
+                # only walking on settles anything (issue #78). The check stays UNSURE for a
+                # person if what it needs lies there.
+                a, b = max(view.a, scene.s_min), min(view.b, scene.s_max)
+                if b - a < COVERAGE_TOLERANCE_FT:
+                    continue
+                view = replace(view, a=a, b=b)
             by_band.setdefault(view.band, []).append((view, chk.id))
     out = []
     for band, items in by_band.items():
@@ -1446,22 +1455,47 @@ def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
             if depths:
                 request["out_ft"] = _up(max(depths))
                 text += _DEPTH_TEXT[band].format(ft(request["out_ft"]))
-            request["message"] = text + "." + _past_end_hint(scene, a, b)
+            request["message"] = text + "." + _past_end_hint(scene, a, b, within)
             out.append(request)
     return out
 
 
-def _past_end_hint(scene: Scene, a: float, b: float) -> str:
-    """Only a limit end has requests past it (see Scene.coverable); they are met from where the
-    walk stopped."""
+# What a view of the ground past a limit end looks for, by the check that asks for it.
+_LOOKS_FOR = {
+    "gas_clearance": "a gas meter or pipe",
+    "ac_clearance": "an AC unit",
+    "battery_clearance": "another battery",
+    "drive_clearance": "a driveway",
+    "pool_clearance": "a pool",
+}
+
+
+def _past_end_hint(scene: Scene, a: float, b: float, views: list[tuple[View, str]]) -> str:
+    """Only ground past a limit end is asked for past an end (see Scene.coverable and
+    _missing_json); it is met from where the walk stopped. The hint says what that view looks
+    for, from the checks whose views reach past the end."""
     sides = [
         s for s, past in (("left", a < scene.s_min - EPS), ("right", b > scene.s_max + EPS)) if past
     ]
     if not sides:
         return ""
-    return (
-        f" Part of it is past the {' and '.join(sides)} end: point the camera there from the end."
+    looks_for = list(
+        dict.fromkeys(
+            _LOOKS_FOR[i]
+            for v, i in views
+            if i in _LOOKS_FOR and (v.a < scene.s_min - EPS or v.b > scene.s_max + EPS)
+        )
     )
+    why = f" to check for {_either(looks_for)}" if looks_for else ""
+    return (
+        f" Part of it is past the {' and '.join(sides)} end: point the camera there from the "
+        f"end{why}."
+    )
+
+
+def _either(items: list[str]) -> str:
+    """Alternatives as "a, b or c"."""
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} or {items[-1]}"
 
 
 def _locator(scene: Scene, s0: float, s1: float) -> dict[str, Any]:

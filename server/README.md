@@ -107,7 +107,7 @@ Ends and corners:
 
 - A corner the walk follows is the next wall in `walls`, starting at the corner point; the chain is then continuous and the corner raises nothing. Keep walking until the answer's `ends.<side>.beyond_reach` is true or the wall really ends.
 - `unexplored` means the wall continues. Within cable reach it raises a `past_end` request when no spot passes, because a spot may be round it; nothing else settles it.
-- `limit` means no usable wall past it. Ground past a limit end still counts for clearances (a pool behind a fence is still a pool): show it by pointing the camera past the end, reported as a ground span beyond the chain's end, which covers both sides of the wall's continued line.
+- `limit` means no usable wall past it. Ground past a limit end still counts for clearances (a pool behind a fence is still a pool): show it by pointing the camera past the end, reported as a ground span beyond the chain's end, which covers both sides of the wall's continued line. Its request says so, and what the view looks for there. Requests for the wall, the gap in front of it and the space overhead stop at either end mark, since past a limit end there is none of them to show; a check whose radius crosses a limit end can then stay UNSURE for a person.
 
 Supplying exactly what a request in `missing_evidence` names settles it: a `coverage.observed` entry with its `band` and `span_ft`, and an `out_ft` at least the request's `out_ft` (ground, facing, overhead and wall requests carry one).
 
