@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ImageIO
 import simd
 
 /// A file of the 0.4 packet that is on disk and will never change: its bytes, digests and, for
@@ -169,6 +170,11 @@ public actor Packet04Producer {
 
     public var sealedFiles: [SealedFile] { files }
     public var keyframeCount: Int { keyframes.count }
+    public var isFinished: Bool { finished != nil }
+
+    /// The keyframe sealed from the frame at `t`, if there is one: a still taken from a frame that
+    /// was already kept links to it instead of repeating it.
+    public func keyframeID(at t: Double) -> String? { keyframes.first { $0.timestamp == t }?.id }
 
     /// "k00001" for 1.
     public static func keyframeID(_ number: Int) -> String {
@@ -291,10 +297,7 @@ public actor Packet04Producer {
         if let problem = PacketWriter.intrinsicsProblem(o.intrinsics, width: o.width, height: o.height) {
             throw Packet04Error.invalidImage(id: id, reason: problem)
         }
-        let probe = FileManager.default.temporaryDirectory.appending(path: "probe-\(UUID().uuidString).jpg")
-        try jpeg.write(to: probe)
-        defer { try? FileManager.default.removeItem(at: probe) }
-        if let problem = PacketWriter.jpegProblem(probe, width: o.width, height: o.height) {
+        if let problem = Self.jpegProblem(jpeg, width: o.width, height: o.height) {
             throw Packet04Error.invalidImage(id: id, reason: problem)
         }
         if let same = keyframes.first(where: { $0.timestamp == o.t }) {
@@ -311,6 +314,19 @@ public actor Packet04Producer {
         let file = SealedFile.seal(data, path: path, role: role, contentType: type, meta: meta, priority: priority)
         files.append(file)
         return file
+    }
+
+    /// The bytes must be a JPEG of the stated size, stored unrotated.
+    static func jpegProblem(_ jpeg: Data, width: Int, height: Int) -> String? {
+        guard let source = CGImageSourceCreateWithData(jpeg as CFData, nil), CGImageSourceGetType(source) as String? == "public.jpeg",
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        else { return "not a readable JPEG" }
+        let w = properties[kCGImagePropertyPixelWidth] as? Int, h = properties[kCGImagePropertyPixelHeight] as? Int
+        guard w == width, h == height else { return "the JPEG is \(w ?? 0)x\(h ?? 0), not \(width)x\(height)" }
+        if let orientation = properties[kCGImagePropertyOrientation] as? Int, orientation != 1 {
+            return "EXIF orientation \(orientation); store the unrotated sensor image"
+        }
+        return nil
     }
 
     static func numbers(_ k: SIMD4<Float>) -> [Double] { [k.x, k.y, k.z, k.w].map(PacketNumber.double) }

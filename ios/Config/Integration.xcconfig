@@ -1,0 +1,15 @@
+// The capture API test build ("House Scan Integration"): the same app as Shared.xcconfig under
+// its own bundle id and name, so it installs beside the client beta. project.yml attaches this
+// file to the Integration Debug and Integration Release configurations.
+//
+// The capture API's address is not in the repository: the test API takes uploads without a
+// credential, and this repository is public. Put it in Integration.local.xcconfig (gitignored;
+// copy Integration.local.xcconfig.example). Without it the build offers no upload; the
+// -captureAPIURL launch argument can still name one for a development run.
+
+#include "Shared.xcconfig"
+
+BUNDLE_ID_SUFFIX = .integration
+HOUSESCAN_DISPLAY_NAME = House Scan Integration
+
+#include? "Integration.local.xcconfig"

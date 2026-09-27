@@ -44,6 +44,8 @@ public enum Packet04Streams {
             let p = PacketPose.translation(row.cameraToWorld)
             let q = PacketPose.quaternion(PacketPose.rotation(row.cameraToWorld))
             let k = row.intrinsics
+            // The column is free text: a limited state whose reason the contract can't name is
+            // still limited, and the pose it came with is still a measurement.
             let cells = [row.t.description, epoch, Packet04Producer.trackingText(row.tracking) ?? "limited"]
                 + [p.x, p.y, p.z].map { PacketNumber.double($0).description }
                 + [q.x, q.y, q.z, q.w].map(\.description)
@@ -102,6 +104,26 @@ public enum Packet04Streams {
             events.append(.init(time: row.t, state: state, epoch: epoch))
         }
         return events
+    }
+
+    /// Pose rows from the recorder's raw rows: trajectory rows `[t, tracking state, tracking
+    /// reason, 16 camera-to-world values column by column]` and intrinsics rows `[t, fx, fy, cx,
+    /// cy, width, height]` written for the same frame at the same t. A pose with no intrinsics row
+    /// at its t is left out rather than given another frame's calibration.
+    public static func poseRows(trajectory: [[Double]], intrinsics: [[Double]], tracking: (Int, Int) -> PacketTracking) -> [PoseRow] {
+        var calibration: [Double: SIMD4<Float>] = [:]
+        for row in intrinsics where row.count >= 5 { calibration[row[0]] = SIMD4(Float(row[1]), Float(row[2]), Float(row[3]), Float(row[4])) }
+        return trajectory.compactMap { row in
+            guard row.count == 19, let k = calibration[row[0]] else { return nil }
+            let f = row[3...].map(Float.init)
+            let m = simd_float4x4(SIMD4(f[0], f[1], f[2], f[3]), SIMD4(f[4], f[5], f[6], f[7]), SIMD4(f[8], f[9], f[10], f[11]), SIMD4(f[12], f[13], f[14], f[15]))
+            return PoseRow(t: row[0], tracking: tracking(Int(row[1]), Int(row[2])), cameraToWorld: m, intrinsics: k)
+        }
+    }
+
+    /// Motion rows from raw `[t, x, y, z]` rows.
+    public static func motionRows(_ rows: [[Double]]) -> [MotionRow] {
+        rows.filter { $0.count == 4 }.map { MotionRow(t: $0[0], value: SIMD3($0[1], $0[2], $0[3])) }
     }
 
     /// 1 / the median interval between rows, the rate actually recorded. 0 with fewer than two.

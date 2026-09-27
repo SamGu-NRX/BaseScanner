@@ -12,6 +12,14 @@ options:
     iOS: "26.0"
   developmentLanguage: en
 
+# Integration Debug and Integration Release build the same app under its own identity for the
+# capture API test build (Config/Integration.xcconfig).
+configs:
+  Debug: debug
+  Release: release
+  Integration Debug: debug
+  Integration Release: release
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -38,10 +46,12 @@ targets:
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig
+      Integration Debug: Config/Integration.xcconfig
+      Integration Release: Config/Integration.xcconfig
     settings:
       base:
         PRODUCT_NAME: HouseScan
-        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).housescan
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX)
         INFOPLIST_FILE: Config/Info.plist
         MARKETING_VERSION: 0.1.0
         CURRENT_PROJECT_VERSION: 1
@@ -77,6 +87,8 @@ targets:
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig
+      Integration Debug: Config/Integration.xcconfig
+      Integration Release: Config/Integration.xcconfig
 
 schemes:
   HouseScan:
@@ -91,3 +103,17 @@ schemes:
         - HouseScanUITests
     archive:
       config: Release
+  # The capture API test build: same sources, its own bundle id and name, so it installs beside
+  # the client beta.
+  HouseScan Integration:
+    build:
+      targets:
+        HouseScan: all
+    run:
+      config: Integration Debug
+    profile:
+      config: Integration Release
+    analyze:
+      config: Integration Debug
+    archive:
+      config: Integration Release

@@ -17,6 +17,7 @@ private struct RuntimeRoot: View {
 
     var body: some View {
         ScanRootView(state: engine.state, actions: engine)
+            .modifier(CaptureIntegrationOverlay(integration: engine.integration, phase: engine.state.phase))
             .task {
                 guard !started else { return }
                 started = true

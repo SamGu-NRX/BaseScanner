@@ -1,3 +1,4 @@
+import CoreGraphics
 import CoreMotion
 import Foundation
 import HouseScanKit
@@ -35,6 +36,10 @@ final class CaptureRecorder: Sendable {
         case deviceMotion
         /// t, pressure in kPa, relative altitude in m.
         case barometer
+        /// t, then that ARFrame's fx, fy, cx, cy in pixels of the camera image and the image's
+        /// width and height, for the 0.4 packet's per-frame intrinsics. Written with the
+        /// trajectory row of the same frame, at the same t.
+        case intrinsics
 
         var width: Int {
             switch self {
@@ -42,6 +47,7 @@ final class CaptureRecorder: Sendable {
             case .accelerometer, .gyroscope, .magnetometer: 4
             case .deviceMotion: 15
             case .barometer: 3
+            case .intrinsics: 7
             }
         }
 
@@ -128,6 +134,21 @@ final class CaptureRecorder: Sendable {
         let columns = [m.columns.0, m.columns.1, m.columns.2, m.columns.3]
         let pose = columns.flatMap { [Double($0.x), Double($0.y), Double($0.z), Double($0.w)] }
         append(.trajectory, [t, Double(tracking.state), Double(tracking.reason)] + pose)
+    }
+
+    /// The pose row and that frame's own calibration (`ARCamera.intrinsics`, 3x3 column-major,
+    /// and `imageResolution`), both at the frame's time.
+    func recordPose(t: Double, tracking: TrackingCode, cameraToWorld m: simd_float4x4, intrinsics k: simd_float3x3, imageSize: CGSize) {
+        recordPose(t: t, tracking: tracking, cameraToWorld: m)
+        append(.intrinsics, [t, Double(k[0][0]), Double(k[1][1]), Double(k[2][0]), Double(k[2][1]), Double(imageSize.width), Double(imageSize.height)])
+    }
+
+    /// Uptime and wall clock of the session's first trajectory row, nil before one.
+    func sessionStart() -> (uptime: Double, date: Date)? {
+        state.withLock { state in
+            guard let uptime = state.firstUptime, let date = state.startedAt else { return nil }
+            return (uptime, date)
+        }
     }
 
     /// Appends one row. A row not later than the stream's last one is dropped: every stream's `t`

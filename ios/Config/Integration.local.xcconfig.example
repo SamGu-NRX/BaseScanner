@@ -1,0 +1,4 @@
+// Copy to Integration.local.xcconfig (gitignored) to point the integration build at a capture API:
+// the API base including /v1. xcconfig reads // as a comment, so $() splits the slashes.
+
+HOUSESCAN_CAPTURE_API_URL = https:/$()/capture-api.example.com/v1

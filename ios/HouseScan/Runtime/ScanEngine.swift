@@ -132,6 +132,8 @@ final class ScanEngine {
     // Packet
     /// The packet's sensor streams for the current world frame.
     private(set) var recorder: CaptureRecorder
+    /// The integration build's capture upload (packet 0.4); inert without an endpoint and consent.
+    let integration = CaptureIntegration()
     private let motion = MotionSource()
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
@@ -298,6 +300,7 @@ final class ScanEngine {
         state.feed = .live
         state.depthAvailable = LiveCapture.supportsDepth
         capture.setRecorder(recorder)
+        integration.begin(store: store, recorder: recorder)
         capture.start()
         updateRecording()
     }
@@ -1082,6 +1085,7 @@ final class ScanEngine {
         generation += 1
         // A new world frame is a new packet session: what was recorded is in the old frame.
         recorder.restart()
+        integration.worldReset(store: store, recorder: recorder)
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
@@ -1397,6 +1401,7 @@ final class ScanEngine {
             return
         }
         saveBundle(scene: scene, mesh: meshSnapshot)
+        integration.captureEnded()
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {
@@ -1543,6 +1548,7 @@ final class ScanEngine {
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
         live?.setRecorder(recorder)
+        integration.startOver(store: store, recorder: recorder)
         motion.stop()
         resetPacketLog()
         keptSourceIDs = []

@@ -204,6 +204,19 @@ func temporaryPacketFolder(_ name: String) -> URL {
         #expect(out.pairingNote["imuRawRowsKept"] == "99 of 100")
     }
 
+    @Test func poseRowsJoinEachFrameToItsOwnIntrinsics() {
+        func trajectory(_ t: Double, x: Double) -> [Double] { [t, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, 1.5, -2, 1] }
+        let rows = Packet04Streams.poseRows(
+            trajectory: [trajectory(1, x: 0.1), trajectory(2, x: 0.2), trajectory(3, x: 0.3)],
+            // Frame 2 wrote no intrinsics row: it is left out, not given frame 1's or frame 3's.
+            intrinsics: [[1, 1440, 1441, 960, 720, 1920, 1440], [3, 1500, 1501, 961, 721, 1920, 1440]],
+            tracking: { state, _ in state == 0 ? .normal : .notAvailable })
+        #expect(rows.map(\.t) == [1, 3])
+        #expect(rows[1].intrinsics == SIMD4(1500, 1501, 961, 721))
+        #expect(rows[1].cameraToWorld.columns.3 == SIMD4(0.3, 1.5, -2, 1))
+        #expect(rows[0].tracking == .normal)
+    }
+
     @Test func aSlowIMUIsRefusedNotRelabelled() {
         let accel = (0..<20).map { Packet04Streams.MotionRow(t: Double($0) * 0.05, value: SIMD3(0, -1, 0)) }
         #expect(throws: Packet04Error.streamTooSlow(stream: "imuRaw", measuredHz: 1 / 0.05, minimumHz: 50)) {
