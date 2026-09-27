@@ -13,6 +13,7 @@ from hsverify.resultcheck import (
     chain_ends_s,
     comparable,
     coverage_problems,
+    declared_height_problems,
     expectation_problems,
     invariant_problems,
     less_coverage_problems,
@@ -51,6 +52,8 @@ RULES = RuleSet(
         "drift_per_ft": 0.16,
     },
     step_ft=1 / 6,  # the server's 2 in
+    wall_join_ft=0.6,
+    battery_height_ft=3.25,
 )
 
 SCENE = {
@@ -378,7 +381,7 @@ openings: {exempt_bottom_above_ft: null}
 facing: {min_ft: {value: 3}}
 headroom: {min_ft: {value: 6.5}}
 route: {height_ft: {value: 1}}
-sweep: {step_ft: {value: 0.166666666667}}
+sweep: {step_ft: {value: 0.166666666667}, wall_join_ft: {value: 0.6}}
 """
     rules = RuleSet.from_yaml(text)
     assert rules.needs["pool_clearance"] == (Need("ground", 10.0),)
@@ -388,6 +391,7 @@ sweep: {step_ft: {value: 0.166666666667}}
     assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
     assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5),)
     assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5),)
+    assert (rules.wall_join_ft, rules.battery_height_ft) == (0.6, 3.25)
     assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
     lower = RuleSet.from_yaml(
         text.replace("exempt_bottom_above_ft: null", "exempt_bottom_above_ft: 2")
@@ -777,7 +781,7 @@ def test_chain_ends_are_measured_from_the_meter():
             {"id": "b", "baseline": [[-5.0, 0.0], [5.0, 0.0]]},
         ],
     }
-    assert chain_ends_s(scene) == pytest.approx((-10.0, 3.0))
+    assert chain_ends_s(scene, RULES) == pytest.approx((-10.0, 3.0))
 
 
 def test_a_view_that_only_reaches_the_needed_height_is_not_higher():
@@ -858,3 +862,69 @@ def test_facing_and_headroom_widen_by_the_default_error_with_drift():
     problems = coverage_problems(scene, r, BAND_RULES)
     assert any("facing [4.33, 5.70] observed, none seen" in m for m in problems)
     assert any("overhead [4.33, 5.70] observed, none seen" in m for m in problems)
+
+
+@pytest.mark.parametrize(
+    ("errors", "right_end"),
+    [
+        ((None, None), 5.0),
+        ((0.1, 0.1), 5.4),
+        ((0.3, 0.2), 5.0),
+        ((0.3, 0.0), 5.4),
+        ((0.0, 0.0), 5.4),
+    ],
+)
+def test_walls_meet_across_a_space_within_both_errors(errors, right_end):
+    # 0.4 ft between the walls. Within both walls' own errors (0.3 + 0.3 by default, capped at
+    # 0.6) they meet and s skips the space; wider, it is a gap that s counts. Exact walls keep
+    # any gap (server/scene.py at 7133283).
+    scene = {
+        "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "a"},
+        "walls": [
+            {"id": "a", "baseline": [[-5.0, 0.0], [0.0, 0.0]]},
+            {"id": "b", "baseline": [[0.4, 0.0], [5.4, 0.0]]},
+        ],
+    }
+    for wall, error in zip(scene["walls"], errors, strict=True):
+        if error is not None:
+            wall["plus_minus_ft"] = error
+    assert chain_ends_s(scene, RULES) == pytest.approx((-5.0, right_end))
+
+
+def test_the_join_uses_the_walls_own_error_not_drift():
+    # 0.8 ft apart, 20 ft from the meter: drift would make the errors exceed it, but the join
+    # uses the default 0.3 + 0.3 capped at 0.6, so it is a gap.
+    scene = {
+        "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "a"},
+        "walls": [
+            {"id": "a", "baseline": [[0.0, 0.0], [20.0, 0.0]]},
+            {"id": "b", "baseline": [[20.8, 0.0], [25.0, 0.0]]},
+        ],
+    }
+    assert chain_ends_s(scene, RULES) == pytest.approx((0.0, 25.0))
+
+
+def short_wall_scene(height: float, span: list[list[float]]) -> dict:
+    scene = copy.deepcopy(SCENE)
+    scene["walls"] = [
+        {"id": "w1", "baseline": [[-12.0, 0.0], span[0]], "plus_minus_ft": 0.3},
+        {"id": "low", "baseline": span, "plus_minus_ft": 0.3, "height_ft": height},
+    ]
+    return scene
+
+
+@pytest.mark.parametrize(("height", "flagged"), [(3.0, True), (3.25, True), (3.26, False)])
+def test_backing_passes_only_if_every_declared_wall_within_error_is_taller(height, flagged):
+    # The spot [1, 3.58] on w1, which ends at 3.7; the low wall starts there, within 0.3 ft.
+    scene = short_wall_scene(height, [[3.7, 0.0], [12.0, 0.0]])
+    r = result(checks=[check(), passing("wall_backing")])
+    msgs = declared_height_problems(scene, r, RULES)
+    assert bool(msgs) == flagged
+    if flagged:
+        assert "check wall_backing passes but wall low" in msgs[0]
+
+
+def test_a_short_wall_beyond_the_error_does_not_matter():
+    scene = short_wall_scene(2.0, [[4.0, 0.0], [12.0, 0.0]])
+    r = result(checks=[check(), passing("wall_backing")], sweep=[])
+    assert declared_height_problems(scene, r, RULES) == []

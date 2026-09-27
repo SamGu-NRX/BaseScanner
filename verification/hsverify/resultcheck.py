@@ -81,6 +81,10 @@ class RuleSet:
     route_height_ft: float = 0.0
     # the rules' sweep.step_ft: the spacing at which a passing sweep run's starts are sampled
     step_ft: float | None = None
+    # the rules' sweep.wall_join_ft: the most two walls' ends may be apart and still meet
+    wall_join_ft: float | None = None
+    # the rules' battery.height_ft: a wall that declares height_ft must be taller
+    battery_height_ft: float | None = None
 
     @classmethod
     def from_yaml(cls, text: str) -> RuleSet:
@@ -136,6 +140,8 @@ class RuleSet:
             errors,
             value("route", "height_ft"),
             value("sweep", "step_ft"),
+            value("sweep", "wall_join_ft"),
+            value("battery", "height_ft"),
         )
 
 
@@ -287,6 +293,7 @@ def invariant_problems(
     problems += missing_evidence_problems(scene, result, rules)
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
+        problems += declared_height_problems(scene, result, rules)
     return problems
 
 
@@ -309,8 +316,12 @@ def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: floa
         raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
     if "plus_minus_ft" in wall:
         return wall["plus_minus_ft"]
-    default = rules.errors[WALL_ERROR[wall.get("source", "tap")]]
-    return default + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+    return wall_error(wall, rules) + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+
+
+def wall_error(wall: dict, rules: RuleSet) -> float:
+    """A wall's own position error, without drift: its explicit one or its source's default."""
+    return wall.get("plus_minus_ft", rules.errors[WALL_ERROR[wall.get("source", "tap")]])
 
 
 def reach_gaps(
@@ -501,7 +512,7 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
     if rules is None or spot is None:
         return problems
     lo, hi = spot["span_ft"]
-    asked = with_past_ends_asked(scene, requests)
+    asked = with_past_ends_asked(scene, requests, rules)
     for c in unobserved_checks(result):
         if c not in rules.needs:
             continue
@@ -517,42 +528,100 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
 END_TOL_FT = 0.1
 
 
-def chain_ends_s(scene: dict) -> tuple[float, float] | None:
-    """s of the wall chain's left and right ends (the meter's projection is s = 0; distance
-    runs along every wall and across the spaces between them), or None without a meter wall.
+# The server's float tolerance (server/scene.py EPS at 7133283), for comparisons that must
+# agree with it exactly: where walls meet and whether a declared wall is taller.
+SERVER_EPS = 1e-9
 
-    TODO: skip the space between walls that meet, as the server does, once S2 settles when two
-    walls meet (#11); counting it now puts an end up to sweep.wall_join_ft too far out."""
+
+def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] | None:
+    """Each wall's stretch of s (the meter's projection is s = 0), or None without a meter wall.
+
+    s runs along every wall. The space from one wall's end to the next one's start counts only
+    when it is a gap: wider than both walls' own errors together (no drift), capped at
+    sweep.wall_join_ft. Narrower, the walls meet and s skips the space (server/scene.py at
+    7133283, `meets`)."""
+    if rules.wall_join_ft is None:
+        raise ValueError("laying out the walls needs the rules' sweep.wall_join_ft")
     walls = scene.get("walls", [])
-    points, owner = [], []
-    for wall in walls:
-        for pt in wall["baseline"]:
-            points.append(tuple(pt))
-            owner.append(wall["id"])
-    if len(points) < 2 or "meter" not in scene:
+    if not walls or "meter" not in scene:
         return None
-    cum = [0.0]
-    for p, q in itertools.pairwise(points):
-        cum.append(cum[-1] + math.dist(p, q))
+    raw: dict[str, tuple[float, float]] = {}
+    meter_s = None
     mx, _, mz = scene["meter"]["pos"]
-    best = None
-    for i, (p, q) in enumerate(itertools.pairwise(points)):
-        if owner[i] != scene["meter"]["wall_id"] or owner[i + 1] != owner[i]:
-            continue
-        seg = math.dist(p, q)
-        if seg == 0:
-            continue
-        t = ((mx - p[0]) * (q[0] - p[0]) + (mz - p[1]) * (q[1] - p[1])) / seg**2
-        t = min(1.0, max(0.0, t))
-        d = math.dist((mx, mz), (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
-        if best is None or d < best[0]:
-            best = (d, cum[i] + t * seg)
-    if best is None:
+    s, prev = 0.0, None
+    for wall in walls:
+        pts = [tuple(pt) for pt in wall["baseline"]]
+        if prev is not None:
+            space = math.dist(prev[0], pts[0])
+            meets = min(rules.wall_join_ft, max(prev[1] + wall_error(wall, rules), SERVER_EPS))
+            s += space if space > meets else 0.0
+        start = s
+        for p, q in itertools.pairwise(pts):
+            seg = math.dist(p, q)
+            if wall["id"] == scene["meter"]["wall_id"] and seg > 0:
+                t = ((mx - p[0]) * (q[0] - p[0]) + (mz - p[1]) * (q[1] - p[1])) / seg**2
+                t = min(1.0, max(0.0, t))
+                d = math.dist((mx, mz), (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
+                if meter_s is None or d < meter_s[0]:
+                    meter_s = (d, s + t * seg)
+            s += seg
+        raw[wall["id"]] = (start, s)
+        prev = (pts[-1], wall_error(wall, rules))
+    if meter_s is None:
         return None
-    return -best[1], cum[-1] - best[1]
+    return {wid: (a - meter_s[1], b - meter_s[1]) for wid, (a, b) in raw.items()}
 
 
-def with_past_ends_asked(scene: dict, requests: list[dict]) -> dict:
+def chain_ends_s(scene: dict, rules: RuleSet) -> tuple[float, float] | None:
+    """s of the wall chain's left and right ends, or None without a meter wall."""
+    spans = wall_spans_s(scene, rules)
+    if spans is None:
+        return None
+    return min(a for a, _ in spans.values()), max(b for _, b in spans.values())
+
+
+def declared_height_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    """A battery backs onto a wall that declares `height_ft` only if the wall is taller than the
+    battery. The server fails wall_backing for a lower wall surely behind the battery and leaves
+    it unsure for one within the battery's error of it (server/solver.py at 7133283,
+    check_backing), so wall_backing passes only if every declared wall overlapping
+    [s0 - e, s1 + e] is taller than battery.height_ft."""
+    declared = {w["id"]: w["height_ft"] for w in scene.get("walls", []) if "height_ft" in w}
+    if not declared or rules.battery_height_ft is None:
+        return []
+    spans = wall_spans_s(scene, rules) or {}
+    height = rules.battery_height_ft
+
+    def short_near(wall_id: str, lo: float, hi: float) -> str | None:
+        e = battery_error(scene, rules, wall_id, lo, hi)
+        for wid, h in declared.items():
+            a, b = spans.get(wid, (math.inf, -math.inf))
+            near = a < hi + e - SERVER_EPS and b > lo - e + SERVER_EPS
+            if near and h - height <= SERVER_EPS:
+                return f"wall {wid} ({h} ft) is within {e:.2f} ft and not taller than {height} ft"
+        return None
+
+    problems = []
+    spot = result.get("spot")
+    backing = next((c for c in result.get("checks", []) if c["id"] == "wall_backing"), None)
+    if spot is not None and backing is not None and backing["outcome"] == "pass":
+        short = short_near(spot["wall_id"], *spot["span_ft"])
+        if short:
+            problems.append(f"check wall_backing passes but {short}")
+    for run in result.get("sweep", []):
+        if run["outcome"] != "pass":
+            continue
+        for start in run_starts(run["start_ft"], rules.step_ft):
+            short = short_near(run["wall_id"], start, start + rules.width_ft)
+            if short:
+                problems.append(
+                    f"sweep pass for starts {run['start_ft']} but at {start:.2f} {short}"
+                )
+                break
+    return problems
+
+
+def with_past_ends_asked(scene: dict, requests: list[dict], rules: RuleSet) -> dict:
     """The scene as if everything past each end the result asks to walk past were observed.
 
     Past an unexplored end the wall may turn, so a view along the same line settles nothing; the
@@ -561,7 +630,7 @@ def with_past_ends_asked(scene: dict, requests: list[dict]) -> dict:
     `limit`, earns that credit."""
     kinds = scene.get("coverage", {}).get("ends", {})
     past = [r for r in requests if r["kind"] == "past_end" and "span_ft" in r and "side" in r]
-    ends = chain_ends_s(scene) if past else None
+    ends = chain_ends_s(scene, rules) if past else None
     if not past or ends is None:
         return scene
     m = copy.deepcopy(scene)
