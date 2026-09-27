@@ -11,9 +11,9 @@ swift test
 ./make-video.sh [output folder]
 ```
 
-`./make-video.sh` and `LiveDots --still` produced the files in `results/`; the stills there are downscaled to 800 px.
+`./make-video.sh` and `LiveDots --still` produced `results/`; its stills are downscaled to 800 px.
 
-The fixture is the synthetic wall from #10. The no-LiDAR mode is simulated from its depth: feature points need a 0.1 gradient, not the edges' 0.2, because ARKit finds them on brick texture too, and live while seen in 2 of the last 6 keyframes, where the real app would use 3 of 10 at frame rate.
+The fixture is the synthetic wall from #10. The no-LiDAR mode is simulated from its depth: feature points use a 0.1 gradient, since ARKit finds them on brick texture too, and live while seen in 2 of the last 6 keyframes, where the real app would use 3 of 10 at frame rate.
 
 **Result.** It passes. At 0.2, 100% of outline voxels and 1% of brick voxels become edges, and nothing draws behind the bin. On an M4 Pro, 6,000 dots with halos take 0.54 ms of GPU per 1170 × 2532 frame.
 
