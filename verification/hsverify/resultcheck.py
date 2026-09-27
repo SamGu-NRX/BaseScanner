@@ -196,7 +196,10 @@ def observed(
             spans.append(tuple(sorted(entry["span_ft"])))
             continue
         far = reached(entry)
-        if (far <= min_out_ft) if beyond else (far + EPS < min_out_ft):
+        # Without `beyond` the view must reach min_out_ft itself: a request's out_ft is set just
+        # past a rule's line (server _above, 1e-6 over it), so any looser slack than the
+        # server's own would count a view at the line as reaching past it.
+        if (far <= min_out_ft) if beyond else (far + SERVER_EPS < min_out_ft):
             continue
         spans.append(tuple(sorted(entry["span_ft"])))
     spans.sort()

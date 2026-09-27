@@ -20,8 +20,10 @@ ENGINE_CATEGORY = "engine"
 # The engine logs `bundle <path> with <N> keyframes` once it has written a scan bundle; the path
 # is on the Mac's disk, inside the Simulator's app container.
 # "bundle <path>.zip with N keyframes", optionally followed by ", <details>" (app 194f2eb adds
-# depth and mesh counts).
-_BUNDLE_RE = re.compile(r"^bundle (.+\.zip) with (\d+) keyframes(?:,.*)?$")
+# depth and mesh counts); from app f14947e, "bundle <path>.zip: packet 1.1 with N photos ...".
+_BUNDLE_RE = re.compile(
+    r"^bundle (.+\.zip)(?: with (\d+) keyframes(?:,.*)?|: .*?\bwith (\d+) photos\b.*)$"
+)
 
 # A state name is an identifier-like token. Anything after it on the line is detail.
 _STATE_RE = re.compile(r"STATE=([A-Za-z0-9_.\-]+)")
@@ -56,10 +58,13 @@ def _app_entry(line: str, category: str) -> dict | None:
 
 
 def parse_bundle_line(line: str) -> tuple[str, int] | None:
-    """(zip path, keyframe count) from the engine's bundle line, or None for any other line."""
+    """(zip path, keyframe or photo count) from the engine's bundle line, or None for any other
+    line."""
     entry = _app_entry(line, ENGINE_CATEGORY)
     match = _BUNDLE_RE.match((entry or {}).get("eventMessage") or "")
-    return (match.group(1), int(match.group(2))) if match else None
+    if not match:
+        return None
+    return match.group(1), int(match.group(2) or match.group(3))
 
 
 def parse_ndjson_line(line: str) -> StateEvent | None:

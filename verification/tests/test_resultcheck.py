@@ -1007,3 +1007,16 @@ def test_what_lies_past_an_unexplored_end_needs_only_the_walk_past_it():
         {"kind": "past_end", "side": "left", "span_ft": [-1.0, -1.0], "message": ""}
     ]
     assert missing_evidence_problems(scene, r, wide) == []
+
+
+def test_a_view_at_headroom_does_not_settle_a_request_just_past_it():
+    # App f14947e reports the wall seen to exactly 6.5 ft; the server then asks for a view past
+    # headroom, out_ft 6.500001. That request is not redundant.
+    r = result()
+    r["missing_evidence"] = [
+        {"kind": "band", "band": "wall", "span_ft": [-3.0, -1.0], "out_ft": 6.500001, "message": ""}
+    ]
+    msgs = invariant_problems(with_wall_seen(6.5), r, rules=RULES)
+    assert not any("lists as observed" in m for m in msgs)
+    msgs = invariant_problems(with_wall_seen(6.500001), r, rules=RULES)
+    assert any("lists as observed" in m for m in msgs)

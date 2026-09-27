@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-27T01:23:01-05:00",
+  "generated_at": "2026-09-27T01:50:01-05:00",
   "command": "uv run python -m hsverify.scoreboard",
   "slow": [
     "S2-1",
@@ -10,27 +10,27 @@
       "number": 124,
       "title": "tools: viewer that films a capture reaching the server, as a labeled replay or read-only live view",
       "branch": "t3/integration-viewer",
-      "head": "1fa19b3349803ab57da5393b47f05ea0fc5b2add",
+      "head": "ed87212dc02a87844b5240d3facd5d05616c11f9",
       "draft": false,
-      "updated": "2026-09-27T06:17:49Z",
+      "updated": "2026-09-27T06:48:01Z",
       "ci": {
         "counts": {
-          "success": 4,
+          "success": 3,
           "failure": 0,
-          "pending": 0,
+          "pending": 1,
           "skipped": 0
         },
         "failing": [],
-        "text": "4 success"
+        "text": "3 success, 1 pending"
       }
     },
     {
       "number": 123,
-      "title": "ios: House Scan Integration build uploads each scan to the capture API while scanning",
+      "title": "ios: House Scan Integration records each scan as a capture packet and, with consent, uploads it while scanning",
       "branch": "t3/hunter-integration",
-      "head": "60023d2817870ded5128b2674879a642f7b0177f",
+      "head": "294ddecb7a1d3fe303cbf21b73bfb3f3f5392daa",
       "draft": true,
-      "updated": "2026-09-27T06:21:47Z",
+      "updated": "2026-09-27T06:43:08Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -48,7 +48,7 @@
       "branch": "t3/41-server-requests-text",
       "head": "a22c2d45351c202cff91defe9638197b5e87eb52",
       "draft": true,
-      "updated": "2026-09-27T05:37:19Z",
+      "updated": "2026-09-27T06:46:29Z",
       "ci": {
         "counts": {
           "success": 3,
@@ -66,7 +66,7 @@
       "branch": "t3/41-walk-task-hold",
       "head": "6ea58d50562b0c3008b0edea57b0226c3de3aa92",
       "draft": true,
-      "updated": "2026-09-27T06:03:09Z",
+      "updated": "2026-09-27T06:46:35Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -158,7 +158,7 @@
       "branch": "t3/41-gate-coaching",
       "head": "9b0acc5851e7fa69a1da560724c919f1d63bcc5e",
       "draft": true,
-      "updated": "2026-09-27T06:00:23Z",
+      "updated": "2026-09-27T06:47:54Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -176,7 +176,7 @@
       "branch": "t3/41-card-replies",
       "head": "a4b8b2723736b5f2b29c5605569dcdb76c6d8a69",
       "draft": true,
-      "updated": "2026-09-27T06:18:35Z",
+      "updated": "2026-09-27T06:46:10Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -194,7 +194,7 @@
       "branch": "t3/41-ar-canvas-fallback",
       "head": "41291e8287bd7a2452c6b53b36120670c3210317",
       "draft": true,
-      "updated": "2026-09-27T05:57:54Z",
+      "updated": "2026-09-27T06:47:25Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -212,7 +212,7 @@
       "branch": "t3/41-end-preview",
       "head": "b5006fca782aa280caa767e476fd5c62b496a9e2",
       "draft": true,
-      "updated": "2026-09-27T05:56:48Z",
+      "updated": "2026-09-27T06:44:16Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -230,16 +230,16 @@
       "branch": "t3/experience-result",
       "head": "9583b1294882f40c963f5d21af9b053a6d3d367d",
       "draft": false,
-      "updated": "2026-09-27T06:21:00Z",
+      "updated": "2026-09-27T06:46:57Z",
       "ci": {
         "counts": {
-          "success": 4,
+          "success": 5,
           "failure": 0,
-          "pending": 1,
+          "pending": 0,
           "skipped": 0
         },
         "failing": [],
-        "text": "4 success, 1 pending"
+        "text": "5 success"
       }
     },
     {
@@ -302,7 +302,7 @@
       "branch": "t3/41-zip-deflate",
       "head": "5150321a22f540e669755270dd76caa23957d8a4",
       "draft": true,
-      "updated": "2026-09-27T05:31:34Z",
+      "updated": "2026-09-27T06:43:53Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -356,7 +356,7 @@
       "branch": "t3/device-test-4.1-analysis",
       "head": "c566490c5e3fa0d45803895bb463cb260d11a906",
       "draft": false,
-      "updated": "2026-09-27T05:34:34Z",
+      "updated": "2026-09-27T06:48:45Z",
       "ci": {
         "counts": {
           "success": 2,
@@ -656,7 +656,7 @@
           "ref": "origin/t3/server",
           "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
           "status": "met",
-          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 346 passed, 1 warning in 40.16s",
+          "evidence": "exit 0: from starlette.testclient import TestClient as TestClient # noqa / -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html / 346 passed, 1 warning in 65.76s (0:01:05)",
           "links": []
         },
         {
@@ -737,7 +737,7 @@
           "ref": "origin/t3/server",
           "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
           "status": "met",
-          "evidence": "latency_ms = 238.4 (want < 1000) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-011249-9176125d/report.json",
+          "evidence": "latency_ms = 239.4 (want < 1000) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
           "links": []
         },
         {
@@ -746,7 +746,7 @@
           "ref": "origin/t3/server",
           "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
           "status": "met",
-          "evidence": "exit 0: Installed 33 packages in 42ms / All checks passed! / 31 files already formatted",
+          "evidence": "exit 0: Installed 33 packages in 48ms / All checks passed! / 31 files already formatted",
           "links": []
         },
         {
@@ -755,7 +755,7 @@
           "ref": "origin/t3/server",
           "sha": "9176125df0c9890c247818d55edc82ea46053cd8",
           "status": "met",
-          "evidence": "contract_ok = true (want True) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-011249-9176125d/report.json",
+          "evidence": "contract_ok = true (want True) at sha 9176125d: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
           "links": []
         }
       ]
@@ -798,8 +798,8 @@
           "text": "Zero build warnings",
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
-          "status": "stale",
-          "evidence": "report for sha 194f2ebf, ref at f14947eb: ~/house-scanning-data/reports/sim/20260926-121648-t3-ios-mvf-194f2ebf-replay/report.json",
+          "status": "met",
+          "evidence": "build.warnings = length 0 (want 0) at sha f14947eb: ~/house-scanning-data/reports/sim/20260927-013832-t3-ios-mvf-f14947eb-replay/report.json",
           "links": []
         },
         {
@@ -887,8 +887,8 @@
           "text": "Exported scene.json validates against C1",
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
-          "status": "stale",
-          "evidence": "report for app_sha 194f2ebf, ref at f14947eb: ~/house-scanning-data/reports/e2e/20260927-011249-9176125d/report.json",
+          "status": "met",
+          "evidence": "app_export_scene_valid = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
           "links": []
         },
         {
@@ -912,7 +912,7 @@
         },
         {
           "ref": "origin/t3/verification",
-          "sha": "fcfecbac2ded0b0e6792b770ec78e6b80678d6be"
+          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd"
         }
       ],
       "metrics": [
@@ -921,8 +921,8 @@
           "text": "End to end from a real replay to a placement result passes",
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
-          "status": "stale",
-          "evidence": "report for app_sha 194f2ebf, ref at f14947eb: ~/house-scanning-data/reports/e2e/20260927-011249-9176125d/report.json",
+          "status": "met",
+          "evidence": "app_export_passed = true (want True) at app_sha f14947eb: ~/house-scanning-data/reports/e2e/20260927-014805-9176125d/report.json",
           "links": []
         },
         {
@@ -930,15 +930,15 @@
           "text": "Screenshot report per app state",
           "ref": "origin/t3/ios-mvf",
           "sha": "f14947eb9bff5b707660c8d873b72e60ba056631",
-          "status": "stale",
-          "evidence": "report for sha 194f2ebf, ref at f14947eb: ~/house-scanning-data/reports/sim/20260926-121648-t3-ios-mvf-194f2ebf-replay/report.json",
+          "status": "met",
+          "evidence": "states = length 12 (want at least 9) at sha f14947eb: ~/house-scanning-data/reports/sim/20260927-013832-t3-ios-mvf-f14947eb-replay/report.json",
           "links": []
         },
         {
           "id": "S4-3",
           "text": "Product description written from the code and checked against screenshots",
           "ref": "origin/t3/verification",
-          "sha": "fcfecbac2ded0b0e6792b770ec78e6b80678d6be",
+          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd",
           "status": "met",
           "evidence": "docs/app-review/product (#61) covers every screen of t3/ios-mvf at a39d0a5, checked in the Simulator there with the real server's result; its bug triage has 16 entries, 3 resolved; docs/app-review/ux/review.md judges every state.",
           "links": []
@@ -947,13 +947,13 @@
           "id": "S4-4",
           "text": "Scoreboard of every PR",
           "ref": "origin/t3/verification",
-          "sha": "fcfecbac2ded0b0e6792b770ec78e6b80678d6be",
+          "sha": "36ac02f9d1fb3d654ff12dde652de65a134d1cfd",
           "status": "met",
-          "evidence": "present at fcfecbac",
+          "evidence": "present at 36ac02f9",
           "links": [
             [
               "verification/SCOREBOARD.md",
-              "https://github.com/SamGu-NRX/house-scanning/blob/fcfecbac2ded0b0e6792b770ec78e6b80678d6be/verification/SCOREBOARD.md"
+              "https://github.com/SamGu-NRX/house-scanning/blob/36ac02f9d1fb3d654ff12dde652de65a134d1cfd/verification/SCOREBOARD.md"
             ]
           ]
         }
