@@ -525,3 +525,30 @@ def test_a_file_that_is_not_a_zip_is_refused_loudly(tmp_path):
     path.write_bytes(b"not a zip at all")
     with pytest.raises(ValueError, match="not a zip file"):
         field.check_zip_directory(path)
+
+
+def test_a_reported_multi_gigabyte_archive_is_refused_from_its_size_alone(tmp_path, monkeypatch):
+    import os
+    from pathlib import Path
+
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON)])
+    real_stat = Path.stat
+
+    def huge(self, *args, **kwargs):
+        st = real_stat(self, *args, **kwargs)
+        if self == archive:
+            fields = list(st)
+            fields[6] = 5 * 1024**3  # st_size: a 5 GiB file, without writing one
+            return os.stat_result(fields)
+        return st
+
+    def no_read(*args, **kwargs):
+        raise AssertionError("the archive was read or opened")
+
+    monkeypatch.setattr(Path, "stat", huge)
+    monkeypatch.setattr(field, "check_zip_directory", no_read)
+    monkeypatch.setattr(field, "file_sha256", no_read)
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_read)
+    with pytest.raises(ValueError, match="more than 2147483648"):
+        field.unpack(archive)
