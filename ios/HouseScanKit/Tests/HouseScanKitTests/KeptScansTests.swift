@@ -77,3 +77,40 @@ import Testing
         #expect(try JSONDecoder().decode(ScanStamp.self, from: stamp.jsonData()) == stamp)
     }
 }
+
+/// Replacing a scan's bundle never leaves the folder without one.
+@Suite struct AtomicBundleTests {
+    struct Unreadable: Error {}
+
+    @Test func aFailedRewriteLeavesThePreviousBundleAndTheScanIsKept() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appending(path: "run2")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let bundle = folder.appending(path: ScanFolderCleanup.bundleName)
+        try ZipWriter.write([(name: "manifest.json", load: { Data("{}".utf8) })], to: bundle)
+        let before = try Data(contentsOf: bundle)
+        // "It's clear" repackages the scan, and a file of the new packet can't be read.
+        #expect(throws: Unreadable.self) {
+            try ZipWriter.write([(name: "manifest.json", load: { Data("{\"new\":1}".utf8) }), (name: "photo.jpg", load: { throw Unreadable() })], to: bundle)
+        }
+        #expect(try Data(contentsOf: bundle) == before)
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: ZipWriter.temporaryName(for: ScanFolderCleanup.bundleName)).path))
+        // A relaunch keeps the scan.
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(cleanup.keptCompleted.map(\.lastPathComponent) == ["run2"])
+        // A successful rewrite replaces it.
+        try ZipWriter.write([(name: "manifest.json", load: { Data("{\"new\":1}".utf8) })], to: bundle)
+        #expect(try Data(contentsOf: bundle) != before)
+    }
+
+    /// A folder caught mid-replacement (the old bundle and the new one's partial file) is kept.
+    @Test func aFolderMidReplacementIsKept() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appending(path: "run2")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("partial".utf8).write(to: folder.appending(path: ZipWriter.temporaryName(for: ScanFolderCleanup.bundleName)))
+        #expect(ScanFolderCleanup(root: root, keeping: "now").keptCompleted.map(\.lastPathComponent) == ["run2"])
+    }
+}

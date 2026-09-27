@@ -108,8 +108,11 @@ extension ScanEngine: ScanActions {
     /// and the walk's first frame.
     private func observeCloseUpView() {
         guard let view = closeUpCredit.take() else { return }
+        // Corrected for anchor moves made while the photo was saved and read.
+        let camera = view.time.map { correctedPose(view.camera.cameraToWorld, capturedAt: $0) }
+            .map { CameraFrame(cameraToWorld: $0, intrinsics: view.camera.intrinsics, imageSize: view.camera.imageSize) } ?? view.camera
         var delta: CoverageMap.Delta?
-        updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
+        updateCoverage { delta = $0.observe(camera, trackingNormal: true, depth: view.depth) }
         RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
     }
 
@@ -185,14 +188,6 @@ extension ScanEngine: ScanActions {
         resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
     }
 
-    /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no
-    /// patch (`sceneJSON`). Every upload reads the latest answer.
-    func answerGround(_ answer: GroundAnswer) {
-        guard state.phase == .markFeatures else { return }
-        state.groundAnswer = answer
-        RuntimeLog.engine.info("ground answered: \(String(describing: answer), privacy: .public)")
-    }
-
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
     /// porch or stairs" records nothing, so the server treats the stretch as unseen. During an
     /// overhead gap request the answer settles the request either way (`settleOverheadGap`).
@@ -249,6 +244,13 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
+        // A fence's feet on two pieces of the wall would be sent as one depth that misses how
+        // close its line comes to the wall by the corner: refused, and asked for per side.
+        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(wall.world(first), wall.world(hit)) {
+            marking.refusal = .fenceAcrossCorner
+            state.marking = marking
+            return
+        }
         pendingTaps.append(hit)
         marking.refusal = nil
         marking.step += 1
@@ -262,6 +264,7 @@ extension ScanEngine: ScanActions {
         publishFeaturesPastEnds()
         state.marking = nil
         pendingTaps = []
+        spotMarkPlaced()
     }
 
     private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
@@ -297,6 +300,7 @@ extension ScanEngine: ScanActions {
     func cancelMarking() {
         state.marking = nil
         pendingTaps = []
+        spotMarkCancelled()
     }
 
     func deleteFeature(_ id: UUID) {
@@ -404,7 +408,8 @@ extension ScanEngine: ScanActions {
     }
 
     func captureMissing(_ id: String) {
-        guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
+        // A stopped camera can't take the view: the answer stays, the request goes to review.
+        guard mayCapture, state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }

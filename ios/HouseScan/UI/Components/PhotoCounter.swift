@@ -35,8 +35,13 @@ struct PhotoCounter: View {
     }
 }
 
-/// "Replay" or "Autopilot": tells a watcher that the camera or the taps are not live. "Practice
-/// meter" beside it: the meter is a drawn sample, not a real one.
+/// "Replay" or "Autopilot": tells a watcher that the camera or the taps are not live. A small
+/// quiet pill rather than an amber one: amber means "look at this" on the camera screens, and a
+/// test mode shouldn't compete with the instruction. Ink at 0.7 keeps Chalk text about 6.9:1 on
+/// the light Canvas; at 0.55 it measured about 4.2:1, under the 4.5:1 small text needs.
+///
+/// "Practice meter" beside it stays amber: the meter and its number are a drawn sample, which
+/// is worth looking at, like the result's "Sample result" badge.
 struct ModeBadge: View {
     var isReplay: Bool
     var isAutopilot: Bool
@@ -60,11 +65,18 @@ struct ModeBadge: View {
                 .accessibilityIdentifier("practiceBadge")
         }
         if let text {
-            capsule(text)
+            Text(text)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Palette.chalk)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Palette.ink.opacity(0.7), in: .capsule)
+                .accessibilityLabel(text)
                 .accessibilityIdentifier("modeBadge")
         }
     }
 
+    /// The practice badge: amber, bold capitals.
     private func capsule(_ text: String) -> some View {
         Text(text)
             .font(.caption2.weight(.bold))

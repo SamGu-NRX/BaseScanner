@@ -18,7 +18,9 @@ enum LiveMode: Sendable {
 }
 
 enum LiveEvent: Sendable {
-    case interrupted
+    /// With the time of the last frame the session delivered before it: the event reaches the
+    /// main actor on its own path, and can arrive before frames captured earlier.
+    case interrupted(lastFrameTime: Double?)
     case interruptionEnded
     case cameraDenied
     case failed(String)
@@ -347,6 +349,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
 
     private struct QueueState {
         var frameCount = 0
+        /// The latest ARFrame's time, for stamping an interruption.
+        var lastFrameTime: Double?
         var lastEncode: (time: Double, camera: CameraFrame)?
         var encoding = false
     }
@@ -381,6 +385,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let count = queueState.withLock { state -> Int in
             state.frameCount += 1
+            state.lastFrameTime = frame.timestamp
             return state.frameCount
         }
         let shared = shared.withLock { $0 }
@@ -611,7 +616,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
-        Task { @MainActor [onEvent] in onEvent(.interrupted) }
+        let last = queueState.withLock { $0.lastFrameTime }
+        Task { @MainActor [onEvent] in onEvent(.interrupted(lastFrameTime: last)) }
     }
 
     func sessionInterruptionEnded(_ session: ARSession) {

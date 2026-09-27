@@ -29,7 +29,8 @@ enum ScanPhase: String, Sendable, CaseIterable {
     case markFeatures
     case gapRequest
     case uploading
-    /// Before the result: is anything standing where the answer's spot would go (`SpotCheck`)?
+    /// Before the result: is anything in the area the answer's spot rests on, and what is the
+    /// ground where it would stand (`SpotCheck`)?
     case spotConfirm
     case result
     case resultAR
@@ -458,10 +459,11 @@ enum GroundType: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
-/// The homeowner's answer to what the ground along the wall is, asked once after the walk. The
-/// camera can't tell mulch from soil, so this is the only source of the ground's type.
+/// The homeowner's answer to what the ground is where the battery would stand, asked in the spot
+/// check. The camera can't tell mulch from soil, so this is the only source of the ground's type.
 enum GroundAnswer: Equatable, Sendable {
-    /// Exported as patches of this type over the ground the coverage saw, and nowhere else.
+    /// Exported as a patch of this type over the footprint and its error margin, where the
+    /// coverage saw ground (HouseScanKit `SpotGround`).
     case type(GroundType)
     /// "Not sure": no patch is sent and the server reports the surface as unknown.
     case notSure
@@ -482,6 +484,8 @@ enum MarkRefusal: Equatable, Sendable {
     case wrongSide
     case tooFarFromWall
     case trackingNotReady
+    /// A fence's second tap is round a corner from its first: each side needs its own fence.
+    case fenceAcrossCorner
 }
 
 // MARK: - Gap loop
@@ -567,6 +571,9 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// The `MissingEvidence.id` of the first view that would settle this check, when the server
+    /// named one.
+    var settledBy: String? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -574,6 +581,8 @@ struct MissingEvidence: Identifiable, Equatable, Sendable {
     var text: String
     /// True when another view can resolve it now; false means it goes to installer review.
     var capturable: Bool
+    /// The `CheckRow.id`s this view settles, as the server listed them.
+    var checkIDs: [String] = []
 }
 
 struct BatterySpot: Equatable, Sendable {
@@ -603,12 +612,23 @@ struct ResultPresentation: Equatable, Sendable {
     }
 
     var decision: Decision
-    /// The server's one-sentence summary.
+    /// The server's one-sentence summary, without `rulesNotice`.
     var summary: String = ""
     /// False while the server's rules hold placeholder values: every would-be pass or reject is
     /// then manual_review, and the screen should say the rules aren't final.
     var policyApproved: Bool = true
+    /// Whose rules decided, from the server ("Demo rules: ... not Base's."), to show with the
+    /// answer. Nil when the rules need no such label.
+    var rulesNotice: String? = nil
+    /// The first eight characters of the rules' SHA-256 (`policy.rules_sha256`), so a reviewer
+    /// can tell which rules answered.
+    var rulesHash: String? = nil
     var spot: BatterySpot?
+    /// When there is no spot: the spot the server found closest to passing.
+    var nearestSpot: BatterySpot? = nil
+    /// The `CheckRow.id` of the first check `nearestSpot` fails. Without a spot, `checks` are the
+    /// checks at `nearestSpot`.
+    var nearestFailingCheck: String? = nil
     /// Cable route as (s, height) points along the wall, meters, from the meter to the spot.
     var cableRoute: [SIMD2<Float>]
     var cableLength: Float?
@@ -620,41 +640,77 @@ struct ResultPresentation: Equatable, Sendable {
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
-    /// The answer's `policy.rules_sha256`: which rules judged the scan, for matching a screenshot
-    /// to the scan stamp (`ScanStamp`).
-    var rulesSHA256: String? = nil
 }
 
 // MARK: - Spot check
 
-/// The homeowner's answer to the spot check.
-enum SpotCheckAnswer: Equatable, Sendable {
-    /// Nothing stands in the area: the result is shown.
+/// The homeowner's first answer in the spot check: what is in the marked area.
+enum SpotAreaAnswer: Equatable, Sendable {
+    /// Nothing is there: the ground question comes next.
     case clear
-    /// Something stands there: the scan stops claiming that area and is checked again.
+    /// Something stands there (a bush, a bin, a step).
     case somethingThere
+    /// A gas meter, AC unit, window or door the scan didn't mark: which one comes next.
+    case unmarked
 }
 
-/// The one question asked before an answer's spot is shown as the result: is anything standing
-/// in front of the wall, or on the ground, in the area around the spot? A photo can claim wall
-/// and ground behind a bush, and a walked path can pass over something low, so the scan's claims
-/// there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
+/// How a spot check ended.
+enum SpotCheckAnswer: Equatable, Sendable {
+    /// Nothing is in the area, and the ground is this. A type goes to the server with the next
+    /// upload; "Not sure" shows the result.
+    case clear(GroundAnswer)
+    /// Something stands there: the scan stops claiming that area and is checked again.
+    case somethingThere
+    /// Unmarked equipment the phone couldn't mark now (it lost its place): the area is left out
+    /// as for `somethingThere`.
+    case unmarkedCantMark(FeatureKind)
+    /// No kept photo shows the whole area, so nothing could be confirmed: the area is left out.
+    case unconfirmed
+
+    /// The scan stopped claiming the area.
+    var withdrewArea: Bool {
+        switch self {
+        case .clear: false
+        case .somethingThere, .unmarkedCantMark, .unconfirmed: true
+        }
+    }
+}
+
+/// The questions asked before an answer's spot is shown as the result, on one photo: is anything
+/// in the footprint or its front clearance (something standing there, or equipment the scan
+/// didn't mark), and then what is the ground where the battery would stand? A photo can claim
+/// wall and ground behind a bush, and a walked path can pass over something low, so the scan's
+/// claims there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
 /// "Bounded exceptions"). Meters of s along the wall and out from it, like `BatterySpot`.
 struct SpotCheck: Equatable {
+    enum Step: Equatable, Sendable {
+        /// Is anything in the marked area?
+        case area
+        /// Which unmarked thing is it?
+        case which
+        /// What is the ground where the battery would stand?
+        case ground
+    }
+
     /// Counts the checks of a scan.
     let id: Int
     /// The spot's footprint along the wall and out from it.
     var spot: ClosedRange<Float>
     var spotOut: ClosedRange<Float>
     var spotHeight: Float
-    /// The whole area asked about: the footprint and the clearance zone around it.
+    /// The whole area asked about: the footprint and its front clearance.
     var area: ClosedRange<Float>
     var areaDepth: Float
-    /// The kept photo that shows the area best; nil when none does, and the question is asked
-    /// about the place itself.
+    /// The kept photo that shows the area best; nil when none shows even half the footprint.
     var photo: Photo?
+    /// The photo shows the whole area, so the questions can be answered. Otherwise nothing can
+    /// be confirmed, and the only way on leaves the area out (`SpotCheckAnswer.unconfirmed`).
+    var confirmable: Bool
+    var step: Step = .area
     /// Nil until answered. The answer stays up a moment before the flow moves on.
     var answer: SpotCheckAnswer?
+    /// Once answered: the scan goes to the server again, rather than straight to the result.
+    var checksAgain = false
     /// The spot is the bundled sample's, not a server's (`ResultPresentation.isSample`).
     var isSample: Bool
 
@@ -733,9 +789,6 @@ final class ScanViewState {
     /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
     /// camera can't tell open sky from an eave, so the homeowner answers.
     var overheadQuestion = false
-    /// The answer to the ground question on the feature review. Nil until the homeowner answers;
-    /// an unanswered question exports like `.notSure`.
-    var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
     /// The spot check of the result's spot: the question during `.spotConfirm`, and the answer
@@ -805,8 +858,6 @@ protocol ScanActions: AnyObject {
     func markNextWall(at point: CGPoint?, viewSize: CGSize)
     /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
     func answerOverhead(clear: Bool)
-    /// The answer to the ground question during `.markFeatures`; can be changed until upload.
-    func answerGround(_ answer: GroundAnswer)
     func beginMarking(_ kind: FeatureKind)
     func markFeaturePoint(at point: CGPoint?, viewSize: CGSize)
     func cancelMarking()
@@ -827,8 +878,15 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
-    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
-    func answerSpotCheck(clear: Bool)
+    /// The spot check's first question (`SpotCheck.Step.area`).
+    func answerSpotArea(_ answer: SpotAreaAnswer)
+    /// Which unmarked thing is in the area (`SpotCheck.Step.which`): the camera opens to mark it,
+    /// or, when the phone can't mark now, the area is left out. Nil goes back to the question.
+    func chooseUnmarked(_ kind: FeatureKind?)
+    /// The ground question (`SpotCheck.Step.ground`).
+    func answerSpotGround(_ answer: GroundAnswer)
+    /// No photo shows the whole area (`SpotCheck.confirmable` false): leave it out and go on.
+    func continueUnconfirmed()
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()
