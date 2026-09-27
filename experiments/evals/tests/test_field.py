@@ -635,3 +635,19 @@ def test_a_group_over_the_pixel_budget_is_refused_before_decoding(monkeypatch):
         frames.hold([f"k{i}" for i in range(8)])
     small = field.GroupFrames(lambda k: (k,), lambda k: 1920 * 1440)  # eight ARKit keyframes
     assert len(small.hold([f"k{i}" for i in range(8)])) == 8
+
+
+def test_stamp_refuses_a_survey_already_bound_to_another_capture(case):
+    archive, paths, capture, out = case
+    survey = json.loads(paths["truth"].read_text())
+    survey["captures"] = ["0" * 64]  # the survey from another walk
+    survey["measurements"][1]["value_ft"] = "32 9 3/4"
+    paths["truth"].write_text(json.dumps(survey))
+    before = paths["truth"].read_text()
+    with pytest.raises(ValueError, match=f"already the survey for capture {'0' * 64}"):
+        field.stamp(archive, paths["truth"], paths["map"], out)
+    assert paths["truth"].read_text() == before  # nothing converted or appended
+    assert not (out / "inputs" / "map.json").exists()
+    survey["captures"] = [capture]  # its own capture, stamped before: accepted again
+    paths["truth"].write_text(json.dumps(survey))
+    field.stamp(archive, paths["truth"], paths["map"], out)

@@ -72,7 +72,7 @@
    "missed_ft": 17.979002624671917,
    "ground_claimed_ft": 0.0,
    "ground_false_observed_ft": 0.0,
-   "passes": true
+   "passes": null
   },
   {
    "b_m": 0.5,
@@ -144,7 +144,7 @@
    "missed_ft": 17.979002624671917,
    "ground_claimed_ft": 0.0,
    "ground_false_observed_ft": 0.0,
-   "passes": true
+   "passes": null
   },
   {
    "b_m": 1.0,
@@ -216,7 +216,7 @@
    "missed_ft": 17.979002624671917,
    "ground_claimed_ft": 0.0,
    "ground_false_observed_ft": 0.0,
-   "passes": true
+   "passes": null
   },
   {
    "b_m": 2.0,
@@ -288,7 +288,7 @@
    "missed_ft": 17.979002624671917,
    "ground_claimed_ft": 0.0,
    "ground_false_observed_ft": 0.0,
-   "passes": true
+   "passes": null
   },
   {
    "b_m": 5.0,
@@ -360,7 +360,7 @@
    "missed_ft": 17.979002624671917,
    "ground_claimed_ft": 0.0,
    "ground_false_observed_ft": 0.0,
-   "passes": true
+   "passes": null
   }
  ],
  "options": [

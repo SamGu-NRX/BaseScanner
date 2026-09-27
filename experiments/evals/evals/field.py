@@ -703,7 +703,10 @@ def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -
     """Makes the team's files match this session: tape readings typed as text become feet and the
     zip's sha256 joins the survey's captures (both in place), and a copy of the map naming this
     session goes to out_dir/inputs/map.json, which is returned. A map already bound to another
-    session is refused before anything is written, since its M numbers belong to that walk."""
+    session is refused before anything is written, since its M numbers belong to that walk. So is
+    a survey that already lists another capture: the scoring harness's survey format has no
+    session field, so the captures list is its binding, and a survey stamped for one walk would
+    otherwise score another."""
     folder, capture = unpack(session_path)
     if capture is None:
         raise ValueError(
@@ -717,6 +720,12 @@ def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -
             f"start from field/map.template.json for a new session"
         )
     survey = json.loads(truth_path.read_text())
+    others = [c for c in survey["captures"] if c != capture]
+    if others:
+        raise ValueError(
+            f"{truth_path} is already the survey for capture {others[0]}, not this session's "
+            f"{capture}; copy field/survey.template.json for each session"
+        )
     for m in survey["measurements"]:
         if m["status"] == "measured" and isinstance(m.get("value_ft"), str):
             if "FILL" in m["value_ft"]:

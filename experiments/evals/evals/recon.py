@@ -298,6 +298,23 @@ def _evaluate_into(raws: dict, scene: Scene, ev: EvalSet, members, per_view, max
             raws[cohort].append(evaluate_fixed(pts, ev.pairs[cohort], ev.refs))
 
 
+class PartialRun(SystemExit):
+    """A method has output for some of a size's seed groups but not all."""
+
+
+def require_complete(scene: str, method: str, n: str, missing: list[str], total: int) -> None:
+    """Refuse to score a partial run. A size with no output at all is a run that was never made
+    (MapAnything's 8 views don't fit in memory) and is left out of the table. A size with some
+    groups missing is a run that stopped partway: scoring the rest would report percentiles over
+    only the groups that finished, and counting the missing ones as failed pairs would blame the
+    method for a crash, so the run must be completed instead."""
+    if missing and len(missing) < total:
+        raise PartialRun(
+            f"{scene}: {method} has no output for {len(missing)} of {total} {n}-photo groups "
+            f"({', '.join(missing)}); finish that run before scoring"
+        )
+
+
 def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) -> dict:
     """{range: {method: {views: {cohort: pooled summary}}}} on the fixed per-seed evaluation sets."""
     out: dict = {}
@@ -309,10 +326,14 @@ def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) ->
             groups = comparable_groups(scene.groups, sizes)
             for n in map(str, sizes):
                 raws: dict[str, list] = {c: [] for c in COHORTS}
+                missing = []
                 for members in groups.get(n, []):
                     per_view = factory(f"n{n}-{members[0]}", members)
-                    if per_view is not None:
-                        _evaluate_into(raws, scene, sets[members[0]], members, per_view, max_range)
+                    if per_view is None:
+                        missing.append(f"n{n}-{members[0]}")
+                        continue
+                    _evaluate_into(raws, scene, sets[members[0]], members, per_view, max_range)
+                require_complete(scene.name, method, n, missing, len(groups.get(n, [])))
                 if raws["surface interior"]:
                     res[n] = {c: pool(r) | {"groups": len(r)} for c, r in raws.items() if r}
             if res:

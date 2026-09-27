@@ -288,3 +288,52 @@ def test_mapanything_rows_are_labelled_by_the_poses_they_recorded(tmp_path: Path
     _run(other, "n2-a", "0" * 64)
     with pytest.raises(SystemExit, match="rerun"):
         mapanything_label(other, "advio_2018", poses)
+
+
+def test_an_option_that_claims_no_wall_is_untested_not_passed():
+    from evals.coverage_options import _row, markdown
+
+    bands = {
+        "wall": {"claimed_ft": 0.0, "false_observed_ft": 0.0, "missed_ft": 18.0},
+        "ground": {"claimed_ft": 0.0, "false_observed_ft": 0.0},
+    }
+    nothing = _row("b = 0.25 m, theta = 75 deg", bands, lidar=False)
+    assert nothing["passes"] is None
+    claimed = {**bands, "wall": {"claimed_ft": 19.3, "false_observed_ft": 1.1, "missed_ft": 0.0}}
+    assert _row("the app today", claimed, lidar=False)["passes"] is False
+    res = {
+        "scene": "s",
+        "wall_ft": 19.3,
+        "grid": [],
+        "options": [{**nothing, "option": "claims nothing"}],
+        "relief": [],
+    }
+    assert "| claims nothing | no | 0.0 | untested | untested | 18.0 | 0.0 |" in markdown(res)
+
+
+def test_a_partial_multi_view_run_is_refused_naming_the_missing_groups():
+    from evals.recon import PartialRun, require_complete
+
+    require_complete("electro", "m", "4", [], 7)  # complete
+    require_complete("electro", "m", "8", [f"n8-{i}" for i in range(7)], 7)  # never run: omitted
+    with pytest.raises(PartialRun, match=r"no output for 2 of 7 4-photo groups \(n4-a, n4-b\)"):
+        require_complete("electro", "m", "4", ["n4-a", "n4-b"], 7)
+
+
+def test_score_groups_refuses_a_run_missing_one_group(monkeypatch):
+    from types import SimpleNamespace
+
+    from evals import recon
+
+    scene = SimpleNamespace(
+        name="electro", groups={"1": [["a"], ["b"]], "2": [["a", "b"], ["b", "a"]]}
+    )
+
+    monkeypatch.setattr(recon, "EvalSet", lambda scene, seed, max_range: seed)
+    monkeypatch.setattr(recon, "_evaluate_into", lambda *args: None)
+
+    def factory(gid, members):
+        return None if gid == "n2-b" else object()  # the run stopped before group n2-b
+
+    with pytest.raises(recon.PartialRun, match="n2-b"):
+        recon.score_groups(scene, {"model": factory}, sizes=(1, 2))

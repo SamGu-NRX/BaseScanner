@@ -56,6 +56,7 @@ from evals.recon import (
     load_prediction,
     model_frame_method,
     predict,
+    require_complete,
 )
 from evals.triangulate import view_scales
 
@@ -337,12 +338,14 @@ def score_scene(scene: Scene, methods: dict[str, list[Method]], sizes=GROUP_SIZE
             groups = comparable_groups(scene.groups, sizes)
             for n in map(str, sizes):
                 units: dict[str, list[list[dict]]] = {c: [] for c in COHORTS}
+                missing = []
                 for members in groups.get(n, []):
                     ev = sets[members[0]]
                     per_cohort: dict[str, list[dict]] = {c: [] for c in COHORTS}
-                    for factory in draws:
+                    for d, factory in enumerate(draws):
                         per_view = factory(f"n{n}-{members[0]}", members)
                         if per_view is None:
+                            missing.append(f"n{n}-{members[0]}" + (f" draw {d}" if d else ""))
                             continue
                         pts = predict(scene, ev, members, per_view, max_range)
                         for c in COHORTS:
@@ -351,6 +354,9 @@ def score_scene(scene: Scene, methods: dict[str, list[Method]], sizes=GROUP_SIZE
                     for c, raws in per_cohort.items():
                         if raws:
                             units[c].append(raws)
+                require_complete(
+                    scene.name, method, n, missing, len(groups.get(n, [])) * len(draws)
+                )
                 if units["surface interior"]:
                     res[n] = {c: summarize_groups(u) for c, u in units.items() if u}
             if res:
