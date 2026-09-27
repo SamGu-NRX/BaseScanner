@@ -4,10 +4,19 @@ version = "0.1.0"
 description = "FastAPI server that turns a phone capture into a battery placement (lanes B and C)"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.141.1",
+    "jsonschema>=4.26.0",
+    "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
+    "shapely>=2.1.2",
+    "uvicorn>=0.54.0",
+]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "hypothesis>=6.168.1",
     "pytest>=9.1.1",
     "ruff>=0.16.9",
 ]
@@ -15,8 +24,14 @@ dev = [
 [tool.uv]
 # Modules sit flat in this directory and run in place; there is nothing to build or install.
 package = false
-# setup-uv reads this in CI, so local and CI runs use the same uv minor version as uv.lock.
-required-version = ">=0.11.15,<0.12"
+# setup-uv reads this in CI and installs the newest uv in range. The floor is 0.10.11 because
+# Vercel's Python build runs that version, and it reads this uv.lock (checked with
+# `uvx --from uv==0.10.11 uv sync --locked`).
+required-version = ">=0.10.11,<0.12"
+
+# Vercel deploys this directory as its own project and serves this FastAPI app.
+[tool.vercel]
+entrypoint = "api:app"
 
 [tool.ruff]
 line-length = 100

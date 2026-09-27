@@ -1,11 +1,14 @@
 # Experiments
 
-An experiment answers one question the team needs settled before building on an assumption. For example: can an iPhone without LiDAR measure the gap between a wall and a fence to within a few inches?
+An experiment settles one question before the team builds on the answer. For example: can an iPhone without LiDAR measure the gap between a wall and a fence to within a few inches?
 
 The [research handoff packages](research-handoff/README.md) contain reusable capture/evidence prototypes and isolated native proposals from the September 26 investigation. Start with the [high-level report](../docs/06-research-handoff.md) for their results and limitations.
 
-- Give each experiment its own folder, `experiments/<short-name>/`.
-- Its README states the question, the method and the pass criteria before the run, then the result and what it changes after. Keep the result when it fails; a failure tells us which part to change next.
-- Keep dependencies inside the folder, in its own uv, pnpm or Xcode project. Don't add them to `server/`, `web/` or `ios/`.
-- Write outputs to `data/`, which git ignores. Never commit photos, video or measurements of a real home, or Base's materials.
-- Read and write the team's `scene.json` once it exists, so every method's numbers compare on the same terms.
+The record of an experiment is its code and the files it produced. Its README is the front door, not the report.
+
+- One folder per experiment, `experiments/<short-name>/`, with its own uv, pnpm or Xcode project. Its dependencies stay out of `server/`, `ios/` and `web/`.
+- The README stays under about 200 words: the question and its pass criteria, written before the run, the command that runs it and what that needs, the result in a sentence or two with its numbers, and what it changed in the product or the plan. Keep a failed result, because it says which part to change next.
+- Generated tables and plots from public data go in `results/` inside the folder, with the command that produced them. Anything from a real home, and anything Base gave us, goes in git-ignored `data/`.
+- When the product or the plan relies on the result, `docs/00-overview.md` gets one line under "Evidence so far" that points here.
+- Delete an experiment when a later one supersedes it. First point its line in `docs/00` at the experiment that replaced it, so the finding stays and its source still exists. Git keeps the old code.
+- Read and write `scene.json`, the app's measurement file, so every method's numbers compare on the same terms.

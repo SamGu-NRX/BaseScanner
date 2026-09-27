@@ -8,3 +8,7 @@ xcuserdata/
 # Build output when building with -derivedDataPath or into the source tree.
 DerivedData/
 build/
+
+# SwiftPM build output of the capture package.
+HouseScanKit/.build/
+HouseScanKit/.swiftpm/

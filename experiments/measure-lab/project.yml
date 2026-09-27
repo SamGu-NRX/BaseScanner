@@ -1,0 +1,62 @@
+# Source of truth for MeasureLab.xcodeproj. After editing, run `make project` in this folder and
+# commit the regenerated project; CI fails if the committed project differs.
+name: MeasureLab
+
+options:
+  # CI installs this exact version; older releases write a different project file.
+  minimumXcodeGenVersion: 2.46.0
+  # Written into the project and scheme as LastUpgradeCheck, so Xcode 26 does not offer
+  # a settings upgrade that would edit the generated file.
+  xcodeVersion: "26.0"
+  deploymentTarget:
+    iOS: "26.0"
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+
+packages:
+  MeasureGeometry:
+    path: Geometry
+
+targets:
+  MeasureLab:
+    type: application
+    platform: iOS
+    sources:
+      # Synchronized folder: Xcode picks up files added to MeasureLab/ without project-file edits.
+      - path: MeasureLab
+        type: syncedFolder
+      - path: Config/Info.plist
+        buildPhase: none
+    dependencies:
+      - package: MeasureGeometry
+    configFiles:
+      Debug: Config/Shared.xcconfig
+      Release: Config/Shared.xcconfig
+    settings:
+      base:
+        PRODUCT_NAME: MeasureLab
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).measurelab
+        INFOPLIST_FILE: Config/Info.plist
+        MARKETING_VERSION: 0.1.0
+        CURRENT_PROJECT_VERSION: 1
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+
+schemes:
+  MeasureLab:
+    build:
+      targets:
+        MeasureLab: all
+    run:
+      config: Debug
+    archive:
+      config: Release
