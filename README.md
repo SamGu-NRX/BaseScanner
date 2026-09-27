@@ -40,21 +40,21 @@ curl -s https://house-scanning-server.vercel.app/health
 flowchart TB
   subgraph phone["IPHONE APP · ios/ · Swift, ARKit, RealityKit"]
     direction TB
-    walk("<b>Guided walk</b><br/><small>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen.</small>")
-    packet("<b>Capture packet</b><br/><small>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and scene.json</small>")
+    walk("<b>Guided walk</b><br/>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen.")
+    packet("<b>Capture packet</b><br/>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and scene.json")
     walk --> packet
   end
 
   subgraph srv["SERVER · Python"]
     direction TB
-    recon("<b>Reconstruction worker</b> · recon/<br/><small>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen.</small>")
-    api("<b>Placement API</b> · server/ · FastAPI<br/><small>POST /v1/placements</small>")
-    rules("<b>Rules engine</b><br/><small>Plain code tries every spot along the wall against<br/>rules.yaml, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE.</small>")
+    recon("<b>Reconstruction worker</b> · recon/<br/>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen.")
+    api("<b>Placement API</b> · server/ · FastAPI<br/>POST /v1/placements")
+    rules("<b>Rules engine</b><br/>Plain code tries every spot along the wall against<br/>rules.yaml, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE.")
     recon -- "rebuilt scene.json" --> api
     api --> rules
   end
 
-  result("<b>Result in AR</b> · back on the phone<br/><small>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result.</small>")
+  result("<b>Result in AR</b> · back on the phone<br/>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result.")
 
   packet -- "scene.json" --> api
   packet -. "photos and poses" .-> recon
