@@ -69,13 +69,15 @@ struct ResultScreen: View {
                 if result.isSample {
                     // The same quiet pill as ModeBadge: the answer, not the test mode, is the
                     // loudest thing on this screen.
-                    Label("Sample result, not from the server", systemImage: "flask.fill")
+                    // One Text with the flask inline, built as ModeBadge is. As a Label with
+                    // fixedSize, the audit reported its Dynamic Type as partially unsupported.
+                    Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(Palette.chalk)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Palette.ink.opacity(0.7), in: .capsule)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel("Sample result, not from the server")
                         .accessibilityIdentifier("result.sampleBadge")
                 }
             }
