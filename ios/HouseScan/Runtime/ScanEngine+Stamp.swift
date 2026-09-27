@@ -13,7 +13,7 @@ extension ScanEngine {
             app: .init(
                 version: info["CFBundleShortVersionString"] as? String ?? "unknown",
                 build: info["CFBundleVersion"] as? String ?? "unknown",
-                // Written into the built Info.plist by the "Stamp the git commit" build phase.
+                // Set in Config/Info.plist by the TestFlight job's "Stamp the git commit" step; "unknown" elsewhere.
                 commit: info["HouseScanGitCommit"] as? String ?? "unknown"),
             server: .init(url: (resultClient as? HTTPResultClient)?.serverURL.absoluteString),
             answer: answer.map { ScanStamp.Answer($0, sample: resultClient.isSample) },

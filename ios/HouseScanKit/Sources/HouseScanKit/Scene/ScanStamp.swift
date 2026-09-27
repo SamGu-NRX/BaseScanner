@@ -7,7 +7,7 @@ public struct ScanStamp: Codable, Sendable, Equatable {
         /// CFBundleShortVersionString and CFBundleVersion.
         public var version: String
         public var build: String
-        /// The git commit the app was built from, "-dirty" when it had uncommitted changes.
+        /// The git commit the app was built from, or "unknown" for builds outside the TestFlight job.
         public var commit: String
 
         public init(version: String, build: String, commit: String) {
