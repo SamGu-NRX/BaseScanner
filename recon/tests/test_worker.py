@@ -631,3 +631,21 @@ def test_a_file_outside_the_packet_is_refused(packet, fmt, field, kind):
     _manifest(root, fmt, *refs)
     with pytest.raises(cap.UnsafePath, match=f"^{re.escape(field)} "):
         cap.load(root, root / "work")
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+@pytest.mark.parametrize("bad", ["/tmp/x", "../../x", "a/b", "..", ".", "", 7])
+def test_a_frame_id_that_is_not_one_safe_name_is_refused(packet, fmt, bad):
+    root, _ = packet
+    _manifest(root, fmt, "k.jpg", "k.f32", "k.u8")
+    name = "scene.json" if fmt == "scan-bundle" else "session.json"
+    doc = json.loads((root / name).read_text())
+    doc["keyframes"][0]["id"] = bad
+    (root / name).write_text(json.dumps(doc))
+    with pytest.raises(cap.BadFrameId, match="keyframe id"):
+        cap.load(root, root / "work")
+
+
+@pytest.mark.parametrize("good", ["k00001", "DSC_9257", "frame-1.v2"])
+def test_frame_ids_real_captures_use_are_accepted(good):
+    assert cap.frame_id(good) == good

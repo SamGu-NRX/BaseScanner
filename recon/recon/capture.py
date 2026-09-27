@@ -17,13 +17,15 @@ LiDAR depth, when a keyframe carries it, uses Measure Lab's layout: `depth: {fil
 w, h}`, Float32 meters and UInt8 confidence (0 low, 1 medium, 2 high), row-major, in the
 keyframe's unrotated orientation.
 
-Every file a manifest names must lie inside the manifest's folder (`inside`).
+Every file a manifest names must lie inside the manifest's folder (`inside`), and every keyframe id
+must be a single safe file-name component (`frame_id`).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -158,6 +160,25 @@ def inside(root: Path, ref: str, field: str) -> Path:
     return root / rel
 
 
+class BadFrameId(ValueError):
+    """A keyframe id that is not a single safe file-name component."""
+
+
+FRAME_ID = re.compile(r"[A-Za-z0-9._-]+")
+
+
+def frame_id(value: object) -> str:
+    """A keyframe id, checked. The worker names cache files after ids (`depth.moge` writes
+    `<id>.upright.jpg` and has the model write `<id>.moge2.npz`), so an id such as `/tmp/x` or
+    `../../x` would write outside the cache. Only letters, digits, `.`, `_` and `-` are allowed,
+    and not `.` or `..` alone."""
+    if not isinstance(value, str) or not FRAME_ID.fullmatch(value) or value in (".", ".."):
+        raise BadFrameId(
+            f"keyframe id {value!r} must be letters, digits, '.', '_' or '-', and not '.' or '..'"
+        )
+    return value
+
+
 def _lidar(root: Path, kf: dict) -> LidarDepth | None:
     d = kf.get("depth")
     if not d:
@@ -175,7 +196,7 @@ def _scan_bundle(root: Path, scene: dict) -> Capture:
         T[:3, 3] *= FEET  # scene frame translations are feet
         frames.append(
             Frame(
-                kf["id"],
+                frame_id(kf["id"]),
                 inside(root, kf["img"], "img"),
                 int(kf["w"]),
                 int(kf["h"]),
@@ -197,6 +218,8 @@ def _scan_bundle(root: Path, scene: dict) -> Capture:
 
 
 def _measure_lab(root: Path, doc: dict) -> Capture:
+    for kf in doc["keyframes"]:
+        frame_id(kf["id"])
     keyframes = sorted(doc["keyframes"], key=lambda k: k["id"])
     images = {kf["id"]: inside(root, kf["img"], "img") for kf in keyframes}
     frames = [
