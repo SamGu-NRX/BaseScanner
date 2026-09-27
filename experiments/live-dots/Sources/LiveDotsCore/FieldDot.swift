@@ -23,14 +23,23 @@ public struct FieldDot: Sendable, Equatable {
     public let onOccluder: Bool
     /// Some view saw it within 30 degrees of face-on. Only edge dots are ever false.
     public let faceOn: Bool
+    /// Unit surface normal, zero when unknown (feature points).
+    public let normal: SIMD3<Float>
+    /// The last keyframe that observed it, for the ember scheme's cooling.
+    public let lastSeenFrame: Int
 
-    public init(id: UInt64, position: SIMD3<Float>, kind: DotKind, views: Int, onOccluder: Bool, faceOn: Bool = true) {
+    public init(
+        id: UInt64, position: SIMD3<Float>, kind: DotKind, views: Int, onOccluder: Bool, faceOn: Bool = true,
+        normal: SIMD3<Float> = .zero, lastSeenFrame: Int = 0
+    ) {
         self.id = id
         self.position = position
         self.kind = kind
         self.views = views
         self.onOccluder = onOccluder
         self.faceOn = faceOn
+        self.normal = normal
+        self.lastSeenFrame = lastSeenFrame
     }
 
     public var opacity: Float {

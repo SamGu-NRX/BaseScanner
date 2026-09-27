@@ -50,6 +50,20 @@ struct ControlsPanel: View {
                 }
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Look", selection: $player.scheme) {
+                    Text("Hologram").tag(DotScheme.hologram)
+                    Text("Constellation").tag(DotScheme.constellation)
+                    Text("Ember").tag(DotScheme.ember)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text(schemeCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Reduce Motion", isOn: $player.reduceMotion)
                 Toggle("Show unseen as fog", isOn: $player.showFog)
@@ -67,6 +81,14 @@ struct ControlsPanel: View {
             Spacer(minLength: 0)
         }
         .frame(maxHeight: 844)
+    }
+
+    private var schemeCaption: String {
+        switch player.scheme {
+        case .hologram: "Edge and surface dots; opacity rises with each new view."
+        case .constellation: "Edges only, linked into outlines. The wall's surface shows nothing."
+        case .ember: "Dots are born amber and cool to white over 6 s after the camera last saw them."
+        }
     }
 
     private var keyframeBinding: Binding<Double> {

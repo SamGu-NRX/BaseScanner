@@ -33,7 +33,7 @@ enum Exporter {
             let keyframe = min(Int(time * Tuning.keyframesPerSecond), data.keyframeCount - 1)
             let request = FrameRequest(
                 mode: options.mode, keyframe: keyframe, time: time,
-                reduceMotion: options.reduceMotion, showFog: options.showFog)
+                reduceMotion: options.reduceMotion, showFog: options.showFog, scheme: options.scheme)
             try target.render(request)
             try composite(chrome.image(for: timeline.states[keyframe]), onto: target)
             if toStdout {
@@ -58,12 +58,12 @@ enum Exporter {
         let state = data.timeline(options.mode).states[number - 1]
         try target.render(FrameRequest(
             mode: options.mode, keyframe: number - 1, time: state.time + 1,
-            reduceMotion: options.reduceMotion, showFog: options.showFog))
+            reduceMotion: options.reduceMotion, showFog: options.showFog, scheme: options.scheme))
         var chrome = ChromeCache()
         try composite(chrome.image(for: state), onto: target)
         try writePNG(target, to: URL(fileURLWithPath: path))
         FileHandle.standardError.write(Data(
-            "\(path): keyframe \(number), \(options.mode.rawValue), \(state.sprites.count) sprites drawn, \(state.fieldCount) dots in field (\(state.edgeCount) edges), coverage \(Int((state.coverage * 100).rounded()))%\n".utf8))
+            "\(path): keyframe \(number), \(options.mode.rawValue), \(options.scheme.rawValue), \(state.sprites.count) sprites drawn, \(state.fieldCount) dots in field (\(state.edgeCount) edges), coverage \(Int((state.coverage * 100).rounded()))%\n".utf8))
     }
 
     private static func composite(_ chrome: CGImage?, onto target: OffscreenTarget) throws {

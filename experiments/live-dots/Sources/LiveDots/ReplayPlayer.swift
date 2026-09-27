@@ -8,6 +8,7 @@ import QuartzCore
 final class ReplayPlayer {
     let keyframeCount: Int
     var mode: CaptureMode = .lidar
+    var scheme: DotScheme = .hologram
     var reduceMotion: Bool
     var showFog = false
     private(set) var isPlaying = false
@@ -29,7 +30,7 @@ final class ReplayPlayer {
     var request: FrameRequest {
         FrameRequest(
             mode: mode, keyframe: keyframe, time: settled ? 1e5 : playhead,
-            reduceMotion: reduceMotion, showFog: showFog)
+            reduceMotion: reduceMotion, showFog: showFog, scheme: scheme)
     }
 
     func togglePlayback() {

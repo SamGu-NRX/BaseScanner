@@ -68,6 +68,7 @@ enum Shaders {
         float4 a;  // world xyz, 1 for a simulated feature point (fixed size), else 0
         float4 b;  // birth time, from opacity, to opacity, opacity change time
         float4 c;  // edge since, death time, violet (0 or 1), 1 for the halo sprite
+        float4 d;  // last observed time (ember), unused x3
     };
 
     struct DotUniforms {
@@ -75,8 +76,20 @@ enum Shaders {
         float4 cameraAndTime;  // camera xyz, playback time
         float pointScale;      // pixels per point
         float reduceMotion;    // 1 drops the birth scale
-        float2 pad;
+        float scheme;          // 0 hologram, 1 constellation, 2 ember
+        float pad;
     };
+
+    constant float3 hologram = float3(0xE6, 0xEC, 0xF4) / 255.0f;
+    constant float3 glow = float3(0x9C, 0xC8, 0xFF) / 255.0f;
+    constant float3 violet = float3(0xB4, 0x9C, 0xFF) / 255.0f;
+    constant float3 emberCore = float3(0xFF, 0xB4, 0x54) / 255.0f;
+    constant float3 emberHalo = float3(0xFF, 0xC9, 0x78) / 255.0f;
+
+    // Constellation hides flat dots, so a dot that turns edge is born then, not at its voxel's birth.
+    static float visibleBirth(Sprite s, int scheme) {
+        return scheme == 1 ? max(s.b.x, s.c.x) : s.b.x;
+    }
 
     struct DotOut {
         float4 position [[position]];
@@ -90,33 +103,37 @@ enum Shaders {
                             constant DotUniforms& u [[buffer(1)]]) {
         Sprite s = sprites[vid];
         float t = u.cameraAndTime.w;
-        float birth = strongEaseOut((t - s.b.x) / 0.35f);
+        int scheme = int(u.scheme + 0.5f);
+        float birth = strongEaseOut((t - visibleBirth(s, scheme)) / 0.35f);
         float evidence = mix(s.b.y, s.b.z, strongEaseOut((t - s.b.w) / 0.25f));
+        // Ember: amber at 90% when observed, cooling linearly to the evidence opacity over 6 s.
+        float warmth = scheme == 2 ? clamp(1.0f - (t - s.d.x) / 6.0f, 0.0f, 1.0f) : 0.0f;
+        evidence = mix(evidence, 0.9f, warmth);
         float fade = 1.0f - strongEaseOut((t - s.c.y) / 0.25f);
         float edge = strongEaseOut((t - s.c.x) / 0.25f);
         float alpha = evidence * birth * fade;
         bool feature = s.a.w > 0.5f;
         bool halo = s.c.w > 0.5f;
 
-        // Flat 2.5 pt and edge 3.5 pt from 2.5 m out, growing linearly to 4 and 6 pt at 1 m.
+        // Flat 2.5 pt and edge 3.5 pt from 2.5 m out, growing linearly to 4 and 6 pt at 1 m;
+        // constellation edges 4.5 pt growing to 7.
         float size = 4.5f;
         if (!feature) {
             float far = clamp((length(s.a.xyz - u.cameraAndTime.xyz) - 1.0f) / 1.5f, 0.0f, 1.0f);
-            size = mix(mix(4.0f, 2.5f, far), mix(6.0f, 3.5f, far), edge);
+            size = scheme == 1 ? mix(7.0f, 4.5f, far) : mix(mix(4.0f, 2.5f, far), mix(6.0f, 3.5f, far), edge);
         }
         float inner = feature ? 0.3f : 0.7f;
-        float3 hologram = float3(0xE6, 0xEC, 0xF4) / 255.0f;
-        float3 glow = float3(0x9C, 0xC8, 0xFF) / 255.0f;
-        float3 violet = float3(0xB4, 0x9C, 0xFF) / 255.0f;
         float3 color = hologram;
+        float3 warm = emberCore;
         if (halo) {
             // Edge 4x at 22%, flat 2x at 8%, feature 3x at 18%; a flat dot turning edge grows into it.
             size *= feature ? 3.0f : mix(2.0f, 4.0f, edge);
             alpha *= feature ? 0.18f : mix(0.08f, 0.22f, edge);
             inner = 0.0f;
             color = glow;
+            warm = emberHalo;
         }
-        color = mix(color, violet, s.c.z);
+        color = mix(mix(color, violet, s.c.z), warm, warmth);
         float scale = u.reduceMotion > 0.5f ? 1.0f : mix(0.6f, 1.0f, birth);
 
         DotOut out;
@@ -126,6 +143,33 @@ enum Shaders {
         out.color = float4(color, 1.0f) * alpha;
         out.inner = inner;
         return out;
+    }
+
+    // MARK: Constellation links
+
+    struct LinkOut {
+        float4 position [[position]];
+        float4 color;
+    };
+
+    // Each link vertex carries the link's timing (latest birth, earliest death, lower opacity of
+    // its two dots), so the line appears and fades with the dots it joins.
+    vertex LinkOut linkVertex(uint vid [[vertex_id]],
+                              const device Sprite* sprites [[buffer(0)]],
+                              constant DotUniforms& u [[buffer(1)]]) {
+        Sprite s = sprites[vid];
+        float t = u.cameraAndTime.w;
+        float birth = strongEaseOut((t - s.b.x) / 0.35f);
+        float evidence = mix(s.b.y, s.b.z, strongEaseOut((t - s.b.w) / 0.25f));
+        float fade = 1.0f - strongEaseOut((t - s.c.y) / 0.25f);
+        LinkOut out;
+        out.position = u.clip * float4(s.a.xyz, 1.0f);
+        out.color = float4(mix(glow, violet, s.c.z), 1.0f) * (0.35f * evidence * birth * fade);
+        return out;
+    }
+
+    fragment float4 linkFragment(LinkOut in [[stage_in]]) {
+        return in.color;
     }
 
     // Round sprite, fully opaque inside `inner`, fading to zero at the rim. Halos use 0: a glow.

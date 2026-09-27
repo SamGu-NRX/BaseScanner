@@ -16,6 +16,7 @@ enum Command {
         var mode: CaptureMode = .lidar
         var reduceMotion = false
         var showFog = false
+        var scheme: DotScheme = .hologram
     }
 
     struct UsageError: Error, CustomStringConvertible {
@@ -24,8 +25,8 @@ enum Command {
             """
             \(problem)
             usage: LiveDots [--fixture <dir>]
-                   LiveDots --export <dir|-> --mode lidar|nolidar [--reduce-motion] [--fog] [--fixture <dir>]
-                   LiveDots --still <keyframe> --out <file.png> --mode lidar|nolidar [--reduce-motion] [--fog] [--fixture <dir>]
+                   LiveDots --export <dir|-> --mode lidar|nolidar [--scheme hologram|constellation|ember] [--reduce-motion] [--fog] [--fixture <dir>]
+                   LiveDots --still <keyframe> --out <file.png> --mode lidar|nolidar [--scheme ...] [--reduce-motion] [--fog] [--fixture <dir>]
                    LiveDots --gradient-report [--fixture <dir>]
                    LiveDots --benchmark [--fixture <dir>]
                    LiveDots --field-report [--fixture <dir>]
@@ -52,6 +53,12 @@ enum Command {
                 still = number
             case "--out": output = try value(for: flag)
             case "--mode": mode = try value(for: flag)
+            case "--scheme":
+                let name = try value(for: flag)
+                guard let scheme = DotScheme(rawValue: name) else {
+                    throw UsageError(problem: "--scheme must be hologram, constellation or ember, got \(name)")
+                }
+                options.scheme = scheme
             case "--reduce-motion": options.reduceMotion = true
             case "--fog": options.showFog = true
             case "--gradient-report": report = true

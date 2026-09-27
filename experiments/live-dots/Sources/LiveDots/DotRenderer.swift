@@ -11,6 +11,7 @@ struct FrameRequest: Equatable {
     var time: Float
     var reduceMotion: Bool
     var showFog: Bool
+    var scheme: DotScheme = .hologram
 }
 
 /// Draws a keyframe: the camera image, the optional fog veil, then the dots as additive point
@@ -39,13 +40,16 @@ final class DotRenderer {
     private let cameraPipeline: MTLRenderPipelineState
     private let veilPipeline: MTLRenderPipelineState
     private let dotPipeline: MTLRenderPipelineState
+    private let linkPipeline: MTLRenderPipelineState
     private let cameraImages: [MTLTexture]
 
     private var spriteBuffer: MTLBuffer?
     private var spriteCount = 0
     private var veilBuffer: MTLBuffer?
     private var veilVertexCount = 0
-    private var cachedKey: (mode: CaptureMode, keyframe: Int)?
+    private var linkBuffer: MTLBuffer?
+    private var linkVertexCount = 0
+    private var cachedKey: (mode: CaptureMode, keyframe: Int, scheme: DotScheme)?
     /// Replaces the timeline's sprites, for the 6,000-dot benchmark.
     var spriteOverride: [DotSprite]? {
         didSet { cachedKey = nil }
@@ -76,13 +80,15 @@ final class DotRenderer {
             a.destinationAlphaBlendFactor = .one
         }
         // Additive: the dots are light on the camera image, never paint over it.
-        dotPipeline = try pipeline("dotVertex", "dotFragment") { a in
+        let additive: (MTLRenderPipelineColorAttachmentDescriptor) -> Void = { a in
             a.isBlendingEnabled = true
             a.sourceRGBBlendFactor = .one
             a.destinationRGBBlendFactor = .one
             a.sourceAlphaBlendFactor = .zero
             a.destinationAlphaBlendFactor = .one
         }
+        dotPipeline = try pipeline("dotVertex", "dotFragment", blend: additive)
+        linkPipeline = try pipeline("linkVertex", "linkFragment", blend: additive)
 
         let loader = MTKTextureLoader(device: device)
         cameraImages = try data.replay.keyframes.map { keyframe in
@@ -98,7 +104,7 @@ final class DotRenderer {
                 pixelSize: SIMD2<Float>, pointScale: Float) throws {
         let state = data.timeline(request.mode).states[request.keyframe]
         let keyframe = data.replay.keyframes[request.keyframe]
-        try prepareBuffers(request.mode, state)
+        try prepareBuffers(request.mode, state, scheme: request.scheme)
         let projection = ScreenProjection(keyframe: keyframe, viewSize: pixelSize)
 
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
@@ -120,10 +126,17 @@ final class DotRenderer {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: veilVertexCount)
         }
 
+        var dots = DotUniforms(
+            clip: clip, cameraAndTime: SIMD4(keyframe.cameraPosition, request.time),
+            pointScale: pointScale, reduceMotion: request.reduceMotion ? 1 : 0,
+            scheme: Float(DotScheme.allCases.firstIndex(of: request.scheme) ?? 0), pad: 0)
+        if let linkBuffer, linkVertexCount > 0 {
+            encoder.setRenderPipelineState(linkPipeline)
+            encoder.setVertexBuffer(linkBuffer, offset: 0, index: 0)
+            encoder.setVertexBytes(&dots, length: MemoryLayout<DotUniforms>.stride, index: 1)
+            encoder.drawPrimitives(type: .line, vertexStart: 0, vertexCount: linkVertexCount)
+        }
         if let spriteBuffer, spriteCount > 0 {
-            var dots = DotUniforms(
-                clip: clip, cameraAndTime: SIMD4(keyframe.cameraPosition, request.time),
-                pointScale: pointScale, reduceMotion: request.reduceMotion ? 1 : 0, pad: .zero)
             encoder.setRenderPipelineState(dotPipeline)
             encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&dots, length: MemoryLayout<DotUniforms>.stride, index: 1)
@@ -131,13 +144,18 @@ final class DotRenderer {
         }
     }
 
-    private func prepareBuffers(_ mode: CaptureMode, _ state: KeyframeState) throws {
-        if let cachedKey, cachedKey.mode == mode, cachedKey.keyframe == state.index { return }
-        cachedKey = (mode, state.index)
+    private func prepareBuffers(_ mode: CaptureMode, _ state: KeyframeState, scheme: DotScheme) throws {
+        if let cachedKey, cachedKey.mode == mode, cachedKey.keyframe == state.index, cachedKey.scheme == scheme { return }
+        cachedKey = (mode, state.index, scheme)
 
-        let vertices = Self.vertices(for: spriteOverride ?? state.sprites)
+        let sprites = (spriteOverride ?? state.sprites).filter { scheme.draws($0.kind) }
+        let vertices = Self.vertices(for: sprites)
         spriteCount = vertices.count
         spriteBuffer = vertices.isEmpty ? nil : try makeBuffer(vertices, "dot")
+
+        let links = scheme == .constellation ? Self.linkVertices(for: sprites) : []
+        linkVertexCount = links.count
+        linkBuffer = links.isEmpty ? nil : try makeBuffer(links, "link")
 
         var veil: [SIMD4<Float>] = []
         for cell in state.unseenCells {
@@ -166,18 +184,41 @@ final class DotRenderer {
     }
 }
 
+extension DotRenderer {
+    /// Two vertices per link. Both carry the link's own timing: it is born with the later of its
+    /// two dots (counting a dot as born when it became an edge), dies with the earlier, and takes
+    /// the lower opacity.
+    static func linkVertices(for sprites: [DotSprite]) -> [SpriteVertex] {
+        EdgeLinks.links(among: sprites).flatMap { pair -> [SpriteVertex] in
+            let a = sprites[Int(pair.x)], b = sprites[Int(pair.y)]
+            let timing = DotSprite(
+                id: 0, position: .zero, kind: .edge, onOccluder: a.onOccluder && b.onOccluder,
+                birthTime: max(max(a.birthTime, a.edgeSince), max(b.birthTime, b.edgeSince)),
+                fromOpacity: min(a.fromOpacity, b.fromOpacity), toOpacity: min(a.toOpacity, b.toOpacity),
+                opacityTime: max(a.opacityTime, b.opacityTime), edgeSince: -.infinity,
+                deathTime: min(a.deathTime, b.deathTime))
+            var start = SpriteVertex(timing), end = start
+            start.a = SIMD4(a.position, 0)
+            end.a = SIMD4(b.position, 0)
+            return [start, end]
+        }
+    }
+}
+
 /// Matches `Sprite` in the shader. Infinite times are clamped to plus or minus 1e6 s, because
 /// Metal compiles with fast math, which assumes no infinities.
 struct SpriteVertex {
     var a: SIMD4<Float>
     var b: SIMD4<Float>
     var c: SIMD4<Float>
+    var d: SIMD4<Float>
 
     init(_ s: DotSprite) {
         func finite(_ t: Float) -> Float { min(max(t, -1e6), 1e6) }
         a = SIMD4(s.position, s.kind == .feature ? 1 : 0)
         b = SIMD4(finite(s.birthTime), s.fromOpacity, s.toOpacity, finite(s.opacityTime))
         c = SIMD4(finite(s.edgeSince), finite(s.deathTime), s.onOccluder ? 1 : 0, 0)
+        d = SIMD4(finite(s.lastSeenTime), 0, 0, 0)
     }
 
     var asHalo: SpriteVertex {
@@ -199,5 +240,6 @@ struct DotUniforms {
     var cameraAndTime: SIMD4<Float>
     var pointScale: Float
     var reduceMotion: Float
-    var pad: SIMD2<Float>
+    var scheme: Float
+    var pad: Float
 }

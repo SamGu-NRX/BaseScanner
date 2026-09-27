@@ -24,11 +24,18 @@ public struct DotSprite: Sendable, Equatable {
     /// When it stopped being in the field (a feature point dying, a flat dot capped out),
     /// +infinity while it is alive. A dying dot fades out over 250 ms.
     public let deathTime: Float
+    /// Unit surface normal, zero when unknown.
+    public let normal: SIMD3<Float>
+    /// When a keyframe last observed it; the ember scheme cools from here.
+    public let lastSeenTime: Float
 
     public init(
         id: UInt64, position: SIMD3<Float>, kind: DotKind, onOccluder: Bool, birthTime: Float,
-        fromOpacity: Float, toOpacity: Float, opacityTime: Float, edgeSince: Float, deathTime: Float
+        fromOpacity: Float, toOpacity: Float, opacityTime: Float, edgeSince: Float, deathTime: Float,
+        normal: SIMD3<Float> = .zero, lastSeenTime: Float? = nil
     ) {
+        self.normal = normal
+        self.lastSeenTime = lastSeenTime ?? birthTime
         self.id = id
         self.position = position
         self.kind = kind
@@ -155,7 +162,8 @@ public struct DotTimeline: Sendable {
             DotSprite(
                 id: track.last.id, position: track.last.position, kind: track.last.kind, onOccluder: track.last.onOccluder,
                 birthTime: track.birthTime, fromOpacity: track.from, toOpacity: track.to, opacityTime: track.opacityTime,
-                edgeSince: track.edgeSince, deathTime: deathTime)
+                edgeSince: track.edgeSince, deathTime: deathTime, normal: track.last.normal,
+            lastSeenTime: Float(track.last.lastSeenFrame) / Tuning.keyframesPerSecond)
         }
 
         /// What the phone shows at a keyframe: the 390 x 844 pt portrait crop of the camera, minus

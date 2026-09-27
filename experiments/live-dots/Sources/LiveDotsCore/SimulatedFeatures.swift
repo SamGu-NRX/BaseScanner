@@ -13,13 +13,19 @@ public struct FeatureField: Sendable {
         /// Keyframe indices it was matched in, newest last, trimmed to the window.
         var observed: [Int] = []
         var lastSeen: Double
+        var lastSeenFrame: Int
+    }
+
+    struct PlaneCell {
+        var views = ViewDirections()
+        var lastSeenFrame = 0
     }
 
     private var tracks: [UInt64: Track] = [:]
     /// 8 cm cells to the tracks inside them, for the re-observation match.
     private var grid: [SIMD3<Int32>: [UInt64]] = [:]
     private var nextTrack: UInt64 = 0
-    private var planeViews: [SIMD2<Int32>: ViewDirections] = [:]
+    private var planeViews: [SIMD2<Int32>: PlaneCell] = [:]
     private var frameIndex = 0
     private var frameTime: Double = 0
     /// Candidates kept by the last `integrate`, after thinning.
@@ -41,10 +47,11 @@ public struct FeatureField: Sendable {
         for point in samples {
             if let id = nearestTrack(to: point) {
                 tracks[id]?.lastSeen = frameTime
+                tracks[id]?.lastSeenFrame = frameIndex
                 if tracks[id]?.observed.last != frameIndex { tracks[id]?.observed.append(frameIndex) }
                 tracks[id]?.views.insert(camera - point)
             } else {
-                var track = Track(id: nextTrack, position: point, lastSeen: frameTime)
+                var track = Track(id: nextTrack, position: point, lastSeen: frameTime, lastSeenFrame: frameIndex)
                 track.observed = [frameIndex]
                 track.views.insert(camera - point)
                 tracks[track.id] = track
@@ -133,7 +140,9 @@ public struct FeatureField: Sendable {
                       let measured = depth.depth(atU: pixel.u, v: pixel.v),
                       measured > 0, abs(measured - pixel.depth) < Tuning.freeSpaceMargin
                 else { continue }
-                planeViews[SIMD2(Int32(column), Int32(row)), default: ViewDirections()].insert(camera - centre)
+                let cell = SIMD2(Int32(column), Int32(row))
+                planeViews[cell, default: PlaneCell()].views.insert(camera - centre)
+                planeViews[cell]?.lastSeenFrame = frame.index
             }
         }
     }
@@ -153,15 +162,17 @@ public struct FeatureField: Sendable {
         for track in tracks.values where isAlive(track) {
             dots.append(FieldDot(
                 id: Self.featureTag | track.id, position: track.position, kind: .feature,
-                views: track.views.count, onOccluder: FieldDot.isOnOccluder(track.position)))
+                views: track.views.count, onOccluder: FieldDot.isOnOccluder(track.position),
+                lastSeenFrame: track.lastSeenFrame))
         }
-        for (cell, views) in planeViews {
+        for (cell, plane) in planeViews {
             let key = SIMD3<Int32>(cell.x, cell.y, 0)
             let position = Self.planeCentre(column: Int(cell.x), row: Int(cell.y))
                 + Jitter.offset(for: key, normal: SIMD3(0, 0, 1), cellSize: Tuning.planeCell)
             dots.append(FieldDot(
                 id: Self.planeTag | UInt64(UInt32(cell.x)) << 16 | UInt64(UInt32(cell.y)),
-                position: position, kind: .plane, views: views.count, onOccluder: false))
+                position: position, kind: .plane, views: plane.views.count, onOccluder: false,
+                normal: SIMD3(0, 0, 1), lastSeenFrame: plane.lastSeenFrame))
         }
         return dots
     }
