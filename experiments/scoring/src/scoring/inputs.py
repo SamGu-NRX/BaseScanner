@@ -522,15 +522,17 @@ def _validate_review_band(fields: Fields, review_name: str, fail: Threshold, rul
             f"{fail.pass_when}; a review band needs both in the same direction",
             "review_threshold",
         )
+    # Strict: an equal value leaves no band, and values up to the fail line would pass unreviewed.
     inside = (
-        review.value_ft <= fail.value_ft
+        review.value_ft < fail.value_ft
         if fail.pass_when == "at_most"
-        else review.value_ft >= fail.value_ft
+        else review.value_ft > fail.value_ft
     )
     if not inside:
         raise fields.error(
-            f"{review.name!r} ({review.value_ft} ft) must be on the passing side of "
-            f"{fail.name!r} ({fail.value_ft} ft, {fail.pass_when})",
+            f"{review.name!r} ({review.value_ft} ft) must be strictly on the passing side of "
+            f"{fail.name!r} ({fail.value_ft} ft, {fail.pass_when}); equal values leave no "
+            "band to review",
             "review_threshold",
         )
 

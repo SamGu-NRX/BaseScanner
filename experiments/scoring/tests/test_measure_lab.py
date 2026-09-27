@@ -24,9 +24,10 @@ import pytest
 from helpers import FIXTURES, MEASURE_LAB, SESSION_ZIP, committed_session, session_zip
 
 from scoring.cli import main
-from scoring.inputs import InputError, load_study
+from scoring.inputs import InputError, PipelineMeasurement, Threshold, load_study
 from scoring.measure_lab import (
     HASH_CHUNK_BYTES,
+    _rule_outcome,
     import_session,
     load_session,
     meters_to_feet,
@@ -231,12 +232,10 @@ class TestDecide:
         }
         assert outcomes[("c1", "gas")] == outcome
 
-    def test_absent_cannot_pass_an_at_most_rule(self, setup: Setup):
-        setup.map["measurements"]["c1-route"] = "absent"
-        outcomes = {
-            (o["candidate"], o["check"]): o["outcome"] for o in setup.run(decide=True)["outcomes"]
-        }
-        assert outcomes[("c1", "route")] == "unsure"
+    def test_absent_cannot_pass_an_at_most_rule(self):
+        limit = Threshold("max_route_ft", D(20), "at_most", "synthetic")
+        absent = PipelineMeasurement("c1-route", None, None, "absent")
+        assert _rule_outcome(absent, limit, None) == "unsure"
 
 
 def edit_session(key: str, value: Any):
@@ -320,6 +319,33 @@ ERRORS: list[tuple[str, Any, str]] = [
 def test_errors(setup: Setup, edit, expected):
     edit(setup)
     assert expected in setup.error()
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"session_measurement": "m5", "key": "alongWall"},  # accepted, compared alongWall
+        {"session_measurement": "m2", "key": "alongWall"},
+        {"refusal": "r1"},
+        "absent",
+    ],
+    ids=["along-wall m5", "along-wall m2", "refusal", "absent"],
+)
+@pytest.mark.parametrize("route", ["c1-route", "c2-route"])
+def test_route_must_be_unsupported(setup: Setup, route: str, entry: Any):
+    setup.map["measurements"][route] = entry
+    error = setup.error(decide=True)
+    assert f'measurements.{route}: {route!r} decides a route check, so map it as "unsupported"' in (
+        error
+    )
+
+
+def test_route_is_recognised_by_its_threshold_under_another_check_name(setup: Setup):
+    for check in setup.truth["checks"]:
+        if check["check"] == "route":
+            check["check"] = "cable"
+    setup.map["measurements"]["c1-route"] = {"session_measurement": "m5", "key": "alongWall"}
+    assert "'c1-route' decides a route check" in setup.error()
 
 
 def test_zip_without_session_json(tmp_path: Path):

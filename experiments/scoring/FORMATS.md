@@ -60,7 +60,7 @@ Write one survey file per house.
 | `candidates[]` | Spot `id`, its physical `marker`, and its `location` as tape offsets from permanent corners. |
 | `measurements[]` | `candidate` (null for house-level distances such as wall length), `from` and `to` in words, `status` (`measured`, `absent` or `not_measured`), `method`, `measured_by`. Only `measured` entries have `value_ft` and `plus_minus_ft`. |
 | `checks[]` | The spot, the check name, the deciding measurement and its `threshold`. Every spot needs the same check names with the same thresholds, so the denominator cannot shrink. An absent feature may decide only an `at_least` check. |
-| `checks[].review_threshold` | Optional. It makes a band: values that clear `review_threshold` pass, values past `threshold` fail, and values between go to review. Both thresholds must point the same way, with the review line on the passing side. |
+| `checks[].review_threshold` | Optional. It makes a band: values that clear `review_threshold` pass, values past `threshold` fail, and values between go to review. Both thresholds must point the same way, with the review line strictly on the passing side. Equal values are rejected, because they leave no band to review. |
 
 ## Results file
 
@@ -126,7 +126,7 @@ This excerpt shows each kind of map entry. `fixtures/measure-lab/map.json` is a 
 
 A session measurement has only the quantities its endpoints allow, as `experiments/measure-lab/SESSION-FORMAT.md` lists. Point to point gives `straight`, `horizontal` and `vertical`, plus `alongWall` when a reference wall is chosen. Point to wall gives `gapToWall` and `heightAboveGround`.
 
-Map a route as `"unsupported"`. Measure Lab records no routed cable path, and an along-wall distance leaves out vertical legs and detours, so it is not a route length.
+Map a route as `"unsupported"`. Measure Lab records no routed cable path, and an along-wall distance leaves out vertical legs and detours, so it is not a route length. The importer rejects any other entry for a survey measurement that decides a check named `route`, or a check that uses `max_route_ft` or `review_route_ft`.
 
 `"absent"` is the operator's assertion that the feature does not exist. Write it only after someone has looked over the whole area the check needs and found no such feature. Never infer it from a missing measurement or a refusal. In the scorer, an absent feature passes an `at_least` clearance, so a wrong `"absent"` can become an unsafe pass.
 

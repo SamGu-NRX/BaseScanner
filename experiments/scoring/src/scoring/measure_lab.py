@@ -56,6 +56,11 @@ RULE_SUFFIX = "+rule"
 
 MAP_ENTRY_FIELDS = {"session_measurement", "key", "plus_minus_ft", "refusal"}
 
+# The route check and its thresholds, named as in the scoring protocol. Measure Lab has no tool
+# that records a routed cable path, so a route may only be mapped "unsupported".
+ROUTE_CHECK = "route"
+ROUTE_THRESHOLDS = frozenset({"max_route_ft", "review_route_ft"})
+
 # A session zip holds every keyframe JPEG, and optional depth maps, so its size grows with the walk;
 # hash it 1 MiB at a time instead of reading it whole.
 HASH_CHUNK_BYTES = 1 << 20
@@ -281,6 +286,17 @@ def load_map(path: Path) -> Map:
     return Map(path, top.text("pipeline"), top.text("session"), entries)
 
 
+def _route_measurements(truth: Truth) -> set[str]:
+    """Survey measurements that decide a route check, by check name or by a route threshold."""
+    return {
+        check.measurement
+        for check in truth.checks
+        if check.check == ROUTE_CHECK
+        or check.threshold in ROUTE_THRESHOLDS
+        or check.review_threshold in ROUTE_THRESHOLDS
+    }
+
+
 def _check_map(mapping: Map, session: Session, truth: Truth) -> None:
     where = str(mapping.path)
     if mapping.session != session.id:
@@ -301,8 +317,15 @@ def _check_map(mapping: Map, session: Session, truth: Truth) -> None:
             f"{where}: no entry for survey measurements {', '.join(map(repr, left_out))}; map "
             'each to a session measurement, a refusal, "absent" or "unsupported"'
         )
+    routes = _route_measurements(truth)
     for survey_id, entry in mapping.entries.items():
         at = f"{where}: measurements.{survey_id}"
+        if survey_id in routes and entry != "unsupported":
+            raise InputError(
+                f'{at}: {survey_id!r} decides a route check, so map it as "unsupported". Measure '
+                "Lab records no routed cable path, and a point or wall distance leaves out the "
+                "route's vertical legs and detours"
+            )
         if isinstance(entry, FromRefusal) and entry.refusal not in session.refusals:
             raise InputError(f"{at}.refusal: {session.member} has no refusal {entry.refusal!r}")
         if not isinstance(entry, FromSession):

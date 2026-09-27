@@ -209,7 +209,28 @@ CASES: list[tuple[str, Callable[[Files], Any], str]] = [
             f.rules["thresholds"]["review_route_ft"].update(value_ft=25),
             f.truth["checks"][1].update(review_threshold="review_route_ft"),
         ],
-        "'review_route_ft' (25 ft) must be on the passing side of 'max_route_ft' (20 ft, at_most)",
+        "'review_route_ft' (25 ft) must be strictly on the passing side of 'max_route_ft' "
+        "(20 ft, at_most)",
+    ),
+    (
+        "review threshold equal to an at_most fail line",
+        lambda f: [
+            f.rules["thresholds"]["review_route_ft"].update(value_ft=20),
+            f.truth["checks"][1].update(review_threshold="review_route_ft"),
+        ],
+        "'review_route_ft' (20 ft) must be strictly on the passing side of 'max_route_ft' "
+        "(20 ft, at_most); equal values leave no band to review",
+    ),
+    (
+        "review threshold equal to an at_least fail line",
+        lambda f: [
+            f.rules["thresholds"].update(
+                review_gas_ft={"value_ft": 3.0, "pass_when": "at_least", "source": "synthetic"}
+            ),
+            f.truth["checks"][0].update(review_threshold="review_gas_ft"),
+        ],
+        "'review_gas_ft' (3.0 ft) must be strictly on the passing side of 'gas_clearance_ft' "
+        "(3 ft, at_least); equal values leave no band to review",
     ),
     ("absent at_most", make_route_absent, "only a clearance (at_least) passes"),
     (

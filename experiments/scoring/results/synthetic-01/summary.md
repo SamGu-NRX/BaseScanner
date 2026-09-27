@@ -1,6 +1,6 @@
 # Capture pipeline scores
 
-Rules: `rules.json` (Synthetic scoring fixture. Not a real placement policy.), sha256 `05b466b3436155e190513a21b6333304ad9da4e93f1b5022b1813a433bdb325e`.
+Rules: `rules.json` (Synthetic scoring fixture. Not a real placement policy.), sha256 `487132e2ce0f1d686eb92dcd27efc2e2ce0af8a4c58681cbffb92a626064b89a`.
 1 house, 2 candidate spots, 3 pipeline runs.
 
 Each house's declared scale reference is left out of every error figure: a run that was given it can match it exactly, so its error says nothing about accuracy.

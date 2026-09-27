@@ -22,9 +22,9 @@ CHECK = Check("c1", "gas", "m", "gas_clearance_ft")
 
 
 class TestTruthOutcome:
-    # Strict, per docs/02-implementation-plan.md Lane C: pass when the margin s > u, fail when
-    # s < -u, borderline otherwise. A value exactly on the threshold, or exactly u from it, is
-    # borderline, including when u = 0.
+    # Strict, per docs/00-overview.md ("Every check answers PASS, FAIL or UNSURE"): pass when
+    # the margin s > u, fail when s < -u, borderline otherwise. A value exactly on the threshold,
+    # or exactly u from it, is borderline, including when u = 0.
 
     @pytest.mark.parametrize(
         ("value", "plus_minus", "expected"),
