@@ -49,7 +49,7 @@ Here's what we didn't compromise on: while the ML models handle the fuzzy parts 
 
 The criteria (e.g. the distance the battery must be from the gas meter) exist in a separate rules file. Changing a rule has no effect on the creation of a model, only its evaluation.
 
-Below, one wall makes the whole trip, from photos to a checked spot. The models build the wall and name what's on it. The last step, the rule checks, is the plain code.
+Below, one wall makes the whole trip, from photos to a checked spot. The models build the wall and name what's on it. The last step, the rule checks, is that deterministic evaluation.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/rebuild-dark.webp">
