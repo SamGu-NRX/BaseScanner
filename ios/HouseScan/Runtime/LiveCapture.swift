@@ -54,7 +54,11 @@ final class LiveCapture {
 
     /// The AR result in the camera view, while one is shown (`showResult`).
     private var result: AnchorEntity?
-    private var occludesPeople = false
+    /// An empty entity in the result at the point it has to put on screen (the battery's
+    /// middle), for `resultIsDrawn`.
+    private var resultFocus: Entity?
+    /// The last `resultIsDrawn` findings logged, so they are logged when they change.
+    private var lastDrawnReport: String?
 
     init(onFrame: @escaping @MainActor @Sendable (SourceFrame) -> Void, onEvent: @escaping @MainActor @Sendable (LiveEvent) -> Void) {
         arView = ARView(frame: .zero, cameraMode: .ar, automaticallyConfigureSession: false)
@@ -64,8 +68,9 @@ final class LiveCapture {
         arView.renderOptions.insert(.disableMotionBlur)
     }
 
-    /// People occlusion runs only while the AR result is on screen: the capture has no virtual
-    /// content for it to hide.
+    /// People occlusion is off: no caller asks for it. Turning it on while the AR result showed
+    /// re-ran the session under the result's freshly added anchor entity, and build 4.1 drew no
+    /// result on the phone it was tested on (#67). Whether and how to bring it back is #41.
     private static func configuration(occludingPeople: Bool = false) -> ARWorldTrackingConfiguration {
         let configuration = ARWorldTrackingConfiguration()
         // .gravity, not .gravityAndHeading: compass heading drifts near a house's metal and wiring.
@@ -109,7 +114,7 @@ final class LiveCapture {
 
     func start() {
         RuntimeLog.engine.info("LiDAR: scene depth \(Self.supportsDepth ? "on" : "not available", privacy: .public), mesh \(Self.supportsMesh ? "on" : "not available", privacy: .public)")
-        arView.session.run(Self.configuration(occludingPeople: occludesPeople))
+        arView.session.run(Self.configuration())
     }
 
     func pause() {
@@ -119,7 +124,7 @@ final class LiveCapture {
     /// Starts world tracking over with a fresh map, after relocalization failed. The old mesh goes
     /// with the old anchors.
     func restart() {
-        arView.session.run(Self.configuration(occludingPeople: occludesPeople), options: [.resetTracking, .removeExistingAnchors])
+        arView.session.run(Self.configuration(), options: [.resetTracking, .removeExistingAnchors])
         delegate.shared.withLock { $0.meterAnchorID = nil }
     }
 
@@ -128,20 +133,55 @@ final class LiveCapture {
     /// when the anchor was at `pose` (`MeterAnchorTracking.pose`, the pose the engine's wall
     /// agrees with). It is attached in that pose's frame, so a turn ARKit has made to the anchor
     /// since carries the model with it. Cancelling the anchor's current turn instead drew the
-    /// wall as it stood before the turn. People and, on a phone with LiDAR, the scene mesh hide
-    /// it where they stand in front of it. False when the meter has no anchor in the session;
-    /// nothing is shown then.
-    func showResult(_ model: Entity, builtFor pose: simd_float4x4) -> Bool {
+    /// wall as it stood before the turn. On a phone with LiDAR the scene mesh hides it where
+    /// something stands in front of it. `focus` is the point the model has to put on screen, in
+    /// the model's coordinates (`resultIsDrawn`).
+    ///
+    /// True means the model was handed to RealityKit, not that anything is drawn: build 4.1 took
+    /// it for that and hid the screen's own drawing on a phone where nothing appeared (#67).
+    /// False when the meter has no anchor in the session; nothing is shown then.
+    func showResult(_ model: Entity, builtFor pose: simd_float4x4, focus: SIMD3<Float>) -> Bool {
         removeResult()
         guard let id = delegate.shared.withLock({ $0.meterAnchorID }),
-              arView.session.currentFrame?.anchors.contains(where: { $0.identifier == id }) == true else { return false }
+              arView.session.currentFrame?.anchors.contains(where: { $0.identifier == id }) == true else {
+            RuntimeLog.engine.info("AR result not shown: the meter's anchor is not in the session")
+            return false
+        }
         let holder = AnchorEntity(.anchor(identifier: id))
         model.orientation = simd_quatf(pose).inverse
+        let marker = Entity()
+        marker.position = focus
+        model.addChild(marker)
         holder.addChild(model)
         arView.scene.addAnchor(holder)
         result = holder
+        resultFocus = marker
+        lastDrawnReport = nil
         setOcclusion(true)
         return true
+    }
+
+    /// Whether RealityKit can be drawing the shown result now: its anchor entity is anchored to
+    /// the meter's ARKit anchor, it is enabled, and the result's focus point lands in front of
+    /// the camera and inside the view. A check of the chain, not of pixels: RealityKit says
+    /// nothing about what it drew. The findings are logged when they change.
+    func resultIsDrawn() -> Bool {
+        guard let result, let resultFocus else { return false }
+        let id = delegate.shared.withLock { $0.meterAnchorID }
+        let inSession = id.map { id in arView.session.currentFrame?.anchors.contains(where: { $0.identifier == id }) == true } ?? false
+        let anchored = result.isAnchored
+        let enabled = result.isEnabledInHierarchy
+        let world = resultFocus.position(relativeTo: nil)
+        let inCamera = arView.cameraTransform.matrix.inverse * SIMD4(world, 1)
+        let point = inCamera.z < 0 ? arView.project(world) : nil
+        let onScreen = point.map { arView.bounds.contains($0) } ?? false
+        let report = "anchor in session \(inSession), anchored \(anchored), enabled \(enabled), on screen \(onScreen)"
+        if report != lastDrawnReport {
+            lastDrawnReport = report
+            let at = point.map { String(format: "(%.0f, %.0f) in %.0f x %.0f", Double($0.x), Double($0.y), Double(arView.bounds.width), Double(arView.bounds.height)) } ?? "none"
+            RuntimeLog.engine.info("AR result: \(report, privacy: .public), projected at \(at, privacy: .public)")
+        }
+        return anchored && enabled && onScreen
     }
 
     func hideResult() {
@@ -157,20 +197,18 @@ final class LiveCapture {
     private func removeResult() {
         result?.removeFromParent()
         result = nil
+        resultFocus = nil
     }
 
+    /// The LiDAR mesh hides the result where something real stands in front of it. A RealityKit
+    /// setting only: the session is not re-run (see `configuration`).
     private func setOcclusion(_ on: Bool) {
-        if Self.supportsMesh {
-            if on {
-                arView.environment.sceneUnderstanding.options.insert(.occlusion)
-            } else {
-                arView.environment.sceneUnderstanding.options.remove(.occlusion)
-            }
+        guard Self.supportsMesh else { return }
+        if on {
+            arView.environment.sceneUnderstanding.options.insert(.occlusion)
+        } else {
+            arView.environment.sceneUnderstanding.options.remove(.occlusion)
         }
-        guard Self.supportsPeopleOcclusion, occludesPeople != on else { return }
-        occludesPeople = on
-        // Without reset options the session keeps its tracking, anchors and mesh.
-        arView.session.run(Self.configuration(occludingPeople: on))
     }
 
     /// ARKit's mesh in world meters, with one `ARMeshClassification` raw value per triangle (0,

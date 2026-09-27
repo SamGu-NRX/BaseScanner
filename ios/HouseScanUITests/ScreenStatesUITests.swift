@@ -77,6 +77,9 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
+        // #67: the screen draws the result itself unless the AR scene is seen drawing it, and
+        // the demo has no AR scene.
+        "resultAR": ("ar.overlay", "drawn on your wall"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
