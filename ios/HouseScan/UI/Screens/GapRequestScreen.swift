@@ -132,7 +132,7 @@ struct GapRequestScreen: View {
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
-        return ScanCopy.withCoaching(ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd)), coaching)
+        return ScanCopy.withCoaching(ScanCopy.gap(gap), coaching)
     }
 
     /// The coaching on the card, marked with its symbol (`tone`). Once the view is in, the
