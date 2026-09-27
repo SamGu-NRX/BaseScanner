@@ -64,7 +64,7 @@ struct ResultScreen: View {
                         ChecksList(checks: result.checks)
                     }
                     if !result.missing.isEmpty {
-                        MissingList(missing: result.missing, actions: actions)
+                        MissingList(missing: result.missing, canCapture: state.spatialResultAvailable, actions: actions)
                     }
                     VStack(spacing: 16) {
                         if let scan = state.shareableScan {
@@ -273,6 +273,8 @@ private struct CheckRowView: View {
 
 private struct MissingList: View {
     var missing: [MissingEvidence]
+    /// False once the camera has failed: no view can be taken, so none is offered.
+    var canCapture: Bool
     var actions: any ScanActions
 
     var body: some View {
@@ -285,7 +287,7 @@ private struct MissingList: View {
                     Text(item.text)
                         .font(Typeface.hint)
                         .fixedSize(horizontal: false, vertical: true)
-                    if item.capturable {
+                    if item.capturable, canCapture {
                         Button {
                             actions.captureMissing(item.id)
                         } label: {

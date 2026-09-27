@@ -914,7 +914,7 @@ public struct CoverageMap: Sendable {
     private struct WalkedStep {
         var low: Float
         var high: Float
-        /// Distance from the wall of the step's end nearer to it.
+        /// The least distance out from the wall anywhere along the step (`nearestOut`).
         var nearest: Float
     }
 
@@ -944,8 +944,42 @@ public struct CoverageMap: Sendable {
         guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }
         let a = wall.wallPoint(first.position)
         let b = wall.wallPoint(second.position)
-        guard a.out > 0, b.out > 0 else { return nil }
-        return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: min(a.out, b.out))
+        guard let nearest = Self.nearestOut(from: first.position, to: second.position, wall: wall), nearest > 0 else { return nil }
+        return WalkedStep(low: min(a.s, b.s), high: max(a.s, b.s), nearest: nearest)
+    }
+
+    /// How far in front of the wall the straight step from `p` to `q` stays, meters: over every
+    /// piece of the chain, the least distance out from that piece's line of the part of the step
+    /// that lies in front of the piece's stretch (its s within the piece's span). Distance out is
+    /// linear along the step, so the least is at an end of that part. Nil when no part of the
+    /// step lies in front of any piece.
+    ///
+    /// Taking only the two ends' distances out, each from the piece nearest it, overstated it at
+    /// a corner: poses 0.4 m out from each of two pieces of a convex corner, 0.85 m apart, have a
+    /// step between them that passes the corner 0.2 m out, and the cell by the corner reported
+    /// the 0.4 m as walked clear. The part of a step outside a convex corner, in front of neither
+    /// piece, claims nothing.
+    static func nearestOut(from p: SIMD3<Float>, to q: SIMD3<Float>, wall: WallFrame) -> Float? {
+        var least: Float?
+        for piece in wall.segments {
+            let a = piece.coordinates(ofOffset: p - wall.origin)
+            let b = piece.coordinates(ofOffset: q - wall.origin)
+            // t in [0, 1] along the step where s lies within the piece's span.
+            var low: Float = 0, high: Float = 1
+            let ds = b.s - a.s
+            if abs(ds) < 1e-9 {
+                guard piece.span.contains(a.s) else { continue }
+            } else {
+                let t0 = (piece.span.lowerBound - a.s) / ds
+                let t1 = (piece.span.upperBound - a.s) / ds
+                low = max(low, min(t0, t1))
+                high = min(high, max(t0, t1))
+                guard low <= high else { continue }
+            }
+            let outs = [a.out + (b.out - a.out) * low, a.out + (b.out - a.out) * high]
+            least = min(least ?? .infinity, outs.min() ?? .infinity)
+        }
+        return least
     }
 
     // MARK: Overhead
@@ -1174,10 +1208,26 @@ public struct CoverageMap: Sendable {
     /// anchor (`MeterAnchorTracking`): what was captured moves with the meter, so the relations
     /// between the wall and the views of it, and every s (cells, ends, corners), stay exactly as
     /// they were, and nothing is rebuilt.
+    ///
+    /// The positions each row's sightings were made from move too, their depth flags kept: a
+    /// sighting left where it was would sit the correction's distance from the camera that made
+    /// it, so the same view seen again after a 0.30 m shift counted as a second position.
     public mutating func apply(_ correction: YawCorrection) {
         wall.apply(correction)
         observedCameras = observedCameras.map { correction.moved($0) }
         overheadCameras = overheadCameras.map { correction.moved($0) }
+        func moved(_ rows: [[Sight]]) -> [[Sight]] {
+            rows.map { row in row.map { Sight(position: correction.point($0.position), depthVerified: $0.depthVerified) } }
+        }
+        for (band, bandCells) in cells {
+            for (index, cell) in bandCells {
+                var cell = cell
+                cell.rows = moved(cell.rows)
+                cells[band]?[index] = cell
+            }
+        }
+        depthCells = depthCells.mapValues(moved)
+        pastLimitCells = pastLimitCells.mapValues { $0.mapValues(moved) }
         revision += 1
     }
 
