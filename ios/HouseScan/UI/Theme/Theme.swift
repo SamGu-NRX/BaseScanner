@@ -17,6 +17,11 @@ enum Palette {
     /// is about 4.9:1 on paper, but the audit rated "See it on your wall" as only nearly
     /// passing; white on this is about 6.2:1.
     static let signalFill = Color(red: 26 / 255.0, green: 88 / 255.0, blue: 214 / 255.0)
+    /// A reply button on the dark instruction card: what 14% white over `ink` (#0B1220) looks like,
+    /// as a solid colour (#2D333F), so the button's contrast with `chalk` text (about 11:1) doesn't
+    /// depend on how the translucent layer is composited over the camera behind the card. The
+    /// accessibility audit rejected the translucent version on CI's LiDAR replay.
+    static let replyFill = Color(red: 45 / 255.0, green: 51 / 255.0, blue: 63 / 255.0)
     static let unseen = Color("CoverageUnseen")
     static let seen = Color("CoverageSeen")
     static let covered = Color("CoverageCovered")

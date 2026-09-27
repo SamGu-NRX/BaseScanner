@@ -78,4 +78,11 @@ enum Distance {
 extension String {
     /// "about 5 ft right of your meter" as the start of a sentence.
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+
+    /// A title in the middle of a sentence: "Distance from AC units" becomes "distance from AC
+    /// units". A leading acronym ("AC units nearby") keeps its capitals.
+    var lowercasedFirst: String {
+        guard let first, let second = dropFirst().first, second.isLowercase else { return self }
+        return first.lowercased() + dropFirst()
+    }
 }

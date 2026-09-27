@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HouseScanGitCommit</key>
+	<string>$(HOUSESCAN_GIT_COMMIT)</string>
 	<key>HouseScanServerURL</key>
 	<string>$(HOUSESCAN_SERVER_URL)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
@@ -41,7 +43,10 @@
 		<false/>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>Canvas</string>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arkit</string>

@@ -54,12 +54,22 @@ final class ScanEngine {
 
     // Wall geometry inputs
     private var meterAnchorID: UUID?
-    /// Detected horizontal planes as (center x, y, center z, radius), world meters.
-    private var groundPlanes: [SIMD4<Float>] = []
+    /// The meter anchor's pose the wall and everything captured agree with, and the corrections
+    /// still to apply to them as ARKit refines it (`refreshMeterFromAnchor`). Nil on a replay.
+    private var meterTracking: MeterAnchorTracking?
+    /// Whether a frame source may start, and what a failure and Start over do to it.
+    private var sourceState = CaptureSourceState()
+    /// Detected horizontal planes, with their classes and outlines.
+    private var groundPlanes: [GroundPlaneEvidence] = []
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
-    /// than the chest-height guess. The export widens position errors while it is a guess.
-    private(set) var groundMeasured = false
+    /// than the chest-height guess, and the guess's error. The export widens position errors
+    /// while it is a guess.
+    private var groundEvidence = GroundEvidence(measured: false, guessError: ScanEngine.estimatedGroundError)
+    private(set) var groundMeasured: Bool {
+        get { groundEvidence.measured }
+        set { groundEvidence = GroundEvidence(measured: newValue, guessError: Self.estimatedGroundError) }
+    }
     private var endKinds: [WallSide: EndKind] = [:]
     /// The side whose end turns a corner the walk is to follow, while it waits for the next wall
     /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
@@ -132,6 +142,8 @@ final class ScanEngine {
     private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
+    /// The spot check (`ScanEngine+Confirm.swift`).
+    var spotConfirm = SpotConfirmState()
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -182,6 +194,7 @@ final class ScanEngine {
     /// unreadable replay) ends on the failure screen, which reads `state.failure` for its words.
     /// Setting the failure alone left the flow on whatever screen was up.
     private func fail(_ failure: ScanFailure) {
+        _ = sourceState.sourceFailed(failure == .arUnsupported ? .unsupported : .recoverable, afterCapture: false)
         state.failure = failure
         go(.unsupported)
     }
@@ -189,8 +202,10 @@ final class ScanEngine {
     private func loadReplay(_ folder: URL) async {
         do {
             let loaded = try await Task.detached(priority: .userInitiated) { try ReplayPlayer.load(folder: folder) }.value
-            let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame) }
+            let source = sourceState.sourceStarted()
+            let player = ReplayPlayer(folder: folder, loaded: loaded) { [weak self] frame in self?.ingest(frame, from: source) }
             replay = player
+            state.spatialResultAvailable = true
             let withDepth = player.frames.filter { $0.depth != nil }.count
             state.depthAvailable = withDepth > 0
             player.show(index: 0)
@@ -249,7 +264,7 @@ final class ScanEngine {
                     replay.play(range: range, speed: replaySpeed)
                 }
             }
-        case .markFeatures, .uploading, .result:
+        case .markFeatures, .uploading, .spotConfirm, .result:
             live?.setMode(.idle)
             replay?.stop()
         case .resultAR:
@@ -312,10 +327,14 @@ final class ScanEngine {
     }
 
     private func startSourceIfNeeded() {
-        guard replay == nil, live == nil, state.failure == nil else { return }
+        // A replay is its own source (`loadReplay`); a failed source waits for Start over.
+        guard replay == nil, options.replayFolder == nil, live == nil, sourceState.mayStartSource else { return }
+        // Each callback carries this source's number; one from a retired source is refused.
+        let source = sourceState.sourceStarted()
+        state.spatialResultAvailable = true
         let capture = LiveCapture(
-            onFrame: { [weak self] frame in self?.ingest(frame) },
-            onEvent: { [weak self] event in self?.handle(event) }
+            onFrame: { [weak self] frame in self?.ingest(frame, from: source) },
+            onEvent: { [weak self] event in self?.handle(event, from: source) }
         )
         live = capture
         state.feed = .live
@@ -344,11 +363,11 @@ final class ScanEngine {
             case .failed, .rejected: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
-        case .onboarding, .result, .resultAR, .unsupported: false
+        case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         let depthFrames = switch state.phase {
         case .meterCloseUp, .wallWalk, .gapRequest: true
-        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        case .onboarding, .findMeter, .markFeatures, .uploading, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
@@ -360,7 +379,10 @@ final class ScanEngine {
 
     // MARK: Frames
 
-    func ingest(_ frame: SourceFrame) {
+    /// A frame from the source started as `source`. One from a source that failed or was
+    /// replaced is dropped: a frame it queued before failing would set tracking back to normal.
+    func ingest(_ frame: SourceFrame, from source: Int) {
+        guard sourceState.accepts(source) else { return }
         captureClock = max(captureClock ?? frame.timestamp, frame.timestamp)
         if !frame.isPoseOnly { lastFrame = frame }
         if let still = frame.still { state.feed = .still(still) }
@@ -371,11 +393,8 @@ final class ScanEngine {
             state.tracking = frame.tracking
             live?.setResultVisible(frame.tracking == .normal)
         }
-        if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
-            groundPlanes = frame.groundPlanes
-            refineGround()
-        }
-        refreshMeterFromAnchor(frame)
+        if let planes = frame.groundPlanes { groundPlanes = planes }
+        applySpatialUpdate(frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else {
@@ -395,21 +414,46 @@ final class ScanEngine {
         }
     }
 
-    /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
-    /// wall always replaces the guess, and a better plane replaces an earlier one.
-    private func refineGround() {
-        guard var wall = coverage?.wall, let y = groundBelow(wall.meter) else { return }
-        // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
-        guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
-        RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
-        wall.groundY = y
-        groundMeasured = true
-        coverage?.heightError = 0
-        // Rebuilds coverage from the kept cameras: the rows now sit at other heights.
-        coverage?.updateWall(wall)
+    /// ARKit's correction to the meter's anchor, then the ground from the planes this frame
+    /// reports, in that order (`SpatialUpdate`): the correction moves everything captured (the
+    /// wall and corners, the kept cameras, and here the tapped marks) as one body into the frame
+    /// ARKit reports now, and the ground is then read in that same frame. A plane that stops
+    /// supporting the ground (reclassified, removed) puts it back to a guess.
+    private func applySpatialUpdate(_ frame: SourceFrame) {
+        guard var map = coverage else { return }
+        let before = (y: map.wall.groundY, measured: groundEvidence.measured)
+        let outcome = SpatialUpdate.apply(
+            anchor: frame.meterAnchor, planes: frame.groundPlanes, time: frame.timestamp,
+            map: &map, tracking: &meterTracking, ground: &groundEvidence)
+        guard outcome.correction != nil || outcome.groundChanged else { return }
+        coverage = map
+        if let correction = outcome.correction {
+            var features = state.features
+            for index in features.indices { features[index].points = features[index].points.map(correction.point) }
+            if features != state.features { state.features = features }
+        }
+        if outcome.groundChanged {
+            RuntimeLog.engine.info("ground \(self.groundEvidence.measured ? "measured" : "a guess again", privacy: .public) at y=\(map.wall.groundY) (was \(before.y), \(before.measured ? "measured" : "estimated", privacy: .public))")
+        }
         publishWall()
         publishCoverage()
         reprojectFeatures()
+    }
+
+    /// A raw pose ARKit reported at `time`, in the frame the wall agrees with now. The same raw
+    /// pose without an anchor (a replay).
+    func correctedPose(_ raw: simd_float4x4, capturedAt time: Double) -> simd_float4x4 {
+        meterTracking?.correctedPose(raw, capturedAt: time) ?? raw
+    }
+
+    /// The anchor corrections, for the packet writer off the main actor.
+    var poseCorrections: PoseCorrections { PoseCorrections(meterTracking) }
+
+    /// A frame's camera in the frame the wall agrees with now: a frame kept before a correction
+    /// and stored after it (its photo saving, the close-up being read, the overhead question
+    /// waiting) was captured in the old frame.
+    func correctedCamera(_ frame: SourceFrame) -> CameraFrame {
+        meterTracking?.correctedCamera(frame.camera, capturedAt: frame.timestamp) ?? frame.camera
     }
 
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
@@ -419,20 +463,7 @@ final class ScanEngine {
         var features = state.features
         for index in features.indices { Self.project(&features[index], onto: wall) }
         if features != state.features { state.features = features }
-    }
-
-    private func refreshMeterFromAnchor(_ frame: SourceFrame) {
-        guard let anchor = frame.meterAnchor, var wall = coverage?.wall else { return }
-        let meter = SIMD3(anchor.columns.3.x, anchor.columns.3.y, anchor.columns.3.z)
-        // A wall-frame change replays every kept camera through the coverage map on the main
-        // actor, and ARKit nudges the anchor by millimetres most frames. 2 cm is far below the
-        // 6 in cell and doesn't show in the overlays; 2 mm would rebuild nearly every frame.
-        guard simd_distance(meter, wall.meter) > 0.02 else { return }
-        wall.meter = meter
-        coverage?.updateWall(wall)
-        publishWall()
-        publishCoverage()
-        reprojectFeatures()
+        publishFeaturesPastEnds()
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -507,7 +538,7 @@ final class ScanEngine {
         state.closeUp = .captured(nil)
         // This shot's save replaces the photo on disk: the last one's view no longer counts.
         closeUpCredit.shotStarted()
-        let view = frame.tracking == .normal ? CloseUpView(camera: frame.camera, depth: frame.depth) : nil
+        let view = frame.tracking == .normal ? CloseUpView(camera: frame.camera, depth: frame.depth, time: frame.timestamp) : nil
         let scan = generation
         let store = store
         Task {
@@ -552,6 +583,7 @@ final class ScanEngine {
         }
         RuntimeLog.engine.info("meter number: \(readout.candidates.count) candidates to choose from")
         meterReadout = readout
+        state.meterBrand = readout.brand
         state.meterNumber = .choose(readout.candidates)
     }
 
@@ -670,7 +702,8 @@ final class ScanEngine {
             // Coverage only moves on kept frames with normal tracking (checklist R3).
             // The frame's own time lets the walked path join only poses kept close together in time.
             // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
-            let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
+            // Corrected for anchor moves made while the photo was saving.
+            let delta = coverage?.observe(correctedCamera(frame), trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
@@ -1056,7 +1089,7 @@ final class ScanEngine {
             // "Add something", which taps into the world frame, waits for tracking to return
             // (`beginMarking`). Nothing is thrown away.
             break
-        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+        case .uploading, .spotConfirm, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
             // tracking is not normal and shows it again if ARKit does relocalize.
@@ -1064,7 +1097,9 @@ final class ScanEngine {
         }
     }
 
-    private func handle(_ event: LiveEvent) {
+    private func handle(_ event: LiveEvent, from source: Int) {
+        // An event from a source that failed or was replaced says nothing about the running one.
+        guard sourceState.accepts(source) else { return }
         switch event {
         case .interrupted:
             // The phase, captures and strip stay as they are; ARKit relocalizes into the same
@@ -1084,6 +1119,8 @@ final class ScanEngine {
             switch state.phase {
             case .uploading, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
+                _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
+                loseSpatialResult()
             default:
                 // The screen shows plain words, so the camera's own error is only recorded here.
                 RuntimeLog.engine.error("camera session failed: \(message, privacy: .public)")
@@ -1135,6 +1172,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
         placement = nil
@@ -1185,15 +1223,17 @@ final class ScanEngine {
             }
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
+        publishFeaturesPastEnds()
     }
 
     /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
     /// anchor, where people and objects in front of it hide it. A replay, or a meter without an
     /// anchor, leaves it to the screen's overlay.
     private func showResultInCamera(rising: Bool) {
-        guard let live, let wall = state.wall, let result = state.result else { return }
+        guard let live, let wall = state.wall, let result = state.result, let pose = meterTracking?.pose,
+              state.spatialResultAvailable else { return }
         let model = ResultARModel.build(wall: wall, result: result)
-        state.resultInCamera = live.showResult(model)
+        state.resultInCamera = live.showResult(model, builtFor: pose)
         guard state.resultInCamera else { return }
         live.setResultVisible(state.tracking == .normal)
         if rising { ResultARModel.rise(model) }
@@ -1339,7 +1379,7 @@ final class ScanEngine {
     /// `segment` is the walked-path segment the view was captured in.
     func keepOverheadView(_ frame: SourceFrame, capturedIn segment: Int?) -> Bool {
         guard let map = coverage, frame.jpeg.isAvailable, frame.tracking == .normal,
-              !map.overheadReach(from: frame.camera).isEmpty else { return false }
+              !map.overheadReach(from: correctedCamera(frame)).isEmpty else { return false }
         keep(frame, overhead: true, capturedIn: segment)
         return true
     }
@@ -1348,7 +1388,7 @@ final class ScanEngine {
     /// reached as an overhead entry with the height seen.
     private func recordOverhead(_ frame: SourceFrame) {
         guard var map = coverage else { return }
-        let reach = map.recordOverhead(frame.camera, trackingNormal: frame.tracking == .normal)
+        let reach = map.recordOverhead(correctedCamera(frame), trackingNormal: frame.tracking == .normal)
         guard !reach.isEmpty else {
             RuntimeLog.engine.error("overhead: the stored view no longer reaches above the wall band; nothing recorded")
             return
@@ -1395,13 +1435,33 @@ final class ScanEngine {
         guard scan == generation else { return }
         // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
         // overhead, off the main actor since ray casts over a whole mesh take a while.
+        //
+        // The measurement is against the wall as it stands when the measuring starts; scene.json
+        // and the packet are built after it, from the wall as it stands then. An anchor
+        // correction or a ground refinement while the mesh is measured would make the two
+        // describe different walls, so a measurement whose wall or exported stretch changed
+        // meanwhile is done again against the new one. Everything after the last await runs on
+        // the main actor without a break, so nothing can move the wall between that measurement
+        // and the export. If the wall keeps moving, the mesh's measurements are left out: less
+        // evidence, never evidence about another wall.
         let meshSnapshot = live?.meshSnapshot()
         var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh, let map = coverage {
-            let wall = map.wall
-            let span = Self.exportSpan(map)
-            measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-            guard scan == generation else { return }
+        if let mesh = meshSnapshot?.mesh {
+            var agreed = false
+            for _ in 0..<3 {
+                guard let map = coverage else { break }
+                let wall = map.wall
+                let span = Self.exportSpan(map)
+                let result = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
+                guard scan == generation else { return }
+                if let now = coverage, now.wall == wall, Self.exportSpan(now) == span {
+                    measured = result
+                    agreed = true
+                    break
+                }
+                RuntimeLog.engine.info("mesh: the wall moved while it was measured; measuring again")
+            }
+            if !agreed { RuntimeLog.engine.error("mesh: the wall kept moving; the scene goes without the mesh's measurements") }
             RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data
@@ -1413,6 +1473,7 @@ final class ScanEngine {
             updateRecording()
             return
         }
+        writeScanStamp(answer: placement)
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1427,6 +1488,8 @@ final class ScanEngine {
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
             placement = result
+            noteExchange(scene: scene, answer: data)
+            writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.upload = .done
             await waitForGate(.uploading)
@@ -1442,8 +1505,9 @@ final class ScanEngine {
                 beginServerGap(next.item, plan: next.plan)
                 return
             }
-            // The result appears only after the server answered (checklist R6).
-            go(.result)
+            // The result appears only after the server answered (checklist R6), and after the
+            // homeowner checked its spot (`presentAnswer`).
+            presentAnswer()
         } catch is CancellationError {
             return
         } catch {
@@ -1460,10 +1524,10 @@ final class ScanEngine {
     private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
-              let map = coverage else { return nil }
+              sourceState.mayCapture, let map = coverage else { return nil }
         for item in result.missingEvidence {
             guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
-                  !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
+                  !skippedGaps.contains(plan), !automaticGaps.contains(plan), captureCanSettle(plan) else { continue }
             return (item, plan)
         }
         return nil
@@ -1512,7 +1576,7 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
@@ -1579,6 +1643,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
@@ -1619,8 +1684,47 @@ final class ScanEngine {
     var liveCapture: LiveCapture? { live }
     var wallEndKinds: [WallSide: EndKind] { endKinds }
 
-    func setMeterAnchor(_ id: UUID?) { meterAnchorID = id }
-    var detectedGroundPlanes: [SIMD4<Float>] { groundPlanes }
+    /// The meter's anchor, and the pose the wall set with it agrees with.
+    func setMeterAnchor(_ id: UUID?, pose: simd_float4x4?) {
+        meterAnchorID = id
+        meterTracking = pose.map(MeterAnchorTracking.init)
+    }
+
+    var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
+
+    /// The camera failed after the scan was sent: no frame will come to say tracking was lost, so
+    /// the last one's "normal" would keep the AR result up and offered. The answer stays; the
+    /// spatial result goes.
+    private func loseSpatialResult() {
+        state.tracking = .notAvailable
+        state.spatialResultAvailable = false
+        hideResultInCamera()
+        if state.phase == .resultAR { go(.result) }
+    }
+
+    /// Whether a capture (a server request's view) can start: only with a running source.
+    var mayCapture: Bool { sourceState.mayCapture }
+
+    /// Start over after a failure: the failed source is let go and the failure cleared, so the
+    /// next scan starts a new session (`startSourceIfNeeded`) or reads the replay again. A
+    /// device that can't run world tracking stays failed.
+    func releaseFailedSource() {
+        let discard = sourceState.startOver()
+        if sourceState.failure == nil { state.failure = nil }
+        guard discard else { return }
+        live?.pause()
+        live = nil
+        state.feed = .none
+        // What the retired source saw is in its own world frame; the next source starts another.
+        groundPlanes = []
+        groundMeasured = false
+        lastFrame = nil
+        meterTracking = nil
+        meterAnchorID = nil
+        state.projection = nil
+        state.tracking = .notAvailable
+        if replay == nil, let folder = options.replayFolder { Task { await loadReplay(folder) } }
+    }
 
     func updateCoverage(_ body: (inout CoverageMap) -> Void) {
         guard var map = coverage else { return }
