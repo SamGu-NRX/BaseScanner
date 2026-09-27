@@ -66,6 +66,12 @@ Each part has its own folder:
 | Reviewer view | TypeScript, Vite, Vitest, Biome | `web/` |
 | Landing page | Static site on Vercel | `sites/landing` |
 
+Here's where each piece runs. The phone uploads the capture to Google Cloud Storage and posts it to a FastAPI app on Modal. A coordinator there fans the work out to three workers: reconstruction, object detection and equipment reads. Their results meet in the scene builder, and the criteria engine checks the placed objects against the rules. The result composer then answers both the iOS app and the reviewer page. Model weights live on a Modal Volume, and each run's state lives in a Modal Dict. Dashed lines are optional or supporting paths, and the calls to OpenAI or xAI happen only when someone opts in.
+
+<p align="center">
+  <img alt="Infrastructure diagram. On iOS, SwiftUI with ARKit and LiDAR feeds CaptureRecorder, and URLSession uploads captures to Google Cloud Storage, reached through WIF and IAM, and posts to a FastAPI app on Modal. FastAPI hands the run to a Coordinator, which keeps run state in a Modal Dict and fans out to three workers. Reconstruction runs COLMAP with PyCOLMAP and SIFT, sets metric scale, builds depth with a LiDAR TSDF or π³, MoGe-2 and optionally DA3, and computes coverage. Object detection runs OpenCLIP or SigLIP2, then OWLv2 or Grounding DINO. Equipment reads runs ZXing-C++ in a reads worker, which also feeds metric scale. A Modal Volume holds model weights for reconstruction and detection. The scene builder turns the outputs into objects in 3D, which the criteria engine checks. The result composer sends the answer to the iOS result view and a reviewer HTML page. OpenAI or xAI external APIs are opt-in." src="docs/readme/infrastructure.png" width="560">
+</p>
+
 ## Unseen? Then Unsure
 
 <picture>
