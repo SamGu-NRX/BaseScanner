@@ -293,7 +293,6 @@
 			buildConfigurationList = BC75D335CF0AD12595EFD903 /* Build configuration list for PBXNativeTarget "HouseScan" */;
 			buildPhases = (
 				535AA09D0DE15B25D4976AD1 /* Sources */,
-				4B78FA1D2FA688AF355A9249 /* Stamp the git commit */,
 				E009F9206BA5E923B8F3E03B /* Resources */,
 				52EF4397177795C26C0B600D /* Frameworks */,
 			);
@@ -391,29 +390,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		4B78FA1D2FA688AF355A9249 /* Stamp the git commit */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
-			);
-			name = "Stamp the git commit";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "commit=$(git -C \"$SRCROOT\" rev-parse --short=12 HEAD 2>/dev/null) || exit 0\nif [ -n \"$(git -C \"$SRCROOT\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then\n  commit=\"$commit-dirty\"\nfi\n/usr/libexec/PlistBuddy -c \"Set :HouseScanGitCommit $commit\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		535AA09D0DE15B25D4976AD1 /* Sources */ = {
