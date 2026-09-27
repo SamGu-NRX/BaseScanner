@@ -10,7 +10,14 @@ from hypothesis import strategies as st
 
 from rules import load_rules
 from scene import SceneError
-from solver import SOLVE_BUDGET_S, UNSURE, Solver, evaluate_start
+from solver import (
+    SOLVE_BUDGET_S,
+    UNSURE,
+    Solver,
+    evaluate_start,
+    open_ends,
+    settled_by_views,
+)
 
 # --- missing_evidence names every unseen band ------------------------------------------------
 
@@ -99,8 +106,18 @@ def test_capturing_what_missing_evidence_asks_for_settles_coverage(raw: dict) ->
         (c.s0 for c in Solver(parsed(raw, rules), rules).candidates(SOLVE_BUDGET_S)),
         key=lambda s0: abs(s0 - spot["span_ft"][0]),
     )
-    after = evaluate_start(parsed(captured, rules), rules, exact)
-    unseen = [c.id for c in after.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
+    scene = parsed(captured, rules)
+    after = evaluate_start(scene, rules, exact)
+    # Checks views can't settle ask for nothing, and a person settles those: on a placeholder
+    # distance (issue #75) or needing the wall past a limit end (issue #78).
+    reachable = open_ends(Solver(scene, rules))
+    unseen = [
+        c.id
+        for c in after.checks
+        if c.outcome == UNSURE
+        and c.unsure_cause == "unobserved"
+        and settled_by_views(c, scene, reachable)
+    ]
     assert unseen == [], (unseen, result["missing_evidence"])
 
 

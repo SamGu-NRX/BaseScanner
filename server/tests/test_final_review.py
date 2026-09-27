@@ -8,7 +8,17 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from test_s4_round import PUBLIC, answer
 
-from solver import FAIL, PASS, SOLVE_BUDGET_S, UNSURE, Solver, at_least, evaluate_start
+from solver import (
+    FAIL,
+    PASS,
+    SOLVE_BUDGET_S,
+    UNSURE,
+    Solver,
+    at_least,
+    evaluate_start,
+    open_ends,
+    settled_by_views,
+)
 
 W = 31 / 12
 
@@ -127,8 +137,17 @@ def supplied_exactly(raw: dict, result: dict) -> dict:
 
 
 def unseen_at(raw: dict, s0: float, wall_id: str) -> list[str]:
-    candidate = evaluate_start(parsed(raw, PUBLIC), PUBLIC, s0, wall_id)
-    return [c.id for c in candidate.checks if c.unsure_cause == "unobserved"]
+    """Checks still unseen that views can settle. The rest ask for none and are left to a
+    person: those on a placeholder distance (issue #75) or needing the wall past a limit end
+    (issue #78) or past an unexplored end beyond reach."""
+    scene = parsed(raw, PUBLIC)
+    candidate = evaluate_start(scene, PUBLIC, s0, wall_id)
+    reachable = open_ends(Solver(scene, PUBLIC))
+    return [
+        c.id
+        for c in candidate.checks
+        if c.unsure_cause == "unobserved" and settled_by_views(c, scene, reachable)
+    ]
 
 
 def exact_start(raw: dict, result: dict) -> float:

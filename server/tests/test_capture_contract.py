@@ -7,15 +7,18 @@ from pathlib import Path
 
 import jsonschema
 from helpers import D, at_start, observed_band, parsed, shared_fixture
-from test_s4_round import PUBLIC, answer
+from test_s4_round import PUBLIC, REAL_POOL_AND_DRIVE, answer
 
-from scene import COVERAGE_TOLERANCE_FT
+from scene import COVERAGE_TOLERANCE_FT, SEAM_FT, SEEN_GROWTH_FT
 from solver import PASS, UNSURE, evaluate_start
 
 RESULT_SCHEMA = json.loads(
     (Path(__file__).resolve().parents[1] / "schemas" / "result.schema.json").read_text()
 )
 FACING_NEED = D + 3.0  # battery depth plus facing.min_ft
+# Seen ground grows this far each side, so a ground request asks for this much less than the
+# depth a check needs (scene.SEEN_GROWTH_FT and SEAM_FT).
+GROWTH = SEEN_GROWTH_FT + SEAM_FT
 HEADROOM_NEED = 6.5  # headroom.min_ft
 
 
@@ -100,18 +103,29 @@ def shallow_ground() -> dict:
 
 
 def test_a_ground_request_names_how_far_out() -> None:
-    result = answer(shallow_ground())
+    result = answer(shallow_ground(), REAL_POOL_AND_DRIVE)
     request = next(m for m in result["missing_evidence"] if m.get("band") == "ground")
     # The pool clearance reaches its 10 ft radius past the battery's depth.
-    assert request["out_ft"] >= D + 10.0
+    assert request["out_ft"] >= D + 10.0 - GROWTH
     jsonschema.validate(result, RESULT_SCHEMA)
+    # Under the public rules the pool's 10 ft is a placeholder, and the gas and AC clearances'
+    # 3 ft size the request instead (issue #75). The request is the smallest depth that covers
+    # the region, which the seen ground's growth makes a little less than D + 3.
+    result = answer(shallow_ground())
+    request = next(m for m in result["missing_evidence"] if m.get("band") == "ground")
+    assert D + 3.0 - GROWTH <= request["out_ft"] < D + 5.0
 
 
 def test_supplying_the_ground_request_settles_it() -> None:
     raw = shallow_ground()
-    after = answer(supplied(raw, answer(raw)))
+    after = answer(supplied(raw, answer(raw, REAL_POOL_AND_DRIVE)), REAL_POOL_AND_DRIVE)
     unseen = [c["id"] for c in after["checks"] if c.get("unsure_cause") == "unobserved"]
     assert unseen == []
+    # Under the public rules only the checks on a placeholder distance, which ask for nothing,
+    # stay unseen.
+    after = answer(supplied(raw, answer(raw)))
+    unseen = [c["id"] for c in after["checks"] if c.get("unsure_cause") == "unobserved"]
+    assert unseen == ["drive_clearance", "pool_clearance"]
 
 
 # --- a corner the homeowner marks -----------------------------------------------------------------

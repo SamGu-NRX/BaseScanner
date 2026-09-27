@@ -43,15 +43,16 @@ def test_each_example_gets_its_decision_under_the_demo_policy(name: str, decisio
     result = decide(name)
     assert result["decision"] == decision
     assert result["policy"]["id"] == "demo"
-    # Every answer says whose rules decided it.
+    # Every answer says whose rules decided it, for the team; the homeowner's summary doesn't
+    # (issue #74).
     assert "not Base's" in result["policy"]["notice"]
-    assert "not Base's" in result["summary"]
+    assert "not Base's" not in result["summary"]
 
 
-def test_the_unsure_example_asks_for_views() -> None:
+def test_the_unsure_example_asks_for_more() -> None:
     # The walk stopped at the unexplored right end, so the view it lacks is past that end. It
     # used to ask for ground at s [-3.93, -3] as well, which its capture had already seen past
-    # the left limit end.
+    # the left limit end. The placeholder pool and driveway distances ask for no view (issue #75).
     missing = decide("review-corner-not-walked.json")["missing_evidence"]
     assert [m["kind"] for m in missing] == ["past_end"]
 

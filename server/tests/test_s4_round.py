@@ -4,15 +4,23 @@ import copy
 
 import pytest
 from helpers import at_start, observed_band, parsed, shared_fixture
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from shapely.geometry import Point
 
 import solver
-from rules import LoadedRules, public_rules_dict, rules_from_dict
+from rules import LoadedRules, deep_merge, public_rules_dict, rules_from_dict
 from solver import FAIL, PASS, UNSURE, at_least, evaluate_start, solve
 
 PUBLIC = rules_from_dict(public_rules_dict())
+# The public rules with real (not placeholder) pool and driveway distances, which then ask for the
+# ground they read (issue #75). Test settings, not Base policy.
+REAL_POOL_AND_DRIVE = rules_from_dict(
+    deep_merge(
+        public_rules_dict(),
+        {"clearances": {k: {"placeholder": False} for k in ("pool_ft", "drive_ft")}},
+    )
+)
 # Ground captured in answer to a request is seen this far out: past every clearance's reach.
 FAR_FT = 40.0
 
@@ -106,8 +114,24 @@ def scenes_with_ends(draw: st.DrawFn) -> dict:
     return raw
 
 
+def unseen_ground_with_line_fragments() -> dict:
+    """Found by the property below once a ground request's depth search took the check's own
+    test (#122): overlaying the unseen ground after a capture left line fragments, which the
+    next overlay refused as mixed-dimension input."""
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[-1.0, 0], [12.0, 0]]
+    raw["overheads"][0]["span_ft"] = raw["facing"][0]["span_ft"] = [-1.0, 12.0]
+    raw["coverage"]["ends"] = {"left": {"kind": "limit"}, "right": {"kind": "unexplored"}}
+    observed_band(raw, "wall", [(-1.0, 12.0)])
+    observed_band(raw, "ground", [(-1.0, 0.0), (4.053550230014572, 12.0)], 5.0)
+    observed_band(raw, "overhead", [(-1.0, 12.0)])
+    observed_band(raw, "facing", [(-1.0, 12.0)])
+    return raw
+
+
 @settings(max_examples=40, deadline=None)
 @given(raw=scenes_with_ends())
+@example(raw=unseen_ground_with_line_fragments())
 def test_a_captured_request_never_comes_back(raw: dict) -> None:
     for _ in range(3):
         result = answer(raw)
@@ -173,7 +197,7 @@ def test_pool_clearance_needs_the_ground_past_a_limit_end() -> None:
     # Before: past a limit end the ground was never required, so the pool check passed with
     # nothing seen beyond the fence.
     raw = limit_end_near_the_spot()
-    result = answer(raw)
+    result = answer(raw, REAL_POOL_AND_DRIVE)
     pool = next(c for c in result["checks"] if c["id"] == "pool_clearance")
     assert (pool["outcome"], pool["unsure_cause"]) == (UNSURE, "unobserved")
     ground = next(m for m in result["missing_evidence"] if m.get("band") == "ground")
@@ -182,7 +206,7 @@ def test_pool_clearance_needs_the_ground_past_a_limit_end() -> None:
 
 def test_showing_the_ground_past_a_limit_end_settles_it() -> None:
     raw = limit_end_near_the_spot()
-    after = answer(captured(raw, answer(raw)))
+    after = answer(captured(raw, answer(raw, REAL_POOL_AND_DRIVE)), REAL_POOL_AND_DRIVE)
     pool = next(c for c in after["checks"] if c["id"] == "pool_clearance")
     assert pool["outcome"] == PASS
 
@@ -219,7 +243,9 @@ def test_a_band_check_reports_numbers_that_give_its_outcome() -> None:
     facing = next(c for c in gap.checks if c.id == "facing_gap")
     assert facing.outcome == UNSURE
     assert at_least(facing.measured, facing.plus_minus, facing.threshold) == UNSURE
-    assert "facing[1]" in facing.reason
+    assert facing.subject == "facing[1]"
+    # The reason names it for the homeowner, not by its id (issue #74).
+    assert facing.reason.startswith("What faces the wall about 6 ft right of the meter")
 
 
 @settings(max_examples=40, deadline=None)

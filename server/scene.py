@@ -15,6 +15,7 @@ import hashlib
 import itertools
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -396,11 +397,17 @@ class Scene:
         return max((line.distance(p) for p in points), default=0.0)
 
     def view_to_cover(
-        self, region: Geometry, s_lo: float, s_hi: float
+        self,
+        region: Geometry,
+        s_lo: float,
+        s_hi: float,
+        settled: Callable[[Geometry], bool],
     ) -> tuple[float, float, float]:
-        """The ground view (s_lo, s_hi, out_ft) after which none of `region` is unseen, with the
-        smallest depth, found by bisection on exactly the geometry the checks use, so capturing
-        it settles the request in one round. The region's distance from the chain's lines is
+        """The ground view (s_lo, s_hi, out_ft) with the smallest depth after which `settled`
+        holds for the ground left unseen, found by bisection on exactly the geometry the checks
+        use, so capturing it settles the check in one round. `settled` is the check's own test
+        of `region` (what it needs seen): a bound on the unseen area left would stop the search
+        with a speck inside the check's radius. The region's distance from the chain's lines is
         not enough: near a corner a point can be close to one line but in front of another
         wall, and past an unexplored end only ground in front of the scanned walls counts. A
         span ending exactly at a convex corner misses the wedge in front of it, so if no depth
@@ -410,8 +417,7 @@ class Scene:
         area = polygonal(region)
 
         def covers(a: float, b: float, depth: float) -> bool:
-            unseen = polygonal(self.unobserved_ground_given([*ground, (a, b, depth)]))
-            return shapely.intersection(area, unseen, grid_size=1e-9).area <= 1e-9
+            return settled(polygonal(self.unobserved_ground_given([*ground, (a, b, depth)])))
 
         tol = COVERAGE_TOLERANCE_FT
         # A region's nearest wall need not be the one it lies in front of (at an inside corner,
@@ -452,7 +458,9 @@ class Scene:
     def coverable(self, band: str) -> Geometry:
         """Where observing `band` can settle what is unseen: in front of the scanned walls, and
         past a limit end. Past an unexplored end the walls may turn any way, so no view settles
-        it; only walking on does (a past_end request)."""
+        it; only walking on does (a past_end request). Only the ground is asked for past a limit
+        end: a check whose view of the wall reaches past one asks for none (issue #78, see
+        solver._missing_json), so the wall band keeps that stretch here to tell."""
         key = f"coverable-{band}"
         if key not in self._cache:
             lo, hi = self.coverable_span()
