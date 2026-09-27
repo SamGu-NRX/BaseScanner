@@ -51,10 +51,14 @@ struct InstructionCard: View {
                     .accessibilityIdentifier(reply.identifier)
                     .padding([.horizontal, .bottom], 12)
                     .padding(.top, -4)
-                    // Appears and goes at once, like the message above it: the walk's request can
-                    // change every few seconds, and a fading button spends those moments as faint
-                    // text on the card, which the accessibility audit caught twice on CI (runs
-                    // 36295565916, and the LiDAR replay after the coaching fix).
+                    // Appears, goes and changes its words at once, like the message above it: the
+                    // walk's request can change every few seconds, and a fading button spends those
+                    // moments as faint text on the card, which the accessibility audit caught on CI
+                    // (run 36295565916, and the LiDAR replay after the coaching fix). A new identity
+                    // per title: kept as one button, a new title ("Can't get there" to "Can't see
+                    // past it") cross-faded inside the card's animation, both titles half drawn over
+                    // each other (the LiDAR replay at 9b4c57d).
+                    .id(reply.title)
                     .transition(.identity)
             }
         }

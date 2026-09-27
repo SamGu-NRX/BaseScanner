@@ -68,26 +68,47 @@ public enum ZipWriter {
     }
 
     /// Writes the same archive as `archive` to `url`, loading one entry at a time, so memory holds
-    /// one file and the central directory instead of the whole bundle. Replaces any file at `url`;
-    /// on a throw the partial file is removed.
+    /// one file and the central directory instead of the whole bundle.
+    ///
+    /// The archive is written to a temporary file beside `url` (`temporaryName(for:)`) and moved
+    /// over `url` only once it is complete, so a file already at `url` stays whole until then: a
+    /// write that fails part way, an entry that can't be read or a full disk leave the previous
+    /// archive as it was. Deleting it first and then failing left no archive at all, and a scan
+    /// without one is deleted at the next launch (`ScanFolderCleanup`). On a throw the partial
+    /// temporary file is removed.
     /// - Parameter entries: each entry's name and a loader called once, in order.
     public static func write(
         _ entries: [(name: String, load: () throws -> Data)], to url: URL, modified: Date? = nil, timeZone: TimeZone = .gmt
     ) throws {
         let fm = FileManager.default
-        try? fm.removeItem(at: url)
-        guard fm.createFile(atPath: url.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        let temporary = url.deletingLastPathComponent().appending(path: temporaryName(for: url.lastPathComponent))
+        try? fm.removeItem(at: temporary)
+        guard fm.createFile(atPath: temporary.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: temporary.path])
         }
         do {
-            let handle = try FileHandle(forWritingTo: url)
-            defer { try? handle.close() }
-            try build(entries, modified: modified, timeZone: timeZone) { try handle.write(contentsOf: $0) }
+            let handle = try FileHandle(forWritingTo: temporary)
+            do {
+                try build(entries, modified: modified, timeZone: timeZone) { try handle.write(contentsOf: $0) }
+                try handle.synchronize()
+                try handle.close()
+            } catch {
+                try? handle.close()
+                throw error
+            }
+            if fm.fileExists(atPath: url.path) {
+                _ = try fm.replaceItemAt(url, withItemAt: temporary)
+            } else {
+                try fm.moveItem(at: temporary, to: url)
+            }
         } catch {
-            try? fm.removeItem(at: url)
+            try? fm.removeItem(at: temporary)
             throw error
         }
     }
+
+    /// The name of the file an archive named `name` is written to before it replaces it.
+    public static func temporaryName(for name: String) -> String { ".\(name).partial" }
 
     private static func build(
         _ entries: [(name: String, load: () throws -> Data)], modified: Date?, timeZone: TimeZone, emit: (Data) throws -> Void
