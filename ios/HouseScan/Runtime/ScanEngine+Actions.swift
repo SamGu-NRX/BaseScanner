@@ -193,7 +193,9 @@ extension ScanEngine: ScanActions {
             detectedPlane: detected, s: proposal.corner.s, fromEnd: proposal.fromEnd
         )
         state.guidance = .markNextWall(side: side, refusal: nil)
-        state.target = hit.position
+        // The ring goes on the corner, not on the point marked: a surface behind the end post
+        // puts the corner past the post, where the homeowner can see it is wrong (#70, 3C).
+        state.target = map.wall.world(s: proposal.corner.s, height: Self.cornerRingHeight)
         RuntimeLog.engine.info("next wall marked on the \(side.rawValue, privacy: .public): corner at s=\(proposal.corner.s), \(proposal.fromEnd) m from the end (\(detected ? "detected" : "estimated", privacy: .public) plane); asking to confirm")
     }
 
@@ -234,8 +236,9 @@ extension ScanEngine: ScanActions {
     func cancelNextWall() {
         guard state.phase == .wallWalk, let side = nextWallSide else { return }
         // The next-wall request didn't happen: resolved before `nextWallSide` clears, which the
-        // log would read as met (`closingOutcome`).
-        resolveGuidance(.superseded)
+        // log would read as met (`closingOutcome`), and withdrawn so a second "It turns a
+        // corner" logs a new one.
+        withdrawGuidance(.superseded)
         nextWallSide = nil
         nextWallRefusal = nil
         state.target = nil

@@ -150,6 +150,11 @@ func rightCornerWall() throws -> WallFrame {
         // and the homeowner is asked; 3.9 m on is refused as before.
         let behind = try map.proposeCorner(.right, meeting: SIMD3(5.6, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)
         #expect(nearlyEqual(behind.fromEnd, 2.5, 1e-3))
+        // The ring for the question goes on the corner on the current wall's line, 2.5 m past
+        // the marked end, not on the point marked 2 m behind it (review of #136).
+        let ring = map.wall.world(s: behind.corner.s, height: 1)
+        #expect(nearlyEqual(ring, SIMD3(5.6, 1, 0), 1e-3))
+        #expect(simd_distance(ring, SIMD3(5.6, 1.2, -2)) > 1.5)
         #expect(throws: CornerRefusal.implausible(s: 7)) { try map.proposeCorner(.right, meeting: SIMD3(7, 1, -2), outward: SIMD3(1, 0, 0), source: .plane) }
 
         let corner = try map.turnCorner(.right, meeting: SIMD3(3, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)

@@ -59,7 +59,8 @@ public enum WalkedEnd {
     ///
     /// - Phone on that side of the meter, tracking normal: its s, past the farthest kept view
     ///   too. Standing at the end is the measurement.
-    /// - Phone on that side, tracking limited: its s, but no farther out than `farthest`.
+    /// - Phone on that side, tracking limited, or more than `phoneOutLimit` out from the wall's
+    ///   line: its s, but no farther out than `farthest`.
     /// - Phone across the meter, or its place unknown: `farthest`. The phone's position then says
     ///   nothing about how far this side goes, and the walked stretch is the only measurement of
     ///   it; an end at the meter would drop everything walked there, which is how run 1 lost its
@@ -70,11 +71,35 @@ public enum WalkedEnd {
         let reach = farthest(side, walked: walked, wall: wall)
         let cap = side.sign * reach
         guard let phone else { return Choice(s: cap, phone: nil, cap: cap, capped: true) }
-        let s = wall.wallPoint(phone).s
+        let point = wall.wallPoint(phone)
+        let s = point.s
         let along = side.sign * s
         if along < 0 { return Choice(s: cap, phone: s, cap: cap, capped: true) }
-        if trackingNormal { return Choice(s: s, phone: s, cap: cap, capped: false) }
+        if trackingNormal, abs(point.out) <= phoneOutLimit { return Choice(s: s, phone: s, cap: cap, capped: false) }
         return Choice(s: side.sign * min(along, reach), phone: s, cap: cap, capped: true)
+    }
+
+    /// 4 m, twice the walk's stand-off (`GuidanceConfig.standOff`), as for `leavesOut`: farther
+    /// out from the wall's line than this, the phone's s says little about where the wall ends,
+    /// and a wall line skewed by a bad tap (#69) turns distance out into distance along. 2 m
+    /// would cap ordinary walks, which stand about 2 m out. A guess, not measured.
+    public static let phoneOutLimit: Float = 2 * GuidanceConfig().standOff
+
+    /// The strip's seen extent that counts toward what an end leaves out (`leftOut`): nil unless
+    /// the cap decided the end, since the camera of a phone standing at the end sees past it.
+    /// With the phone on that side of the meter, only up to the phone: cells the camera saw
+    /// ahead of it were never walked (review of #136).
+    public static func countedSeen(_ side: WalkSide, choice: Choice, seen: ClosedRange<Float>?) -> ClosedRange<Float>? {
+        guard choice.capped, let seen else { return nil }
+        guard let phone = choice.phone, side.sign * phone > 0 else { return seen }
+        switch side {
+        case .left:
+            let low = max(seen.lowerBound, phone)
+            return low <= seen.upperBound ? low...seen.upperBound : nil
+        case .right:
+            let high = min(seen.upperBound, phone)
+            return seen.lowerBound <= high ? seen.lowerBound...high : nil
+        }
     }
 
     /// Meters of the strip's seen cells (`CoverageMap.seenExtent`) past an end at `s` on `side`,

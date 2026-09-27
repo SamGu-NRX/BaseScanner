@@ -801,8 +801,8 @@ final class DemoEngine: ScanActions {
         guard case .markNextWall(let side, _) = state.guidance, state.nextWallConfirm == nil else { return }
         let end = side == .right ? demoRightEnd : demoLeftEnd
         state.nextWallConfirm = NextWallConfirm(side: side, fromEnd: 0.4)
-        // On the next wall, which runs from the corner toward the camera (+z).
-        state.target = SIMD3(end, 1, 0.5)
+        // On the corner, where the next wall meets the demo wall's line.
+        state.target = SIMD3(end, 1, 0)
     }
 
     func confirmNextWall(_ isNextWall: Bool) {

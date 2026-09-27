@@ -92,6 +92,10 @@ final class ScanEngine {
         }
     }
 
+    /// Meters up the wall the ring on a proposed corner sits: about chest height, where it shows
+    /// in the view of a homeowner aiming at the next wall.
+    static let cornerRingHeight: Float = 1
+
     /// What `confirmNextWall` needs to follow the corner: the marked point and facing, as
     /// `markNextWall` found them.
     struct PendingNextWall {
@@ -901,8 +905,9 @@ final class ScanEngine {
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
             state.guidanceHint = nil
-            // While "Is this the next wall?" is up, the ring shows the point marked on it.
-            state.target = pendingNextWall?.point
+            // While "Is this the next wall?" is up, the ring shows the corner: where the marked
+            // wall meets this one, on the wall chain so it moves with the meter's anchor.
+            state.target = pendingNextWall.map { map.wall.world(s: $0.s, height: Self.cornerRingHeight) }
             state.path = []
             logGuidance()
             return
@@ -2048,6 +2053,15 @@ final class ScanEngine {
     func resolveGuidance(_ outcome: GuidanceLog.Outcome) {
         guard let t = captureClock else { return }
         guidanceLog.resolve(outcome, at: t)
+    }
+
+    /// Closes the open request and takes it off the log's screen, so the same step shown again
+    /// is a new request: after Back on the next-wall step, "It turns a corner" asks for the next
+    /// wall again while `state.guidance` never left it (review of #136).
+    func withdrawGuidance(_ outcome: GuidanceLog.Outcome) {
+        guard let t = captureClock else { return }
+        guidanceLog.resolve(outcome, at: t)
+        guidanceLog.show(nil, at: t) { _, _ in outcome }
     }
 }
 

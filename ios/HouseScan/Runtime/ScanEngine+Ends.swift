@@ -42,9 +42,11 @@ extension ScanEngine {
 
     /// The strip's seen cells, when the cap decided the end: what an end short of them leaves
     /// out is said (`WalkedEnd.leftOut`), not dropped silently (#71). Nil when the end is where
-    /// the phone stands, whose camera sees past it anyway.
-    private func seenPastCap(_ choice: WalkedEnd.Choice?, _ map: CoverageMap) -> ClosedRange<Float>? {
-        choice?.capped == true ? map.seenExtent : nil
+    /// the phone stands, whose camera sees past it anyway; up to the phone when it is on that
+    /// side (`WalkedEnd.countedSeen`).
+    private func seenPastCap(_ side: WallSide, _ choice: WalkedEnd.Choice?, _ map: CoverageMap) -> ClosedRange<Float>? {
+        guard let choice else { return nil }
+        return WalkedEnd.countedSeen(side.walk, choice: choice, seen: map.seenExtent)
     }
 
     /// Where the phone is; nil while it has lost its place.
@@ -69,7 +71,7 @@ extension ScanEngine {
             guard let choice = walkedEndChoice(offer.side) else { return nil }
             side = offer.side
             s = choice.s
-            seen = seenPastCap(choice, map)
+            seen = seenPastCap(offer.side, choice, map)
         }
         // What this end leaves out of the walk shows only while the walk asks to walk this side
         // or mark its end, and not with the phone far out from the wall (#66). During a tilt or
@@ -101,7 +103,7 @@ extension ScanEngine {
         guard let preview = currentEndPreview(), !preview.atReticle, let map = coverage else { return }
         // Whatever the walk was asking, the end question says how much of the walk this end
         // leaves out, now that the homeowner chose to end the wall here (#66).
-        let seen = seenPastCap(walkedEndChoice(preview.side), map)
+        let seen = seenPastCap(preview.side, walkedEndChoice(preview.side), map)
         let leavesOut = WalkedEnd.leftOut(preview.side.walk, s: preview.s, walked: map.walkedPositions, wall: map.wall, seen: seen)
         // The walk toward that side is met: the homeowner got to its end.
         if case .walk(let side, _) = state.guidance, side == preview.side { resolveGuidance(.met) }
@@ -125,14 +127,16 @@ extension ScanEngine {
     /// old rule, the unbroken covered reach, would have said.
     private func logEnd(_ action: String, side: WallSide, at s: Float) {
         guard let map = coverage else { return }
-        let phone = currentFrame.map { map.wall.wallPoint($0.camera.position).s } ?? .nan
+        let phonePoint = currentFrame.map { map.wall.wallPoint($0.camera.position) }
+        let phone = phonePoint?.s ?? .nan
+        let out = phonePoint?.out ?? .nan
         let tracking = currentFrame.map { String(describing: $0.tracking) } ?? "none"
         let choice = walkedEndChoice(side)
         let cap = choice?.cap ?? .nan
         let capped = choice?.capped == true ? "cap" : "phone"
         let shown = WalkedEnd.shownPast(side.walk, s: s, seen: map.seenExtent, minimum: 0) ?? 0
         let covered = GuidancePlanner().reach(side.walk, coverage: map)
-        RuntimeLog.engine.info("\(action, privacy: .public) on the \(side.rawValue, privacy: .public): end at s=\(s), chose \(capped, privacy: .public) (phone at s=\(phone), cap s=\(cap), tracking \(tracking, privacy: .public)); strip showed \(shown) m past it; covered reach \(covered) m")
+        RuntimeLog.engine.info("\(action, privacy: .public) on the \(side.rawValue, privacy: .public): end at s=\(s), chose \(capped, privacy: .public) (phone at s=\(phone) \(out) m out, cap s=\(cap), tracking \(tracking, privacy: .public)); strip showed \(shown) m past it; covered reach \(covered) m")
     }
 
     /// `ScanViewState.featuresPastEnds`, refreshed when the ends move (`publishWall`), the spans
