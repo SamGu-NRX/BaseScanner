@@ -327,6 +327,17 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
+        // A wall hit under the floor, or far along the wall from the phone, is where a ray aimed at
+        // the ground or nearly along the wall met the wall's plane: nothing the homeowner pointed
+        // at (#140).
+        if !onGround, let refused = ObjectTap.refusal(
+            hit, camera: frame.camera.position, wall: wall,
+            reach: coverage?.config.maxDistance ?? CoverageConfig().maxDistance, groundError: coverage?.heightError ?? 0) {
+            RuntimeLog.engine.info("object tap refused: \(refused.description, privacy: .public)")
+            marking.refusal = .noSurface
+            state.marking = marking
+            return
+        }
         // Past 8 m out a ground tap is not about this wall any more.
         if onGround, hit.out > 8 || hit.out < 0 {
             marking.refusal = .tooFarFromWall
