@@ -256,11 +256,11 @@ enum ScanCopy {
     // MARK: Gap
 
     /// The card for a gap request. A server request can run along much of the wall, so its
-    /// stretch is named by its two ends, clipped to the wall's marked `ends` (issue #75); the
-    /// phone's own requests are short and named by their middle.
-    static func gap(_ gap: GapRequest, ends: (left: Float?, right: Float?) = (nil, nil)) -> Instruction {
+    /// stretch is named by its two ends, all of it (`Distance.range`, issue #75); the phone's own
+    /// requests are short and named by their middle.
+    static func gap(_ gap: GapRequest) -> Instruction {
         let place = Distance.aroundFromMeter(gap.span)
-        let stretch = Distance.range(gap.span, clippedTo: ends)
+        let stretch = Distance.range(gap.span)
         switch gap.reason {
         case .groundNearCandidate:
             return Instruction(title: "Show the ground \(place)", detail: "This might be a spot for the battery, so the ground there needs a clear look from two places.")
