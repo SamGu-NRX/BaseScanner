@@ -35,7 +35,7 @@ import Testing
 
         func finishAndSeal() async throws {
             let (streams, packet) = try await capture.finish()
-            await uploader.seal(packet: packet, streams: streams)
+            await uploader.seal(packet: packet, files: streams)
         }
 
         func cleanUp() { try? FileManager.default.removeItem(at: root) }
@@ -112,7 +112,7 @@ import Testing
         #expect(after.attemptID != before.attemptID)
 
         let (streams, packet) = try await rig.capture.finish()
-        await resumed.seal(packet: packet, streams: streams)
+        await resumed.seal(packet: packet, files: streams)
         await resumed.settled()
         #expect(await resumed.snapshot.end == .finished(status: "manual_review"))
         #expect(rig.server.requests("POST captures").count == 1)
@@ -209,6 +209,50 @@ import Testing
         await next.uploader.settled()
         #expect(await next.uploader.snapshot.captureID != after.captureID)
         #expect(await next.uploader.snapshot.committedCount == 2)
+    }
+
+    /// A finalize the server accepted and then lost (`failed`, next `retry_finalize`) is sent
+    /// again as the same bytes, and the run then completes.
+    @Test func aLostFinalizeIsSentAgainOnRetryFinalize() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.loseNextFinalize = true }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+        let finals = rig.server.requests("POST captures/finalize")
+        #expect(finals.count == 2)
+        #expect(Set(finals.map(\.body)).count == 1)
+        #expect(await rig.uploader.snapshot.end == .finished(status: "manual_review"))
+        #expect(await rig.uploader.snapshot.finalizeRetries == 1)
+    }
+
+    /// Storage that keeps refusing the sealed bytes' digest stops the upload after one retry
+    /// instead of cycling through register and PUT.
+    @Test func aDigestRefusedTwiceStopsTheUpload() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.badDigestPuts = 100 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        await rig.uploader.settled()
+        #expect(await rig.uploader.snapshot.end == .failed(step: "put", codes: ["bad_digest"], status: 400))
+        #expect(rig.server.requests("PUT upload").count <= 4)
+    }
+
+    /// A file listed in the frozen packet that reached `seal` before its own `add` is still sent.
+    @Test func sealQueuesListedFilesItHasNotSeen() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        let images = try await rig.capture.sealImages(count: 2)
+        await rig.uploader.add(Array(images.prefix(1)))
+        await rig.uploader.settled()
+        let (streams, packet) = try await rig.capture.finish()
+        await rig.uploader.seal(packet: packet, files: images + streams)
+        await rig.uploader.add(Array(images.suffix(1)))
+        await rig.uploader.settled()
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .finished(status: "manual_review"))
+        #expect(done.committedCount == images.count + streams.count)
     }
 
     @Test func noEndpointOrNoConsentMeansNoUpload() {

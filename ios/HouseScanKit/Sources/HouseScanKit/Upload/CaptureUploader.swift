@@ -19,6 +19,10 @@ public actor CaptureUploader {
         public var eventsWait = 20
         /// A signed URL this close to expiry is fetched again before the PUT.
         public var expiryMargin = 60.0
+        /// PUTs of one file the storage refuses (not transient) before the upload stops.
+        public var maxRefusedPuts = 6
+        /// `retry_finalize` answers followed before the upload stops.
+        public var maxFinalizeRetries = 3
 
         public init() {}
 
@@ -53,6 +57,9 @@ public actor CaptureUploader {
     private var failures = 0
     private var retryingAt: Date?
     private var digestRetried: Set<String> = []
+    /// Set when a state change could not be saved: the loop stops rather than send a request the
+    /// saved state doesn't know about.
+    private var saveFailed = false
     private var observer: (@Sendable (CaptureUploadStatus) -> Void)?
     private var log: (@Sendable (String) -> Void)?
 
@@ -107,7 +114,9 @@ public actor CaptureUploader {
         observer(status)
     }
 
-    public var status: CaptureUploadStatus { CaptureUploadStatus(state, retryingAt: retryingAt) }
+    public var status: CaptureUploadStatus {
+        CaptureUploadStatus(state, retryingAt: retryingAt, detail: saveFailed ? "upload state could not be saved" : nil)
+    }
     public var snapshot: CaptureUploadState { state }
 
     // MARK: Input
@@ -128,10 +137,12 @@ public actor CaptureUploader {
         kick()
     }
 
-    /// The capture stopped: `packet` is frozen as these bytes, and `streams` are its last files.
-    public func seal(packet: Data, streams: [SealedFile]) {
+    /// The capture stopped: `packet` is frozen as these bytes, and `files` is every file it lists.
+    /// Any the uploader has not seen yet (an `add` still on its way) is queued here, so the
+    /// server never waits for a listed file that nobody sends.
+    public func seal(packet: Data, files: [SealedFile]) {
         guard state.end == nil, state.packet == nil else { return }
-        for file in streams where state.files[file.path] == nil {
+        for file in files where state.files[file.path] == nil {
             state.files[file.path] = .init(sealed: file, sequence: state.nextSequence)
             state.nextSequence += 1
         }
@@ -166,7 +177,7 @@ public actor CaptureUploader {
     // MARK: Loop
 
     private func drive() async {
-        while !Task.isCancelled, state.end == nil {
+        while !Task.isCancelled, state.end == nil, !saveFailed {
             let attempt = state.attemptID
             do {
                 let progressed = try await step()
@@ -292,10 +303,16 @@ public actor CaptureUploader {
                 case .success(let reply) where reply.status == 400 && !digestRetried.contains(path):
                     // BadDigest: the bytes on disk are sealed, so sending them once more is the retry.
                     digestRetried.insert(path)
+                case .success(let reply) where reply.status == 400:
+                    // The same sealed bytes refused twice: the file on disk no longer matches its digest.
+                    throw Refused(step: "put", status: 400, codes: ["bad_digest"])
                 case .success(let reply) where Self.isTransient(reply.status):
                     transient = Transient(step: "put", detail: "status \(reply.status)", retryAfter: reply.retryAfter)
-                case .success:
-                    // 403 expired signature, a spent token, or a digest refused twice: a fresh URL.
+                case .success(let reply):
+                    // 403 expired signature or a spent token: a fresh URL, a bounded number of times.
+                    guard (state.files[path]?.attempts ?? 0) < policy.maxRefusedPuts else {
+                        throw Refused(step: "put", status: reply.status, codes: ["storage_refused"])
+                    }
                     setPhase(path, .queued)
                 case .failure(let error):
                     transient = Transient(step: "put", detail: Self.describe(error), retryAfter: nil)
@@ -360,6 +377,15 @@ public actor CaptureUploader {
             state.lastEvent = [event.type, event.data?.stage, event.data?.status, event.data?.kind, event.data?.code].compactMap { $0 }.joined(separator: " ")
             // A verdict for another run is not this capture's result.
             if event.type == "verdict_ready", event.data?.runId == nil || event.data?.runId == state.finalized?.runID { mark("verdictReady") }
+            if event.type == "failed", event.data?.next == "retry_finalize" {
+                // The server lost the finalize to a transient storage failure: send the same frozen
+                // packet again.
+                guard state.finalizeRetries < policy.maxFinalizeRetries else {
+                    throw Refused(step: "finalize", status: 0, codes: [event.data?.code ?? "retry_finalize"])
+                }
+                state.finalizeRetries += 1
+                state.finalized = nil
+            }
         }
         if !answer.events.isEmpty { log?("capture-upload events status=\(answer.status) last=\(state.lastEvent ?? "")") }
         persist()
@@ -371,6 +397,7 @@ public actor CaptureUploader {
         let (reply, attempt) = try await call("result", request)
         guard attempt == state.attemptID else { return }
         guard (200..<300).contains(reply.status) else {
+            if try captureGone(reply) { return }
             throw Refused(step: "result", status: reply.status, codes: CaptureAPI.errorCodes(reply.body))
         }
         struct RunOnly: Decodable { var runId: String?; var status: String? }
@@ -444,15 +471,21 @@ public actor CaptureUploader {
     }
 
     private func persist() {
-        try? state.save(to: Self.stateURL(in: folder))
+        do {
+            try state.save(to: Self.stateURL(in: folder))
+        } catch {
+            saveFailed = true
+            log?("capture-upload stopped: the upload state could not be saved (\(Self.describe(error)))")
+        }
         publish()
     }
 
     private func publish() {
-        observer?(CaptureUploadStatus(state, retryingAt: retryingAt))
+        observer?(status)
     }
 
-    static func isTransient(_ status: Int) -> Bool { status == 0 || status == 408 || status == 429 || (500..<600).contains(status) }
+    /// 501 is the server saying it doesn't do what was asked (multipart), which waiting won't change.
+    static func isTransient(_ status: Int) -> Bool { status == 0 || status == 408 || status == 429 || ((500..<600).contains(status) && status != 501) }
 
     /// The error's domain and code only: a URLError's description can carry the signed URL.
     static func describe(_ error: any Error) -> String {

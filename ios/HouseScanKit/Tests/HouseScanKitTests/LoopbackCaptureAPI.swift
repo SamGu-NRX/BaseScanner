@@ -39,6 +39,8 @@ final class LoopbackCaptureAPI: Sendable {
         var runID: String?
         var events: [(type: String, data: [String: String])] = []
         var status = "uploading"
+        /// Accepted a finalize, then lost it to a storage failure: no run until it is sent again.
+        var finalizeLost = false
     }
 
     struct State {
@@ -51,6 +53,10 @@ final class LoopbackCaptureAPI: Sendable {
         var dropNext: Set<String> = []
         /// Answer the next N storage PUTs 403, as an expired signature.
         var expireNextPuts = 0
+        /// Answer the next N storage PUTs 400 BadDigest.
+        var badDigestPuts = 0
+        /// Accept the next finalize, then report it lost with `failed` / `retry_finalize`.
+        var loseNextFinalize = false
         /// Answer the next commit with this split instead of the truth.
         var commitOverride: ((committed: [String], notFound: [String], mismatch: [String]))?
         /// Routes whose answers wait until `release` is called.
@@ -169,7 +175,7 @@ final class LoopbackCaptureAPI: Sendable {
             switch (r.method, parts.dropFirst(2).joined(separator: "/")) {
             case ("POST", "files"): return register(r, &capture, &s)
             case ("POST", "files:commit"): return commit(r, &capture, &s)
-            case ("POST", "finalize"): return finalize(r, &capture)
+            case ("POST", "finalize"): return finalize(r, &capture, &s)
             case ("GET", "events"): return events(r, &capture)
             case ("GET", "result"):
                 return (200, json(["runId": capture.runID ?? "", "status": capture.status, "outcome": capture.status == "manual_review" ? ["kind": "manual_review"] as Any : NSNull()]))
@@ -237,6 +243,10 @@ final class LoopbackCaptureAPI: Sendable {
             return (403, Data("token_invalid".utf8))
         }
         if r.headers["authorization"] != nil { return (400, Data("authorization sent to storage".utf8)) }
+        if s.badDigestPuts > 0 {
+            s.badDigestPuts -= 1
+            return (400, Data("<Error><Code>BadDigest</Code></Error>".utf8))
+        }
         if s.expireNextPuts > 0 {
             s.expireNextPuts -= 1
             s.tokens[token] = nil
@@ -271,7 +281,7 @@ final class LoopbackCaptureAPI: Sendable {
         return (200, json(["committed": committed, "notFound": notFound, "mismatch": mismatch]))
     }
 
-    private func finalize(_ r: Request, _ c: inout Capture) -> (Int, Data) {
+    private func finalize(_ r: Request, _ c: inout Capture, _ s: inout State) -> (Int, Data) {
         guard r.headers["idempotency-key"] == c.packetID else { return error(422, "idempotency_key_mismatch") }
         let sha = PacketFiles.sha256(r.body)
         if let declared = r.headers["x-packet-sha256"], declared != sha { return error(422, "packet_sha_mismatch") }
@@ -288,6 +298,14 @@ final class LoopbackCaptureAPI: Sendable {
             c.listed = packet.files.map(\.path)
             c.runID = "run_" + sha.prefix(16)
             c.status = "awaiting_files"
+            if s.loseNextFinalize {
+                s.loseNextFinalize = false
+                c.finalizeLost = true
+                c.events.append(("failed", ["code": "storage_unavailable", "next": "retry_finalize"]))
+            }
+            startIfComplete(&c)
+        } else if c.finalizeLost {
+            c.finalizeLost = false
             startIfComplete(&c)
         }
         let missing = c.listed.filter { !c.committed.contains($0) }
@@ -295,7 +313,7 @@ final class LoopbackCaptureAPI: Sendable {
     }
 
     private func startIfComplete(_ c: inout Capture) {
-        guard c.packetSHA != nil, c.status == "awaiting_files", c.listed.allSatisfy(c.committed.contains) else { return }
+        guard c.packetSHA != nil, !c.finalizeLost, c.status == "awaiting_files", c.listed.allSatisfy(c.committed.contains) else { return }
         c.status = "manual_review"
         c.events.append(("stage", ["stage": "ingest", "status": "ok", "runId": c.runID!]))
         c.events.append(("verdict_ready", ["kind": "manual_review", "runId": c.runID!]))

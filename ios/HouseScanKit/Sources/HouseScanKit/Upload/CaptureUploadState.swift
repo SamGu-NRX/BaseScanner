@@ -52,6 +52,8 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
     public var packet: Data?
     public var finalized: Finalized?
     public var eventCursor = 0
+    /// `retry_finalize` answers followed so far.
+    public var finalizeRetries = 0
     public var backendStatus: String?
     public var lastEvent: String?
     public var result: Data?

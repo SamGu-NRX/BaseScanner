@@ -30,7 +30,7 @@ import Testing
         #expect(during.committedCount == during.files.count, "photos committed before the capture ends")
 
         let (streams, packet) = try await capture.finish()
-        await uploader.seal(packet: packet, streams: streams)
+        await uploader.seal(packet: packet, files: streams)
         await uploader.settled()
 
         let done = await uploader.snapshot
