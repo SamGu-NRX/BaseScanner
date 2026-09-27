@@ -36,8 +36,6 @@ final class ScreenStatesUITests: XCTestCase {
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("markFeatures-lostPlace", ["-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"], "markFeatures"),
-        ("markFeatures-groundQuestion", ["-uiDemoGroundQuestion"], "markFeatures"),
-        ("markFeatures-groundAnswered", ["-uiDemoGroundAnswer", "mulch"], "markFeatures"),
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("gapRequest-groundOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "groundOut"], "gapRequest"),
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
@@ -50,7 +48,11 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("spotConfirm", ["-uiDemoPhase", "spotConfirm"], "spotConfirm"),
-        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
+        ("spotConfirm-which", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotStep", "which"], "spotConfirm"),
+        ("spotConfirm-ground", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotStep", "ground"], "spotConfirm"),
+        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotStep", "ground", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
+        ("spotConfirm-cantMark", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotStep", "which", "-uiDemoSpotAnswered", "cantMark"], "spotConfirm"),
+        ("spotConfirm-unconfirmable", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotUnconfirmable"], "spotConfirm"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
@@ -73,8 +75,8 @@ final class ScreenStatesUITests: XCTestCase {
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
-        "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
-        "spotConfirm", "spotConfirm-answered",
+        "markFeatures-lostPlace",
+        "spotConfirm", "spotConfirm-which", "spotConfirm-ground", "spotConfirm-answered", "spotConfirm-cantMark", "spotConfirm-unconfirmable",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -85,12 +87,14 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
-        "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
-        "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
         // The spot check asks one question over a photo VoiceOver describes, then says the answer.
-        "spotConfirm": ("spot.question", "Is anything standing in the marked area?"),
-        "spotConfirm-answered": ("spot.answered", "Thanks, it's clear"),
+        "spotConfirm": ("spot.question", "Is anything in the marked area?"),
+        "spotConfirm-which": ("spot.question", "Which one isn't marked?"),
+        "spotConfirm-ground": ("spot.question", "What's the ground where the battery would stand?"),
+        "spotConfirm-answered": ("spot.answered", "Thanks, it's mulch"),
+        "spotConfirm-cantMark": ("spot.answered", "can't be marked now"),
+        "spotConfirm-unconfirmable": ("spot.question", "Your photos don't show all of this area"),
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
         // The answer comes from the checks: an unsure ground check a view settles.
@@ -169,7 +173,6 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.overheadClear", timeout: 15)
         tap(app, "action.finishWalk")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
-        tap(app, "ground.answer.gravel")
         tap(app, "window.opens.no")
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10))
@@ -183,7 +186,9 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 30))
         XCTAssertEqual(element(app, "spot.photo").label, "Photo of your wall")
         tap(app, "action.spotClear")
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
+        // Then the ground where the battery would stand; a type goes to the server once more.
+        tap(app, "ground.answer.gravel")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
         // B-14: a limit says whether it is a minimum or a maximum. The unit is left off: VoiceOver
@@ -249,35 +254,38 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "action.confirmFeatures").isHittable, "Looks complete must stay available")
     }
 
-    /// The ground question asks until it is answered, then folds into one row with the answer;
-    /// Change opens the answers again with the current one selected, and a new pick folds it back.
+    /// The review no longer asks about the ground. The spot check does, once the homeowner says
+    /// the area is clear: the seven answers replace the first question's three, "A gas meter, AC,
+    /// window or door" asks which and Back returns, and an answer ends the check.
     @MainActor
-    func testGroundQuestionFoldsIntoARowAndChangeReopensIt() throws {
+    func testSpotCheckAsksTheGroundOnceTheAreaIsClear() throws {
         continueAfterFailure = false
+        let review = XCUIApplication()
+        review.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures"]
+        review.launch()
+        XCTAssertTrue(element(review, "screen.markFeatures").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(review, "ground.answer.mulch").exists, "the review must not ask about the ground")
+        review.terminate()
+
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoGroundQuestion"]
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "spotConfirm"]
         app.launch()
-        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
-        for id in ["lawn", "mulch", "gravel", "concrete", "drive", "deck", "notSure"] {
-            XCTAssertTrue(element(app, "ground.answer.\(id)").exists, "missing ground.answer.\(id)")
+        XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "ground.answer.mulch").exists, "the ground waits for the area")
+        tap(app, "action.spotUnmarked")
+        for kind in ["gas_meter", "ac", "window", "door"] {
+            XCTAssertTrue(element(app, "spot.unmarked.\(kind)").waitForExistence(timeout: 5), "missing spot.unmarked.\(kind)")
         }
-        XCTAssertFalse(element(app, "ground.change").exists, "an unanswered question must not show Change")
-
+        tap(app, "action.spotBack")
+        tap(app, "action.spotClear", timeout: 5)
+        for id in ["lawn", "mulch", "gravel", "concrete", "drive", "deck", "notSure"] {
+            XCTAssertTrue(element(app, "ground.answer.\(id)").waitForExistence(timeout: 5), "missing ground.answer.\(id)")
+        }
+        XCTAssertFalse(element(app, "action.spotClear").exists)
         tap(app, "ground.answer.gravel")
-        XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5), "the answer must fold into a row")
-        XCTAssertTrue(element(app, "ground.answer.lawn").waitForNonExistence(timeout: 5), "the answers must go once answered")
-        // Read once each (`ElementRead`): the row and the answers are swapping in and out.
-        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Gravel") == true, "the row must show the answer")
-
-        tap(app, "ground.change")
-        let gravel = element(app, "ground.answer.gravel")
-        XCTAssertTrue(gravel.waitForExistence(timeout: 5), "Change must bring the answers back")
-        XCTAssertTrue(ElementRead.snapshot(gravel)?.isSelected == true, "the current answer must show as selected")
-        XCTAssertFalse(element(app, "ground.change").exists)
-
-        tap(app, "ground.answer.notSure")
-        XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5))
-        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Not sure") == true)
+        let answered = element(app, "spot.answered")
+        XCTAssertTrue(answered.waitForExistence(timeout: 5))
+        XCTAssertTrue(ElementRead.snapshot(answered)?.label.contains("Thanks, it's gravel") == true)
     }
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent
@@ -295,6 +303,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
         tap(app, "action.confirmFeatures")
         tap(app, "action.spotClear", timeout: 40)
+        tap(app, "ground.answer.notSure")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
     }
 

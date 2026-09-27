@@ -163,6 +163,66 @@
 				"Fixtures/synthetic-wall-lidar/keyframes/k00041.confidence.u8",
 				"Fixtures/synthetic-wall-lidar/keyframes/k00041.depth.f32",
 				"Fixtures/synthetic-wall-lidar/keyframes/k00041.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.jpg",
 				"Fixtures/synthetic-wall-lidar/session.json",
 				"Fixtures/synthetic-wall/keyframes",
 				"Fixtures/synthetic-wall/keyframes/k00001.jpg",
@@ -206,6 +266,26 @@
 				"Fixtures/synthetic-wall/keyframes/k00039.jpg",
 				"Fixtures/synthetic-wall/keyframes/k00040.jpg",
 				"Fixtures/synthetic-wall/keyframes/k00041.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00042.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00043.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00044.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00045.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00046.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00047.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00048.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00049.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00050.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00051.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00052.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00053.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00054.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00055.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00056.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00057.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00058.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00059.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00060.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00061.jpg",
 				"Fixtures/synthetic-wall/session.json",
 			);
 			target = EF941BB37D13A698579DF2A6 /* HouseScanUITests */;
@@ -293,7 +373,6 @@
 			buildConfigurationList = BC75D335CF0AD12595EFD903 /* Build configuration list for PBXNativeTarget "HouseScan" */;
 			buildPhases = (
 				535AA09D0DE15B25D4976AD1 /* Sources */,
-				4B78FA1D2FA688AF355A9249 /* Stamp the git commit */,
 				E009F9206BA5E923B8F3E03B /* Resources */,
 				52EF4397177795C26C0B600D /* Frameworks */,
 			);
@@ -391,29 +470,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		4B78FA1D2FA688AF355A9249 /* Stamp the git commit */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
-			);
-			name = "Stamp the git commit";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "commit=$(git -C \"$SRCROOT\" rev-parse --short=12 HEAD 2>/dev/null) || exit 0\nif [ -n \"$(git -C \"$SRCROOT\" status --porcelain --untracked-files=no 2>/dev/null)\" ]; then\n  commit=\"$commit-dirty\"\nfi\n/usr/libexec/PlistBuddy -c \"Set :HouseScanGitCommit $commit\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		535AA09D0DE15B25D4976AD1 /* Sources */ = {

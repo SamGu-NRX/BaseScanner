@@ -28,6 +28,12 @@ extension ScanEngine {
         /// those made after its time before it goes into the meter frame. The raw poses stay as
         /// they were recorded.
         var corrections: PoseCorrections
+        /// The latest frame time the engine had seen when these inputs were taken. Live stream
+        /// rows after it are left out: the recorder goes on taking rows while the packet is
+        /// queued, and a row after a correction that isn't in `corrections` would be written in
+        /// the wrong frame. The capture window ends at the last row kept, so depth frames and
+        /// motion rows stop there too. Nil keeps every row (a replay has no corrections).
+        var streamCutoff: Double?
         var groundWorldY: Float
         /// Keyframes and stills; `writePacket` orders them by time.
         var photos: [StoredKeyframe]
@@ -86,6 +92,7 @@ extension ScanEngine {
             ),
             meterFrame: frame,
             corrections: poseCorrections,
+            streamCutoff: replay == nil ? captureClock : nil,
             groundWorldY: wall.groundY,
             photos: store.keyframes + store.stillFrames.keys.sorted().compactMap { store.stillFrames[$0] },
             mesh: mesh,
@@ -319,7 +326,9 @@ extension ScanEngine {
             return Trajectory(sessionID: UUID().uuidString, startedAt: nil, rate: rate, rows: rows)
         }
         let snapshot = inputs.recorder.flush()
-        let rows = inputs.recorder.rows(.trajectory).map { row in
+        let cutoff = inputs.streamCutoff ?? .infinity
+        let recorded: [[Double]] = inputs.recorder.rows(.trajectory).filter { $0[0] <= cutoff }
+        let rows = recorded.map { row in
             let pose = simd_float4x4(
                 SIMD4(Float(row[3]), Float(row[4]), Float(row[5]), Float(row[6])),
                 SIMD4(Float(row[7]), Float(row[8]), Float(row[9]), Float(row[10])),

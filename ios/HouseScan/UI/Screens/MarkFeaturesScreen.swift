@@ -51,8 +51,6 @@ struct MarkFeaturesScreen: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    // First, so it is seen before "Looks complete"; skipping it counts as not sure.
-                    GroundQuestion(answer: state.groundAnswer, actions: actions)
                     heading
                     featureList
                     addSomething
