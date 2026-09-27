@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// The spot check before the result: one kept photo with the answer's spot and its clearance area
-/// outlined, and one question with two equal answers. A photo can claim wall and ground behind a
-/// bush, so the homeowner, who is standing there, says whether anything is in the way.
+/// The spot check before the result: one kept photo with the answer's spot and the area its
+/// checks rest on outlined, and at most two questions, one at a time. First, is anything in the
+/// marked area (something in the way, or a gas meter, AC, window or door the scan didn't mark)?
+/// A photo can claim wall and ground behind a bush, and the server only keeps clearances from
+/// marked things, so the homeowner, who is standing there, says. Then, once it is clear, what the
+/// ground is where the battery would stand, with only the footprint outlined.
 ///
-/// The answer replaces the two buttons and stays up a moment, saying what happens next, before
-/// the engine moves on (to the result, or to checking the wall again).
+/// When no photo shows the whole area, no question is asked: the screen says so and the only way
+/// on leaves the area out. The final answer replaces the buttons and stays up a moment, saying
+/// what happens next, before the engine moves on (to the result, or to checking the wall again).
 struct SpotConfirmScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -26,12 +30,13 @@ struct SpotConfirmScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 badges(check)
+                let question = Self.question(check)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(ScanCopy.spotQuestion.title)
+                    Text(question.title)
                         .font(Typeface.screenTitle)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                    if let detail = ScanCopy.spotQuestion.detail {
+                    if let detail = question.detail {
                         Text(detail)
                             .font(Typeface.hint)
                             .foregroundStyle(Palette.muted)
@@ -40,9 +45,11 @@ struct SpotConfirmScreen: View {
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("spot.question")
+                .id(question)
+                .transition(.opacity)
                 VStack(alignment: .leading, spacing: 10) {
                     photo(check)
-                    Text(ScanCopy.spotArea(check.area))
+                    Text(ScanCopy.spotArea(check.step == .ground ? check.spot : check.area))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(Palette.muted)
                         .fixedSize(horizontal: false, vertical: true)
@@ -73,6 +80,7 @@ struct SpotConfirmScreen: View {
         }
         .background(Palette.canvas.ignoresSafeArea())
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: check.answer)
+        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.settle, value: check.step)
         .onAppear {
             // The outline fades in once the photo is up, so the eye lands on the photo first.
             if reduceMotion {
@@ -149,39 +157,87 @@ struct SpotConfirmScreen: View {
     @ViewBuilder
     private func answerArea(_ check: SpotCheck) -> some View {
         if let answer = check.answer {
-            Answered(answer: answer)
+            Answered(answer: answer, checksAgain: check.checksAgain)
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8)))
         } else {
-            answers
+            answers(check)
                 .transition(.opacity)
         }
     }
 
-    /// Two equal answers on a white card, so neither reads as the default.
-    private var answers: some View {
-        VStack(spacing: 10) {
-            AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotCheck(clear: true) }
-                .accessibilityHint(ScanCopy.spotClearHint)
-                .accessibilityIdentifier("action.spotClear")
-            AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotCheck(clear: false) }
-                .accessibilityHint(ScanCopy.spotSomethingThereHint)
-                .accessibilityIdentifier("action.spotSomethingThere")
+    /// The heading for the step on screen.
+    static func question(_ check: SpotCheck) -> Instruction {
+        guard check.confirmable else { return ScanCopy.spotUnconfirmable }
+        return switch check.step {
+        case .area: ScanCopy.spotQuestion
+        case .which: ScanCopy.spotWhich
+        case .ground: ScanCopy.spotGroundQuestion
+        }
+    }
+
+    /// The step's answers on a white card, all the same weight, so none reads as the default.
+    @ViewBuilder
+    private func answers(_ check: SpotCheck) -> some View {
+        Group {
+            if !check.confirmable {
+                Button(ScanCopy.spotContinue) { actions.continueUnconfirmed() }
+                    .buttonStyle(.primary)
+                    .accessibilityHint(ScanCopy.spotUnconfirmable.detail ?? "")
+                    .accessibilityIdentifier("action.spotContinue")
+            } else {
+                switch check.step {
+                case .area:
+                    VStack(spacing: 10) {
+                        AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotArea(.clear) }
+                            .accessibilityHint(ScanCopy.spotClearHint)
+                            .accessibilityIdentifier("action.spotClear")
+                        AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotArea(.somethingThere) }
+                            .accessibilityHint(ScanCopy.spotSomethingThereHint)
+                            .accessibilityIdentifier("action.spotSomethingThere")
+                        AnswerButton(title: ScanCopy.spotUnmarked, selected: false) { actions.answerSpotArea(.unmarked) }
+                            .accessibilityHint(ScanCopy.spotUnmarkedHint)
+                            .accessibilityIdentifier("action.spotUnmarked")
+                    }
+                case .which:
+                    VStack(spacing: 10) {
+                        let columns = typeSize.isAccessibilitySize ? 1 : 2
+                        let kinds = ScanCopy.spotUnmarkedKinds
+                        Grid(horizontalSpacing: 8, verticalSpacing: 8) {
+                            ForEach(Array(stride(from: 0, to: kinds.count, by: columns)), id: \.self) { start in
+                                GridRow {
+                                    ForEach(kinds[start..<min(start + columns, kinds.count)]) { kind in
+                                        AnswerButton(title: ScanCopy.name(kind), selected: false) { actions.chooseUnmarked(kind) }
+                                            .accessibilityIdentifier("spot.unmarked.\(kind.rawValue)")
+                                    }
+                                }
+                            }
+                        }
+                        Button(ScanCopy.spotBack) { actions.chooseUnmarked(nil) }
+                            .buttonStyle(.quiet)
+                            .accessibilityIdentifier("action.spotBack")
+                    }
+                case .ground:
+                    GroundAnswers { actions.answerSpotGround($0) }
+                }
+            }
         }
         .padding(12)
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
+        .id(check.step)
     }
 }
 
 /// The answer given, and what happens next.
 private struct Answered: View {
     var answer: SpotCheckAnswer
+    var checksAgain: Bool
 
     var body: some View {
-        let copy = ScanCopy.spotAnswered(answer)
+        let copy = ScanCopy.spotAnswered(answer, checksAgain: checksAgain)
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: answer == .clear ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+            Image(systemName: answer.withdrewArea ? "arrow.triangle.2.circlepath" : "checkmark.circle.fill")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(answer == .clear ? Palette.passInk : Palette.reviewInk)
+                .foregroundStyle(answer.withdrewArea ? Palette.reviewInk : Palette.passInk)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(copy.title)
@@ -203,9 +259,10 @@ private struct Answered: View {
     }
 }
 
-/// The spot's footprint and its clearance area drawn over the photo, on the ground and up the
-/// wall face to the battery's height: the space the question is about. Blue, the app's "look
-/// here", with a white edge under the outline so it reads on any wall.
+/// The spot's footprint and the area its checks rest on drawn over the photo, on the ground and up
+/// the wall face to the battery's height: the space the question is about. For the ground question
+/// only the footprint, where the battery would stand. Blue, the app's "look here", with a white
+/// edge under the outline so it reads on any wall.
 private struct SpotOutline: View {
     var photo: SpotCheck.Photo
     var wall: WallGeometry
@@ -214,8 +271,9 @@ private struct SpotOutline: View {
     var body: some View {
         Canvas { context, size in
             let geometry = WallProjection(projection: photo.projection, wall: wall, size: size)
-            let face = polygon(geometry, along: check.area) { s, top in wall.world(s: s, height: top ? check.spotHeight : 0) }
-            let ground = polygon(geometry, along: check.area) { s, far in wall.world(s: s, height: 0, out: far ? check.areaDepth : 0) }
+            let wholeArea = check.step != .ground
+            let face = wholeArea ? polygon(geometry, along: check.area) { s, top in wall.world(s: s, height: top ? check.spotHeight : 0) } : nil
+            let ground = wholeArea ? polygon(geometry, along: check.area) { s, far in wall.world(s: s, height: 0, out: far ? check.areaDepth : 0) } : nil
             let footprint = polygon(geometry, along: check.spot) { s, far in
                 wall.world(s: s, height: 0, out: far ? check.spotOut.upperBound : check.spotOut.lowerBound)
             }

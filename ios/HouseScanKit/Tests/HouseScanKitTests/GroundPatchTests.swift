@@ -138,6 +138,13 @@ import simd
     }
 }
 
+extension SceneGroundPatch {
+    /// A patch over an area larger than any test's chain, so what it covers is what was seen.
+    static func everywhere(_ type: SceneGroundType) -> SceneGroundPatch {
+        SceneGroundPatch(type: type, span: -100...100, out: 100)
+    }
+}
+
 @Suite struct GroundPatchExportTests {
     typealias Value = JSONSchemaValidator.Value
 
@@ -151,7 +158,7 @@ import simd
     @Test func mulchPatchesFollowTheGroundCoverageAndValidate() throws {
         var input = ChainExportTests.input()
         input.features.append(.driveway(edge: [input.wall.world(s: 0, height: 0, out: 1), input.wall.world(s: 1, height: 0, out: 1)]))
-        input.groundType = .mulch
+        input.groundPatches = [.everywhere(.mulch)]
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
         let ground = try #require(try Value.parse(data)["ground"]?.array)
@@ -179,7 +186,7 @@ import simd
         #expect(zip(actual, expected).allSatisfy { abs($0 - $1) <= 1.5e-4 }, "\(actual) != \(expected)", sourceLocation: sourceLocation)
     }
 
-    @Test func noAnswerOrNotSureSendsNoPatch() throws {
+    @Test func noPatchSendsNoGround() throws {
         let data = try SceneExport.jsonData(ChainExportTests.input())
         #expect(try Value.parse(data)["ground"]?.array == [])
     }
@@ -187,7 +194,7 @@ import simd
     @Test func noGroundCoverageSendsNoPatch() throws {
         var input = ChainExportTests.input()
         input.coverage.ground = []
-        input.groundType = .lawn
+        input.groundPatches = [.everywhere(.lawn)]
         #expect(try Value.parse(try SceneExport.jsonData(input))["ground"]?.array == [])
     }
 
@@ -206,7 +213,7 @@ import simd
             return ObservedSpan(span: low...(low + 0.02), out: 1)
         }
         input.coverage.ground = spans
-        input.groundType = .gravel
+        input.groundPatches = [.everywhere(.gravel)]
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
         let ground = try #require(try Value.parse(data)["ground"]?.array)

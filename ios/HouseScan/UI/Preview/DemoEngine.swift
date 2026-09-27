@@ -45,6 +45,8 @@ final class DemoEngine: ScanActions {
     /// The spot check was answered; the next answer goes straight to the result, as the engine's
     /// does for a spot an earlier answer settles.
     private var spotChecked = false
+    /// `-uiDemoSpotUnconfirmable`: no photo shows the spot check's whole area.
+    private var spotUnconfirmable = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -86,12 +88,9 @@ final class DemoEngine: ScanActions {
             state.phase = .unsupported
             return
         }
-        // The ground question and its answer live on the feature review, so either argument opens it.
-        let groundAnswer = value("-uiDemoGroundAnswer").flatMap(Self.groundAnswer)
-        let opensReview = arguments.contains("-uiDemoGroundQuestion") || groundAnswer != nil
-        let phase: ScanPhase = opensReview ? .markFeatures : value("-uiDemoPhase").flatMap(ScanPhase.init(rawValue:)) ?? .onboarding
+        let phase: ScanPhase = value("-uiDemoPhase").flatMap(ScanPhase.init(rawValue:)) ?? .onboarding
+        spotUnconfirmable = arguments.contains("-uiDemoSpotUnconfirmable")
         jump(to: phase)
-        state.groundAnswer = groundAnswer
         if let raw = value("-uiDemoMarking"), let kind = FeatureKind(rawValue: raw) {
             state.marking = MarkingState(kind: kind, step: 0, refusal: arguments.contains("-uiDemoRefusal") ? .noSurface : nil)
         }
@@ -157,8 +156,15 @@ final class DemoEngine: ScanActions {
                 anchor: SIMD3(corner, 0, 0), anchorS: corner)]
             state.wall?.rightEnd = corner + 1.6
         }
-        if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
-            state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
+        if state.phase == .spotConfirm {
+            switch value("-uiDemoSpotStep") {
+            case "which": state.spotCheck?.step = .which
+            case "ground": state.spotCheck?.step = .ground
+            default: break
+            }
+            let answer = value("-uiDemoSpotAnswered").flatMap(Self.spotAnswer)
+            state.spotCheck?.answer = answer
+            state.spotCheck?.checksAgain = answer.map { $0 != .clear(.notSure) } ?? false
         }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
@@ -356,8 +362,8 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.uploadScript() }
     }
 
-    /// The spot check of the answer's spot, before the result. The made-up zones don't hold the
-    /// spot, so the area is the footprint alone, as the engine would draw it.
+    /// The spot check of the answer's spot, before the result. The area is the footprint and the
+    /// clear space in front a passing front check would rest on: 3 ft (0.91 m) past the battery.
     private func enterSpotCheck() {
         let result = sample
         state.shareableScan = Self.demoScan
@@ -366,9 +372,9 @@ final class DemoEngine: ScanActions {
         guard let spot = result.spot else { return showResult() }
         let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
         state.spotCheck = SpotCheck(
-            id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound,
+            id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound + 0.91,
             photo: DemoScene.image.map { SpotCheck.Photo(image: $0, projection: DemoScene.projection) },
-            answer: nil, isSample: result.isSample)
+            confirmable: !spotUnconfirmable, answer: nil, isSample: result.isSample)
         state.phase = .spotConfirm
     }
 
@@ -911,10 +917,10 @@ final class DemoEngine: ScanActions {
         followUpSkipped = false
         spotChecked = false
         state.spotCheck = nil
+        spotUnconfirmable = false
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
-        state.groundAnswer = nil
     }
 
     func liveCameraView() -> AnyView {
@@ -951,9 +957,17 @@ final class DemoEngine: ScanActions {
     /// A refusal in the homeowner's words, as the engine sends it.
     static let rejection = "Some of the wall's measurements were missing. Check what you marked, then send it again."
 
-    /// `-uiDemoGroundAnswer`: a `GroundType` raw value, or `notSure`.
-    private static func groundAnswer(_ raw: String) -> GroundAnswer? {
-        raw == "notSure" ? .notSure : GroundType(rawValue: raw).map(GroundAnswer.type)
+    /// `-uiDemoSpotAnswered`: clear (mulch), notSure, somethingThere, cantMark (a gas meter) or
+    /// unconfirmed.
+    private static func spotAnswer(_ raw: String) -> SpotCheckAnswer? {
+        switch raw {
+        case "clear": .clear(.type(.mulch))
+        case "notSure": .clear(.notSure)
+        case "somethingThere": .somethingThere
+        case "cantMark": .unmarkedCantMark(.gasMeter)
+        case "unconfirmed": .unconfirmed
+        default: nil
+        }
     }
 
     private static func coaching(_ raw: String) -> Coaching? {
@@ -1090,21 +1104,48 @@ private extension ResultPresentation {
 }
 
 extension DemoEngine {
-    /// Like the engine: the answer stays up a moment, then the result, or the check again.
-    func answerSpotCheck(clear: Bool) {
-        guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
-        state.spotCheck?.answer = clear ? .clear : .somethingThere
-        spotChecked = true
-        run { engine in
-            guard await engine.pause(1.2) else { return }
-            if clear { engine.showResult() } else { engine.enterUpload() }
+    /// Like the engine: "It's clear" asks the ground next; the other answers go to their step.
+    func answerSpotArea(_ answer: SpotAreaAnswer) {
+        guard state.phase == .spotConfirm, let check = state.spotCheck, check.confirmable, check.step == .area, check.answer == nil else { return }
+        switch answer {
+        case .clear: state.spotCheck?.step = .ground
+        case .somethingThere: finishSpotCheck(.somethingThere)
+        case .unmarked: state.spotCheck?.step = .which
         }
     }
 
-    /// Nothing to record in the demo: either answer ends the step, as in the real engine.
-    func answerGround(_ answer: GroundAnswer) {
-        guard state.phase == .markFeatures else { return }
-        state.groundAnswer = answer
+    /// The demo marks on its made-up wall like the review; "Looks complete" then sends it again.
+    func chooseUnmarked(_ kind: FeatureKind?) {
+        guard state.phase == .spotConfirm, state.spotCheck?.step == .which else { return }
+        guard let kind else {
+            state.spotCheck?.step = .area
+            return
+        }
+        spotChecked = true
+        state.phase = .markFeatures
+        beginMarking(kind)
+    }
+
+    func answerSpotGround(_ answer: GroundAnswer) {
+        guard state.phase == .spotConfirm, state.spotCheck?.step == .ground, state.spotCheck?.answer == nil else { return }
+        finishSpotCheck(.clear(answer))
+    }
+
+    func continueUnconfirmed() {
+        guard state.phase == .spotConfirm, state.spotCheck?.confirmable == false, state.spotCheck?.answer == nil else { return }
+        finishSpotCheck(.unconfirmed)
+    }
+
+    /// Like the engine: the answer stays up a moment, then the result ("Not sure") or the check
+    /// again, whose next answer shows the result.
+    private func finishSpotCheck(_ answer: SpotCheckAnswer) {
+        state.spotCheck?.answer = answer
+        state.spotCheck?.checksAgain = answer != .clear(.notSure)
+        spotChecked = true
+        run { engine in
+            guard await engine.pause(1.2) else { return }
+            if answer == .clear(.notSure) { engine.showResult() } else { engine.enterUpload() }
+        }
     }
 
     func answerOverhead(clear: Bool) {

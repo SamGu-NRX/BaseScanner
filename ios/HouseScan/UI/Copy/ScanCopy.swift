@@ -225,12 +225,6 @@ enum ScanCopy {
 
     // MARK: Ground
 
-    /// Asked on the feature review. The camera can't tell mulch from soil, so without this answer
-    /// the server's check of the ground under the battery always ends unsure.
-    static let groundQuestion = Instruction(
-        title: "What's on the ground along this wall?",
-        detail: "The battery can only stand on some kinds of ground."
-    )
     /// Names the homeowner would use: "Grass", not the schema's "lawn".
     static func groundName(_ type: GroundType) -> String {
         switch type {
@@ -249,9 +243,6 @@ enum ScanCopy {
         case .notSure: groundNotSure
         }
     }
-    /// The label over the answer once the question has folded into a row.
-    static let groundAnsweredLabel = "Ground along the wall"
-    static let groundChange = "Change"
 
     // MARK: Gap
 
