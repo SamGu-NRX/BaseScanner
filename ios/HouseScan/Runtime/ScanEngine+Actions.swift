@@ -66,6 +66,9 @@ extension ScanEngine: ScanActions {
         setMeterAnchor(live.addMeterAnchor(at: hit.transform), pose: hit.transform)
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
+        // A wall plane ARKit already knows may disagree with an estimated hit; waiting for the
+        // planes to change would leave the close-up, and maybe the walk, on the estimated wall.
+        refitWallToDetectedPlane()
     }
 
     /// The ground at the wall of the meter at `meter`, running along `along`: a detected plane

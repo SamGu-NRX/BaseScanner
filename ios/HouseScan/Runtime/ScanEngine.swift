@@ -431,10 +431,11 @@ final class ScanEngine {
 
     /// Moves the wall to a detected wall plane that disagrees with a meter tap on an estimated
     /// plane (`MeterTap.refit`): the meter goes where the tap's line of sight meets the plane, the
-    /// wall faces the plane's normal, and the meter is anchored again there. Only during the
-    /// close-up, before the walk has kept any view: coverage can't turn a wall it has already
-    /// seen (`CoverageMap.updateWall`), so a wall found wrong later stays wrong.
-    private func refitWallToDetectedPlane() {
+    /// wall faces the plane's normal, and the meter is anchored again there. Tried on entering the
+    /// close-up, with the planes already known, and whenever the planes change during it. Only
+    /// during the close-up, before the walk has kept any view: coverage can't turn a wall it has
+    /// already seen (`CoverageMap.updateWall`), so a wall found wrong later stays wrong.
+    func refitWallToDetectedPlane() {
         guard state.phase == .meterCloseUp, replay == nil, meterPlaneSource == .estimatedPlane,
               let live, let tapCamera = meterTapCamera, let map = coverage,
               let refit = MeterTap.refit(meter: map.wall.meter, outward: map.wall.outward, tapCamera: tapCamera, planes: wallPlanes) else { return }
@@ -1165,6 +1166,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
+        meterTapCamera = nil
         state.wall = nil
         state.coverage = .empty
         state.target = nil
@@ -1637,6 +1639,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane
+        meterTapCamera = nil
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
         live?.setRecorder(recorder)
@@ -1746,6 +1749,8 @@ final class ScanEngine {
         state.feed = .none
         // What the retired source saw is in its own world frame; the next source starts another.
         groundPlanes = []
+        wallPlanes = []
+        meterTapCamera = nil
         groundMeasured = false
         lastFrame = nil
         meterTracking = nil
