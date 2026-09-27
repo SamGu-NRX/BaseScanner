@@ -132,6 +132,35 @@ func rightCornerWall() throws -> WallFrame {
         #expect(!map.coveredIntervals(.wall).isEmpty)
     }
 
+    /// #70, option 3C: the walk asks "Is this the next wall?" before following a corner, so the
+    /// corner is proposed first. Proposing changes nothing, gives the distance from the marked
+    /// end that the log records, refuses what `turnCorner` refuses, and following it afterwards
+    /// gives the same corner.
+    @Test func proposingACornerChangesNothingAndSaysHowFarItIs() throws {
+        var map = CoverageMap(wall: standardWall())
+        for s: Float in [2.0, 2.4, 3.6, 4.0] { map.observe(wallCamera(s: s), trackingNormal: true) }
+        map.setEnd(.right, at: 3.1)
+
+        let proposal = try map.proposeCorner(.right, meeting: SIMD3(3, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)
+        #expect(nearlyEqual(proposal.corner.s, 3))
+        #expect(nearlyEqual(proposal.fromEnd, 0.1, 1e-3))
+        #expect(proposal.corner.source == .plane)
+        #expect(map.rightEnd == 3.1 && map.wall.rightCorners.isEmpty)
+        // A surface behind the end post, 2.5 m on: still inside the 3 m bound, so it is proposed
+        // and the homeowner is asked; 3.9 m on is refused as before.
+        let behind = try map.proposeCorner(.right, meeting: SIMD3(5.6, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)
+        #expect(nearlyEqual(behind.fromEnd, 2.5, 1e-3))
+        // The ring for the question goes on the corner on the current wall's line, 2.5 m past
+        // the marked end, not on the point marked 2 m behind it (review of #136).
+        let ring = map.wall.world(s: behind.corner.s, height: 1)
+        #expect(nearlyEqual(ring, SIMD3(5.6, 1, 0), 1e-3))
+        #expect(simd_distance(ring, SIMD3(5.6, 1.2, -2)) > 1.5)
+        #expect(throws: CornerRefusal.implausible(s: 7)) { try map.proposeCorner(.right, meeting: SIMD3(7, 1, -2), outward: SIMD3(1, 0, 0), source: .plane) }
+
+        let corner = try map.turnCorner(.right, meeting: SIMD3(3, 1.2, -2), outward: SIMD3(1, 0, 0), source: .plane)
+        #expect(corner == proposal.corner)
+    }
+
     @Test func movingTheMeterKeepsCornersInPlace() throws {
         var map = CoverageMap(wall: try rightCornerWall())
         var moved = map.wall
