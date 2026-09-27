@@ -40,6 +40,7 @@ Outputs, all against a `WallFrame` (the walk's, or one built from the map's own 
   - `wallFrame(meter:groundY:frame:)` turns the chain into a `WallFrame`.
 - `fogOfWar(along:)`: 0.3 m cells of the region of interest that are still unknown, in the map frame, to draw from the meter anchor.
 - `nextBestView(along:)`: the largest unseen region that borders seen space, plus where to stand and aim to see it.
+- `spotView(span:along:)`: whether the battery's volume in front of a chosen span is blocked (`occluder`: a measured surface hit at least twice), seen `clear` (wall and ground seen, every voxel measured free), or `unknown`. `SpotDecision.decide` turns that and the homeowner's answer into the next step: an occluder always asks for another view and the homeowner can't override it, while unknown asks the homeowner. `Map3DCoverageSource.spotDecision` runs it on the live map; nothing in the app calls it yet, because the confirmation screen belongs to the engine.
 
 Without LiDAR, only feature-point rays count as seen. A point on a detected plane takes that plane's normal. Detected planes and mesh chunks mark voxels by reference count and add no occupancy: updating or removing one takes its marks with it, and planes alone clear no fog. Coverage without LiDAR is therefore sparse, and a replay without depth gives the map nothing.
 
