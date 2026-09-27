@@ -57,6 +57,9 @@ final class CaptureIntegration {
         let modes = (device: off, replay: off)
         #endif
         environments = (Self.environment(modes.device, source: .device), Self.environment(modes.replay, source: .replay))
+        #if DEBUG && HOUSESCAN_INTEGRATION
+        loadResultFixture(arguments)
+        #endif
         if let device = environments.device {
             resumed = CaptureSessionCoordinator(environment: device).resumeSealedCaptures()
             if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
@@ -87,6 +90,28 @@ final class CaptureIntegration {
             },
             device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
     }
+
+    #if DEBUG && HOUSESCAN_INTEGRATION
+    /// DEBUG only, for UI tests of the details view: `-captureResultFixture <file>` shows a result
+    /// written for the tests as if a capture had finished. The screen labels it as a fixture; it
+    /// proves how a result renders, not that a server sent one.
+    private func loadResultFixture(_ arguments: [String]) {
+        guard let path = arguments.firstIndex(of: "-captureResultFixture").flatMap({ $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }),
+              let body = FileManager.default.contents(atPath: path),
+              let response = try? JSONDecoder().decode(CaptureResult.Response.self, from: body)
+        else { return }
+        let serverStatus = ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["status"] as? String ?? "unknown"
+        var state = CaptureUploadState(attemptID: "ui-fixture", packetID: "ui-fixture-packet", createBody: Data())
+        state.captureID = "cap_UI_FIXTURE"
+        state.finalized = .init(status: "processing", missing: [], runID: response.runId ?? "run_ui_fixture")
+        state.backendStatus = serverStatus
+        state.result = body
+        state.end = .finished(status: serverStatus)
+        status = CaptureUploadStatus(state, detail: "DEBUG UI fixture: this answer is a file from the tests, not a server's.")
+        result = CaptureResult.Record(
+            response: response, association: .init(sessionID: "ui-fixture", captureID: "cap_UI_FIXTURE", runID: state.finalized?.runID ?? "", epoch: "e1"))
+    }
+    #endif
 
     /// The coordinator for the source that is starting; the first source to start decides it.
     private func coordinator(for environment: CaptureSessionCoordinator.Environment?) -> CaptureSessionCoordinator {

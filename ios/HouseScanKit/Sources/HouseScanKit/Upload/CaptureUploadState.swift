@@ -44,6 +44,12 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
         public var status: String
         public var missing: [String]
         public var runID: String
+
+        public init(status: String, missing: [String], runID: String) {
+            self.status = status
+            self.missing = missing
+            self.runID = runID
+        }
     }
 
     /// Local identity of this upload. Answers that arrive for another attempt are dropped.

@@ -57,52 +57,60 @@ struct CaptureConsentSheet: View {
     @State private var agreed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Send this scan to the House Scan team?")
-                .font(Typeface.sectionTitle)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("What's sent while you scan").font(Typeface.caption).foregroundStyle(.secondary)
-                Label("Photos of your wall and meter", systemImage: "photo")
-                Label("Measurements of your wall and your marks", systemImage: "ruler")
-                Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
+        // Large, and scrolling if the text is larger than the screen, so the title and every line
+        // of what is sent stay readable; the two actions stay pinned below at full size.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Send this scan to the House Scan team?")
+                    .font(Typeface.sectionTitle)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("captureConsent.title")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("What's sent while you scan").font(Typeface.caption).foregroundStyle(.secondary)
+                    Label("Photos of your wall and meter", systemImage: "photo")
+                    Label("Measurements of your wall and your marks", systemImage: "ruler")
+                    Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
+                }
+                .font(Typeface.hint)
+                Text("It goes to the House Scan team's test server, for this scan only. This test server does not require a sign-in. Only send a scan you have permission to share.")
+                    .font(Typeface.hint)
+                    .foregroundStyle(.secondary)
+                Text("Skip keeps these photos on this phone. The existing placement preview still works.")
+                    .font(Typeface.hint)
+                    .foregroundStyle(.secondary)
+                Toggle("I agree to send this scan", isOn: $agreed)
+                    .font(Typeface.hint)
+                    .accessibilityIdentifier("captureConsent.agree")
             }
-            .font(Typeface.hint)
-            // Consent text wraps; a line cut short would hide part of what is sent.
             .fixedSize(horizontal: false, vertical: true)
-            Text("It goes to the House Scan team's test server, for this scan only. Skipping changes nothing about your result.")
-                .font(Typeface.hint)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            Toggle("I agree to send this scan", isOn: $agreed)
-                .font(Typeface.hint)
-                .accessibilityIdentifier("captureConsent.agree")
-            Spacer(minLength: 0)
-            Button { answer(true) } label: {
-                Text("Send").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!agreed)
-            // The whole button dims while it can't be pressed, so its label never sits at low
-            // contrast on a still-colored fill.
-            .opacity(agreed ? 1 : 0.45)
-            .accessibilityIdentifier("captureConsent.send")
-            Button { answer(false) } label: {
-                Text("Skip").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityIdentifier("captureConsent.skip")
+            .padding(Metrics.edge + 8)
         }
-        .padding(Metrics.edge + 8)
-        // Medium, so the camera stays in view behind the question about the scan it is about to take.
-        .presentationDetents([.medium])
-        // Opaque enough that the camera screen's own buttons don't show through behind Skip.
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 8) {
+                Button { answer(true) } label: {
+                    Text("Send").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!agreed)
+                // The whole button dims while it can't be pressed, so its label never sits at low
+                // contrast on a still-colored fill.
+                .opacity(agreed ? 1 : 0.45)
+                .accessibilityIdentifier("captureConsent.send")
+                Button { answer(false) } label: {
+                    Text("Skip").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("captureConsent.skip")
+            }
+            .padding(.horizontal, Metrics.edge + 8)
+            .padding(.vertical, 12)
+            .background(.thickMaterial)
+        }
+        .presentationDetents([.large])
         .presentationBackground(.thickMaterial)
         .interactiveDismissDisabled()
     }
 }
-
-#endif
 
 /// The capture API side of the scan, for the operator: the capture ID to join the viewer to, what
 /// was received, and the server's own answer, labelled as the test server's and never as the
@@ -130,6 +138,7 @@ struct CaptureIntegrationDetails: View {
                     } else {
                         Text("Not created yet")
                     }
+                    if let note = status.detail { Text(note).foregroundStyle(.secondary).accessibilityIdentifier("integration.statusNote") }
                     LabeledContent("Received", value: "\(status.committed) of \(status.retained) files")
                     LabeledContent("Server status", value: status.backendStatus.map(Self.words) ?? "Not reported")
                     if let event = status.lastEvent { LabeledContent("Last event", value: event) }

@@ -271,7 +271,8 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             BUNDLE_ID_PREFIX="$BUNDLE_ID_PREFIX" \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}"
 
       # destination=upload makes -exportArchive send the signed build to App Store Connect instead
       # of writing an .ipa. manageAppVersionAndBuildNumber=false keeps the run number as the build.

@@ -144,6 +144,13 @@ final class IntegrationUITests: XCTestCase {
         XCTAssertTrue(run.send.waitForExistence(timeout: 20), "no consent question before the meter was marked")
         XCTAssertEqual(run.agree.value as? String, "0", "the toggle started on")
         XCTAssertFalse(run.send.isEnabled, "Send was enabled before the toggle was on")
+        // The whole question is readable: the title inside the screen, both actions full size.
+        let window = run.app.windows.firstMatch.frame
+        let title = run.app.staticTexts["captureConsent.title"]
+        XCTAssertTrue(title.exists)
+        XCTAssertTrue(window.contains(title.frame), "the title is cut off: \(title.frame) in \(window)")
+        XCTAssertGreaterThanOrEqual(run.send.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(run.skip.frame.height, 44)
         attach(run.app, "consent-initial")
         run.skip.tap()
         XCTAssertTrue(run.send.waitForNonExistence(timeout: 10), "Skip left the question up")
@@ -191,6 +198,32 @@ final class IntegrationUITests: XCTestCase {
         XCTAssertEqual(run.agree.value as? String, "0")
         XCTAssertFalse(run.send.isEnabled)
         XCTAssertEqual(server.requests("POST captures").count, creates)
+    }
+
+    static var resultFixture: String {
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/capture-result-fixture.json").path
+    }
+
+    /// UI-only proof, separate from transport and device proof: a result written for this test
+    /// (DEBUG `-captureResultFixture`) renders in the details as written, labelled as a fixture and
+    /// as the test server's unverified answer, with the capture ID and Copy.
+    @MainActor
+    func testTheDetailsShowAResultAsWrittenAndLabelled() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-replay", FullFlowUITests.fixture, "-sampleResult", "-captureResultFixture", Self.resultFixture]
+        app.launch()
+        let line = app.descendants(matching: .any)["captureSyncLine"]
+        XCTAssertTrue(line.waitForExistence(timeout: 20), "no status line for the fixture")
+        line.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["integration.details"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["integration.statusNote"].exists, "the fixture is not labelled as one")
+        XCTAssertTrue(app.staticTexts["UI FIXTURE: one more view of the wall, please."].exists, "the message is not shown as written")
+        XCTAssertTrue(app.staticTexts["UI FIXTURE: step back and show the wall"].exists, "the requested view's prompt is missing")
+        XCTAssertTrue(app.staticTexts["cap_UI_FIXTURE"].exists)
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'not verified'")).firstMatch.exists)
+        attach(app, "details-fixture")
+        app.buttons["integration.copyCaptureID"].tap()
+        XCTAssertTrue(app.buttons["Copied"].waitForExistence(timeout: 5))
     }
 
     @MainActor
