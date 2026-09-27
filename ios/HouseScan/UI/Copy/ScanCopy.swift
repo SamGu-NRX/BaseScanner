@@ -174,11 +174,13 @@ enum ScanCopy {
 
     /// The line beside the walk's first aim ring, which fills as its stretch is captured (#81).
     /// A stretch counts only once it is seen from two places a step apart
-    /// (`CoverageConfig.coveringBaseline`, 0.25 m), and a view is kept only after about half a
-    /// meter of moving (`AutoCaptureConfig`), so holding still or shuffling a few inches never
-    /// fills the ring: the line asks for a whole step, in the words of the aim hint's title.
-    static let aimRingLegend = "Keep the ring in view and take one step to the side. It fills as your phone captures this spot."
-    /// The legend where the whole line doesn't fit beside the ring (large text sizes).
+    /// (`CoverageConfig.coveringBaseline`), so holding still never fills the ring: the line asks
+    /// for a step, in the tilt-down card's own words ("Take a small step sideways as you look."),
+    /// so the two lines on screen together ask for the same thing. If the card's wording
+    /// changes, change this with it.
+    static let aimRingLegend = "Keep the ring in view and take a small step sideways. It fills as your phone captures this spot."
+    /// The legend where the whole line doesn't fit beside the ring (large text sizes, short
+    /// screens). Under the card, the whole line is drawn instead.
     static let aimRingLegendShort = "It fills as your phone captures this spot."
 
     // MARK: Wall ends

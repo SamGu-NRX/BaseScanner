@@ -4,6 +4,12 @@ import SwiftUI
 struct CameraOverlays: View {
     let state: ScanViewState
     var highlight: GapRequest?
+    /// The camera area the chrome leaves open (`CameraChrome.openArea`); the ring's legend
+    /// keeps inside it.
+    var openArea: OpenCameraArea? = nil
+    /// Set to the ring's legend while it doesn't fit beside the ring, for the screen to draw
+    /// under its card (`CameraChrome.legend`). Without it, the legend shows only beside the ring.
+    var cardLegend: Binding<String?>? = nil
 
     /// The step the aim ring's legend first showed with. The legend explains the first ring that
     /// fills and retires once that step ends (#81); it isn't needed on every ring after.
@@ -63,6 +69,7 @@ struct CameraOverlays: View {
                     // While marking, the reticle is the only aim; the path and ring would compete.
                     let progress = state.aimProgress
                     let held = heldTarget
+                    let line = held == nil ? legend(progress: progress) : nil
                     WayfindingOverlay(
                         projection: projection,
                         wall: wall,
@@ -70,11 +77,10 @@ struct CameraOverlays: View {
                         target: state.target,
                         progress: progress,
                         completed: held,
-                        legend: held == nil ? legend(progress: progress) : nil,
+                        legend: line,
                         legendShort: ScanCopy.aimRingLegendShort,
-                        onLegendShown: {
-                            if legendStep == nil { legendStep = state.guidance }
-                        }
+                        openArea: openArea,
+                        onLegendPlaced: { placement in legendPlaced(placement, line) }
                     )
                     .transition(.opacity)
                 }
@@ -98,6 +104,17 @@ struct CameraOverlays: View {
             return nil
         }
         return target
+    }
+
+    /// Where the legend went. Beside the ring it is drawn there; where no wording fits there,
+    /// it goes under the card. It counts as shown, and so retires with its step, only where it
+    /// drew: a legend with no room on a short screen or at a large text size once used up the
+    /// one explanation without being seen.
+    private func legendPlaced(_ placement: WayfindingOverlay.LegendPlacement?, _ legend: String?) {
+        let underCard = placement == .underCard ? legend : nil
+        if let cardLegend, cardLegend.wrappedValue != underCard { cardLegend.wrappedValue = underCard }
+        let drawn = placement == .besideRing || (placement == .underCard && cardLegend != nil)
+        if drawn, legendStep == nil { legendStep = state.guidance }
     }
 
     /// The legend, while the ring fills for the first time.

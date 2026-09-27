@@ -19,10 +19,23 @@ struct WayfindingOverlay: View {
     var completed: SIMD3<Float>? = nil
     /// One line saying what the ring is for, drawn beside it while it is on screen.
     var legend: String? = nil
-    /// A shorter legend, drawn where `legend` doesn't fit between the ring and the lane's edge.
+    /// A shorter legend, drawn where `legend` doesn't fit between the ring and the card or the
+    /// controls.
     var legendShort: String? = nil
-    /// Called when the legend is drawn.
-    var onLegendShown: (() -> Void)? = nil
+    /// The camera area the chrome leaves open, in global coordinates (`CameraChrome.openArea`).
+    /// The legend keeps inside it. Nil: the fixed lane the arrows use.
+    var openArea: OpenCameraArea? = nil
+    /// Called with where the legend went each time that changes: beside the ring, or nowhere
+    /// here because no wording fits (the caller draws it under the card instead). Nil once it
+    /// is gone.
+    var onLegendPlaced: ((LegendPlacement?) -> Void)? = nil
+
+    enum LegendPlacement: Equatable {
+        case besideRing
+        /// No wording fits beside the ring: at the largest text sizes, where the card and the
+        /// controls fill most of the screen, and on short screens.
+        case underCard
+    }
 
     /// The side of the ring the legend keeps to once shown: true for below.
     @State private var legendBelow: Bool? = nil
@@ -30,6 +43,7 @@ struct WayfindingOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let top = proxy.frame(in: .global).minY
             ZStack {
                 Canvas { context, size in
                     drawPath(in: &context, size: size)
@@ -40,7 +54,7 @@ struct WayfindingOverlay: View {
                 if let shown = marker(in: size) {
                     TargetMarker(placement: shown.placement, progress: shown.progress)
                     if let legend, case .onScreen(let point, let radius) = shown.placement {
-                        legendView(legend, beside: point, radius: radius, in: size)
+                        legendView(legend, beside: point, radius: radius, in: size, top: top)
                     }
                 }
             }
@@ -53,7 +67,8 @@ struct WayfindingOverlay: View {
     // MARK: Lane
 
     /// The band clear of the instruction card above and the buttons and map below, which are
-    /// drawn over this layer. The off-screen arrows and the legend both keep to it.
+    /// drawn over this layer, at the default text size. The off-screen arrows keep to it, and
+    /// the legend does where the chrome's open area isn't measured.
     private static let laneTop: CGFloat = 260
     private static let laneBottomInset: CGFloat = 300
 
@@ -64,22 +79,29 @@ struct WayfindingOverlay: View {
     /// jitter there would otherwise flip the legend across the ring every few frames.
     private static let legendSwitchMargin: CGFloat = 40
 
-    /// The gap between the ring and the legend.
+    /// The gap between the ring and the legend, and between the legend and the card or the
+    /// controls.
     private static let legendGap: CGFloat = 12
 
-    /// The legend goes above or below the ring, whichever has more room in the lane, and moves
-    /// with the ring without covering it. Once shown, it changes sides only when the other side
-    /// has `legendSwitchMargin` more room.
+    /// The legend goes above or below the ring, whichever has more room between the card and
+    /// the controls, and moves with the ring without covering it. Once shown, it changes sides
+    /// only when the other side has `legendSwitchMargin` more room.
     ///
-    /// It keeps to the lane: the longest wording that fits between the ring and the lane's edge
-    /// on its side is drawn, and none when neither fits. At the largest text sizes the full line
-    /// runs to eight lines or more, and past the lane it went under the instruction card or the
-    /// controls, which are drawn over this layer.
-    private func legendView(_ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize) -> some View {
+    /// The room is measured from the card's real bottom and the controls' real top
+    /// (`openArea`), which move with Dynamic Type. Both are drawn over this layer, and against
+    /// a fixed lane the legend went under the enlarged card. The longest wording that fits on
+    /// its side is drawn. Where neither fits, nothing is drawn here and `onLegendPlaced` says
+    /// so, and the caller puts the legend under the card, which scrolls at any text size.
+    private func legendView(
+        _ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize, top: CGFloat
+    ) -> some View {
         let width = max(120, min(300, size.width - 48))
         let x = min(max(point.x, 24 + width / 2), size.width - 24 - width / 2)
-        let roomAbove = point.y - radius - Self.laneTop
-        let roomBelow = size.height - Self.laneBottomInset - (point.y + radius)
+        // The open area in this layer's coordinates.
+        let laneTop = openArea.map { $0.top - top + Self.legendGap } ?? Self.laneTop
+        let laneBottom = openArea.map { $0.bottom - top - Self.legendGap } ?? size.height - Self.laneBottomInset
+        let roomAbove = point.y - radius - laneTop
+        let roomBelow = laneBottom - (point.y + radius)
         let below: Bool
         if let kept = legendBelow {
             below = kept
@@ -91,17 +113,24 @@ struct WayfindingOverlay: View {
         // The room on the legend's side, pinned at the edge nearer the ring, so the text's height
         // (it wraps, and grows with Dynamic Type) never moves its near edge onto the ring.
         let reach = max(0, (below ? roomBelow : roomAbove) - Self.legendGap)
+        // Each choice reports itself when it is the one drawn, so the legend counts as shown
+        // only where it drew.
         return ViewThatFits(in: .vertical) {
             legendText(text)
-            if let legendShort { legendText(legendShort) }
+                .onAppear { onLegendPlaced?(.besideRing) }
+            if let legendShort {
+                legendText(legendShort)
+                    .onAppear { onLegendPlaced?(.besideRing) }
+            }
             Color.clear.frame(width: 0, height: 0)
+                .onAppear { onLegendPlaced?(.underCard) }
         }
-        .onAppear {
-            legendBelow = below
-            onLegendShown?()
-        }
+        .onAppear { legendBelow = below }
         .onChange(of: below) { _, side in legendBelow = side }
-        .onDisappear { legendBelow = nil }
+        .onDisappear {
+            legendBelow = nil
+            onLegendPlaced?(nil)
+        }
         .frame(width: width, height: reach, alignment: below ? .top : .bottom)
         .position(
             x: x,

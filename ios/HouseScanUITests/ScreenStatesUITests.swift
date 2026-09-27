@@ -423,8 +423,23 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show its progress")
         XCTAssertEqual(ring.value as? String, "50 percent captured")
         let legend = element(app, "aim.legend")
-        XCTAssertTrue(legend.exists, "the first aim ring must come with its legend")
+        XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        let card = element(app, "instruction")
+        XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
+        app.terminate()
+
+        // At the largest text size the card and the controls fill the screen, so there is no
+        // room beside the ring: the legend moves under the card instead of going behind it or
+        // disappearing.
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let largeLegend = element(app, "aim.legend")
+        XCTAssertTrue(largeLegend.waitForExistence(timeout: 5), "the legend must still show at the largest text size")
+        XCTAssertTrue(largeLegend.label.contains("It fills as your phone captures this spot"), "legend reads \(largeLegend.label)")
+        let largeCard = element(app, "instruction")
+        XCTAssertFalse(largeLegend.frame.intersects(largeCard.frame), "the legend must keep clear of the card: \(largeLegend.frame) vs \(largeCard.frame)")
         app.terminate()
 
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
