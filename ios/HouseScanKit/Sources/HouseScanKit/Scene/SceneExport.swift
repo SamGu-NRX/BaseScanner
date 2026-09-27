@@ -120,8 +120,17 @@ public enum SceneFeature: Sendable {
     /// A door or window on the wall. `span` is in s meters; `bottom` and `top` are meters above the
     /// ground. `operable` nil means the homeowner was not asked, and it is then left out.
     case opening(kind: SceneOpeningKind, span: ClosedRange<Float>, bottom: Float, top: Float, operable: Bool?)
-    /// Something tapped once that stands off the wall (gas meter, AC unit). `tap` is a world point.
-    case pointObject(kind: ScenePointObjectKind, tap: SIMD3<Float>, bottom: Float?, top: Float?)
+    /// Something on the wall marked, as a window is, at two corners where it meets the wall
+    /// (a gas meter): `span` in s meters, `bottom` and `top` in meters above the ground. The taps
+    /// are wall-plane hits, which don't say how far it stands out, so it goes out with no
+    /// footprint: the server measures to its stretch of wall line. The same geometry as a
+    /// battery or box on the wall (#52).
+    case wallObject(kind: ScenePointObjectKind, span: ClosedRange<Float>, bottom: Float, top: Float)
+    /// Something standing in front of the wall marked at the two corners where its front meets
+    /// the ground (an AC unit), world points. Its footprint runs from the wall out to that front
+    /// edge: how far out it stands is measured, and the space behind it, which nobody can use for
+    /// a battery, counts as taken. Height is not measured and is left out.
+    case groundObject(kind: ScenePointObjectKind, front: [SIMD3<Float>])
     /// Two world points at the foot of a fence or hedge facing the wall.
     case fence(foot: [SIMD3<Float>])
     /// Two world points along one edge of a driveway.
@@ -283,6 +292,9 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     /// would be its feet's distance out, while by the corner the fence's straight line runs much
     /// closer to the wall; each side of the corner has to be its own fence.
     case fenceAcrossCorner(feature: String)
+    /// An object whose two front corners lie in front of different pieces of the wall: no one
+    /// rectangle from the wall to them describes it.
+    case objectAcrossCorner(feature: String)
 
     public var description: String {
         switch self {
@@ -299,6 +311,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
         case .fenceAcrossCorner(let f): "\(f): its feet are on different pieces of the wall"
+        case .objectAcrossCorner(let f): "\(f): its corners are in front of different pieces of the wall"
         }
     }
 }
@@ -328,12 +341,10 @@ extension ObservedSpan {
 }
 
 public enum SceneExport {
-    /// Half the plan width of a tapped point object. The tap gives one point, not a size, so the
-    /// object is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
-    /// regulator, not a measured size. Replace it once the capture measures the object.
-    static let pointObjectHalfWidth: Float = 0.15
-    /// How far a tapped point object is assumed to stand off the wall, same 0.3 m hypothesis.
-    static let pointObjectDepth: Float = 0.3
+    /// The smallest width, and height on the wall, a two-corner object is sent with: two taps
+    /// closer than 1 cm are one tap, not a size. The app's collapsed-line check uses the same
+    /// 1 cm (`ScanEngine.groundLine`).
+    public static let minObjectSize: Float = 0.01
     /// Width of the strip drawn along a tapped driveway edge, feet. The tap marks only the edge
     /// line; the strip gives the polygon the area the schema requires. Illustrative, not measured.
     static let drivewayStripFeet: Double = 0.5
@@ -437,20 +448,33 @@ public enum SceneExport {
                     bottom_ft: feet(bottom), top_ft: feet(top),
                     attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil,
                     plus_minus_ft: objectError(span)))
-            case let .pointObject(kind, tap, bottom, top):
-                if let bottom { try requireNonNegative(bottom, "\(name).bottom") }
-                if let top { try requireNonNegative(top, "\(name).top") }
-                if let bottom, let top, top < bottom {
-                    throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top)
+            case let .wallObject(kind, span, bottom, top):
+                try requireNonNegative(bottom, "\(name).bottom")
+                guard top >= bottom else { throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top) }
+                guard span.upperBound - span.lowerBound >= minObjectSize, top - bottom >= minObjectSize else {
+                    throw SceneExportError.degenerateSegment(feature: "\(name) \(kind.rawValue)")
                 }
-                let s = wall.wallCoordinates(of: tap).s
-                let left = s - pointObjectHalfWidth
-                let right = s + pointObjectHalfWidth
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(left...right),
-                    bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
-                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)],
-                    plus_minus_ft: objectError(left...right)))
+                    type: kind.rawValue, wall_id: wallIDAt((span.lowerBound + span.upperBound) / 2), span_ft: spanFeet(span),
+                    bottom_ft: feet(bottom), top_ft: feet(top), attrs: nil, source: "tap", footprint: nil,
+                    plus_minus_ft: objectError(span)))
+            case let .groundObject(kind, front):
+                guard front.count == 2 else {
+                    throw SceneExportError.wrongPointCount(feature: "\(name) \(kind.rawValue)", expected: 2, actual: front.count)
+                }
+                let corners = front.map { wall.wallCoordinates(of: $0) }.sorted { $0.s < $1.s }
+                let (left, right) = (corners[0], corners[1])
+                guard WallSegment.index(in: chain.segments, atS: left.s) == WallSegment.index(in: chain.segments, atS: right.s) else {
+                    throw SceneExportError.objectAcrossCorner(feature: name)
+                }
+                guard right.s - left.s >= minObjectSize else { throw SceneExportError.degenerateSegment(feature: "\(name) \(kind.rawValue)") }
+                try requireNonNegative(left.out, "\(name) front out")
+                try requireNonNegative(right.out, "\(name) front out")
+                objects.append(.init(
+                    type: kind.rawValue, wall_id: wallIDAt((left.s + right.s) / 2), span_ft: spanFeet(left.s...right.s),
+                    bottom_ft: nil, top_ft: nil, attrs: nil, source: "tap",
+                    footprint: [plan(left.s, 0), plan(right.s, 0), plan(right.s, right.out), plan(left.s, left.out)],
+                    plus_minus_ft: objectError(left.s...right.s)))
             case let .fence(foot):
                 guard foot.count == 2 else {
                     throw SceneExportError.wrongPointCount(feature: "\(name) fence", expected: 2, actual: foot.count)

@@ -104,7 +104,9 @@ public struct PacketMark: Codable, Sendable, Equatable {
         return PacketMark(id: id, kind: opening.kind, points: corners, t: t, photoIDs: photoIDs, operable: operable)
     }
 
-    /// A gas meter or AC unit tapped once; `point` is already in the meter frame.
+    /// A gas meter or AC unit; `point` is already in the meter frame. The manifest (1.1) gives
+    /// these kinds one point, so a two-corner mark is sent as the middle of its corners; its
+    /// span and footprint are in the packet's scene.json.
     public static func pointObject(
         _ kind: ScenePointObjectKind, id: String, point: SIMD3<Float>, t: Double? = nil, photoIDs: [String]? = nil
     ) -> PacketMark {
@@ -121,8 +123,9 @@ public struct PacketMark: Codable, Sendable, Equatable {
     }
 
     /// The mark for one of scene.json's features, from the same inputs `SceneExport` reads.
-    /// Point objects, fences and drive edges keep their taps (world points moved into the meter
-    /// frame); openings get corners from their span and heights.
+    /// Fences and drive edges keep their taps (world points moved into the meter frame);
+    /// openings get corners from their span and heights; a gas meter or AC unit the middle of
+    /// its two corners (`pointObject`).
     public static func from(
         _ feature: SceneFeature, id: String, wall: SceneWall, frame: MeterFrame, t: Double? = nil, photoIDs: [String]? = nil
     ) throws(PacketError) -> PacketMark {
@@ -131,8 +134,12 @@ public struct PacketMark: Codable, Sendable, Equatable {
             return opening(
                 kind == .door ? .door : .window, id: id, span: span, bottom: bottom, top: top, operable: operable,
                 wall: wall, frame: frame, t: t, photoIDs: photoIDs)
-        case let .pointObject(kind, tap, _, _):
-            return pointObject(kind, id: id, point: frame.point(tap), t: t, photoIDs: photoIDs)
+        case let .wallObject(kind, span, bottom, top):
+            let middle = frame.point(on: wall, s: (span.lowerBound + span.upperBound) / 2, height: (bottom + top) / 2, out: 0)
+            return pointObject(kind, id: id, point: middle, t: t, photoIDs: photoIDs)
+        case let .groundObject(kind, front):
+            guard front.count == 2 else { throw .invalidMark(id: id, reason: "a \(kind.rawValue) has 2 corners, got \(front.count)") }
+            return pointObject(kind, id: id, point: frame.point((front[0] + front[1]) / 2), t: t, photoIDs: photoIDs)
         case let .fence(foot):
             guard foot.count == 2 else { throw .invalidMark(id: id, reason: "a fence has 2 points, got \(foot.count)") }
             return fence(id: id, from: frame.point(foot[0]), to: frame.point(foot[1]), t: t, photoIDs: photoIDs)

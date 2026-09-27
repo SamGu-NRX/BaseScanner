@@ -233,6 +233,8 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore)
         tap(app, "feature.ac")
+        // An AC unit takes two taps, its front corners.
+        tap(app, "action.markPoint", timeout: 5)
         tap(app, "action.markPoint", timeout: 5)
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)

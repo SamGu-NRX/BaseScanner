@@ -23,8 +23,8 @@ import simd
             features: [
                 .opening(kind: .door, span: 0.5...1.4, bottom: 0, top: 2.0, operable: nil),
                 .opening(kind: .window, span: -2.0 ... -1.0, bottom: 0.9, top: 2.1, operable: true),
-                .pointObject(kind: .gasMeter, tap: w.world(s: -2.5, height: 0.8, out: 0.25), bottom: 0.3, top: 1.0),
-                .pointObject(kind: .ac, tap: w.world(s: 3.0, height: 0, out: 0.5), bottom: nil, top: nil),
+                .wallObject(kind: .gasMeter, span: -2.65 ... -2.35, bottom: 0.3, top: 1.0),
+                .groundObject(kind: .ac, front: [w.world(s: 3.4, height: 0, out: 0.8), w.world(s: 2.6, height: 0, out: 0.9)]),
                 .fence(foot: [w.world(s: -1, height: 0, out: 2.0), w.world(s: 2, height: 0, out: 2.4)]),
                 .driveway(edge: [w.world(s: 4, height: 0, out: 1), w.world(s: 5, height: 0, out: 1)]),
             ],
@@ -98,8 +98,8 @@ import simd
         #expect(try SceneSchemas.scene().validate(data) == [])
         let objects = try #require(try Value.parse(data)["objects"]?.array)
         #expect(objects.count == 4)
-        // Door far end 1.4 m, window 2.0, gas meter 2.65, AC 3.15: 0.09144 + 0.16 d + 0.3 m.
-        let expected = [0.61544, 0.71144, 0.81544, 0.89544].map { $0 / 0.3048 }
+        // Door far end 1.4 m, window 2.0, gas meter 2.65, AC 3.4: 0.09144 + 0.16 d + 0.3 m.
+        let expected = [0.61544, 0.71144, 0.81544, 0.93544].map { $0 / 0.3048 }
         for (object, error) in zip(objects, expected) {
             expectClose(object["plus_minus_ft"].map { [$0.number ?? .nan] }, [error])
         }
@@ -147,16 +147,25 @@ import simd
         #expect(door["source"] == .string("tap"))
         #expect(objects[1]["attrs"] == .object(["operable": .bool(true)]))
 
+        // The gas meter's corners on the wall: its span and heights, and no footprint, since
+        // nothing measured how far it stands out.
         let gas = objects[2]
-        // Tapped at s = -2.5 m; nominal 0.3 m width gives s -2.65...-2.35 m.
         expectClose(gas["span_ft"]?.numbers, [-8.6942, -7.7100])
-        let footprint = (gas["footprint"]?.array ?? []).compactMap(\.numbers)
+        expectClose([gas["bottom_ft"]?.number ?? .nan, gas["top_ft"]?.number ?? .nan], [0.9843, 3.2808])
+        #expect(gas["footprint"] == nil)
+
+        // The AC's front corners on the ground, s 2.6 m 0.9 m out and s 3.4 m 0.8 m out: its
+        // span, and a footprint from the wall line to that front edge. Heights aren't measured.
+        let ac = objects[3]
+        expectClose(ac["span_ft"]?.numbers, [8.5302, 11.1549])
+        #expect(ac["bottom_ft"] == nil && ac["top_ft"] == nil)
+        let footprint = (ac["footprint"]?.array ?? []).compactMap(\.numbers)
         try #require(footprint.count == 4)
-        // Back-left corner on the wall line at s = -2.65: (1, -2) + (0.8, -0.6) * -2.65 m.
-        expectClose(footprint[0], [(1 - 2.12) / 0.3048, (-2 + 1.59) / 0.3048])
-        // Front-left is 0.3 m further out along (0.6, 0.8).
-        expectClose(footprint[3], [(1 - 2.12 + 0.18) / 0.3048, (-2 + 1.59 + 0.24) / 0.3048])
-        #expect(objects[3]["bottom_ft"] == nil && objects[3]["top_ft"] == nil)
+        // plan(s, out) = (1, -2) + (0.8, -0.6) s + (0.6, 0.8) out, in meters.
+        expectClose(footprint[0], [3.08 / 0.3048, -3.56 / 0.3048])
+        expectClose(footprint[1], [3.72 / 0.3048, -4.04 / 0.3048])
+        expectClose(footprint[2], [4.2 / 0.3048, -3.4 / 0.3048])
+        expectClose(footprint[3], [3.62 / 0.3048, -2.84 / 0.3048])
     }
 
     @Test func facingGroundCoverageKeyframes() throws {
@@ -338,6 +347,8 @@ import simd
     @Test func meshSpansSplitAtCorners() throws {
         var input = Self.input()
         input.wall.rightCorners = [WallCorner(s: 0.2, outward: SIMD3(0.8, 0, -0.6))]
+        // The AC's corners, placed on the straight wall, fall on one point of the cornered one.
+        input.features.removeAll { if case .groundObject = $0 { true } else { false } }
         input.meshOverheads = [ObservedSpan(span: -0.5...0.5, out: 2)]
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
