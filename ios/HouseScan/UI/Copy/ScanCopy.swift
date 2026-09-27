@@ -104,7 +104,8 @@ enum ScanCopy {
 
     // MARK: Wall ends
 
-    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk.
+    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk,
+    /// only while the walk asks to walk that way or mark the end (`EndPreview.leavesOutWalked`).
     static func endLeavesOut(_ meters: Float) -> String {
         "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
     }
@@ -313,9 +314,13 @@ enum ScanCopy {
     static let overheadCovered = "A roof edge, porch or stairs"
 
     /// The question after "Wall ends here". A corner means the wall goes on out of sight, which
-    /// the result must not treat as the end of usable wall.
-    static func endQuestion(_ side: WallSide) -> Instruction {
-        Instruction(title: "What's at the \(side.rawValue) end?", detail: "This tells the installer whether the wall keeps going.")
+    /// the result must not treat as the end of usable wall. `leavesOut` is how much of the walk
+    /// the end just made leaves out (`ScanViewState.endQuestionLeavesOut`), said here since the
+    /// strip says it only while the walk asks to walk that way (#66).
+    static func endQuestion(_ side: WallSide, leavesOut: Float? = nil) -> Instruction {
+        let why = "This tells the installer whether the wall keeps going."
+        let detail = leavesOut.map { "This leaves out \(Distance.roughFeet($0)) you walked. \(why)" } ?? why
+        return Instruction(title: "What's at the \(side.rawValue) end?", detail: detail)
     }
 
     /// With no server connected nothing is sent, and the words must not say it is.

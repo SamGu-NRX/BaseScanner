@@ -91,6 +91,35 @@ extension CoverageMap {
 }
 
 extension WalkedEnd {
+    /// Meters of the walk on `side` past an end at `s`: how far the farthest kept view there
+    /// (`farthest`) is beyond it, which the scan leaves out if the wall ends at `s`. Nil when that
+    /// is less than `minimum`, by default one keyframe's spacing: that close to the farthest view
+    /// is still the front of the walk.
+    public static func walkedPast(
+        _ side: WalkSide, s: Float, walked: [SIMD3<Float>], wall: WallFrame,
+        minimum: Float = AutoCaptureConfig().spacingMeters
+    ) -> Float? {
+        let past = farthest(side, walked: walked, wall: wall) - side.sign * s
+        return past >= minimum ? past : nil
+    }
+
+    /// What the wall strip says an end at `s` would leave out of the walk (`walkedPast`), before
+    /// anything is pressed. Nil unless the walk asks to walk `side` or to mark its end
+    /// (`onWalkTask`): during a tilt or step-back request the homeowner isn't ending the wall, and
+    /// the line read as a warning that something went wrong (issue #66). Nil too when the phone
+    /// stands more than twice `GuidanceConfig.standOff` out from the wall, where its place along
+    /// the wall, and so `s`, says little: walking out into the yard counted up to 11 ft on device
+    /// run 3. `phoneOut` is the phone's distance out from the wall (`WallPoint.out`) when `s` is
+    /// the phone's place, nil when it isn't (the reticle's end) or the phone has lost its place.
+    public static func leavesOut(
+        side: WalkSide, s: Float, walked: [SIMD3<Float>], wall: WallFrame,
+        phoneOut: Float?, onWalkTask: Bool, config: GuidanceConfig = GuidanceConfig()
+    ) -> Float? {
+        guard onWalkTask else { return nil }
+        if let phoneOut, abs(phoneOut) > 2 * config.standOff { return nil }
+        return walkedPast(side, s: s, walked: walked, wall: wall)
+    }
+
     /// Whether a mark's span (meters of s) lies wholly past a marked end. The scan doesn't cover
     /// it there: the wall may turn or stop at that end, so the review says so (issue #42). A mark
     /// reaching an end, or with any of it between the ends, is on the scanned wall.
