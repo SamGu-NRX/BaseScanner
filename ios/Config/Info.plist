@@ -21,7 +21,7 @@
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>HouseScanGitCommit</key>
-	<string>unknown</string>
+	<string>$(HOUSESCAN_GIT_COMMIT)</string>
 	<key>HouseScanServerURL</key>
 	<string>$(HOUSESCAN_SERVER_URL)</string>
 	<key>HouseScanCaptureAPIURL</key>
