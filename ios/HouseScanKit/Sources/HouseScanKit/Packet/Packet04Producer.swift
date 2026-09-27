@@ -216,7 +216,7 @@ public actor Packet04Producer {
     /// stills/<id>.jpg, linked to the keyframe so it keeps its pose. Stills go first.
     ///
     /// A retake of the same purpose is a new still ("meter_close-2"): sealed files never change,
-    /// and the latest still of a purpose is the one the scale reference names.
+    /// and `finish` says which one the scale reference names.
     public func sealStill(purpose: String, keyframe keyframeID: String) throws -> SealedFile {
         guard finished == nil else { throw Packet04Error.sealedAfterFinish("still") }
         guard Packet04.isSegmentID(purpose) else { throw Packet04Error.invalidID(purpose) }
@@ -266,9 +266,11 @@ public actor Packet04Producer {
     /// Writes the two required streams, then returns their sealed files and the exact packet
     /// bytes. The packet is checked against the contract's rules first; a failure names each
     /// problem instead of sending a packet the server would reject.
+    /// `acceptedCloseUpAt` is the frame time of the head-on close-up the scan accepted, nil when
+    /// none was (skipped, or every shot refused): only that still is the scale reference.
     public func finish(
         poses: [Packet04Streams.PoseRow], accelerometer: [Packet04Streams.MotionRow], gyroscope: [Packet04Streams.MotionRow],
-        endedAtUptime: Double, closeUpDistanceM: Double? = nil, createdAt: Date = Date()
+        endedAtUptime: Double, acceptedCloseUpAt: Double?, closeUpDistanceM: Double? = nil, createdAt: Date = Date()
     ) throws -> (streams: [SealedFile], packet: Data) {
         if let finished { return (files.filter { $0.role == .stream }, finished) }
         guard !keyframes.isEmpty else { throw Packet04Error.noKeyframes }
@@ -287,9 +289,9 @@ public actor Packet04Producer {
         ext["rawAccelerometerFile"] = accelFile.path
         ext["rawGyroscopeFile"] = gyroFile.path
 
-        // The latest shot of each is the accepted one: a retake replaces a refused close-up.
-        let close = stills.last { $0.purpose == "meter_close" }
-        let oblique = stills.last { $0.purpose == "meter_oblique" }
+        let close = acceptedCloseUpAt.flatMap { t in stills.last { $0.purpose == "meter_close" && $0.timestamp == t } }
+        // The app takes no oblique close-up yet, so none is ever accepted.
+        let oblique: Packet04.Still? = nil
         let packet = Packet04.Packet(
             packetId: info.packetID, createdAt: PacketWriter.iso8601(createdAt),
             source: .init(kind: info.source, appBuild: info.appVersion),

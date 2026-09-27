@@ -13,21 +13,19 @@ import UIKit
 /// Only the integration build records a capture (`HouseScanIntegrationBuild`); a launch argument
 /// can name another endpoint (`-captureAPIURL`) but can't turn a client build into one. Captures
 /// are sent only when the build also allows device data at that endpoint
-/// (`HouseScanCaptureSendDeviceData`) and the homeowner says yes on the screen after the result.
-/// A yes is remembered for that endpoint, so later scans send while scanning. The placement
-/// request (`ResultClient`, scene.json) is unchanged and never waits for this. Files live in
-/// Application Support/Captures/<packet id>, outside the scan folders the store cleans up.
+/// (`HouseScanCaptureSendDeviceData`) and the homeowner says yes before this scan starts, so its
+/// photos go up during the walk. The yes covers this scan and this endpoint only; a new scan asks
+/// again. The placement request (`ResultClient`, scene.json) and the client build's own sharing
+/// flow are unchanged. Files live in Application Support/Captures/<packet id>, outside the scan
+/// folders the store cleans up.
 @MainActor
 @Observable
 final class CaptureIntegration {
-    /// The endpoint the homeowner said yes to, as a string; a yes counts only for that endpoint.
-    static let consentKey = "captureUploadConsentEndpoint.v2"
-
     private(set) var status: CaptureUploadStatus?
-    /// Bumped on each answer, so a view reading `needsConsent` updates.
-    private(set) var answers = 0
+    /// Bumped whenever the answer or the scan changes, so a view reading `needsConsent` updates.
+    private(set) var revision = 0
     var needsConsent: Bool {
-        _ = answers
+        _ = revision
         return coordinator.needsConsent
     }
 
@@ -35,7 +33,7 @@ final class CaptureIntegration {
     @ObservationIgnored private weak var store: KeyframeStore?
     @ObservationIgnored private var resumed: [CaptureUploader] = []
 
-    init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main, defaults: UserDefaults = .standard) {
+    init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main) {
         let argument = arguments.firstIndex(of: "-captureAPIURL").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
         let mode = CaptureIntegrationMode.resolve(
             integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
@@ -65,21 +63,18 @@ final class CaptureIntegration {
                 },
                 device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
         }
-        let remembered = environment.map { defaults.string(forKey: Self.consentKey) == $0.endpoint.absoluteString } ?? false
-        coordinator = CaptureSessionCoordinator(environment: environment, rememberedYes: remembered)
+        coordinator = CaptureSessionCoordinator(environment: environment)
         coordinator.onStatus = { [weak self] in self?.status = $0 }
         resumed = coordinator.resumeSealedCaptures()
         if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
     }
 
-    /// A yes is remembered for this endpoint; a no holds for this scan only.
+    /// The answer for this scan. A yes is recorded with the capture it covers, for that capture's
+    /// resume; nothing is remembered for the next scan.
     func answerConsent(_ yes: Bool) {
-        if yes, let endpoint = coordinator.environment?.endpoint {
-            UserDefaults.standard.set(endpoint.absoluteString, forKey: Self.consentKey)
-        }
         RuntimeLog.engine.info("capture upload consent: \(yes ? "yes" : "no", privacy: .public)")
         coordinator.answerConsent(yes)
-        answers += 1
+        revision += 1
     }
 
     // MARK: Engine hooks
@@ -88,6 +83,7 @@ final class CaptureIntegration {
     func begin(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
         coordinator.begin(recording: Self.recording(recorder))
+        revision += 1
     }
 
     /// The ARKit world was thrown away: this packet can't be finished in it.
@@ -99,13 +95,15 @@ final class CaptureIntegration {
     func startOver(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
         coordinator.newWorld("start over", recording: Self.recording(recorder), newScan: true)
-        answers += 1
+        revision += 1
     }
 
-    /// The homeowner marked the meter on `tap`'s frame; `hit` is what the app's raycast found.
-    func meterTapped(_ tap: TapObservation?, hit: VerticalPlaneHit) {
-        guard let tap else {
-            RuntimeLog.engine.info("capture packet: no frame for the meter tap; no tap recorded")
+    /// The homeowner marked the meter; `hit` is what the app's raycast found. The recorded frame
+    /// can be a frame or two newer than the raycast's, so the tap is placed where the hit lands in
+    /// that frame (`TapObservation.pointing(at:)`), keeping pixel, ray and hit in one frame.
+    func meterTapped(_ observed: TapObservation?, hit: VerticalPlaneHit) {
+        guard let tap = observed?.pointing(at: hit.position) else {
+            RuntimeLog.engine.info("capture packet: no frame shows the meter tap's hit; no tap recorded")
             return
         }
         let camera = SIMD3(tap.cameraToWorld.columns.3.x, tap.cameraToWorld.columns.3.y, tap.cameraToWorld.columns.3.z)
@@ -115,9 +113,10 @@ final class CaptureIntegration {
             distance: Double(simd_distance(hit.position, camera))))
     }
 
-    /// The scan was sent for placement: the packet is frozen. Later sends change nothing.
-    func captureEnded() {
-        coordinator.captureEnded()
+    /// The scan was sent for placement: the packet is frozen. `acceptedCloseUpAt` is the frame time
+    /// of the close-up the scan accepted, nil after a skip. Later sends change nothing.
+    func captureEnded(acceptedCloseUpAt: Double?) {
+        coordinator.captureEnded(acceptedCloseUpAt: acceptedCloseUpAt)
     }
 
     // MARK: Translation

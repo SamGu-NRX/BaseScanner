@@ -64,7 +64,7 @@ struct SyntheticCapture04 {
 
     func finish() async throws -> (streams: [SealedFile], packet: Data) {
         let imu = Self.imu()
-        return try await producer.finish(poses: Self.poses(), accelerometer: imu.accel, gyroscope: imu.gyro, endedAtUptime: Self.start + 2)
+        return try await producer.finish(poses: Self.poses(), accelerometer: imu.accel, gyroscope: imu.gyro, endedAtUptime: Self.start + 2, acceptedCloseUpAt: Self.start + 0.2)
     }
 }
 

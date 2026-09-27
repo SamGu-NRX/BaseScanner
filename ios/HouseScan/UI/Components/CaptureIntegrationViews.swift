@@ -47,30 +47,30 @@ struct CaptureSyncLine: View {
     }
 }
 
-/// Asks, on the result, whether this scan may go to the test server: what is sent, who gets it,
-/// and that skipping changes nothing. The toggle starts off and Send works only once it is on. A
-/// yes is remembered for this server, so later scans send while scanning.
+/// Asks, before a scan in the integration build, whether this scan may go to the test server
+/// while it is taken: what is sent, who gets it, and that skipping changes nothing. The toggle
+/// starts off and Send works only once it is on. The answer covers this scan only.
 struct CaptureConsentSheet: View {
     let answer: (Bool) -> Void
     @State private var agreed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Send your scan to the test server?")
+            Text("Send this scan to the test server?")
                 .font(Typeface.sectionTitle)
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
-                Text("What's sent").font(Typeface.caption).foregroundStyle(.secondary)
+                Text("What's sent while you scan").font(Typeface.caption).foregroundStyle(.secondary)
                 Label("Photos of your wall and meter", systemImage: "photo")
                 Label("Measurements of your wall and your marks", systemImage: "ruler")
                 Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
             }
             .font(Typeface.hint)
-            Text("It goes to the House Scan team's test server. Sending is optional, and your result stays the same if you skip.")
+            Text("It goes to the House Scan team's test server. This covers this scan only. Sending is optional, and your result stays the same if you skip.")
                 .font(Typeface.hint)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Toggle("Send my photos, measurements and 3D data to the test server", isOn: $agreed)
+            Toggle("Send this scan's photos, measurements and 3D data to the test server", isOn: $agreed)
                 .font(Typeface.hint)
                 .accessibilityIdentifier("captureConsent.agree")
             Spacer(minLength: 0)
@@ -92,8 +92,8 @@ struct CaptureConsentSheet: View {
     }
 }
 
-/// The integration build's two additions: the consent question on the result of a scan that can
-/// be sent, and the sync line while a capture is being sent.
+/// The integration build's two additions: the consent question when a scan that can be sent
+/// starts (before the meter is marked), and the sync line while a capture is being sent.
 struct CaptureIntegrationOverlay: ViewModifier {
     let integration: CaptureIntegration
     let phase: ScanPhase
@@ -110,7 +110,7 @@ struct CaptureIntegrationOverlay: ViewModifier {
             }
             .animation(reduceMotion ? nil : Motion.text, value: integration.status)
             // Only an answer closes it; the binding ignores a dismissal.
-            .sheet(isPresented: Binding(get: { phase == .result && integration.needsConsent }, set: { _ in })) {
+            .sheet(isPresented: Binding(get: { phase == .findMeter && integration.needsConsent }, set: { _ in })) {
                 CaptureConsentSheet { integration.answerConsent($0) }
             }
     }

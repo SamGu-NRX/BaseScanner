@@ -79,8 +79,9 @@ public actor CaptureUploader {
     }
 
     /// A new capture. The create body is encoded once here and kept as those bytes for every retry.
+    /// `consentedAt` is when the homeowner said yes to sending this capture to `base`.
     public static func start(
-        folder: URL, base: URL, http: any CaptureHTTP, create: CaptureAPI.CreateRequest, policy: Policy = .init(),
+        folder: URL, base: URL, http: any CaptureHTTP, create: CaptureAPI.CreateRequest, consentedAt: Date, policy: Policy = .init(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) throws -> CaptureUploader {
@@ -88,15 +89,16 @@ public actor CaptureUploader {
         encoder.outputFormatting = [.sortedKeys]
         var state = CaptureUploadState(attemptID: UUID().uuidString, packetID: create.packetId, createBody: try encoder.encode(create))
         state.destination = base.absoluteString
+        state.consent = .init(grantedAt: consentedAt, destination: base.absoluteString)
         state.marks["started"] = now()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try state.save(to: stateURL(in: folder))
         return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
     }
 
-    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, or when it was
-    /// created on another API than `base`. The resumed upload gets a new attempt id, so nothing from
-    /// the previous process can land in it.
+    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, when it was
+    /// created on another API than `base`, or when it holds no yes for `base`. The resumed upload
+    /// gets a new attempt id, so nothing from the previous process can land in it.
     public static func resume(
         folder: URL, base: URL, http: any CaptureHTTP, policy: Policy = .init(),
         now: @escaping @Sendable () -> Date = { Date() },
@@ -105,7 +107,7 @@ public actor CaptureUploader {
         let url = stateURL(in: folder)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         var state = try CaptureUploadState.load(from: url)
-        guard state.destination == base.absoluteString else { return nil }
+        guard state.destination == base.absoluteString, state.consent?.destination == base.absoluteString else { return nil }
         state.attemptID = UUID().uuidString
         try state.save(to: url)
         return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)

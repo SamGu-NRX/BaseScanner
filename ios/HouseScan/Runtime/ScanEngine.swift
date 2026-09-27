@@ -1401,7 +1401,7 @@ final class ScanEngine {
             return
         }
         saveBundle(scene: scene, mesh: meshSnapshot)
-        integration.captureEnded()
+        integration.captureEnded(acceptedCloseUpAt: state.closeUp == .skipped ? nil : store.stillFrames["meter_close"]?.t)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         do {

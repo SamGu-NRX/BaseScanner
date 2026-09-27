@@ -24,7 +24,7 @@ import Testing
             uploader = try CaptureUploader.start(
                 folder: capture.folder, base: self.server.base, http: http,
                 create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: appVersion)),
-                policy: Self.fast, sleep: { _ in try await Task.sleep(for: .milliseconds(10)) })
+                consentedAt: Date(), policy: Self.fast, sleep: { _ in try await Task.sleep(for: .milliseconds(10)) })
         }
 
         static var fast: CaptureUploader.Policy {

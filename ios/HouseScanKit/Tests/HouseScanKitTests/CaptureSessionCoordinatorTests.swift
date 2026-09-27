@@ -70,12 +70,16 @@ struct NativeCaptureFixture: Sendable {
             tracking: .normal, exposure: .init(duration: 0.004, offset: 0, iso: 64, fNumber: 1.6), jpeg: try jpeg(named: "frame-\(t)"), purpose: purpose)
     }
 
+    /// The raycast ran on the frame at `t`; the frame the app records is two frames newer, as
+    /// ARKit's current frame can be, and the tap is re-aimed at the hit in that frame.
     func tap(at t: Double) throws -> (TapObservation, Packet04.TapHit) {
         let data = try Data(contentsOf: try jpeg(named: "tap-\(t)"))
-        let camera = pose(t).columns.3
-        let tap = TapObservation(
-            t: t, cameraToWorld: pose(t), intrinsics: Self.k, width: Self.width, height: Self.height, tracking: .normal,
+        let recorded = t + 2.0 / 60
+        let camera = pose(recorded).columns.3
+        let stale = TapObservation(
+            t: recorded, cameraToWorld: pose(recorded), intrinsics: Self.k, width: Self.width, height: Self.height, tracking: .normal,
             pixel: pixel(of: Self.meter, at: t), jpeg: { data })
+        let tap = try #require(stale.pointing(at: Self.meter))
         let hit = Packet04.TapHit(
             position: [Self.meter.x, Self.meter.y, Self.meter.z].map(Double.init), target: "estimatedPlane", alignment: "vertical",
             distance: Double(simd_distance(Self.meter, SIMD3(camera.x, camera.y, camera.z))))
@@ -103,8 +107,10 @@ struct NativeCaptureFixture: Sendable {
     /// The whole scan through `coordinator`: the tap, the close-up, keyframes (one of them the
     /// close-up's own frame again), then the capture ends.
     @MainActor
-    func run(_ coordinator: CaptureSessionCoordinator, beforeEnd: @MainActor () async -> Void = {}) async throws {
+    func run(_ coordinator: CaptureSessionCoordinator, consent: Bool? = true, beforeEnd: @MainActor () async -> Void = {}) async throws {
         coordinator.begin(recording: recording)
+        // The integration build asks before the scan starts.
+        if let consent { coordinator.answerConsent(consent) }
         let (tap, hit) = try self.tap(at: start + 1)
         coordinator.meterTapped(tap, hit: hit)
         coordinator.kept(try photo(at: start + 2.5, purpose: "meter_close"))
@@ -113,8 +119,8 @@ struct NativeCaptureFixture: Sendable {
         coordinator.kept(try photo(at: start + 2.5))
         await coordinator.settle()
         await beforeEnd()
-        coordinator.captureEnded()
-        coordinator.captureEnded()
+        coordinator.captureEnded(acceptedCloseUpAt: start + 2.5)
+        coordinator.captureEnded(acceptedCloseUpAt: start + 2.5)
         await coordinator.settle()
     }
 }
@@ -128,8 +134,7 @@ struct NativeCaptureFixture: Sendable {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
         let coordinator = CaptureSessionCoordinator(
-            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures),
-            rememberedYes: true)
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures))
         let committedBeforeEnd = Mutex(0)
         try await fixture.run(coordinator) {
             let uploader = coordinator.session!.uploader!
@@ -189,8 +194,7 @@ struct NativeCaptureFixture: Sendable {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
         let coordinator = CaptureSessionCoordinator(
-            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures, sends: false),
-            rememberedYes: true)
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures, sends: false))
         try await fixture.run(coordinator)
         #expect(coordinator.needsConsent == false)
         coordinator.answerConsent(true)
@@ -202,38 +206,41 @@ struct NativeCaptureFixture: Sendable {
         #expect(server.state.withLock { $0.log.isEmpty })
     }
 
-    /// Without a standing yes nothing leaves the phone during the scan; the question comes after,
-    /// and a yes then sends the whole frozen capture. A no sends nothing, and the next scan asks
-    /// again.
-    @Test func consentAfterTheResultSendsTheWholeCaptureAndANoSendsNothing() async throws {
+    /// No answer or a no sends nothing; the next scan asks again. A yes before the scan sends
+    /// during it, and a world reset inside the scan keeps that yes for the new world's packet.
+    @Test func consentIsPerScanAndOnlyAYesSends() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
         let environment = NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures)
 
-        let declining = CaptureSessionCoordinator(environment: environment, rememberedYes: false)
-        try await fixture.run(declining)
-        #expect(declining.needsConsent)
-        declining.answerConsent(false)
-        await declining.settle()
+        let unanswered = CaptureSessionCoordinator(environment: environment)
+        try await fixture.run(unanswered, consent: nil)
+        #expect(unanswered.needsConsent)
+        #expect(unanswered.session?.uploader == nil)
+
+        let declining = CaptureSessionCoordinator(environment: environment)
+        try await fixture.run(declining, consent: false)
         #expect(declining.session?.uploader == nil)
         #expect(server.state.withLock { $0.log.isEmpty })
         declining.newWorld("start over", recording: fixture.recording, newScan: true)
-        #expect(declining.consent == nil)
+        #expect(declining.consent == nil && declining.needsConsent)
 
-        let agreeing = CaptureSessionCoordinator(environment: environment, rememberedYes: false)
-        try await fixture.run(agreeing)
-        #expect(server.state.withLock { $0.log.isEmpty })
+        let agreeing = CaptureSessionCoordinator(environment: environment)
+        agreeing.begin(recording: fixture.recording)
         agreeing.answerConsent(true)
-        await agreeing.settle()
-        let state = try #require(await agreeing.session?.uploader?.snapshot)
-        #expect(state.end == .finished(status: "manual_review"))
-        #expect(state.committedCount == state.files.count)
-        #expect(server.requests("POST captures").count == 1)
+        let firstWorld = try #require(agreeing.session)
+        agreeing.newWorld("world reset", recording: fixture.recording, newScan: false)
+        #expect(agreeing.consent == true)
+        let secondWorld = try #require(agreeing.session)
+        #expect(secondWorld.uploader != nil && secondWorld.packetID != firstWorld.packetID)
+        agreeing.newWorld("start over", recording: fixture.recording, newScan: true)
+        #expect(agreeing.consent == nil)
+        #expect(agreeing.session?.uploader == nil)
     }
 
-    /// After a relaunch a frozen capture resumes only with a standing yes and only toward the
+    /// After a relaunch a frozen capture resumes only with the yes it recorded and only toward the
     /// endpoint it was created on.
-    @Test func resumeNeedsTheStandingYesAndTheSameEndpoint() async throws {
+    @Test func resumeNeedsTheCapturesYesAndTheSameEndpoint() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let original = try LoopbackCaptureAPI()
         let other = try LoopbackCaptureAPI()
@@ -246,21 +253,24 @@ struct NativeCaptureFixture: Sendable {
             attemptID: "old-process", packetID: capture.producer.info.packetID,
             createBody: try JSONEncoder().encode(CaptureAPI.CreateRequest(packetId: capture.producer.info.packetID, tier: .arkit, device: .init(model: "m", systemVersion: "s", appVersion: "a"))))
         saved.destination = original.base.absoluteString
+        // First without a recorded yes: never resumed.
         for (i, file) in (images + streams).enumerated() { saved.files[file.path] = .init(sealed: file, sequence: i) }
         saved.packet = packet
         try saved.save(to: CaptureUploader.stateURL(in: folder))
         let http = URLSessionCaptureHTTP.ephemeral(timeout: 10)
 
-        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures), rememberedYes: false)
+        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures))
             .resumeSealedCaptures().isEmpty)
-        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: other.base, http: http, captures: captures), rememberedYes: true)
+        saved.consent = .init(grantedAt: Date(), destination: original.base.absoluteString)
+        try saved.save(to: CaptureUploader.stateURL(in: folder))
+        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: other.base, http: http, captures: captures))
             .resumeSealedCaptures().isEmpty)
-        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures, sends: false), rememberedYes: true)
+        #expect(CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures, sends: false))
             .resumeSealedCaptures().isEmpty)
         try await Task.sleep(for: .milliseconds(200))
         #expect(original.state.withLock { $0.log.isEmpty } && other.state.withLock { $0.log.isEmpty })
 
-        let resumed = CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures), rememberedYes: true)
+        let resumed = CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(endpoint: original.base, http: http, captures: captures))
             .resumeSealedCaptures()
         #expect(resumed.count == 1)
         for uploader in resumed { await uploader.kick(); await uploader.settled() }
@@ -268,36 +278,48 @@ struct NativeCaptureFixture: Sendable {
         #expect(other.state.withLock { $0.log.isEmpty })
     }
 
-    /// A refused close-up and its accepted retake: both stay sealed, and the scale reference names
-    /// the retake, with the retake's pixels and pose.
-    @Test func theRetakenCloseUpIsTheScaleReference() async throws {
+    /// A refused close-up and its accepted retake, written over the same file as the app does:
+    /// both stay sealed with their own pixels, and the scale reference names the accepted one,
+    /// with its pixels and pose. A skipped close-up names none.
+    @Test func onlyTheAcceptedCloseUpIsTheScaleReference() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let server = try LoopbackCaptureAPI()
-        let coordinator = CaptureSessionCoordinator(
-            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures, sends: false),
-            rememberedYes: false)
-        coordinator.begin(recording: fixture.recording)
-        let first = try fixture.photo(at: fixture.start + 2)
-        var retake = try fixture.photo(at: fixture.start + 4)
-        retake.jpeg = fixture.folder.appending(path: "retake.jpg")
-        try makeJPEG(width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, at: retake.jpeg, shift: 101)
-        coordinator.kept(KeptPhoto(
-            t: first.t, cameraToWorld: first.cameraToWorld, cameraIntrinsics: first.cameraIntrinsics, cameraImageSize: first.cameraImageSize,
-            width: first.width, height: first.height, tracking: .normal, exposure: nil, jpeg: first.jpeg, purpose: "meter_close"))
-        retake.purpose = "meter_close"
-        coordinator.kept(retake)
-        coordinator.captureEnded()
-        await coordinator.settle()
-        let session = try #require(coordinator.session)
-        let packet = try JSONDecoder().decode(Packet04.Packet.self, from: Data(contentsOf: session.folder.appending(path: "packet.json")))
-        #expect(packet.stills?.map(\.id) == ["meter_close", "meter_close-2"])
-        #expect(packet.scaleReference.meterCloseUp.still == "meter_close-2")
-        let still = try #require(packet.stills?.last)
-        let frame = try #require(packet.keyframes.first { $0.id == still.keyframe })
-        #expect(frame.timestamp == retake.t)
-        #expect(frame.pose[12] == 0.4)
-        #expect(try Data(contentsOf: session.folder.appending(path: still.img)) == Data(contentsOf: retake.jpeg))
-        #expect(Packet04Check.problems(packet, folder: session.folder).isEmpty)
+        for accepted in [true, false] {
+            let coordinator = CaptureSessionCoordinator(environment: NativeCaptureFixture.environment(
+                endpoint: URL(string: "https://capture.invalid/v1")!, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures, sends: false))
+            coordinator.begin(recording: fixture.recording)
+            let source = fixture.folder.appending(path: "meter_close.jpg")
+            try FileManager.default.createDirectory(at: fixture.folder, withIntermediateDirectories: true)
+            try? FileManager.default.removeItem(at: source)
+            try makeJPEG(width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, at: source, shift: 7)
+            let refusedBytes = try Data(contentsOf: source)
+            func closeUp(at t: Double) -> KeptPhoto {
+                KeptPhoto(
+                    t: t, cameraToWorld: fixture.pose(t), cameraIntrinsics: NativeCaptureFixture.k, cameraImageSize: SIMD2(1920, 1440),
+                    width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, tracking: .normal, exposure: nil, jpeg: source, purpose: "meter_close")
+            }
+            coordinator.kept(closeUp(at: fixture.start + 2))
+            // The retake overwrites the same file before the first shot's sealing has run.
+            try FileManager.default.removeItem(at: source)
+            try makeJPEG(width: NativeCaptureFixture.width, height: NativeCaptureFixture.height, at: source, shift: 101)
+            let retakeBytes = try Data(contentsOf: source)
+            coordinator.kept(closeUp(at: fixture.start + 4))
+            coordinator.captureEnded(acceptedCloseUpAt: accepted ? fixture.start + 4 : nil)
+            await coordinator.settle()
+
+            let session = try #require(coordinator.session)
+            let packet = try JSONDecoder().decode(Packet04.Packet.self, from: Data(contentsOf: session.folder.appending(path: "packet.json")))
+            #expect(packet.stills?.map(\.id) == ["meter_close", "meter_close-2"])
+            #expect(try Data(contentsOf: session.folder.appending(path: "stills/meter_close.jpg")) == refusedBytes)
+            #expect(try Data(contentsOf: session.folder.appending(path: "stills/meter_close-2.jpg")) == retakeBytes)
+            #expect(Packet04Check.problems(packet, folder: session.folder).isEmpty)
+            if accepted {
+                #expect(packet.scaleReference.meterCloseUp.still == "meter_close-2")
+                let frame = try #require(packet.keyframes.first { $0.id == packet.stills?.last?.keyframe })
+                #expect(frame.timestamp == fixture.start + 4 && frame.pose[12] == 0.4)
+            } else {
+                #expect(packet.scaleReference.meterCloseUp == .notCaptured)
+            }
+        }
     }
 
     /// A world reset while the first world's photos are still going up: that packet is abandoned,
@@ -307,9 +329,9 @@ struct NativeCaptureFixture: Sendable {
         let server = try LoopbackCaptureAPI()
         server.state.withLock { $0.held = ["POST captures/files"] }
         let coordinator = CaptureSessionCoordinator(
-            environment: NativeCaptureFixture.environment(endpoint: server.base, http: UncancellableHTTP(URLSessionCaptureHTTP.ephemeral(timeout: 10)), captures: captures),
-            rememberedYes: true)
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: UncancellableHTTP(URLSessionCaptureHTTP.ephemeral(timeout: 10)), captures: captures))
         coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
         coordinator.kept(try fixture.photo(at: fixture.start + 2))
         let first = try #require(coordinator.session)
         for _ in 0..<500 where server.requests("POST captures/files").isEmpty { try await Task.sleep(for: .milliseconds(10)) }
@@ -337,8 +359,7 @@ struct NativeCaptureFixture: Sendable {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
         let coordinator = CaptureSessionCoordinator(
-            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures),
-            rememberedYes: true)
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures))
         try await fixture.run(coordinator)
         let before = await coordinator.session!.uploader!.snapshot
         coordinator.kept(try fixture.photo(at: fixture.end - 0.5))

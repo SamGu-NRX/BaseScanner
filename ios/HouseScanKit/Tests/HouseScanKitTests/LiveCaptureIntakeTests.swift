@@ -22,7 +22,8 @@ import Testing
         let capture = try SyntheticCapture04(folder: root.appending(path: "packet"), packetID: packetID)
         let uploader = try CaptureUploader.start(
             folder: capture.folder, base: base, http: URLSessionCaptureHTTP.ephemeral(timeout: 90),
-            create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: "synthetic-test")))
+            create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: "synthetic-test")),
+            consentedAt: Date())
         await uploader.observe({ _ in }, log: { print($0) })
 
         await uploader.add(try await capture.sealImages())
@@ -73,8 +74,7 @@ import Testing
         }
         let coordinator = CaptureSessionCoordinator(
             environment: NativeCaptureFixture.environment(
-                endpoint: base, http: URLSessionCaptureHTTP.ephemeral(timeout: 90), captures: root.appending(path: "Captures"), eventsWait: 20, log: log),
-            rememberedYes: true)
+                endpoint: base, http: URLSessionCaptureHTTP.ephemeral(timeout: 90), captures: root.appending(path: "Captures"), eventsWait: 20, log: log))
         let fixture = NativeCaptureFixture(folder: root.appending(path: "store"))
         let committedBeforeEnd = Mutex(0)
         try await fixture.run(coordinator) {

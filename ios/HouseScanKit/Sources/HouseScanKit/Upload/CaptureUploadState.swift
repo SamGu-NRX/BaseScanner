@@ -52,6 +52,19 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
     /// The API base the capture was created on. A resume goes only there: its capture id and
     /// signed URLs mean nothing to another server.
     public var destination: String?
+    /// The homeowner's yes for this capture and this destination. A capture without one is
+    /// never resumed.
+    public var consent: Consent?
+
+    public struct Consent: Codable, Sendable, Equatable {
+        public var grantedAt: Date
+        public var destination: String
+
+        public init(grantedAt: Date, destination: String) {
+            self.grantedAt = grantedAt
+            self.destination = destination
+        }
+    }
     /// The create body exactly as first sent.
     public var createBody: Data
     public var captureID: String?
