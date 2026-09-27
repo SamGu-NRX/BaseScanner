@@ -18,8 +18,8 @@ import numpy as np
 from meter_eval.quality import downscale_long_side, laplacian_variance
 
 # results/sweep.md, blur, "whole-photo sharpness at up to 1024 px", 95% column. AUC 0.96;
-# rejects 0 of 75 good photos, whose lowest score is 58.7 (weak evidence: none is near 6.63).
-MIN_SHARPNESS = 6.63
+# rejects 0 of 75 good photos, whose lowest score is 58.7 (weak evidence: none is near 6.68).
+MIN_SHARPNESS = 6.68
 # results/sweep.md, scale, "top-candidate line height in pixels", 95% column. AUC 0.86;
 # rejects 2 of 75 good photos. On the true number's box the cut would be 12 px; the top
 # candidate likely needs more because once the number is too small, a larger line takes

@@ -7,10 +7,13 @@ unprefixed check uses the number-finding ranking's top candidate on the degraded
 degraded read fails, two second passes run (Q3): Vision on a crop around that top candidate,
 and on that crop upscaled 2x.
 
-Rows go to DATA_DIR/sweep/rows-<shard>.jsonl, each tagged with the digest of the label it was
-scored against. A photo is swept again when its label changes; `python -m meter_eval.analyze`
-merges the rows and ignores stale ones. Raw recognizer output, which contains meter numbers,
-is not kept.
+Vision reads each degraded image from the JPEG it is saved as, so every check is computed on
+that decoded JPEG too, never on the pixels before encoding.
+
+Each photo's rows go to DATA_DIR/sweep/rows/<id>.jsonl, written to a temporary file and
+renamed into place, so a photo's file exists only once all its degradations were read. Rows
+carry the digest of the label they were scored against; a photo whose label changed is swept
+again. Raw recognizer output, which contains meter numbers, is not kept.
 """
 
 import argparse
@@ -30,6 +33,40 @@ from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
 from meter_eval.quality import device_checks, edge_gap, gray, region_checks
 
 SWEEP_DIR = DATA_DIR / "sweep"
+ROWS_DIR = SWEEP_DIR / "rows"
+
+
+def targets() -> list[tuple[dict, list[float]]]:
+    """(manifest row, number box) for every photo whose agreed number read undegraded."""
+    with MANIFEST.open() as handle:
+        manifest = {row["id"]: row for row in csv.DictReader(handle)}
+    with (RESULTS_DIR / "clean_per_image.csv").open() as handle:
+        clean = [r for r in csv.DictReader(handle) if r["number_accurate"] == "1"]
+    return [
+        (manifest[r["id"]], json.loads(r["number_box"]))
+        for r in clean
+        if manifest[r["id"]]["number_agreed"] == "yes"
+    ]
+
+
+def rows_path(image_id: str):
+    return ROWS_DIR / f"{image_id}.jsonl"
+
+
+def is_current(image_id: str, label_hmac: str) -> bool:
+    """The photo's rows exist and were all scored against this label."""
+    path = rows_path(image_id)
+    if not path.exists():
+        return False
+    return all(json.loads(line)["label_hmac"] == label_hmac for line in path.open())
+
+
+def write_rows(image_id: str, records: list[dict]) -> None:
+    """Write all of a photo's rows at once: a temporary file, then an atomic rename."""
+    ROWS_DIR.mkdir(parents=True, exist_ok=True)
+    temporary = rows_path(image_id).with_suffix(f".tmp-{os.getpid()}")
+    temporary.write_text("".join(json.dumps(r) + "\n" for r in records))
+    os.replace(temporary, rows_path(image_id))
 
 
 def crop_around(box: list[float], width: int, height: int) -> list[float]:
@@ -80,6 +117,8 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
                 continue
             image, label_box = applied
             image.save(work_path, quality=95)
+            with Image.open(work_path) as saved:
+                image = saved.convert("RGB")
             result = reader.read(work_path, barcodes=True)
             ok = number_read(result["lines"], digest, length, lenient=False)
             g = gray(image)
@@ -114,34 +153,14 @@ def main() -> None:
     parser.add_argument("--shards", type=int, default=1)
     args = parser.parse_args()
 
-    with MANIFEST.open() as handle:
-        manifest = {row["id"]: row for row in csv.DictReader(handle)}
-    with (RESULTS_DIR / "clean_per_image.csv").open() as handle:
-        clean = [r for r in csv.DictReader(handle) if r["number_accurate"] == "1"]
-    targets = [r for r in clean if manifest[r["id"]]["number_agreed"] == "yes"]
-    mine = targets[args.shard :: args.shards]
-
-    SWEEP_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = SWEEP_DIR / f"rows-{args.shard}.jsonl"
-    current = {r["id"]: manifest[r["id"]]["number_hmac"] for r in targets}
-    kept = []
-    if out_path.exists():
-        rows = [json.loads(line) for line in out_path.open()]
-        kept = [r for r in rows if current.get(r["id"]) == r.get("label_hmac")]
-    # Rows scored against an older label are dropped, so those photos are swept again.
-    out_path.write_text("".join(json.dumps(r) + "\n" for r in kept))
-    done = {r["id"] for r in kept}
-    with Reader() as reader, out_path.open("a") as out:
-        for clean_row in mine:
-            if clean_row["id"] in done:
+    mine = targets()[args.shard :: args.shards]
+    with Reader() as reader:
+        for row, box in mine:
+            if is_current(row["id"], row["number_hmac"]):
                 continue
             started = time.time()
-            box = json.loads(clean_row["number_box"])
-            # Written per image, so a rerun after an interruption never keeps half an image.
-            for record in sweep_image(reader, manifest[clean_row["id"]], box):
-                out.write(json.dumps(record) + "\n")
-            out.flush()
-            print(f"{clean_row['id']} swept in {time.time() - started:.0f}s", flush=True)
+            write_rows(row["id"], sweep_image(reader, row, box))
+            print(f"{row['id']} swept in {time.time() - started:.0f}s", flush=True)
 
 
 if __name__ == "__main__":
