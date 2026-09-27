@@ -64,18 +64,20 @@ struct ResultScreen: View {
             } else {
                 Palette.canvas
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
                 if result.isSample {
+                    // The same quiet pill as ModeBadge: the answer, not the test mode, is the
+                    // loudest thing on this screen.
                     Label("Sample result, not from the server", systemImage: "flask.fill")
-                        .font(Typeface.caption)
-                        .foregroundStyle(Palette.ink)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Palette.caution, in: .capsule)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Palette.chalk)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Palette.ink.opacity(0.7), in: .capsule)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("result.sampleBadge")
                 }
-                ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
             }
             .padding(14)
         }
