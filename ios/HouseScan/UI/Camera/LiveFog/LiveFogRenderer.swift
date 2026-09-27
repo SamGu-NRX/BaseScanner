@@ -1,5 +1,4 @@
 import Metal
-import MetalKit
 import os
 import QuartzCore
 import simd
@@ -87,26 +86,30 @@ struct LiveFogInput {
     var requestedColor: SIMD3<Float>
 }
 
-/// Draws the fog and dots into a transparent MTKView over the camera, every display frame while
-/// the walk is on screen.
+/// Draws the fog and dots into a transparent Metal layer over the camera (`LiveFogMTKView`),
+/// every display frame while the walk is on screen.
 ///
-/// Per frame: the mask pass draws the coverage cells (`FogMaskGeometry`) into a 96-texel-wide
+/// Per frame: the mask pass draws the coverage cells (`FogMaskGeometry`) into a 64-texel-wide
 /// texture with a depth test, two passes blur it, then the drawable gets the fog and the dots.
-/// Bounds: three frames in flight; the mask vertex ring holds 8,192 vertices a frame (a 60 m
-/// strip of unmerged cells needs about 4,800); the dot buffers hold `DotTimeline.capacity` dots
+/// Bounds: three frames in flight; the mask vertex ring holds 16,384 vertices a frame (a 60 m
+/// strip of unmerged cells, two bands in two parts, needs about 9,600); the dot buffers hold `DotTimeline.capacity` dots
 /// and are rewritten only when the field changes or a fading dot ends, at most once a frame.
-/// Nothing grows with time: about 4 MB of buffers and 0.2 MB of textures, allocated once.
+/// Nothing grows with time: about 4.5 MB of buffers and 0.1 MB of textures, allocated once.
 @MainActor
 final class LiveFogRenderer {
     private let gpu: LiveFogGPU
-    private let epoch = CACurrentMediaTime()
+    /// Seconds on the clock the animations run on. Replaceable so an offscreen render can step
+    /// time; the view leaves it on the display's media clock.
+    var clock: () -> Double = { CACurrentMediaTime() }
+    private var epoch: Double?
     private let inFlight = DispatchSemaphore(value: LiveFogRenderer.framesInFlight)
     private static let framesInFlight = 3
-    private static let maskWidth = 96
-    private static let maskVertexCapacity = 8_192
+    private static let maskWidth = 64
+    private static let maskVertexCapacity = 16_384
     private static let spriteCapacity = DotTimeline.capacity * 2
 
     var input: LiveFogInput?
+    var queue: MTLCommandQueue { gpu.queue }
 
     private let animator = FogCellAnimator()
     private let timeline = DotTimeline()
@@ -133,21 +136,24 @@ final class LiveFogRenderer {
         }
     }
 
-    func draw(in view: MTKView) {
-        guard let input, maskBuffers.count == Self.framesInFlight, spriteBuffers.count == Self.framesInFlight else { return }
-        let size = view.bounds.size
-        guard size.width > 1, size.height > 1 else { return }
-        // Never block the main thread on the GPU: a frame that finds all three in flight is skipped.
-        guard inFlight.wait(timeout: .now()) == .success else { return }
-        guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
-              let commandBuffer = gpu.queue.makeCommandBuffer(), let textures = textures(for: size) else {
+    /// Encodes one frame into `pass`, whose target is `pixels` in size for a view of `size`
+    /// points. Returns false, encoding nothing, when all three frames are still in flight: the
+    /// caller skips the frame rather than block the main thread on the GPU. `LiveFogMTKView`
+    /// calls this each display frame.
+    func encode(into commandBuffer: MTLCommandBuffer, pass: MTLRenderPassDescriptor, size: CGSize, pixels: SIMD2<Float>, pixelsPerPoint scale: Float) -> Bool {
+        guard let input, maskBuffers.count == Self.framesInFlight, spriteBuffers.count == Self.framesInFlight,
+              size.width > 1, size.height > 1 else { return false }
+        guard inFlight.wait(timeout: .now()) == .success else { return false }
+        guard let textures = textures(for: size) else {
             inFlight.signal()
-            return
+            return false
         }
         let semaphore = inFlight
         commandBuffer.addCompletedHandler { _ in semaphore.signal() }
 
-        let now = CACurrentMediaTime() - epoch
+        let start = epoch ?? clock()
+        epoch = start
+        let now = clock() - start
         let time = Float(now)
         let slot = frame % Self.framesInFlight
         frame &+= 1
@@ -205,8 +211,6 @@ final class LiveFogRenderer {
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
-            let scale = Float(view.contentScaleFactor)
-            let pixels = SIMD2(Float(view.drawableSize.width), Float(view.drawableSize.height))
             let pin = anchor(input, size: size, pixelsPerPoint: scale)
             var fog = FogUniforms(
                 viewSize: pixels, anchor: pin.point, anchorScale: pin.scale, time: time,
@@ -228,12 +232,12 @@ final class LiveFogRenderer {
             }
             encoder.endEncoding()
         }
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
+        return true
     }
 
-    /// The mask keeps the view's aspect at 96 texels across, about 4 points a texel on a phone:
-    /// the blur's 10-point sigma is the feather.
+    /// The mask keeps the view's aspect at 64 texels across, about 6 points a texel on a phone,
+    /// so the blur's sigma is about 15 points: the prototype's 96 texels left cell columns reading
+    /// as strips in the offscreen preview. The noise-warped lookup (`fogFragment`) ragged the rest.
     private func textures(for size: CGSize) -> (mask: MTLTexture, horizontal: MTLTexture, final: MTLTexture, depth: MTLTexture)? {
         let width = Self.maskWidth
         let height = max(1, Int((Double(width) * size.height / size.width).rounded()))

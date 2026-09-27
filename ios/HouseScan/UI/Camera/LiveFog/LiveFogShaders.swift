@@ -3,7 +3,7 @@
 /// `Shaders.swift`). Struct layouts match the Swift structs in `LiveFogRenderer.swift`.
 ///
 /// Fog. Coverage decides where it lifts: `LiveFogScene` draws every wall column and ground
-/// stretch of the coverage strip into a 96-texel-wide mask (red: fog, green: hidden behind
+/// stretch of the coverage strip into a 64-texel-wide mask (red: fog, green: hidden behind
 /// something, blue: requested by a gap), clearing to full fog, and a radius-5 Gaussian blur
 /// feathers it. The composite is the prototype's: Chalk mixed toward a cool grey, textured by
 /// slow domain-warped fbm and breathing slightly. Two changes: the noise is pinned to the meter
@@ -128,13 +128,19 @@ enum LiveFogShaders {
                                 texture2d<float> mask [[texture(0)]]) {
         constexpr sampler linear(filter::linear, address::clamp_to_edge);
         float2 screen = in.position.xy;
-        float4 m = mask.sample(linear, screen / u.viewSize);
-        float fog = saturate(m.r), hidden = saturate(m.g), requested = saturate(m.b);
-        if (fog < 0.002f && requested < 0.002f) { return float4(0.0f); }
-
         // Wrapped so the offsets stay small where Float precision is fine.
         float2 uv = fmod((screen - u.anchor) / u.anchorScale, float2(256.0f));
         float2 q = uv + u.motion * u.time * 0.02f * float2(0.94f, 0.34f);
+
+        // The mask is read through a noise offset of up to 7% of the screen's width, so the
+        // straight edges of cells and columns come out as ragged, drifting fog banks (the
+        // noise-edged fog of war the prototype borrowed from Civilization VI).
+        float2 edgeNoise = float2(valueNoise(q * 1.7f + float2(7.3f, 2.1f)), valueNoise(q * 1.7f + float2(-4.1f, 8.6f)));
+        float2 look = screen + (edgeNoise - 0.5f) * 0.14f * u.viewSize.x;
+        float4 m = mask.sample(linear, look / u.viewSize);
+        float fog = saturate(m.r), hidden = saturate(m.g), requested = saturate(m.b);
+        if (fog < 0.002f && requested < 0.002f) { return float4(0.0f); }
+
         float2 warp = float2(fbm(q + float2(3.1f, 1.7f)), fbm(q + float2(-2.3f, 5.2f)));
         float n = fbm(q + 0.8f * warp);
         float noiseTerm = 0.78f + 0.22f * n;
@@ -142,7 +148,7 @@ enum LiveFogShaders {
 
         // Part-lifted fog breaks up along the noise; full fog and clear stay as they are.
         float shaped = saturate(fog + (n - 0.5f) * 1.6f * fog * (1.0f - fog));
-        float a = saturate(0.6f * noiseTerm * shaped * breathing * mix(1.0f, 0.72f, hidden));
+        float a = saturate(0.66f * noiseTerm * shaped * breathing * mix(1.0f, 0.72f, hidden));
 
         float3 chalk = float3(0xF7, 0xF5, 0xEF) / 255.0f;
         float3 cool = float3(0xD9, 0xE2, 0xEC) / 255.0f;

@@ -24,6 +24,21 @@ struct FogValue: Equatable {
     ///   to aim.
     static func target(_ state: CellState, requested: Bool) -> FogValue {
         if requested, state != .covered { return FogValue(fog: 0, hidden: 0, requested: 1) }
+        return fog(state)
+    }
+
+    /// Above the wall band and past the ground band, where coverage measures nothing: fog while
+    /// the column below is unseen or seen once, clear once it is covered. A hidden stretch and a
+    /// gap request are about the band itself, so their violet and amber stop at its edge, and
+    /// the wall above a bin, which the camera did see past it, is not fogged.
+    static func beyond(_ state: CellState) -> FogValue {
+        switch state {
+        case .unseen, .seen: fog(state)
+        case .covered, .skipped, .hidden: .clear
+        }
+    }
+
+    private static func fog(_ state: CellState) -> FogValue {
         return switch state {
         case .unseen: FogValue(fog: 1, hidden: 0, requested: 0)
         case .seen: FogValue(fog: 0.55, hidden: 0, requested: 0)
@@ -51,6 +66,8 @@ final class FogCellAnimator {
         var band: CoverageBand
         /// The cell's left edge in whole cell widths from s = 0.
         var cell: Int
+        /// The part above the wall band or past the ground band.
+        var beyond: Bool
     }
 
     private struct Track {
@@ -101,7 +118,7 @@ final class FogCellAnimator {
 /// and the stretch reach past the bands coverage measures (4.5 ft of wall, 4 ft of ground) on
 /// purpose: fog there could never lift, and fog that walking can't clear stops meaning
 /// "not seen yet". The wall above a covered column and the lawn in front of it are nothing the
-/// scan decides on. Past a marked end the wall is not part of the scan, and is clear. Anything
+/// scan decides on; past the band, a cell's part follows `FogValue.beyond`. Past a marked end the wall is not part of the scan, and is clear. Anything
 /// no quad reaches (the wall past the strip, where the walk has not been) keeps the mask's clear
 /// value, full fog.
 enum FogMaskGeometry {
@@ -123,12 +140,21 @@ enum FogMaskGeometry {
         now: Double, reduceMotion: Bool, into vertices: UnsafeMutablePointer<Vertex>, capacity: Int
     ) -> Int {
         var count = 0
-        func quad(_ band: CoverageBand, _ s0: Float, _ s1: Float, _ value: FogValue) {
+        let wallTop = coverage.wallBandHeight, groundEdge = coverage.groundBandDepth
+        /// A quad on the wall from height `near` to `far`, or on the ground from `near` to `far`
+        /// out; `beyond` picks the part past the band.
+        func quad(_ band: CoverageBand, beyond: Bool, _ s0: Float, _ s1: Float, _ value: FogValue) {
             guard count + 6 <= capacity else { return }
-            let far0 = band == .wall ? wall.world(s: s0, height: columnHeight) : wall.world(s: s0, height: 0, out: groundReach)
-            let far1 = band == .wall ? wall.world(s: s1, height: columnHeight) : wall.world(s: s1, height: 0, out: groundReach)
-            let a = SIMD4(wall.world(s: s0, height: 0), 1), b = SIMD4(wall.world(s: s1, height: 0), 1)
-            let c = SIMD4(far1, 1), d = SIMD4(far0, 1)
+            let (near, far) = switch (band, beyond) {
+            case (.wall, false): (Float(0), wallTop)
+            case (.wall, true): (wallTop, columnHeight)
+            case (.ground, false): (Float(0), groundEdge)
+            case (.ground, true): (groundEdge, groundReach)
+            }
+            func point(_ s: Float, _ t: Float) -> SIMD4<Float> {
+                SIMD4(band == .wall ? wall.world(s: s, height: t) : wall.world(s: s, height: 0, out: t), 1)
+            }
+            let a = point(s0, near), b = point(s1, near), c = point(s1, far), d = point(s0, far)
             let v = SIMD4(value.fog, value.hidden, value.requested, 0)
             vertices[count] = Vertex(position: a, value: v)
             vertices[count + 1] = Vertex(position: b, value: v)
@@ -143,29 +169,34 @@ enum FogMaskGeometry {
         if visible.upperBound > visible.lowerBound {
             for band in CoverageBand.allCases {
                 let states = coverage.cells(band)
-                var run: (s0: Float, s1: Float, value: FogValue, along: SIMD3<Float>)?
-                for index in states.indices {
-                    let range = coverage.cellRange(index)
-                    guard range.upperBound > visible.lowerBound, range.lowerBound < visible.upperBound else { continue }
-                    let s0 = max(range.lowerBound, visible.lowerBound), s1 = min(range.upperBound, visible.upperBound)
-                    let requested = highlight.map { $0.band == band && $0.span.lowerBound < range.upperBound && range.lowerBound < $0.span.upperBound } ?? false
-                    let key = FogCellAnimator.Key(band: band, cell: Int((range.lowerBound / coverage.cellWidth).rounded()))
-                    let value = animator.value(key, target: FogValue.target(states[index], requested: requested), now: now, reduceMotion: reduceMotion)
-                    let along = wall.along(atS: (s0 + s1) / 2)
-                    if var current = run, current.value == value, current.along == along, abs(current.s1 - s0) < 1e-4 {
-                        current.s1 = s1
-                        run = current
-                    } else {
-                        if let current = run { quad(band, current.s0, current.s1, current.value) }
-                        run = (s0, s1, value, along)
+                for beyond in [false, true] {
+                    var run: (s0: Float, s1: Float, value: FogValue, along: SIMD3<Float>)?
+                    for index in states.indices {
+                        let range = coverage.cellRange(index)
+                        guard range.upperBound > visible.lowerBound, range.lowerBound < visible.upperBound else { continue }
+                        let s0 = max(range.lowerBound, visible.lowerBound), s1 = min(range.upperBound, visible.upperBound)
+                        let requested = highlight.map { $0.band == band && $0.span.lowerBound < range.upperBound && range.lowerBound < $0.span.upperBound } ?? false
+                        let key = FogCellAnimator.Key(band: band, cell: Int((range.lowerBound / coverage.cellWidth).rounded()), beyond: beyond)
+                        let target = beyond ? FogValue.beyond(states[index]) : FogValue.target(states[index], requested: requested)
+                        let value = animator.value(key, target: target, now: now, reduceMotion: reduceMotion)
+                        let along = wall.along(atS: (s0 + s1) / 2)
+                        if var current = run, current.value == value, current.along == along, abs(current.s1 - s0) < 1e-4 {
+                            current.s1 = s1
+                            run = current
+                        } else {
+                            if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value) }
+                            run = (s0, s1, value, along)
+                        }
                     }
+                    if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value) }
                 }
-                if let current = run { quad(band, current.s0, current.s1, current.value) }
             }
         }
         for band in CoverageBand.allCases {
-            if let left = wall.leftEnd { quad(band, left - pastEnd, left, .clear) }
-            if let right = wall.rightEnd { quad(band, right, right + pastEnd, .clear) }
+            for beyond in [false, true] {
+                if let left = wall.leftEnd { quad(band, beyond: beyond, left - pastEnd, left, .clear) }
+                if let right = wall.rightEnd { quad(band, beyond: beyond, right, right + pastEnd, .clear) }
+            }
         }
         animator.endFrame()
         return count

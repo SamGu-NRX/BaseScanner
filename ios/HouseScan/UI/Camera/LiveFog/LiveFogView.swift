@@ -77,6 +77,11 @@ final class LiveFogMTKView: MTKView {
     var renderer: LiveFogRenderer?
 
     override func draw(_ rect: CGRect) {
-        renderer?.draw(in: self)
+        guard let renderer, let pass = currentRenderPassDescriptor, let drawable = currentDrawable,
+              let commandBuffer = renderer.queue.makeCommandBuffer() else { return }
+        let pixels = SIMD2(Float(drawableSize.width), Float(drawableSize.height))
+        guard renderer.encode(into: commandBuffer, pass: pass, size: bounds.size, pixels: pixels, pixelsPerPoint: Float(contentScaleFactor)) else { return }
+        commandBuffer.present(drawable)
+        commandBuffer.commit()
     }
 }
