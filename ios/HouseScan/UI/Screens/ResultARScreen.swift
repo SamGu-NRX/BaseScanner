@@ -11,6 +11,8 @@ struct ResultARScreen: View {
     let actions: any ScanActions
 
     @State private var appeared = false
+    /// Where the card and the Done button cover the camera (`CameraChrome`), for the chevron.
+    @State private var cover = ChromeCover()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -34,13 +36,14 @@ struct ResultARScreen: View {
                         .accessibilityIdentifier("ar.overlay")
                 }
                 if let spot = result.spotCenter(on: wall) {
-                    SpotDirection(projection: projection, spot: spot)
+                    SpotDirection(projection: projection, spot: spot, cover: cover)
                 }
             }
             CameraChrome(
                 instruction: instruction,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                cover: $cover
             ) {
                 Button("Done") { actions.closeAR() }
                     .buttonStyle(.primary)
@@ -93,11 +96,23 @@ extension ResultPresentation {
 private struct SpotDirection: View {
     var projection: CameraProjection
     var spot: SIMD3<Float>
+    /// Where the card and the Done button cover the camera, as `CameraChrome` measured them.
+    var cover: ChromeCover
+
+    /// The caption's height as laid out at the current text size, to keep it off the chevron.
+    @State private var captionHeight: CGFloat = 30
+
+    /// Half the chevron's disc (52 pt) and a gap.
+    private static let chevronReach: CGFloat = 34
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
-            if let chevron = chevronPlacement(in: size) {
+            let clear = clearArea(in: size)
+            if let chevron = chevronPlacement(in: size, clear: clear) {
+                // The caption goes on the side of the chevron with more of the clear area left.
+                let below = chevron.point.y <= clear.midY
+                let offset = Self.chevronReach + captionHeight / 2
                 ZStack {
                     TargetMarker(placement: .offScreen(chevron.point, angle: chevron.angle))
                     Text("Your battery spot is this way")
@@ -111,7 +126,11 @@ private struct SpotDirection: View {
                         .background(ScrimShape.capsule)
                         .frame(maxWidth: 220)
                         .fixedSize(horizontal: false, vertical: true)
-                        .position(x: min(max(chevron.point.x, 120), max(size.width - 120, 120)), y: chevron.point.y + 50)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { captionHeight = $0 }
+                        .position(
+                            x: min(max(chevron.point.x, 120), max(size.width - 120, 120)),
+                            y: chevron.point.y + (below ? offset : -offset)
+                        )
                 }
                 .frame(width: size.width, height: size.height)
                 .accessibilityElement(children: .ignore)
@@ -123,17 +142,25 @@ private struct SpotDirection: View {
         .allowsHitTesting(false)
     }
 
-    /// Where the chevron goes and which way it points, or nil while the spot is in view. In view
-    /// means in the part of the screen the chrome leaves clear: a spot under the instruction card
-    /// (its bottom edge is about 220 pt down with a two-line detail) or under the Done button
-    /// (its top edge is about 100 pt up) can't be seen, so it gets the chevron too. The chevron
-    /// sits in the same lane as the walk's aim chevron (`WayfindingOverlay`), clear of the card
-    /// above and the buttons below.
-    private func chevronPlacement(in size: CGSize) -> (point: CGPoint, angle: Angle)? {
-        let clear = CGRect(x: 24, y: 260, width: size.width - 48, height: max(size.height - 260 - 160, 80))
+    /// The part of the screen the chrome leaves clear, as `CameraChrome` measured it: between the
+    /// instruction card's bottom edge and the Done button's top edge. At the largest text sizes
+    /// the card reaches far further down than at the default size, so fixed insets hid the
+    /// chevron while the spot was under the card (review of #100). Before the first layout,
+    /// the default-size card (about 220 pt with a two-line detail) and button (about 100 pt up).
+    /// Empty when the chrome covers it all.
+    private func clearArea(in size: CGSize) -> CGRect {
+        let top = (cover.cardBottom ?? 252) + 8
+        let bottom = (cover.controlsTop ?? size.height - 152) - 8
+        return CGRect(x: 24, y: top, width: max(size.width - 48, 0), height: max(bottom - top, 0))
+    }
+
+    /// Where the chevron goes and which way it points, or nil while the spot is in view: in the
+    /// clear area. A spot under the card or the Done button can't be seen, so it gets the
+    /// chevron too. The chevron keeps to the clear area, toward the spot's side of it.
+    private func chevronPlacement(in size: CGSize, clear: CGRect) -> (point: CGPoint, angle: Angle)? {
         if let point = projection.viewPoint(for: spot, in: size), clear.contains(point) { return nil }
         guard let direction = projection.screenDirection(toward: spot) else { return nil }
-        let lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 260 - 300, 80))
+        let lane = clear.insetBy(dx: 16, dy: min(Self.chevronReach, clear.height / 2))
         let tx = direction.dx == 0 ? CGFloat.infinity : lane.width / 2 / abs(direction.dx)
         let ty = direction.dy == 0 ? CGFloat.infinity : lane.height / 2 / abs(direction.dy)
         let t = min(tx, ty)

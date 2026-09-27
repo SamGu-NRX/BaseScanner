@@ -18,6 +18,8 @@ final class DemoEngine: ScanActions {
     /// through the engine's own mapping, in place of the hand-made samples.
     private let resultFile: String?
     private let rejectUpload: Bool
+    /// `-uiDemoSpotOffScreen`: on "See it on your wall", the phone aims away from the spot.
+    private let spotOffScreen: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
     /// The tilt-up step was answered or skipped.
@@ -73,6 +75,7 @@ final class DemoEngine: ScanActions {
         resultFile = nil
         #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
+        spotOffScreen = arguments.contains("-uiDemoSpotOffScreen")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
         state.isReplay = true
@@ -234,6 +237,7 @@ final class DemoEngine: ScanActions {
             placeMeter()
             finishedWalkState()
             showResult()
+            if spotOffScreen { state.projection = DemoScene.awayFromSpotProjection }
             state.phase = .resultAR
         case .unsupported:
             state.failure = .arUnsupported
