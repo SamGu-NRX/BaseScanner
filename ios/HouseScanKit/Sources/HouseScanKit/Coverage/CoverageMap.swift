@@ -1102,9 +1102,14 @@ public struct CoverageMap: Sendable {
     /// cells beyond an end seen before it was marked are gone until a new frame sees them.
     /// Corners the walk followed move like the ends, so they keep their place in the world: pass
     /// `frame` with the corners it had (a copy of `wall` with a new meter or ground).
-    /// Assumes the wall's direction is unchanged.
+    ///
+    /// The wall must run the same way: a turned wall has no single shift of s that keeps the ends
+    /// and corners where they were, and the cameras would be replayed against axes they weren't
+    /// seen with. A moved or turned meter anchor moves everything captured with it (`apply(_:)`);
+    /// a frame with other axes stops here.
     public mutating func updateWall(_ frame: WallFrame) {
         guard frame != wall else { return }
+        precondition(frame.hasSameAxes(as: wall), "updateWall got a wall turned from \(wall.outward) to \(frame.outward); a turned anchor is apply(_:)")
         let delta = simd_dot(wall.meter - frame.meter, frame.along)
         var frame = frame
         frame.shiftCorners(by: delta)
@@ -1115,6 +1120,18 @@ public struct CoverageMap: Sendable {
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
         replayObservedCameras(shiftingSkippedBy: whole)
+    }
+
+    /// Moves everything the map holds with the world, as one rigid body: the wall (its meter,
+    /// ground, pieces and corners) and every kept camera. Used when ARKit corrects the meter's
+    /// anchor (`MeterAnchorTracking`): what was captured moves with the meter, so the relations
+    /// between the wall and the views of it, and every s (cells, ends, corners), stay exactly as
+    /// they were, and nothing is rebuilt.
+    public mutating func apply(_ correction: YawCorrection) {
+        wall.apply(correction)
+        observedCameras = observedCameras.map { correction.moved($0) }
+        overheadCameras = overheadCameras.map { correction.moved($0) }
+        revision += 1
     }
 
     /// How far from the marked end on its side (or, with none marked, the far edge of what was
