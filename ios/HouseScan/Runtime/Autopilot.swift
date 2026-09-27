@@ -313,12 +313,20 @@ final class Autopilot {
     /// nothing overhead", which is what the synthetic fixture shows above its wall. A recording
     /// without tilt-up frames can't answer honestly, so it gets "Can't get there" instead.
     private func tiltUp() async {
-        guard await waitUntil(timeout: 5, { self.isTiltingUp }) else {
-            log("the walk did not ask to tilt up")
-            return
+        var played = false
+        let asked = await waitUntil(timeout: 5, { self.isTiltingUp })
+        if !asked {
+            // The step waits for the phone to be back near the meter (#64), and the ends were
+            // tapped from frames far from it. The recording's closing tilt-up frames stand beside
+            // the meter: play them, as a homeowner walking back would, and the step comes up.
+            played = engine.playReplayTiltUp()
+            guard played, await waitUntil(timeout: 20, { self.isTiltingUp || self.engine.state.overheadQuestion }) else {
+                log("the walk did not ask to tilt up")
+                return
+            }
         }
         await pause(hold)
-        guard engine.playReplayTiltUp() else {
+        guard played || engine.playReplayTiltUp() else {
             log("no tilt-up frames on this replay; skipping the step as a homeowner would")
             engine.cannotAccessArea()
             return

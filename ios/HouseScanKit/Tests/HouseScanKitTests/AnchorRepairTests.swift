@@ -24,6 +24,21 @@ import Testing
         #expect(map.level(.wall, 0) == .covered)
     }
 
+    /// Review of #120: the sightings the "step to the side" hint (`needsSecondPosition`) measures
+    /// from move with a correction. The spot the ground was seen from still needs a second
+    /// position once its pose reads 0.30 m over, and the old coordinates, now 0.30 m from it,
+    /// don't.
+    @Test func aCorrectionKeepsTheSecondPositionHintWithTheView() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        let front = CoverageMapTests.front
+        #expect(map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: front))
+        map.apply(Self.shift)
+        #expect(map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: Self.shift.point(front)))
+        #expect(!map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: front))
+    }
+
     /// A frame captured before a correction and stored (observed) after it lands where the same
     /// frame observed before the correction would have been moved to.
     @Test func aSaveThatFinishesAfterACorrectionIsInterpretedInTheNewFrame() throws {
