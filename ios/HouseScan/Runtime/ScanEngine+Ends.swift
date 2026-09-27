@@ -56,9 +56,17 @@ extension ScanEngine {
             side = offer.side
             s = end
         }
-        // Less than one keyframe's spacing short of the farthest view is still the front of the walk.
-        let walkedPast = map.walkedFarthest(side.walk) - side.walk.sign * s
-        let leavesOut = walkedPast >= AutoCaptureConfig().spacingMeters ? walkedPast : nil
+        // What this end leaves out of the walk shows only while the walk asks to walk this side
+        // or mark its end, and not with the phone far out from the wall (#66,
+        // `WalkedEnd.saysWhatAnEndLeavesOut`). During a tilt or step-back request the dashed line
+        // and "Wall ends here" stay; the end question says what pressing it left out
+        // (`endWallHere`).
+        // The phone's distance from the wall matters only when the end is its place along it.
+        let phoneOut: Float? = offer.atReticle ? nil : phonePosition.map { map.wall.wallPoint($0).out }
+        let leavesOut = WalkedEnd.leavesOut(
+            side: side.walk, s: s, walked: map.walkedPositions, wall: map.wall,
+            phoneOut: phoneOut, task: state.guidance.plannerTask
+        )
         return EndPreview(side: side, s: s, atReticle: offer.atReticle, leavesOutWalked: leavesOut)
     }
 
@@ -69,12 +77,16 @@ extension ScanEngine {
     }
 
     func endWallHere() {
-        guard let preview = currentEndPreview(), !preview.atReticle else { return }
+        guard let preview = currentEndPreview(), !preview.atReticle, let map = coverage else { return }
+        // Whatever the walk was asking, the end question says how much of the walk this end
+        // leaves out, now that the homeowner chose to end the wall here (#66).
+        let leavesOut = WalkedEnd.walkedPast(preview.side.walk, s: preview.s, walked: map.walkedPositions, wall: map.wall)
         // The walk toward that side is met: the homeowner got to its end.
         if case .walk(let side, _) = state.guidance, side == preview.side { resolveGuidance(.met) }
         logEnd("wall ends here", side: preview.side, at: preview.s)
         // Unexplored until the homeowner says something blocks the wall there, as for a marked end.
         state.endQuestion = preview.side
+        state.endQuestionLeavesOut = leavesOut
         setEnd(preview.side, at: preview.s, kind: .unexplored)
     }
 
@@ -107,4 +119,21 @@ extension ScanEngine {
 
 extension WallSide {
     var walk: WalkSide { self == .left ? .left : .right }
+}
+
+extension GuidanceStep {
+    /// The planner's task this step shows (`ScanEngine.step` the other way round), or nil for a
+    /// step the planner doesn't set. Every case is listed, so a new step has to say which it is.
+    var plannerTask: GuidanceTask? {
+        switch self {
+        case .walk(let side, _): .walk(side.walk)
+        case .markEnd(let side): .markEnd(side.walk)
+        case .aimAtGround(let s): .aimAtGround(s: s)
+        case .aimAtWall(let s): .aimAtWall(s: s)
+        case .stepBack: .stepBack
+        case .seeBehind(let s): .seeBehind(s: s)
+        case .walkComplete: .complete
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .tiltUp, .markNextWall, .gap: nil
+        }
+    }
 }

@@ -109,7 +109,13 @@ final class DemoEngine: ScanActions {
             refreshGuidance()
         }
         if arguments.contains("-uiDemoEndQuestion") {
-            state.endQuestion = .left
+            if walkedBack != nil {
+                // With `-uiDemoEndPreview`: "Wall ends here" pressed short of the farthest view,
+                // so the question says what the end leaves out of the walk (#66).
+                endWallHere()
+            } else {
+                state.endQuestion = .left
+            }
         }
         if arguments.contains("-uiDemoNextWall") {
             state.wall?.rightEnd = demoRightEnd
@@ -734,6 +740,7 @@ final class DemoEngine: ScanActions {
             state.wall?.leftEnd = demoLeftEnd
         }
         state.endQuestion = side
+        state.endQuestionLeavesOut = nil
         refreshCoverage()
         refreshGuidance()
     }
@@ -748,6 +755,7 @@ final class DemoEngine: ScanActions {
             state.wall?.leftEnd = preview.s
         }
         state.endQuestion = side
+        state.endQuestionLeavesOut = preview.leavesOutWalked
         refreshCoverage()
         refreshGuidance()
     }
@@ -756,6 +764,7 @@ final class DemoEngine: ScanActions {
     func answerWallEnd(turnsCorner: Bool) {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         let followed = state.wall?.cornerSegments.contains { side == .right ? $0.span.lowerBound > 0 : $0.span.upperBound < 0 } ?? true
         if turnsCorner, !followed {
             state.guidance = .markNextWall(side: side, refusal: nil)

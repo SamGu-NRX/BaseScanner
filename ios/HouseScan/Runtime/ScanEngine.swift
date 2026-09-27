@@ -1145,6 +1145,7 @@ final class ScanEngine {
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
@@ -1179,6 +1180,7 @@ final class ScanEngine {
         self.groundMeasured = groundMeasured
         endKinds = [:]
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
@@ -1269,7 +1271,10 @@ final class ScanEngine {
         markTimes[MarkKey.end(side)] = nil
         updateCoverage { $0.clearEnd(side == .left ? .left : .right) }
         endKinds[side] = nil
-        if state.endQuestion == side { state.endQuestion = nil }
+        if state.endQuestion == side {
+            state.endQuestion = nil
+            state.endQuestionLeavesOut = nil
+        }
         publishWall()
     }
 
@@ -1626,6 +1631,7 @@ final class ScanEngine {
         seeBehindBands = []
         endKinds = [:]
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
