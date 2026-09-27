@@ -150,6 +150,24 @@ import Testing
         }
     }
 
+    @Test func aGuessedGroundWidensTheWallSlackBeforeTheGroundFallback() throws {
+        // A wall hit 0.25 m under a guessed ground can still be at the real ground, 0.3 m lower at
+        // most: it stays on the wall. Once the ground is measured it's under the floor, and the AC
+        // lands where the ray crosses the ground, 0.25 m out.
+        let target = SIMD3<Float>(0.5, -0.25, 0)
+        let ray = Ray(origin: Self.phone, direction: simd_normalize(target - Self.phone))
+        let guessed = ObjectTap.place(ray, standsOnGround: true, camera: Self.phone, wall: Self.wall, reach: Self.reach, groundError: 0.3)
+        guard case .wall(let onWall) = guessed else {
+            Issue.record("expected a wall hit under a guessed ground")
+            return
+        }
+        #expect(nearlyEqual(onWall.height, -0.25, 1e-3))
+        let measured = ObjectTap.place(ray, standsOnGround: true, camera: Self.phone, wall: Self.wall, reach: Self.reach, groundError: 0)
+        let ac = try #require(Self.groundPoint(measured))
+        #expect(nearlyEqual(ac.s, 0.5 * 1.75 / 2, 1e-3))
+        #expect(nearlyEqual(ac.out, 2 - 2 * 1.75 / 2, 1e-3))
+    }
+
     @Test func grazingAcTap30MetersAlongIsStillRefused() {
         // #140's grazing ray: a plausible height, out of reach. The ground is no nearer.
         guard case .refused(.tooFarAlong(let meters)) = Self.place(toward: SIMD3(30, 1, 0), standsOnGround: true) else {
