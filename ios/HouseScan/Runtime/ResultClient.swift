@@ -101,16 +101,25 @@ enum UploadFailure {
         return "The House Scan server is busy. Your scan is saved on this phone. \(when)"
     }
 
+    /// The answer came back about a wall or ground the phone had corrected since, twice
+    /// (`AnswerFreshness.stillChanging`): it isn't shown, and "Try again" sends a fresh scan.
+    static let stillChanging: UploadState = .failed(
+        message: "Your phone was still adjusting the scan when the answer came back. Hold it steady and try again.", offline: false)
+
     /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
     /// again says which, so the homeowner knows what to fix in the review.
     static func packaging(_ error: any Error) -> UploadState {
+        if case .fenceAcrossCorner? = error as? SceneExportError {
+            // A fence marked before the wall was followed round a corner.
+            return .rejected(message: "A fence runs round a corner of your wall. Go back to the review and mark it on each side of the corner as its own fence.")
+        }
         switch error as? ScanEngine.ExportError {
         case .markCollapsed(.driveway)?:
-            .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
+            return .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
         case .markCollapsed(.fence)?:
-            .rejected(message: "Mark the fence again: its two points came out on top of each other.")
+            return .rejected(message: "Mark the fence again: its two points came out on top of each other.")
         default:
-            .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
+            return .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
         }
     }
 }

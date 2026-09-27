@@ -32,6 +32,9 @@ struct SourceFrame: Sendable {
     var sensorDepth: DepthPacket?
     /// Camera settings of a live frame with a photo; nil on a replay.
     var exposure: PhotoExposure?
+    /// Live frames only, when the engine asked (`LiveCapture.requestSpatialCapture`): this frame's
+    /// own mesh and planes, for the upload's snapshot.
+    var spatial: FrameSpatialCapture?
     /// Shown for review or tapping only; never offered to auto-capture.
     var isReview = false
     /// Carries only pose and tracking, so overlays follow the camera between sampled frames.

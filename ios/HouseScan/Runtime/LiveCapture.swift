@@ -18,7 +18,9 @@ enum LiveMode: Sendable {
 }
 
 enum LiveEvent: Sendable {
-    case interrupted
+    /// With the time of the last frame the session delivered before it: the event reaches the
+    /// main actor on its own path, and can arrive before frames captured earlier.
+    case interrupted(lastFrameTime: Double?)
     case interruptionEnded
     case cameraDenied
     case failed(String)
@@ -183,8 +185,11 @@ final class LiveCapture {
     /// The LiDAR mesh ARKit has built so far, in world meters, or nil when there is none (no
     /// LiDAR, or nothing reconstructed yet). Each anchor's vertices are read out of its Metal
     /// buffer, never written, and moved into world coordinates by the anchor's transform.
-    func meshSnapshot() -> MeshSnapshot? {
-        guard let anchors = arView.session.currentFrame?.anchors.compactMap({ $0 as? ARMeshAnchor }), !anchors.isEmpty else { return nil }
+    /// Read from `frame`'s own anchors, the frame the engine takes its snapshot on
+    /// (`SourceFrame.spatial`), never from whatever frame the session holds when asked.
+    nonisolated static func meshSnapshot(of frame: ARFrame) -> MeshSnapshot? {
+        let anchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
+        guard !anchors.isEmpty else { return nil }
         var vertices: [SIMD3<Float>] = []
         var indices: [UInt32] = []
         var classification: [UInt8] = []
@@ -220,7 +225,7 @@ final class LiveCapture {
 
     /// One class byte per face of `geometry`: its classification source when it has one in the
     /// layout ARKit documents (one uchar per face), else 0 (none) for every face.
-    private static func faceClasses(_ geometry: ARMeshGeometry) -> [UInt8] {
+    nonisolated private static func faceClasses(_ geometry: ARMeshGeometry) -> [UInt8] {
         let faces = geometry.faces.count
         guard let source = geometry.classification, source.format == .uchar, source.count == faces, source.componentsPerVector == 1 else {
             return [UInt8](repeating: 0, count: faces)
@@ -249,10 +254,9 @@ final class LiveCapture {
         var boundary: [SIMD3<Float>]
     }
 
-    /// Every plane ARKit has detected, as it stands now.
-    func planeSnapshot() -> [PlaneSnapshot] {
-        guard let anchors = arView.session.currentFrame?.anchors.compactMap({ $0 as? ARPlaneAnchor }) else { return [] }
-        return anchors.map { plane in
+    /// Every plane ARKit had detected on `frame`.
+    nonisolated static func planeSnapshot(of frame: ARFrame) -> [PlaneSnapshot] {
+        frame.anchors.compactMap { $0 as? ARPlaneAnchor }.map { plane in
             PlaneSnapshot(
                 id: plane.identifier.uuidString, vertical: plane.alignment == .vertical,
                 classification: Self.name(plane.classification), anchorToWorld: plane.transform, center: plane.center,
@@ -262,7 +266,7 @@ final class LiveCapture {
         }
     }
 
-    private static func name(_ classification: ARPlaneAnchor.Classification) -> PacketPlane.Classification? {
+    nonisolated private static func name(_ classification: ARPlaneAnchor.Classification) -> PacketPlane.Classification? {
         switch classification {
         case .none: PacketPlane.Classification.none
         case .wall: .wall
@@ -278,6 +282,11 @@ final class LiveCapture {
 
     func setMode(_ mode: LiveMode) {
         delegate.shared.withLock { $0.mode = mode }
+    }
+
+    /// Asks for the next sampled frame to carry its mesh and planes (`SourceFrame.spatial`).
+    func requestSpatialCapture() {
+        delegate.shared.withLock { $0.wantsSpatial = true }
     }
 
     /// Raycast from a view point to a vertical surface: a detected plane's extent first, then a
@@ -321,6 +330,17 @@ struct LiveShared: Sendable {
     var mode: LiveMode = .idle
     var meterAnchorID: UUID?
     var recorder: CaptureRecorder?
+    /// Set by `requestSpatialCapture`: the next sampled frame also carries its mesh and planes.
+    var wantsSpatial = false
+}
+
+/// The mesh and planes of one delivered frame, read from that frame's own anchors, for the
+/// upload's snapshot (`ScanEngine.takeUploadSnapshot`).
+struct FrameSpatialCapture: Sendable {
+    /// The frame's time: the snapshot takes this only on the frame with the same time.
+    var time: Double
+    var mesh: LiveCapture.MeshSnapshot?
+    var planes: [LiveCapture.PlaneSnapshot]
 }
 
 /// Receives ARSession callbacks on a private serial queue. Each sampled frame is reduced to a
@@ -347,6 +367,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
 
     private struct QueueState {
         var frameCount = 0
+        /// The latest ARFrame's time, for stamping an interruption.
+        var lastFrameTime: Double?
         var lastEncode: (time: Double, camera: CameraFrame)?
         var encoding = false
     }
@@ -381,6 +403,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let count = queueState.withLock { state -> Int in
             state.frameCount += 1
+            state.lastFrameTime = frame.timestamp
             return state.frameCount
         }
         let shared = shared.withLock { $0 }
@@ -415,6 +438,14 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
             quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
         )
+        let wantsSpatial = self.shared.withLock { state in
+            defer { state.wantsSpatial = false }
+            return state.wantsSpatial
+        }
+        if wantsSpatial {
+            snapshot.spatial = FrameSpatialCapture(
+                time: frame.timestamp, mesh: LiveCapture.meshSnapshot(of: frame), planes: LiveCapture.planeSnapshot(of: frame))
+        }
         let image = tracking == .normal && shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera)
             ? PixelBufferBox(buffer: frame.capturedImage) : nil
         // Depth and camera settings go with the photo: a frame without one can't be kept. Copied
@@ -611,7 +642,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
-        Task { @MainActor [onEvent] in onEvent(.interrupted) }
+        let last = queueState.withLock { $0.lastFrameTime }
+        Task { @MainActor [onEvent] in onEvent(.interrupted(lastFrameTime: last)) }
     }
 
     func sessionInterruptionEnded(_ session: ARSession) {

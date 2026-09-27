@@ -184,14 +184,14 @@ final class AuditIssueKeyTests: XCTestCase {
     @MainActor
     func testAGoneElementIsReadWithoutRecordingAFailure() {
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoGroundQuestion"]
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "spotConfirm", "-uiDemoSpotStep", "ground"]
         app.launch()
         defer { app.terminate() }
         let gravel = app.buttons["ground.answer.gravel"]
         XCTAssertTrue(gravel.waitForExistence(timeout: 15))
         XCTAssertEqual(ElementRead.snapshot(gravel)?.identifier, "ground.answer.gravel", "a present element reads normally")
         gravel.tap()
-        XCTAssertTrue(app.buttons["ground.change"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["spot.answered"].waitForExistence(timeout: 5))
         XCTAssertTrue(gravel.waitForNonExistence(timeout: 5))
 
         XCTAssertNil(ElementRead.snapshot(gravel), "a gone element has no snapshot")
