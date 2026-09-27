@@ -20,9 +20,16 @@ struct SourceFrame: Sendable {
     var still: CGImage?
     /// World transform of the meter's ARAnchor in this frame, when one exists.
     var meterAnchor: simd_float4x4?
+    /// Which anchor `meterAnchor` is. A frame made before the meter was anchored again
+    /// (`ScanEngine.refitWallToDetectedPlane`) still carries the old one's pose, which the engine
+    /// must not take as a correction of the new one.
+    var meterAnchorID: UUID?
     /// Detected horizontal planes, with their classes and outlines. Empty when ARKit has found
     /// none or the frame doesn't carry them.
     var groundPlanes: [GroundPlaneEvidence] = []
+    /// Detected vertical planes, with their classes, normals and outlines. Empty when ARKit has
+    /// found none or the frame doesn't carry them.
+    var wallPlanes: [WallPlaneEvidence] = []
     /// LiDAR depth copied with the photo of a frame that could be kept; nil without LiDAR, and on
     /// frames without a photo. Coverage reads it; a replay's recorded depth plays in here too.
     var depth: DepthImage?
