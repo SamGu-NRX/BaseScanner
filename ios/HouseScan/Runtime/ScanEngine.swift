@@ -63,6 +63,9 @@ final class ScanEngine {
     /// The meter anchor's pose the wall and everything captured agree with, and the corrections
     /// still to apply to them as ARKit refines it (`refreshMeterFromAnchor`). Nil on a replay.
     private var meterTracking: MeterAnchorTracking?
+    /// Which frames carried the meter's anchor since it was anchored, for the drift log
+    /// (`noteMeterAnchor`). Starts again with `meterTracking`.
+    private var meterAnchorPresence = MeterAnchorPresence()
     /// Whether a frame source may start, and what a failure and Start over do to it.
     private var sourceState = CaptureSourceState()
     /// Detected horizontal planes, with their classes and outlines.
@@ -243,8 +246,10 @@ final class ScanEngine {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
         if state.phase == .resultAR { hideResultInCamera() }
+        let previous = state.phase
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
+        logMeterAnchorSummary(from: previous, to: phase)
         switch phase {
         case .findMeter:
             state.guidance = .findMeter
@@ -416,6 +421,7 @@ final class ScanEngine {
             wallPlanes = frame.wallPlanes
             refitWallToDetectedPlane()
         }
+        noteMeterAnchor(frame)
         // A frame made before the meter was anchored again carries the old anchor's pose.
         if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
@@ -513,15 +519,21 @@ final class ScanEngine {
         if features != state.features { state.features = features }
         publishWall()
         publishCoverage()
-        logAnchorCorrection(correction, step: step)
+        logAnchorCorrection(correction, step: step, frame: frame)
     }
 
-    /// One line per correction applied, with the total since the meter was anchored, for telling
-    /// a map ARKit corrected (the marks and the meter move together) from drift it never
-    /// corrected (no line, and the marks sit off their objects) on a walk away and back (#73).
+    // The drift log (#73). Its lines are `.notice`, which the unified log keeps on the device, so
+    // `log collect` after a walk and Console without "Include Info Messages" both show them. On a
+    // walk away and back, the lines that are there settle it, never a line being absent:
+    // corrections with the marks on their objects mean ARKit corrected its map and the marks
+    // followed; frames that had the anchor, no corrections, and marks off their objects mean
+    // drift ARKit never corrected, which no anchor can fix; frames that lost the anchor mean
+    // nothing could follow it. `t` is the capture clock the packet's manifest times use.
+
+    /// One line per correction applied, with the total since the meter was anchored.
     /// `MeterAnchorTracking` already limits the rate: a correction is applied only once the anchor
     /// has moved 2 cm or turned 0.4 degrees since the last one.
-    private func logAnchorCorrection(_ correction: YawCorrection, step: Float) {
+    private func logAnchorCorrection(_ correction: YawCorrection, step: Float, frame: SourceFrame) {
         guard let tracking = meterTracking else { return }
         let total = tracking.sinceAnchored
         let turned = correction.yaw * 180 / .pi
@@ -529,8 +541,54 @@ final class ScanEngine {
         let totalTurned = total.yaw * 180 / .pi
         let count = tracking.corrections
         let marks = state.features.count
-        RuntimeLog.capture.info(
-            "meter anchor corrected: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(self.state.phase.rawValue, privacy: .public))"
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor corrected at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// One line when the frames stop carrying the meter's anchor, and one when they carry it
+    /// again: while it is missing, no correction can reach the wall or the marks. The first frame
+    /// after the meter is anchored writes one too. Live only: a replay has no anchor.
+    private func noteMeterAnchor(_ frame: SourceFrame) {
+        guard let id = meterAnchorID, let tracking = meterTracking else { return }
+        let sighting: MeterAnchorPresence.Sighting =
+            frame.meterAnchorID != id ? .otherAnchor : frame.meterAnchor == nil ? .missing : .present
+        guard let change = meterAnchorPresence.observe(sighting) else { return }
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let count = tracking.corrections
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor in frames: \(change.rawValue, privacy: .public) at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter (\(count) corrections so far, phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// The tracking's totals on every phase change once the meter is anchored, zero corrections
+    /// included, and whether the latest frame carried the anchor. Sending the scan and opening the
+    /// AR result always write one, with no anchor too (a replay), so a walk's log ends with it.
+    private func logMeterAnchorSummary(from previous: ScanPhase, to phase: ScanPhase) {
+        let from = previous.rawValue, to = phase.rawValue
+        let t = captureClock.map { String(format: "%.2f", $0) } ?? "none"
+        guard let tracking = meterTracking else {
+            guard phase == .uploading || phase == .resultAR else { return }
+            RuntimeLog.capture.notice(
+                "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): not tracked (no meter anchor)"
+            )
+            return
+        }
+        let total = tracking.sinceAnchored
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let frames = meterAnchorPresence
+        let last = frames.last?.rawValue ?? "no frame yet"
+        let wall = coverage == nil ? "no wall" : "wall set"
+        let marks = state.features.count
+        RuntimeLog.capture.notice(
+            "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): \(count) corrections since anchored, moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; latest frame: \(last, privacy: .public); frames with the anchor \(frames.present), without it \(frames.missing), naming another \(frames.otherAnchor); \(wall, privacy: .public), \(marks) marks"
         )
     }
 
@@ -1296,6 +1354,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
         state.wall = nil
         state.coverage = .empty
@@ -1410,7 +1469,8 @@ final class ScanEngine {
             var policy = ResultOverlayPolicy()
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
-                let usesRealityKit = policy.update(drawn: live.resultIsDrawn(), time: self.screenTime)
+                let look = live.resultIsDrawn()
+                let usesRealityKit = policy.update(drawn: look.drawn, held: look.held, time: self.screenTime)
                 if self.state.resultInCamera != usesRealityKit {
                     RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
                     self.state.resultInCamera = usesRealityKit
@@ -1836,6 +1896,7 @@ final class ScanEngine {
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
@@ -1905,6 +1966,7 @@ final class ScanEngine {
     func setMeterAnchor(_ id: UUID?, pose: simd_float4x4?) {
         meterAnchorID = id
         meterTracking = pose.map(MeterAnchorTracking.init)
+        meterAnchorPresence = MeterAnchorPresence()
     }
 
     var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
