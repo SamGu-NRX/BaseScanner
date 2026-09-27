@@ -66,9 +66,9 @@ extension ScanEngine {
         let input = SceneInput(
             wall: sceneWall,
             baselineS: Self.exportSpan(map),
-            meterPlusMinus: groundError,
+            meterExtraError: groundError,
             meterPlane: meterPlaneSource,
-            objectPlusMinus: groundError,
+            objectExtraError: groundError,
             features: features,
             coverage: SceneCoverage(
                 map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
