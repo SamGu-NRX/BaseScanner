@@ -51,3 +51,9 @@ def test_cells_beyond_the_header_are_scanned():
 def test_a_file_with_an_empty_first_line_is_scanned_in_full():
     text = "\nm01,1.234.567\n"
     assert find_leaks({"x.csv": text}, known()) == [("x.csv", 7)]
+
+
+def test_identifier_is_caught_across_every_separator_normalize_drops():
+    for sep in (" ", ".", "-", "/", "_", ":", ";", "|", ",", "\\", "\t", "\n", "#", "*"):
+        text = f"see 123{sep}4567 here"
+        assert find_leaks({"notes.md": text}, known()) == [("notes.md", 7)], repr(sep)

@@ -51,7 +51,9 @@ MEASUREMENT = re.compile(rf"{NUMBER}|\[{NUMBER}(?:, {NUMBER})*\]")
 def pieces(name: str, text: str) -> list[str]:
     text = re.sub(r"\b[0-9a-f]{64}\b", "", text)  # the digests themselves
     if not name.endswith(".csv"):
-        return re.findall(r"[A-Za-z0-9][A-Za-z0-9 .\-]*", text)
+        # One piece: normalize() drops every character but A-Z and 0-9, so an identifier
+        # written with any separator (space, dot, slash, colon, line break...) is found.
+        return [text]
     reader = csv.reader(io.StringIO(text))
     header = next(reader, [])
     found = list(header)
@@ -66,11 +68,14 @@ def pieces(name: str, text: str) -> list[str]:
 
 
 def windows(token: str) -> Iterator[str]:
-    for length in range(SHORTEST, min(LONGEST, len(token)) + 1):
-        for start in range(len(token) - length + 1):
-            part = token[start : start + length]
-            if sum(ch.isdigit() for ch in part) >= SHORTEST:
-                yield part
+    """Every substring of SHORTEST to LONGEST characters holding at least SHORTEST digits."""
+    digits_before = [0]
+    for ch in token:
+        digits_before.append(digits_before[-1] + ch.isdigit())
+    for start in range(len(token)):
+        for end in range(start + SHORTEST, min(start + LONGEST, len(token)) + 1):
+            if digits_before[end] - digits_before[start] >= SHORTEST:
+                yield token[start:end]
 
 
 def find_leaks(files: dict[str, str], known: set[str]) -> list[tuple[str, int]]:

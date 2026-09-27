@@ -81,7 +81,8 @@ def candidates(result: dict) -> list[dict]:
 
     A text token that equals a barcode payload part is confirmed. One that sits inside a
     longer payload part (at least 6 characters) is a partial read of it, as when Vision drops
-    a digit or a prefix printed apart; the candidate then takes the payload's full string.
+    a digit or a prefix printed apart; the candidate then takes the payload's full string. If
+    two payloads of the same length both contain it, the read is ambiguous and not promoted.
     """
     payloads = payload_tokens(result.get("barcodes") or [])
     found = []
@@ -93,8 +94,11 @@ def candidates(result: dict) -> list[dict]:
             confirmed = token_core in payloads
             if not confirmed and len(token_core) >= 6:
                 longer = [p for p in payloads if token_core in p]
-                if longer:
-                    token_core, confirmed = min(longer, key=len), True
+                shortest = min((len(p) for p in longer), default=0)
+                closest = [p for p in longer if len(p) == shortest]
+                # Promote only when one payload is the closest match; a tie is ambiguous.
+                if len(closest) == 1:
+                    token_core, confirmed = closest[0], True
             found.append(
                 {
                     "core": token_core,

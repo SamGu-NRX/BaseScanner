@@ -118,7 +118,9 @@ def build() -> list[dict]:
             "notes": scrub(r1["notes"]),
         }
         verdict = human.get(image_id, {}).get("verdict", "")
-        if verdict == "fix":
+        # A person's number replaces the readers': typed with "fix", or confirmed with "keep"
+        # after a fix. A "keep" with no number confirms the readers' own number.
+        if verdict in ("fix", "keep") and human[image_id].get("number"):
             number = human[image_id]["number"]
         if number not in ("EXCLUDE", "NONE"):
             r2_sure = r2["number_sure"] == "sure" or image_id in DOUBT_NOT_ABOUT_CHARACTERS
@@ -169,7 +171,9 @@ def known_numbers() -> set[str]:
     second = {k: v for path in READER2 for k, v in read_csv(path).items()}
     human = read_csv(HUMAN) if HUMAN.exists() else {}
     corrections = [
-        {"meter_number": row["number"]} for row in human.values() if row.get("verdict") == "fix"
+        {"meter_number": row["number"]}
+        for row in human.values()
+        if row.get("verdict") in ("fix", "keep") and row.get("number")
     ]
     found = set()
     for row in [*first.values(), *second.values(), *corrections]:

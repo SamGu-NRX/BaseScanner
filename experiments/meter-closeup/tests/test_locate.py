@@ -101,3 +101,28 @@ def test_meter_splits_keep_every_photo_of_a_meter_on_one_side():
         "m12": "unknown",
         "m13": "unknown",
     }
+
+
+def test_a_tie_between_two_payloads_is_not_promoted():
+    # Both payload parts contain the read and have the same length: ambiguous.
+    result = {
+        "lines": [line("2345678")],
+        "barcodes": [
+            {"payload": "A12345678", "box": [0.8, 0.3, 0.1, 0.05]},
+            {"payload": "B92345678", "box": [0.8, 0.4, 0.1, 0.05]},
+        ],
+    }
+    [only] = candidates(result)
+    assert only["core"] == "2345678" and not only["barcode_confirmed"]
+
+
+def test_a_single_closest_payload_is_still_promoted():
+    result = {
+        "lines": [line("2345678")],
+        "barcodes": [
+            {"payload": "12345678", "box": [0.8, 0.3, 0.1, 0.05]},
+            {"payload": "Q192345678", "box": [0.8, 0.4, 0.1, 0.05]},
+        ],
+    }
+    [only] = candidates(result)
+    assert only["core"] == "12345678" and only["barcode_confirmed"]

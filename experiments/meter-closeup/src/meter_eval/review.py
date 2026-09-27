@@ -271,7 +271,12 @@ function store(i, answer) {
   progress();
 }
 
-function keep(i) { store(i, { verdict: "keep", number: "" }); select(i + 1); }
+// Keeping after a correction confirms the corrected number, not the AI readers' one.
+function keepAnswer(previous) {
+  return { verdict: "keep", number: (previous && previous.number) || "" };
+}
+
+function keep(i) { store(i, keepAnswer(saved[items[i].id])); select(i + 1); }
 
 function fix(i) {
   select(i, false);
