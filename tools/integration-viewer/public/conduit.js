@@ -43,15 +43,17 @@ export class Conduit {
   }
 
   /**
-   * Sends marks for one acknowledged batch. Resolves when the last mark lands (at once when
-   * motion is off, the batch predates the connection, or too many marks are already moving).
+   * Sends marks for one acknowledged batch and returns the milliseconds until the last one lands:
+   * 0 when nothing moves (motion off, the batch predates the connection, or too many marks are
+   * already moving). Marks are decoration. Callers time their updates with this number, not with
+   * the animations, because an animation never finishes in a browser whose animation clock is
+   * stopped, such as a hidden embedded preview.
    */
   send(arrival, { motion }) {
     const groups = Object.entries(arrival.groups).flatMap(([group, n]) => Array(n).fill(group));
     const marks = Math.min(groups.length, MAX_MARKS_PER_ARRIVAL, Math.max(0, MAX_IN_FLIGHT - this.inFlight));
-    if (!motion || arrival.backlog || marks === 0 || this.samples.length === 0) return Promise.resolve();
+    if (!motion || arrival.backlog || marks === 0 || this.samples.length === 0) return 0;
     const step = groups.length / marks;
-    const flights = [];
     for (let i = 0; i < marks; i += 1) {
       const chip = document.createElement("span");
       chip.className = "chip";
@@ -63,21 +65,21 @@ export class Conduit {
         opacity: k === 0 ? 0 : k === this.samples.length - 1 ? 0 : 1,
         offset: k / (this.samples.length - 1),
       }));
-      const anim = chip.animate(frames, { duration: TRAVEL_MS, delay: i * STAGGER_MS, easing: "cubic-bezier(0.77, 0, 0.175, 1)", fill: "backwards" });
-      flights.push(
-        anim.finished.catch(() => {}).finally(() => {
-          chip.remove();
-          this.inFlight -= 1;
-        }),
-      );
+      chip.animate(frames, { duration: TRAVEL_MS, delay: i * STAGGER_MS, easing: "cubic-bezier(0.77, 0, 0.175, 1)", fill: "backwards" });
+      // A timer, not the animation's `finished`, frees the slot, for the same reason as above.
+      setTimeout(() => {
+        chip.remove();
+        this.inFlight -= 1;
+      }, TRAVEL_MS + i * STAGGER_MS + 50);
     }
-    return Promise.all(flights).then(() => {});
+    return TRAVEL_MS + (marks - 1) * STAGGER_MS;
   }
 
-  /** Removes marks in flight, for a capture switch. */
+  /** Hides marks in flight, for a capture switch or a pause; their timers still free the slots. */
   clear() {
     for (const chip of this.layer.querySelectorAll(".chip")) {
       for (const a of chip.getAnimations()) a.cancel();
+      chip.hidden = true;
     }
   }
 }

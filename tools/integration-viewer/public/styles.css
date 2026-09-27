@@ -292,6 +292,10 @@ body[data-motion="off"] .st[data-status="running"]::after { animation-play-state
   .col-result .outcome { margin-top: 14px; }
 }
 
+/* See probeClock in app.js: with the animation clock stopped, state changes apply at once. */
+body[data-clock="stalled"] *, body[data-clock="stalled"] *::after { transition: none !important; animation: none !important; }
+.clock-probe { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+
 /* With motion paused, entries fade in place instead of rising. */
 @starting-style {
   body[data-motion="off"] .hints li, body[data-motion="off"] .outcome { transform: none; }

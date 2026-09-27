@@ -50,6 +50,8 @@ let follower = null;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let motionPaused = reducedMotion.matches;
 let shownArrival = 0;
+const countTimers = new Set();
+let clockStalled = false;
 let renderQueued = false;
 
 const cloud = new CloudView($("cloud"));
@@ -71,6 +73,8 @@ function dispatch(action) {
 // ---- modes ----
 
 function stopAll() {
+  for (const timer of countTimers) clearTimeout(timer);
+  countTimers.clear();
   player?.stop();
   player = null;
   follower?.stop();
@@ -127,6 +131,7 @@ function render() {
   const live = state.mode === "live" || document.body.dataset.mode === "live";
   for (const b of document.querySelectorAll("[data-set-mode]")) b.setAttribute("aria-pressed", String(b.dataset.setMode === (live ? "live" : "replay")));
   document.body.dataset.motion = motionOn() ? "on" : "off";
+  document.body.dataset.clock = clockStalled ? "stalled" : "running";
   $("motion").setAttribute("aria-pressed", String(motionPaused));
   $("motion").textContent = motionPaused ? "Resume motion" : "Pause motion";
   $("replay-toggle").textContent = player?.playing ? "Pause" : player?.ended ? "Play again" : "Play";
@@ -217,39 +222,44 @@ function renderPhone() {
 function renderArrivals() {
   const { counts } = state;
   const fresh = state.arrivals.filter((a) => a.id > shownArrival);
-  const ack = $("ack");
-  // The counter and the per-kind counts change together, when marks land, so on screen they agree.
-  const write = () => {
-    const groups = { photo: 0, depth: 0, other: 0 };
-    for (const f of state.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
-    $("k-photo").textContent = groups.photo;
-    $("k-depth").textContent = groups.depth;
-    $("k-other").textContent = groups.other;
-    const value = String(state.counts.acknowledged);
-    if (ack.textContent !== value) {
-      ack.textContent = value;
-      if (motionOn()) {
-        ack.removeAttribute("data-bump");
-        void ack.offsetWidth;
-        ack.setAttribute("data-bump", "");
-      }
-    }
-  };
   if (fresh.length > 0) {
     shownArrival = fresh.at(-1).id;
-    const session = state.session;
-    Promise.all(fresh.map((a) => conduit.send(a, { motion: motionOn() }))).then(() => {
-      if (state.session === session) write();
-    });
-  } else if (state.arrivals.length === 0) {
-    write();
+    const landsIn = Math.max(...fresh.map((a) => conduit.send(a, { motion: motionOn() })));
+    if (landsIn > 0) {
+      // The counts change as the marks land. A timer does the update, so the counts stay current
+      // even where the marks' animations cannot run.
+      const timer = setTimeout(() => {
+        countTimers.delete(timer);
+        writeCounts();
+      }, landsIn);
+      countTimers.add(timer);
+    }
   }
+  if (countTimers.size === 0) writeCounts();
   const backlog = state.arrivals.filter((a) => a.backlog).reduce((n, a) => n + a.count, 0);
   const parts = [];
   if (counts.registered != null) parts.push(`of ${counts.registered} registered`);
   if (counts.listed != null) parts.push(`packet lists ${counts.listed}`);
   if (backlog > 0) parts.push(`${backlog} before you connected`);
   $("ack-sub").textContent = parts.length ? parts.join(" · ") : counts.acknowledged ? "" : "No files acknowledged yet";
+}
+
+/** Shows the acknowledged-file totals from the current state. */
+function writeCounts() {
+  const groups = { photo: 0, depth: 0, other: 0 };
+  for (const f of state.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
+  $("k-photo").textContent = groups.photo;
+  $("k-depth").textContent = groups.depth;
+  $("k-other").textContent = groups.other;
+  const ack = $("ack");
+  const value = String(state.counts.acknowledged);
+  if (ack.textContent === value) return;
+  ack.textContent = value;
+  if (motionOn()) {
+    ack.removeAttribute("data-bump");
+    void ack.offsetWidth;
+    ack.setAttribute("data-bump", "");
+  }
 }
 
 function renderServer() {
@@ -408,8 +418,33 @@ function el(tag, attrs, ...children) {
 }
 
 function motionOn() {
-  return !motionPaused && !document.hidden;
+  return !motionPaused && !document.hidden && !clockStalled;
 }
+
+/**
+ * Some embedded browser panels keep running scripts and timers but stop the animation clock.
+ * There, transitions never leave their start values and the page would show stale styling. A
+ * short probe animation detects that; while the clock is stopped the page drops motion and CSS
+ * transitions so every state change shows at once.
+ */
+const probe = document.createElement("span");
+probe.setAttribute("aria-hidden", "true");
+probe.className = "clock-probe";
+document.body.append(probe);
+function probeClock() {
+  if (document.hidden) return;
+  const anim = probe.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 300 });
+  setTimeout(() => {
+    const stalled = anim.playState !== "finished" && (Number(anim.currentTime) || 0) < 150;
+    anim.cancel();
+    if (stalled === clockStalled) return;
+    clockStalled = stalled;
+    if (stalled) conduit.clear();
+    render();
+  }, 900);
+}
+setInterval(probeClock, 3000);
+probeClock();
 
 // ---- controls ----
 
