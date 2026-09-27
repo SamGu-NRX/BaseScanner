@@ -154,10 +154,9 @@ change. Tests find the controls as `action.onboardingNext`, `action.onboardingSk
   (`ScanEngine.swift:119`), with no screen change. The homeowner who declines the prompt sits on
   "Find your electric meter" with no camera image; the "Open Settings" and "Start over" buttons on
   `UI/Screens/UnsupportedScreen.swift:35-48` are unreachable outside the `-uiDemo` preview.
-- **Suspected bug: an unsupported phone has no way out.** `UnsupportedScreen.swift:44` hides
-  "Start over" for that failure, so the screen has no button. That fits (nothing can fix it), but
-  it contradicts [the flow](../foundations/flow.md#summary), which says "Start over" is offered on
-  the unsupported screen. One of the two needs updating.
+- An unsupported phone gets no button: `UnsupportedScreen.swift:44` hides "Start over" for that
+  failure, since nothing on the phone can fix it. [The flow](../foundations/flow.md#summary) says
+  the same.
 - **Suspected bug: "Allow camera" during replay loading starts the live camera.** On a replay,
   `startSourceIfNeeded` (`ScanEngine.swift:184`) starts the camera whenever the replay has not
   loaded yet and no failure is set. A homeowner who taps "Skip" and "Allow camera" before a slow

@@ -10,13 +10,13 @@ source and not run. Every blocker and major entry was re-read in the source by a
 | B-03 | Blocker | Camera denied, camera failure, unreadable replay: no message, no way on | seen (replay) | fix |
 | B-04 | Blocker | Meter close-up: "Can't get a clear shot" may never appear | code | fix |
 | B-09 | Blocker | Feature list: "Add something" does nothing | code | fix |
+| B-11 | Blocker | Meter tap can land on another wall's extended plane (ground height fixed at `beede15`) | code | fix |
 | B-06 | Major | Walk: an end closer than 20 ft can't be marked (answer half fixed at `525ea40`) | code | fix |
 | B-08 | Major | "Can't get there" is never sent to the server | code | fix (with S2) |
 | B-10 | Major | Feature list: the scan resets after 20 s of relocalizing (result and upload fixed at `beede15`) | code | fix |
-| B-11 | Major | Meter tap can land on another wall's extended plane (ground height fixed at `beede15`) | code | fix |
 | B-12 | Major | A server request beyond a still-marked wall end can't finish (past-end case fixed at `beede15`) | code | fix |
 | B-02 | Major | Upload and camera failures show raw error text | seen at `21a63e7` | fix |
-| B-13 | Minor | 3D and AR tint zones stop one battery width short | code | fix |
+| B-13 | Minor | With no spot, the 3D model's tint zones stop one battery width short (fixed with a spot at `beede15`) | code | fix |
 | B-14 | Minor | Result rule lines hide whether a limit is a minimum or maximum | seen | fix |
 | B-16 | Minor | Wording and VoiceOver: "Tap the ac unit"; "ft" and "in" read as letters | seen in part | fix |
 | B-01 | Resolved | Every upload failed with 404 | seen fixed at `0876e03` | none |
@@ -47,6 +47,13 @@ prompt and Mark button exist only on the walk (`WallWalkScreen.swift:28-45`). Th
 chip and nothing visible happens; "Looks complete" then uploads without it. Adding a missed
 feature is what this screen is for.
 
+**B-11. The meter tap can guess a depth.** A blocker under the review's I8 ([checklist](../ux/checklist.md)): anchoring never guesses a depth. At `beede15` the ground height comes from planes as
+they arrive; the infinite-plane fallback remains (`LiveCapture.swift:76`). Before: The raycast falls back to `existingPlaneInfinite`
+(`HouseScan/Runtime/LiveCapture.swift:76`): a tap at a meter whose wall is not detected yet can pin
+it on another wall's plane extended past its edge. The code's own comment says a tap never guesses a
+depth. The ground height also stays a guess (1.4 m below the phone) if no ground plane was seen at
+the tap (`ScanEngine+Actions.swift:48-57`). `t3/ios-mvf` `ee1087e` no longer falls back to the infinite plane (read from source, not run).
+
 ## Major
 
 **B-06. Wall ends.** Half fixed at `525ea40`: after "Wall ends here" the walk asks "What's at the
@@ -69,13 +76,6 @@ and the result, where no coaching is shown. After a call, the homeowner can come
 electric meter" with every photo, mark and the result gone. The reset also keeps a half-finished
 mark and the first close-up (`ScanEngine.swift:386-410`, `KeyframeStore.swift:79`).
 
-**B-11. The meter tap can guess a depth.** At `beede15` the ground height comes from planes as
-they arrive; the infinite-plane fallback remains (`LiveCapture.swift:76`). Before: The raycast falls back to `existingPlaneInfinite`
-(`HouseScan/Runtime/LiveCapture.swift:76`): a tap at a meter whose wall is not detected yet can pin
-it on another wall's plane extended past its edge. The code's own comment says a tap never guesses a
-depth. The ground height also stays a guess (1.4 m below the phone) if no ground plane was seen at
-the tap (`ScanEngine+Actions.swift:48-57`).
-
 **B-12. Requests past a wall end.** At `beede15` marking the end again settles a past-end
 request, but only the walk offers "Wall ends here"; the gap request screen shows neither it nor
 the end question (`WallWalkScreen.swift:137-173`), so a homeowner can't use the fix. The
@@ -93,8 +93,11 @@ camera-failure text does the same (`ScanCopy.swift:240`) once B-03 is fixed.
 
 ## Minor
 
-- **B-13.** Tint zones in the 3D model and the AR view use the sweep's range of battery *start*
-  positions as if it were where the battery stands, so each ends one battery width short
+- **B-13.** At `beede15` each tint zone reaches one battery width past its last start, using the
+  chosen spot's width (`ScanEngine+Export.swift:132-141`), so only a result with no spot is still
+  affected: its 3D model tints the sweep's range of battery *start* positions as if it were where
+  the battery stands, and each zone ends one battery width short. The AR view needs a spot, so
+  only the autopilot opens it without one. Before: every result
   (`ScanEngine+Export.swift:124`).
 - **B-14.** Seen on the sample result: "Measured 3 ft. The rule is 20 ft, and the measurement can be
   off by about 4 in." A maximum reads like a minimum; the server's `comparison` and

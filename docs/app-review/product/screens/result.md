@@ -182,8 +182,6 @@ appears, not when returning from the AR view. **Verification hooks.** `STATE=res
   in front of the spot.
 - With the sample result on a real phone, the AR view places a battery 4 ft 3 in right of the
   real meter, whatever the wall is like, under "Example spot, not your result".
-- A "Still needed" item about the wall or the ground that comes without a stretch still shows
-  "Capture it now", but the button does nothing.
 
 ## Open questions and verification
 

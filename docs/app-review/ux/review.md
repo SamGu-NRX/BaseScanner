@@ -27,9 +27,11 @@ ARKit, so tracking loss, relocalization and the live meter tap are judged from s
 ## Verdict: Block
 
 Blockers that fail: R9 (camera access denied leads nowhere, [B-03](../product/bug-triage.md#blockers)),
-T5 (the close-up's way out can fail to appear, B-04) and R1 (a stretch the homeowner can't reach
-is not recorded, B-08). The feature list's "Add something" doing nothing (B-09) blocks adding a
-missed feature.
+T5 (the close-up's way out can fail to appear, B-04), R1 (a stretch the homeowner can't reach
+is not recorded, B-08) and, from source, I8 (at `a39d0a5` the meter tap can land on another
+wall's plane extended past its edge, B-11). The feature list's "Add something" doing nothing
+(B-09) blocks adding a missed feature. I9, the panel close-up's safety wording, is Not verified
+because panel close-ups are not built; with blockers failing, the verdict stays Block.
 
 ## By state
 
@@ -37,14 +39,14 @@ missed feature.
 | --- | --- | --- |
 | `onboarding` | Pass at default size: one message, one primary button, "About 2 min". At AX5 the pill reads "About 2 mi" and the body runs under the page dots. | UX-01 |
 | `unsupported` | Pass: "This phone can't measure walls" with what to do instead. Camera denied never reaches this screen. | B-03 |
-| `findMeter` | Pass at default size: one instruction, the reticle, "This is my meter". At AX5 the button is pushed partly off screen. Refusal wording ("Step a little closer to the wall") also covers tracking refusals. | UX-01, B-11 |
-| `meterCloseUp` | Pass: one instruction, no shutter, a named fix ("Center the meter in the circle"). The problem pill fails contrast; the way out can fail to appear. | UX-03, B-04 |
+| `findMeter` | Fails I8 from source: with the meter's wall not yet detected, the tap can land on another wall's plane extended past its edge. Otherwise one instruction, the reticle, "This is my meter". At AX5 the button is pushed partly off screen. Refusal wording ("Step a little closer to the wall") also covers tracking refusals. | UX-01, B-11 |
+| `meterCloseUp` | Pass for the meter close-up: one instruction, no shutter, a named fix ("Center the meter in the circle"). The problem pill fails contrast; the way out can fail to appear. I9 Not verified: panel close-ups are not built. | UX-03, B-04 |
 | `wallWalk` | One instruction with its reply inside the card, as the checklist asks. The strip's states differ by colour alone, the counter fails contrast, and at AX5 the card covers most of the camera and pushes "Mark something" and the strip off screen. At `525ea40` a marked end is followed by "What's at the left end?", so its kind is truthful, but an end closer than 20 ft still can't be marked. | UX-01, UX-02, UX-03, UX-05, UX-08, B-06 |
 | `markFeatures` | Pass at default size: clear list, remove buttons labelled, window question with two full-width answers. At AX5 the list is hidden behind "Looks complete". "Add something" does nothing. | UX-01, B-09 |
 | `gapRequest` | Pass: one line with the reason and target, a progress bar, "I can't get there". The requested stretch reuses the amber that means "seen". | UX-05, UX-06, B-08 |
 | `uploading` | Pass: progress in its own steps, apart from coverage (R7); with no server it says "Making a sample result" (`525ea40`). Four text elements do not scale. A failure shows raw error text. | UX-04, B-02 |
 | `result` | Pass on honesty: "An installer will take a look", the rules-not-final note, the unseen side disclosed, the borderline window check with measurement, rule and error, and "An installer will check this". A maximum reads like a minimum; the first load leaves the upload screen up for over 1.2 s. | B-14, UX-07 |
-| `resultAR` | Pass: the spot and cable over the camera with one headline and "Done". The headline says "The spot an installer will check" unless the result is an approved pass, and "Example spot, not your result" for a sample (seen at `525ea40`). | none |
+| `resultAR` | Pass: the spot and cable over the camera with one headline and "Done". The headline says "The spot an installer will check" unless the result is an approved pass, and "Example spot, not your result" for a sample (seen at `525ea40`). A7 Not verified: not run with Reduce Motion on, and the [product description](../product/screens/result.md) reads from source that the AR battery then rises over 0.2 s, where A7 asks for a crossfade or cut. | A7 (from source) |
 
 Checks that passed across the flow: one primary instruction per camera screen (I1); plain words,
 no jargon in any on-screen string (I3); no shutter where capture is automatic (I5); every control

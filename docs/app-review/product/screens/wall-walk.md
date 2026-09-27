@@ -348,11 +348,6 @@ reset: relocalization timed out". Accessibility identifiers: `action.markSomethi
 - The reset returns to "Find your electric meter" without telling the homeowner that the walk was
   lost. The old meter close-up stays in the scan (`Runtime/KeyframeStore.swift:84-87` clears only
   walk photos); if the second close-up is skipped, the first one is uploaded.
-- The foundations say each kept photo gives a light haptic tap. In this build walk photos give none
-  (`UI/ScanRootView.swift:91`, `:101-104`); [the flow](../foundations/flow.md) and
-  [coverage and guidance](../foundations/coverage-and-guidance.md) need updating.
-- The walk's reply reads "Can't get there"; the gap request's reads "I can't get there"
-  (`UI/Screens/GapRequestScreen.swift:26`). The glossary uses the second for both.
 - Everything on this screen that needs the live camera is read from code: the fog's look on a real
   wall, the ring and chevron placement, the overlays hiding and the saved close-up while the phone
   finds its place, the end question after a real "Wall ends here", the 20 s reset, and

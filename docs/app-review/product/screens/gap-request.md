@@ -162,9 +162,6 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
   stretches and the end kinds (`Runtime/ScanEngine+Export.swift:57-63`,
   `HouseScanKit/.../SceneExport.swift:283-303`). The server cannot tell a skipped stretch from one
   never looked at, and a server request the homeowner skipped can come back on the next result.
-  This also contradicts the Advancing section of
-  [coverage and guidance](../foundations/coverage-and-guidance.md#advancing), which says skipped
-  cells are sent.
 - **Suspected bug: a past-end request turns a real end into an unexplored one.** "Capture it now"
   forgets the end before the request starts (`Runtime/ScanEngine+Actions.swift:239-244`,
   `Runtime/ScanEngine.swift:583-588`). Since `beede15` the engine lets that end be marked again
@@ -189,7 +186,9 @@ skipping it". With `-autopilotGate`, the upload after a completed view waits for
 - **Question: "Point at the meter like this." without the picture.** The walk shows the saved
   close-up under this coaching (`UI/Screens/WallWalkScreen.swift:23-27`); this screen shows the
   words alone, even when a close-up was taken.
-- Nothing here has run in the Simulator. The completion moment, the amber highlight and the
-  dots need the replay with `-autopilot`, which reaches this screen only when held-back frames exist.
+- In the Simulator at `a39d0a5` the request appeared and was answered "I can't get there"
+  ([GAP-01](../verification.md) passes). Completing it with new frames did not run at that
+  commit: the completion moment, the amber highlight and the dots need the replay with
+  `-autopilot` to reach this screen while held-back frames remain.
 
 Verified against house-scanning commit `a39d0a5` (t3/ios-mvf).
