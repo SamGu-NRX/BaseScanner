@@ -16,11 +16,13 @@ struct OnboardingScreen: View {
             art: .walk
         ),
         // What leaves the phone is said before the camera is asked for: uploads carry the wall's
-        // measurements; the photos stay in the app until the scan is started over.
+        // measurements, and the photos stay in the app. It keeps the two latest finished scans
+        // (`ScanFolderCleanup.defaultKeepCompleted`) and deletes older and unfinished ones, so the
+        // note says that, not that starting over deletes them.
         OnboardingPage(
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
-            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
+            note: "Only the wall's measurements are sent. Your photos stay on this phone, which keeps your two latest finished scans and deletes older ones.",
             art: .fog
         ),
         OnboardingPage(
@@ -37,7 +39,8 @@ struct OnboardingScreen: View {
                 Spacer()
                 if page < pages.count - 1 {
                     Button("Skip") {
-                        withAnimation(Motion.screen) { page = pages.count - 1 }
+                        // Reduce Motion: the page changes in place, without sliding past the others.
+                        withAnimation(reduceMotion ? nil : Motion.screen) { page = pages.count - 1 }
                     }
                     .font(Typeface.hint.weight(.semibold))
                     .foregroundStyle(Palette.signalText)
@@ -75,7 +78,7 @@ struct OnboardingScreen: View {
                     .transition(.opacity)
                 } else {
                     Button("Next") {
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen) { page += 1 }
+                        withAnimation(reduceMotion ? nil : Motion.screen) { page += 1 }
                     }
                     .buttonStyle(.primary)
                     .accessibilityIdentifier("action.onboardingNext")
@@ -159,6 +162,8 @@ private struct PageDots: View {
     var count: Int
     var current: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<count, id: \.self) { index in
@@ -167,7 +172,8 @@ private struct PageDots: View {
                     .frame(width: index == current ? 22 : 8, height: 8)
             }
         }
-        .animation(Motion.settle, value: current)
+        // The current dot widens; with Reduce Motion it changes without the stretch.
+        .animation(reduceMotion ? nil : Motion.settle, value: current)
         // The page view already announces its position; these dots are for sighted users.
         .accessibilityHidden(true)
     }

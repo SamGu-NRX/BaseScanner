@@ -46,12 +46,14 @@ public struct MeterChoices: Sendable, Equatable {
 
 public enum MeterPhotoChecks {
     /// Retake as out of focus at or below this whole-photo sharpness (grey levels squared).
-    /// From the eval's results/sweep.md (blur, whole-photo sharpness at up to 1024 px, 95%
-    /// column): AUC 0.96, and it sent back none of the 75 real photos that read, whose lowest
-    /// score was 58.7, so no real photo was near it. Measured on Commons JPEGs, not this app's
-    /// camera path: the README asks for a field test on the app's own captures before trusting it,
+    /// 6.68, from experiments/meter-closeup on t3/meter-closeup at 5b78ded (README, "Two
+    /// phone-side retake checks work"; PORTING.md, "Out of focus"). It was 6.63 until that commit
+    /// regenerated the sweep from decoded JPEGs; the #16 caretaker reproduced the sweep and no
+    /// read outcome changed. Earlier sweep: AUC 0.96, and none of the 75 real photos that read
+    /// scored near it (their lowest was 58.7). Measured on Commons JPEGs, not this app's camera
+    /// path: the README asks for a field test on the app's own captures before trusting it,
     /// because sharpening and noise reduction move sharpness values.
-    public static let minSharpness = 6.63
+    public static let minSharpness = 6.68
     /// "Number too small" at or below this height of the top candidate's line, in photo pixels.
     /// From results/sweep.md (scale, top-candidate line height, 95% column): AUC 0.86, sending
     /// back 2 of 75 real photos that read. Also untested on this app's camera path (README, "Field

@@ -21,6 +21,22 @@ import Testing
 
     @Test func serverErrorsAreRetryableAndRefusalsAreNot() {
         #expect(UploadFailureKind.classify(httpStatus: 500) == .serverError)
+        // A server that timed out or is rate-limiting may take the same scene later.
+        #expect(UploadFailureKind.classify(httpStatus: 408) == .busy(retryAfter: nil))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "30") == .busy(retryAfter: 30))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: " 5 ") == .busy(retryAfter: 5))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "Wed, 21 Oct 2026 07:28:00 GMT") == .busy(retryAfter: nil))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "-3") == .busy(retryAfter: nil))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "+30") == .busy(retryAfter: nil))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "") == .busy(retryAfter: nil))
+        // Huge values stop at a day instead of overflowing: Int.max, and more digits than Int holds.
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "86400") == .busy(retryAfter: 86_400))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "86401") == .busy(retryAfter: 86_400))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "\(Int.max)") == .busy(retryAfter: 86_400))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "99999999999999999999999") == .busy(retryAfter: 86_400))
+        #expect(UploadFailureKind.classify(httpStatus: 429, retryAfter: "0000030") == .busy(retryAfter: 30))
+        #expect(UploadFailureKind.classify(httpStatus: 408).retryable && UploadFailureKind.classify(httpStatus: 429).retryable)
+        #expect(!UploadFailureKind.classify(httpStatus: 400).retryable && !UploadFailureKind.classify(httpStatus: 422).retryable)
         #expect(UploadFailureKind.classify(httpStatus: 503).retryable)
         #expect(UploadFailureKind.classify(httpStatus: 599) == .serverError)
         #expect(UploadFailureKind.classify(httpStatus: 400) == .refused)

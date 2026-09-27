@@ -1,45 +1,59 @@
-# House scanning: agent guide
+# Agent guide
 
-Hackathon project (4-person team, started 2026-09-25). Homeowners walk the outside of their house with an iPhone.
-The AR session measures the wall, a server works out where a **Base Power battery** can be installed, and the spot
-is shown back in AR.
+A homeowner scans the wall around their electric meter with an iPhone. The server decides whether a Base Power battery fits and where, and the app shows the spot in AR. [README.md](README.md) maps the repository, and [docs/00-overview.md](docs/00-overview.md) holds the plan, the decisions and the evidence.
 
-## Read before doing anything non-trivial
+## Who owns what
 
-1. `docs/00-overview.md`: goal, the core insight, decisions made, **corrections that supersede earlier drafts**, open questions.
-2. `docs/01-feature-map.md`: lanes A–D, features with priorities, the `scene.json` data format, the **rules table (numbers still TBD)**.
-3. `docs/02-implementation-plan.md`: how each part gets built, code snippets, schedule, risks.
-4. `docs/03-stack-research.md`: which library or open-source project for each part, licenses, gotchas, what to skip.
-5. `docs/04-prior-art-and-codes.md`: Base's public rules, competitors, NEC / IRC / Austin Energy citations, pitch angle.
-6. `docs/eli5.html`: a visual explainer to open in a browser. Step 4 is an interactive demo of how the solver works.
+- **Client team.** Sam, working with AI agents, owns the iOS app in `ios/` and the capture packet it sends. Aiden films video and gathers sample datasets.
+- **Server team.** Hunter, working with his own agents, owns everything after the packet: the 3D model and the rule checks, in `server/` and `recon/`.
 
-## Hard rules
+Most agent work arrives from a manager session that holds the plan's history and the discussions behind it. Report results, blockers and open decisions back to that manager, and let it settle questions about the plan or the product.
 
-- **This repo is PUBLIC.** `private/` holds materials Base gave the team and is gitignored. Never commit, quote or summarize them
-  in tracked files: prompt text, prompt names, output field names, internal thresholds. Team notes go in `private/internal-notes.md`.
-- **The placement decision is plain code, not AI.** Vision models only recognise things (object boxes, panel brand, meter text).
-  Every clearance number lives in `rules.yaml` with a code citation, never hardcoded.
-- **Never run ML on Google Maps/Street View, Mapbox or Esri imagery.** Their terms forbid it. Use StratMap/NAIP.
-- **Place AR results relative to the meter's anchor**, not in raw world coordinates. Use `.gravity` world alignment, not `.gravityAndHeading`.
-- The camera image is landscape and the intrinsics match it. Rotate one and you must rotate the other.
+Edit the other team's files only with that team's OK. Talk to the author before editing files that an open pull request also changes, because two writers on one file cost more time than asking does.
 
-## ⚠️ Open conflict: native Swift vs Expo
+## Where to look
 
-The research plan (`docs/00-overview.md`) chose **native Swift + ARKit/RealityKit**. Expo has no first-class ARKit support,
-and the capture needs LiDAR mesh export, per-frame position and lens data, and mesh raycasts.
-On 2026-09-25 an Expo app was scaffolded at `apps/mobile/` (Expo SDK 57). **The team hasn't decided yet.**
-Options: (a) drop Expo for native Swift; (b) Expo shell + a custom native Swift module for the whole AR capture;
-(c) Expo for the non-AR screens only. Don't build AR capture in either place until the team picks one.
+A component's README wins over the docs. Files marked with a pull request exist only on that branch until it merges.
 
-`apps/mobile/AGENTS.md` has the Expo-specific rules for that folder.
+| Task | Read |
+| --- | --- |
+| The iOS app | `ios/README.md` (PR #10 for guided capture) |
+| The capture packet | `packet/README.md` (PR #22) |
+| The rules engine, API and scene contract | `server/README.md` (PR #11), especially "What settles each check" |
+| Photos to a 3D model | `recon/HANDOFF.md` (PR #20) |
+| Accuracy evals and the field test | `experiments/evals/README.md` (PR #12), and the first phone run in `experiments/device-field-test/README.md` (PR #23) |
+| Measurement conventions the code relies on | `docs/00-overview.md`, section "Conventions the code relies on" |
+| Public rule values, code citations, model and imagery licenses | `docs/04-prior-art-and-codes.md` |
+| The live guided-survey design | `docs/05-live-guided-survey-hld.md` |
+| Branches, CI checks and TestFlight | `CONTRIBUTING.md` |
 
-The setup pull request adds a native Swift skeleton at `ios/` as the recommended answer; its description gives the reasons. Remove this section once the team agrees.
+## Rules
 
-## Working in this repo
+- **Keep Base's materials in `private/`, which git ignores.** The repository is public, so tracked files carry none of that material: no quotes, summaries, prompt text, prompt names, output field names or internal thresholds. Team notes go in `private/internal-notes.md`. Real captures, photos of homes and dataset images go in `captures/`, `fixtures/real/` or `data/`, which git also ignores.
+- **Make placement decisions in deterministic code.** Models build geometry and recognize things, and plain code passes or fails each check, so every answer traces to a rule and a measurement. Clearance numbers live in rules files with their sources, never in code.
+- **Treat unseen as unsure, never as clear.** A gap in the scan could hide a gas meter. When a check depends on an area nobody observed, return UNSURE and name the view that would settle it.
+- **Use StratMap or NAIP for aerial imagery.** Google's and Mapbox's terms forbid running ML on their imagery, and Esri allows it only inside ArcGIS for non-commercial use.
+- **Place AR results relative to the meter's anchor, with `.gravity` world alignment.** ARKit corrects anchors as tracking improves, so a result tied to the meter moves with it while raw world coordinates drift. `.gravityAndHeading` depends on the compass, which is unreliable next to a house.
+- **Rotate the intrinsics whenever you rotate a camera image.** Camera images are landscape sensor images, and the intrinsics match that orientation. A rotated image with unrotated intrinsics produces wrong 3D geometry without any error.
+- **Use LiDAR when present, and never require it.** Most homeowners' phones lack LiDAR, so every check must also work from the camera and the phone's poses.
 
-- Layout: `ios/` is the capture app (native Swift, project generated by XcodeGen). `server/` is the Python server (uv). `web/` is a browser toolchain for the reviewer view and zero-install capture experiments. `experiments/` holds one folder per experiment. `sites/landing` is the landing page, a submodule; change it in its own repository.
-- `make check` runs every suite. `make ios`, `make server` and `make web` run one each. `CONTRIBUTING.md` lists the matching CI checks.
-- Branch from `main`, keep one writer per branch, and open a pull request. People merge; agents never push to `main` or merge.
-- Teammates own lanes A–D (`docs/01-feature-map.md`). AI agents own setup, experiments and challenger reviews, and don't edit a lane's files without its owner's OK.
-- Don't pick a signing team in Xcode's Signing & Capabilities pane: it writes into `project.pbxproj` and fails the CI drift check. Put `DEVELOPMENT_TEAM` in `ios/Config/Local.xcconfig` instead (see `ios/README.md`).
-- After editing `ios/project.yml`, run `make ios-project` (needs XcodeGen 2.46.0) and commit the regenerated project.
+## Writing, planning and review
+
+The repository ships shared skills in `.agents/skills/`, which Codex reads directly. `.claude/skills/` links to the same folders for Claude Code. Agents without skill support can read each `SKILL.md` as a plain guide.
+
+- `unslop` for any prose, and `technical-writing` for docs and READMEs.
+- `pr-writing` for pull request titles and descriptions.
+- `prompt-writing` for AGENTS.md, skills and prompts that brief another agent.
+- `efficient-implementation-plans` for implementation plans.
+- `deslop` for reviewing or cleaning a diff.
+
+A user's instruction outranks a skill.
+
+## Working in the repository
+
+- `make check` runs every suite. `make ios`, `make server` and `make web` run one each.
+- Branch from `main`, keep one writer per branch, and open a pull request. People merge, and agents never push to `main` or merge, so a person sees every change before it lands.
+- Several agents share one Mac. Exit code 137 means the system killed the process, usually for memory. Find the large allocation before rerunning, because one runaway process can freeze the whole machine.
+- Put `DEVELOPMENT_TEAM` in `ios/Config/Local.xcconfig` (copy `Local.xcconfig.example`), not in Xcode's Signing & Capabilities pane. The pane writes into `project.pbxproj`, and CI fails on that drift.
+- After editing `ios/project.yml`, run `make ios-project` (it needs XcodeGen 2.46.0) and commit the regenerated project. CI regenerates it and fails on any difference.
+- `sites/landing` is a submodule. Change the landing page in its own repository.
