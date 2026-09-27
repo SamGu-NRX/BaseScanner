@@ -82,25 +82,28 @@ jobs:
           fi
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
-      # The package's drift tests compare the vendored scene and result schemas with the server's:
-      # the checkout's server/schemas once merged, else the t3/server branch, which the shallow
-      # checkout leaves out. One of the two is required: a failed fetch fails the run, and
-      # HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather than skip.
-      - name: Fetch the contract branches
+      # The package's drift test compares the vendored server schemas with the server's own copies:
+      # the checkout's files once that branch merges, else the t3/server branch, which the shallow
+      # checkout leaves out. One of the two is required:
+      # a failed fetch fails the run, and HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather
+      # than skip, so CI can't go green without comparing. The checkout counts only when it holds
+      # every compared file: a folder alone isn't enough (main has a server/ without schemas).
+      - name: Fetch the server contract
         run: |
-          # Check for a file the tests read, not the folder: t3/ios-mvf has a server/ from the
-          # toolchain setup with no schemas in it.
-          for pair in server/schemas/scene.schema.json:t3/server; do
-            file="${pair%%:*}" branch="${pair#*:}"
-            if [ -f "$file" ]; then
-              echo "$file is in the checkout; the drift tests read it."
-              continue
+          fetch_unless_present() {
+            local branch="$1"; shift
+            local missing=0
+            for file in "$@"; do [ -f "$file" ] || missing=1; done
+            if [ "$missing" = 0 ]; then
+              echo "$* are in the checkout; the drift tests read them."
+              return
             fi
             if ! git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
-              echo "::error::Neither $file nor $branch is available, so the vendored ${file%%/*} schemas can't be compared."
+              echo "::error::Neither the checkout nor $branch holds $*, so the vendored copies can't be compared."
               exit 1
             fi
-          done
+          }
+          fetch_unless_present t3/server server/schemas/scene.schema.json server/schemas/result.schema.json server/tests/fixtures/example-scene.json
 
       - name: Install XcodeGen
         run: |
@@ -136,7 +139,8 @@ jobs:
       - name: Build
         run: >-
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
-          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
+          HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}" build
 
       - name: UI test the whole flow in the Simulator
         # Replays the committed synthetic wall (ios/HouseScanUITests/Fixtures/synthetic-wall) with
@@ -151,7 +155,7 @@ jobs:
             -destination "id=$SIM_UDID" \
             -resultBundlePath "$RUNNER_TEMP/HouseScanUITests.xcresult" \
             -only-testing:HouseScanUITests "${skip[@]}" \
-            COMPILER_INDEX_STORE_ENABLE=NO test
+            COMPILER_INDEX_STORE_ENABLE=NO HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}" test
 
       - name: Keep UI test screenshots
         if: always()

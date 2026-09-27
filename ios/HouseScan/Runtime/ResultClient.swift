@@ -38,7 +38,9 @@ final class HTTPResultClient: ResultClient {
         let (data, response) = try await URLSession.shared.upload(for: request, from: scene, delegate: delegate)
         guard let http = response as? HTTPURLResponse else { throw UploadError.notHTTP }
         guard (200..<300).contains(http.statusCode) else {
-            throw UploadError.server(status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self))
+            throw UploadError.server(
+                status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self),
+                retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
         }
         progress(1)
         return data
@@ -47,13 +49,13 @@ final class HTTPResultClient: ResultClient {
 
 enum UploadError: Error, CustomStringConvertible {
     case notHTTP
-    case server(status: Int, body: String)
+    case server(status: Int, body: String, retryAfter: String? = nil)
     case missingSample
 
     var description: String {
         switch self {
         case .notHTTP: "The server's answer was not HTTP."
-        case .server(let status, let body): "The server answered \(status): \(body)"
+        case .server(let status, let body, _): "The server answered \(status): \(body)"
         case .missingSample: "SampleResult.json is missing from the app bundle."
         }
     }
@@ -65,8 +67,8 @@ enum UploadError: Error, CustomStringConvertible {
 enum UploadFailure {
     /// A failure while sending or reading the answer (not while packaging the scan).
     static func state(for error: any Error) -> UploadState {
-        let kind: UploadFailureKind = if case .server(let status, _) = error as? UploadError {
-            UploadFailureKind.classify(httpStatus: status)
+        let kind: UploadFailureKind = if case .server(let status, _, let retryAfter) = error as? UploadError {
+            UploadFailureKind.classify(httpStatus: status, retryAfter: retryAfter)
         } else {
             UploadFailureKind.classify(error)
         }
@@ -77,6 +79,8 @@ enum UploadFailure {
             .failed(message: "We couldn't reach the House Scan server. Your scan is saved on this phone, so you can try again.", offline: false)
         case .serverError:
             .failed(message: "The House Scan server had a problem. Your scan is saved on this phone, so you can try again.", offline: false)
+        case .busy(let retryAfter):
+            .failed(message: busyMessage(retryAfter), offline: false)
         case .refused:
             .rejected(message: "The server couldn't use this scan. Go back to the review to check your marks, or start over.")
         case .unreadableAnswer:
@@ -84,16 +88,33 @@ enum UploadFailure {
         }
     }
 
+    /// A busy server: when it said how long to wait (at most a day, `UploadFailureKind`), the
+    /// homeowner hears that, rounded up to a minute past 90 seconds; either way the scan is kept
+    /// and "Try again" is offered at once.
+    static func busyMessage(_ retryAfter: Int?) -> String {
+        let wait: String? = retryAfter.map { raw in
+            let seconds = min(max(raw, 1), UploadFailureKind.maxRetryAfterSeconds)
+            let minutes = seconds / 60 + (seconds % 60 == 0 ? 0 : 1)
+            return seconds <= 90 ? "about \(seconds) seconds" : "about \(minutes) minutes"
+        }
+        let when = wait.map { "Try again in \($0)." } ?? "Try again in a moment."
+        return "The House Scan server is busy. Your scan is saved on this phone. \(when)"
+    }
+
     /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
     /// again says which, so the homeowner knows what to fix in the review.
     static func packaging(_ error: any Error) -> UploadState {
+        if case .fenceAcrossCorner? = error as? SceneExportError {
+            // A fence marked before the wall was followed round a corner.
+            return .rejected(message: "A fence runs round a corner of your wall. Go back to the review and mark it on each side of the corner as its own fence.")
+        }
         switch error as? ScanEngine.ExportError {
         case .markCollapsed(.driveway)?:
-            .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
+            return .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
         case .markCollapsed(.fence)?:
-            .rejected(message: "Mark the fence again: its two points came out on top of each other.")
+            return .rejected(message: "Mark the fence again: its two points came out on top of each other.")
         default:
-            .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
+            return .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
         }
     }
 }

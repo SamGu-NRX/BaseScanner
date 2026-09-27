@@ -22,7 +22,8 @@ web:
 # CI also regenerates the project and fails on drift; run `make ios-project` for that.
 ios:
 	xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug \
-		-destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
+		-destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO \
+		HOUSESCAN_GIT_COMMIT="$$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)" build
 
 # Regenerates ios/HouseScan.xcodeproj from ios/project.yml. Point XCODEGEN at another binary
 # if the one on PATH is not $(XCODEGEN_VERSION): make ios-project XCODEGEN=/path/to/xcodegen

@@ -41,7 +41,7 @@ extension ScanEngine: ScanActions {
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
         // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at
         // chest height, 1.4 m above it. `refineGround` replaces the guess as planes arrive.
-        let measured = groundBelow(hit.position)
+        let measured = groundBelow(hit.position, along: simd_normalize(simd_cross(-outward, SIMD3(0, 1, 0))))
         guard setWall(meter: hit.position, outward: outward, groundY: measured ?? frame.camera.position.y - 1.4, groundMeasured: measured != nil) else {
             state.guidance = .aimAtWallForMeter
             return
@@ -49,20 +49,16 @@ extension ScanEngine: ScanActions {
         // The map carries the line's source: the export writes it and the walked clearance
         // takes the server's error for it.
         updateCoverage { $0.setWallLineSource(meterLineSource) }
-        setMeterAnchor(live.addMeterAnchor(at: hit.transform))
+        setMeterAnchor(live.addMeterAnchor(at: hit.transform), pose: hit.transform)
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
     }
 
-    /// The ground at the meter: the highest detected horizontal plane at least 0.3 m below it whose
-    /// extent comes within 2 m of it (so a porch or a neighbour's lawn elsewhere doesn't count), or
-    /// nil when no such plane has been detected.
-    func groundBelow(_ meter: SIMD3<Float>) -> Float? {
-        let near = detectedGroundPlanes.filter { plane in
-            let horizontal = simd_distance(SIMD2(plane.x, plane.z), SIMD2(meter.x, meter.z))
-            return plane.y < meter.y - 0.3 && horizontal - plane.w <= 2
-        }
-        return near.map(\.y).max()
+    /// The ground at the wall of the meter at `meter`, running along `along`: a detected plane
+    /// that reaches the wall's foot by the meter and isn't furniture, floor-classified first,
+    /// then the lowest (`GroundPlaneChoice`). Nil when none does; the ground stays a guess.
+    func groundBelow(_ meter: SIMD3<Float>, along: SIMD3<Float>) -> Float? {
+        GroundPlaneChoice.groundY(meter: meter, along: along, planes: detectedGroundPlanes)
     }
 
     func skipCloseUp() {
@@ -86,9 +82,15 @@ extension ScanEngine: ScanActions {
         }
         guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
         state.meterNumber = .confirmed(chosen.text)
-        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public))")
+        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public)), brand \(self.state.meterBrand == nil ? "none" : "kept", privacy: .public)")
         observeCloseUpView()
         finishCloseUp()
+    }
+
+    func rejectMeterBrand() {
+        guard state.phase == .meterCloseUp, case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
+        RuntimeLog.engine.info("meter brand rejected")
     }
 
     /// Puts the close-up photo's view into coverage, under the same rules as a walk keyframe: a
@@ -105,8 +107,11 @@ extension ScanEngine: ScanActions {
     /// and the walk's first frame.
     private func observeCloseUpView() {
         guard let view = closeUpCredit.take() else { return }
+        // Corrected for anchor moves made while the photo was saved and read.
+        let camera = view.time.map { correctedPose(view.camera.cameraToWorld, capturedAt: $0) }
+            .map { CameraFrame(cameraToWorld: $0, intrinsics: view.camera.intrinsics, imageSize: view.camera.imageSize) } ?? view.camera
         var delta: CoverageMap.Delta?
-        updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
+        updateCoverage { delta = $0.observe(camera, trackingNormal: true, depth: view.depth) }
         RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
     }
 
@@ -182,14 +187,6 @@ extension ScanEngine: ScanActions {
         resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
     }
 
-    /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no
-    /// patch (`sceneJSON`). Every upload reads the latest answer.
-    func answerGround(_ answer: GroundAnswer) {
-        guard state.phase == .markFeatures else { return }
-        state.groundAnswer = answer
-        RuntimeLog.engine.info("ground answered: \(String(describing: answer), privacy: .public)")
-    }
-
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
     /// porch or stairs" records nothing, so the server treats the stretch as unseen. During an
     /// overhead gap request the answer settles the request either way (`settleOverheadGap`).
@@ -246,6 +243,13 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
+        // A fence's feet on two pieces of the wall would be sent as one depth that misses how
+        // close its line comes to the wall by the corner: refused, and asked for per side.
+        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(wall.world(first), wall.world(hit)) {
+            marking.refusal = .fenceAcrossCorner
+            state.marking = marking
+            return
+        }
         pendingTaps.append(hit)
         marking.refusal = nil
         marking.step += 1
@@ -259,6 +263,7 @@ extension ScanEngine: ScanActions {
         publishFeaturesPastEnds()
         state.marking = nil
         pendingTaps = []
+        spotMarkPlaced()
     }
 
     private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
@@ -294,6 +299,7 @@ extension ScanEngine: ScanActions {
     func cancelMarking() {
         state.marking = nil
         pendingTaps = []
+        spotMarkCancelled()
     }
 
     func deleteFeature(_ id: UUID) {
@@ -401,7 +407,8 @@ extension ScanEngine: ScanActions {
     }
 
     func captureMissing(_ id: String) {
-        guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
+        // A stopped camera can't take the view: the answer stays, the request goes to review.
+        guard mayCapture, state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }
@@ -411,7 +418,7 @@ extension ScanEngine: ScanActions {
     }
 
     func showAR() {
-        guard state.phase == .result else { return }
+        guard state.phase == .result, state.spatialResultAvailable else { return }
         go(.resultAR)
     }
 
@@ -421,6 +428,7 @@ extension ScanEngine: ScanActions {
     }
 
     func startOver() {
+        releaseFailedSource()
         resetAll()
     }
 

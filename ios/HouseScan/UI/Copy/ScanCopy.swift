@@ -1,4 +1,5 @@
 import Foundation
+import HouseScanKit
 
 /// One instruction: a short line the homeowner acts on, and an optional second line that says
 /// how. Every camera screen shows exactly one of these at a time.
@@ -142,6 +143,9 @@ enum ScanCopy {
     }
 
     static let barcodeMatch = "Matches the barcode"
+    /// The maker read on the close-up, above the number candidates.
+    static func meterBrand(_ brand: String) -> String { "\(brand) meter" }
+    static func notMeterBrand(_ brand: String) -> String { "Not \(brand)" }
     static let noneOfThese = "None of these"
 
     // MARK: Features
@@ -206,6 +210,7 @@ enum ScanCopy {
         case .wrongSide: "That spot is behind the wall. Tap something on this side."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
+        case .fenceAcrossCorner: "That's round the corner. Mark the fence on each side of the corner as its own fence."
         }
     }
 
@@ -221,12 +226,6 @@ enum ScanCopy {
 
     // MARK: Ground
 
-    /// Asked on the feature review. The camera can't tell mulch from soil, so without this answer
-    /// the server's check of the ground under the battery always ends unsure.
-    static let groundQuestion = Instruction(
-        title: "What's on the ground along this wall?",
-        detail: "The battery can only stand on some kinds of ground."
-    )
     /// Names the homeowner would use: "Grass", not the schema's "lawn".
     static func groundName(_ type: GroundType) -> String {
         switch type {
@@ -245,9 +244,6 @@ enum ScanCopy {
         case .notSure: groundNotSure
         }
     }
-    /// The label over the answer once the question has folded into a row.
-    static let groundAnsweredLabel = "Ground along the wall"
-    static let groundChange = "Change"
 
     // MARK: Gap
 
@@ -353,11 +349,13 @@ enum ScanCopy {
 
     // MARK: Result
 
-    static func headline(_ result: ResultPresentation) -> String {
-        switch result.decision {
-        case .pass: "There's a spot for your battery"
-        case .manualReview: "An installer will take a look"
-        case .reject: "This wall doesn't have a spot"
+    /// The answer in the homeowner's words (`ResultPresentation.answer`).
+    static func headline(_ answer: ResultReading.Answer) -> String {
+        switch answer {
+        case .fits: "A battery fits here"
+        case .oneMoreLook: "One more look"
+        case .installer: "An installer will confirm"
+        case .notHere: "Not on this wall"
         }
     }
 
@@ -365,14 +363,73 @@ enum ScanCopy {
     static func placement(_ result: ResultPresentation) -> String? {
         guard let spot = result.spot else { return nil }
         let center = (spot.span.lowerBound + spot.span.upperBound) / 2
-        var line = Distance.fromMeter(center).prefix(1).uppercased() + Distance.fromMeter(center).dropFirst()
+        var line = Distance.fromMeter(center).capitalizedFirst
         if let cable = result.cableLength {
             line += ", \(Distance.roughFeet(cable)) of cable"
         }
         return line
     }
 
+    /// Why the closest spot doesn't work, for a result without a spot: "The closest spot, 4 ft
+    /// left of your meter, fails this check: distance from gas equipment. Measured 2 ft 4 in. The
+    /// rule is at least 3 ft." The check's title follows a colon because the server's titles name
+    /// what a passing spot has ("No box or vent above the battery"), so a sentence that used one
+    /// as the failure would say the opposite for some of them.
+    static func nearest(_ result: ResultPresentation, spoken: Bool = false) -> String? {
+        guard let spot = result.nearestSpot, let id = result.nearestFailingCheck,
+              let row = result.checks.first(where: { $0.id == id }) else { return nil }
+        let center = (spot.span.lowerBound + spot.span.upperBound) / 2
+        let place = spoken && abs(center) >= Distance.metersPerInch * 3
+            ? "\(Distance.spoken(center)) \(center < 0 ? "left" : "right") of your meter"
+            : Distance.fromMeter(center)
+        var line = "The closest spot, \(place), fails this check: \(row.title.lowercasedFirst)."
+        if let measurement = measurement(row, spoken: spoken) {
+            line += " \(measurement)"
+        }
+        return line
+    }
+
+    /// The sentence under a failed or unsure line on the result card: the measurement against the
+    /// rule, or without a measurement, the server's reason (fail) or who settles it (unsure).
+    static func cardLine(_ row: CheckRow, spoken: Bool = false) -> String? {
+        switch row.outcome {
+        case .pass: nil
+        case .fail: measurement(row, spoken: spoken) ?? row.reason
+        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(row)
+        }
+    }
+
+    /// "Settles: distance from the gas meter, clear space in front": the checks a requested view
+    /// would settle, by their titles. A check a person has to judge (a borderline measurement, an
+    /// unknown attribute) stays off the list: another view doesn't settle it. Nil when none is left.
+    static func settles(_ item: MissingEvidence, checks: [CheckRow]) -> String? {
+        let titles = item.checkIDs.compactMap { id in
+            checks.first { $0.id == id && !$0.needsPerson }?.title.lowercasedFirst
+        }
+        guard !titles.isEmpty else { return nil }
+        return "Settles: \(titles.joined(separator: ", "))"
+    }
+
+    static let seeOnWall = "See it on your wall"
+    /// For a spot an installer still has to confirm against the meter's working space.
+    static let seeClosest = "See the closest spot"
+    static let showMe = "Show me"
+    static let scanAnotherWall = "Scan another wall"
+    static let details = "Details"
+
+    static let installerConfirms = "An installer confirms this on site."
     static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
+    // The server's result covers where the battery goes, not the panel itself.
+    static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
+
+    /// Which rules answered, for a reviewer: "Rules 2f52ec35".
+    static func rulesHash(_ hash: String) -> String {
+        "Rules \(hash)"
+    }
+
+    static func unseenSide(_ side: WallSide) -> String {
+        "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side."
+    }
 
     static let shareScan = "Share scan"
     static let shareScanContents = "Your photos and measurements, for the House Scan team"

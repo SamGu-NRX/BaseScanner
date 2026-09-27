@@ -18,7 +18,9 @@ enum LiveMode: Sendable {
 }
 
 enum LiveEvent: Sendable {
-    case interrupted
+    /// With the time of the last frame the session delivered before it: the event reaches the
+    /// main actor on its own path, and can arrive before frames captured earlier.
+    case interrupted(lastFrameTime: Double?)
     case interruptionEnded
     case cameraDenied
     case failed(String)
@@ -124,15 +126,19 @@ final class LiveCapture {
     }
 
     /// Shows `model` in the camera view, hung on the meter's anchor so it follows ARKit's
-    /// corrections to it. The model is in world axes with the meter at its origin. People and,
-    /// on a phone with LiDAR, the scene mesh hide it where they stand in front of it. False when
-    /// the meter has no anchor in the session; nothing is shown then.
-    func showResult(_ model: Entity) -> Bool {
+    /// corrections to it. The model is in world axes with the meter at its origin, as they stood
+    /// when the anchor was at `pose` (`MeterAnchorTracking.pose`, the pose the engine's wall
+    /// agrees with). It is attached in that pose's frame, so a turn ARKit has made to the anchor
+    /// since carries the model with it. Cancelling the anchor's current turn instead drew the
+    /// wall as it stood before the turn. People and, on a phone with LiDAR, the scene mesh hide
+    /// it where they stand in front of it. False when the meter has no anchor in the session;
+    /// nothing is shown then.
+    func showResult(_ model: Entity, builtFor pose: simd_float4x4) -> Bool {
         removeResult()
         guard let id = delegate.shared.withLock({ $0.meterAnchorID }),
-              let anchor = arView.session.currentFrame?.anchors.first(where: { $0.identifier == id }) else { return false }
+              arView.session.currentFrame?.anchors.contains(where: { $0.identifier == id }) == true else { return false }
         let holder = AnchorEntity(.anchor(identifier: id))
-        model.orientation = simd_quatf(anchor.transform).inverse
+        model.orientation = simd_quatf(pose).inverse
         holder.addChild(model)
         arView.scene.addAnchor(holder)
         result = holder
@@ -343,6 +349,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
 
     private struct QueueState {
         var frameCount = 0
+        /// The latest ARFrame's time, for stamping an interruption.
+        var lastFrameTime: Double?
         var lastEncode: (time: Double, camera: CameraFrame)?
         var encoding = false
     }
@@ -377,6 +385,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
         let count = queueState.withLock { state -> Int in
             state.frameCount += 1
+            state.lastFrameTime = frame.timestamp
             return state.frameCount
         }
         let shared = shared.withLock { $0 }
@@ -406,11 +415,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         let quality = Self.quality(frame.capturedImage)
         let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
             .filter { $0.alignment == .horizontal }
-            .map { plane -> SIMD4<Float> in
-                let center = plane.transform * SIMD4(plane.center, 1)
-                let radius = simd_length(SIMD2(plane.planeExtent.width, plane.planeExtent.height)) / 2
-                return SIMD4(center.x, center.y, center.z, radius)
-            }
+            .map(Self.groundEvidence)
         var snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
             quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
@@ -586,6 +591,23 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         }
     }
 
+    /// A horizontal plane as the ground choice reads it (`GroundPlaneChoice`): its height, its
+    /// class and its outline in plan, world meters.
+    private static func groundEvidence(_ plane: ARPlaneAnchor) -> GroundPlaneEvidence {
+        let center = plane.transform * SIMD4(plane.center, 1)
+        let kind: GroundPlaneEvidence.Kind = switch plane.classification {
+        case .floor: .floor
+        case .table, .seat: .furniture
+        case .none: .unclassified
+        default: .other
+        }
+        let boundary = plane.geometry.boundaryVertices.map { vertex -> SIMD2<Float> in
+            let world = plane.transform * SIMD4(vertex, 1)
+            return SIMD2(world.x, world.z)
+        }
+        return GroundPlaneEvidence(y: center.y, kind: kind, boundary: boundary)
+    }
+
     // MARK: Session events
 
     func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
@@ -594,7 +616,8 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
-        Task { @MainActor [onEvent] in onEvent(.interrupted) }
+        let last = queueState.withLock { $0.lastFrameTime }
+        Task { @MainActor [onEvent] in onEvent(.interrupted(lastFrameTime: last)) }
     }
 
     func sessionInterruptionEnded(_ session: ARSession) {

@@ -12,7 +12,7 @@ import XCTest
 ///   failing, to list every issue in one run. CI leaves it unset, so any issue fails the test.
 final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
-    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "result", "resultAR"]
+    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm", "result", "resultAR"]
 
     override func setUp() {
         continueAfterFailure = false
@@ -36,7 +36,50 @@ final class FullFlowUITests: XCTestCase {
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        try runFlow(replay: replay, onScene: { _, gate in try Self.checkGroundPatch(gate: gate, test: self) })
+    }
+
+    /// What the spot check sent about the ground, in the scene the last upload sent. The autopilot
+    /// answers "It's clear" and mulch when a kept photo shows the whole area; then the scene carries
+    /// only mulch, only over the answer's footprint plus the margin (the tapped wall's 0.3 ft plus
+    /// 0.16 ft per foot to the far edge, and 0.984 ft more when the ground was guessed, which the
+    /// scene shows as the meter's error), and only where it reports ground seen. Otherwise the
+    /// area was left out (`spot-refusal.json`) and no patch is sent. The scene is attached as
+    /// `uploaded-scene` for the schema check.
+    @MainActor
+    static func checkGroundPatch(gate: URL, test: XCTestCase) throws {
+        let uploaded = try Data(contentsOf: gate.appending(path: "uploaded-scene.json"))
+        let attachment = XCTAttachment(data: uploaded, uniformTypeIdentifier: "public.json")
+        attachment.name = "uploaded-scene"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+        let scene = try XCTUnwrap(JSONSerialization.jsonObject(with: uploaded) as? [String: Any])
+        let patches = (scene["ground"] as? [[String: Any]] ?? []).filter { $0["type"] as? String != "drive" }
+        guard !patches.isEmpty else {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: gate.appending(path: "spot-refusal.json").path),
+                          "no ground patch, yet the spot check didn't leave the area out")
+            return
+        }
+        let answer = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: gate.appending(path: "answer.json"))) as? [String: Any])
+        let spot = try XCTUnwrap(answer["spot"] as? [String: Any])
+        let span = try XCTUnwrap(spot["span_ft"] as? [Double]).sorted()
+        let depth = try XCTUnwrap(spot["depth_ft"] as? Double)
+        let guessed = (scene["meter"] as? [String: Any])?["plus_minus_ft"] != nil
+        let margin = 0.3 + 0.16 * max(abs(span[0]), abs(span[1])) + (guessed ? 0.3 / 0.3048 : 0)
+        // The synthetic wall runs along x with the house at z < 0, so s is x and out is z.
+        let observed = ((scene["coverage"] as? [String: Any])?["observed"] as? [[String: Any]] ?? []).filter { $0["band"] as? String == "ground" }
+        for patch in patches {
+            XCTAssertEqual(patch["type"] as? String, "mulch")
+            for point in try XCTUnwrap(patch["polygon"] as? [[Double]]) {
+                XCTAssertTrue(point[0] >= span[0] - margin - 1e-3 && point[0] <= span[1] + margin + 1e-3, "\(point) past the margin along the wall")
+                XCTAssertTrue(point[1] <= depth + margin + 1e-3, "\(point) past the margin out from the wall")
+                let seen = observed.contains { entry in
+                    let s = entry["span_ft"] as? [Double] ?? [0, 0]
+                    return s[0] - 1e-3 <= point[0] && point[0] <= s[1] + 1e-3 && point[1] <= (entry["out_ft"] as? Double ?? 0) + 1e-3
+                }
+                XCTAssertTrue(seen, "\(point) is not over ground the scene reports seen")
+            }
+        }
     }
 
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
@@ -63,19 +106,28 @@ final class FullFlowUITests: XCTestCase {
     /// farthest, 5 m left and right of the meter (16 ft 5 in). The old rule put the ends at the
     /// unbroken covered reach, 2.5 ft here, and the export left out everything past it. The ends
     /// must land within a keyframe's spacing (0.5 m, 1.6 ft) of the phone, and the scene must
-    /// report the wall and the ground the walk saw, the ground by the meter included.
+    /// report the wall and the ground the walk saw, the ground by the meter included unless the
+    /// spot check left that stretch out (`spot-refusal.json`).
     @MainActor
     func testCantGetThereEndsWhereThePhoneIs() throws {
         var tape = ""
         var scene: [String: Any] = [:]
+        var withdrawn: [Double]?
         try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere"], beforeLeaving: { app, phase in
             guard phase == "wallWalk" else { return }
-            let element = app.descendants(matching: .any)["wallTape"]
-            let bothEnds = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "value CONTAINS 'Left end' AND value CONTAINS 'Right end'"), object: element)
-            XCTAssertEqual(XCTWaiter().wait(for: [bothEnds], timeout: 90), .completed, "the walk never ended both sides")
-            tape = element.value as? String ?? ""
-        }, onScene: { data in
+            // The value that matched, from one read: the map's element is rebuilt as the walk
+            // goes on, so a second read could find it gone.
+            let ended = ElementRead.waitForValue(of: app.descendants(matching: .any)["wallTape"], timeout: 90) {
+                $0.contains("Left end") && $0.contains("Right end")
+            }
+            XCTAssertNotNil(ended, "the walk never ended both sides")
+            tape = ended ?? ""
+        }, onScene: { data, gate in
+            // The stretch the spot check left out, if it left one out: the scene reports nothing there.
+            let refusal = gate.appending(path: "spot-refusal.json")
+            if let bytes = try? Data(contentsOf: refusal) {
+                withdrawn = (try JSONSerialization.jsonObject(with: bytes) as? [String: Any])?["withdrawn_span_ft"] as? [Double]
+            }
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         })
         // The wall map says where each end is, in words VoiceOver reads.
@@ -100,7 +152,9 @@ final class FullFlowUITests: XCTestCase {
         func spans(_ band: String) -> [[Double]] { observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] } }
         let wall = spans("wall"), ground = spans("ground")
         XCTAssertFalse(wall.isEmpty, "no wall observed: \(observed)")
-        XCTAssertTrue(ground.contains { $0[0] <= 0 && $0[1] >= 0 }, "no ground observed by the meter: \(ground)")
+        // By the meter, unless the spot check left that stretch out.
+        let meterWithdrawn = withdrawn.map { $0[0] <= 0 && $0[1] >= 0 } ?? false
+        XCTAssertTrue(meterWithdrawn || ground.contains { $0[0] <= 0 && $0[1] >= 0 }, "no ground observed by the meter: \(ground), withdrawn \(withdrawn ?? [])")
         XCTAssertTrue(ground.contains { $0[0] < -10 }, "no ground observed past 10 ft left: \(ground)")
         XCTAssertTrue(ground.contains { $0[1] > 10 }, "no ground observed past 10 ft right: \(ground)")
         let attachment = XCTAttachment(string: "wall map: \(tape)\nends: \(along(first)) ft, \(along(last)) ft\nobserved: \(observed)")
@@ -109,12 +163,65 @@ final class FullFlowUITests: XCTestCase {
         add(attachment)
     }
 
+    /// "Something's in the way" on the spot check (`-autopilotSomethingThere`), or Continue when no
+    /// kept photo shows the whole area: the scan stops claiming the area and goes to the server
+    /// again, and the flow still ends on the result, which says the area was left out. The scene the last upload sent, and the one
+    /// the app exports at the result, list no wall, ground or facing entry over the stretch the
+    /// refusal withdrew (whole cells, as the autopilot reports them in `spot-refusal.json`), and
+    /// still list both bands elsewhere. The uploaded scene is attached as
+    /// `somethingThere-uploaded-scene` for the schema check.
+    @MainActor
+    func testSomethingThereChecksTheWallAgain() throws {
+        var sawPhoto = false
+        var sawRefusal = false
+        var scenes: [String: [String: Any]] = [:]
+        var withdrawn: [Double] = []
+        try runFlow(replay: Self.fixture, extraArguments: ["-autopilotSomethingThere"], beforeLeaving: { app, phase in
+            switch phase {
+            case "spotConfirm":
+                sawPhoto = ElementRead.snapshot(app.descendants(matching: .any)["spot.photo"])?.label == "Photo of your wall"
+            case "result":
+                sawRefusal = app.descendants(matching: .any)["result.spotRefused"].exists
+            default: break
+            }
+        }, onScene: { data, gate in
+            let refusal = try Data(contentsOf: gate.appending(path: "spot-refusal.json"))
+            withdrawn = try XCTUnwrap((JSONSerialization.jsonObject(with: refusal) as? [String: Any])?["withdrawn_span_ft"] as? [Double])
+            let uploaded = try Data(contentsOf: gate.appending(path: "uploaded-scene.json"))
+            let attachment = XCTAttachment(data: uploaded, uniformTypeIdentifier: "public.json")
+            attachment.name = "somethingThere-uploaded-scene"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            for (name, bytes) in [("exported", data), ("uploaded", uploaded)] {
+                scenes[name] = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            }
+        })
+        XCTAssertTrue(sawPhoto, "the spot check showed no photo of the spot")
+        XCTAssertTrue(sawRefusal, "the result doesn't say the homeowner said something stands there")
+        XCTAssertEqual(withdrawn.count, 2)
+        let low = try XCTUnwrap(withdrawn.first), high = try XCTUnwrap(withdrawn.last)
+        XCTAssertGreaterThan(high - low, 1, "withdrawn: \(withdrawn)")
+        for (name, scene) in scenes {
+            let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+            let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+            for band in ["wall", "ground", "facing"] {
+                let spans = observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] }
+                for span in spans {
+                    XCTAssertTrue(span[1] <= low + 1e-3 || span[0] >= high - 1e-3, "\(name) scene: \(band) \(span) reaches into the withdrawn \(low)...\(high)")
+                }
+                if band != "facing" {
+                    XCTAssertFalse(spans.isEmpty, "\(name) scene: no \(band) observed at all")
+                }
+            }
+        }
+    }
+
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
     @MainActor
     private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
-        let tape = app.descendants(matching: .any)["wallTape"]
-        let mentionsHidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] %@", "hidden"), object: tape)
-        return XCTWaiter().wait(for: [mentionsHidden], timeout: timeout) == .completed
+        ElementRead.waitForValue(of: app.descendants(matching: .any)["wallTape"], timeout: timeout) {
+            $0.localizedCaseInsensitiveContains("hidden")
+        } != nil
     }
 
     /// Runs only when HOUSESCAN_REPLAY names a session folder, so CI stays on the synthetic fixture.
@@ -127,46 +234,29 @@ final class FullFlowUITests: XCTestCase {
         try runFlow(replay: replay)
     }
 
-    /// Audits the screen twice, a second apart, and fails on the issues found both times.
+    /// Audits the screen twice, six seconds apart, and fails on the issues found both times
+    /// (`AccessibilityAudit.run`).
     ///
     /// The walk keeps taking photos while it is audited, so the photo count's number is often
     /// mid-roll, and the result's text is still fading in when the screen appears. A single audit
     /// reports those passing frames as contrast failures; a real contrast or clipping problem is
-    /// still there a second later. Every screen state is also audited frozen, in one pass, by
-    /// ScreenStatesUITests.
+    /// still there later. The walk also rebuilds parts of the screen while it is audited, so an
+    /// issue's element can be gone before it is read: that one is attached, not failed on. Every
+    /// screen state is also audited frozen by ScreenStatesUITests.
     @MainActor
     private func audit(_ app: XCUIApplication, screen: String) throws {
-        func pass() throws -> [String: String] {
-            var found: [String: String] = [:]
-            try app.performAccessibilityAudit { issue in
-                let element = issue.element
-                let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
-                // Only the identifier and label: reading the element's type or frame queries it live,
-                // and an element that has gone records a snapshot failure the retry can't catch
-                // (CI run 36260279300).
-                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
-                return true
-            }
-            return found
+        // Six seconds: long enough for a system notification banner to leave. On CI one slid in
+        // over the find-meter screen and failed its contrast check twice a second apart (run
+        // 36264789032), as ScreenStatesUITests' audit also allows for.
+        let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6.0) }
+        if !outcome.unread.isEmpty {
+            let note = XCTAttachment(string: outcome.unread.joined(separator: "\n"))
+            note.name = "audit-\(screen)-element-gone"
+            note.lifetime = .keepAlways
+            add(note)
         }
-        // A failed snapshot means the tree changed while the audit read it (seen once on CI);
-        // retry that pass once, and let a second failure throw.
-        func passRetrying() throws -> [String: String] {
-            do { return try pass() } catch {
-                Thread.sleep(forTimeInterval: 1)
-                return try pass()
-            }
-        }
-        let first = try passRetrying()
-        guard !first.isEmpty else { return }
-        // Long enough for a system notification banner to leave: on CI one slid in over the
-        // find-meter screen and failed its contrast check twice a second apart (run 36264789032),
-        // as ScreenStatesUITests' audit also allows for.
-        Thread.sleep(forTimeInterval: 6.0)
-        let second = try passRetrying()
-        let persistent = first.keys.filter { second[$0] != nil }.sorted()
-        for key in persistent {
-            let text = "screen.\(screen): \(second[key] ?? key)"
+        for (_, finding) in outcome.persistent {
+            let text = "screen.\(screen): \(finding.message)"
             if Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
                 let note = XCTAttachment(string: text)
                 note.name = "audit-\(screen)"
@@ -181,11 +271,11 @@ final class FullFlowUITests: XCTestCase {
 
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
-    /// once the result shows.
+    /// once the result shows, and the gate folder for the other files it leaves there.
     @MainActor
     private func runFlow(
         replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
-        onScene: ((Data) throws -> Void)? = nil
+        onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
@@ -220,7 +310,7 @@ final class FullFlowUITests: XCTestCase {
                 let file = gate.appending(path: "scene.json")
                 let deadline = Date().addingTimeInterval(20)
                 while !FileManager.default.fileExists(atPath: file.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
-                try onScene(try Data(contentsOf: file))
+                try onScene(try Data(contentsOf: file), gate)
             }
             try Data().write(to: gate.appending(path: phase))
         }

@@ -221,7 +221,7 @@ import Testing
         input.coverage = SceneCoverage(
             leftEndMarked: false, rightEndMarked: false, wall: [ObservedSpan(span: -3...5, out: 2.286)],
             ground: [ObservedSpan(span: 0.30481...0.91439, out: 1.8287999)])
-        input.groundType = .lawn
+        input.groundPatches = [.everywhere(.lawn)]
         let data = try SceneExport.jsonData(input)
         #expect(try SceneSchemas.scene().validate(data) == [])
         let v = try Value.parse(data)
@@ -401,7 +401,9 @@ import Testing
         var map = CoverageMap(wall: standardWall())
         #expect(map.wallRows.first == 0)
         map.heightError = 0.3
-        #expect(map.wallRows.prefix(3).map { $0 } == [-0.3, -0.1524, 0])
+        let lowest: [Float] = Array(map.wallRows.prefix(3))
+        let expected: [Float] = [-0.3, -0.1524, 0]
+        #expect(lowest == expected)
         map.heightError = 0
         #expect(map.wallRows.first == 0)
     }

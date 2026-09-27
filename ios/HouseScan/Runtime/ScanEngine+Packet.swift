@@ -24,6 +24,16 @@ extension ScanEngine {
         var producer: PacketManifest.Producer
         var device: PacketManifest.Device
         var meterFrame: MeterFrame
+        /// The meter anchor's corrections: each photo, trajectory row and depth frame is moved by
+        /// those made after its time before it goes into the meter frame. The raw poses stay as
+        /// they were recorded.
+        var corrections: PoseCorrections
+        /// The latest frame time the engine had seen when these inputs were taken. Live stream
+        /// rows after it are left out: the recorder goes on taking rows while the packet is
+        /// queued, and a row after a correction that isn't in `corrections` would be written in
+        /// the wrong frame. The capture window ends at the last row kept, so depth frames and
+        /// motion rows stop there too. Nil keeps every row (a replay has no corrections).
+        var streamCutoff: Double?
         var groundWorldY: Float
         /// Keyframes and stills; `writePacket` orders them by time.
         var photos: [StoredKeyframe]
@@ -71,8 +81,8 @@ extension ScanEngine {
             producer: PacketManifest.Producer(
                 kind: .app, name: info["CFBundleName"] as? String ?? "HouseScan",
                 version: version.count == 2 ? "\(version[0]) (\(version[1]))" : version.first ?? "unknown",
-                // No build step records the git commit; the schema makes it optional.
-                commit: nil
+                // The "Stamp the git commit" build phase writes it (ios/project.yml).
+                commit: (info["HouseScanGitCommit"] as? String).flatMap { $0 == "unknown" ? nil : $0 }
             ),
             device: PacketManifest.Device(
                 model: Self.hardwareModel(), iosVersion: UIDevice.current.systemVersion, lidar: LiveCapture.supportsDepth,
@@ -81,6 +91,8 @@ extension ScanEngine {
                 meshClassificationEnabled: settings?.meshClassification ?? false
             ),
             meterFrame: frame,
+            corrections: poseCorrections,
+            streamCutoff: replay == nil ? captureClock : nil,
             groundWorldY: wall.groundY,
             photos: store.keyframes + store.stillFrames.keys.sorted().compactMap { store.stillFrames[$0] },
             mesh: mesh,
@@ -234,7 +246,7 @@ extension ScanEngine {
         var skippedRows = 0
         try writer.setNominalRate(trajectory.rate, for: .trajectory)
         for row in trajectory.rows {
-            do { try writer.appendTrajectory(t: row.t, tracking: row.tracking, pose: frame.pose(row.cameraToWorld)) } catch { skippedRows += 1 }
+            do { try writer.appendTrajectory(t: row.t, tracking: row.tracking, pose: frame.pose(inputs.corrections.pose(row.cameraToWorld, capturedAt: row.t))) } catch { skippedRows += 1 }
         }
         skippedRows += writeMotion(inputs, window: started...ended, into: &writer)
         if skippedRows > 0 { RuntimeLog.engine.error("packet: \(skippedRows) stream rows refused and left out") }
@@ -314,7 +326,9 @@ extension ScanEngine {
             return Trajectory(sessionID: UUID().uuidString, startedAt: nil, rate: rate, rows: rows)
         }
         let snapshot = inputs.recorder.flush()
-        let rows = inputs.recorder.rows(.trajectory).map { row in
+        let cutoff = inputs.streamCutoff ?? .infinity
+        let recorded: [[Double]] = inputs.recorder.rows(.trajectory).filter { $0[0] <= cutoff }
+        let rows = recorded.map { row in
             let pose = simd_float4x4(
                 SIMD4(Float(row[3]), Float(row[4]), Float(row[5]), Float(row[6])),
                 SIMD4(Float(row[7]), Float(row[8]), Float(row[9]), Float(row[10])),
@@ -333,7 +347,7 @@ extension ScanEngine {
         let k = stored.camera.intrinsics
         return PacketPhoto(
             id: id, jpeg: inputs.storeDirectory.appending(path: "\(stored.id).jpg"), width: stored.width, height: stored.height,
-            t: stored.t, pose: inputs.meterFrame.pose(stored.camera.cameraToWorld),
+            t: stored.t, pose: inputs.meterFrame.pose(inputs.corrections.pose(stored.rawPose, capturedAt: stored.t)),
             intrinsics: SIMD4(k.x * scale.x, k.y * scale.y, k.z * scale.x, k.w * scale.y),
             tracking: TrackingCode(stored.tracking).packetTracking,
             exposure: stored.exposure.map { PacketExposure(durationS: $0.durationS, iso: $0.iso, offsetEV: $0.offsetEV) },
@@ -367,7 +381,7 @@ extension ScanEngine {
             }
             do {
                 try writer.addDepthFrame(PacketDepthFrame(
-                    id: PacketDepthFrame.id(number: written + 1), t: t, pose: inputs.meterFrame.pose(cameraToWorld), intrinsics: intrinsics,
+                    id: PacketDepthFrame.id(number: written + 1), t: t, pose: inputs.meterFrame.pose(inputs.corrections.pose(cameraToWorld, capturedAt: t)), intrinsics: intrinsics,
                     tracking: tracking, depth: depth
                 ))
                 written += 1

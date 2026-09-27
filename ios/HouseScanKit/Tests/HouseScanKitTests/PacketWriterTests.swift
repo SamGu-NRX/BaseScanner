@@ -8,8 +8,8 @@ import Testing
 
 /// The capture packet's manifest schema, version 1.1, byte for byte from t3/packet at d5439cf
 /// (packet/manifest.schema.json). `vendoredManifestSchemaIsTheRecordedRevision` fails if the copy
-/// is edited by hand. t3/packet no longer carries the schema (6a12700: the team adopted the
-/// server's capture packet 0.4), so there is no upstream copy to compare against.
+/// is edited by hand. There is no live copy to compare with: t3/packet retired 1.1 at 6a12700 in
+/// favour of the server team's packet 0.4, which the writer moves to next.
 enum PacketSchema {
     static let name = "manifest.schema.json"
     static let sha256 = "44c9c9beb1a95b85d069d9abc52c193008a50aa75e1dff52f5d47431f10c5c75"

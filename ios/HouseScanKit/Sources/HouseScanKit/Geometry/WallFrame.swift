@@ -206,6 +206,12 @@ public struct WallFrame: Sendable, Equatable {
 
     public var meterHeight: Float { meter.y - groundY }
 
+    /// Whether two points lie in front of the same piece of the chain (each on the piece nearest
+    /// it in plan): a fence marked across a corner is refused (`SceneExportError.fenceAcrossCorner`).
+    public func onSamePiece(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Bool {
+        WallSegment.index(in: segments, atS: wallPoint(a).s) == WallSegment.index(in: segments, atS: wallPoint(b).s)
+    }
+
     /// The piece holding `s` (a corner's own s belongs to the piece on its left).
     public func segment(atS s: Float) -> WallSegment {
         segments[WallSegment.index(in: segments, atS: s)]
@@ -304,5 +310,23 @@ public struct WallFrame: Sendable, Equatable {
         for index in leftCorners.indices { leftCorners[index].s += delta }
         for index in rightCorners.indices { rightCorners[index].s += delta }
         rebuildChain()
+    }
+
+    /// Turns the meter's piece and every corner's piece about +y, corners keeping their s
+    /// (`apply(_:)`).
+    mutating func turn(by correction: YawCorrection) {
+        func turned(_ v: SIMD3<Float>) -> SIMD3<Float> {
+            let d = correction.direction(v)
+            return simd_normalize(SIMD3(d.x, 0, d.z))
+        }
+        outward = turned(outward)
+        for index in leftCorners.indices { leftCorners[index].outward = turned(leftCorners[index].outward) }
+        for index in rightCorners.indices { rightCorners[index].outward = turned(rightCorners[index].outward) }
+        rebuildChain()
+    }
+
+    /// Whether `other` runs the same way: the same outward, within Float noise.
+    func hasSameAxes(as other: WallFrame) -> Bool {
+        simd_distance(outward, other.outward) < 1e-4
     }
 }
