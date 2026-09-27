@@ -317,12 +317,25 @@ extension ObservedSpan {
 }
 
 public enum SceneExport {
-    /// Half the plan width of a tapped point object. The tap gives one point, not a size, so the
-    /// object is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
+    /// Half the plan width of a tapped gas meter. The tap gives one point, not a size, so the
+    /// meter is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
     /// regulator, not a measured size. Replace it once the capture measures the object.
     static let pointObjectHalfWidth: Float = 0.15
-    /// How far a tapped point object is assumed to stand off the wall, same 0.3 m hypothesis.
+    /// How far a tapped gas meter is assumed to stand off the wall, same 0.3 m hypothesis.
     static let pointObjectDepth: Float = 0.3
+    /// Side of the square an AC unit is assumed to cover, in meters: about 3 ft along the wall and
+    /// 3 ft out from it, centred on the one tap (team decision on #72, option (b)). A typical
+    /// residential condenser, not a measured size: the tap gives no size, and the review says the
+    /// size is assumed. Replace it once the AC is marked by its two edges.
+    public static let acAssumedSide: Float = 0.9144
+
+    /// Half the plan width and the depth of a tapped point object of `kind`.
+    static func pointObjectSize(_ kind: ScenePointObjectKind) -> (halfWidth: Float, depth: Float) {
+        switch kind {
+        case .gasMeter: (pointObjectHalfWidth, pointObjectDepth)
+        case .ac: (acAssumedSide / 2, acAssumedSide)
+        }
+    }
     /// Width of the strip drawn along a tapped driveway edge, feet. The tap marks only the edge
     /// line; the strip gives the polygon the area the schema requires. Illustrative, not measured.
     static let drivewayStripFeet: Double = 0.5
@@ -425,12 +438,13 @@ public enum SceneExport {
                     throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top)
                 }
                 let s = wall.wallCoordinates(of: tap).s
-                let left = s - pointObjectHalfWidth
-                let right = s + pointObjectHalfWidth
+                let (halfWidth, depth) = pointObjectSize(kind)
+                let left = s - halfWidth
+                let right = s + halfWidth
                 objects.append(.init(
                     type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(left...right),
                     bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
-                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)],
+                    footprint: [plan(left, 0), plan(right, 0), plan(right, depth), plan(left, depth)],
                     plus_minus_ft: objectError))
             case let .fence(foot):
                 guard foot.count == 2 else {
