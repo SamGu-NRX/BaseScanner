@@ -10,8 +10,12 @@ extension ScanEngine {
     /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
     /// server reads heights (meter.pos y, pose translations) as height above that ground, and
     /// scene.json has no field for the ground's height otherwise.
-    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
-        guard let map = coverage else { throw ExportError.noWall }
+    ///
+    /// Everything comes from `snapshot` (`UploadSnapshot`): nothing live is read, so it
+    /// describes the one frame the snapshot was taken on, as the mesh measurement and the packet
+    /// built from the same snapshot do.
+    func sceneJSON(_ snapshot: UploadSnapshot, mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
+        let map = snapshot.map
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         // The corners carry their pieces' sources (`markNextWall`); the meter's piece, its own
@@ -27,7 +31,9 @@ extension ScanEngine {
         // nearest valid shape here and logged. A driveway or fence with nothing valid left fails
         // the export instead (`ExportError.markCollapsed`): dropping it would send the ground
         // near it as seen and clear, which can pass its clearance check with the hazard unsent.
-        let features: [SceneFeature] = try state.features.map { feature in
+        // Each mark's wall coordinates, heights among them, from its tapped world points against
+        // the snapshot's wall and ground, whatever the ground was when it was tapped.
+        let features: [SceneFeature] = try snapshot.features.map { Self.projected($0, onto: wall) }.map { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
             case .door, .window, .battery, .elecBox:
@@ -53,9 +59,9 @@ extension ScanEngine {
             }
         }
 
-        let keyframes = store.keyframes.map { stored -> SceneKeyframe in
+        let keyframes = snapshot.keyframes.map { stored -> SceneKeyframe in
             // The photo's raw pose moved by the anchor corrections made after it was taken.
-            var pose = correctedPose(stored.rawPose, capturedAt: stored.t)
+            var pose = snapshot.corrections.pose(stored.rawPose, capturedAt: stored.t)
             pose.columns.3.y -= wall.groundY
             return SceneKeyframe(
                 id: stored.id, cameraToWorld: pose, intrinsics: stored.camera.intrinsics,
@@ -65,25 +71,25 @@ extension ScanEngine {
 
         // A guessed ground puts the same error into every height in the scene. scene.json has no
         // field for "the ground was estimated", so the error bars say it instead.
-        let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
+        let groundError: Float? = snapshot.groundMeasured ? nil : Self.estimatedGroundError
         let input = SceneInput(
             wall: sceneWall,
             baselineS: Self.exportSpan(map),
-            meterPlusMinus: groundError,
-            meterPlane: meterPlaneSource,
-            objectPlusMinus: groundError,
+            meterExtraError: groundError,
+            meterPlane: snapshot.meterPlaneSource,
+            objectExtraError: groundError,
             features: features,
             coverage: SceneCoverage(
-                map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
+                map, leftEndMarked: snapshot.leftEndIsLimit, rightEndMarked: snapshot.rightEndIsLimit
             ),
             keyframes: keyframes,
-            stills: store.stills,
+            stills: snapshot.stills,
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
             meshOverheads: mesh.overheads,
             // Only what the homeowner said about a checked spot's footprint; before any spot,
             // none, and the server reports the surface unknown.
-            groundPatches: spotGroundPatches
+            groundPatches: snapshot.groundPatches
         )
         return try SceneExport.jsonData(input)
     }
