@@ -1,8 +1,10 @@
 name: iOS
 
 on:
+  # No push trigger for t3/ios-mvf: PR #10 (t3/ios-mvf -> main) already tests every merge into
+  # it, and carries full-ui so the audit runs there. A push run would take a second macOS slot.
   push:
-    branches: [main, t3/ios-mvf]
+    branches: [main]
     paths:
       - "ios/**"
       - "!ios/**/*.md"
