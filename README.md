@@ -1,6 +1,6 @@
 # House scanning
 
-Walk one wall with an iPhone. Find out whether a home battery fits, and where.
+Walk along the wall by your electric meter with an iPhone, and find out whether a home battery fits there and where it would go.
 
 [Live site](https://house-scanning.vercel.app/) · [How it works](docs/how-it-works.html) · [Demo API](https://house-scanning-server.vercel.app/health)
 
@@ -9,15 +9,23 @@ Walk one wall with an iPhone. Find out whether a home battery fits, and where.
   <img alt="Five steps from left to right: walk and mark, the capture packet, the placement rules, a spot or one more view, and the result in AR. A dashed loop runs from the fourth step back to the first: needs a view? The app asks for it." src="docs/readme/pipeline-light.png" width="100%">
 </picture>
 
-Today a person at Base Power decides where a battery goes by looking at a homeowner's photos. Photos have no scale, and they miss whatever sits just out of frame, so the answer often waits on another round of pictures.
+Base Power puts batteries on the outside of people's homes, right next to the electric meter, because a cable has to run between the two. Someone at Base has to decide where each battery goes, and today they work it out from photos the homeowner sends in. That's a rough way to do it. You can't measure distances in a photo, and a photo misses whatever sits just outside the frame, so the answer often waits on another round of pictures.
 
-We're trying to make it one walk. The homeowner scans the outside wall around their electric meter. The app guides them until it has seen everything the placement rules need, then sends what it captured. The server builds a 3D model, decides in plain code whether a battery fits and where, and the app shows the spot in AR.
+We want to get that down to one walk. The homeowner opens our app and scans the outside wall around their meter. The app keeps guiding them, and asks for another angle whenever it needs one, until it has seen everything the placement rules care about. Then it sends what it captured to our server. The server builds a 3D model of the wall, checks every rule against it and sends back an answer. If the battery fits, the app shows it standing on the real wall through the phone's camera. That's augmented reality, or AR, and it lets the homeowner see the spot before anyone installs anything.
 
-This is a four-person hackathon project for Base Power, started 2026-09-25. [Team](#team) says who does what.
+Four of us built this for Base Power at a hackathon that started on September 25, 2026. [Who built this](#who-built-this) says who worked on what.
 
-## Quick start
+## Try it out
 
-You need [uv](https://docs.astral.sh/uv/), Node 24 with pnpm, and Xcode 26 or newer.
+The quickest way to see it work is the demo server, which is already running. Ask it how it's doing:
+
+```bash
+curl -s https://house-scanning-server.vercel.app/health
+```
+
+It replies with `"status":"ok"` and a note about which rules it's using. The demo server knows only the public rules, never Base's own.
+
+To work on the code, you'll need [uv](https://docs.astral.sh/uv/), Node 24 with pnpm, and Xcode 26 or newer. Clone the repository with its submodules and run the tests:
 
 ```bash
 git clone --recurse-submodules https://github.com/SamGu-NRX/house-scanning-master.git
@@ -25,21 +33,19 @@ cd house-scanning-master
 make check
 ```
 
-`make check` runs the server, web and iOS suites that CI runs. On a machine without Xcode, run `make server web`.
+`make check` runs the same server, web and iOS test suites that CI runs. Xcode runs only on a Mac, so on Linux or Windows, run `make server web` to skip the iOS suite.
 
-No setup at all? The demo server is live:
+## How the pieces fit together
 
-```bash
-curl -s https://house-scanning-server.vercel.app/health
-```
-
-## How it fits together
+Here's the whole trip, from the homeowner's phone to our server and back again.
 
 <p align="center">
   <img alt="Architecture, in seven steps. On the iPhone: find the meter, walk the wall, mark what is near, and send the capture. The phone posts scene.json to the server, and the full packet can go to the reconstruction worker, which rebuilds the wall and posts a rebuilt scene.json. The server checks every spot along the wall and returns PASS, FAIL or UNSURE. The phone shows the spot in AR, pinned to the meter, and an UNSURE check sends the homeowner back to walk the wall for one more view." src="docs/readme/architecture.svg" width="100%">
 </p>
 
-Models build the geometry and recognize things. Plain code passes or fails each check, so every answer points back to a rule and a measurement. The clearance numbers live in a rules file with their sources, never in code.
+We drew one hard line through the design. Machine learning models handle the fuzzy parts, like turning photos into a 3D wall and recognizing a gas meter when they see one. They never decide whether the battery fits. That call comes from plain code you can read top to bottom, so every answer points back to a rule and a measurement, and nobody has to take a model's word for it. Even the distances, like how far the battery has to sit from a gas meter, live in a rules file next to the website or building code each one came from. Changing a rule never means changing code.
+
+Each part has its own folder:
 
 | Part | Built with | Where |
 | --- | --- | --- |
@@ -56,13 +62,17 @@ Models build the geometry and recognize things. Plain code passes or fails each 
   <img alt="A wall with the left side hazed over. Three checks read Not seen. The haze sweeps away, the checks turn Unsure, then settle: wall and ground pass, clear space fails, and the spot reads Not here." src="docs/readme/unseen-light.webp" width="100%">
 </picture>
 
-This is the rule we care about most. A gap in the scan could hide a gas meter, so ground nobody saw never counts as clear. Here the walk went right and never saw the left side. The closer spot stays "Not seen yet" until the view sweeps across. Then there isn't enough clear space in front of it, so it's out.
+This is the rule we care about most. Imagine the phone never looked at one stretch of wall. It might be bare, or there might be a gas meter on it, and the server has no way to tell. So it never assumes the best. Anything nobody saw counts as unknown, and no spot that depends on it can pass.
 
-The same idea covers error. The phone tracks itself by dead reckoning, so its error grows the farther you walk. A check passes only when the margin beats the error, and fails only when it misses by more. Everything in between is UNSURE, and the app names the view that would settle it. The values in the animation are illustrative.
+You can watch that happen above. The homeowner walked to the right and never pointed the phone left, so the left side stays hazed over and the spot nearest it reads "Not seen yet". Once the view sweeps across, the server can finally judge that spot, and it turns out there isn't enough open space in front of it. The spot is out.
+
+Measurements get the same caution, because none of them is exact. The phone keeps track of where it is by adding up its own movements, a bit like finding your way by counting steps, so small errors pile up the farther you walk from the meter. That's why every measurement comes with a margin of error.
+
+Take the 3 ft rule for gas meters. If the server measures 4.5 ft, give or take 0.8 ft, the battery clears the rule by more than the error, and the check passes. At 2 ft, give or take 0.8 ft, it falls short by more than the error, and the check fails. At 3.4 ft, give or take 0.8 ft, it could go either way. That check comes back UNSURE, and a person or a better view has to settle it. The numbers in the animation are made up to show the idea.
 
 ## What the server checks
 
-The battery is 31 × 22 × 39.5 in and stands flush against the wall near the meter. The server slides it along every stretch of wall the scan saw and runs these checks at each spot:
+The battery measures 31 × 22 × 39.5 in, a bit bigger than a dishwasher. It stands on the ground, flush against the wall, within cable reach of the meter. To find it a spot, the server slides the battery's outline along every stretch of wall the phone saw, 2 in at a time, and runs all of these checks at every stop:
 
 | Check | Rule | Source |
 | --- | --- | --- |
@@ -80,16 +90,18 @@ The battery is 31 × 22 × 39.5 in and stands flush against the wall near the me
 | Driveway | At least 5 ft away | Placeholder, no public value |
 | Pool | At least 10 ft away | Placeholder, no public value |
 
-Each check comes back PASS, FAIL or UNSURE, with the measurement, its error and the reason in words. The values live in `server/rules.yaml` (PR #11) next to their sources, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations. Base's own values load only on the private deployment.
+Each check comes back PASS, FAIL or UNSURE, along with what the server measured, how far off that measurement could be and a reason in plain English. NEC is the National Electrical Code and IRC is the International Residential Code, the two building codes behind several of these rules. The numbers themselves live in `server/rules.yaml` on PR #11's branch, each one next to its source, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations. Base's own values are private, so they load only on a separate, private deployment.
 
-### What goes in and what comes out
+The server then gives one of three answers. It says yes when a spot passes every check. It says no only when every spot within cable reach fails and the app knows where the wall ends on both sides. Anything in between goes to a person for review.
 
-Here is the example scene from the server's tests (PR #11), sent to the demo server. The scene is synthetic. The reply is real, trimmed to the parts worth reading.
+### One request, start to finish
 
-The server wouldn't place the battery on its own. Its best spot is 9 ft 11 in left of the meter, where an AC unit measures 4 ft 1 in away against a 3 ft rule. The error on that is ± 3 ft 10 in, which is too close to call. So the answer is a manual review, plus a request to keep walking past the left end of the wall.
+Here's what that looks like in practice. We took the example scene from the server's tests in PR #11 and sent it to the demo server. The scene is made up. We wrote it by hand, with a gas meter, a window and an AC unit spread over two walls. The reply is real, though, trimmed to the parts worth reading.
+
+The server stopped short of placing the battery itself. Its best spot was 9 ft 11 in left of the meter. From there, the AC unit around the corner measured 4 ft 1 in away, against a 3 ft rule. That sounds like a pass until you see the margin of error, which is give or take 3 ft 10 in. It's that wide because the AC unit sits far along the wall from the meter, where tracking error piles up the most. With an error that wide, the result is too close to call. So the answer is a manual review, plus a request to keep walking past the left end of the scan, because a spot within cable reach might be there.
 
 <details>
-<summary><code>scene.json</code>, what the phone sends (abridged)</summary>
+<summary>What the phone sends: <code>scene.json</code>, shortened</summary>
 
 ```json
 {
@@ -122,7 +134,7 @@ The server wouldn't place the battery on its own. Its best spot is 9 ft 11 in le
 </details>
 
 <details>
-<summary><code>result.json</code>, what the server sends back (abridged)</summary>
+<summary>What the server sends back: <code>result.json</code>, shortened</summary>
 
 ```json
 {
@@ -151,11 +163,11 @@ The server wouldn't place the battery on its own. Its best spot is 9 ft 11 in le
 
 </details>
 
-## Reproduce the demo
+## Run the demo yourself
 
-Most of the working system is still in open pull requests. `main` has an AR session that shows tracking and a server skeleton. Check out the PR you need with the [GitHub CLI](https://cli.github.com).
+Before you start, know that most of the working system still lives in open pull requests. On `main` you'll find an AR session that shows tracking and a bare server skeleton, and not much else. Each step below names the PR it needs, and the [GitHub CLI](https://cli.github.com) checks one out for you with `gh pr checkout`.
 
-**Ask the demo server for a placement.** It runs the engine from PR #11 with public rules only, and every answer says so.
+**Ask the demo server for a placement.** The demo server runs the engine from PR #11 with public rules only, and every answer says so. You still want PR #11 checked out, because that's where the example scene lives:
 
 ```bash
 gh pr checkout 11
@@ -164,9 +176,9 @@ curl -s https://house-scanning-server.vercel.app/v1/placements \
   --data-binary @server/tests/fixtures/example-scene.json
 ```
 
-Post the same scene to `/v1/placements/site-plan.svg` to get a drawing of the wall with the chosen spot.
+For a drawing of the wall with the chosen spot, post the same scene to `/v1/placements/site-plan.svg` instead.
 
-**Run the server yourself.**
+**Run the server on your own machine.** From PR #11's branch, install the locked dependencies and start the API on port 8000:
 
 ```bash
 gh pr checkout 11
@@ -175,23 +187,27 @@ uv sync --locked
 uv run uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-**Run the app.** Guided capture is in PR #10, a different branch from the server's, so check it out first:
+Then send the same `curl` request to `http://localhost:8000` instead of the demo server.
+
+**Run the app.** Guided capture lives in PR #10, which is a different branch from the server's, so switch to it first:
 
 ```bash
 gh pr checkout 10
 ```
 
-In the Simulator, build `ios/HouseScan.xcodeproj` and pass the launch arguments `-replay <capture folder> -autopilot -serverURL https://house-scanning-server.vercel.app`. On an iPhone, set up signing first:
+You don't need a phone to try it. Build `ios/HouseScan.xcodeproj` for the Simulator and pass the launch arguments `-replay <capture folder> -autopilot -serverURL https://house-scanning-server.vercel.app`. `-replay` plays a recorded capture in place of the camera, and `-autopilot` steps through every screen for you. PR #10 comes with two made-up captures you can replay, in `ios/HouseScanUITests/Fixtures/`.
+
+To run it on a real iPhone, set up signing first:
 
 ```bash
 cp ios/Config/Local.xcconfig.example ios/Config/Local.xcconfig
 ```
 
-Then set `DEVELOPMENT_TEAM` and `BUNDLE_ID_PREFIX` in that file, plug the phone in, and run. Don't set the team in Xcode's Signing pane, because CI fails on the change it writes to the project.
+Fill in `DEVELOPMENT_TEAM` and `BUNDLE_ID_PREFIX` in that file, plug in the phone and run. You might be tempted to pick your team in Xcode's Signing & Capabilities pane instead. Don't. Xcode writes that choice into the project file, and CI fails on the difference.
 
-### Environment variables
+### Environment variables, all optional
 
-There are no third-party API keys. The server runs the public rules with nothing set. These are all optional:
+You don't need any API keys, and the server runs the public rules with nothing set at all. If you want to change how it behaves, put any of these in `server/.env`:
 
 ```bash
 # server/.env  (git ignores .env files; load it with: uv run --env-file .env uvicorn api:app)
@@ -207,13 +223,15 @@ There are no third-party API keys. The server runs the public rules with nothing
 # HOUSESCAN_API_KEY=<a long random string you choose>
 ```
 
-The reconstruction worker in PR #20 reads `HOUSE_SCANNING_DATA` (default `~/house-scanning-data`) for public datasets and model caches, and `HOUSESCAN_SERVER` for the server to post to. TestFlight uploads use repository secrets described in [CONTRIBUTING.md](CONTRIBUTING.md).
+Two more belong to other parts of the project. The reconstruction worker in PR #20 looks for public datasets and cached models in `HOUSE_SCANNING_DATA`, which defaults to `~/house-scanning-data`, and posts its results to the server named in `HOUSESCAN_SERVER`. TestFlight uploads use repository secrets, and [CONTRIBUTING.md](CONTRIBUTING.md) describes them.
 
-## Data and where it came from
+## Where our data came from
+
+Here's every dataset we used, what we used it for and whether it's in the repository.
 
 | Data | What we used it for | Source | In git? |
 | --- | --- | --- | --- |
-| [ADVIO](https://github.com/AaltoVision/ADVIO) | Tracking drift on a 2018 iPhone 6s | Public, CC BY-NC 4.0 | No |
+| [ADVIO](https://github.com/AaltoVision/ADVIO) | Tracking drift on an iPhone 6s | Public, CC BY-NC 4.0 | No |
 | MARViN | Tracking drift on an iPhone 14 Pro Max | Public, no license stated | No |
 | [ETH3D](https://www.eth3d.net) | Wall error against a laser scan | Public, CC BY-NC-SA 4.0 | No |
 | Meter photos | Reading the meter number (PR #16) | Photos of real meters taken for this test | No, `data/` |
@@ -222,41 +240,47 @@ The reconstruction worker in PR #20 reads `HOUSE_SCANNING_DATA` (default `~/hous
 | Test fixtures | Server and packet tests | Synthetic, written by hand | Yes |
 | Drawings and animations | This README, the site, the walkthrough | Illustrations with example values, not a real house | Yes |
 
-The public datasets are used only to measure accuracy and are never redistributed. ADVIO and ETH3D are licensed for noncommercial use, so anyone relying on these results for commercial work needs permission from their authors first. Base's own rules and materials stay in the git-ignored `private/` folder. Photos of real homes never enter git.
+We use the public datasets only to measure accuracy, and we never redistribute them. ADVIO and ETH3D are licensed for noncommercial use, so if you want to rely on these results for commercial work, ask their authors for permission first. Base's own rules and materials stay in the `private/` folder, which git ignores, and photos of real homes never go into git at all.
 
-## What we've measured
+## How accurate it is so far
 
-Most of these numbers come from public datasets with laser-scanned or surveyed ground truth. Only the meter photos and the first phone run are ours.
+Most of these numbers come from public datasets where someone already measured the real answer with a laser scanner or survey equipment, so we could grade our results against it. Only the meter photos and the first phone run are our own.
+
+A few terms first, in case they're new to you. Tracking drift is how far the phone's sense of its own position wanders as you walk. Learned depth is a neural network guessing distances from a single photo. Rescaling it with the phone's poses means correcting those guesses using where the phone was, and which way it faced, for each photo. And p90 means 9 out of 10 measurements were off by that much or less. We report p90 rather than an average, because an average hides the bad misses, and those are the ones that put a battery in the wrong place.
 
 | What | Result | Source |
 | --- | --- | --- |
-| Tracking drift, current iPhone | 8.6, 13.4 and 18.5 in (p90) after 10, 20 and 30 ft, inside the server's allowance of 19.2, 38.4 and 57.6 in | MARViN, iPhone 14 Pro Max, PR #12 |
-| Tracking drift, 2018 iPhone | Two to three times over that allowance | ADVIO, iPhone 6s, PR #12 |
+| Tracking drift, recent iPhone | 8.6, 13.4 and 18.5 in (p90) after 10, 20 and 30 ft, inside the server's allowance of 19.2, 38.4 and 57.6 in | MARViN, iPhone 14 Pro Max, PR #12 |
+| Tracking drift, older iPhone | Two to three times over that allowance | ADVIO, iPhone 6s, PR #12 |
 | Learned depth on its own | Scale 4 to 12% off, which puts walls about 20 in out (p90) | ETH3D, PR #12 |
 | Learned depth, rescaled with the phone's poses | Walls within about 5 in (p90), or 2.8 in with exact poses. Edges stay at 8 in or worse | ETH3D, PR #12 |
 | Reconstruction worker | Walls within 2.1 in (p90) with a laser scan standing in for LiDAR, and 2.8 in from photos only | ETH3D, PR #20 |
 | Reading the meter number | Read in full on 71 of 73 photos, but the right line on only 21 of 75. A list of three candidates held it on 27 of 34 held-out photos | Photos of real meters, PR #16 |
 | First run on our phone | Both wall ends landed at the meter, so the server placed no spot. Two of five features came within 4 in of the tape | TestFlight build, PR #23 |
 
-## Known limitations
+## What doesn't work yet
 
-- **Most of it isn't merged.** Guided capture (PR #10), the engine (PR #11), reconstruction (PR #20) and the packet spec (PR #22) all live on branches.
-- **The first phone run placed nothing.** It set both wall ends at the meter, so the server had no wall to search (PR #23).
-- **The 3D method is still open.** Learned depth alone is about 20 in off. Rescaled with the phone's poses it gets to about 5 in (p90), but edges stay at 8 in or worse. With depth from a laser scan standing in for LiDAR, walls land within 2.1 in.
-- **Our tracking evidence comes from a LiDAR phone.** A current iPhone stayed inside the error allowance, but it had LiDAR, and most homeowners' phones don't. A 2018 iPhone ran two to three times over.
-- **Hidden wall has no owner.** Something standing in front of the wall can hide it, and nothing checks for that on phones without LiDAR yet.
-- **Two rule values are placeholders.** No public value exists for the pool (10 ft) and the driveway (5 ft).
-- **Meter reading picks the wrong line.** The phone reads the number but chose the right line on only 21 of 75 photos, so the app offers three candidates to tap.
-- **The electrical panel is out of scope.** An electrician still reviews it.
+It's a hackathon project, and it shows in places. Here's what we know is missing or broken:
 
-## Next steps
+- **Most of it isn't merged.** Guided capture is in PR #10, the rules engine in PR #11, reconstruction in PR #20 and the packet spec in PR #22. All four still live on their own branches.
+- **Our first real phone run placed nothing.** The app put both ends of the wall right at the meter, which left the server a wall with no length to search (PR #23).
+- **We haven't settled on how to build the 3D model.** A depth model on its own puts walls about 20 in off. Correcting its scale with the phone's poses brings that down to about 5 in, but edges stay 8 in off or worse, and the clearance rules measure from edges. With a laser scan standing in for LiDAR, walls land within 2.1 in.
+- **Our best tracking result came from a phone with LiDAR.** An iPhone 14 Pro Max stayed inside the error allowance, but it has LiDAR, and most homeowners' phones don't. An older iPhone 6s ran two to three times over.
+- **Nobody has taken on hidden walls yet.** A bush or a trash can in front of the wall can hide what's behind it, and on phones without LiDAR, nothing checks for that.
+- **Two rules use placeholder numbers.** We couldn't find a public value for how far a battery should sit from a pool or a driveway, so for now they're 10 ft and 5 ft.
+- **Reading the meter number is only half solved.** The phone reads the text fine, but a meter's nameplate carries several numbers, and the phone picked the right one on only 21 of 75 photos. For now the app shows three candidates and lets the homeowner tap the right one.
+- **We don't look at the electrical panel.** An electrician still has to review it.
 
-1. Run the field test on a current iPhone without LiDAR, using `experiments/evals/field/FIELD_SHEET.md` (PR #12), and check the default error bars against a tape.
-2. Pick the 3D path, and try world models, which nobody has tested yet.
-3. Decide who checks for hidden wall. One idea is to show the homeowner the photo of the chosen spot and ask.
-4. Load Base's values into the private deployment in place of the placeholders.
+## What we'd do next
 
-## Team
+If we keep going, this is where we'd start:
+
+1. Take a current iPhone without LiDAR to a real wall and run the field test in `experiments/evals/field/FIELD_SHEET.md` (PR #12). The same trip checks our default error bars against a tape measure.
+2. Pick a way to build the 3D model. We'd also like to try world models, which generate a whole 3D scene from photos or video. Nobody here has tested one yet.
+3. Decide who owns the hidden-wall check. One idea is to show the homeowner the photo of the chosen spot and ask them.
+4. Swap the placeholder values for Base's real ones on the private deployment.
+
+## Who built this
 
 | Name | Role | Contact |
 | --- | --- | --- |
@@ -265,9 +289,9 @@ Most of these numbers come from public datasets with laser-scanned or surveyed g
 | Hunter Carver | The 3D model and the rule checks, built with AI agents | [@huntertcarver](https://github.com/huntertcarver) |
 | Shrey Suri | This README, its diagrams and the writing skills the agents share | [@ShreySuri](https://github.com/ShreySuri) |
 
-## Repository map
+## Where everything lives
 
-Paths marked with a pull request exist only on that branch until it merges.
+Anything marked with a pull request exists only on that PR's branch until it merges.
 
 | Path | What it is | State |
 | --- | --- | --- |
@@ -281,6 +305,6 @@ Paths marked with a pull request exist only on that branch until it merges.
 | `.agents/skills/` | Shared agent skills for writing, planning and review, linked from `.claude/skills/` | |
 | `sites/landing` | The landing page, a submodule | Change it in its own repository |
 
-To go deeper, start with [the walkthrough](docs/how-it-works.html), about fifteen minutes with pictures. [docs/00-overview.md](docs/00-overview.md) has the plan, the decisions and the evidence, [AGENTS.md](AGENTS.md) the rules for anyone changing this repository, and [CONTRIBUTING.md](CONTRIBUTING.md) branches, CI and TestFlight.
+If you want to go deeper, start with [the walkthrough](docs/how-it-works.html). It takes about ten minutes and has plenty of pictures. After that, [docs/00-overview.md](docs/00-overview.md) covers the plan, the decisions we made and the evidence behind them. If you're going to change anything, read [AGENTS.md](AGENTS.md) for the rules of the repository and [CONTRIBUTING.md](CONTRIBUTING.md) for branches, CI and TestFlight.
 
-This repository is public. The pictures above come from the [live site](https://house-scanning.vercel.app/).
+The repository is public, and the pictures in this README come from the [live site](https://house-scanning.vercel.app/).
