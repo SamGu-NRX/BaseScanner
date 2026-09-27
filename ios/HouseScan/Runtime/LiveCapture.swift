@@ -150,6 +150,9 @@ final class LiveCapture {
             return false
         }
         let holder = AnchorEntity(.anchor(identifier: id))
+        // See-through until the engine hands the result to the AR scene (`setResultOwned`): a
+        // new model starts behind the screen's own drawing, and only one of them may show.
+        holder.components.set(OpacityComponent(opacity: 0))
         model.orientation = simd_quatf(pose).inverse
         let marker = Entity()
         marker.position = focus
@@ -165,7 +168,8 @@ final class LiveCapture {
 
     /// Whether RealityKit holds the shown result now, and whether it can be drawing it: `held`
     /// when its anchor entity is anchored to the meter's ARKit anchor and enabled, `drawn` when
-    /// the result's focus point also lands in front of the camera and inside the view. A check of
+    /// the result's focus point also lands in front of the camera and inside the view. Both are
+    /// read the same whether the model is see-through or shown (`setResultOwned`). A check of
     /// the chain, not of pixels: RealityKit says nothing about what it drew. `drawn` confirms the
     /// model; `held` keeps it once confirmed (`ResultOverlayPolicy`). The findings are logged
     /// when they change.
@@ -196,6 +200,14 @@ final class LiveCapture {
     /// Hides the shown result without taking it out, while the anchor's pose can't be trusted.
     func setResultVisible(_ visible: Bool) {
         result?.isEnabled = visible
+    }
+
+    /// Whether the AR scene owns the result (`ResultOverlayPolicy.usesRealityKit`): the model
+    /// shows only then, and is see-through otherwise, while the screen draws it. See-through
+    /// rather than disabled, so it stays anchored and enabled and `resultIsDrawn` can still
+    /// confirm it. The opacity applies to the model and everything under it.
+    func setResultOwned(_ owned: Bool) {
+        result?.components.set(OpacityComponent(opacity: owned ? 1 : 0))
     }
 
     private func removeResult() {

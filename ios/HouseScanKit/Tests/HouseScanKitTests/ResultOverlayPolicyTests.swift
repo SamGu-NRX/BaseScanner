@@ -1,3 +1,4 @@
+import Foundation
 import HouseScanKit
 import Testing
 
@@ -94,24 +95,97 @@ import Testing
         #expect(answers == [false, false, false, false, false, true, true])
     }
 
-    @Test func aReplacedModelGoesBackToTheCanvasAndIsConfirmedAgain() {
-        var policy = ResultOverlayPolicy()
-        let confirmed = Self.answers(Self.confirming, to: &policy)
-        #expect(confirmed.last == true)
+    /// A wall of one straight piece: the meter, the ground, the ends, along and out.
+    private static func shape(meter: SIMD3<Float> = .zero, groundY: Float = -1.2, rightEnd: Float? = 3,
+                              along: SIMD3<Float> = SIMD3(1, 0, 0)) -> ResultModelShape {
+        ResultModelShape(points: [meter], values: [groundY, -2, rightEnd], directions: [along, SIMD3(0, 0, 1)])
+    }
 
-        // publishWall rebuilt the model for a moved wall.
-        policy.modelReplaced()
+    /// The policy as the engine has it after "See it on your wall" opened and the AR scene was
+    /// seen drawing the first model.
+    private static func confirmedPolicy() -> ResultOverlayPolicy {
+        var policy = ResultOverlayPolicy()
+        #expect(policy.needsModel(for: shape(), rising: true))
+        let answers = Self.answers(Self.confirming, to: &policy)
+        #expect(answers.last == true)
+        return policy
+    }
+
+    @Test func theFirstModelIsBuiltAndStartsOnTheCanvas() {
+        var policy = ResultOverlayPolicy()
+        #expect(policy.needsModel(for: Self.shape(), rising: false))
+        #expect(policy.builtFor == Self.shape())
+        #expect(!policy.usesRealityKit)
+    }
+
+    @Test func aWallThatMovedALittleKeepsItsConfirmedModel() {
+        var policy = Self.confirmedPolicy()
+        // The ground refined by 2 cm, the meter's anchor by 3 cm, the wall turned 1°.
+        let turned = SIMD3<Float>(cos(Float.pi / 180), 0, sin(Float.pi / 180))
+        let moved = Self.shape(meter: SIMD3(0.03, 0, 0), groundY: -1.22, along: turned)
+        #expect(!policy.needsModel(for: moved, rising: false))
+        #expect(policy.usesRealityKit)
+        #expect(policy.update(drawn: false, held: true, time: 0.8))
+    }
+
+    /// Codex and Sam on #100: a model rebuilt for a moved wall kept the old one's confirmation,
+    /// so a replacement that looked anchored and in view at the next look hid the Canvas at once.
+    @Test func aRebuiltModelGoesBackToTheCanvasAndIsConfirmedAgain() {
+        var policy = Self.confirmedPolicy()
+        // The ground moved 10 cm: a new model.
+        #expect(policy.needsModel(for: Self.shape(groundY: -1.3), rising: false))
         #expect(!policy.usesRealityKit)
 
         // The new model looks anchored and in view at the very next look. That alone isn't
         // enough: it has to be seen for the half second again.
         let replacement = Self.answers(Self.polled(drawn: true, held: true, from: 0.7, count: 6), to: &policy)
         #expect(replacement == [false, false, false, false, false, true])
+    }
 
-        // Nor does holding a replaced model out of view confirm it.
-        policy.modelReplaced()
-        let heldOnly = Self.answers(Self.polled(drawn: false, held: true, from: 1.3, count: 10), to: &policy)
+    /// Sam on #100: a model rebuilt while the battery is out of view is held, not drawn, so it
+    /// stays behind the Canvas until the battery comes into view. The engine keeps it
+    /// see-through meanwhile, so only the Canvas shows.
+    @Test func aModelRebuiltOutOfViewStaysOnTheCanvasUntilSeen() {
+        var policy = Self.confirmedPolicy()
+        #expect(policy.needsModel(for: Self.shape(rightEnd: 3.5), rising: false))
+        let heldOnly = Self.answers(Self.polled(drawn: false, held: true, from: 0.7, count: 30), to: &policy)
         #expect(heldOnly.allSatisfy { !$0 })
+        let inView = Self.answers(Self.polled(drawn: true, held: true, from: 3.7, count: 6), to: &policy)
+        #expect(inView == [false, false, false, false, false, true])
+    }
+
+    @Test func turningPastTwoDegreesOrAnotherPieceRebuilds() {
+        var policy = Self.confirmedPolicy()
+        let turned = SIMD3<Float>(cos(3 * Float.pi / 180), 0, sin(3 * Float.pi / 180))
+        #expect(policy.needsModel(for: Self.shape(along: turned), rising: false))
+        #expect(!policy.usesRealityKit)
+
+        var cornered = Self.confirmedPolicy()
+        var withCorner = Self.shape()
+        withCorner.points.append(SIMD3(3, 0, 0))
+        #expect(cornered.needsModel(for: withCorner, rising: false))
+    }
+
+    @Test func reopeningTheScreenAlwaysRebuilds() {
+        var policy = Self.confirmedPolicy()
+        #expect(policy.needsModel(for: Self.shape(), rising: true))
+        #expect(!policy.usesRealityKit)
+    }
+
+    @Test func aModelThatCouldNotGoInLeavesNone() {
+        var policy = Self.confirmedPolicy()
+        policy.modelRemoved()
+        #expect(policy.builtFor == nil)
+        #expect(!policy.usesRealityKit)
+        // The next wall update builds one, however little the wall moved.
+        #expect(policy.needsModel(for: Self.shape(), rising: false))
+    }
+
+    @Test func anOpenEndCountsAsTheSameOnlyIfBothAreOpen() {
+        #expect(Self.shape(rightEnd: nil).isClose(to: Self.shape(rightEnd: nil)))
+        #expect(!Self.shape(rightEnd: nil).isClose(to: Self.shape(rightEnd: 3)))
+        let open = ResultModelShape(points: [], values: [Float.infinity], directions: [])
+        #expect(open.isClose(to: open))
     }
 
     @Test func usesRealityKitMatchesTheLastAnswer() {
