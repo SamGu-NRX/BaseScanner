@@ -188,8 +188,9 @@ Asserted starts:
 - **Unsure:** 4.8092, 7.5 and 10.1016.
 - **Pass:** 10.5016 and 11. Both routes also pass: 11 + 0.6 + 2.17 = 13.77 < 15.
 
-All starts sit right of the working space. The route to them crosses the gas meter, which
-detours; a gas meter with no heights added no extra length at 2c9348f.
+All starts sit right of the working space. The route to them passes under the gas meter, which
+sits 2.5 to 4 ft up, above the 1 ft cable run; without heights the server (from 6c7ca23) cannot
+tell the detour and leaves every route past it unsure.
 
 ### What rules.yaml and the README leave open
 

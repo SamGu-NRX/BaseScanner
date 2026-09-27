@@ -36,6 +36,8 @@
           4.0,
           4.0
         ],
+        "bottom_ft": 2.5,
+        "top_ft": 4.0,
         "source": "tap"
       }
     ],

@@ -457,15 +457,36 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
     if rules is None or spot is None:
         return problems
     lo, hi = spot["span_ft"]
+    asked = with_past_ends_asked(scene, requests)
     for c in unobserved_checks(result):
         if c not in rules.needs:
             continue
-        for band, gap in reach_gaps(scene, rules, c, spot["wall_id"], lo, hi):
+        for band, gap in reach_gaps(asked, rules, c, spot["wall_id"], lo, hi):
             if (band, c) not in named:
                 problems.append(
                     f"check {c} is unsure and needs {gap}, but no {band} request names it"
                 )
     return problems
+
+
+def with_past_ends_asked(scene: dict, requests: list[dict]) -> dict:
+    """The scene as if everything past each end the result asks to walk past were observed.
+
+    Past an unexplored end the wall may turn, so a view along the same line settles nothing; the
+    server asks to keep walking (`past_end`) instead of for a band there, and that request covers
+    every band beyond the end."""
+    past = [r for r in requests if r["kind"] == "past_end" and "span_ft" in r and "side" in r]
+    if not past:
+        return scene
+    m = copy.deepcopy(scene)
+    observed_ = m.setdefault("coverage", {}).setdefault("observed", [])
+    for r in past:
+        end = r["span_ft"][0]
+        span = [end - 1e6, end] if r["side"] == "left" else [end, end + 1e6]
+        for band in ("wall", "facing", "overhead"):
+            observed_.append({"band": band, "span_ft": span})
+        observed_.append({"band": "ground", "span_ft": span, "out_ft": 1e6})
+    return m
 
 
 # --- Case expectations -----------------------------------------------------------------------

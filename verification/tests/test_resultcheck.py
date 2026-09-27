@@ -731,3 +731,32 @@ def test_the_wall_source_sets_the_default_error(wall, error):
     scene = {"walls": [{"id": "w1", "baseline": [[0, 0], [9, 0]], **wall}]}
     drift = 0.0 if "plus_minus_ft" in wall else 0.16 * 1.0  # far edge 1 ft from the meter
     assert battery_error(scene, RULES, "w1", 0.0, 1.0) == pytest.approx(error + drift)
+
+
+def test_a_request_to_walk_past_an_end_covers_every_band_beyond_it():
+    two_band = RuleSet(
+        RULES.width_ft,
+        RULES.depth_ft,
+        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 1.0, height=6.5))},
+        RULES.errors,
+    )
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"][0]["span_ft"] = [1.0, 10.0]  # the wall ends at 1, unexplored
+    r = result(checks=[check("unsure", None, cause="unobserved")])
+    r["reasons"] = [{"code": "unobserved_area", "message": ""}]
+    r["missing_evidence"] = [
+        {
+            "kind": "band",
+            "band": "ground",
+            "span_ft": [0, 5],
+            "checks": ["gas_clearance"],
+            "message": "",
+        },
+    ]
+    assert any(
+        "no wall request names it" in m for m in missing_evidence_problems(scene, r, two_band)
+    )
+    r["missing_evidence"].append(
+        {"kind": "past_end", "side": "left", "span_ft": [1.0, 1.0], "message": ""}
+    )
+    assert missing_evidence_problems(scene, r, two_band) == []

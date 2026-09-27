@@ -936,7 +936,16 @@ G_AT = 4.0
 G_E = TAP + DRIFT * G_AT
 G_FAIL = (3.0 + G_AT - G_E - WALL_E - DRIFT * W) / (1 + DRIFT)
 G_PASS = (3.0 + G_AT + G_E + WALL_E + DRIFT * W) / (1 - DRIFT)
-tap_gas = {"type": "gas_meter", "wall_id": "w1", "span_ft": [G_AT, G_AT], "source": "tap"}
+# Heights above the 1 ft cable run, so the route passes under it and only the clearance is tested:
+# with no heights the server (6c7ca23) calls the detour unknown and every route past it unsure.
+tap_gas = {
+    "type": "gas_meter",
+    "wall_id": "w1",
+    "span_ft": [G_AT, G_AT],
+    "bottom_ft": 2.5,
+    "top_ft": 4.0,
+    "source": "tap",
+}
 case(
     "d-gas-drift",
     "rules.yaml errors.tap_ft, wall_ft, drift_per_ft and clearances.gas_ft at origin/t3/server "
