@@ -22,6 +22,8 @@ import UIKit
 @Observable
 final class CaptureIntegration {
     private(set) var status: CaptureUploadStatus?
+    /// The capture API's result for the current scan, bound to it; nil until there is one.
+    private(set) var result: CaptureResult.Record?
     /// Bumped whenever the answer or the scan changes, so a view reading `needsConsent` updates.
     private(set) var revision = 0
     var needsConsent: Bool {
@@ -90,7 +92,11 @@ final class CaptureIntegration {
     private func coordinator(for environment: CaptureSessionCoordinator.Environment?) -> CaptureSessionCoordinator {
         if let coordinator { return coordinator }
         let made = CaptureSessionCoordinator(environment: environment)
-        made.onStatus = { [weak self] in self?.publish($0) }
+        made.onStatus = { [weak self] in
+            self?.publish($0)
+            if $0 == nil { self?.result = nil }
+        }
+        made.onResult = { [weak self] in self?.result = $0 }
         coordinator = made
         return made
     }

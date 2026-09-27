@@ -57,6 +57,8 @@ final class LoopbackCaptureAPI: Sendable {
         var badDigestPuts = 0
         /// Accept the next finalize, then report it lost with `failed` / `retry_finalize`.
         var loseNextFinalize = false
+        /// The homeowner message the result carries.
+        var resultMessage = "The loopback receiver's test result."
         /// Answer the next commit with this split instead of the truth.
         var commitOverride: ((committed: [String], notFound: [String], mismatch: [String]))?
         /// Routes whose answers wait until `release` is called.
@@ -178,7 +180,10 @@ final class LoopbackCaptureAPI: Sendable {
             case ("POST", "finalize"): return finalize(r, &capture, &s)
             case ("GET", "events"): return events(r, &capture)
             case ("GET", "result"):
-                return (200, json(["runId": capture.runID ?? "", "status": capture.status, "outcome": capture.status == "manual_review" ? ["kind": "manual_review"] as Any : NSNull()]))
+                let outcome: Any = capture.status == "manual_review"
+                    ? ["kind": "manual_review", "profile": "C", "message": s.resultMessage, "viewsNeeded": [], "reasons": []] as [String: Any]
+                    : NSNull()
+                return (200, json(["runId": capture.runID ?? "", "status": capture.status, "viewsNeeded": [], "memberActions": [], "outcome": outcome]))
             default: return error(404, "route")
             }
         }

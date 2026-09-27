@@ -167,6 +167,9 @@ public final class CaptureSessionCoordinator {
 
     @MainActor
     public final class Session {
+        /// This app's id for this session, new for every session even when two packets both call
+        /// their ARKit epoch "e1": a result is bound to it, so a late result can't land on a newer scan.
+        public let localID = UUID().uuidString
         public let packetID: String
         public let folder: URL
         /// Nil until the homeowner says yes on a build that sends.
@@ -178,6 +181,8 @@ public final class CaptureSessionCoordinator {
         var ended = false
         /// packet.json as frozen, once the scan was sent for placement.
         var frozen: Data?
+        /// The server's result for this session's capture, decoded and bound to it.
+        public fileprivate(set) var result: CaptureResult.Record?
 
         init(packetID: String, folder: URL, recording: RecordingSource) {
             self.packetID = packetID
@@ -213,6 +218,10 @@ public final class CaptureSessionCoordinator {
     private var recording: RecordingSource?
     /// The current session's status; nil when there is none or nothing is being sent.
     public var onStatus: (@MainActor (CaptureUploadStatus?) -> Void)?
+    /// The current session's result, once the server has one. Never called for an ended session.
+    public var onResult: (@MainActor (CaptureResult.Record) -> Void)?
+    /// The packet's ARKit epoch: one packet is one world.
+    public static let epoch = "e1"
 
     public init(environment: Environment?) {
         self.environment = environment
@@ -379,11 +388,12 @@ public final class CaptureSessionCoordinator {
                 create: .init(packetId: session.packetID, tier: environment.tier, device: environment.device), consentedAt: consentedAt,
                 policy: environment.policy)
             session.uploader = uploader
-            // Status from an ended session's uploader never reaches the screen.
+            // Status and results from an ended session's uploader never reach the screen.
             let publish: @Sendable (CaptureUploadStatus) -> Void = { [weak self] status in
                 Task { @MainActor in
                     guard let self, self.session === session else { return }
                     self.onStatus?(status)
+                    if status.resultAvailable, session.result == nil { await self.bindResult(of: session) }
                 }
             }
             let log = environment.log
@@ -403,6 +413,26 @@ public final class CaptureSessionCoordinator {
             environment.log("capture upload: sending this world's packet")
         } catch {
             environment.log("capture upload not started: \(error)")
+        }
+    }
+
+    /// Decodes the uploader's result and binds it to the session, capture and run that asked for
+    /// it. The analysis stays unverified: nothing in the response proves the server reconstructed
+    /// anything, so the spatial result is withheld (`CaptureResult.Record.placement`).
+    private func bindResult(of session: Session) async {
+        guard let uploader = session.uploader else { return }
+        let state = await uploader.snapshot
+        guard self.session === session, session.result == nil, let body = state.result, let captureID = state.captureID,
+              let runID = state.finalized?.runID else { return }
+        do {
+            let response = try JSONDecoder().decode(CaptureResult.Response.self, from: body)
+            let record = CaptureResult.Record(
+                response: response,
+                association: .init(sessionID: session.localID, captureID: captureID, runID: runID, epoch: Self.epoch))
+            session.result = record
+            onResult?(record)
+        } catch {
+            environment?.log("capture result could not be read: \(error)")
         }
     }
 

@@ -125,6 +125,10 @@ public struct CaptureUploadStatus: Sendable, Equatable {
     public var lastEvent: String?
     public var eventCursor: Int
     public var resultAvailable: Bool
+    /// The server's id for the capture, once created: what an operator copies to find this scan.
+    public var captureID: String?
+    /// The run finalize started, once accepted.
+    public var runID: String?
     /// Set while the uploader waits out a retryable failure.
     public var retryingAt: Date?
     public var detail: String?
@@ -145,6 +149,8 @@ public struct CaptureUploadStatus: Sendable, Equatable {
         lastEvent = state.lastEvent
         eventCursor = state.eventCursor
         resultAvailable = state.result != nil
+        captureID = state.captureID
+        runID = state.finalized?.runID
         self.retryingAt = retryingAt
         if case .failed(let step, let codes, let status) = state.end {
             self.detail = "\(step) \(status) \(codes.joined(separator: ","))"
