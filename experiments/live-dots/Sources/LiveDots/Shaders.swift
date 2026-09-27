@@ -176,5 +176,167 @@ enum Shaders {
         float r = length(pc * 2.0f - 1.0f);
         return in.color * (1.0f - smoothstep(in.inner, 1.0f, r));
     }
+
+    // MARK: Fog
+    //
+    // The unmeasured world sits under one continuous fog that dissolves where dots arrive. Each
+    // frame every live dot splats a soft disc (0.35 m, 6 to 30 mask pixels) into a 96 x 208
+    // reveal mask; a radius-5 Gaussian blur and smoothstep(0.12, 0.55) feather its edge; a lagged
+    // copy eases toward it so the fog lifts a beat after the dots appear (600 ms time constant,
+    // a linear 400 ms fade under Reduce Motion) and returns quickly (120 ms) where a new view is
+    // unmeasured. The fog itself is Chalk mixed toward a cool
+    // grey, slightly thinner up close, textured by slow domain-warped fbm.
+    //
+    // Borrowed: the noise-edged fog-of-war mask from Civilization VI (lexdev.net case study); the
+    // low-resolution mask sampled bilinearly after a blur (Andrew Hung, "Implementing Attractive
+    // Fog of War in Unity"); reveal-by-measurement from Polycam's blue grid turning into white
+    // mesh and Scaniverse's hatching over unscanned areas; the live point cloud and capture dial
+    // of Apple's Object Capture; RoomPlan's coaching line and animated outlines (the boxes and
+    // guidance, drawn in SwiftUI).
+
+    struct SplatUniforms {
+        float4x4 clip;
+        float pixelsPerMetre;  // mask pixels per metre at 1 m
+        float time;            // playback seconds
+        float2 pad;
+    };
+
+    struct SplatOut {
+        float4 position [[position]];
+        float size [[point_size]];
+        float weight;
+    };
+
+    vertex SplatOut splatVertex(uint vid [[vertex_id]],
+                                const device Sprite* sprites [[buffer(0)]],
+                                constant SplatUniforms& u [[buffer(1)]]) {
+        Sprite s = sprites[vid];
+        float t = u.time;
+        float birth = strongEaseOut((t - s.b.x) / 0.35f);
+        float evidence = mix(s.b.y, s.b.z, strongEaseOut((t - s.b.w) / 0.25f));
+        float fade = 1.0f - strongEaseOut((t - s.c.y) / 0.25f);
+        float factor = clamp((evidence - 0.45f) / 0.45f, 0.0f, 1.0f);
+        SplatOut out;
+        out.weight = birth * fade * (0.6f + 0.4f * factor);
+        out.position = u.clip * float4(s.a.xyz, 1.0f);
+        float radius = clamp(0.35f * u.pixelsPerMetre / max(out.position.w, 0.05f), 6.0f, 30.0f);
+        out.size = 2.0f * radius;
+        if (out.weight < 1.0f / 512.0f || out.position.w < 0.05f) { out.position = float4(0.0f, 0.0f, -1.0f, 1.0f); }
+        return out;
+    }
+
+    fragment float4 splatFragment(SplatOut in [[stage_in]], float2 pc [[point_coord]]) {
+        float2 d = pc * 2.0f - 1.0f;
+        float k = saturate(1.0f - dot(d, d));
+        return float4(in.weight * k * k, 0.0f, 0.0f, 0.0f);
+    }
+
+    // Separable Gaussian, radius 5 texels (sigma 2.5). The second pass clamps to 1 and applies
+    // smoothstep(0.12, 0.55), the same as FogMask.shape.
+    fragment float4 blurFragment(CameraOut in [[stage_in]],
+                                 texture2d<float> source [[texture(0)]],
+                                 constant int2& direction [[buffer(0)]],
+                                 constant int& finish [[buffer(1)]]) {
+        int2 p = int2(in.position.xy);
+        int2 limit = int2(source.get_width() - 1, source.get_height() - 1);
+        float sum = 0.0f, total = 0.0f;
+        for (int k = -5; k <= 5; k++) {
+            float w = exp(-float(k * k) / (2.0f * 2.5f * 2.5f));
+            sum += w * source.read(uint2(clamp(p + k * direction, int2(0), limit))).r;
+            total += w;
+        }
+        float v = sum / total;
+        if (finish != 0) { v = smoothstep(0.12f, 0.55f, min(v, 1.0f)); }
+        return float4(v, 0.0f, 0.0f, 0.0f);
+    }
+
+    struct LagUniforms {
+        float dt;
+        int reduceMotion;
+        int reset;
+        int pad;
+    };
+
+    // Same rule as FogMask.lagStep.
+    fragment float4 lagFragment(CameraOut in [[stage_in]],
+                                texture2d<float> target [[texture(0)]],
+                                texture2d<float> previous [[texture(1)]],
+                                constant LagUniforms& u [[buffer(0)]]) {
+        uint2 p = uint2(in.position.xy);
+        float goal = target.read(p).r;
+        if (u.reset != 0) { return float4(goal, 0.0f, 0.0f, 0.0f); }
+        float last = previous.read(p).r;
+        bool lifting = goal > last;
+        float next;
+        if (u.reduceMotion != 0) {
+            float step = u.dt / (lifting ? 0.4f : 0.12f);
+            next = last + clamp(goal - last, -step, step);
+        } else {
+            next = last + (goal - last) * (1.0f - exp(-u.dt / (lifting ? 0.6f : 0.12f)));
+        }
+        return float4(next, 0.0f, 0.0f, 0.0f);
+    }
+
+    struct FogUniforms {
+        float2 viewSize;   // pixels
+        float2 offset;     // camera image placement, as CameraUniforms
+        float scale;
+        float time;        // ambient seconds, runs while paused
+        float2 imageSize;
+        float motion;      // 0 under Reduce Motion: no drift, no breathing
+        float pad0;
+        float2 pad1;
+    };
+
+    static float hash21(float2 p) {
+        p = fract(p * float2(123.34f, 456.21f));
+        p += dot(p, p + 45.32f);
+        return fract(p.x * p.y);
+    }
+
+    static float valueNoise(float2 p) {
+        float2 i = floor(p), f = fract(p);
+        float2 w = f * f * (3.0f - 2.0f * f);
+        float a = hash21(i), b = hash21(i + float2(1, 0)), c = hash21(i + float2(0, 1)), d = hash21(i + float2(1, 1));
+        return mix(mix(a, b, w.x), mix(c, d, w.x), w.y);
+    }
+
+    static float fbm(float2 p) {
+        float sum = 0.0f, amplitude = 0.5f;
+        for (int i = 0; i < 3; i++) {
+            sum += amplitude * valueNoise(p);
+            p = p * 2.03f + float2(17.1f, 9.2f);
+            amplitude *= 0.5f;
+        }
+        return sum / 0.875f;
+    }
+
+    fragment float4 fogFragment(CameraOut in [[stage_in]],
+                                constant FogUniforms& u [[buffer(0)]],
+                                texture2d<float> reveal [[texture(0)]],
+                                texture2d<float> depth [[texture(1)]]) {
+        constexpr sampler linear(filter::linear, address::clamp_to_edge);
+        constexpr sampler nearest(filter::nearest, address::clamp_to_edge);
+        float2 screen = in.position.xy;
+        float revealed = reveal.sample(linear, screen / u.viewSize).r;
+
+        float2 portrait = (screen - u.offset) / u.scale;
+        float2 landscape = float2(portrait.y, u.imageSize.y - portrait.x);
+        float d = depth.sample(nearest, landscape / u.imageSize).r;
+        if (d <= 0.0f) { d = 100.0f; }  // no hit: far
+        float depthTerm = 0.75f + 0.25f * smoothstep(1.0f, 4.5f, d);
+
+        // uv in screen widths, so the noise is round, not stretched down the tall screen.
+        float2 uv = screen / u.viewSize.x;
+        float2 q = uv * 2.2f + u.motion * u.time * 0.02f * float2(0.94f, 0.34f);
+        float2 warp = float2(fbm(q + float2(3.1f, 1.7f)), fbm(q + float2(-2.3f, 5.2f)));
+        float noiseTerm = 0.78f + 0.22f * fbm(q + 0.8f * warp);
+        float breathing = 1.0f + u.motion * 0.04f * sin(2.0f * M_PI_F * 0.08f * u.time);
+
+        float alpha = saturate(0.62f * depthTerm * noiseTerm * (1.0f - revealed) * breathing);
+        float3 chalk = float3(0xF7, 0xF5, 0xEF) / 255.0f;
+        float3 cool = float3(0xD9, 0xE2, 0xEC) / 255.0f;
+        return float4(mix(chalk, cool, 0.35f) * alpha, alpha);
+    }
     """
 }

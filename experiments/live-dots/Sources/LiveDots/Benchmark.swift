@@ -28,7 +28,7 @@ enum Benchmark {
 
         for (label, scale) in [("1170 x 2532 (export, 3x)", Float(3)), ("780 x 1688 (app window, 2x)", Float(2))] {
             let target = try OffscreenTarget(renderer: renderer, scale: scale)
-            let request = FrameRequest(mode: .lidar, keyframe: fullest.index, time: time, reduceMotion: false, showFog: false)
+            let request = FrameRequest(mode: .lidar, keyframe: fullest.index, time: time, reduceMotion: false, fog: .on)
             for _ in 0..<30 { try target.render(request, readBack: false) }
             var gpu: [Double] = [], wall: [Double] = []
             for _ in 0..<300 {

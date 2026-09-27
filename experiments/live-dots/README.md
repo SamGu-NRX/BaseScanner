@@ -15,6 +15,8 @@ swift test
 
 `--scheme hologram|constellation|ember`, or the Look picker, switches between three looks for comparison: the current one, edges only joined by hairlines, and new dots born amber that cool to white over 6 s.
 
+Fog (`--fog on|off|veil`, on by default) covers everything not yet measured and lifts a beat after dots arrive; `veil` is the old flat 35% comparison. The electric meter, gas meter, door and window boxes are simulated from the fixture's scene, not detected. `--still <n> --at <seconds>` plays the replay up to that moment, so a still shows the fog as the video does.
+
 The fixture is the synthetic wall from #10. The no-LiDAR mode is simulated from its depth: feature points use a 0.1 gradient, since ARKit finds them on brick texture too, and live while seen in 2 of the last 6 keyframes, where the real app would use 3 of 10 at frame rate.
 
 **Result.** It passes. At 0.2, 100% of outline voxels and 1% of brick voxels become edges, and nothing draws behind the bin. On an M4 Pro, 6,000 dots with halos take 0.54 ms of GPU per 1170 × 2532 frame.

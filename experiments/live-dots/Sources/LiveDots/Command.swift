@@ -6,7 +6,7 @@ enum Command {
     /// Every frame of the replay at 30 fps to PNG files in a folder, or raw BGRA to stdout for "-".
     case export(destination: String, options: RenderOptions)
     /// One settled keyframe (1-based, as in the fixture's ids) to a PNG file.
-    case still(keyframe: Int, output: String, options: RenderOptions)
+    case still(keyframe: Int, at: Float?, output: String, options: RenderOptions)
     case gradientReport(fixture: String?)
     case benchmark(fixture: String?)
     case fieldReport(fixture: String?)
@@ -15,7 +15,7 @@ enum Command {
         var fixture: String?
         var mode: CaptureMode = .lidar
         var reduceMotion = false
-        var showFog = false
+        var fog: FogStyle = .on
         var scheme: DotScheme = .hologram
     }
 
@@ -25,8 +25,8 @@ enum Command {
             """
             \(problem)
             usage: LiveDots [--fixture <dir>]
-                   LiveDots --export <dir|-> --mode lidar|nolidar [--scheme hologram|constellation|ember] [--reduce-motion] [--fog] [--fixture <dir>]
-                   LiveDots --still <keyframe> --out <file.png> --mode lidar|nolidar [--scheme ...] [--reduce-motion] [--fog] [--fixture <dir>]
+                   LiveDots --export <dir|-> --mode lidar|nolidar [--scheme hologram|constellation|ember] [--fog on|off|veil] [--reduce-motion] [--fixture <dir>]
+                   LiveDots --still <keyframe> [--at <seconds>] --out <file.png> --mode lidar|nolidar [--scheme ...] [--fog on|off|veil] [--reduce-motion] [--fixture <dir>]
                    LiveDots --gradient-report [--fixture <dir>]
                    LiveDots --benchmark [--fixture <dir>]
                    LiveDots --field-report [--fixture <dir>]
@@ -36,7 +36,7 @@ enum Command {
 
     static func parse(_ arguments: [String]) throws(UsageError) -> Command {
         var options = RenderOptions()
-        var export: String?, still: Int?, output: String?, mode: String?
+        var export: String?, still: Int?, output: String?, mode: String?, at: Float?
         var report = false, benchmark = false, fieldReport = false
         var rest = arguments[...]
         func value(for flag: String) throws(UsageError) -> String {
@@ -52,6 +52,10 @@ enum Command {
                 guard let number = Int(text), number >= 1 else { throw UsageError(problem: "--still needs a keyframe number from 1, got \(text)") }
                 still = number
             case "--out": output = try value(for: flag)
+            case "--at":
+                let text = try value(for: flag)
+                guard let seconds = Float(text), seconds >= 0 else { throw UsageError(problem: "--at needs seconds from 0, got \(text)") }
+                at = seconds
             case "--mode": mode = try value(for: flag)
             case "--scheme":
                 let name = try value(for: flag)
@@ -60,7 +64,10 @@ enum Command {
                 }
                 options.scheme = scheme
             case "--reduce-motion": options.reduceMotion = true
-            case "--fog": options.showFog = true
+            case "--fog":
+                let name = try value(for: flag)
+                guard let fog = FogStyle(rawValue: name) else { throw UsageError(problem: "--fog must be on, off or veil, got \(name)") }
+                options.fog = fog
             case "--gradient-report": report = true
             case "--benchmark": benchmark = true
             case "--field-report": fieldReport = true
@@ -86,7 +93,7 @@ enum Command {
         if let still {
             guard mode != nil else { throw UsageError(problem: "--still needs --mode") }
             guard let output else { throw UsageError(problem: "--still needs --out <file.png>") }
-            return .still(keyframe: still, output: output, options: options)
+            return .still(keyframe: still, at: at, output: output, options: options)
         }
         return .app(fixture: options.fixture)
     }

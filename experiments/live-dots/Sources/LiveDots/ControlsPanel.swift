@@ -66,8 +66,13 @@ struct ControlsPanel: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Reduce Motion", isOn: $player.reduceMotion)
-                Toggle("Show unseen as fog", isOn: $player.showFog)
-                Text("Fog is the old approach: a flat 35% veil over wall no dot has reached yet.")
+                Picker("Fog", selection: $player.fog) {
+                    Text("Fog").tag(FogStyle.on)
+                    Text("Flat veil").tag(FogStyle.veil)
+                    Text("Off").tag(FogStyle.off)
+                }
+                .pickerStyle(.segmented)
+                Text("Fog covers everything not yet measured and lifts where dots arrive. Flat veil is the old approach, 35% over wall cells no dot has reached.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -46,7 +46,7 @@ struct SchemeTests {
         ], seen: [], instruction: .walkLeft)
         let sprites = try #require(builder.states.last).sprites
         let old = try #require(sprites.first { $0.id == 1 }), new = try #require(sprites.first { $0.id == 2 })
-        let now = Float(30) / Tuning.keyframesPerSecond
+        let now = Schedule.start(of: 30)
         #expect(old.birthTime == 0)
         #expect(DotScheme.warmth(at: now, birth: old.birthTime) == 0)
         #expect(DotScheme.warmth(at: now, birth: new.birthTime) == 1)

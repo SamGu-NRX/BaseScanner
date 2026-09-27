@@ -36,8 +36,13 @@ struct ContentView: View {
                     ZStack {
                         DotsMetalView(renderer: renderer, player: player, timer: timer)
                             .accessibilityHidden(true)
-                        let state = renderer.data.timeline(player.mode).states[player.keyframe]
-                        PhoneChrome(coverage: state.coverage, instruction: state.instruction)
+                        TimelineView(.animation) { _ in
+                            let data = renderer.data, request = player.request
+                            PhoneChrome(
+                                state: data.timeline(request.mode).states[request.keyframe],
+                                keyframe: data.replay.keyframes[request.keyframe],
+                                boxes: data.boxes[request.keyframe], time: request.time)
+                        }
                     }
                 }
             }

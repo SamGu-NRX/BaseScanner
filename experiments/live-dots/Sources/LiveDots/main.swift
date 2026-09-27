@@ -7,8 +7,8 @@ do {
         LiveDotsApp.main()
     case let .export(destination, options):
         try Exporter.exportReplay(to: destination, options: options)
-    case let .still(keyframe, output, options):
-        try Exporter.exportStill(keyframe: keyframe, to: output, options: options)
+    case let .still(keyframe, at, output, options):
+        try Exporter.exportStill(keyframe: keyframe, at: at, to: output, options: options)
     case let .gradientReport(fixture):
         try GradientReport.run(fixture: fixture)
     case let .benchmark(fixture):

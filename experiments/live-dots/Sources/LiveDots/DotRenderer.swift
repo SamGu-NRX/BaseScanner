@@ -10,8 +10,15 @@ struct FrameRequest: Equatable {
     /// Playback seconds; animations are evaluated at this time.
     var time: Float
     var reduceMotion: Bool
-    var showFog: Bool
+    var fog: FogStyle
     var scheme: DotScheme = .hologram
+    /// Seconds on a clock that keeps running while playback is paused, for the fog's drift.
+    var ambientTime: Float = 0
+    /// Seconds since the previous frame, for the fog's lag.
+    var frameInterval: Float = 1 / 60
+
+    /// A scrub or a still shows its keyframe settled; the renderer passes a far-future time.
+    var isSettled: Bool { time > 1e4 }
 }
 
 /// Draws a keyframe: the camera image, the optional fog veil, then the dots as additive point
@@ -42,6 +49,9 @@ final class DotRenderer {
     private let dotPipeline: MTLRenderPipelineState
     private let linkPipeline: MTLRenderPipelineState
     private let cameraImages: [MTLTexture]
+    private let fog: FogLayer
+    private var splatBuffer: MTLBuffer?
+    private var splatCount = 0
 
     private var spriteBuffer: MTLBuffer?
     private var spriteCount = 0
@@ -90,6 +100,8 @@ final class DotRenderer {
         dotPipeline = try pipeline("dotVertex", "dotFragment", blend: additive)
         linkPipeline = try pipeline("linkVertex", "linkFragment", blend: additive)
 
+        fog = try FogLayer(device: device, library: library, replay: data.replay)
+
         let loader = MTKTextureLoader(device: device)
         cameraImages = try data.replay.keyframes.map { keyframe in
             try loader.newTexture(
@@ -107,6 +119,14 @@ final class DotRenderer {
         try prepareBuffers(request.mode, state, scheme: request.scheme)
         let projection = ScreenProjection(keyframe: keyframe, viewSize: pixelSize)
 
+        var clip = projection.clipMatrix
+        if request.fog == .on {
+            fog.encodeMask(
+                into: commandBuffer, splats: splatBuffer, splatCount: splatCount, clip: clip,
+                pixelsPerMetre: keyframe.intrinsics.x * projection.scale * Float(FogLayer.maskWidth) / pixelSize.x,
+                time: request.time, dt: request.frameInterval, reduceMotion: request.reduceMotion, reset: request.isSettled)
+        }
+
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         defer { encoder.endEncoding() }
 
@@ -118,8 +138,13 @@ final class DotRenderer {
         encoder.setFragmentTexture(cameraImages[request.keyframe], index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
-        var clip = projection.clipMatrix
-        if request.showFog, let veilBuffer, veilVertexCount > 0 {
+        if request.fog == .on {
+            fog.encodeComposite(into: encoder, uniforms: FogUniforms(
+                viewSize: pixelSize, offset: projection.offset, scale: projection.scale, time: request.ambientTime,
+                imageSize: camera.imageSize, motion: request.reduceMotion ? 0 : 1, pad0: 0, pad1: .zero),
+                keyframe: request.keyframe)
+        }
+        if request.fog == .veil, let veilBuffer, veilVertexCount > 0 {
             encoder.setRenderPipelineState(veilPipeline)
             encoder.setVertexBuffer(veilBuffer, offset: 0, index: 0)
             encoder.setVertexBytes(&clip, length: MemoryLayout<simd_float4x4>.stride, index: 1)
@@ -148,7 +173,13 @@ final class DotRenderer {
         if let cachedKey, cachedKey.mode == mode, cachedKey.keyframe == state.index, cachedKey.scheme == scheme { return }
         cachedKey = (mode, state.index, scheme)
 
-        let sprites = (spriteOverride ?? state.sprites).filter { scheme.draws($0.kind) }
+        let all = spriteOverride ?? state.sprites
+        // Every live dot clears fog, whatever the scheme draws.
+        let splats = all.map(SpriteVertex.init)
+        splatCount = splats.count
+        splatBuffer = splats.isEmpty ? nil : try makeBuffer(splats, "splat")
+
+        let sprites = all.filter { scheme.draws($0.kind) }
         let vertices = Self.vertices(for: sprites)
         spriteCount = vertices.count
         spriteBuffer = vertices.isEmpty ? nil : try makeBuffer(vertices, "dot")

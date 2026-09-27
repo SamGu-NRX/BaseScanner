@@ -20,22 +20,17 @@ enum Exporter {
         let data = try ReplayData.loadNow(folder: FixtureLocator.folder(options.fixture))
         let renderer = try DotRenderer(data: data)
         let target = try OffscreenTarget(renderer: renderer)
-        let timeline = data.timeline(options.mode)
-        let seconds = Float(data.keyframeCount) / Tuning.keyframesPerSecond + Tuning.birthDuration + 0.15
+        let seconds = Schedule.end(count: data.keyframeCount) + Tuning.birthDuration + 0.15
         let frameCount = Int((seconds * framesPerSecond).rounded(.up))
         let toStdout = destination == "-"
         let folder = URL(fileURLWithPath: destination, isDirectory: true)
         if !toStdout { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
-        var chrome = ChromeCache()
 
         for frame in 0..<frameCount {
             let time = Float(frame) / framesPerSecond
-            let keyframe = min(Int(time * Tuning.keyframesPerSecond), data.keyframeCount - 1)
-            let request = FrameRequest(
-                mode: options.mode, keyframe: keyframe, time: time,
-                reduceMotion: options.reduceMotion, showFog: options.showFog, scheme: options.scheme)
+            let request = playbackRequest(at: time, data: data, options: options)
             try target.render(request)
-            try composite(chrome.image(for: timeline.states[keyframe]), onto: target)
+            try composite(chrome(for: request, data: data), onto: target)
             if toStdout {
                 FileHandle.standardOutput.write(Data(target.bytes))
             } else {
@@ -47,8 +42,19 @@ enum Exporter {
         }
     }
 
-    /// One keyframe, settled (every birth and evidence change finished), as a PNG.
-    static func exportStill(keyframe number: Int, to path: String, options: Command.RenderOptions) throws {
+    /// The frame at playback `time`, as the video draws it.
+    private static func playbackRequest(at time: Float, data: ReplayData, options: Command.RenderOptions) -> FrameRequest {
+        FrameRequest(
+            mode: options.mode, keyframe: Schedule.keyframe(at: time, count: data.keyframeCount), time: time,
+            reduceMotion: options.reduceMotion, fog: options.fog, scheme: options.scheme,
+            ambientTime: time, frameInterval: 1 / framesPerSecond)
+    }
+
+    /// One keyframe as a PNG. Without `at`, the keyframe settled: every animation finished and
+    /// the fog lag caught up. With `at`, the moment `at` seconds after the keyframe appears,
+    /// reached by playing the replay from the start at 30 fps, so the fog's lag is what the
+    /// video shows.
+    static func exportStill(keyframe number: Int, at offset: Float?, to path: String, options: Command.RenderOptions) throws {
         let data = try ReplayData.loadNow(folder: FixtureLocator.folder(options.fixture))
         guard number <= data.keyframeCount else {
             throw Failure(description: "--still \(number) is past the last keyframe, \(data.keyframeCount)")
@@ -56,11 +62,22 @@ enum Exporter {
         let renderer = try DotRenderer(data: data)
         let target = try OffscreenTarget(renderer: renderer)
         let state = data.timeline(options.mode).states[number - 1]
-        try target.render(FrameRequest(
-            mode: options.mode, keyframe: number - 1, time: state.time + 1,
-            reduceMotion: options.reduceMotion, showFog: options.showFog, scheme: options.scheme))
-        var chrome = ChromeCache()
-        try composite(chrome.image(for: state), onto: target)
+        let request: FrameRequest
+        if let offset {
+            let end = Schedule.start(of: number - 1) + offset
+            var frame = 0
+            while Float(frame + 1) / framesPerSecond < end {
+                try target.render(playbackRequest(at: Float(frame) / framesPerSecond, data: data, options: options), readBack: false)
+                frame += 1
+            }
+            request = playbackRequest(at: end, data: data, options: options)
+        } else {
+            request = FrameRequest(
+                mode: options.mode, keyframe: number - 1, time: 1e5,
+                reduceMotion: options.reduceMotion, fog: options.fog, scheme: options.scheme)
+        }
+        try target.render(request)
+        try composite(chrome(for: request, data: data), onto: target)
         try writePNG(target, to: URL(fileURLWithPath: path))
         FileHandle.standardError.write(Data(
             "\(path): keyframe \(number), \(options.mode.rawValue), \(options.scheme.rawValue), \(state.sprites.count) sprites drawn, \(state.fieldCount) dots in field (\(state.edgeCount) edges), coverage \(Int((state.coverage * 100).rounded()))%\n".utf8))
@@ -80,19 +97,15 @@ enum Exporter {
         guard CGImageDestinationFinalize(destination) else { throw Failure(description: "can't write \(url.path)") }
     }
 
-    /// The chrome changes only when the coverage or the instruction does.
-    private struct ChromeCache {
-        private var key: (Float, Instruction)?
-        private var image: CGImage?
-
-        mutating func image(for state: KeyframeState) -> CGImage? {
-            if let key, key.0 == state.coverage, key.1 == state.instruction { return image }
-            let renderer = ImageRenderer(content: PhoneChrome(coverage: state.coverage, instruction: state.instruction)
-                .frame(width: CGFloat(OffscreenTarget.pointSize.x), height: CGFloat(OffscreenTarget.pointSize.y)))
-            renderer.scale = CGFloat(OffscreenTarget.scale)
-            key = (state.coverage, state.instruction)
-            image = renderer.cgImage
-            return image
-        }
+    /// The SwiftUI chrome for one frame. Rendered every frame: the boxes fade and the hold ring
+    /// fills between keyframes.
+    private static func chrome(for request: FrameRequest, data: ReplayData) -> CGImage? {
+        let renderer = ImageRenderer(content: PhoneChrome(
+            state: data.timeline(request.mode).states[request.keyframe],
+            keyframe: data.replay.keyframes[request.keyframe],
+            boxes: data.boxes[request.keyframe], time: request.time)
+            .frame(width: CGFloat(OffscreenTarget.pointSize.x), height: CGFloat(OffscreenTarget.pointSize.y)))
+        renderer.scale = CGFloat(OffscreenTarget.scale)
+        return renderer.cgImage
     }
 }

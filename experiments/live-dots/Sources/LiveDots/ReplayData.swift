@@ -6,6 +6,8 @@ struct ReplayData: Sendable {
     let replay: Replay
     let lidar: DotTimeline
     let noLidar: DotTimeline
+    /// Recognised-box states per keyframe.
+    let boxes: [[BoxState]]
 
     var keyframeCount: Int { replay.keyframes.count }
 
@@ -21,14 +23,14 @@ struct ReplayData: Sendable {
     static func load(folder: URL, progress: (@Sendable (Int, Int) -> Void)? = nil) async throws -> ReplayData {
         let replay = try Replay.load(folder: folder)
         let (lidar, noLidar) = try DotTimeline.build(replay: replay, progress: progress)
-        return ReplayData(replay: replay, lidar: lidar, noLidar: noLidar)
+        return ReplayData(replay: replay, lidar: lidar, noLidar: noLidar, boxes: BoxState.timeline(for: replay.keyframes))
     }
 
     /// The same, blocking, for the command-line paths.
     nonisolated static func loadNow(folder: URL) throws -> ReplayData {
         let replay = try Replay.load(folder: folder)
         let (lidar, noLidar) = try DotTimeline.build(replay: replay)
-        return ReplayData(replay: replay, lidar: lidar, noLidar: noLidar)
+        return ReplayData(replay: replay, lidar: lidar, noLidar: noLidar, boxes: BoxState.timeline(for: replay.keyframes))
     }
 }
 

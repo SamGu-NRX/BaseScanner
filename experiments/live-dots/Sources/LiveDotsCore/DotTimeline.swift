@@ -107,7 +107,7 @@ public struct DotTimeline: Sendable {
         private var tracks: [UInt64: Track] = [:]
 
         mutating func append(_ frame: FrameInput, dots: [FieldDot], seen: Set<WallCell>, instruction: Instruction) {
-            let t = Float(frame.index) / Tuning.keyframesPerSecond
+            let t = Schedule.start(of: frame.index)
             let view = View(frame)
             var inView: [(sprite: DotSprite, kind: DotKind)] = []
             var alive = Set<UInt64>()

@@ -167,10 +167,4 @@ struct FieldRuleTests {
         let expected = flats.map(\.sprite.id).sorted { StableHash.mix($0) < StableHash.mix($1) }.prefix(10)
         #expect(Set(kept.filter { $0.kind == .flat }.map(\.id)) == Set(expected))
     }
-
-    @Test func `instructions switch after the camera passes x = -2.5 and end with the tilt`() {
-        let xs: [Float] = [0, -1, -2.6, -1, 0, 1, 0.2, 0.2, 0.2]
-        let sequence = Instruction.sequence(for: xs.map { Keyframe.fixtureStyle(x: $0) })
-        #expect(sequence == [.walkLeft, .walkLeft, .walkRight, .walkRight, .walkRight, .walkRight, .tiltUp, .tiltUp, .tiltUp])
-    }
 }

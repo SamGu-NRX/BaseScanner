@@ -10,7 +10,7 @@ final class ReplayPlayer {
     var mode: CaptureMode = .lidar
     var scheme: DotScheme = .hologram
     var reduceMotion: Bool
-    var showFog = false
+    var fog: FogStyle = .on
     private(set) var isPlaying = false
     private(set) var keyframe = 0
     /// Playback seconds. Keyframe k is on screen from k / 4 to (k + 1) / 4.
@@ -18,9 +18,12 @@ final class ReplayPlayer {
     /// After a scrub the frame shows its settled state instead of replaying births.
     @ObservationIgnored private var settled = false
     @ObservationIgnored private var lastTick: CFTimeInterval?
+    @ObservationIgnored private var lastFrame: CFTimeInterval?
+    @ObservationIgnored private var ambient: Float = 0
+    @ObservationIgnored private var frameInterval: Float = 1 / 60
 
     /// Playback runs this long past the last keyframe so its births finish.
-    private var end: Float { Float(keyframeCount) / Tuning.keyframesPerSecond + Tuning.birthDuration }
+    private var end: Float { Schedule.end(count: keyframeCount) + Tuning.birthDuration }
 
     init(keyframeCount: Int, reduceMotion: Bool) {
         self.keyframeCount = keyframeCount
@@ -30,7 +33,7 @@ final class ReplayPlayer {
     var request: FrameRequest {
         FrameRequest(
             mode: mode, keyframe: keyframe, time: settled ? 1e5 : playhead,
-            reduceMotion: reduceMotion, showFog: showFog, scheme: scheme)
+            reduceMotion: reduceMotion, fog: fog, scheme: scheme, ambientTime: ambient, frameInterval: frameInterval)
     }
 
     func togglePlayback() {
@@ -51,17 +54,20 @@ final class ReplayPlayer {
 
     private func seek(to index: Int, settle: Bool) {
         keyframe = min(max(index, 0), keyframeCount - 1)
-        playhead = Float(keyframe) / Tuning.keyframesPerSecond
+        playhead = Schedule.start(of: keyframe)
         settled = settle
         lastTick = nil
     }
 
     /// Advances the clock; the Metal view calls this once per display frame.
     func tick(now: CFTimeInterval) {
+        if let lastFrame { frameInterval = min(Float(now - lastFrame), 0.1) }
+        lastFrame = now
+        ambient += frameInterval
         guard isPlaying else { return }
         if let lastTick { playhead += Float(now - lastTick) }
         lastTick = now
-        let index = min(Int(playhead * Tuning.keyframesPerSecond), keyframeCount - 1)
+        let index = Schedule.keyframe(at: playhead, count: keyframeCount)
         if index != keyframe { keyframe = index }
         if playhead >= end {
             playhead = end
