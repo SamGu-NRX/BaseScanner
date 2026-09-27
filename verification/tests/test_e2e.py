@@ -23,13 +23,26 @@ from hsverify.e2e import (
     load_input,
     zip_bomb,
 )
-from hsverify.resultcheck import RuleSet
+from hsverify.resultcheck import Need, RuleSet
 
 RULES = RuleSet(
     width_ft=31 / 12,
     depth_ft=22 / 12,
-    radii={"ground_surface": (("ground",), 0.0), "gas_clearance": (("ground",), 1.0)},
-    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3, "drift_per_ft": 0.16},
+    needs={"ground_surface": (Need("ground", 0.0),), "gas_clearance": (Need("ground", 1.0),)},
+    errors={
+        "tap": 0.3,
+        "vlm": 1.5,
+        "tape": 0.05,
+        "wall": 0.3,
+        "mesh": 0.5,
+        "plane": 0.75,
+        "meter": 0.3,
+        "drift_per_ft": 0.16,
+    },
+    step_ft=1 / 6,  # the server's 2 in
+    wall_join_ft=0.6,
+    battery_height_ft=3.25,
+    headroom_ft=6.5,
 )
 
 SCENE = {
@@ -189,7 +202,35 @@ class FakeServer(BaseHTTPRequestHandler):
             },
             "spot": None,
             "route": None,
-            "checks": [],
+            # Every check a server lists, passing with no numbers, so no check is left out.
+            "checks": [
+                {
+                    "id": i,
+                    "label": i,
+                    "outcome": "pass",
+                    "reason": "",
+                    "measured_ft": None,
+                    "plus_minus_ft": None,
+                    "threshold_ft": None,
+                    "comparison": "at_least",
+                    "rule": {"key": i, "source": "", "placeholder": False},
+                }
+                for i in (
+                    "wall_backing",
+                    "ground_surface",
+                    "meter_working_space",
+                    "gas_clearance",
+                    "ac_clearance",
+                    "drive_clearance",
+                    "pool_clearance",
+                    "opening_clearance",
+                    "wall_equipment_above",
+                    "facing_gap",
+                    "headroom",
+                    "route_path",
+                    "route_length",
+                )
+            ],
             "missing_evidence": [],
             "ends": {},
             "sweep": [
@@ -347,3 +388,99 @@ def test_a_prebuilt_zip_goes_as_application_zip_when_the_endpoint_takes_it(refus
     zip_too = Endpoint("/p", "application/json", accepts_zip=True)
     assert judge_hostile(refusing_url, zip_too, bomb, SCHEMAS)["status"] == "pass"
     assert RefusingServer.content_types == ["application/zip"]
+
+
+# --- What a run may claim --------------------------------------------------------------------
+
+META = {
+    "started_at": "2026-09-26T12:00:00-05:00",
+    "server_ref": "origin/t3/server",
+    "server_sha": "a" * 40,
+    "endpoint": "POST /v1/placements (application/json)",
+    "load_average_1_5_15": [1.0, 1.0, 1.0],
+    "peak_memory": {"harness_mb": 50.0},
+}
+CHECKED = {
+    "name": "a",
+    "status": "pass",
+    "decision": "manual_review",
+    "http_status": 200,
+    "latency_ms": 120.0,
+    "real": True,
+    "contract_problems": [],
+}
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        [],
+        [{"name": "s", "status": "skipped", "problems": [], "skip_reason": "no data"}],
+        [{"name": "b", "status": "bad input", "problems": ["scene schema: x"]}],
+        [{"name": "h", "status": "pass", "hostile": True, "http_status": 422, "problems": []}],
+    ],
+    ids=["no scenes", "skipped only", "bad input only", "hostile only"],
+)
+def test_a_run_that_checked_no_answer_claims_nothing(tmp_path, records):
+    report = e2e.write_report(tmp_path, META, records)
+    assert (report["scenes_checked"], report["contract_ok"], report["all_passed"]) == (
+        0,
+        False,
+        False,
+    )
+
+
+def test_a_checked_scene_credits_the_contract(tmp_path):
+    report = e2e.write_report(tmp_path, META, [CHECKED])
+    assert (report["scenes_checked"], report["contract_ok"], report["latency_ms"]) == (
+        1,
+        True,
+        120.0,
+    )
+    broken = CHECKED | {"status": "fail", "contract_problems": ["x"], "problems": ["x"]}
+    assert e2e.write_report(tmp_path, META, [broken])["contract_ok"] is False
+
+
+def test_a_fast_refusal_of_a_real_scene_is_not_latency(tmp_path):
+    refused = {
+        "name": "r",
+        "status": "fail",
+        "real": True,
+        "http_status": 422,
+        "latency_ms": 8.0,
+        "problems": ["HTTP 422"],
+        "contract_problems": ["HTTP 422"],
+    }
+    report = e2e.write_report(tmp_path, META, [refused])
+    assert report["latency_ms"] is None and report["scenes_answered"] == 0
+
+
+def test_an_oversized_bundle_is_refused_before_it_is_read(tmp_path):
+    archive = tmp_path / "big.zip"
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z, z.open("scene.json", "w") as f:
+        chunk = b" " * 2**20
+        for _ in range(e2e.MAX_SCENE_BYTES // 2**20 + 1):
+            f.write(chunk)
+    with pytest.raises(SystemExit, match=r"declares \d+ bytes, limit"):
+        load_input(archive)
+
+
+def test_a_bundle_with_too_many_entries_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(e2e, "MAX_BUNDLE_ENTRIES", 3)
+    archive = tmp_path / "many.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        for i in range(4):
+            z.writestr(f"k{i}.jpg", b"x")
+    with pytest.raises(SystemExit, match="4 entries, limit 3"):
+        load_input(archive)
+
+
+def test_a_200_that_is_not_a_json_object_is_a_failure_not_a_crash(monkeypatch):
+    for body in (b"<html>oops</html>", b"[1, 2]"):
+        monkeypatch.setattr(e2e, "post", lambda *args, body=body, **kwargs: (200, body, 5.0))
+        endpoint = Endpoint("/place", "application/json")
+        record = judge("http://unused", endpoint, item(), SCHEMAS, RULES)
+        assert record["status"] == "fail"
+        assert "not a JSON object" in record["contract_problems"][0]
+        hostile = judge_hostile("http://unused", endpoint, hostile_inputs()[3], SCHEMAS)
+        assert hostile["status"] == "fail" and "not a JSON object" in hostile["problems"][0]

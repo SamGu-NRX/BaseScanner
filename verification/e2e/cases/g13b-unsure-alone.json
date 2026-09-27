@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g13b-unsure-alone",
   "source": "t3-lane-c-review.md golden 13 at origin/t3/research a7d91f1",
   "description": "The wall ends at s = -0.5, so every start has gas gap 3.2 +/- 0.3. The best spot is unsure by margin and fully observed: manual review with no photo request.",

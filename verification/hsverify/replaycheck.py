@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import struct
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -36,6 +38,15 @@ REQUIRED_KEYFRAME_FIELDS = ("id", "img", "w", "h", "intrinsics", "pose", "timest
 def pose_matrix(pose: list[float]) -> np.ndarray:
     """16 numbers, column by column (simd_float4x4 layout), to a 4x4 array."""
     return np.asarray(pose, dtype=float).reshape(4, 4).T
+
+
+def numbers(value: Any, count: int) -> list[float] | None:
+    """`value` as `count` finite numbers, or None if it is anything else."""
+    if not isinstance(value, list) or len(value) != count:
+        return None
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in value):
+        return None
+    return [float(v) for v in value] if all(math.isfinite(v) for v in value) else None
 
 
 def rigid_problems(m: np.ndarray, tol: float = 1e-3) -> list[str]:
@@ -92,6 +103,9 @@ def check_format(folder: Path, session: dict) -> tuple[list[str], dict]:
     gates = session.get("gates", {})
     spacing_m = gates.get("keyframeSpacingMeters")
     spacing_deg = gates.get("keyframeSpacingDegrees")
+    if spacing_m and spacing_deg is None:
+        errors.append("gates set keyframeSpacingMeters without keyframeSpacingDegrees")
+        spacing_m = None
     previous = None
     previous_motion = None
     gate_violations = 0
@@ -113,10 +127,14 @@ def check_format(folder: Path, session: dict) -> tuple[list[str], dict]:
                     errors.append(f"{name}: JPEG is {size}, session says {(kf['w'], kf['h'])}")
             except ValueError as exc:
                 errors.append(f"{name}: {exc}")
-        fx, fy, cx, cy = kf["intrinsics"]
+        intrinsics, pose = numbers(kf["intrinsics"], 4), numbers(kf["pose"], 16)
+        if intrinsics is None or pose is None:
+            errors.append(f"{name}: intrinsics must be 4 finite numbers and pose 16")
+            continue
+        fx, fy, cx, cy = intrinsics
         if not (fx > 0 and fy > 0 and 0 < cx < kf["w"] and 0 < cy < kf["h"]):
             errors.append(f"{name}: intrinsics {kf['intrinsics']} outside the image")
-        m = pose_matrix(kf["pose"])
+        m = pose_matrix(pose)
         errors += [f"{name}: {p}" for p in rigid_problems(m)]
         if previous is not None and kf["timestamp"] <= previous["timestamp"]:
             errors.append(f"{name}: timestamp does not increase")

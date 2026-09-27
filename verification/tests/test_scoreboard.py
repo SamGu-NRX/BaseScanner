@@ -237,6 +237,14 @@ def test_manual_and_sha_free_report_ignore_missing_ref(tmp_path):
     assert evaluate(metric("report", **probe), None, ctx()).status == "no evidence yet"
 
 
+def test_a_report_removed_while_the_board_lists_them_is_skipped(tmp_path, monkeypatch):
+    (tmp_path / "kept.json").write_text(json.dumps({"k": 1}))
+    listed = [str(tmp_path / "removed.json"), str(tmp_path / "kept.json")]
+    monkeypatch.setattr(sb.globlib, "glob", lambda pattern: listed)
+    probe = {"glob": str(tmp_path / "*.json"), "key": "k", "equals": 1}
+    assert evaluate(metric("report", **probe), None, ctx()).status == "met"
+
+
 # --- file_at_ref and grep_at_ref -------------------------------------------------------------
 
 

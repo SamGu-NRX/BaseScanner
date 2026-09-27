@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g09-reach-20p4-pm03",
   "source": "t3-lane-c-review.md golden 09 at origin/t3/research a7d91f1",
   "description": "Route 20.4 +/- 0.3 ft (meter tap error): 20.4 - 0.3 = 20.1 is above 20, so fail.",

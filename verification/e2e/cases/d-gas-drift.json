@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "d-gas-drift",
   "source": "rules.yaml errors.tap_ft, wall_ft, drift_per_ft and clearances.gas_ft at origin/t3/server f2705dd; C5 margin rule",
   "description": "A tapped gas meter at s = 4 on a wall with default errors. For a start a right of it the gap is (a - 4) +/- (1.24 + 0.16(a + W)): fail below a = 4.609, pass above a = 10.302, unsure between.",
@@ -35,6 +36,8 @@
           4.0,
           4.0
         ],
+        "bottom_ft": 2.5,
+        "top_ft": 4.0,
         "source": "tap"
       }
     ],

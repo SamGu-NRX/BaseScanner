@@ -81,8 +81,11 @@ metrics:
   - id: S2-1
     workstream: S2
     ref: origin/t3/server
-    text: pytest green
-    command: {run: uv run pytest -q, cwd: server, timeout_s: 600, slow: true}
+    text: pytest green, the property tests under CI's fixed Hypothesis examples
+    # CI=1 selects the server's "ci" profile (server/tests/conftest.py: derandomize=True), as
+    # its CI does. A default local run draws fresh examples and can fail where CI passes: at
+    # 3baa338, test_capturing_exactly_what_is_requested_settles_it_in_one_round did (#11).
+    command: {run: CI=1 uv run pytest -q, cwd: server, timeout_s: 600, slow: true}
 
   - id: S2-2
     workstream: S2
@@ -109,7 +112,8 @@ metrics:
         missing coverage: 'coverage|unobserved|unseen'
         equality unsure: 'equal'
         mirror: 'mirror|symmetr'
-        larger clearance: 'monoton|larger_clearance|clearance'
+        # S2 names it for moving an obstacle away (test_more_space.py, since 22292a8).
+        larger clearance: 'monoton|larger_clearance|clearance|obstacle_away'
 
   - id: S2-4
     workstream: S2
@@ -132,6 +136,7 @@ metrics:
     text: A real-derived scene returns a result in under 1 s
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
+      # Null unless a real scene got an HTTP 200 result that was checked.
       key: latency_ms
       less_than: 1000
       require_current_sha: true
@@ -155,8 +160,9 @@ metrics:
       complete, ordering properties, hostile inputs refused in time
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
-      key: contract_problem_count
-      equals: 0
+      # True only when at least one scene was answered and checked and none broke the contract.
+      key: contract_ok
+      equals: true
       require_current_sha: true
 
   # --- S3 --------------------------------------------------------------------------------------
@@ -269,6 +275,11 @@ metrics:
       equals: true
       require_current_sha: true
       sha_key: app_sha
+      max_status: partial
+      cap_reason: >-
+        met on the app's synthetic replay against the hosted server (17 states, a server gap
+        request, three spot checks, the result and AR); the real ADVIO replay is blocked by its
+        data (the walk never covers the ground by the meter), last real run 194f2eb
 
   - id: S4-2
     workstream: S4
@@ -288,9 +299,9 @@ metrics:
     manual:
       status: met
       evidence: >-
-        verification/product covers every screen of t3/ios-mvf at a39d0a5, checked in the
-        Simulator there with the real server's result (verification.md); bug-triage.md has 16
-        entries, 3 resolved; ux/review.md judges every state.
+        docs/app-review/product (#61) covers every screen of t3/ios-mvf at a39d0a5, checked in
+        the Simulator there with the real server's result; its bug triage has 16 entries, 3
+        resolved; docs/app-review/ux/review.md judges every state.
 
   - id: S4-4
     workstream: S4

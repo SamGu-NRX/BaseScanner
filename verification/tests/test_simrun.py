@@ -2,10 +2,13 @@ import datetime as dt
 import io
 import json
 import queue
+import subprocess
 from pathlib import Path
 
+from hsverify import simrun
 from hsverify.simrun import (
     ShotRecord,
+    app_export,
     compiling,
     copy_app_export,
     missing_required,
@@ -152,3 +155,34 @@ def test_a_bundle_line_the_runner_cannot_read_is_a_problem(tmp_path):
         None,
         ["the app logged a bundle line this runner cannot read; see state.ndjson"],
     )
+
+
+def test_a_run_that_must_keep_the_scan_fails_without_one(tmp_path):
+    write_log(tmp_path, log_line("STATE=result"))
+    assert app_export(tmp_path, required=False) == (None, [])
+    name, problems = app_export(tmp_path, required=True)
+    assert name is None and "--require-export" in problems[0]
+
+
+def test_a_run_installs_its_own_copy_of_the_app_it_built(tmp_path, monkeypatch):
+    derived = tmp_path / "derived"
+    built = derived / "Build" / "Products" / "Debug-iphonesimulator" / "HouseScan.app"
+    monkeypatch.setattr(simrun, "DERIVED_DATA", derived)
+    monkeypatch.setattr(simrun, "BUILD_LOCK", tmp_path / "lock")
+    monkeypatch.setattr(simrun, "wait_for_other_builds", lambda max_wait_s: 0.0)
+
+    def fake_build(cmd, **kwargs):
+        built.mkdir(parents=True, exist_ok=True)
+        (built / "Info.plist").write_text("run A")
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(simrun.subprocess, "run", fake_build)
+    tree, out = tmp_path / "tree", tmp_path / "report"
+    (tree / "ios" / "HouseScan.xcodeproj").mkdir(parents=True)
+    out.mkdir()
+    result, app = simrun.build_app(tree, out, 0, "ios/HouseScan.xcodeproj", "HouseScan")
+    assert result["ok"] and app is not None
+    (built / "Info.plist").write_text("run B")  # another run rebuilds after the lock is released
+    assert (app / "Info.plist").read_text() == "run A"
+    simrun.discard_app(app)
+    assert not app.parent.exists() and out.exists()

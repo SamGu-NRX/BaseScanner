@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g13a-unsure-never-outranks-pass",
   "source": "t3-lane-c-review.md golden 13 at origin/t3/research a7d91f1",
   "description": "Starts right of the meter have gas gap 3.2 +/- 0.3 (unsure) and the shortest routes. Batteries whose right edge is left of s = 0.3 - sqrt(0.65) clear gas and pass. The chosen spot must be a passing one on the left.",

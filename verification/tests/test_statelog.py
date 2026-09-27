@@ -84,3 +84,13 @@ def test_reads_the_engine_bundle_line(suffix):
 )
 def test_bundle_line_ignores_everything_else(line):
     assert parse_bundle_line(line) is None
+
+
+def test_reads_the_packet_bundle_line_from_app_f14947e():
+    line = entry(
+        f"bundle {BUNDLE_PATH}: packet 1.1 with 33 photos (0 with depth), 0 depth frames, "
+        "41 trajectory samples",
+        category="engine",
+    )
+    assert parse_bundle_line(line) == (BUNDLE_PATH, 33)
+    assert parse_bundle_line(entry(f"bundle {BUNDLE_PATH}: packet 1.1", category="engine")) is None

@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g12b-exact-fit-last-start",
   "source": "t3-lane-c-review.md golden 12 at origin/t3/research a7d91f1",
   "description": "Five 1.8 ft segments, then one straight segment exactly 31/12 ft long at s = [6, 6 + 31/12] where the wall ends. Its single start, s = 6, is also the last start and must be enumerated.",

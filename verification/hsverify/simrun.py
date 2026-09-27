@@ -9,7 +9,8 @@ a screenshot once it has been on screen for `--settle` seconds; a state replaced
 captured immediately and flagged `transient`, because its image may already show the next
 state. The run ends at `--until`, after `--idle` seconds without a new state, or at
 `--timeout`. A state named with `--require` that never appeared makes the run fail. If the app
-logged a scan bundle, it is copied into the report as scan.zip and named in report.json's
+logged a scan bundle, it is copied into the report as scan.zip (required with `--require-export`)
+and named in report.json's
 `app_export`, so the report folder can be replayed as an app export. Reports go outside git
 (default ~/house-scanning-data/reports/sim/) because a replay can put dataset frames on screen.
 """
@@ -51,6 +52,7 @@ DEVICE_TYPE = "com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 DEFAULT_REPORTS = Path.home() / "house-scanning-data" / "reports" / "sim"
 DERIVED_DATA = Path("/tmp/hs-verify-derived-data")
 BUILD_LOCK = Path("/tmp/hs-verify-xcodebuild.lock")
+BUILT_APP_DIR = "built-app"  # in the report folder, until the Simulator has installed it
 
 
 @dataclass
@@ -103,8 +105,16 @@ def latest_ios_runtime() -> str:
     return ios[-1]["identifier"]
 
 
-def ensure_device() -> dict:
-    """The runner's own Simulator, so it never disturbs devices other workers are using."""
+def ensure_device(udid: str | None = None) -> dict:
+    """The runner's own Simulator, so it never disturbs devices other workers are using, or
+    the existing device `udid` when one has been handed over (creating a device costs disk)."""
+    if udid is not None:
+        for runtime, devices in json.loads(simctl("list", "devices", "-j"))["devices"].items():
+            for device in devices:
+                if device["udid"] == udid:
+                    simctl("bootstatus", udid, "-b")
+                    return {"name": device["name"], "udid": udid, "runtime": runtime}
+        raise SystemExit(f"No Simulator with UDID {udid}; see `xcrun simctl list devices`.")
     runtime = latest_ios_runtime()
     devices = json.loads(simctl("list", "devices", "-j"))["devices"].get(runtime, [])
     for device in devices:
@@ -204,6 +214,14 @@ def build_app(
         with log_path.open("w") as log:
             code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT).returncode
         seconds = time.monotonic() - start
+        # DerivedData is shared: once the lock is released another run may rebuild over this
+        # app before it is installed, so this run installs its own copy.
+        built = DERIVED_DATA / "Build" / "Products" / "Debug-iphonesimulator" / f"{scheme}.app"
+        app = None
+        if code == 0 and built.exists():
+            app = out / BUILT_APP_DIR / built.name
+            shutil.rmtree(app.parent, ignore_errors=True)
+            shutil.copytree(built, app, symlinks=True)
     text = log_path.read_text(errors="replace")
     warnings = sorted(set(re.findall(r"^.*: warning: .*$", text, re.M)))
     errors = sorted(set(re.findall(r"^.*: error: .*$", text, re.M)))
@@ -216,8 +234,13 @@ def build_app(
         "errors": [shorten(e, tree) for e in errors],
         "log": log_path.name,
     }
-    app = DERIVED_DATA / "Build" / "Products" / "Debug-iphonesimulator" / f"{scheme}.app"
-    return result, (app if code == 0 and app.exists() else None)
+    return result, app
+
+
+def discard_app(app: Path) -> None:
+    """Remove this run's copy of the app once the Simulator has installed its own."""
+    if app.parent.name == BUILT_APP_DIR:
+        shutil.rmtree(app.parent, ignore_errors=True)
 
 
 def bundle_id_of(app: Path) -> str:
@@ -335,6 +358,17 @@ def copy_app_export(out: Path) -> tuple[str | None, list[str]]:
             f"the app logged bundle {path} with {keyframes} keyframes; copy failed: {exc}"
         ]
     return "scan.zip", []
+
+
+def app_export(out: Path, required: bool) -> tuple[str | None, list[str]]:
+    """copy_app_export, where a run that must keep the app's scan fails without one."""
+    name, problems = copy_app_export(out)
+    if required and name is None and not problems:
+        problems = [
+            "The run was required to keep the app's scan (--require-export), but the app logged "
+            "no bundle."
+        ]
+    return name, problems
 
 
 def app_running(udid: str, bundle_id: str) -> bool:
@@ -517,6 +551,11 @@ def main(argv: list[str] | None = None) -> int:
         help="a state the run must reach; one that never appears is a problem (exit 1)",
     )
     parser.add_argument(
+        "--require-export",
+        action="store_true",
+        help="fail unless the app logs a scan bundle, which is copied into the report as scan.zip",
+    )
+    parser.add_argument(
         "--log-ready-timeout",
         type=float,
         default=30.0,
@@ -532,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="report folder (default under reports/sim)")
     parser.add_argument("--label", default="", help="short name added to the report folder")
     parser.add_argument("--keep-worktree", action="store_true")
+    parser.add_argument("--udid", help="run on this existing Simulator instead of the runner's own")
     parser.add_argument("--keep-booted", action="store_true", help="leave the Simulator on")
     parser.add_argument("--build-wait", type=float, default=1200.0)
     args = parser.parse_args(argv)
@@ -568,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
 
-    device = ensure_device()
+    device = ensure_device(args.udid)
     rep = RunReport(
         ref=args.ref,
         sha=sha,
@@ -598,6 +638,7 @@ def main(argv: list[str] | None = None) -> int:
             prepare_display(udid, args.appearance, args.content_size)
             subprocess.run(["xcrun", "simctl", "uninstall", udid, bundle_id], capture_output=True)
             simctl("install", udid, str(app))
+            discard_app(app)
             # The Simulator has no camera, but granting access keeps the permission prompt from
             # hiding the replay flow. The prompt itself is reviewed on a device.
             subprocess.run(
@@ -607,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Running...", flush=True)
             follow(args, udid, bundle_id, out, rep)
             rep.problems += missing_required(args.require, rep.states)
-            rep.app_export, export_problems = copy_app_export(out)
+            rep.app_export, export_problems = app_export(out, args.require_export)
             rep.problems += export_problems
         rep.crash_reports = collect_crashes(started, out)
         if rep.crash_reports:

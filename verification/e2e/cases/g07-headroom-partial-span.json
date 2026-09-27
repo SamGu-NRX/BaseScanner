@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g07-headroom-partial-span",
   "source": "t3-lane-c-review.md golden 07 at origin/t3/research a7d91f1",
   "description": "A low overhead (5.5 +/- 0.5 ft) covers only s = [8, 8.5]. Every battery whose 31 in stretch overlaps it fails headroom, even when the overhead covers a few inches of it.",

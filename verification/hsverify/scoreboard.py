@@ -470,11 +470,13 @@ def _value_or_none(data: dict, key: str) -> Any:
 
 
 def probe_report(probe: dict, sha: str | None) -> Outcome:
-    paths = sorted(
-        (Path(p) for p in globlib.glob(os.path.expanduser(probe["glob"]))),
-        key=lambda p: (p.stat().st_mtime, str(p)),
-        reverse=True,
-    )
+    stamped = []
+    for p in map(Path, globlib.glob(os.path.expanduser(probe["glob"]))):
+        try:  # other runs write and remove reports while the board is built
+            stamped.append((p.stat().st_mtime, str(p), p))
+        except OSError:
+            continue
+    paths = [p for *_, p in sorted(stamped, reverse=True)]
     if not paths:
         return Outcome("no evidence yet", f"no report matches {probe['glob']}")
     reports = [(p, _read_report(p)) for p in paths]
@@ -742,12 +744,17 @@ def render_markdown(board: Board) -> str:
 # --- I/O -------------------------------------------------------------------------------------
 
 
+# gh can wait indefinitely for the network or a login; the board is written without PRs instead.
+PR_LIST_TIMEOUT_S = 60
+
+
 def list_prs() -> list[dict]:
     out = subprocess.run(
         ["gh", "pr", "list", "--repo", GITHUB_REPO, "--state", "open", "--json", PR_FIELDS],
         check=True,
         capture_output=True,
         text=True,
+        timeout=PR_LIST_TIMEOUT_S,
     ).stdout
     return json.loads(out)
 
@@ -782,9 +789,16 @@ def main(argv: list[str] | None = None) -> int:
     pr_error = None
     try:
         prs = list_prs()
-    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as e:
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        json.JSONDecodeError,
+    ) as e:
         prs = None
-        pr_error = (getattr(e, "stderr", "") or str(e)).strip()
+        # A timeout's stderr is bytes even with text=True; its own message says what happened.
+        stderr = getattr(e, "stderr", None)
+        pr_error = (stderr if isinstance(stderr, str) and stderr.strip() else str(e)).strip()
         print(f"warning: could not list PRs: {pr_error}", file=sys.stderr)
     with cached(CACHE_PATH) as cache:
         ctx = Context(

@@ -1,7 +1,8 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g09-reach-20p2-pm03",
   "source": "t3-lane-c-review.md golden 09 at origin/t3/research a7d91f1",
-  "description": "Route 20.2 +/- 0.3 ft (meter tap error): 20.2 - 0.3 = 19.9 is not above 20, so unsure.",
+  "description": "Meter at +/- 0.3 ft. The spot is the first start that may stand on the concrete, L - 0.3 = 19.9, whose route is 19.9 to 20.2: not above 20, so unsure. The start at 20.2 routes 20.2 to 20.5, above 20, so it fails.",
   "scene": {
     "schema_version": "1.0",
     "meter": {
@@ -137,16 +138,16 @@
     "spot": {
       "wall_id": "w1",
       "span_within": [
-        20.2,
-        22.78333333333333
+        19.9,
+        22.48333333333333
       ]
     },
     "checks": [
       {
         "match": "route_length",
         "outcome": "unsure",
-        "measured_ft": 20.2,
-        "plus_minus_ft": 0.3
+        "measured_ft": 20.05,
+        "plus_minus_ft": 0.15
       }
     ],
     "sweep_runs": [
@@ -156,7 +157,7 @@
           20.199,
           20.201
         ],
-        "outcome": "unsure"
+        "outcome": "fail"
       }
     ],
     "decision_not": [

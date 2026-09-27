@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g07-headroom-margin",
   "source": "t3-lane-c-review.md golden 07 at origin/t3/research a7d91f1",
   "description": "An overhead over the whole wall has clear height 6.8 +/- 0.5 ft against headroom 6.5 ft, so every start's headroom check is unsure.",

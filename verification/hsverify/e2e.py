@@ -8,12 +8,23 @@ The server under test is either started from a git ref (a detached worktree unde
 endpoint is read from its OpenAPI document; with more than one candidate the run stops and
 asks for `--endpoint` instead of guessing.
 
+A server started here is killed past 3.5 GB. Scenes go as the app sends them: JSON when the
+endpoint takes it, a zip only for the compressed-scene hostile input. Bundles read from disk
+stay within fixed entry and size limits, checked before reading.
+
 Each scene is first validated against the scene schema published at the same ref, so a bad
-input is reported as an input problem, not a server bug. Each response must validate against
-the result schema and pass the invariants in `resultcheck`. Case files add the outcomes their
-geometry forces. Every scene is also sent three more ways: again (the result must be
-identical apart from timing), mirrored left to right (same decision, same length of passing,
-unsure and failing wall), and without coverage (never a pass).
+input is reported as an input problem, not a server bug. Each response must be a JSON object
+that validates against the result schema (anything else is a failure in the report, not a
+crash) and passes the invariants in `resultcheck`, with rules read from the ref's `rules.yaml`.
+Case files add the outcomes their geometry forces. Every scene is also resent
+changed, and the answers must stay ordered: again (identical apart from timing), mirrored (same
+decision and outcome lengths), without or with less coverage, with ground trimmed just short
+of the largest clearance, with more error or tape re-measured by tap (nothing improves), and
+with every requested view added, up to three rounds (no check left unsure for coverage). Five
+hostile inputs must be refused or answered within 10 s and 500 MB of server growth.
+
+A run claims the contract (`contract_ok`) only when at least one scene was answered and
+checked and none broke it, and real-scene latency only from an HTTP 200 result.
 
 Reports go to ~/house-scanning-data/reports/e2e/<run>/ (outside git; real scenes can
 reference dataset images).
@@ -111,16 +122,51 @@ def load_app_export(path: Path) -> SceneInput:
     return item
 
 
+# Limits on a scene bundle this harness reads into memory: the server's own scene.json cap, and
+# room for a few hundred phone JPEGs, well under the shared Mac's ~4 GB per-process budget. A
+# compressed bundle can declare anything, so reads stop at the limit whatever it declares.
+MAX_BUNDLE_ENTRIES = 2000
+MAX_SCENE_BYTES = 10 * 2**20
+MAX_IMAGE_BYTES = 32 * 2**20
+MAX_BUNDLE_BYTES = 512 * 2**20
+
+
+def read_bounded(bundle: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) -> bytes:
+    """An entry's bytes, refused when it declares or turns out to hold more than `limit`."""
+    if info.file_size > limit:
+        raise SystemExit(f"{info.filename}: declares {info.file_size} bytes, limit {limit}")
+    with bundle.open(info) as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise SystemExit(f"{info.filename}: holds more than {limit} bytes")
+    return data
+
+
+def read_bundle(path: Path) -> tuple[bytes, dict[str, bytes]]:
+    """scene.json and the JPEGs of a C1 zip bundle, within the limits above."""
+    with zipfile.ZipFile(path) as bundle:
+        infos = [i for i in bundle.infolist() if not i.is_dir()]
+        if len(infos) > MAX_BUNDLE_ENTRIES:
+            raise SystemExit(f"{path}: {len(infos)} entries, limit {MAX_BUNDLE_ENTRIES}")
+        declared = sum(i.file_size for i in infos)
+        if declared > MAX_BUNDLE_BYTES:
+            raise SystemExit(f"{path}: declares {declared} bytes, limit {MAX_BUNDLE_BYTES}")
+        scene = next((i for i in infos if i.filename.endswith("scene.json")), None)
+        if scene is None:
+            raise SystemExit(f"{path}: no scene.json in the bundle")
+        raw = read_bounded(bundle, scene, MAX_SCENE_BYTES)
+        images = {
+            Path(i.filename).name: read_bounded(bundle, i, MAX_IMAGE_BYTES)
+            for i in infos
+            if i.filename.lower().endswith(".jpg")
+        }
+    return raw, images
+
+
 def load_input(path: Path, real: bool = False) -> SceneInput:
     """A case file (scene + expect), a bare scene.json, or a C1 zip bundle."""
     if path.suffix == ".zip":
-        with zipfile.ZipFile(path) as bundle:
-            names = bundle.namelist()
-            scene_name = next((n for n in names if n.endswith("scene.json")), None)
-            if scene_name is None:
-                raise SystemExit(f"{path}: no scene.json in the bundle")
-            raw = bundle.read(scene_name)
-            images = {Path(n).name: bundle.read(n) for n in names if n.lower().endswith(".jpg")}
+        raw, images = read_bundle(path)
         return SceneInput(path.stem, json.loads(raw), raw, images, real=real, source=str(path))
     data = json.loads(path.read_text())
     if "scene_path" in data and "expect" in data:
@@ -352,6 +398,16 @@ def variant(item: SceneInput, name: str, scene: dict) -> SceneInput:
     )
 
 
+def parse_result(payload: bytes) -> dict | None:
+    """The body as a JSON object, or None: a server's malformed answer is a failure to report,
+    not a reason to stop the run before the report is written."""
+    try:
+        body = json.loads(payload)
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None, str | None]:
     """The server's result for a scene, or why there is none."""
     status, payload, _ = post(url, endpoint, item)
@@ -359,7 +415,10 @@ def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None,
         return None, f"no answer: {payload.decode(errors='replace')[:200]}"
     if status != 200:
         return None, f"HTTP {status}: {payload[:300]!r}"
-    return json.loads(payload), None
+    result = parse_result(payload)
+    if result is None:
+        return None, f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"
+    return result, None
 
 
 def judge(
@@ -380,7 +439,7 @@ def judge(
     if item.skip_reason:
         return record | {"status": "skipped", "problems": [], "skip_reason": item.skip_reason}
     if item.hostile:
-        return record | judge_hostile(url, endpoint, item, schemas, limit)
+        return record | {"hostile": True} | judge_hostile(url, endpoint, item, schemas, limit)
     input_errors = schema_errors(item.scene, schemas["scene"])
     if input_errors:
         return record | {"status": "bad input", "problems": input_errors[:20]}
@@ -394,7 +453,10 @@ def judge(
             else f"no answer within 60 s: {payload[:200]!r}"
         ]
         return record | {"status": "fail", "problems": failure, "contract_problems": failure}
-    result = json.loads(payload)
+    result = parse_result(payload)
+    if result is None:
+        failure = [f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"]
+        return record | {"status": "fail", "problems": failure, "contract_problems": failure}
     record["result"] = result
     problems = [f"result schema: {e}" for e in schema_errors(result, schemas["result"])]
     if problems:
@@ -442,7 +504,8 @@ def property_problems(
 
     # 1. Same input, same answer.
     status, payload, _ = post(url, endpoint, item)
-    if status != 200 or comparable(json.loads(payload)) != comparable(result):
+    again = parse_result(payload) if status == 200 else None
+    if again is None or comparable(again) != comparable(result):
         problems.append("sending the same scene twice gave different results")
 
     # 2. Mirrored left to right: same decision, same amount of each outcome along the wall.
@@ -616,8 +679,12 @@ def judge_hostile(
     elif status in (400, 413, 422):
         failure = None
     elif status == 200:
-        errors = schema_errors(json.loads(payload), schemas["result"])
-        failure = f"result schema: {errors[0]}" if errors else None
+        result = parse_result(payload)
+        if result is None:
+            failure = f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"
+        else:
+            errors = schema_errors(result, schemas["result"])
+            failure = f"result schema: {errors[0]}" if errors else None
     else:
         failure = f"HTTP {status}: {payload[:200]!r}"
     problems = [failure] if failure else []
@@ -635,18 +702,29 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     counts: dict[str, int] = {}
     for r in records:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    real = [r["latency_ms"] for r in records if r.get("real") and "latency_ms" in r]
+    # A scene counts as checked only when the server answered it and the answer was judged; a
+    # skipped scene, a refused one or scene input that failed its own schema checks nothing.
+    checked = [r for r in records if "decision" in r and not r.get("hostile")]
+    # Latency counts only a real scene the server answered with a result, never a fast refusal.
+    real = [r["latency_ms"] for r in checked if r.get("real") and r.get("http_status") == 200]
     exported = [r for r in records if r.get("app_export")]
+    contract_problems = sum(len(r.get("contract_problems", [])) for r in records)
+    killed = bool(meta["peak_memory"].get("server_killed"))
     report = meta | {
         "counts": counts,
         "all_passed": all(r["status"] in ("pass", "skipped") for r in records)
-        and bool(records)
-        and not meta["peak_memory"].get("server_killed"),
+        and bool(checked)
+        and not killed,
         "latency_ms": max(real) if real else None,
         "scenes_answered": sum(1 for r in records if "decision" in r),
+        "scenes_checked": len(checked),
+        "scenes_skipped": counts.get("skipped", 0),
+        "scenes_bad_input": counts.get("bad input", 0),
         # Invariants and properties broken, summed over every answered scene. Case
         # expectations are counted separately because a case can be wrong itself.
-        "contract_problem_count": sum(len(r.get("contract_problems", [])) for r in records),
+        "contract_problem_count": contract_problems,
+        # The contract holds only on evidence: at least one scene checked, none broken.
+        "contract_ok": bool(checked) and contract_problems == 0 and not killed,
         "expectation_problem_count": sum(len(r.get("expectation_problems", [])) for r in records),
         "real_scene_passed": any(r.get("real") and r["status"] == "pass" for r in records),
         # Null when the run had no app export, so the scoreboard looks for an older run.

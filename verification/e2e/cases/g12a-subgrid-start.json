@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g12a-subgrid-start",
   "source": "t3-lane-c-review.md golden 12 at origin/t3/research a7d91f1",
   "description": "Windows at s = [3, 4] and [10.1 + 31/12, 11.1 + 31/12] with 3 ft opening clearance leave legal starts only in (7, 7.1). A 2 in grid from s = 0 samples 7 and 43/6 and misses them.",

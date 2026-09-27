@@ -27,7 +27,7 @@ sim:
 sim-app:
 	uv run python -m hsverify.simrun --ref $(REF) --replay $(REPLAY) --autopilot \
 		$(SERVER) --extra-arg=-autopilotHold --extra-arg=3 \
-		--idle 60 --timeout 900 --require result --label replay $(ARGS)
+		--idle 60 --timeout 900 --require result --require-export --label replay $(ARGS)
 
 # Every case in e2e/cases/ plus the ETH3D facade scene through the server's API at SERVER_REF;
 # each result is validated against server/schemas/result.schema.json at the same ref.
