@@ -10,6 +10,13 @@ import Testing
         #expect(ResultMarkLayout.spotMark(spotIsClean: false) == .outline)
     }
 
+    /// "See it on your wall" aims at the mark it draws: a battery's middle, or the ground under
+    /// an outline, so an outline below the screen still gets the edge chevron.
+    @Test func focusHeightFollowsTheMark() {
+        #expect(ResultMarkLayout.focusHeight(mark: .battery, batteryHeight: 1.2) == 0.6)
+        #expect(ResultMarkLayout.focusHeight(mark: .outline, batteryHeight: 1.2) == 0)
+    }
+
     /// The camera faces the spot it circles: a rejected candidate round a corner (no spot, only
     /// the closest one tried) opens facing that candidate's piece of wall, not the meter's.
     @Test func focusFollowsTheSpotThenTheClosestSpot() {

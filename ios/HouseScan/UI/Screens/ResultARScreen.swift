@@ -82,13 +82,16 @@ struct ResultARScreen: View {
 }
 
 extension ResultPresentation {
-    /// The middle of the battery on `wall`, in world meters; nil without a spot. The point
-    /// "See it on your wall" has to get on screen: the edge chevron points to it while it is off
-    /// screen, and the engine checks the AR scene puts it in view (`LiveCapture.resultIsDrawn`).
+    /// The middle of the battery on `wall`, or of the footprint outline on the ground for a spot
+    /// that isn't a clean fit (`ResultMarkLayout.focusHeight`), in world meters; nil without a
+    /// spot. The point "See it on your wall" has to get on screen: the edge chevron points to it
+    /// while it is off screen, and the engine checks the AR scene puts it in view
+    /// (`LiveCapture.resultIsDrawn`).
     func spotCenter(on wall: WallGeometry) -> SIMD3<Float>? {
         guard let spot else { return nil }
         let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
-        return wall.world(s: middle, height: spot.height / 2, out: spot.offsetFromWall + spot.depth / 2)
+        let height = ResultMarkLayout.focusHeight(mark: ResultMarkLayout.spotMark(spotIsClean: spotIsClean), batteryHeight: spot.height)
+        return wall.world(s: middle, height: height, out: spot.offsetFromWall + spot.depth / 2)
     }
 }
 

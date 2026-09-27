@@ -18,6 +18,16 @@ public enum ResultMarkLayout {
         spotIsClean ? .battery : .outline
     }
 
+    /// The height on the wall "See it on your wall" aims at for a spot `batteryHeight` tall: the
+    /// middle of a battery, or the ground an outline lies on. The edge chevron and the check that
+    /// the AR scene has the spot in view both use it, so they look where the mark is drawn.
+    public static func focusHeight(mark: SpotMark, batteryHeight: Float) -> Float {
+        switch mark {
+        case .battery: return batteryHeight / 2
+        case .outline: return 0
+        }
+    }
+
     /// The s the camera faces: the middle of the spot, else of the closest spot tried, else the
     /// meter (0). The same spot the camera circles, so a spot round a corner is seen from its front.
     public static func focusS(spot: ClosedRange<Float>?, nearest: ClosedRange<Float>?) -> Float {
