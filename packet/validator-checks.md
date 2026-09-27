@@ -82,8 +82,11 @@ any validator that reads packets the same way:
   look right on a truncated file. Decode the pixels (`Image.load()`) before accepting it.
 - **Malformed binaries.** Parsing a short mesh or depth body can raise before the length check
   runs. Report it as a problem, not an exception.
-- **Non-finite numbers.** `json.loads` accepts `NaN` and `Infinity` by default, and parses the
-  valid JSON number `1e400` as infinity without calling `parse_constant`. Check every parsed
-  number with `math.isfinite`, so no pose or intrinsic is `NaN` or infinite.
+- **Out-of-range numbers.** `json.loads` accepts `NaN` and `Infinity` by default, and parses the
+  valid JSON number `1e400` as infinity without calling `parse_constant`. It parses a 400-digit
+  integer as an exact `int`, on which `math.isfinite` raises `OverflowError` rather than
+  returning `False`. So check floats with `math.isfinite`, check integers against the range their
+  field allows (a count, an index, a size) before any conversion to float, and report a value
+  that fails either check, or cannot be converted, as a problem, not an exception.
 - **Stream times outside the capture.** A stream with samples far outside the session's time span
   passed with only a warning. Decide whether that is an error.

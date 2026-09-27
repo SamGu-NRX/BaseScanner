@@ -80,12 +80,19 @@ performance.
    (`experiments/sensor-budget`), and whether the flow may ask is Sam's and Hunter's call.
 10. **The meter anchor's pose over time.** ARKit re-estimates an anchor as tracking corrects, so
     the anchor pose at tap time goes stale. Proposal: an optional stream of the meter anchor's
-    world pose at each ARKit update, so the server can see how far the meter frame moved. There
-    is no measurement of that movement yet.
+    world pose at each ARKit update, so the server can see how far the meter frame moved. Each
+    sample needs its timestamp, on the pose stream's clock, and its epoch: the epoch tells a
+    world reset from a correction within one world, and the timestamp ties the sample to the
+    keyframes and taps around it. There is no measurement of that movement yet.
 11. **Distances from a second phone (low priority).** When a second phone with UWB is present,
     an optional stream of phone-to-phone distances. In #59's simulation on MARViN walks
-    (`experiments/drift-anatomy`), a simulated range cut the p90 error at 20 ft from 10.4 in to
-    7.7 in at 10 cm ranging noise, and to 4.9 in at 5 cm.
+    (`experiments/drift-anatomy`, question A4), a second phone left at the meter cut the p90 error
+    at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at 5 cm. That result
+    depends on the second phone staying still at a known place, so the proposal requires three
+    things: where the second phone stands (at the meter, or a stated position) and that it did
+    not move; a time for each range on the capture's clock, so it matches a pose; and the range's
+    uncertainty. Ranges from a second phone that moves, or whose place is unknown, are not what
+    the study simulated.
 
 Already in 0.4, so not proposed: the kind and distance of each tap's hit, a keyframe for every
 tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked
