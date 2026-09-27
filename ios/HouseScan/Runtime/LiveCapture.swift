@@ -49,6 +49,12 @@ final class LiveCapture {
     /// True when the mesh can carry ARKit's per-face classification (wall, floor, door, ...),
     /// which the packet's mesh records.
     static var supportsClassifiedMesh: Bool { ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) }
+    /// True when this phone can hide virtual content behind a person standing in front of it.
+    static var supportsPeopleOcclusion: Bool { ARWorldTrackingConfiguration.supportsFrameSemantics(.personSegmentationWithDepth) }
+
+    /// The AR result in the camera view, while one is shown (`showResult`).
+    private var result: AnchorEntity?
+    private var occludesPeople = false
 
     /// `map3D` gets every sampled frame and every mesh and plane anchor; nil under `-coverage legacy`.
     init(
@@ -62,7 +68,9 @@ final class LiveCapture {
         arView.renderOptions.insert(.disableMotionBlur)
     }
 
-    private static func configuration() -> ARWorldTrackingConfiguration {
+    /// People occlusion runs only while the AR result is on screen: the capture has no virtual
+    /// content for it to hide.
+    private static func configuration(occludingPeople: Bool = false) -> ARWorldTrackingConfiguration {
         let configuration = ARWorldTrackingConfiguration()
         // .gravity, not .gravityAndHeading: compass heading drifts near a house's metal and wiring.
         configuration.worldAlignment = .gravity
@@ -73,6 +81,7 @@ final class LiveCapture {
             configuration.sceneReconstruction = .mesh
         }
         if supportsDepth { configuration.frameSemantics.insert(.sceneDepth) }
+        if occludingPeople, supportsPeopleOcclusion { configuration.frameSemantics.insert(.personSegmentationWithDepth) }
         return configuration
     }
 
@@ -109,7 +118,7 @@ final class LiveCapture {
 
     func start() {
         RuntimeLog.engine.info("LiDAR: scene depth \(Self.supportsDepth ? "on" : "not available", privacy: .public), mesh \(Self.supportsMesh ? "on" : "not available", privacy: .public)")
-        arView.session.run(Self.configuration())
+        arView.session.run(Self.configuration(occludingPeople: occludesPeople))
     }
 
     func pause() {
@@ -119,8 +128,54 @@ final class LiveCapture {
     /// Starts world tracking over with a fresh map, after relocalization failed. The old mesh goes
     /// with the old anchors.
     func restart() {
-        arView.session.run(Self.configuration(), options: [.resetTracking, .removeExistingAnchors])
+        arView.session.run(Self.configuration(occludingPeople: occludesPeople), options: [.resetTracking, .removeExistingAnchors])
         delegate.shared.withLock { $0.meterAnchorID = nil }
+    }
+
+    /// Shows `model` in the camera view, hung on the meter's anchor so it follows ARKit's
+    /// corrections to it. The model is in world axes with the meter at its origin. People and,
+    /// on a phone with LiDAR, the scene mesh hide it where they stand in front of it. False when
+    /// the meter has no anchor in the session; nothing is shown then.
+    func showResult(_ model: Entity) -> Bool {
+        removeResult()
+        guard let id = delegate.shared.withLock({ $0.meterAnchorID }),
+              let anchor = arView.session.currentFrame?.anchors.first(where: { $0.identifier == id }) else { return false }
+        let holder = AnchorEntity(.anchor(identifier: id))
+        model.orientation = simd_quatf(anchor.transform).inverse
+        holder.addChild(model)
+        arView.scene.addAnchor(holder)
+        result = holder
+        setOcclusion(true)
+        return true
+    }
+
+    func hideResult() {
+        removeResult()
+        setOcclusion(false)
+    }
+
+    /// Hides the shown result without taking it out, while the anchor's pose can't be trusted.
+    func setResultVisible(_ visible: Bool) {
+        result?.isEnabled = visible
+    }
+
+    private func removeResult() {
+        result?.removeFromParent()
+        result = nil
+    }
+
+    private func setOcclusion(_ on: Bool) {
+        if Self.supportsMesh {
+            if on {
+                arView.environment.sceneUnderstanding.options.insert(.occlusion)
+            } else {
+                arView.environment.sceneUnderstanding.options.remove(.occlusion)
+            }
+        }
+        guard Self.supportsPeopleOcclusion, occludesPeople != on else { return }
+        occludesPeople = on
+        // Without reset options the session keeps its tracking, anchors and mesh.
+        arView.session.run(Self.configuration(occludingPeople: on))
     }
 
     /// ARKit's mesh in world meters, with one `ARMeshClassification` raw value per triangle (0,

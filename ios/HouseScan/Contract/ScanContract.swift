@@ -540,6 +540,13 @@ enum CheckOutcome: String, Equatable, Sendable {
     case unsure
 }
 
+/// Which side of a rule's limit passes: a clearance the spot must keep (at least) or a length it
+/// must stay within (at most).
+enum RuleComparison: Equatable, Sendable {
+    case atLeast
+    case atMost
+}
+
 struct CheckRow: Identifiable, Equatable, Sendable {
     let id: String
     var title: String
@@ -552,10 +559,12 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var needsPerson: Bool = false
     /// The deciding measurement, the rule's limit and the measurement's error, in meters, when the
     /// server gave them. A borderline result shows all three ("3 ft 2 in from the gas meter; the
-    /// rule is 3 ft and our measurement can be off by about 4 in").
+    /// rule is at least 3 ft and our measurement can be off by about 4 in").
     var measured: Float? = nil
     var threshold: Float? = nil
     var plusMinus: Float? = nil
+    /// Whether `threshold` is a minimum or a maximum, when the server said which.
+    var comparison: RuleComparison? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -659,6 +668,9 @@ final class ScanViewState {
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// True after "Done with this wall" was refused because the ends were closer together than
+    /// `WallFrame.minWallLength`; the ends were cleared. False again once an end is marked.
+    var wallTooShort = false
     /// Set after the tilt-up view: is anything overhead there (roof edge, porch, stairs)? The
     /// camera can't tell open sky from an eave, so the homeowner answers.
     var overheadQuestion = false
@@ -667,6 +679,9 @@ final class ScanViewState {
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
+    /// True while the AR result is drawn into the live camera, where people and objects in front
+    /// of it hide it. The AR screen then draws no overlay of its own.
+    var resultInCamera = false
 
     /// True when frames come from a recorded session instead of the camera.
     var isReplay = false
@@ -726,7 +741,8 @@ protocol ScanActions: AnyObject {
     func cancelMarking()
     func deleteFeature(_ id: UUID)
     func setWindowOpens(_ id: UUID, opens: Bool)
-    /// Leave the walk for the feature review (allowed once both ends are marked).
+    /// Leave the walk for the feature review (allowed once both ends are marked). Ends closer
+    /// together than `WallFrame.minWallLength` are cleared instead, and `wallTooShort` is set.
     func finishWalk()
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()

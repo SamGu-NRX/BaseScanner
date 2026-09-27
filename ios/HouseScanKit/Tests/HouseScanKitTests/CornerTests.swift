@@ -205,6 +205,22 @@ func rightCornerWall() throws -> WallFrame {
         #expect(v["facing"]?[0]?["wall_id"] == .string("wall"))
     }
 
+    /// An end before a corner leaves the piece past it out of `walls`; an object marked past that
+    /// end must name a wall the scene has, or the server has nowhere to put it. Corners are at
+    /// s = -2 and 3; the window is at 4...5 and the gas meter at -3.
+    @Test func objectsPastAnEndBeforeACornerNameAWrittenWall() throws {
+        for baseline: ClosedRange<Float> in [-4...2, -2...6, -2...3] {
+            var input = Self.input()
+            input.baselineS = baseline
+            let data = try SceneExport.jsonData(input)
+            #expect(try SceneSchemas.scene().validate(data) == [], "baseline \(baseline)")
+            let v = try Value.parse(data)
+            let written = Set(try #require(v["walls"]?.array).compactMap { $0["id"]?.string })
+            let named = try #require(v["objects"]?.array).compactMap { $0["wall_id"]?.string }
+            #expect(named.count == 2 && named.allSatisfy(written.contains), "baseline \(baseline): \(named) not all in \(written)")
+        }
+    }
+
     @Test func cornersMustRunOutwardFromTheMeter() {
         var input = Self.input()
         input.wall.rightCorners = [WallCorner(s: -1, outward: SIMD3(1, 0, 0))]

@@ -30,12 +30,12 @@ public struct CoverageConfig: Sendable, Equatable {
     /// (docs/research/t3-first-try-capture.md on t3/research): fine enough that one missed
     /// stride shows as a gap, coarse enough that the strip reads at a glance.
     public var cellWidth: Float = 0.1524
-    /// Capture setting, not a clearance: how high up the wall the walk asks the camera to see,
-    /// meters. The wall band the strip draws and the guidance asks for runs from the ground up to
-    /// here, and a wall cell is covered once every wall row up to here is (`wallRows`). What the
-    /// scene reports is how high each stretch was actually seen (`wallSeenSpans()`); the server
-    /// holds each check to its own height from its rules (server/README.md, "What settles each
-    /// check", t3/server 930e8e5), and nothing on the phone compares against those.
+    /// Capture setting, not a clearance: how high up the wall rows are sampled, meters, and so the
+    /// most a seen height can report and the most a wall request the phone can meet may ask
+    /// (`GapPlanner.isBeyondCapture`). What the scene reports is how high each stretch was
+    /// actually seen (`wallSeenSpans()`); the server holds each check to its own height from its
+    /// rules (server/README.md, "What settles each check", t3/server 930e8e5), and nothing on the
+    /// phone compares against those. The walk itself asks only for `wallWalkHeight`.
     ///
     /// 7.5 ft (2.286 m), because it has to get past the highest height the public rules ask the
     /// wall seen above, 6.5 ft (headroom height, for gas meters, openings and equipment above
@@ -43,10 +43,27 @@ public struct CoverageConfig: Sendable, Equatable {
     /// check's, so a phone that stops at 6.5 ft settles none of those. On 6 in rows the first row
     /// above 6.5 ft is 7 ft; 7.5 ft keeps one row more, so that with a guessed ground, whose
     /// 0.3 m (0.98 ft) error comes off every reported height (`heightError`), the top row still
-    /// reports 6.52 ft. No calibration run exists: whether homeowners' walks reach it is untested.
+    /// reports 6.52 ft. No calibration run exists: whether homeowners' views reach it is untested.
     /// A phone 2.6 m out at chest height pitched 20 degrees down (the synthetic replay's walk)
-    /// sees about 2.0 m up, so the guidance has to ask it to tilt up.
+    /// sees about 2.0 m up; the rest comes from views the gap loop asks for.
     public var wallCaptureHeight: Float = 2.286
+    /// Capture setting, not a clearance: how high up the wall the walk asks the camera to see,
+    /// meters. The wall band the strip draws runs from the ground up to here, a wall cell is
+    /// covered once every wall row up to here is, and the walk's aim tasks and the phone's own gap
+    /// check go by that. Anything seen higher is still reported (`wallSeenSpans()`), and a server
+    /// that needs more asks for it with a wall request (`GapPlan.Need.wallUp`).
+    ///
+    /// 4.5 ft (1.3716 m, 9 rows): the height a view that also shows the ground band in front can
+    /// reach from the walk's stand-off. From `GuidanceConfig.standOff` (2 m) at chest height
+    /// (1.4 m), the ground band's outer row (`groundBandDepth`, 1.2 m out) is 60.3 degrees below
+    /// level; a portrait view pitched to put it at the bottom edge shows the wall up to
+    /// 1.4 + 2 tan(2a - 60.3) m, where a is the image's long-side half angle inside the 3 % margin.
+    /// That is 1.46 m for a = 31 degrees (the synthetic replay's camera, and ARKit's 1920 x 1440
+    /// wide-camera frame at fx near 1450 px) and 1.39 m at 30 degrees; 4.5 ft is the highest whole
+    /// row under both. It clears the battery's height (3.29 ft under the public rules) for its
+    /// backing and the cable's run, also after a guessed ground's 0.98 ft. No calibration run
+    /// exists: the phones' intrinsics and how homeowners hold them were not measured.
+    public var wallWalkHeight: Float = 1.3716
     /// Spacing of the wall rows from the foot up: 6 in, the cell width, as for the ground depth
     /// rows. A seen height is a whole number of rows, so this is its resolution. A hypothesis,
     /// not tuned.
@@ -231,23 +248,29 @@ public struct CoverageMap: Sendable {
         /// Rows below this are the wall's foot rows under a guessed ground (`wallRows`): they
         /// count toward a seen height, not toward the band the strip draws.
         let firstBandRow: Int
+        /// The top row of the band the walk asks for (`wallWalkHeight`; every row for the ground).
+        /// Rows above it count toward a seen height only.
+        let lastWalkRow: Int
         /// Rows a kept frame's depth showed hidden behind something nearer.
         var hiddenRows: Set<Int> = []
         var skipped = false
         var covered = false
 
-        init(rowCount: Int, firstBandRow: Int) {
+        init(rowCount: Int, firstBandRow: Int, lastWalkRow: Int) {
             rows = Array(repeating: [], count: rowCount)
             self.firstBandRow = firstBandRow
+            self.lastWalkRow = lastWalkRow
         }
 
         var isSeen: Bool { rows[firstBandRow...].contains { !$0.isEmpty } }
 
-        /// Every band row seen from two positions.
-        var bandCovered: Bool { rows[firstBandRow...].allSatisfy { $0.count >= 2 } }
+        /// Every row of the band the walk asks for seen from two positions.
+        var bandCovered: Bool { rows[firstBandRow...lastWalkRow].allSatisfy { $0.count >= 2 } }
 
-        /// A hidden row stops blocking once it has its two positions.
-        var isHidden: Bool { hiddenRows.contains { $0 >= firstBandRow && rows[$0].count < 2 } }
+        /// A hidden row of the walk's band blocks until it has its two positions. Rows above it
+        /// don't: the walk doesn't ask for them, so it mustn't send the homeowner round an
+        /// obstruction for them either.
+        var isHidden: Bool { hiddenRows.contains { (firstBandRow...lastWalkRow).contains($0) && rows[$0].count < 2 } }
 
         var level: CoverageLevel {
             if covered { return .covered }
@@ -311,7 +334,8 @@ public struct CoverageMap: Sendable {
     }
 
     /// The cells the 3D map saw, for `setMeasuredCovered`: a wall cell whose whole s range lies in
-    /// a stretch seen up to headroom (`Map3DCoverage.wall`), and a ground cell whose whole range
+    /// a stretch seen up to the height the walk asks for (`Map3DCoverage.wallHeight` at least
+    /// `wallWalkHeight`, as a camera-covered cell needs), and a ground cell whose whole range
     /// lies in a ground stretch seen out to at least `groundBandDepth`. `coverage` must be read
     /// along `wall`.
     public func cells(seenIn coverage: Map3DCoverage) -> [SurfaceBand: Set<Int>] {
@@ -327,8 +351,9 @@ public struct CoverageMap: Sendable {
             }
             return result
         }
+        let highWall = coverage.wallHeight.filter { $0.out + 1e-4 >= config.wallWalkHeight }.map(\.span)
         let deepGround = coverage.ground.filter { $0.out + 1e-4 >= config.groundBandDepth }.map(\.span)
-        return [.wall: cells(within: coverage.wall), .ground: cells(within: deepGround)]
+        return [.wall: cells(within: highWall), .ground: cells(within: deepGround)]
     }
 
     /// Indices of every cell overlapping `range` by more than a thousandth of a cell.
@@ -508,7 +533,10 @@ public struct CoverageMap: Sendable {
     }
 
     private func newCell(_ band: SurfaceBand) -> Cell {
-        Cell(rowCount: rowOffsets(band).count, firstBandRow: band == .wall ? footRows.count : 0)
+        let rows = rowOffsets(band)
+        guard band == .wall else { return Cell(rowCount: rows.count, firstBandRow: 0, lastWalkRow: rows.count - 1) }
+        let walked = rows.lastIndex { $0 <= config.wallWalkHeight + 1e-4 } ?? rows.count - 1
+        return Cell(rowCount: rows.count, firstBandRow: footRows.count, lastWalkRow: max(walked, footRows.count + 1))
     }
 
     /// The rows of a cell a frame sees: a row counts when both of its samples, a quarter and

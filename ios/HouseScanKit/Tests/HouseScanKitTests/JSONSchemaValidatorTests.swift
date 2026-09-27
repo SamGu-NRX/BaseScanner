@@ -2,14 +2,13 @@ import CryptoKit
 import Foundation
 import Testing
 
-/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 074bf1d
+/// Vendored copies of the server's contracts, byte for byte from origin/t3/server at 9e42970
 /// (server/schemas/*.schema.json and server/tests/fixtures/example-scene.json). Since e0ee8d3
 /// requests carry `out_ft` and facing and overhead coverage may too; 737bf75 adds
 /// `walls[].source`; 930e8e5 defines a wall entry's `out_ft` as the height seen above the
-/// ground; 074bf1d adds the `battery` object type. result.schema.json is from 9e42970, which
-/// adds the answer's `objects_not_used`. `vendoredCopiesMatchServer` fails if the server's files
-/// change and these are not refreshed; `vendoredCopiesAreTheRecordedRevision` fails if a copy is
-/// edited by hand.
+/// ground; 074bf1d adds the `battery` object type; 9e42970 adds the result's `objects_not_used`.
+/// `vendoredCopiesMatchServer` fails if the server's files change and these are not refreshed;
+/// `vendoredCopiesAreTheRecordedRevision` fails if a copy is edited by hand.
 enum SceneSchemas {
     static let vendored: [(name: String, serverPath: String, sha256: String)] = [
         ("scene.schema.json", "server/schemas/scene.schema.json",
@@ -188,12 +187,12 @@ enum SceneSchemas {
         }
     }
 
-    /// The hashes are of `git show <revision>:<serverPath>` at the revisions above, so a copy edited by hand (or refreshed
+    /// The hashes are of `git show 9e42970:<serverPath>`, so a copy edited by hand (or refreshed
     /// without updating the provenance above) fails here even where the server tree is absent.
     @Test func vendoredCopiesAreTheRecordedRevision() throws {
         for (name, _, sha256) in SceneSchemas.vendored {
             let digest = SHA256.hash(data: try SceneSchemas.data(name)).map { String(format: "%02x", $0) }.joined()
-            #expect(digest == sha256, "Schemas/\(name) is not the copy recorded in SceneSchemas.vendored")
+            #expect(digest == sha256, "Schemas/\(name) is not the copy taken from origin/t3/server 9e42970")
         }
     }
 

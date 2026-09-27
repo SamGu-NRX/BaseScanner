@@ -137,7 +137,9 @@ public enum ReplayPlanning {
     /// to do: without them the planner finds a gap, and replaying them alone closes it.
     ///
     /// Candidates are contiguous windows of 3 to 10 frames, tried from the middle of the walk
-    /// outward. Each is screened on coverage rebuilt from what every frame sees (computed once),
+    /// outward. The gap must lie within where the rest of the walk went (`isWithinWalk`): a gap
+    /// past the farthest frame the phone stood at falls outside ends set where the phone is
+    /// ("Can't get there"), and then nothing asks for it. Each is screened on coverage rebuilt from what every frame sees (computed once),
     /// then confirmed with the full auto-capture simulation the app runs. Nil when no window works,
     /// for example when the planner's nearest gap is one no frame of the replay can close.
     public static func heldBackWindow(frames: [PlannedFrame], wall: WallFrame, planner: GapPlanner = GapPlanner(), config: CoverageConfig = CoverageConfig()) -> HeldBackWindow? {
@@ -158,7 +160,8 @@ public enum ReplayPlanning {
                 guard let ends = coveredExtremes(rest) else { continue }
                 rest.setEnd(.left, at: ends.lowerBound)
                 rest.setEnd(.right, at: ends.upperBound)
-                guard let gap = planner.plan(rest) else { continue }
+                guard let gap = planner.plan(rest),
+                      isWithinWalk(gap, kept.sorted().filter { !window.contains($0) }.map { frames[$0] }, wall: wall) else { continue }
                 var restored = rest
                 for index in window { restored.record(sightings[index], from: frames[index].camera.position) }
                 guard planner.isSatisfied(gap, restored) else { continue }
@@ -311,9 +314,16 @@ public enum ReplayPlanning {
         guard let ends = coveredExtremes(walked) else { return nil }
         walked.setEnd(.left, at: ends.lowerBound)
         walked.setEnd(.right, at: ends.upperBound)
-        guard let gap = planner.plan(walked),
+        guard let gap = planner.plan(walked), isWithinWalk(gap, rest, wall: wall),
               satisfiedWithLeadIn(frames, window: window, walked: walked, gap: gap, planner: planner) else { return nil }
         return HeldBackWindow(frames: window, ends: ends, gap: gap)
+    }
+
+    /// Whether `gap` lies between the farthest positions along the wall `frames` stood at.
+    private static func isWithinWalk(_ gap: GapPlan, _ frames: [PlannedFrame], wall: WallFrame) -> Bool {
+        let s = frames.map { wall.wallPoint($0.camera.position).s }
+        guard let low = s.min(), let high = s.max() else { return false }
+        return low <= gap.span.lowerBound && gap.span.upperBound <= high
     }
 
     /// The frames the app replays for a held-back window: two lead-in frames before it, so the

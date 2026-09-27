@@ -323,7 +323,8 @@ extension ScanEngine {
                 id: check.id, title: check.label, outcome: Self.outcome(check.outcome), reason: check.reason,
                 // An UNSURE with no cause is unexplained, so a person has to look at it.
                 needsPerson: check.outcome == .unsure && (check.unsureCause.map { [.margin, .unknownAttribute, .ruleRequiresReview].contains($0) } ?? true),
-                measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters)
+                measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters),
+                comparison: check.comparison.map(Self.comparison)
             )
         }
 
@@ -351,7 +352,7 @@ extension ScanEngine {
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
                 // or answered with something overhead stays with the installer.
-                capturable: gapPlanner.plan(for: walkRequest(item), leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd)
+                capturable: gapPlanner.plan(for: walkRequest(item), leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
                     .map { !skippedGaps.contains($0) } ?? false
             )
         }
@@ -396,6 +397,13 @@ extension ScanEngine {
         case .pass: .pass
         case .fail: .fail
         case .unsure: .unsure
+        }
+    }
+
+    static func comparison(_ comparison: PlacementComparison) -> RuleComparison {
+        switch comparison {
+        case .atLeast: .atLeast
+        case .atMost: .atMost
         }
     }
 

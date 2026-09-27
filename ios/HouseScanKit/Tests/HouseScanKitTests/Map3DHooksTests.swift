@@ -1,5 +1,5 @@
 import Foundation
-import HouseScanKit
+@testable import HouseScanKit
 import Testing
 import simd
 
@@ -64,6 +64,19 @@ import simd
         #expect(map.level(.ground, 0) == .skipped)
         #expect(map.level(.ground, 1) == .covered)
         #expect(map.level(.ground, 2) == .skipped)
+    }
+
+    /// The 3D map's wall cell counts as covered once its face was seen to the height the walk
+    /// asks for (`wallWalkHeight`, 4.5 ft), as the camera coverage map's does, not only to
+    /// headroom; the export still reports each stretch's own height.
+    @Test func mapWallCellsAreCoveredAtTheWalksHeight() {
+        let map = CoverageMap(wall: standardWall())
+        let walk = map.config.wallWalkHeight
+        let coverage = Map3DCoverage(
+            wall: [], wallHeight: [ObservedSpan(span: map.cellRange(2).lowerBound...map.cellRange(3).upperBound, out: walk + 0.05),
+                                   ObservedSpan(span: map.cellRange(4), out: walk - 0.1)],
+            ground: [], facing: [], overhead: [])
+        #expect(map.cells(seenIn: coverage)[.wall] == [2, 3])
     }
 
     @Test func measuredCellsCountAsSeenExtent() {

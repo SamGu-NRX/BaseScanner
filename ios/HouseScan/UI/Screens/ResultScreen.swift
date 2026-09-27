@@ -245,7 +245,7 @@ private struct CheckRowView: View {
         .padding(14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(row.title): \(ScanCopy.outcomeWord(row.outcome))")
-        .accessibilityValue([row.reason, ScanCopy.measurement(row), row.outcome == .unsure ? ScanCopy.unsureNote(row) : nil]
+        .accessibilityValue([row.reason, ScanCopy.measurement(row, spoken: true), row.outcome == .unsure ? ScanCopy.unsureNote(row) : nil]
             .compactMap(\.self).joined(separator: ". "))
         .accessibilityIdentifier("check.\(row.id)")
     }

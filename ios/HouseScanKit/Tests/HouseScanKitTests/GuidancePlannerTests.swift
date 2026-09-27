@@ -48,8 +48,9 @@ import Testing
     /// The two-position rule settles it: `frontCamera` sees every ground row of cells -1 and 0 and,
     /// 2.6 m out with a half-angle of 24 degrees across, cells -2 and 1 as well. One view leaves
     /// them seen; a second 0.3 m away covers all four, which satisfies the task: the planner moves
-    /// on at once, well inside the dwell. (What it moves on to is the wall there, which these views
-    /// see only 1.98 m up, so it lags the ground.)
+    /// on at once, well inside the dwell. The same views cover the wall's walking band (1.98 m
+    /// seen against 4.5 ft asked) over a wider stretch, cells -4 to 5, so what it moves on to is
+    /// the ground beside those four cells, which lags the wall. No wall task comes up.
     @Test func groundByTheMeterIsMetFromTwoPlaces() {
         var map = CoverageMap(wall: standardWall())
         var planner = GuidancePlanner()
@@ -59,8 +60,8 @@ import Testing
         map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
         for index in -2...1 { #expect(map.level(.ground, index) == .covered, "cell \(index)") }
         let next = planner.update(coverage: map, camera: Self.homeowner(), time: 0.4).task
-        guard case .aimAtWall = next else {
-            Issue.record("expected the lagging wall next, got \(next)")
+        guard case .aimAtGround(let s) = next, s != 0 else {
+            Issue.record("expected the ground beside it next, got \(next)")
             return
         }
     }
@@ -293,5 +294,30 @@ import Testing
         }
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: -0.5), time: 3.5).task == first)
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: 10), time: 3.6).task == .walk(.left))
+    }
+
+    /// Issue #38: cells seen before an end was set stay in the map, but past the end nothing is
+    /// observed or skipped, so a task there could never fill and "Can't get there" didn't clear
+    /// it. In `wallOnlyCoverage` the ground lags over cells -4, -3 and 2 ... 5; a right end at
+    /// s = 0.3 leaves only -4 and -3 between the ends, fewer than `lagRun`'s three, so the walk
+    /// goes left instead of asking to tilt down at s = 0.1524. Likewise the box's twelve hidden
+    /// cells (`hiddenCellsNearTheCameraAskToSeeBehind`) with the ends at s = -0.1 and 0.1: two lie
+    /// between them, too few to ask to see behind.
+    @Test func noCameraTaskPastAMarkedEnd() {
+        var lagging = Self.wallOnlyCoverage()
+        lagging.setEnd(.right, at: 0.3)
+        var planner = GuidancePlanner()
+        #expect(planner.update(coverage: lagging, camera: Self.homeowner(), time: 0).task == .walk(.left))
+
+        var hidden = CoverageMap(wall: standardWall())
+        let scene = CoverageDepthTests.boxScene
+        for s: Float in [0, 0.3] {
+            hidden.observe(wallCamera(s: s), trackingNormal: true, depth: renderDepth(scene, from: wallCamera(s: s)))
+        }
+        hidden.setEnd(.left, at: -0.1)
+        hidden.setEnd(.right, at: 0.1)
+        var planner2 = GuidancePlanner()
+        let task = planner2.update(coverage: hidden, camera: Self.homeowner(), time: 0).task
+        if case .seeBehind = task { Issue.record("asked to see behind cells past the ends: \(task)") }
     }
 }

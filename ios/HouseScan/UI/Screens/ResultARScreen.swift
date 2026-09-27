@@ -2,8 +2,9 @@ import simd
 import SwiftUI
 
 /// "See it on your wall": the battery drawn onto the live camera at the chosen spot, with the
-/// cable run from the meter and the clearance footprint tinted by outcome. Everything is
-/// projected from the meter-anchored wall frame, so it stays put as the homeowner moves.
+/// cable run from the meter and the clearance footprint tinted by outcome. On the live camera the
+/// engine draws it into the AR scene (`state.resultInCamera`); over a replay this screen projects
+/// it from the meter-anchored wall frame. Either way it stays put as the homeowner moves.
 struct ResultARScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -13,7 +14,7 @@ struct ResultARScreen: View {
 
     var body: some View {
         ZStack {
-            if state.tracking == .normal, let projection = state.projection, let result = state.result, let wall = result.wall ?? state.wall {
+            if !state.resultInCamera, state.tracking == .normal, let projection = state.projection, let result = state.result, let wall = result.wall ?? state.wall {
                 BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
                     .ignoresSafeArea()
                     .accessibilityHidden(true)
