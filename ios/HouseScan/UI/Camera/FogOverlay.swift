@@ -1,7 +1,9 @@
 import SwiftUI
 import simd
 
-/// The haze over the parts of the wall and ground the phone hasn't seen yet.
+/// The haze over the parts of the wall and ground the phone hasn't seen yet: the frosted strip
+/// that `LiveFogView` replaced. It still draws while the live fog's shaders compile at launch,
+/// and for good if Metal fails, so unseen wall never shows clear.
 ///
 /// Unseen cells carry a soft frosted haze, seen cells a thinner one, covered cells none. When a
 /// cell's state changes (a new `coverage.revision`), its haze fades and drifts upward over
