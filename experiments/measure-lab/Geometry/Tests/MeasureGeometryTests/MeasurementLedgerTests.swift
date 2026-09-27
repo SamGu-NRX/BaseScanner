@@ -100,8 +100,17 @@ struct MeasurementLedgerTests {
 
         #expect(ledger.saveMeasurement("M1", from: "Before", to: .point("A"), referenceWall: "W1", compared: .alongWall) == [.outsideWallContacts])
         #expect(ledger.saveMeasurement("M2", from: "A", to: .point("Past"), referenceWall: "W1", compared: .alongWall) == [.outsideWallContacts])
-        // Contact to contact, the protocol's 30 ft span, stays clean.
+        // The defining contacts of this 4 m wall stay clean.
         #expect(ledger.saveMeasurement("M3", from: "P1", to: .point("P2"), referenceWall: "W1", compared: .alongWall) == [])
+    }
+
+    @Test mutating func `the protocol's 30 foot contact span stays accepted`() throws {
+        try addWall("W30", from: SIMD3(0, 0, 0), to: SIMD3(9.144, 0, 0), contacts: ("A30", "B30"))
+        _ = try check("W30", with: "C30", at: SIMD3(4.572, 0, 0))
+        let values = ledger.values(from: "A30", to: .point("B30"), referenceWall: "W30")
+        #expect(abs((values[.alongWall] ?? .nan) - 9.144) < 1e-12)
+        let warnings = ledger.saveMeasurement("M30", from: "A30", to: .point("B30"), referenceWall: "W30", compared: .alongWall)
+        #expect(warnings == [])
     }
 
     @Test mutating func `height and gap are flagged for ground and two-view points past either end`() throws {

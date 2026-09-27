@@ -70,7 +70,7 @@ Bring an iPhone without LiDAR running this app, a 50 ft tape, a spirit level, ch
       - the overhead, as the two-view point's height above ground against the wall;
       - the return gap, as the straight distance between the two reference X points, with tape value 0 so the error reads directly.
    8. Note the capture time, from New session to the last measurement.
-4. **Minutes 40 to 50: try to break it.** In a fourth session, try each case in the break-it table below. Each one should end in a refusal, a flag or a failed check.
+4. **Minutes 40 to 50: try to break it.** In a fourth session, try the required-abstention cases below. Each should end in a refusal, a flag or a failed check. Also record errors for the exploratory conditions; those do not require an abstention.
 5. **Minutes 50 to 60: export and score.** Share each session's zip to a laptop and put it in `experiments/measure-lab/data/`, which git ignores. Fill in the sheet below from `measurements` and `refusals` in each session.json. To score against a full survey instead, use `score import-measure-lab` in `experiments/scoring` (PR #4).
 
 ## Record sheet
@@ -89,12 +89,17 @@ Fill in one row per quantity. Errors are app minus tape, in inches.
 | Overhead height | Two-view | | | | | | |
 | Return to reference | Ground | | | | | | |
 
-Break-it cases. Each should end in a refusal, a flag or a failed check.
+Exploratory conditions. Blank stucco and direct sun have no dedicated rejection rule. Record the measurement error and any warnings, whether or not the app abstains.
 
-| Case | Result |
+| Condition | Error and warnings |
 | --- | --- |
 | Wall point on blank stucco | |
 | Capture in direct sun | |
+
+Required-abstention cases. Each should end in a refusal, a flag or a failed check.
+
+| Case | Result |
+| --- | --- |
 | Wall contact hidden by a shrub | |
 | Two-view pair with a 20 cm step, on a feature at least 2 m away so the rays meet under 15° (about 6° at 2 m). The app has no step-length limit, so the 15° ray-angle gate is what should refuse it. | |
 | Two-view pair where the second tap is on a different feature | |
