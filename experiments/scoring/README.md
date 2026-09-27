@@ -16,6 +16,6 @@ uv run pytest -q
 
 [FORMATS.md](FORMATS.md) specifies the input files and the Measure Lab importer. [METRICS.md](METRICS.md) explains every number. Real surveys and results go in git-ignored `data/`, the default `--out`.
 
-**Result.** No real house scored yet. In [results/synthetic-01](results/synthetic-01/summary.md), three invented runs have median errors of 3.48, 12.60 and 1.20 in, and `ar-taps` makes 1 unsafe pass. Those numbers test the scorer, not any pipeline. All 285 tests and ruff pass.
+**Result.** No real house scored yet. In [results/synthetic-01](results/synthetic-01/summary.md), three invented runs have median errors of 3.48, 12.60 and 1.20 in, and `ar-taps` makes 1 unsafe pass. Those numbers test the scorer, not any pipeline. All 303 tests and ruff pass.
 
 **What changed.** Nothing in the product or the plan yet. The field eval in PR #12 calls `score import-measure-lab` to score a Measure Lab session.

@@ -124,7 +124,7 @@ This excerpt shows each kind of map entry. `fixtures/measure-lab/map.json` is a 
 | `{"refusal": id}` | Null, missing `failed`. |
 | `"absent"` or `"unsupported"` | Null, missing `absent` or `unsupported`. |
 
-A session measurement has only the quantities its endpoints allow, as `experiments/measure-lab/SESSION-FORMAT.md` lists. Point to point gives `straight`, `horizontal` and `vertical`, plus `alongWall` when a reference wall is chosen. Point to wall gives `gapToWall` and `heightAboveGround`.
+A session measurement has only the quantities its endpoints allow, as `experiments/measure-lab/SESSION-FORMAT.md` lists. Point to point gives `straight`, `horizontal` and `vertical`, plus `alongWall` when a reference wall is chosen. Point to wall gives `gapToWall` and `heightAboveGround`. The importer rejects a session whose measurement has any other set of values, an endpoint missing from `points` or `walls`, or a `compared` quantity it does not hold.
 
 Map a route as `"unsupported"`. Measure Lab records no routed cable path, and an along-wall distance leaves out vertical legs and detours, so it is not a route length. The importer rejects any other entry for a survey measurement that decides a check named `route`, or a check that uses `max_route_ft` or `review_route_ft`.
 
@@ -132,7 +132,7 @@ Map a route as `"unsupported"`. Measure Lab records no routed cable path, and an
 
 Every value needs a stated uncertainty: its entry's `plus_minus_ft`, or its key's value in `plus_minus_ft_by_key`. There is no default. The ±0.3 ft in the example is the plan's untested error bar for an AR tap, listed in `docs/00-overview.md` under "Conventions the code relies on". It is not a measured error bar. `session` must match the zip's session id.
 
-The importer converts meters exactly (1 ft = 0.3048 m) and rounds half up to a millionth of a foot. The capture id is the zip's sha256, which must already be in the survey's `captures`. `scale_source` is `ar_poses`. `capture_s` runs from the session's start to its last measurement. `processing_s` is null, because the app shows each value as it is tapped. A map or session problem stops the import with a specific message. The importer loads its output through the scorer before it writes the file.
+The importer converts meters exactly (1 ft = 0.3048 m) and rounds half up to a millionth of a foot. The capture id is the zip's sha256, which must already be in the survey's `captures`. The importer checks that before it unpacks anything, and it refuses a `session.json` larger than 16 MiB. That limit is a chosen safety bound, not calibrated against real captures. `scale_source` is `ar_poses`. `capture_s` runs from the session's start to its last measurement. `processing_s` is null, because the app shows each value as it is tapped. A map or session problem stops the import with a specific message. The importer loads its output through the scorer before it writes the file.
 
 `--decide` also writes a row named `<pipeline>+rule`. Its outcomes apply the survey's strict rule, described in [METRICS.md](METRICS.md), to the run's own values and uncertainties. With no value the row says unsure, except that an absent feature passes an `at_least` check. The row emulates the check rule in `docs/00-overview.md` ("Every check answers PASS, FAIL or UNSURE") until a real solver exists.
 

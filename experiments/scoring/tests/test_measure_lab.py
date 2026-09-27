@@ -12,10 +12,12 @@ starts at uptime 1000.25 and the last measurement is at 1412.75.
 
 import copy
 import csv
+import dataclasses
 import hashlib
 import json
 import math
 import os
+import zipfile
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -23,8 +25,16 @@ from typing import Any
 import pytest
 from helpers import FIXTURES, MEASURE_LAB, SESSION_ZIP, committed_session, session_zip
 
+from scoring import measure_lab
 from scoring.cli import main
-from scoring.inputs import InputError, PipelineMeasurement, Threshold, load_study
+from scoring.inputs import (
+    InputError,
+    PipelineMeasurement,
+    Threshold,
+    load_rules,
+    load_study,
+    load_truth,
+)
 from scoring.measure_lab import (
     HASH_CHUNK_BYTES,
     _rule_outcome,
@@ -308,6 +318,86 @@ ERRORS: list[tuple[str, Any, str]] = [
         "measurement 'm3' is accepted but its straight is -1.4 m",
     ),
     (
+        "point to wall carrying straight",
+        lambda s: [
+            s.measurement("m4")["values"].update(straight=3.0),
+            s.measurement("m4").update(compared="straight"),
+        ],
+        "measurements[3] (m4).values: a point to wall measurement has exactly gapToWall, "
+        "heightAboveGround, got gapToWall, heightAboveGround, straight",
+    ),
+    (
+        "compared not among the values",
+        lambda s: s.measurement("m4").update(compared="straight"),
+        "measurements[3] (m4).compared: 'straight' is not one of its values",
+    ),
+    (
+        "unknown target",
+        lambda s: s.measurement("m4").update(to="no-such-wall"),
+        "measurements[3] (m4).to: 'no-such-wall' is not a point or wall id",
+    ),
+    (
+        "unknown source",
+        lambda s: s.measurement("m3").update({"from": "p99"}),
+        "measurements[2] (m3).from: 'p99' is not a point id in points",
+    ),
+    (
+        "along-wall without a reference wall",
+        lambda s: s.measurement("m5").update(referenceWall=None),
+        "measurements[4] (m5).values: a point to point measurement has exactly horizontal, "
+        "straight, vertical, got alongWall, horizontal, straight, vertical",
+    ),
+    (
+        "reference wall missing from walls",
+        lambda s: s.measurement("m5").update(referenceWall="w9"),
+        "measurements[4] (m5).referenceWall: 'w9' is not a wall id in walls",
+    ),
+    (
+        "reference wall on a point-to-wall measurement",
+        lambda s: s.measurement("m4").update(referenceWall="w1"),
+        "measurements[3] (m4).referenceWall: a point-to-wall measurement has no reference wall",
+    ),
+    (
+        "from as a list",
+        lambda s: s.measurement("m3").update({"from": ["w1"]}),
+        "measurements[2] (m3).from: expected a non-empty string, got ['w1']",
+    ),
+    (
+        "from as a object",
+        lambda s: s.measurement("m3").update({"from": {"id": "w1"}}),
+        "measurements[2] (m3).from: expected a non-empty string, got {'id': 'w1'}",
+    ),
+    (
+        "to as a list",
+        lambda s: s.measurement("m4").update({"to": ["w1"]}),
+        "measurements[3] (m4).to: expected a non-empty string, got ['w1']",
+    ),
+    (
+        "to as a object",
+        lambda s: s.measurement("m4").update({"to": {"id": "w1"}}),
+        "measurements[3] (m4).to: expected a non-empty string, got {'id': 'w1'}",
+    ),
+    (
+        "referenceWall as a list",
+        lambda s: s.measurement("m5").update({"referenceWall": ["w1"]}),
+        "measurements[4] (m5).referenceWall: expected a non-empty string, got ['w1']",
+    ),
+    (
+        "referenceWall as a object",
+        lambda s: s.measurement("m5").update({"referenceWall": {"id": "w1"}}),
+        "measurements[4] (m5).referenceWall: expected a non-empty string, got {'id': 'w1'}",
+    ),
+    (
+        "id shared by a point and a wall",
+        lambda s: s.session["points"].append({**s.session["points"][0], "id": "w1"}),
+        "'w1' is both a point and a wall id",
+    ),
+    (
+        "duplicate point id",
+        lambda s: s.session["points"].append(copy.deepcopy(s.session["points"][0])),
+        "points[11].id: 'p1' is listed twice",
+    ),
+    (
         "length units",
         lambda s: s.session["units"].update(length="feet"),
         "units.length must be 'meters'",
@@ -348,25 +438,61 @@ def test_route_is_recognised_by_its_threshold_under_another_check_name(setup: Se
     assert "'c1-route' decides a route check" in setup.error()
 
 
+def test_omitted_reference_wall_is_the_exporter_shape(setup: Setup):
+    # Swift's synthesized Codable leaves a nil referenceWall out instead of writing null.
+    for measurement in setup.session["measurements"]:
+        if measurement["referenceWall"] is None:
+            del measurement["referenceWall"]
+    assert by_id(setup.run())["c1-gas"]["value_ft"] == D("4.593176")
+
+
+def test_oversized_session_json_is_refused(setup: Setup, monkeypatch):
+    monkeypatch.setattr(measure_lab, "MAX_SESSION_JSON_BYTES", 100)
+    assert "session.json is larger than 100 bytes, the importer's limit" in setup.error()
+
+
+def test_session_json_at_the_limit_is_read(setup: Setup, monkeypatch):
+    size = len((json.dumps(setup.session, indent=2) + "\n").encode())
+    monkeypatch.setattr(measure_lab, "MAX_SESSION_JSON_BYTES", size)
+    assert setup.run()["pipeline"] == "measure-lab"
+
+
+def listed_truth(tmp_path: Path, zip_path: Path) -> Path:
+    """A copy of the survey whose captures list this zip, so the import gets past the listing."""
+    truth = json.loads(TRUTH.read_text())
+    truth["captures"].append(hashlib.sha256(zip_path.read_bytes()).hexdigest())
+    path = tmp_path / "truth.json"
+    path.write_text(json.dumps(truth))
+    return path
+
+
 def test_zip_without_session_json(tmp_path: Path):
     path = tmp_path / "empty.zip"
     session_zip(b"{}", path, folder="a/b")  # session.json two folders down is not the session
+    truth = listed_truth(tmp_path, path)
     with pytest.raises(InputError, match=r"expected exactly one session\.json"):
-        import_session(path, MAP, RULES, TRUTH, tmp_path / "out.json", decide_outcomes=False)
+        import_session(path, MAP, RULES, truth, tmp_path / "out.json", decide_outcomes=False)
 
 
 def test_not_a_zip(tmp_path: Path):
     path = tmp_path / "session.zip"
     path.write_text("not a zip")
+    truth = listed_truth(tmp_path, path)
     with pytest.raises(InputError, match="not a zip file"):
-        import_session(path, MAP, RULES, TRUTH, tmp_path / "out.json", decide_outcomes=False)
+        import_session(path, MAP, RULES, truth, tmp_path / "out.json", decide_outcomes=False)
 
 
-def test_capture_must_be_in_the_survey(tmp_path: Path):
+def test_capture_must_be_in_the_survey(tmp_path: Path, monkeypatch):
     session = copy.deepcopy(committed_session())
     session["session"]["appVersion"] = "changed"  # different bytes, different sha256
     path = session_zip(session, tmp_path / "session.zip")
     capture = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def no_unpacking(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("an unlisted zip was opened")
+
+    # The listing is checked before the zip is opened, so nothing in it is decompressed.
+    monkeypatch.setattr(zipfile, "ZipFile", no_unpacking)
     with pytest.raises(InputError, match=f"captures does not list {capture}"):
         import_session(path, MAP, RULES, TRUTH, tmp_path / "out.json", decide_outcomes=False)
 
@@ -420,8 +546,8 @@ def test_cli_reports_errors_with_exit_2(tmp_path: Path, capsys):
 
 # The committed session must hold only what Measure Lab's exporter at 43fda59 can write
 # (measuredValues and measurementWarnings in MeasureGeometry, addMeasurement in LabSession).
-POINT_TO_POINT = frozenset({"straight", "horizontal", "vertical"})
-POINT_TO_WALL = frozenset({"gapToWall", "heightAboveGround"})
+POINT_TO_POINT = measure_lab.POINT_TO_POINT_KEYS
+POINT_TO_WALL = measure_lab.POINT_TO_WALL_KEYS
 SESSION = committed_session()
 WALL_BY_ID = {wall["id"]: wall for wall in SESSION["walls"]}
 WALLS = frozenset(WALL_BY_ID)
@@ -530,9 +656,10 @@ def record_reads(monkeypatch, path: Path) -> tuple[list[int], list[int]]:
 def test_session_zip_is_hashed_in_bounded_chunks(tmp_path: Path, monkeypatch):
     path = session_zip(committed_session(), tmp_path / "session.zip")
     expected = hashlib.sha256(path.read_bytes()).hexdigest()
+    truth = dataclasses.replace(load_truth(TRUTH, load_rules(RULES)), captures=(expected,))
     sizes, _ = record_reads(monkeypatch, path)
     assert sha256_file(path) == expected
-    assert load_session(path).zip_sha256 == expected
+    assert load_session(path, truth).zip_sha256 == expected
     assert sizes and all(size == HASH_CHUNK_BYTES for size in sizes)
 
 

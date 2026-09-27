@@ -3,7 +3,8 @@
 The rig's measurements carry app-generated ids and meter values. A map file, written by hand after
 the walk, says which session measurement and `values` key answers each survey measurement, and with
 what uncertainty. The session format is Measure Lab's formatVersion 2, documented in
-experiments/measure-lab/README.md ("Session format"). Only the fields used here are validated.
+experiments/measure-lab/README.md ("Session format"). Only the fields used here are validated,
+including each measurement's endpoints and the value keys they allow.
 """
 
 import argparse
@@ -64,6 +65,15 @@ ROUTE_THRESHOLDS = frozenset({"max_route_ft", "review_route_ft"})
 # A session zip holds every keyframe JPEG, and optional depth maps, so its size grows with the walk;
 # hash it 1 MiB at a time instead of reading it whole.
 HASH_CHUNK_BYTES = 1 << 20
+
+# The most session.json may decompress to, so a crafted zip member cannot exhaust memory. A chosen
+# safety bound, not calibrated against real captures: no field session has been measured yet.
+MAX_SESSION_JSON_BYTES = 16 << 20
+
+# The quantities Measure Lab's exporter (measuredValues in MeasureGeometry) writes for each kind of
+# measurement. Point to point also gets alongWall exactly when it names a reference wall.
+POINT_TO_POINT_KEYS = frozenset({"straight", "horizontal", "vertical"})
+POINT_TO_WALL_KEYS = frozenset({"gapToWall", "heightAboveGround"})
 
 
 def meters_to_feet(meters: Decimal) -> Decimal:
@@ -143,15 +153,87 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_session(path: Path) -> Session:
+def _ids(data: dict[str, Any], key: str, where: str) -> set[str]:
+    ids: set[str] = set()
+    for index, entry in enumerate(_list(data, key, where)):
+        if not isinstance(entry, dict):
+            raise InputError(f"{where}: {key}[{index}]: expected an object")
+        entry_id = _text(entry.get("id"), f"{where}: {key}[{index}].id")
+        if entry_id in ids:
+            raise InputError(f"{where}: {key}[{index}].id: {entry_id!r} is listed twice")
+        ids.add(entry_id)
+    return ids
+
+
+def _check_endpoints(
+    entry: dict[str, Any],
+    measurement: SessionMeasurement,
+    points: set[str],
+    walls: set[str],
+    at: str,
+) -> None:
+    """The endpoints and value keys must be a pair Measure Lab's exporter can write."""
+    source = _text(entry.get("from"), f"{at}.from")
+    if source not in points:
+        raise InputError(f"{at}.from: {source!r} is not a point id in points")
+    target = _text(entry.get("to"), f"{at}.to")
+    # The exporter omits a nil referenceWall, so a missing key and null mean the same.
+    reference = entry.get("referenceWall")
+    if reference is not None:
+        reference = _text(reference, f"{at}.referenceWall")
+    if target in walls:
+        if reference is not None:
+            raise InputError(
+                f"{at}.referenceWall: a point-to-wall measurement has no reference wall, got "
+                f"{reference!r}"
+            )
+        expected = POINT_TO_WALL_KEYS
+        kind = "point to wall"
+    elif target in points:
+        if reference is None:
+            expected = POINT_TO_POINT_KEYS
+        elif reference in walls:
+            expected = POINT_TO_POINT_KEYS | {"alongWall"}
+        else:
+            raise InputError(f"{at}.referenceWall: {reference!r} is not a wall id in walls")
+        kind = "point to point" + (" with a reference wall" if reference is not None else "")
+    else:
+        raise InputError(f"{at}.to: {target!r} is not a point or wall id")
+    keys = set(measurement.values)
+    if keys != expected:
+        raise InputError(
+            f"{at}.values: a {kind} measurement has exactly {', '.join(sorted(expected))}, got "
+            f"{', '.join(sorted(keys)) or 'none'}; Measure Lab does not write this combination"
+        )
+    if measurement.compared not in keys:
+        raise InputError(
+            f"{at}.compared: {measurement.compared!r} is not one of its values "
+            f"({', '.join(sorted(keys))})"
+        )
+
+
+def load_session(path: Path, truth: Truth) -> Session:
+    """Read a session zip listed in the survey's captures. The listing is checked from the zip's
+    hash before anything is decompressed, so an unvetted zip is never unpacked."""
     zip_sha256 = sha256_file(path)
+    if zip_sha256 not in truth.captures:
+        raise InputError(
+            f"{truth.path}: captures does not list {zip_sha256}, the sha256 of {path}; add it so "
+            "this run is scored against this survey"
+        )
     try:
         with zipfile.ZipFile(path) as archive:
             member = _session_member(archive, path)
-            raw = archive.read(member)
+            with archive.open(member) as handle:
+                raw = handle.read(MAX_SESSION_JSON_BYTES + 1)
     except zipfile.BadZipFile:
         raise InputError(f"{path}: not a zip file") from None
     where = f"{path}!{member}"
+    if len(raw) > MAX_SESSION_JSON_BYTES:
+        raise InputError(
+            f"{where}: session.json is larger than {MAX_SESSION_JSON_BYTES} bytes, the importer's "
+            "limit; split the capture into shorter sessions"
+        )
     data = parse_json(raw, where)
     if not isinstance(data, dict):
         raise InputError(f"{where}: expected a JSON object")
@@ -174,6 +256,12 @@ def load_session(path: Path) -> Session:
     session_id = _text(info.get("id"), f"{where}: session.id")
     started = _number(info.get("startedAtUptime"), f"{where}: session.startedAtUptime")
 
+    points = _ids(data, "points", where)
+    walls = _ids(data, "walls", where)
+    shared = sorted(points & walls)
+    if shared:
+        raise InputError(f"{where}: {', '.join(map(repr, shared))} is both a point and a wall id")
+
     measurements: dict[str, SessionMeasurement] = {}
     for index, entry in enumerate(_list(data, "measurements", where)):
         at = f"{where}: measurements[{index}]"
@@ -188,7 +276,7 @@ def load_session(path: Path) -> Session:
         accepted = entry.get("accepted")
         if not isinstance(accepted, bool):
             raise InputError(f"{at} ({measurement_id}).accepted: expected true or false")
-        measurements[measurement_id] = SessionMeasurement(
+        measurement = SessionMeasurement(
             id=measurement_id,
             time=_number(entry.get("time"), f"{at} ({measurement_id}).time"),
             values={
@@ -198,6 +286,8 @@ def load_session(path: Path) -> Session:
             compared=_text(entry.get("compared"), f"{at} ({measurement_id}).compared"),
             accepted=accepted,
         )
+        _check_endpoints(entry, measurement, points, walls, f"{at} ({measurement_id})")
+        measurements[measurement_id] = measurement
 
     refusals: set[str] = set()
     for index, entry in enumerate(_list(data, "refusals", where)):
@@ -501,7 +591,7 @@ def import_session(
     )
     rules = load_rules(rules_path)
     truth = load_truth(truth_path, rules)
-    session = load_session(session_path)
+    session = load_session(session_path, truth)
     results = build_results(
         session, load_map(map_path), rules, truth, decide_outcomes=decide_outcomes
     )
