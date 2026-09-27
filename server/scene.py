@@ -414,7 +414,7 @@ class Scene:
         area = polygonal(region)
 
         def covers(a: float, b: float, depth: float) -> bool:
-            return settled(self.unobserved_ground_given([*ground, (a, b, depth)]))
+            return settled(polygonal(self.unobserved_ground_given([*ground, (a, b, depth)])))
 
         tol = COVERAGE_TOLERANCE_FT
         # A region's nearest wall need not be the one it lies in front of (at an inside corner,

@@ -4,7 +4,7 @@ import copy
 
 import pytest
 from helpers import at_start, observed_band, parsed, shared_fixture
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 from shapely.geometry import Point
 
@@ -114,8 +114,24 @@ def scenes_with_ends(draw: st.DrawFn) -> dict:
     return raw
 
 
+def unseen_ground_with_line_fragments() -> dict:
+    """Found by the property below once a ground request's depth search took the check's own
+    test (#122): overlaying the unseen ground after a capture left line fragments, which the
+    next overlay refused as mixed-dimension input."""
+    raw = shared_fixture()
+    raw["walls"][0]["baseline"] = [[-1.0, 0], [12.0, 0]]
+    raw["overheads"][0]["span_ft"] = raw["facing"][0]["span_ft"] = [-1.0, 12.0]
+    raw["coverage"]["ends"] = {"left": {"kind": "limit"}, "right": {"kind": "unexplored"}}
+    observed_band(raw, "wall", [(-1.0, 12.0)])
+    observed_band(raw, "ground", [(-1.0, 0.0), (4.053550230014572, 12.0)], 5.0)
+    observed_band(raw, "overhead", [(-1.0, 12.0)])
+    observed_band(raw, "facing", [(-1.0, 12.0)])
+    return raw
+
+
 @settings(max_examples=40, deadline=None)
 @given(raw=scenes_with_ends())
+@example(raw=unseen_ground_with_line_fragments())
 def test_a_captured_request_never_comes_back(raw: dict) -> None:
     for _ in range(3):
         result = answer(raw)

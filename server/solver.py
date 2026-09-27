@@ -31,6 +31,7 @@ from scene import (
     Scene,
     SceneObject,
     merge_intervals,
+    polygonal,
     subtract_intervals,
 )
 from units import format_ft_in
@@ -562,7 +563,10 @@ class Solver:
                     def settled(
                         after: Geometry, unseen: Geometry = unseen, coverable: Geometry = coverable
                     ) -> bool:
-                        return self._covered(fp, _meet(_meet(after, unseen), coverable), radius)
+                        # Only areas: an overlay can leave line fragments, which the next one
+                        # refuses as mixed-dimension input.
+                        left = polygonal(_meet(after, polygonal(unseen)))
+                        return self._covered(fp, _meet(left, coverable), radius)
 
                     a, b, depth = self.scene.view_to_cover(region, a, b, settled)
                     depth = _up(depth)
@@ -593,9 +597,10 @@ class Solver:
         sides: set[str] = set()
         for band in bands:
             for view, unseen in self._unseen_parts(band, up_to):
-                rest = shapely.difference(
-                    _meet(unseen, within), scene.coverable(view), grid_size=_OVERLAY_GRID
-                )
+                near = _meet(unseen, within)
+                if view == "ground":
+                    near = polygonal(near)
+                rest = shapely.difference(near, scene.coverable(view), grid_size=_OVERLAY_GRID)
                 for part in getattr(rest, "geoms", [rest]):
                     if part.is_empty or fp.distance(part) >= radius - _MEASURE_EPS:
                         continue
