@@ -332,14 +332,22 @@ final class MotionSource {
             && CMMotionActivityManager.isActivityAvailable()
     }
 
-    enum Permission { case allowed, denied, unanswered, notNeeded }
+    /// The onboarding's answer, nil if it asked nothing. Unanswered holds the barometer
+    /// (`CapturePermissions.barometerMayStart`).
+    private(set) var permission: CapturePermissions.Motion?
 
     /// Shows the Motion & Fitness prompt and reports the answer. CMAltimeter has no call that only
     /// asks; an activity query asks for the same permission and calls back once it is answered.
     /// The handler runs on the main queue, so it may be a main-actor closure. Every answer lets
     /// the scan go on; a denial only leaves the barometer without rows.
     @discardableResult
-    func requestPermission() async -> Permission {
+    func requestPermission() async -> CapturePermissions.Motion {
+        let answer = await askForPermission()
+        permission = answer
+        return answer
+    }
+
+    private func askForPermission() async -> CapturePermissions.Motion {
         guard Self.needsPermission else { return .notNeeded }
         let now = Date()
         let error = await withCheckedContinuation { (continuation: CheckedContinuation<(any Error)?, Never>) in
@@ -373,8 +381,9 @@ final class MotionSource {
     func start(into recorder: CaptureRecorder) {
         guard !isRunning else { return }
         isRunning = true
-        Self.startUpdates(manager, altimeter, queue: queue, recorder: recorder, interval: 1 / Self.rate)
-        RuntimeLog.capture.info("motion recording on: \(self.available.map { "\($0)" }.sorted().joined(separator: ", "), privacy: .public)")
+        let barometer = CapturePermissions.barometerMayStart(after: permission, undecided: CMAltimeter.authorizationStatus() == .notDetermined)
+        Self.startUpdates(manager, altimeter, queue: queue, recorder: recorder, interval: 1 / Self.rate, barometer: barometer)
+        RuntimeLog.capture.info("motion recording on: \(self.available.map { "\($0)" }.sorted().joined(separator: ", "), privacy: .public)\(barometer ? "" : " (barometer held: Motion & Fitness unanswered)", privacy: .public)")
     }
 
     func stop() {
@@ -389,7 +398,7 @@ final class MotionSource {
     }
 
     /// Nonisolated so the handlers are not main-actor closures: Core Motion calls them on `queue`.
-    private nonisolated static func startUpdates(_ manager: CMMotionManager, _ altimeter: CMAltimeter, queue: OperationQueue, recorder: CaptureRecorder, interval: Double) {
+    private nonisolated static func startUpdates(_ manager: CMMotionManager, _ altimeter: CMAltimeter, queue: OperationQueue, recorder: CaptureRecorder, interval: Double, barometer: Bool) {
         // Raw, as Core Motion reports it: the packet writer converts g to m/s².
         if manager.isAccelerometerAvailable {
             manager.accelerometerUpdateInterval = interval
@@ -426,7 +435,7 @@ final class MotionSource {
                 recorder.append(.deviceMotion, [motion.timestamp, q.x, q.y, q.z, q.w, g.x, g.y, g.z, a.x, a.y, a.z, r.x, r.y, r.z, motion.heading])
             }
         }
-        if CMAltimeter.isRelativeAltitudeAvailable() {
+        if barometer, CMAltimeter.isRelativeAltitudeAvailable() {
             altimeter.startRelativeAltitudeUpdates(to: queue) { data, _ in
                 guard let data else { return }
                 recorder.append(.barometer, [data.timestamp, data.pressure.doubleValue, data.relativeAltitude.doubleValue])
