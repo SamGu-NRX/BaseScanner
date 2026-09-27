@@ -204,11 +204,6 @@ function plainError(detail) {
 
 function renderPhone() {
   $("phone-status").textContent = state.status ? (PHONE_WORDS[state.status] ?? `Server status: ${state.status}`) : state.captureId ? "Waiting for the first reply" : "Waiting for a capture";
-  const groups = { photo: 0, depth: 0, other: 0 };
-  for (const f of state.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
-  $("k-photo").textContent = groups.photo;
-  $("k-depth").textContent = groups.depth;
-  $("k-other").textContent = groups.other;
   const hints = $("hints");
   const shown = state.hints.slice(-3);
   // Keys carry the session: a new capture restarts seq numbers, and its hints must not reuse the old list.
@@ -223,7 +218,13 @@ function renderArrivals() {
   const { counts } = state;
   const fresh = state.arrivals.filter((a) => a.id > shownArrival);
   const ack = $("ack");
+  // The counter and the per-kind counts change together, when marks land, so on screen they agree.
   const write = () => {
+    const groups = { photo: 0, depth: 0, other: 0 };
+    for (const f of state.files.values()) groups[f.group === "mesh" ? "other" : f.group] += 1;
+    $("k-photo").textContent = groups.photo;
+    $("k-depth").textContent = groups.depth;
+    $("k-other").textContent = groups.other;
     const value = String(state.counts.acknowledged);
     if (ack.textContent !== value) {
       ack.textContent = value;
