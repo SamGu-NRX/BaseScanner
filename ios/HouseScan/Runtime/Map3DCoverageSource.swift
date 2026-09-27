@@ -33,6 +33,14 @@ enum Map3DCoverageError: Error, CustomStringConvertible {
 
 /// Turns a `Map3DSnapshot` into what the export and the walk read.
 enum Map3DCoverageSource {
+    /// How the chosen spot's check comes out (`SpotDecision.decide`). `span` is the battery's
+    /// stretch in meters of s along `wall`, the wall that was exported (the server's `span_ft`
+    /// is in its s). With no session, or no map, the map's view is unknown and the homeowner's
+    /// answer decides. A measured occluder needs another view whatever the answer.
+    static func spotDecision(session: Map3DSession?, span: ClosedRange<Float>, along wall: WallFrame, homeownerSaysClear: Bool?) -> SpotDecision {
+        SpotDecision.decide(session?.spotView(span: span, along: wall) ?? .unknown, homeownerSaysClear: homeownerSaysClear)
+    }
+
     /// The wall, baseline, coverage and wall sources scene.json gets.
     ///
     /// The measured chain is used when `snapshot.measured` exists (`finalSnapshot()` fills it)

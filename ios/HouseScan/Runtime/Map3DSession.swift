@@ -266,6 +266,17 @@ final class Map3DSession: Sendable {
     /// A snapshot of everything received so far, with `measured` filled, computed on the calling
     /// thread. Nil before `start`. It waits for an integration already running and can take a
     /// while itself, so call it off the main actor.
+    /// The chosen-spot check (`Map3D.spotView`) on the map as it stands, frames still waiting
+    /// integrated first, for `span` in meters of s along `wall`. Unknown while there is no map,
+    /// which leaves the decision to the homeowner. Blocks while it reads; call it off the main actor.
+    func spotView(span: ClosedRange<Float>, along wall: WallFrame) -> SpotView {
+        core.withLock { core in
+            drainInbox(into: &core)
+            guard let map = core.map else { return .unknown }
+            return map.spotView(span: span, along: wall)
+        }
+    }
+
     func finalSnapshot() -> Map3DSnapshot? {
         core.withLock { core in
             drainInbox(into: &core)
