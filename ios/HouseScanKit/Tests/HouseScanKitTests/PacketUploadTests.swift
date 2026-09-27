@@ -362,7 +362,8 @@ final class Recorder: @unchecked Sendable {
         }
         let calls = s.storage.log.map(\.call)
         #expect(calls.first == "begin" && Array(calls.suffix(2)) == ["commit", "finish"])
-        #expect(calls.filter { $0 == "PUT" }.count == s.packet.files.count)
+        let putCount: Int = calls.filter { $0 == "PUT" }.count
+        #expect(putCount == s.packet.files.count)
         // Each upload carries exactly the target's headers, and never an API key.
         let puts = s.storage.log.filter { $0.call == "PUT" }
         #expect(puts.allSatisfy { $0.headers["Authorization"] == nil })
@@ -420,10 +421,13 @@ final class Recorder: @unchecked Sendable {
         let result = await send(uploader(s.intake, s.storage, recorder: s.recorder), s.packet, folder: s.folder, recorder: s.recorder)
         #expect(result == .sent(reference: "r-1"))
         let log = s.storage.log
-        #expect(log.filter { $0.call == "begin" }.count == 3)
+        let begins: Int = log.filter { $0.call == "begin" }.count
+        #expect(begins == 3)
         #expect(!log.contains { $0.call == "PUT" && $0.generation == 1 }, "an expired target was used")
-        #expect(log.filter { $0.call == "PUT" && $0.generation == 3 }.map(\.path) == [target])
-        #expect(s.storage.putPaths().count == s.packet.files.count + 1)
+        let thirdRound: [String] = log.filter { $0.call == "PUT" && $0.generation == 3 }.map(\.path)
+        #expect(thirdRound == [target])
+        let puts: Int = s.storage.putPaths().count
+        #expect(puts == s.packet.files.count + 1)
     }
 
     @Test func uploadAnswerClassification() {
@@ -453,8 +457,9 @@ final class Recorder: @unchecked Sendable {
         let result = await send(uploader(s.intake, s.storage, recorder: s.recorder), s.packet, folder: s.folder, recorder: s.recorder)
         #expect(result == .sent(reference: "r-1"))
         #expect(s.recorder.waits == [2, 4])
-        #expect(s.storage.putPaths().filter { $0 == target }.count == 3)
-        #expect(s.storage.log.filter { $0.call == "begin" }.count == 1)
+        let targetPuts: Int = s.storage.putPaths().filter { $0 == target }.count
+        let begins: Int = s.storage.log.filter { $0.call == "begin" }.count
+        #expect(targetPuts == 3 && begins == 1)
     }
 
     /// A transient intake failure retries the call with the same backoff.
@@ -497,7 +502,9 @@ final class Recorder: @unchecked Sendable {
         #expect(result == .sent(reference: "r-1"))
         let calls = s.storage.log.map { $0.call == "PUT" ? "PUT \($0.path)" : $0.call }
         let firstFinish = try #require(calls.firstIndex(of: "finish"))
-        #expect(Array(calls[(firstFinish + 1)...]) == ["begin", "PUT \(lost)", "commit", "finish"])
+        let afterFirstFinish: [String] = Array(calls[(firstFinish + 1)...])
+        let expected: [String] = ["begin", "PUT \(lost)", "commit", "finish"]
+        #expect(afterFirstFinish == expected)
         #expect(s.recorder.states.last?.incompleteAnswers == 1)
     }
 

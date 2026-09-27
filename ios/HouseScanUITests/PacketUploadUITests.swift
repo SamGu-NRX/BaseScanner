@@ -90,6 +90,7 @@ final class PacketUploadUITests: XCTestCase {
     /// Every state of the card on the result, at the default size and at AX5.
     @MainActor
     func testCardStatesPassTheAudit() throws {
+        continueAfterFailure = true
         for state in ["offered", "sending", "waiting", "sent", "failed", "skipped"] {
             for large in [false, true] {
                 let name = "card-\(state)\(large ? "-AX5" : "")"
@@ -242,7 +243,12 @@ final class PacketUploadUITests: XCTestCase {
         }
         let first = try run()
         guard !first.isEmpty else { return }
+        // A system banner may be passing, or a control may be cut by the bottom edge, where it
+        // fails however it is drawn; a homeowner would scroll to it. Wait, show the end of the
+        // screen, and audit again.
         Thread.sleep(forTimeInterval: 6)
+        let onConsent = element(app, "screen.packetConsent").exists
+        reveal(element(app, onConsent ? "action.packetSend" : "action.startOver"), in: app)
         let second = try run()
         for key in first.keys.sorted() where second[key] != nil {
             XCTFail("\(name): \(second[key] ?? key)")
