@@ -20,8 +20,9 @@ final class FullFlowUITests: XCTestCase {
     /// an audit started when the walk appeared read cards and buttons mid-crossfade, each pass a
     /// different transition, and a copy fading out has no identifier, so two passes' transient
     /// issues matched on the label or the "no element" key and failed as one lasting issue (CI
-    /// runs 36304552823, 36305050676, 36307476187). Held, the walk shows its last state, "Done
-    /// with this wall", and the states it passed through are audited frozen by ScreenStatesUITests.
+    /// runs 36304552823, 36305050676, 36307476187). Held, the walk stays in its last state, both
+    /// ends set and "Done with this wall" on offer, and the states it passed through are audited
+    /// frozen by ScreenStatesUITests.
     static let auditedOnceHeld: Set<String> = ["wallWalk"]
 
     override func setUp() {
