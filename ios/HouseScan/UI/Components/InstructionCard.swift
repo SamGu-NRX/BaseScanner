@@ -2,13 +2,12 @@ import SwiftUI
 
 /// The single instruction at the top of a camera screen.
 ///
-/// When the text changes, the words swap at once and the card eases to its new height. A
-/// blur or fade between them left both lines half-transparent for a moment, which the
+/// When the text changes, the words and the reply land at once and the scrim eases to its new
+/// height. A blur or fade between them left both lines half-transparent for a moment, which the
 /// accessibility audit reported as low contrast and, for the outgoing line, as clipped text
 /// (the marking prompt, the end question). When the task changes, the reply under the words
-/// swaps with them. Coaching
-/// takes the same slot with an amber icon so a problem replaces the instruction instead of
-/// stacking on top of it.
+/// swaps with them. Coaching takes the same slot with an amber icon so a problem replaces the
+/// instruction instead of stacking on top of it.
 struct InstructionCard: View {
     enum Tone: Equatable {
         case normal
@@ -73,11 +72,15 @@ struct InstructionCard: View {
                     .transition(.opacity)
             }
         }
-        // A new task swaps the words and the reply together, as one new view at its final
-        // place, and only the scrim eases to the new height. With the reply outside the swap it
-        // slid over the new words while the card grew, and faded out over them (#64). The words
-        // alone still swap on their own (a coaching line, the distance to go), so the reply keeps
-        // a press that is under way.
+        // New words land at once with the reply at its final place; only the scrim, outside
+        // this stack, eases to the new height. When the stack's layout eased too, the reply slid
+        // from its old place over the new words for `Motion.text` (#64): on a coaching change,
+        // which swaps the words and keeps the reply, and comes and goes often while walking.
+        .transaction(value: instruction) { $0.animation = nil }
+        // A new task swaps the words and the reply together, as one new view. With the reply
+        // outside the swap it faded out over the new words (#64). The words alone still swap on
+        // their own (a coaching line, the distance to go), so the reply keeps a press that is
+        // under way.
         .id(replyTask)
         .transition(.identity)
         .frame(maxWidth: .infinity)

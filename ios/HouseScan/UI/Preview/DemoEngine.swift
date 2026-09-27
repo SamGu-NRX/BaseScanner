@@ -29,7 +29,8 @@ final class DemoEngine: ScanActions {
     /// How far the walk has seen to each side of the meter, meters.
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
-    private var skippedSpan: ClosedRange<Float>?
+    /// Stretches the homeowner skipped, kept apart so a later skip doesn't undo an earlier one.
+    private var skippedSpans: [ClosedRange<Float>] = []
     /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
     /// of the walk out.
     private var walkedBack: Float?
@@ -581,7 +582,7 @@ final class DemoEngine: ScanActions {
             wallCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0))
             groundCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0.35))
         }
-        if let skippedSpan {
+        for skippedSpan in skippedSpans {
             for index in 0..<count {
                 let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
                 if skippedSpan.contains(center), wallCells[index] != .covered { wallCells[index] = .skipped }
@@ -888,7 +889,7 @@ final class DemoEngine: ScanActions {
         switch state.guidance {
         case .aimAtGround(let s), .aimAtWall(let s):
             // Like the real engine: that stretch goes to review and the walk moves on.
-            skippedSpan = (s - 0.5)...(s + 0.5)
+            skippedSpans.append((s - 0.5)...(s + 0.5))
             refreshCoverage()
             refreshGuidance()
             return
@@ -897,10 +898,10 @@ final class DemoEngine: ScanActions {
         }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
-            skippedSpan = (reachedRight + 0.1)...demoRightEnd
+            skippedSpans.append((reachedRight + 0.1)...demoRightEnd)
             reachedRight = demoRightEnd
         } else {
-            skippedSpan = demoLeftEnd...(-reachedLeft - 0.1)
+            skippedSpans.append(demoLeftEnd...(-reachedLeft - 0.1))
             reachedLeft = -demoLeftEnd
         }
         refreshCoverage()
@@ -951,7 +952,7 @@ final class DemoEngine: ScanActions {
         reachedRight = 0.3
         demoLeftEnd = -2.9
         demoRightEnd = 4.3
-        skippedSpan = nil
+        skippedSpans = []
         obstructions = []
         seeBehindTicks = 0
         followedUp = false

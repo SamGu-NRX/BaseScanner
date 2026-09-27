@@ -265,6 +265,20 @@ struct WallWalkScreen: View {
         }
     }
 
+    /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
+    /// a second while the homeowner walks, and the task under it stays the same, so the card's
+    /// reply stays put through it: hiding it each time made the button fade in and out under the
+    /// homeowner's thumb, and the accessibility audit caught it half faded (CI run 36295565916).
+    /// Coaching about tracking itself hides it, since where an end would land needs the phone's
+    /// place, as does being past an end, where the way on is to walk back (#80). No `default`:
+    /// a new coaching case has to choose.
+    private var coachingHidesReply: Bool {
+        switch state.coaching {
+        case nil, .slowDown?, .needsTexture?, .tooDark?, .holdSteady?: false
+        case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
+        }
+    }
+
     /// The card's reply, worded for the step by `ScanCopy.reply(for:)` ("Skip this spot" on an
     /// aim step, "Can't get there" on the walk). Its identifier is `action.cannotAccess` on
     /// every step.
@@ -286,17 +300,6 @@ struct WallWalkScreen: View {
     private var replyTask: Instruction {
         if case .walk(let side, _) = state.guidance { return ScanCopy.guidance(.walk(side: side, remaining: nil)) }
         return ScanCopy.guidance(state.guidance)
-    }
-
-    /// Coaching that takes the reply away with the task: while the phone is finding or has lost
-    /// its place, and past the end of the wall, where the way on is to walk back. The capture
-    /// gate's coaching ("Slow down", "It's too dark"...) keeps it: the task hasn't changed, and
-    /// the reply can be the only way on (#80).
-    private var coachingHidesReply: Bool {
-        switch state.coaching {
-        case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
-        default: false
-        }
     }
 
     private var nextWallSymbol: String {
