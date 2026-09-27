@@ -9,9 +9,11 @@ Walk along the wall by your electric meter with an iPhone, and find out whether 
   <img alt="Five steps from left to right: walk and mark, the capture packet, the placement rules, a spot or one more view, and the result in AR. A dashed loop runs from the fourth step back to the first: needs a view? The app asks for it." src="docs/readme/pipeline-light.png" width="100%">
 </picture>
 
-Base Power puts batteries on the outside of people's homes, right next to the electric meter, because a cable has to run between the two. Someone at Base has to decide where each battery goes, and today they work it out from photos the homeowner sends in. That's a rough way to do it. You can't measure distances in a photo, and a photo misses whatever sits just outside the frame, so the answer often waits on another round of pictures.
+When a potential customer wants to determine whether a Base Power battery can be placed on their property, they have to send photos of their power meter and the wall it's on. Then, someone at Base has to decide where the battery goes using the photos the homeowner sends in.
 
-We want to get that down to one walk. The homeowner opens our app and scans the outside wall around their meter. The app keeps guiding them, and asks for another angle whenever it needs one, until it has seen everything the placement rules care about. Then it sends what it captured to our server. The server builds a 3D model of the wall, checks every rule against it and sends back an answer. If the battery fits, the app shows it standing on the real wall through the phone's camera. That's augmented reality, or AR, and it lets the homeowner see the spot before anyone installs anything.
+That's a pretty rough way to do it. Measuring distances within a photo is challenging, and a photo is unable to illustrate what sits outside its frame. This could mean that another check would be needed -- a hassle for both Base and the interested homeowner.
+
+We want to change that: the assessment should be just one walk. The homeowner opens our app and scans the outside wall around their meter. The app keeps guiding them, and asks for another angle whenever it needs one, until it has seen everything the placement rules care about. Then it sends what it captured to our server. The server builds a 3D model of the wall, checks every rule against it and sends back an answer. If the battery fits, the app shows it standing on the real wall through the phone's camera. Augmented Reality (AR) lets the homeowner see the spot before anyone installs anything.
 
 Four of us built this for Base Power at a hackathon that started on September 25, 2026. [Who built this](#who-built-this) says who worked on what.
 
@@ -43,7 +45,9 @@ Here's the whole trip, from the homeowner's phone to our server and back again. 
   <img alt="Architecture in four swimlanes. On the iPhone, ARKit anchors the meter, Vision reads its number, Metal draws the coverage fog and RealityKit raycasts each tap, and the capture becomes scene.json. LiDAR depth is optional. URLSession posts scene.json to the placement server at POST /v1/placements. Keyframes can go to the optional reconstruction worker, where MoGe-2 depth scaled with OpenCV SIFT, or LiDAR depth, fuses into a NumPy TSDF and becomes a rebuilt scene.json for the same endpoint. The shapely solver reads rules.yaml and returns result.json. Back on the iPhone, SwiftUI shows the checks, RealityKit pins the spot to an AnchorEntity, and missing_evidence sends the homeowner back to walk the wall." src="docs/readme/architecture.svg" width="100%">
 </p>
 
-We drew one hard line through the design. Machine learning models handle the fuzzy parts, like turning photos into a 3D wall and recognizing a gas meter when they see one. They never decide whether the battery fits. That call comes from plain code you can read top to bottom, so every answer points back to a rule and a measurement, and nobody has to take a model's word for it. Even the distances, like how far the battery has to sit from a gas meter, live in a rules file next to the website or building code each one came from. Changing a rule never means changing code.
+Here's what we didn't compromise on: while the ML models handle the fuzzy parts -- turning photos into a 3D wall, recognizing a gas meter -- they *never* make the call as to whether a battery fits. That decision is comes from a deterministic, criteria-matching evaluation, ensuring that each measurement falls within bounds of a given rule. If all measurements are bounded, great: the model determines the survey to have PASSED. If not, the model marks the survey as a FAIL. If it's unsure whether some measurements pass or not, the survey gets an UNSURE. 
+
+The criteria (e.g. the distance the battery must b e from the gas meter) exist in a separate rules file. Changing a rule has no effect on the creation of a model, only its evaluation.
 
 Each part has its own folder:
 
@@ -55,16 +59,18 @@ Each part has its own folder:
 | Reviewer view | TypeScript, Vite, Vitest, Biome | `web/` |
 | Landing page | Static site on Vercel | `sites/landing` |
 
-## Unseen means unsure
+## Unseen? Then Unsure
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/unseen-dark.webp">
   <img alt="A wall with the left side hazed over. Three checks read Not seen. The haze sweeps away, the checks turn Unsure, then settle: wall and ground pass, clear space fails, and the spot reads Not here." src="docs/readme/unseen-light.webp" width="100%">
 </picture>
 
-This is the rule we care about most. Imagine the phone never looked at one stretch of wall. It might be bare, or there might be a gas meter on it, and the server has no way to tell. So it never assumes the best. Anything nobody saw counts as unknown, and no spot that depends on it can pass.
+This is the rule we care about most. Imagine that the phone never saw one stretch of wall. It might be bare, sure, but there very well could have been a gas meter on it. The server simply has no way to tell.
 
-You can watch that happen above. The homeowner walked to the right and never pointed the phone left, so the left side stays hazed over and the spot nearest it reads "Not seen yet". Once the view sweeps across, the server can finally judge that spot, and it turns out there isn't enough open space in front of it. The spot is out.
+In this scenario, the server would mark that stretch of wall as unknown. It never assumes the best, and no battery placements depending on that stretch being empty would be considered valid.
+
+You can watch that happen above. The homeowner walked to the right and never pointed the phone left, so the left side stays hazed over and the spot nearest it reads "Not seen yet". Once the view sweeps across, the server can finally judge that spot, and it turns out there isn't enough open space in front of it. The spot is revolved: unfortunately, there's no space for a battery.
 
 Measurements get the same caution, because none of them is exact. The phone keeps track of where it is by adding up its own movements, a bit like finding your way by counting steps, so small errors pile up the farther you walk from the meter. That's why every measurement comes with a margin of error.
 
@@ -90,9 +96,9 @@ The battery measures 31 × 22 × 39.5 in, a bit bigger than a dishwasher. It sta
 | Driveway | At least 5 ft away | Placeholder, no public value |
 | Pool | At least 10 ft away | Placeholder, no public value |
 
-Each check comes back PASS, FAIL or UNSURE, along with what the server measured, how far off that measurement could be and a reason in plain English. NEC is the National Electrical Code and IRC is the International Residential Code, the two building codes behind several of these rules. The numbers themselves live in `server/rules.yaml` on PR #11's branch, each one next to its source, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations. Base's own values are private, so they load only on a separate, private deployment.
+Each check comes back PASS, FAIL or UNSURE, along with what the server measured, how far off that measurement could be and a reason in plain English. NEC is the National Electrical Code and IRC is the International Residential Code, the two building codes behind several of these rules. The numbers themselves live in `server/rules.yaml` on PR #11's branch, each one next to its source, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations.
 
-The server then gives one of three answers. It says yes when a spot passes every check. It says no only when every spot within cable reach fails and the app knows where the wall ends on both sides. Anything in between goes to a person for review.
+The server then gives one of three answers. It says PASS when a spot passes every check. It says FAIL only when every spot within cable reach fails and the app knows where the wall ends on both sides. Anything in between is marked UNSURE, and it goes to a person for review.
 
 ### One request, start to finish
 
@@ -240,7 +246,7 @@ Here's every dataset we used, what we used it for and whether it's in the reposi
 | Test fixtures | Server and packet tests | Synthetic, written by hand | Yes |
 | Drawings and animations | This README, the site, the walkthrough | Illustrations with example values, not a real house | Yes |
 
-We use the public datasets only to measure accuracy, and we never redistribute them. ADVIO and ETH3D are licensed for noncommercial use, so if you want to rely on these results for commercial work, ask their authors for permission first. Base's own rules and materials stay in the `private/` folder, which git ignores, and photos of real homes never go into git at all.
+We use the public datasets only to measure accuracy, and we never redistribute them. ADVIO and ETH3D are licensed for noncommercial use, so if you want to rely on these results for commercial work, permission must be asked for prior.
 
 ## How accurate it is so far
 
@@ -260,7 +266,7 @@ A few terms first, in case they're new to you. Tracking drift is how far the pho
 
 ## What doesn't work yet
 
-It's a hackathon project, and it shows in places. Here's what we know is missing or broken:
+Here's what we know is either missing or broken:
 
 - **Most of it isn't merged.** Guided capture is in PR #10, the rules engine in PR #11, reconstruction in PR #20 and the packet spec in PR #22. All four still live on their own branches.
 - **Our first real phone run placed nothing.** The app put both ends of the wall right at the meter, which left the server a wall with no length to search (PR #23).
