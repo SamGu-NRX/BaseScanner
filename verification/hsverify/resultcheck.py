@@ -85,6 +85,8 @@ class RuleSet:
     wall_join_ft: float | None = None
     # the rules' battery.height_ft: a wall that declares height_ft must be taller
     battery_height_ft: float | None = None
+    # the rules' headroom.min_ft: how high a wall view without out_ft reached
+    headroom_ft: float | None = None
 
     @classmethod
     def from_yaml(cls, text: str) -> RuleSet:
@@ -142,6 +144,7 @@ class RuleSet:
             value("sweep", "step_ft"),
             value("sweep", "wall_join_ft"),
             value("battery", "height_ft"),
+            headroom,
         )
 
 
@@ -155,23 +158,42 @@ def schema_errors(instance: Any, schema: dict) -> list[str]:
 
 
 def reached(entry: dict) -> float:
-    """How far an observed entry's view reached: its `out_ft`, or for a band other than ground
-    without one, all the way (C1: the wall to headroom height, facing to whatever faces it,
-    overhead clear to the sky)."""
+    """How far a facing, overhead or ground entry's view reached: its `out_ft`, or without one,
+    none for ground and all the way for facing (to whatever faces the wall) and overhead (clear
+    to the sky). A wall entry without one is handled in `observed`."""
     default = 0.0 if entry["band"] == "ground" else math.inf
     return entry.get("out_ft", default)
 
 
+# The server's float tolerance (server/scene.py EPS), for comparisons that must agree with it
+# exactly: where walls meet, whether a declared wall is taller, and the wall view default.
+SERVER_EPS = 1e-9
+
+
 def observed(
-    scene: dict, band: str, min_out_ft: float = 0.0, beyond: bool = False
+    scene: dict,
+    band: str,
+    min_out_ft: float = 0.0,
+    beyond: bool = False,
+    wall_default_ft: float | None = None,
 ) -> list[tuple[float, float]]:
     """Merged observed s-intervals for a band, counting only entries whose view reached
     `min_out_ft` (out from the wall for ground and facing, up for wall and overhead). With
     `beyond`, the view must pass it strictly, as the server requires of a wall seen "higher
-    than" a height (server/scene.py at 6c7ca23)."""
+    than" a height (server/scene.py at 6c7ca23).
+
+    A wall entry without `out_ft` reached headroom height (`wall_default_ft`, the rules'
+    headroom.min_ft) and settles any height up to it inclusively, `beyond` or not; S2 chose
+    this category default at 6200098 (server/scene.py `observed_intervals`). None keeps the
+    old reading, all the way up."""
     spans = []
     for entry in scene.get("coverage", {}).get("observed", []):
         if entry["band"] != band:
+            continue
+        if band == "wall" and "out_ft" not in entry and wall_default_ft is not None:
+            if min_out_ft > wall_default_ft + SERVER_EPS:
+                continue
+            spans.append(tuple(sorted(entry["span_ft"])))
             continue
         far = reached(entry)
         if (far <= min_out_ft) if beyond else (far + EPS < min_out_ft):
@@ -349,7 +371,10 @@ def reach_gaps(
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
         elif need.band == "wall":
             a, b = required_span(lo, hi, reach)
-            seen = covers(observed(scene, "wall", min_out_ft=need.height, beyond=True), a, b)
+            wall = observed(
+                scene, "wall", need.height, beyond=True, wall_default_ft=rules.headroom_ft
+            )
+            seen = covers(wall, a, b)
             gap = None if seen else f"wall [{a:.2f}, {b:.2f}] observed higher than {need.height} ft"
         else:
             a, b = required_span(lo, hi, reach)
@@ -409,7 +434,9 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     wall and cable route back to the meter over the whole run. Checking the whole run as one
     battery at its farthest start's error would ask for more than any single start needs."""
     problems: list[str] = []
-    route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft, beyond=True)
+    route_wall = observed(
+        scene, "wall", rules.route_height_ft, beyond=True, wall_default_ft=rules.headroom_ft
+    )
     # A passing run passes every check the server evaluated; a check it did not evaluate (a
     # battery clearance with no battery in the scene, say) needs nothing.
     evaluated = {c["id"] for c in result.get("checks", [])} or set(rules.needs)
@@ -458,7 +485,8 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         # only where the band was seen all the way (no `out_ft`).
         default = GROUND_FAR_FT if request["band"] == "ground" else math.inf
         far = request.get("out_ft", default)
-        if b - a > EPS and covers(observed(scene, request["band"], min_out_ft=far), a, b):
+        seen = observed(scene, request["band"], far, wall_default_ft=rules.headroom_ft)
+        if b - a > EPS and covers(seen, a, b):
             problems.append(
                 f"missing_evidence asks for {request['band']} {request['span_ft']}, "
                 "which the scene lists as observed"
@@ -526,11 +554,6 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
 
 # How far a past_end request may sit from the chain's actual end and still name it.
 END_TOL_FT = 0.1
-
-
-# The server's float tolerance (server/scene.py EPS at 7133283), for comparisons that must
-# agree with it exactly: where walls meet and whether a declared wall is taller.
-SERVER_EPS = 1e-9
 
 
 def wall_spans_s(scene: dict, rules: RuleSet) -> dict[str, tuple[float, float]] | None:

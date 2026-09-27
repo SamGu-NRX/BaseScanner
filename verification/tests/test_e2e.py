@@ -42,6 +42,7 @@ RULES = RuleSet(
     step_ft=1 / 6,  # the server's 2 in
     wall_join_ft=0.6,
     battery_height_ft=3.25,
+    headroom_ft=6.5,
 )
 
 SCENE = {

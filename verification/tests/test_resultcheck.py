@@ -54,6 +54,7 @@ RULES = RuleSet(
     step_ft=1 / 6,  # the server's 2 in
     wall_join_ft=0.6,
     battery_height_ft=3.25,
+    headroom_ft=6.5,
 )
 
 SCENE = {
@@ -305,9 +306,10 @@ def test_no_coverage_never_passes():
 
 
 def test_photo_request_for_an_observed_area_is_flagged():
+    # The wall was seen with no out_ft, so to headroom height: a request up to it is redundant.
     r = result()
     r["missing_evidence"] = [
-        {"kind": "band", "band": "wall", "span_ft": [-3.0, -1.0], "message": ""}
+        {"kind": "band", "band": "wall", "span_ft": [-3.0, -1.0], "out_ft": 6.5, "message": ""}
     ]
     assert any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))
 
@@ -391,7 +393,7 @@ sweep: {step_ft: {value: 0.166666666667}, wall_join_ft: {value: 0.6}}
     assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
     assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5),)
     assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5),)
-    assert (rules.wall_join_ft, rules.battery_height_ft) == (0.6, 3.25)
+    assert (rules.wall_join_ft, rules.battery_height_ft, rules.headroom_ft) == (0.6, 3.25, 6.5)
     assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
     lower = RuleSet.from_yaml(
         text.replace("exempt_bottom_above_ft: null", "exempt_bottom_above_ft: 2")
@@ -667,7 +669,10 @@ def test_a_request_to_see_higher_than_the_view_reached_is_not_redundant():
     ]
     low = invariant_problems(with_wall_seen(1.0), r, rules=RULES)
     assert not any("lists as observed" in m for m in low)
-    full = invariant_problems(with_wall_seen(None), r, rules=RULES)
+    # A view with no out_ft reached headroom (6.5), not 6.6.
+    default = invariant_problems(with_wall_seen(None), r, rules=RULES)
+    assert not any("lists as observed" in m for m in default)
+    full = invariant_problems(with_wall_seen(7.0), r, rules=RULES)
     assert any("lists as observed" in m for m in full)
 
 
@@ -928,3 +933,30 @@ def test_a_short_wall_beyond_the_error_does_not_matter():
     scene = short_wall_scene(2.0, [[4.0, 0.0], [12.0, 0.0]])
     r = result(checks=[check(), passing("wall_backing")], sweep=[])
     assert declared_height_problems(scene, r, RULES) == []
+
+
+@pytest.mark.parametrize(
+    ("height", "out_ft", "settled"),
+    [
+        (6.5, None, True),  # no out_ft: seen to headroom, inclusively
+        (6.5 + 1e-10, None, True),  # within the server's float tolerance
+        (6.51, None, False),  # more than headroom needs an explicit view
+        (6.5, 6.5, False),  # an explicit view must pass the height
+        (6.5, 6.51, True),
+        (1.0, None, True),
+    ],
+)
+def test_a_wall_view_without_out_ft_reached_headroom_height(height, out_ft, settled):
+    scene = copy.deepcopy(SCENE)
+    entry = {"band": "wall", "span_ft": [-12.0, 10.0]}
+    if out_ft is not None:
+        entry["out_ft"] = out_ft
+    scene["coverage"]["observed"][0] = entry
+    seen = observed(scene, "wall", height, beyond=True, wall_default_ft=RULES.headroom_ft)
+    assert (seen == [(-12.0, 10.0)]) == settled
+
+
+def test_a_pass_needing_the_wall_above_headroom_is_flagged_without_out_ft():
+    tall = replace(RULES, needs=RULES.needs | {"opening_clearance": (Need("wall", 1.0, 7.0),)})
+    r = result(checks=[check(), passing("opening_clearance")])
+    assert any("observed higher than 7.0 ft" in m for m in invariant_problems(SCENE, r, rules=tall))
