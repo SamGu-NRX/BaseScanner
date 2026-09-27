@@ -151,10 +151,15 @@ public struct GuidancePlanner: Sendable {
                 }
             }
             if let aim, !satisfied, time - lastProgressAt >= config.stallTimeout {
-                deferred.append(DeferredStretch(band: aim.band, range: Self.stretch(around: aim.s)))
+                let range = Self.stretch(around: aim.s)
+                if !deferred.contains(where: { $0.band == aim.band && $0.range == range }) {
+                    deferred.append(DeferredStretch(band: aim.band, range: range))
+                }
                 stalled = current
-                switched = .stalled
                 preferred = preferredTask(coverage: coverage, camera: camera)
+                // `firstHole` asks for a deferred stretch again once both ends are marked, so the
+                // same task can come back here; the log then shows the stall but no switch.
+                switched = preferred == current ? nil : .stalled
                 begin(preferred, coverage: coverage, time: time)
             } else if current != preferred {
                 if satisfied {
@@ -363,8 +368,12 @@ public struct GuidancePlanner: Sendable {
     /// A band that lags the other ahead of the camera (`lagSpan`): the other band is covered there
     /// but this one isn't, over at least `lagRun`. Only cells between the ends count: cells seen
     /// before an end was set stay in the map, but past it nothing is observed or skipped, so a
-    /// task there could never be met or refused (issue #38). Cells of deferred stretches don't
-    /// count.
+    /// task there could never be met or refused (issue #38).
+    ///
+    /// Cells of deferred stretches don't count, and they split the lagging cells into runs: the
+    /// request is for the run nearest the camera that is long enough. Taking the middle of all
+    /// the cells left asked for a stalled stretch again whenever the band lagged on both sides of
+    /// it, since the first and last cell, and so the middle, were unchanged (review of #120).
     private func laggingBand(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
         let window = Self.lagSpan(at: s, walking: Self.walkingSide(coverage))
@@ -375,14 +384,27 @@ public struct GuidancePlanner: Sendable {
             let range = coverage.cellRange(index)
             return (range.lowerBound + range.upperBound) / 2
         }
-        let groundLag = indices.filter {
-            done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) && !isDeferred(.ground, at: middleOf($0))
+        /// The middle of the run of `band`'s lagging cells nearest the camera, among those of at
+        /// least `needed` cells between deferred stretches.
+        func nearestRun(_ band: SurfaceBand, lags: (Int) -> Bool) -> Float? {
+            var runs: [[Int]] = [[]]
+            for index in indices {
+                if isDeferred(band, at: middleOf(index)) {
+                    if !runs[runs.count - 1].isEmpty { runs.append([]) }
+                } else if lags(index) {
+                    runs[runs.count - 1].append(index)
+                }
+            }
+            return runs.filter { $0.count >= needed }
+                .compactMap { middle($0, coverage) }
+                .min { abs($0 - s) < abs($1 - s) }
         }
-        let wallLag = indices.filter {
-            done(coverage.level(.ground, $0)) && !done(coverage.level(.wall, $0)) && !isDeferred(.wall, at: middleOf($0))
+        if let mid = nearestRun(.ground, lags: { done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) }) {
+            return .aimAtGround(s: mid)
         }
-        if groundLag.count >= needed, let mid = middle(groundLag, coverage) { return .aimAtGround(s: mid) }
-        if wallLag.count >= needed, let mid = middle(wallLag, coverage) { return .aimAtWall(s: mid) }
+        if let mid = nearestRun(.wall, lags: { done(coverage.level(.ground, $0)) && !done(coverage.level(.wall, $0)) }) {
+            return .aimAtWall(s: mid)
+        }
         return nil
     }
 

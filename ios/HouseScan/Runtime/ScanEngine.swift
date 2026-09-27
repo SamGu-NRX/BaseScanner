@@ -686,8 +686,12 @@ final class ScanEngine {
             state.path = []
         } else {
             seeBehindBands = []
-            state.guidance = Self.step(output.task)
-            state.guidanceHint = Self.hint(output, camera: camera)
+            let step = Self.step(output.task)
+            // The frame before's direction makes the new one sticky near the view's edges
+            // (`AimHint.classify`), but only for the same step and so the same target.
+            let previous = state.guidance == step ? state.guidanceHint?.aim : nil
+            state.guidance = step
+            state.guidanceHint = Self.hint(output, camera: camera, previous: previous)
             state.target = output.target
             state.path = output.path
         }
@@ -695,11 +699,12 @@ final class ScanEngine {
     }
 
     /// What the card of an aim step says beside the step (`GuidanceHint`); nil for other steps.
-    static func hint(_ output: GuidanceOutput, camera: CameraFrame) -> GuidanceHint? {
+    /// `previous` is the direction shown for the same step on the frame before, if any.
+    static func hint(_ output: GuidanceOutput, camera: CameraFrame, previous: AimDirection? = nil) -> GuidanceHint? {
         switch output.task {
         case .aimAtGround, .aimAtWall:
             return GuidanceHint(
-                aim: output.target.map { direction(AimHint.classify(target: $0, camera: camera)) },
+                aim: output.target.map { direction(AimHint.classify(target: $0, camera: camera, previous: previous.map(Self.aimHint))) },
                 needsSecondPosition: output.needsSecondPosition,
                 stepBack: output.stepBack
             )
@@ -794,7 +799,8 @@ final class ScanEngine {
         state.path = output.path
         // The card follows the target on the frame shown, as the ring does.
         if var hint = state.guidanceHint {
-            hint.aim = output.target.map { Self.direction(AimHint.classify(target: $0, camera: camera)) }
+            let previous = hint.aim.map(Self.aimHint)
+            hint.aim = output.target.map { Self.direction(AimHint.classify(target: $0, camera: camera, previous: previous)) }
             state.guidanceHint = hint
         }
     }
@@ -1695,6 +1701,18 @@ extension ScanEngine {
 
     static func direction(_ hint: AimHint) -> AimDirection {
         switch hint {
+        case .onScreen: .onScreen
+        case .above: .above
+        case .below: .below
+        case .left: .left
+        case .right: .right
+        case .behind: .behind
+        }
+    }
+
+    /// The inverse of `direction(_:)`.
+    static func aimHint(_ direction: AimDirection) -> AimHint {
+        switch direction {
         case .onScreen: .onScreen
         case .above: .above
         case .below: .below

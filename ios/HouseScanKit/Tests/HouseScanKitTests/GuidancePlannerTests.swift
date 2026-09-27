@@ -382,6 +382,49 @@ import Testing
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 41).task == .aimAtGround(s: 0))
     }
 
+    /// Review of #120: a lagging-band request that stalls in the middle of the window is not asked
+    /// for again at once. Walking right (the left end marked) with the phone at s = 2, the window
+    /// is [1.7, 3.0], cells 11 ... 19, and the ground lags the (skipped) wall in all of them: the
+    /// request is their middle, s = 2.3622. Nothing is ever seen, so it stalls at 20 s; its
+    /// stretch holds the middles of cells 14 ... 16, which leaves runs 11 ... 13 and 17 ... 19,
+    /// three cells each. Before, the middle of the cells left was 2.3622 again and the same card
+    /// came straight back. Now the nearer run is asked for (s = 1.905), then the other (2.8194),
+    /// each a different stretch, and once all three have stalled the walk goes on.
+    @Test func aStalledLaggingBandIsNotAskedForAgainAtOnce() {
+        var map = Self.meterGroundSkipped()
+        map.setEnd(.left, at: -0.5)
+        map.markSkipped(.wall, 1...4)
+        let camera = Self.homeowner(x: 2)
+        var planner = GuidancePlanner()
+        let first = planner.update(coverage: map, camera: camera, time: 0)
+        guard case .aimAtGround(let s0) = first.task else {
+            Issue.record("expected a ground request, got \(first.task)")
+            return
+        }
+        #expect(nearlyEqual(s0, 2.3622))
+        #expect(planner.update(coverage: map, camera: camera, time: 19.9).task == first.task)
+
+        var asked = [s0]
+        for time in [20.0, 40.0] {
+            let stalled = planner.update(coverage: map, camera: camera, time: time)
+            #expect(stalled.stalled == .aimAtGround(s: asked[asked.count - 1]), "at \(time) s")
+            #expect(stalled.switched == .stalled, "at \(time) s")
+            guard case .aimAtGround(let s) = stalled.task else {
+                Issue.record("expected another ground request at \(time) s, got \(stalled.task)")
+                return
+            }
+            for earlier in asked {
+                #expect(abs(s - earlier) >= GuidancePlanner.aimHalfWidth, "\(s) asks for the stretch at \(earlier) again")
+            }
+            asked.append(s)
+        }
+        #expect(nearlyEqual(asked[1], 1.905))
+        #expect(nearlyEqual(asked[2], 2.8194))
+        let walk = planner.update(coverage: map, camera: camera, time: 60)
+        #expect(walk.stalled == .aimAtGround(s: asked[2]))
+        #expect(walk.task == .walk(.right))
+    }
+
     /// #77: the ground in front of the meter is asked for only while the phone is within 1 m of
     /// the meter. Farther away the walk goes on, and once the phone leaves that metre the request
     /// gives way after its dwell.

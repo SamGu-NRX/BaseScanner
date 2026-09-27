@@ -60,4 +60,29 @@ import Testing
         #expect(nearlyEqual(AimHint.onScreenSideways, 18 * .pi / 180))
         #expect(nearlyEqual(AimHint.onScreenUpDown, 20 * .pi / 180))
     }
+
+    /// Review of #120: with the frame before's hint, the edges are sticky, so a hand-held phone
+    /// with the target near one doesn't swap the card's title each frame. 0.66 m to the side at
+    /// 2 m is 18.3 degrees: just off screen alone, still on screen coming from on screen (inside
+    /// 18 + 2), and still off screen coming from off screen. 0.6 m (16.7 degrees) stays off screen
+    /// coming from off screen (outside 18 - 2). Off screen, 1.1 m up and 1 m to the side names
+    /// up alone and after up, but stays right after right: up is not 1.2 times the larger.
+    @Test func theEdgesAreStickyGivenTheFrameBefore() {
+        let camera = Self.phone(pitchedDown: 20)
+        let forward = camera.forward
+        let right = simd_normalize(simd_cross(forward, SIMD3(0, 1, 0)))
+        let up = simd_cross(right, forward)
+        let ahead = Self.position + forward * 2
+        let nearEdge = ahead + right * 0.66
+        #expect(AimHint.classify(target: nearEdge, camera: camera) == .right)
+        #expect(AimHint.classify(target: nearEdge, camera: camera, previous: .onScreen) == .onScreen)
+        #expect(AimHint.classify(target: nearEdge, camera: camera, previous: .right) == .right)
+        #expect(AimHint.classify(target: ahead + right * 0.6, camera: camera, previous: .right) == .right)
+        #expect(AimHint.classify(target: ahead + right * 0.5, camera: camera, previous: .right) == .onScreen)
+        let diagonal = ahead + up * 1.1 + right * 1
+        #expect(AimHint.classify(target: diagonal, camera: camera) == .above)
+        #expect(AimHint.classify(target: diagonal, camera: camera, previous: .above) == .above)
+        #expect(AimHint.classify(target: diagonal, camera: camera, previous: .right) == .right)
+        #expect(AimHint.classify(target: ahead + up * 1.3 + right * 1, camera: camera, previous: .right) == .above)
+    }
 }
