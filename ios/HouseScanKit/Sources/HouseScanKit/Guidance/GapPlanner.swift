@@ -190,6 +190,56 @@ public struct GapPlanner: Sendable {
         return gap.need == .cells && gap.reason != .server ? progress >= config.satisfiedFraction : progress >= 1
     }
 
+    /// How far out from the wall a walk must pass at `s` to meet a walk-out request: the
+    /// request's clearance plus the wall's position error there (`CoverageMap.positionError`),
+    /// with `s` kept to the request's span, meters. On build 7.1 the card named only the
+    /// clearance, "about 5 ft", while the walk had to pass 6.1 to 7.2 ft to count (#164). Nil
+    /// for any other request.
+    public func walkOutNeeded(_ gap: GapPlan, _ coverage: CoverageMap, atS s: Float) -> Float? {
+        guard case .walkOut(let out) = gap.need else { return nil }
+        return out + coverage.positionError(atS: min(max(s, gap.span.lowerBound), gap.span.upperBound))
+    }
+
+    /// Where a walk-out request can't be walked because the space visibly ends first (#164).
+    public struct WalkOutBlock: Sendable, Equatable {
+        /// The part of the request's span where it can't, meters of s.
+        public var span: ClosedRange<Float>
+        /// How far out from the wall the space ends there, meters: the nearest surface over `span`.
+        public var spaceEnds: Float
+        /// How far out the walk would have to pass there, meters: the most over `span`.
+        public var needed: Float
+    }
+
+    /// Where a walk-out request's line lies past where the space in front of the wall ends
+    /// (`CoverageMap.farSurface`), or nil when it lies short of it wherever that is known.
+    ///
+    /// A walk shows the space clear only out to where the phone went less the position error
+    /// (`CoverageMap.walkedClearance`), and the phone can't get nearer the surface than
+    /// `CoverageConfig.walkerDepth`. So a cell whose line (`walkOutNeeded`, with the error at the
+    /// cell's edge where it is larger, as the walked clearance takes it) lies past the surface
+    /// less that can never count, and nor can the request, which needs its whole span. On build
+    /// 7.1 a 6 ft corridor's far wall stood 5.4 to 5.6 ft out, the line 6.1 to 7.2 ft, and the
+    /// card sat at 0 % until the homeowner gave up. Nil for any other request.
+    public func walkOutBlock(_ gap: GapPlan, _ coverage: CoverageMap) -> WalkOutBlock? {
+        guard case .walkOut(let out) = gap.need else { return nil }
+        var block: WalkOutBlock?
+        for index in coverage.indices(overlapping: gap.span) where coverage.isWithinEnds(index) {
+            let cell = coverage.cellRange(index)
+            guard let far = coverage.farSurface(atS: (cell.lowerBound + cell.upperBound) / 2) else { continue }
+            let needed = out + max(coverage.positionError(atS: cell.lowerBound), coverage.positionError(atS: cell.upperBound))
+            guard needed > far - coverage.config.walkerDepth else { continue }
+            let part = cell.clamped(to: gap.span)
+            if let found = block {
+                block = WalkOutBlock(
+                    span: min(found.span.lowerBound, part.lowerBound)...max(found.span.upperBound, part.upperBound),
+                    spaceEnds: min(found.spaceEnds, far), needed: max(found.needed, needed))
+            } else {
+                block = WalkOutBlock(span: part, spaceEnds: far, needed: needed)
+            }
+        }
+        return block
+    }
+
     /// Whether a tilt-up view settles an overhead request once the homeowner says nothing is
     /// overhead: recorded with the views already kept, it meets the request over the whole span.
     /// False for any other request. The engine asks the overhead question only when this holds,

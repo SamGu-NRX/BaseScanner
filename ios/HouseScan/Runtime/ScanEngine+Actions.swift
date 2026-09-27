@@ -454,7 +454,13 @@ extension ScanEngine: ScanActions {
 
     func skipGap() {
         guard state.phase == .gapRequest else { return }
-        skipCurrentGap()
+        // The card said the space ends short of the walk-out line (#164): the same answer, with
+        // why in the log.
+        if let ends = state.gap?.spaceEnds {
+            skipCurrentGap(because: String(format: "the space ends about %.2f m out, short of the walk-out line at %.2f m", ends.at, ends.needed))
+        } else {
+            skipCurrentGap()
+        }
     }
 
     func showResultNow() {

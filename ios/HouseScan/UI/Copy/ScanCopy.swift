@@ -395,9 +395,23 @@ enum ScanCopy {
                 detail: "\(stretch.capitalizedFirst). Step back and tilt down until that much ground is in view."
             )
         case .walkOut(let out):
+            // The space ends before the line (#164): no walk can meet it, so the card says so and
+            // points at the reply that ends the request, rather than a line behind a wall.
+            if let ends = gap.spaceEnds {
+                return Instruction(
+                    title: "The space ends about \(Distance.feetAndInches(ends.at)) out from the wall",
+                    detail: "\(stretch.capitalizedFirst). A wall or fence stands there, and this check needs a walk "
+                        + "\(Distance.feetAndInches(ends.needed)) out. If that's as far as the space goes, tap I can't get there."
+                )
+            }
+            // What counts where the phone is: the clearance asked for plus the wall's position
+            // error, which on build 7.1 took the walk from "about 5 ft" to 6 to 7 ft (#164).
+            let reading = gap.walkOut.map {
+                " You're \(Distance.feetAndInches($0.out)) out; this needs \(Distance.feetAndInches($0.needed)) here."
+            } ?? ""
             return Instruction(
                 title: "Walk along this stretch about \(Distance.feetAtLeast(out)) out from the wall",
-                detail: "\(stretch.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
+                detail: "\(stretch.capitalizedFirst).\(reading) Follow the dotted line. Walking there shows nothing stands in front of the wall."
             )
         case .overhead:
             return Instruction(
@@ -405,6 +419,15 @@ enum ScanCopy {
                 detail: "\(place.capitalizedFirst). Show the wall above this spot, up to the roof or the sky."
             )
         }
+    }
+
+    /// The request a gap card asks for, without the walk-out's reading from where the phone is
+    /// now: what the card's reply answers (`InstructionCard.Reply.task`) and what the guidance log
+    /// keeps. The reading changes as the phone moves, and each change would lock the reply again.
+    static func gapTask(_ gap: GapRequest) -> Instruction {
+        var steady = gap
+        steady.walkOut = nil
+        return ScanCopy.gap(steady)
     }
 
     /// The reply on the see-behind step: the homeowner can't get a view past the obstruction.

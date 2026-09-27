@@ -585,6 +585,21 @@ struct GapRequest: Identifiable, Equatable, Sendable {
         case overhead
     }
 
+    /// A walk-out request's reading where the phone is, meters: how far out from the wall it is,
+    /// and how far out the walk must pass there to count (the request's clearance plus the wall's
+    /// position error). On build 7.1 the card named only the clearance (#164).
+    struct WalkOutReading: Equatable, Sendable {
+        var out: Float
+        var needed: Float
+    }
+
+    /// Where the space in front of the wall visibly ends short of a walk-out request's line,
+    /// meters out from the wall, and how far out that line lies there (#164).
+    struct SpaceEnds: Equatable, Sendable {
+        var at: Float
+        var needed: Float
+    }
+
     let id: Int
     var origin: Origin
     var reason: Reason
@@ -593,6 +608,13 @@ struct GapRequest: Identifiable, Equatable, Sendable {
     /// 0...1 of the requested cells covered so far.
     var progress: Double
     var isSatisfied: Bool
+    /// A walk-out request's reading from the phone now; nil for other requests and without a
+    /// camera. It changes as the phone moves, so it is not part of the request the card's reply
+    /// answers (`ScanCopy.gapTask`).
+    var walkOut: WalkOutReading? = nil
+    /// Set while a walk-out request's line lies past where the space ends
+    /// (`GapPlanner.walkOutBlock`): no walk can meet it, and the card says so.
+    var spaceEnds: SpaceEnds? = nil
 }
 
 // MARK: - Upload and result
