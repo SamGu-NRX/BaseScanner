@@ -49,13 +49,18 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
-        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoReject"], "result"),
+        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
         ("sessionFailed", ["-uiDemoFailure", "sessionFailed"], "unsupported"),
         ("replayUnreadable", ["-uiDemoFailure", "replayUnreadable"], "unsupported"),
     ]
+
+    /// A server answer in Fixtures/results, which the demo reads in debug builds.
+    private static func resultFile(_ name: String, file: String = #filePath) -> String {
+        URL(fileURLWithPath: file).deletingLastPathComponent().appending(path: "Fixtures/results/\(name).json").path
+    }
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [

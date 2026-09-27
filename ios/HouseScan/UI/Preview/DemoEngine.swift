@@ -1,3 +1,4 @@
+import HouseScanKit
 import SwiftUI
 
 /// A fake engine for the UI demo: implements `ScanActions` by scripting `ScanViewState` over
@@ -13,8 +14,9 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
-    /// `-uiDemoReject`: no spot within reach; the closest one is too near the window.
-    private let rejectResult: Bool
+    /// `-uiDemoResultFile <path>` (debug builds only): a server answer in a JSON file, read
+    /// through the engine's own mapping, in place of the hand-made samples.
+    private let resultFile: String?
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -60,7 +62,11 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
-        rejectResult = arguments.contains("-uiDemoReject")
+        #if DEBUG
+        resultFile = value("-uiDemoResultFile")
+        #else
+        resultFile = nil
+        #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -470,9 +476,26 @@ final class DemoEngine: ScanActions {
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
-        if rejectResult { return Self.rejectSample }
+        if let fileResult { return fileResult }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
+    }
+
+    /// The answer in `-uiDemoResultFile`, mapped as `ScanEngine` maps a server's. A file that
+    /// doesn't decode stops the demo with the decoding error rather than showing a sample.
+    private var fileResult: ResultPresentation? {
+        guard let resultFile else { return nil }
+        let result: PlacementResult
+        do {
+            result = try PlacementResult.decode(Data(contentsOf: URL(fileURLWithPath: resultFile)))
+        } catch {
+            fatalError("-uiDemoResultFile \(resultFile): \(error)")
+        }
+        let planner = GapPlanner()
+        let wall = state.wall
+        return ScanEngine.presentation(of: result, isSample: true, wall: nil) { item in
+            planner.plan(for: item, leftEnd: wall?.leftEnd, rightEnd: wall?.rightEnd) != nil
+        }
     }
 
     /// `-uiDemoFollowUp`: the check has answered and asked for a view. On the upload screen,
@@ -968,35 +991,6 @@ final class DemoEngine: ScanActions {
                      needsPerson: true, measured: -0.3048, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
             at: 0
         )
-        return sample
-    }()
-
-    /// No spot within reach: the closest one, right of the meter, stands 4 in from the window.
-    /// Made-up numbers.
-    static let rejectSample: ResultPresentation = {
-        var sample = reviewSample
-        sample.decision = .reject
-        sample.policyApproved = true
-        sample.summary = "No spot within reach works: every spot fails opening clearance."
-        sample.spot = nil
-        sample.cableRoute = []
-        sample.cableLength = nil
-        sample.nearestSpot = BatterySpot(span: 1.3...2.09, depth: 0.56, height: 1.1, offsetFromWall: 0.03)
-        sample.nearestFailingCheck = "window"
-        sample.checks = [
-            CheckRow(id: "wall", title: "Wall behind the spot", outcome: .pass,
-                     reason: "Flat, solid wall behind the whole spot."),
-            CheckRow(id: "window", title: "Distance from the window", outcome: .fail,
-                     reason: "The window is 4 in from the spot's right edge.",
-                     measured: 0.11, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
-            CheckRow(id: "route", title: "Cable run length", outcome: .pass,
-                     reason: "The cable run is short.", measured: 1.9, threshold: 6.1, plusMinus: 0.1, comparison: .atMost),
-        ]
-        sample.clearances = [
-            ClearanceZone(id: "window", label: "Window", outcome: .fail, span: 1.3...2.2, depth: 0.9),
-        ]
-        sample.missing = []
-        sample.unseenSide = nil
         return sample
     }()
 
