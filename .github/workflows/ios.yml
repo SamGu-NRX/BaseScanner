@@ -89,14 +89,16 @@ jobs:
       # than skip, so CI can't go green without comparing.
       - name: Fetch the contract branches
         run: |
-          for pair in server:t3/server packet:t3/packet; do
-            folder="${pair%%:*}" branch="${pair#*:}"
-            if [ -d "$folder" ]; then
-              echo "$folder/ is in the checkout; the drift tests read it."
+          # Check for a file the tests read, not the folder: t3/ios-mvf has a server/ from the
+          # toolchain setup with no schemas in it.
+          for pair in server/schemas/scene.schema.json:t3/server packet/manifest.schema.json:t3/packet; do
+            file="${pair%%:*}" branch="${pair#*:}"
+            if [ -f "$file" ]; then
+              echo "$file is in the checkout; the drift tests read it."
               continue
             fi
             if ! git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
-              echo "::error::Neither $folder/ nor $branch is available, so the vendored $folder schemas can't be compared."
+              echo "::error::Neither $file nor $branch is available, so the vendored ${file%%/*} schemas can't be compared."
               exit 1
             fi
           done
