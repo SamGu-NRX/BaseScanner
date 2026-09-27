@@ -1317,7 +1317,9 @@ final class ScanEngine {
         let ends = block.map { GapRequest.SpaceEnds(at: ($0.spaceEnds / step).rounded(.down) * step, needed: ($0.needed / step).rounded(.up) * step) }
         if (ends == nil) != (request.spaceEnds == nil) {
             let found = block.map { "the space ends \($0.spaceEnds) m out over s \($0.span.lowerBound)...\($0.span.upperBound), short of the line at up to \($0.needed) m" } ?? "the line lies short of where the space ends"
-            RuntimeLog.engine.info("gap \(request.id) walk-out: \(found, privacy: .public)")
+            // The log's message is an escaping autoclosure, which can't capture `request`.
+            let id = request.id
+            RuntimeLog.engine.info("gap \(id) walk-out: \(found, privacy: .public)")
         }
         request.spaceEnds = ends
         request.walkOut = camera.flatMap { camera in
