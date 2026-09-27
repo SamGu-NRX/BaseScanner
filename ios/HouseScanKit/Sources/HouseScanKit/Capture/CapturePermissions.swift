@@ -41,12 +41,43 @@ public enum CapturePermissions {
         }
     }
 
-    /// Whether the scan may start the barometer, which raises the Motion & Fitness prompt itself
-    /// while the permission is undecided. After an onboarding request that came back unanswered
-    /// it stays off, so the prompt can't come up over the meter search; once the permission is
-    /// decided it starts (denied, it records nothing). With no onboarding request (`nil`, as on a
-    /// phone without activity support) nothing is held.
-    public static func barometerMayStart(after answer: Motion?, undecided: Bool) -> Bool {
-        !(undecided && answer == .unanswered)
+}
+
+/// When the barometer runs during a recording. CMAltimeter raises the Motion & Fitness prompt
+/// itself while the permission is undecided, so after an onboarding request that came back
+/// unanswered the barometer is held rather than prompt over the meter search. While held, the app
+/// keeps checking the permission; once it is decided the barometer starts in the same recording,
+/// so a late answer loses only the rows before it (denied, it records nothing). With no onboarding
+/// request (`answer == nil`, as on a phone without activity support) nothing is held.
+public struct BarometerGate: Sendable, Equatable {
+    /// The onboarding's answer.
+    public var answer: CapturePermissions.Motion?
+    public private(set) var recording = false
+    public private(set) var running = false
+
+    public init(answer: CapturePermissions.Motion? = nil) {
+        self.answer = answer
+    }
+
+    /// Recording, with the barometer waiting for the permission: the app checks it until decided.
+    public var held: Bool { recording && !running }
+
+    /// Recording starts. Returns whether the barometer starts with it.
+    public mutating func recordingStarted(undecided: Bool) -> Bool {
+        recording = true
+        running = !(undecided && answer == .unanswered)
+        return running
+    }
+
+    /// A check of the permission while held. Returns true when the barometer starts now.
+    public mutating func permissionChecked(undecided: Bool) -> Bool {
+        guard held, !undecided else { return false }
+        running = true
+        return true
+    }
+
+    public mutating func recordingStopped() {
+        recording = false
+        running = false
     }
 }

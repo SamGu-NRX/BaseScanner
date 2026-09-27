@@ -22,14 +22,43 @@ import Testing
     }
 
     /// An unanswered request must not lead to the barometer raising the prompt over the meter
-    /// search; once the permission is decided, the barometer starts.
-    @Test func anUnansweredMotionRequestHoldsTheBarometerUntilDecided() {
-        #expect(!CapturePermissions.barometerMayStart(after: .unanswered, undecided: true))
-        #expect(CapturePermissions.barometerMayStart(after: .unanswered, undecided: false))
-        #expect(CapturePermissions.barometerMayStart(after: .allowed, undecided: false))
-        #expect(CapturePermissions.barometerMayStart(after: .denied, undecided: false))
-        #expect(CapturePermissions.barometerMayStart(after: .notNeeded, undecided: false))
+    /// search.
+    @Test func anUnansweredMotionRequestHoldsTheBarometer() {
+        var gate = BarometerGate(answer: .unanswered)
+        #expect(!gate.recordingStarted(undecided: true))
+        #expect(gate.held)
+        #expect(!gate.permissionChecked(undecided: true))
+        #expect(gate.held)
+    }
+
+    /// Decided during the recording, the held barometer starts in that recording, once.
+    @Test func aHeldBarometerStartsMidRecordingOnceDecided() {
+        var gate = BarometerGate(answer: .unanswered)
+        _ = gate.recordingStarted(undecided: true)
+        #expect(gate.permissionChecked(undecided: false))
+        #expect(gate.running && !gate.held)
+        #expect(!gate.permissionChecked(undecided: false))
+    }
+
+    /// Stopped while held, nothing starts; the next recording checks again.
+    @Test func aStoppedRecordingStartsNothingAndTheNextOneChecksAgain() {
+        var gate = BarometerGate(answer: .unanswered)
+        _ = gate.recordingStarted(undecided: true)
+        gate.recordingStopped()
+        #expect(!gate.held)
+        #expect(!gate.permissionChecked(undecided: false))
+        #expect(gate.recordingStarted(undecided: false))
+    }
+
+    @Test func otherAnswersStartTheBarometerWithTheRecording() {
+        for answer: CapturePermissions.Motion in [.allowed, .denied, .notNeeded] {
+            var gate = BarometerGate(answer: answer)
+            #expect(gate.recordingStarted(undecided: false))
+            #expect(!gate.held)
+        }
         // Never asked (no activity support): the barometer's own prompt is the only one.
-        #expect(CapturePermissions.barometerMayStart(after: nil, undecided: true))
+        var gate = BarometerGate()
+        #expect(gate.recordingStarted(undecided: true))
+        #expect(!gate.held)
     }
 }
