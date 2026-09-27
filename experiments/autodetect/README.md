@@ -32,4 +32,14 @@ Written but not run to completion, for lack of time on the shared Mac: `autodete
 
 ## Result
 
-To be written by the lead.
+No candidate passes, so the app should not propose walls' windows and doors from a model trained on public photos. [PLAN.md](PLAN.md) has the recommendation, the confirm flow and the integration plan.
+
+| Candidate | Size, Mac speed | Window P / R, Open Images | Door P / R, Open Images | Door edges lifted, p90 |
+|---|---|---|---|---|
+| OWLv2, zero-shot | 308 MB, 481 ms (GPU) | 55% / 23% | 75% / 58% | 1.62 ft |
+| Create ML student | 6.8 MB, 50 ms | 56% / 7% | 53% / 8% | no door matched |
+| Vision rectangles | in the OS, 12 ms | 6.5% / 15% | – | 1.18 ft |
+
+CMP Facade gives the same verdict (`results/proposals.md`). Lifting a true door box onto the laser-scanned wall is off by 0.11 ft p90 from the box's inner corners and 0.59 ft from its side midpoints, so the lifting step works and the boxes are what fail (`results/extent.md`). The public photos show whole buildings from far away; counting only large objects, the student's window AP50 rises from 9% to 38%.
+
+**Meter brand.** Vision's lines plus a list of meter makers (`meter_brand/`) name the brand on 17 of 19 photos where it is printed in plain letters and 22 of 42 where it is part of a logo, and name nothing on the 9 without one. No pass bar was set before this run. Details and the post-run changes are in `meter_brand/README.md`.

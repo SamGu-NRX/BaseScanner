@@ -8,11 +8,12 @@ miss for the dictionary rule, so the rule's recall is what an app shipping this 
 """
 
 import re
+import unicodedata
 
 # Canonical name -> spellings as they appear on meters. Each printed name is its own brand, even
 # where one company later bought another (Elster and Honeywell, Actaris and Itron), because the
 # test is whether the phone reads what is printed. A spelling of 4 characters or fewer
-# must match a whole OCR token exactly; longer ones may be one edit away (see match_brand).
+# must match a whole OCR token exactly; one of 6 letters or more may be one edit away (see match_brand).
 BRANDS: dict[str, tuple[str, ...]] = {
     "ITRON": ("ITRON",),
     "ACTARIS": ("ACTARIS",),
@@ -64,7 +65,8 @@ SPEC = re.compile(
 
 
 def normalise(text: str) -> str:
-    """Upper case, `&` and `+` kept (they are part of names), other punctuation to spaces."""
+    """Upper case, accents folded (`Itrón` reads as ITRON), `&` and `+` kept, other punctuation to spaces."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     text = text.upper().replace("＋", "+")
     text = re.sub(r"[^A-Z0-9+& ]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
@@ -112,7 +114,8 @@ def match_brand(line: str) -> str | None:
             continue
         if re.search(rf"(^| ){re.escape(alias)}($| )", norm) or alias.replace(" ", "") in norm.replace(" ", ""):
             return canon
-        if len(alias) >= 5 and any(within_one_edit(alias.replace(" ", ""), w.replace(" ", "")) for w in windows):
+        # One edit is allowed from 6 letters up: at 5, GENUS is one edit from "GE US".
+        if len(alias.replace(" ", "")) >= 6 and any(within_one_edit(alias.replace(" ", ""), w.replace(" ", "")) for w in windows):
             return canon
     return None
 

@@ -73,10 +73,14 @@ def names_brand(text: str | None, brand: str) -> bool:
     return match_brand(text) == brand or normalise(brand).replace(" ", "") in normalise(text).replace(" ", "")
 
 
-def note_maker(note: str) -> str | None:
-    """#16 reader 1 opened each note with the maker, e.g. `Tatung D4S; faded number print`."""
-    head = note.split(";")[0]
-    return match_brand(head)
+def note_head(pid: str, manifest: dict[str, dict]) -> str:
+    """#16 reader 1 opened each note with the maker and model, e.g. `Tatung D4S; faded print`.
+
+    A note reading `same meter as m05` refers to that photo's note.
+    """
+    head = manifest.get(pid, {}).get("notes", "").split(";")[0]
+    same = re.match(r"same meter as (m\d+)", head)
+    return note_head(same.group(1), manifest) if same else head
 
 
 def main() -> None:
@@ -96,15 +100,18 @@ def main() -> None:
         m = manifest.get(pid, {})
         if m.get("usable") != "yes":
             continue
-        brand = canonical(lab["brand_printed"]) if lab["brand_printed"].strip() else None
-        second = note_maker(m.get("notes", ""))
+        # Drop the reader's qualifiers and translations, e.g. "OXFORO (uncertain)", "DZG (Deutsche ...)".
+        printed_name = re.sub(r"\(.*?\)", "", lab["brand_printed"]).strip()
+        brand = canonical(printed_name) if printed_name else None
+        head = note_head(pid, manifest)
         row = {
             "id": pid,
             "brand": brand or "",
             "form": lab["brand_form"],
             "legible": lab["brand_legible"],
-            "second_reader": second or "",
-            "agreed": "yes" if brand and brand == second else "no",
+            "second_reader": match_brand(head) or "",
+            # Agreed when #16's note names reader A's brand, listed or not.
+            "agreed": "yes" if brand and names_brand(head, brand) else "no",
             "us_style": numbers.get(pid, {}).get("us_style", ""),
             "number_read": numbers.get(pid, {}).get("read", ""),
             "number_rank": numbers.get(pid, {}).get("rank", ""),
@@ -161,6 +168,16 @@ def main() -> None:
             unl = sum(r[f"{cfg}_unlisted_right"] for r in rs)
             print(f"| {name} ({n}) | {wilson(anyl, n)} | {wilson(right, n)} | {wrong} | {none} | {wilson(unl, n)} |")
         print()
+
+    print("## By how the brand is printed (`accurate`, both readers agree)\n")
+    print("| Printed as | Photos | Brand in any line | List rule: right | List rule: wrong maker |\n|---|---|---|---|---|")
+    for form, label in (("text", "plain letters"), ("logo_text", "letters inside a logo or wordmark")):
+        rs = [r for r in sets[0][1] if r["form"] == form]
+        n = len(rs)
+        print(f"| {label} | {n} | {wilson(sum(r['accurate_any_line'] for r in rs), n)} | "
+              f"{wilson(sum(r['accurate_listed'] == r['brand'] for r in rs), n)} | "
+              f"{sum(bool(r['accurate_listed']) and r['accurate_listed'] != r['brand'] for r in rs)} |")
+    print()
 
     # Photos without a readable brand: does the list rule stay silent?
     silent = [r for r in rows if not printed(r)]
