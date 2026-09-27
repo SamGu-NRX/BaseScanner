@@ -34,7 +34,7 @@ import sys
 import time
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import cv2
 import numpy as np
@@ -60,20 +60,90 @@ FIELD_DIR = EVALS_DIR / "field"
 # --- Session ---------------------------------------------------------------------------------
 
 
+# Bounds on a session zip before anything is written. A real session is a few hundred files and
+# well under 1 GB (the ADVIO replay: 81 files, 17 MB); these leave room for long LiDAR sessions while
+# stopping a crafted archive from filling the shared disk.
+MAX_ZIP_MEMBERS = 10_000
+MAX_ZIP_BYTES = 2 * 1024**3
+MIN_FREE_AFTER_UNPACK = 3 * 1024**3
+
+
+def safe_member(name: str) -> PurePosixPath:
+    """A zip member name as a relative path with no way out of the extraction root."""
+    path = PurePosixPath(name)
+    parts = [p for p in path.parts if p not in ("", ".")]
+    if (
+        not parts
+        or path.is_absolute()
+        or "\\" in name
+        or ":" in parts[0]
+        or any(p == ".." for p in parts)
+    ):
+        raise ValueError(f"zip member {name!r} is not a plain relative path")
+    return PurePosixPath(*parts)
+
+
 def unpack(session: Path) -> tuple[Path, str | None]:
-    """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped."""
+    """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped.
+
+    Every member is checked before anything is written: a plain relative path, no duplicates, at
+    most MAX_ZIP_MEMBERS files and MAX_ZIP_BYTES in all, with MIN_FREE_AFTER_UNPACK left free. Files
+    are copied with a running byte count, so a member whose header understates its size still
+    stops at the bound. Extraction goes to a temporary folder renamed into place only when complete.
+    """
     if session.is_dir():
         return session, None
     digest = hashlib.sha256(session.read_bytes()).hexdigest()
     out = FIELD_DIR / digest[:16]
     with zipfile.ZipFile(session) as z:
-        names = [n for n in z.namelist() if not n.startswith("__MACOSX/")]
-        roots = [n for n in names if n.split("/")[-1] == "session.json" and n.count("/") <= 1]
+        members, seen = [], set()
+        for info in z.infolist():
+            if info.filename.startswith("__MACOSX/") or info.is_dir():
+                continue
+            rel = safe_member(info.filename)
+            if rel in seen:
+                raise ValueError(f"{session}: {rel} appears twice")
+            seen.add(rel)
+            members.append((info, rel))
+        if len(members) > MAX_ZIP_MEMBERS:
+            raise ValueError(f"{session}: {len(members)} files, more than {MAX_ZIP_MEMBERS}")
+        declared = sum(info.file_size for info, _ in members)
+        if declared > MAX_ZIP_BYTES:
+            raise ValueError(f"{session}: expands to {declared} bytes, more than {MAX_ZIP_BYTES}")
+        roots = [rel for _, rel in members if rel.name == "session.json" and len(rel.parts) <= 2]
         if len(roots) != 1:
             raise ValueError(f"{session}: expected one session.json, found {roots}")
-        if not (out / roots[0]).exists():
-            z.extractall(out, members=names)
-    return (out / roots[0]).parent, digest
+        root = out / roots[0]
+        if not root.exists():
+            FIELD_DIR.mkdir(parents=True, exist_ok=True)
+            free = shutil.disk_usage(FIELD_DIR).free
+            if free - declared < MIN_FREE_AFTER_UNPACK:
+                raise ValueError(
+                    f"{session}: unpacking {declared / 1e9:.2f} GB would leave less than "
+                    f"{MIN_FREE_AFTER_UNPACK / 1024**3:.0f} GB free ({free / 1e9:.1f} GB free now)"
+                )
+            tmp = out.with_name(out.name + ".partial")
+            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                written = 0
+                for info, rel in members:
+                    dest = tmp.joinpath(*rel.parts)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(info) as src, dest.open("wb") as dst:
+                        while block := src.read(1 << 20):
+                            written += len(block)
+                            if written > MAX_ZIP_BYTES:
+                                raise ValueError(f"{session}: expands past {MAX_ZIP_BYTES} bytes")
+                            dst.write(block)
+                shutil.rmtree(out, ignore_errors=True)
+                tmp.rename(out)
+            except BaseException:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+    folder = root.parent.resolve()
+    if not folder.is_relative_to(out.resolve()):
+        raise ValueError(f"{session}: session folder {folder} is outside {out}")
+    return folder, digest
 
 
 def load_session(folder: Path) -> dict:

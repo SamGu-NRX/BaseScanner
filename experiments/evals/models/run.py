@@ -134,6 +134,8 @@ def main(argv: list[str] | None = None) -> None:
     start = time.perf_counter()
     model = module.load(device)
     load_seconds = time.perf_counter() - start
+    # Before any output: a replaced cached checkpoint must not leave depth maps behind.
+    checkpoint = checkpoint_record(module.REPO, module.FILENAME, module.REVISION, module.SHA256)
     if device == "mps":
         torch.mps.empty_cache()
         torch.mps.set_per_process_memory_fraction(
@@ -188,9 +190,7 @@ def main(argv: list[str] | None = None) -> None:
     run = {
         "model": args.model,
         "license": module.LICENSE,
-        "checkpoint": checkpoint_record(
-            module.REPO, module.FILENAME, module.REVISION, module.SHA256
-        ),
+        "checkpoint": checkpoint,
         "code": module.CODE,
         "device": device,
         "torch": torch.__version__,

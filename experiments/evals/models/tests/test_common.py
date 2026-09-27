@@ -188,3 +188,49 @@ def test_checkpoint_record_rejects_a_replaced_checkpoint(tmp_path, monkeypatch):
     weights.write_bytes(b"other weights")
     with pytest.raises(RuntimeError, match="is not the pinned"):
         checkpoint_record("org/model", "model.safetensors", "rev", pinned)
+
+
+def test_a_replaced_checkpoint_stops_the_run_before_any_output(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from models import run
+
+    weights = tmp_path / "model.safetensors"
+    weights.write_bytes(b"some other loadable file")
+    hub = types.ModuleType("huggingface_hub")
+    hub.try_to_load_from_cache = lambda repo, name, revision: str(weights)
+    torch = types.ModuleType("torch")
+    torch.__version__ = "fake"
+    torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+    torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False))
+    model = types.ModuleType("fake_model")
+    model.REPO, model.FILENAME, model.REVISION = "org/model", "model.safetensors", "rev"
+    model.SHA256 = "0" * 64
+    model.load = lambda device: object()
+
+    def never_run(*args):
+        raise AssertionError("inference ran with an unverified checkpoint")
+
+    model.run = never_run
+    for name, module in (("huggingface_hub", hub), ("torch", torch), ("fake_model", model)):
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setitem(run.MODULES, "moge2", "fake_model")
+    image = tmp_path / "a.jpg"
+    image.write_bytes(b"")
+    (tmp_path / "images.txt").write_text(f"{image}\n")
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="is not the pinned"):
+        run.main(
+            [
+                "--model",
+                "moge2",
+                "--images",
+                str(tmp_path / "images.txt"),
+                "--device",
+                "cpu",
+                "--out",
+                str(out),
+            ]
+        )
+    assert not list(out.glob("*.npz"))

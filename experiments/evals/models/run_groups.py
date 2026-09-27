@@ -15,6 +15,7 @@ placed in those poses' frame; without it every group's frame and scale are the m
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -126,6 +127,12 @@ def main() -> None:
                 "weights": "transformer stacks bf16, rest fp32 (models/map_anything.py load)",
                 "metric_scaling_factor": [r.extra["metric_scaling_factor"] for r in results],
                 "poses_file": str(args.poses_file) if args.poses_file else None,
+                # What evals.pose_priors labels the row by: the exact pose file this run used.
+                "poses_sha256": (
+                    hashlib.sha256(args.poses_file.read_bytes()).hexdigest()
+                    if args.poses_file
+                    else None
+                ),
             }
             (out / "run.json").write_text(json.dumps(summary, indent=1) + "\n")
             print(f"n={n} {members[0]}: {results[0].seconds:.2f} s/view", file=sys.stderr)

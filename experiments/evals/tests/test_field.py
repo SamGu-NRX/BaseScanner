@@ -376,3 +376,84 @@ def test_a_failed_tape_reference_fails_only_the_tape_row(case, monkeypatch):
     assert all(m["value_ft"] is None for m in tape_row["measurements"])
     native = json.loads((out / "moge2.json").read_text())
     assert any(m["value_ft"] is not None for m in native["measurements"])
+
+
+def _zip(path, members):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return path
+
+
+SESSION_JSON = json.dumps({"format": "measure-lab-session", "formatVersion": 2})
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["../session.json", "/session.json", "a/../../session.json", "C:/session.json", "a\\b.jpg"],
+)
+def test_unpack_refuses_member_paths_that_leave_the_folder(tmp_path, monkeypatch, name):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), (name, "x")])
+    with pytest.raises(ValueError, match="not a plain relative path"):
+        field.unpack(archive)
+    assert not (tmp_path / "session.json").exists()
+    assert not (tmp_path / "field").exists()  # refused before anything was written
+
+
+def test_unpack_refuses_duplicates_and_too_many_or_too_large_members(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    dup = tmp_path / "dup.zip"
+    # "s/./a.jpg" names the same file as "s/a.jpg" once normalised.
+    _zip(dup, [("s/session.json", SESSION_JSON), ("s/a.jpg", "1"), ("s/./a.jpg", "2")])
+    with pytest.raises(ValueError, match="appears twice"):
+        field.unpack(dup)
+    monkeypatch.setattr(field, "MAX_ZIP_MEMBERS", 2)
+    many = _zip(
+        tmp_path / "many.zip", [("s/session.json", SESSION_JSON), ("s/a", "1"), ("s/b", "2")]
+    )
+    with pytest.raises(ValueError, match="more than 2"):
+        field.unpack(many)
+    monkeypatch.setattr(field, "MAX_ZIP_MEMBERS", 10)
+    monkeypatch.setattr(field, "MAX_ZIP_BYTES", 100)
+    big = _zip(tmp_path / "big.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 200)])
+    with pytest.raises(ValueError, match="more than 100"):
+        field.unpack(big)
+
+
+def test_unpack_counts_bytes_even_when_a_header_understates_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_BYTES", 100)
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 200)])
+    real = zipfile.ZipFile.infolist
+
+    def understated(self):
+        infos = real(self)
+        for info in infos:
+            info.file_size = 1  # as a crafted header would claim
+        return infos
+
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", understated)
+    with pytest.raises((ValueError, zipfile.BadZipFile)):
+        field.unpack(archive)
+    assert not list((tmp_path / "field").glob("*/s/a"))  # nothing left half-written
+
+
+def test_unpack_needs_free_space_to_remain(tmp_path, monkeypatch):
+    from collections import namedtuple
+
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    Usage = namedtuple("Usage", "total used free")
+    monkeypatch.setattr(field.shutil, "disk_usage", lambda p: Usage(0, 0, 1024**3))
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON)])
+    with pytest.raises(ValueError, match="less than 3 GB free"):
+        field.unpack(archive)
+
+
+def test_unpack_extracts_a_plain_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/k/a.jpg", "x")])
+    folder, digest = field.unpack(archive)
+    assert folder.is_relative_to((tmp_path / "field").resolve())
+    assert (folder / "k" / "a.jpg").read_text() == "x"
+    assert field.unpack(archive) == (folder, digest)  # a second call reuses the folder

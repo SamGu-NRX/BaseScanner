@@ -6,7 +6,7 @@
     "facing_gap_ft": {
       "value_ft": 3,
       "pass_when": "at_least",
-      "source": "The 3 ft fence clearance PR #7's pass criteria cite from Base's public help page"
+      "source": "Base's public placement help page, https://help.basepowercompany.com/en/articles/10280705 (read 2026-09-27): in narrow spots such as alleyways, 'maintaining a minimum clearance of 3 feet from walls or other fixed features'"
     }
   }
 }

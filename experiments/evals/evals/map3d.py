@@ -39,8 +39,8 @@ from evals.eth3d import excluded_pixels, occluder_points, scan_points
 from evals.pairs import results_json
 from evals.paths import EVALS_DIR
 
-KIT_COMMIT = "66cdcba"
-KIT_CHECKOUT = EVALS_DIR / f"housescankit-{KIT_COMMIT}"
+KIT_COMMIT = "66cdcbaaca5de3ca4812e7073fd5490b477713a2"  # t3/ios-map3d, draft PR #21
+KIT_CHECKOUT = EVALS_DIR / f"housescankit-{KIT_COMMIT[:7]}"
 KIT_DIR = KIT_CHECKOUT / "ios" / "HouseScanKit"
 DRIVER_DIR = Path(__file__).resolve().parents[1] / "map3d_driver"
 DRIVER_BIN = DRIVER_DIR / ".build" / "release" / "map3d-driver"
@@ -60,7 +60,14 @@ def prepare() -> None:
     """Checks out HouseScanKit at the pinned commit, read-only, and builds the driver."""
     repo = Path(__file__).resolve().parents[3]
     if not KIT_CHECKOUT.exists():
-        subprocess.run(["git", "-C", str(repo), "fetch", "origin", "t3/ios-map3d"], check=True)
+        # Fetch the commit itself: the branch can move or be rebased away from it.
+        have = subprocess.run(
+            ["git", "-C", str(repo), "cat-file", "-e", f"{KIT_COMMIT}^{{commit}}"], check=False
+        )
+        if have.returncode:
+            subprocess.run(
+                ["git", "-C", str(repo), "fetch", "--no-tags", "origin", KIT_COMMIT], check=True
+            )
         subprocess.run(
             ["git", "-C", str(repo), "worktree", "add", "--detach", str(KIT_CHECKOUT), KIT_COMMIT],
             check=True,
@@ -465,18 +472,15 @@ def check_kit() -> None:
     head = subprocess.run(
         [*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
-    pinned = subprocess.run(
-        [*git, "rev-parse", f"{KIT_COMMIT}^{{commit}}"], capture_output=True, text=True, check=True
-    ).stdout.strip()
     dirty = subprocess.run(
         [*git, "status", "--porcelain", "--", "ios/HouseScanKit"],
         capture_output=True,
         text=True,
         check=True,
     ).stdout.strip()
-    if head != pinned or dirty:
+    if head != KIT_COMMIT or dirty:
         raise SystemExit(
-            f"{KIT_CHECKOUT} is at {head} with changes {dirty!r}; expected {pinned}, clean"
+            f"{KIT_CHECKOUT} is at {head} with changes {dirty!r}; expected {KIT_COMMIT}, clean"
         )
 
 

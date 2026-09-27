@@ -65,9 +65,14 @@ BOOTSTRAP_REPS = 1000
 # Percentiles interpolate and inf - inf is NaN, so failures become a finite sentinel (as in
 # `evals.pairs.summarize`) and any result that touches one is reported as a failure.
 SENTINEL = 1e12
-# The MapAnything advio_2018 runs were given the poses of the earlier advio_2018 setting, whose
-# scales were ARKit against ARCore (0.883, 0.936, 0.958); the weights are gone, so it cannot rerun.
-MAPANYTHING_LABELS = {"advio_2018": "advio_2018 poses, earlier ARCore-referenced scales"}
+# The published MapAnything advio_2018 runs were given the poses of the earlier advio_2018 setting,
+# whose scales were ARKit against ARCore (0.883, 0.936, 0.958). Those runs predate the pose hash in
+# run.json, so a run without one keeps this label; a run that records its poses is labelled by them.
+HISTORICAL_MAPANYTHING = {"advio_2018": "advio_2018 poses, earlier ARCore-referenced scales"}
+HISTORICAL_NOTE = (
+    " Its advio_2018 row was run on the earlier advio_2018 poses, whose scales were ARKit against "
+    "ARCore (0.883, 0.936, 0.958), with the same noise as draw 0 here."
+)
 
 
 def pose_file(scene: str, setting: str, draw: int = 0) -> Path:
@@ -137,6 +142,31 @@ def fit_inputs(
         "depths": {m: file_digest(p) for m, p in depths.items()},
     }
     return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def mapanything_label(run_root: Path, setting: str, poses_file: Path) -> str:
+    """A MapAnything row's label, from the poses its groups' run.json files record. Runs that
+    record no pose hash are the published historical ones; runs that record one must all match
+    the current pose file, or the row would mix poses."""
+    recorded = {json.loads(p.read_text()).get("poses_sha256") for p in run_root.glob("*/run.json")}
+    if recorded <= {None}:
+        return HISTORICAL_MAPANYTHING.get(setting, f"{setting} poses")
+    if recorded != {file_digest(poses_file)}:
+        raise SystemExit(
+            f"{run_root}: its groups were run on poses other than {poses_file} (or a mix of "
+            f"recorded and unrecorded runs); rerun `make pose-priors` for {setting}"
+        )
+    return f"{setting} poses"
+
+
+def uses_historical_rows(results: dict) -> bool:
+    labels = {f"mapanything@392 + {label}" for label in HISTORICAL_MAPANYTHING.values()}
+    return any(
+        method in labels
+        for ranges in results.values()
+        for per_method in ranges.values()
+        for method in per_method
+    )
 
 
 def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
@@ -209,7 +239,9 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
         "mapanything@392, images only": [model_frame_method(root / "ma392_images")]
     }
     for setting in SETTINGS:
-        label = MAPANYTHING_LABELS.get(setting, f"{setting} poses")
+        label = mapanything_label(
+            root / f"ma392_{setting}", setting, pose_file(scene.name, setting)
+        )
         methods[f"mapanything@392 + {label}"] = [model_frame_method(root / f"ma392_{setting}")]
     for setting in SETTINGS:
         draws = noise_draws(setting)
@@ -382,8 +414,7 @@ def markdown(results: dict) -> str:
         "estimate pools every seed group and noise draw; the interval is a bootstrap over seed "
         f"groups and, within each, noise draws ({BOOTSTRAP_REPS} replicates). 'Groups x noise "
         "draws' counts both. MapAnything rows have one noise draw: its weights are no longer on "
-        "this machine. Its advio_2018 row was run on the earlier advio_2018 poses, whose scales "
-        "were ARKit against ARCore (0.883, 0.936, 0.958), with the same noise as draw 0 here."
+        "this machine." + (HISTORICAL_NOTE if uses_historical_rows(results) else "")
     )
     for scene, ranges in results.items():
         for range_name in RANGES:

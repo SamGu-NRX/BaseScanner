@@ -4,7 +4,9 @@
     uv run python -m evals.datasets eth3d      # ETH3D facade and electro (about 2.4 GB of archives)
 
 Each archive is checked against its size and sha256 below, unpacked (only the files the evals use),
-then deleted. A download refuses to start with less than `MIN_FREE_GB` free, because the Mac these
+then deleted. A completion record, written only after every expected file is in place, ties the
+unpacked files to the archive's sha256; a later run skips the archive only if that record matches
+and every recorded file is still there at its recorded size. A download refuses to start with less than `MIN_FREE_GB` free, because the Mac these
 run on is shared. Both datasets are for non-commercial research: they measure accuracy here and are
 never committed or redistributed.
 """
@@ -13,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import shutil
 import urllib.request
 import zipfile
@@ -152,6 +155,7 @@ def fetch(archive: Archive) -> None:
         raise SystemExit(
             f"{archive.name}: got {size} bytes sha256 {digest}, expected {archive.size} {archive.sha256}"
         )
+    record_path(archive).unlink(missing_ok=True)
     if archive.name.endswith(".zip"):
         with zipfile.ZipFile(tmp) as z:
             names = [
@@ -160,9 +164,46 @@ def fetch(archive: Archive) -> None:
             z.extractall(archive.dest, members=names)
     else:
         with py7zr.SevenZipFile(tmp) as z:
+            names = z.getnames()
             z.extractall(archive.dest)
     tmp.unlink()
+    write_record(archive, names)
     print(f"  verified and unpacked into {archive.dest}")
+
+
+def record_path(archive: Archive) -> Path:
+    return archive.dest / ".complete" / f"{archive.name}.json"
+
+
+def write_record(archive: Archive, names: list[str]) -> None:
+    """Record the unpacked files once every expected one is present: the marker, and at least one
+    file under each requested member."""
+    files = {n: (archive.dest / n).stat().st_size for n in names if (archive.dest / n).is_file()}
+    missing = [m for m in archive.members if not any(n.startswith(m) for n in files)]
+    if not (archive.dest / archive.marker).exists():
+        missing.append(archive.marker)
+    if missing:
+        raise SystemExit(f"{archive.name}: unpacked without {missing}; not recording it complete")
+    path = record_path(archive)
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(json.dumps({"sha256": archive.sha256, "files": files}, indent=0))
+
+
+def is_complete(archive: Archive) -> bool:
+    """True when this archive's record matches its pinned sha256 and every recorded file exists at
+    its recorded size. Sizes catch a truncated or partly deleted copy without rehashing gigabytes;
+    an edit that keeps a file's size is not caught."""
+    path = record_path(archive)
+    if not path.exists():
+        return False
+    record = json.loads(path.read_text())
+    if record.get("sha256") != archive.sha256 or not record.get("files"):
+        return False
+    for name, size in record["files"].items():
+        f = archive.dest / name
+        if not f.is_file() or f.stat().st_size != size:
+            return False
+    return True
 
 
 def main() -> None:
@@ -175,9 +216,8 @@ def main() -> None:
     )
     args = ap.parse_args()
     for a in ADVIO if args.dataset == "advio" else ETH3D:
-        marker = a.dest / a.marker
-        if marker.exists() and not args.force:
-            print(f"{a.name}: already unpacked ({marker})")
+        if is_complete(a) and not args.force:
+            print(f"{a.name}: already unpacked and recorded complete ({record_path(a)})")
             continue
         fetch(a)
 

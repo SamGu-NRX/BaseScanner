@@ -75,12 +75,23 @@ SCORING_CHECKOUT := $(DATA)/evals/scoring-77ce830
 SCORING ?= $(SCORING_CHECKOUT)/experiments/scoring
 STAMPED_MAP = $(FIELD_OUT)/inputs/map.json
 field:
-	@# The pinned checkout is created only at its default place; an overridden SCORING must exist.
-	test -d "$(SCORING)" || { test "$(SCORING)" = "$(SCORING_CHECKOUT)/experiments/scoring" && \
-	  { git -C ../.. cat-file -e $(SCORING_COMMIT)^{commit} 2>/dev/null || \
-	    git -C ../.. fetch --no-tags origin $(SCORING_COMMIT); } && \
-	  git -C ../.. worktree add --detach "$(SCORING_CHECKOUT)" $(SCORING_COMMIT); } || \
-	  { echo "SCORING=$(SCORING) is not a scoring harness checkout" >&2; exit 1; }
+	@# The default checkout is created at the pinned commit and, when reused, must still be there
+	@# with the harness unmodified. An overridden SCORING is the caller's choice and must exist.
+	@if [ "$(SCORING)" = "$(SCORING_CHECKOUT)/experiments/scoring" ]; then \
+	  if [ ! -d "$(SCORING_CHECKOUT)" ]; then \
+	    { git -C ../.. cat-file -e $(SCORING_COMMIT)^{commit} 2>/dev/null || \
+	      git -C ../.. fetch --no-tags origin $(SCORING_COMMIT); } && \
+	    git -C ../.. worktree add --detach "$(SCORING_CHECKOUT)" $(SCORING_COMMIT) || exit 1; \
+	  fi; \
+	  head=$$(git -C "$(SCORING_CHECKOUT)" rev-parse HEAD) && \
+	  dirty=$$(git -C "$(SCORING_CHECKOUT)" status --porcelain -- experiments/scoring) || exit 1; \
+	  if [ "$$head" != "$(SCORING_COMMIT)" ] || [ -n "$$dirty" ]; then \
+	    echo "$(SCORING_CHECKOUT) is at $$head with changes [$$dirty]; expected $(SCORING_COMMIT)," \
+	      "unmodified. Remove it (git worktree remove) and rerun." >&2; exit 1; \
+	  fi; \
+	elif [ ! -d "$(SCORING)" ]; then \
+	  echo "SCORING=$(SCORING) is not a scoring harness checkout" >&2; exit 1; \
+	fi
 	uv sync --project models
 	$(if $(TRUTH),uv run python -m evals.field stamp "$(SESSION)" --truth "$(TRUTH)" --map "$(MAP)" --out-dir "$(FIELD_OUT)" &&) \
 	W=$$(uv run python -m evals.field prepare "$(SESSION)") && \

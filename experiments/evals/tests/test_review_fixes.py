@@ -212,3 +212,79 @@ def test_marvin_manifest_covers_every_scored_scene():
     for scene in modern_arkit.SCENES:
         assert {f"{scene}/train.txt", f"{scene}/test.txt"} <= set(pinned)
         assert modern_arkit.pinned_walks(pinned, scene)
+
+
+def _archive(tmp_path: Path, members=("d/a.csv", "d/sub/")):
+    from evals.datasets import Archive
+
+    return Archive("https://example.org/x.zip", 1, "f" * 64, tmp_path, "d/a.csv", members)
+
+
+def test_an_interrupted_unpack_is_not_complete(tmp_path: Path):
+    from evals import datasets
+
+    archive = _archive(tmp_path)
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d/a.csv").write_text("a")  # the marker alone, as an interrupted unpack leaves it
+    assert not datasets.is_complete(archive)
+    with pytest.raises(SystemExit, match="d/sub/"):
+        datasets.write_record(archive, ["d/a.csv"])
+    assert not datasets.is_complete(archive)
+
+
+def test_a_recorded_unpack_is_complete_until_a_file_goes_missing_or_changes_size(tmp_path: Path):
+    from evals import datasets
+
+    archive = _archive(tmp_path)
+    (tmp_path / "d/sub").mkdir(parents=True)
+    (tmp_path / "d/a.csv").write_text("a")
+    (tmp_path / "d/sub/b.csv").write_text("bb")
+    datasets.write_record(archive, ["d/", "d/a.csv", "d/sub/", "d/sub/b.csv"])
+    assert datasets.is_complete(archive)
+    other = datasets.Archive(archive.url, 1, "e" * 64, tmp_path, archive.marker, archive.members)
+    assert not datasets.is_complete(other)  # a record for another archive hash does not count
+    (tmp_path / "d/sub/b.csv").write_text("b")  # truncated
+    assert not datasets.is_complete(archive)
+    (tmp_path / "d/sub/b.csv").unlink()
+    assert not datasets.is_complete(archive)
+
+
+def _run(root: Path, gid: str, poses_sha256=None):
+    (root / gid).mkdir(parents=True)
+    doc = {"members": [gid]}
+    if poses_sha256 is not None:
+        doc["poses_sha256"] = poses_sha256
+    (root / gid / "run.json").write_text(json.dumps(doc))
+
+
+def test_mapanything_rows_are_labelled_by_the_poses_they_recorded(tmp_path: Path):
+    import hashlib
+
+    from evals.pose_priors import HISTORICAL_MAPANYTHING, mapanything_label, uses_historical_rows
+
+    poses = tmp_path / "advio_2018.json"
+    poses.write_text('{"g": 1}')
+    current = hashlib.sha256(poses.read_bytes()).hexdigest()
+    # The published runs record no pose hash: they keep the historical label and its note.
+    historical = tmp_path / "historical"
+    _run(historical, "n2-a")
+    label = mapanything_label(historical, "advio_2018", poses)
+    assert label == HISTORICAL_MAPANYTHING["advio_2018"]
+    assert uses_historical_rows({"electro": {"all": {f"mapanything@392 + {label}": {}}}})
+    # A fresh run on the current poses is labelled by them, with no historical note.
+    fresh = tmp_path / "fresh"
+    _run(fresh, "n2-a", current)
+    _run(fresh, "n4-a", current)
+    label = mapanything_label(fresh, "advio_2018", poses)
+    assert label == "advio_2018 poses"
+    assert not uses_historical_rows({"electro": {"all": {f"mapanything@392 + {label}": {}}}})
+    # Recorded runs on other poses, or a mix, are refused rather than mislabelled.
+    mixed = tmp_path / "mixed"
+    _run(mixed, "n2-a", current)
+    _run(mixed, "n4-a")
+    with pytest.raises(SystemExit, match="rerun"):
+        mapanything_label(mixed, "advio_2018", poses)
+    other = tmp_path / "other"
+    _run(other, "n2-a", "0" * 64)
+    with pytest.raises(SystemExit, match="rerun"):
+        mapanything_label(other, "advio_2018", poses)
