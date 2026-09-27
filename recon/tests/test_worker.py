@@ -665,3 +665,24 @@ def test_the_moge_cache_refuses_a_file_outside_its_folder(tmp_path, monkeypatch,
 
 def test_the_moge_cache_file_for_a_valid_id_is_directly_in_its_folder(tmp_path):
     assert depth.cache_file(tmp_path, "k00001", ".moge2.npz") == tmp_path / "k00001.moge2.npz"
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+def test_two_keyframes_sharing_an_id_are_refused(packet, fmt):
+    # The caretaker's case: two views 0.3 m apart. With one id their depth maps collapse to one,
+    # and that one view would count from both positions as two-view coverage.
+    root, _ = packet
+    _manifest(root, fmt, "k.jpg", "k.f32", "k.u8")
+    name = "scene.json" if fmt == "scan-bundle" else "session.json"
+    doc = json.loads((root / name).read_text())
+    second = json.loads(json.dumps(doc["keyframes"][0]))
+    pose = np.eye(4)
+    pose[0, 3] = 0.3
+    second["pose"] = pose.T.reshape(-1).tolist()  # column-major, 0.3 m along x
+    doc["keyframes"].append(second)
+    (root / name).write_text(json.dumps(doc))
+    with pytest.raises(cap.DuplicateFrameId, match="keyframe id 'k' appears more than once"):
+        cap.load(root, root / "work")
+    second["id"] = "k2"
+    (root / name).write_text(json.dumps(doc))
+    assert [f.id for f in cap.load(root, root / "work").frames] == ["k", "k2"]
