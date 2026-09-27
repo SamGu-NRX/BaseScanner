@@ -59,7 +59,7 @@ struct InstructionCard: View {
                     .foregroundStyle(Palette.chalk)
                     .padding(.horizontal, 16)
                     .frame(minHeight: Metrics.minTarget)
-                    .background(.white.opacity(0.14), in: .capsule)
+                    .background(Palette.replyFill, in: .capsule)
                     .contentShape(.capsule)
                     .buttonStyle(PressableStyle())
                     // The colours are set above and PressableStyle doesn't read isEnabled, so the
@@ -69,7 +69,11 @@ struct InstructionCard: View {
                     .accessibilityIdentifier(reply.identifier)
                     .padding([.horizontal, .bottom], 12)
                     .padding(.top, -4)
-                    .transition(.opacity)
+                    // Appears and goes at once, like the message above it: the walk's request can
+                    // change every few seconds, and a fading button spends those moments as faint
+                    // text on the card, which the accessibility audit caught twice on CI (runs
+                    // 36295565916, and the LiDAR replay after the coaching fix).
+                    .transition(.identity)
             }
         }
         // New words land at once with the reply at its final place; only the scrim, outside

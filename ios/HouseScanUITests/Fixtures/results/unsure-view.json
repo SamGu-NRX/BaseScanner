@@ -1,0 +1,265 @@
+{
+ "schema_version": "1.0",
+ "decision": "manual_review",
+ "summary": "Sample result for offline demos, not a real analysis: the spot size (2.5 ft wide, 1.0 ft deep, 4.5 ft tall) and every threshold here are illustrative values, not rules.",
+ "reasons": [
+  {
+   "code": "policy_not_approved",
+   "message": "Sample: no approved policy is loaded, so a person makes the final call."
+  },
+  {
+   "code": "unsure_checks",
+   "message": "Sample: two checks at this spot are unsure.",
+   "checks": [
+    "window_clearance",
+    "front_clearance"
+   ]
+  },
+  {
+   "code": "unobserved_area",
+   "message": "Sample: the ground in front of the spot was not seen.",
+   "checks": [
+    "front_clearance"
+   ]
+  }
+ ],
+ "policy": {
+  "id": null,
+  "version": null,
+  "auto_approve": false,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ },
+ "spot": {
+  "outcome": "unsure",
+  "wall_id": "wall",
+  "segment": 0,
+  "span_ft": [
+   3.0,
+   5.5
+  ],
+  "width_ft": 2.5,
+  "depth_ft": 1.0,
+  "height_ft": 4.5,
+  "footprint": [
+   [
+    3.0,
+    0.0
+   ],
+   [
+    5.5,
+    0.0
+   ],
+   [
+    5.5,
+    1.0
+   ],
+   [
+    3.0,
+    1.0
+   ]
+  ],
+  "center": [
+   4.25,
+   0.5
+  ],
+  "along": [
+   1.0,
+   0.0
+  ],
+  "outward": [
+   0.0,
+   1.0
+  ],
+  "meter_offset_ft": [
+   4.25,
+   0.5
+  ],
+  "route_length_ft": 3.0
+ },
+ "route": {
+  "outcome": "pass",
+  "length_ft": 3.0,
+  "plus_minus_ft": 0.3,
+  "height_ft": 1.5,
+  "polyline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    3.0,
+    0.0
+   ]
+  ],
+  "detours": [],
+  "crossings": []
+ },
+ "checks": [
+  {
+   "id": "gas_clearance",
+   "label": "Distance from the gas meter",
+   "outcome": "pass",
+   "reason": "Sample: the gas meter is well clear of the spot.",
+   "measured_ft": 6.2,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": "objects[0] gas_meter",
+   "rule": {
+    "key": "sample_gas_clearance_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "window_clearance",
+   "label": "Distance from the window",
+   "outcome": "unsure",
+   "unsure_cause": "margin",
+   "reason": "Sample: the gap is within the measurement error of the limit, so a person must judge it.",
+   "measured_ft": 3.1,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": "objects[1] window",
+   "rule": {
+    "key": "sample_window_clearance_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "front_clearance",
+   "label": "Clear space in front",
+   "outcome": "unsure",
+   "unsure_cause": "unobserved",
+   "reason": "Sample: the ground in front of the spot was not seen.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "sample_front_clearance_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "route_length",
+   "label": "Cable run from the meter",
+   "outcome": "pass",
+   "reason": "Sample: the cable run is short.",
+   "measured_ft": 3.0,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 20.0,
+   "comparison": "at_most",
+   "subject": null,
+   "rule": {
+    "key": "sample_route_length_ft",
+    "source": "Sample value, not a rule citation",
+    "placeholder": true
+   }
+  }
+ ],
+ "nearest_considered": null,
+ "missing_evidence": [
+  {
+   "kind": "band",
+   "band": "ground",
+   "span_ft": [
+    3.0,
+    5.5
+   ],
+   "checks": [
+    "front_clearance"
+   ],
+   "message": "Sample: film the ground in front of the spot."
+  },
+  {
+   "kind": "past_end",
+   "side": "left",
+   "message": "Sample: walk past the left end of the wall to see whether it continues."
+  }
+ ],
+ "ends": {
+  "left": {
+   "kind": "unexplored",
+   "s_ft": -8.0,
+   "point": [
+    -8.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 12.0,
+   "point": [
+    12.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    -8.0,
+    -1.5
+   ],
+   "outcome": "fail",
+   "failing": [
+    "gas_clearance"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    -1.0,
+    2.5
+   ],
+   "outcome": "fail",
+   "failing": [
+    "meter_clearance"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    3.0,
+    6.0
+   ],
+   "outcome": "unsure",
+   "failing": [],
+   "unsure": [
+    "window_clearance",
+    "front_clearance"
+   ]
+  },
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    6.5,
+    9.5
+   ],
+   "outcome": "unsure",
+   "failing": [],
+   "unsure": [
+    "front_clearance"
+   ]
+  }
+ ],
+ "stats": {
+  "candidates": 36,
+  "pass": 0,
+  "unsure": 14,
+  "fail": 22,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}
