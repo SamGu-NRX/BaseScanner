@@ -34,7 +34,7 @@ const KNOWN_EVENTS = new Set([
 ]);
 
 /** Statuses after which the server has written, or will not write, a result. */
-export const RESULT_STATUSES = new Set(["needs_views", "complete", "manual_review", "failed"]);
+export const RESULT_STATUSES = new Set(["needs_views", "complete", "manual_review", "failed", "expired"]);
 
 const LOG_LIMIT = 60;
 const ARRIVAL_LIMIT = 24;
@@ -56,7 +56,8 @@ export function initialState() {
     arrivals: [], // newest last; { id, seq, count, groups, backlog }
     arrivalSerial: 0,
     runs: new Map(), // runId -> Map(stage -> { status, attempt, durationS, errorCode, seq })
-    runOrder: [], // run ids in the order they first appeared; runs only move forward
+    runFirstSeq: new Map(), // runId -> seq of the first event that named it
+    declaredRun: null, // the latest run id the status or result named
     currentRunId: null,
     hints: [],
     captureCheck: null,
@@ -157,18 +158,38 @@ function applyStatus(state, body) {
 }
 
 /**
- * Records a run id. An id not seen before is a newer run and becomes current; evidence tied to an
- * earlier run (its verdict, result and model) is cleared, so the view never pairs one run's answer
- * with another's progress. An id already seen never becomes current again.
+ * How recent a run is. Runs start one after another, so a run whose first event has a higher seq
+ * is newer. A run the status or result named but no event has mentioned yet ranks above all:
+ * those endpoints report the latest run, and history read later must not displace it.
  */
-function noteRun(state, runId) {
-  if (state.runOrder.includes(runId)) return state;
-  const next = { ...state, runOrder: [...state.runOrder, runId], currentRunId: runId };
+function runRank(state, runId) {
+  if (state.runFirstSeq.has(runId)) return state.runFirstSeq.get(runId);
+  return runId === state.declaredRun ? Infinity : -1;
+}
+
+/**
+ * Records a run id, from an event (with its seq) or from the status or result (seq null), and
+ * makes the most recent known run current. When the current run changes, evidence tied to another
+ * run (its verdict, result and model) is cleared, so the view never pairs one run's answer with
+ * another's progress.
+ */
+function noteRun(state, runId, seq = null) {
+  let next = state;
+  if (seq == null) {
+    if (state.declaredRun !== runId) next = { ...next, declaredRun: runId };
+  } else if (!state.runFirstSeq.has(runId)) {
+    next = { ...next, runFirstSeq: new Map(state.runFirstSeq).set(runId, seq) };
+  }
+  const known = new Set([...next.runFirstSeq.keys(), ...(next.declaredRun ? [next.declaredRun] : [])]);
+  let current = null;
+  for (const id of known) if (current == null || runRank(next, id) > runRank(next, current)) current = id;
+  if (current === state.currentRunId) return next;
+  next = { ...next, currentRunId: current };
   if (state.currentRunId == null) return next;
-  if (next.verdict && next.verdict.runId !== runId) next.verdict = null;
-  if (next.result.body && next.result.body.runId !== runId) next.result = { phase: "none", body: null, error: null };
-  if (next.preview.runId && next.preview.runId !== runId) next.preview = { phase: "none", runId: null, cloud: null, error: null };
-  return log(next, { seq: null, at: null, kind: "run", text: `The server started a new run (${runId})` });
+  if (next.verdict && next.verdict.runId !== current) next.verdict = null;
+  if (next.result.body && next.result.body.runId !== current) next.result = { phase: "none", body: null, error: null };
+  if (next.preview.runId && next.preview.runId !== current) next.preview = { phase: "none", runId: null, cloud: null, error: null };
+  return log(next, { seq: null, at: null, kind: "run", text: `Showing run ${current}` });
 }
 
 function applyEvents(state, body, at, catchUp) {
@@ -227,7 +248,7 @@ function applyEvent(state, event, backlog) {
     }
     case "verdict_ready": {
       const verdict = { ...base, runId: str(data.runId), kind: str(data.kind) };
-      if (verdict.runId) state = noteRun(state, verdict.runId);
+      if (verdict.runId) state = noteRun(state, verdict.runId, base.seq);
       if (verdict.runId && verdict.runId !== state.currentRunId) return log(state, { ...base, kind: "verdict", text: `Result reported for an earlier run (${verdict.runId})` });
       return log({ ...state, verdict }, { ...base, kind: "verdict", text: `Server reported a result (${verdict.kind || "kind not given"})` });
     }
@@ -270,7 +291,7 @@ function stage(state, data, base) {
   const name = str(data.stage);
   const runId = str(data.runId) || state.currentRunId || "unknown-run";
   if (!name) return log(state, { ...base, kind: "unknown", text: "Stage event without a stage name" });
-  state = noteRun(state, runId);
+  state = noteRun(state, runId, base.seq);
   const runs = new Map(state.runs);
   const stages = new Map(runs.get(runId) ?? []);
   const prior = stages.get(name);
@@ -296,7 +317,8 @@ const NO_OUTCOME_STATUSES = new Set(["failed", "expired"]);
 function applyResult(state, body) {
   if (!isObject(body)) return { ...state, result: { phase: "error", body: null, error: "Result was not a JSON object" } };
   // A result for a run the view is not showing is held back; the next read will match.
-  if (typeof body.runId === "string" && state.currentRunId && body.runId !== state.currentRunId && state.runOrder.includes(body.runId)) {
+  const knownRun = typeof body.runId === "string" && (state.runFirstSeq.has(body.runId) || state.declaredRun === body.runId);
+  if (knownRun && state.currentRunId && body.runId !== state.currentRunId && runRank(state, body.runId) < runRank(state, state.currentRunId)) {
     return { ...state, result: { ...state.result, phase: state.result.body ? "ready" : "none" } };
   }
   if (typeof body.runId === "string") state = noteRun(state, body.runId);

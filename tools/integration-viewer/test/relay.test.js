@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { after, before, describe, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parsePly } from "../public/ply.js";
-import { createViewerServer } from "../relay.js";
+import { allowedHost, createViewerServer } from "../relay.js";
 import { createSyntheticApi } from "../synthetic-api.js";
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
@@ -161,6 +161,20 @@ describe("refusals", () => {
     const reply = await raw("/relay/hostile/captures/cap_HOSTILE_1/preview?run=r");
     assert.equal(reply.status, 404);
     assert.equal(reply.json.errors[0].code, "preview_not_available");
+  });
+
+  test("port 80 accepts the portless loopback Host a browser sends; other ports do not", () => {
+    assert.ok(allowedHost("127.0.0.1", 80));
+    assert.ok(allowedHost("localhost", 80));
+    assert.ok(!allowedHost("localhost", 4317));
+    assert.ok(!allowedHost("attacker.example", 80));
+  });
+
+  test("an empty preview URL stays empty, so the page shows no preview", async () => {
+    hostileBody = { runId: "r", status: "complete", outcome: { kind: "manual_review" }, previewUrl: "", verdictUrl: "" };
+    const reply = await raw("/relay/hostile/captures/cap_HOSTILE_1/result");
+    assert.equal(reply.json.previewUrl, "");
+    assert.equal(reply.json.verdictUrl, "");
   });
 
   test("a preview is refused when the latest result belongs to another run", async () => {

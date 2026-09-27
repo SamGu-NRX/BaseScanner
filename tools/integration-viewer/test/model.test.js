@@ -101,6 +101,32 @@ describe("events", () => {
     assert.equal(stageRows(s).find((r) => r.id === "poses").status, "unreported");
   });
 
+  test("joining a capture with two runs keeps the latest run the status named", () => {
+    const runB = (seq, name, status) => ({ ...stage(seq, name, status), data: { stage: name, status, attempt: 1, runId: "run_b" } });
+    const s = run(
+      selected(),
+      { type: "status", body: { captureId: "cap_TEST_1", status: "processing", runId: "run_b" } },
+      { ...events([stage(1, "validate", "done"), stage(2, "poses", "running")]), catchUp: true },
+      { ...events([runB(3, "validate", "running")]), catchUp: true },
+    );
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(stageRows(s).find((r) => r.id === "validate").status, "running");
+    const withResult = run(s, { type: "result", body: { runId: "run_b", status: "complete", outcome: { kind: "eligible" } } });
+    assert.equal(withResult.result.phase, "ready");
+  });
+
+  test("a run that first appears after the declared one is newer", () => {
+    const runC = { seq: 9, type: "stage", at: "x", data: { stage: "validate", status: "running", attempt: 1, runId: "run_c" } };
+    const s = run(selected(), { type: "status", body: { captureId: "cap_TEST_1", status: "processing", runId: "run_b" } }, events([{ ...stage(8, "validate", "done"), data: { stage: "validate", status: "done", attempt: 1, runId: "run_b" } }, runC]));
+    assert.equal(s.currentRunId, "run_c");
+  });
+
+  test("a result from a run not seen yet is accepted as the latest", () => {
+    const s = run(selected(), events([stage(1, "validate", "done")]), { type: "result", body: { runId: "run_z", status: "manual_review", outcome: { kind: "manual_review" } } });
+    assert.equal(s.currentRunId, "run_z");
+    assert.equal(s.result.phase, "ready");
+  });
+
   test("history read while catching up counts as backlog on every page", () => {
     const s = run(selected(), { ...events([committed(1, ["stills/a.jpg"])]), catchUp: true }, { ...events([committed(2, ["stills/b.jpg"])]), catchUp: true }, { ...events([committed(3, ["stills/c.jpg"])]), catchUp: false });
     assert.deepEqual(s.arrivals.map((a) => a.backlog), [true, true, false]);
@@ -174,6 +200,10 @@ describe("results", () => {
     assert.equal(s.preview.phase, "empty");
   });
 
+  test("an expired capture asks for its result", () => {
+    assert.ok(resultExpected(run(selected(), events([], 0, "expired"))));
+  });
+
   test("a complete status without an outcome is still pending", () => {
     const s = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: null } });
     assert.equal(s.result.phase, "pending");
@@ -205,4 +235,11 @@ test("near-zero stage durations are flagged as placeholders", () => {
   assert.ok(looksLikePlaceholderStages(run(selected(), events(quick))));
   const real = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 3 }));
   assert.ok(!looksLikePlaceholderStages(run(selected(), events(real))));
+});
+
+test("the illustration states no clearance thresholds of its own", async () => {
+  const { resultBody } = await import("../public/scenario.js");
+  const criteria = resultBody("complete", "complete").criteria;
+  assert.ok(criteria.length > 0);
+  assert.ok(criteria.every((c) => !("thresholdFt" in c)), "thresholds belong in sourced rules files");
 });

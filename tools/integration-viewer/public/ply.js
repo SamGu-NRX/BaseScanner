@@ -70,16 +70,17 @@ export function parsePly(buffer, { maxPoints = 60_000 } = {}) {
   return { count, kept: k, positions, generated, bounds: boundsOf(positions, k) };
 }
 
+/** Byte offset just past the header line that is exactly `end_header`. */
 function findHeaderEnd(bytes) {
-  const marker = "end_header";
   const limit = Math.min(bytes.length, 64 * 1024);
-  const text = new TextDecoder("ascii").decode(bytes.subarray(0, limit));
-  const at = text.indexOf(marker);
-  if (at < 0) throw new PlyError("no end_header in the first 64 KiB");
-  let end = at + marker.length;
-  if (bytes[end] === 0x0d) end += 1;
-  if (bytes[end] !== 0x0a) throw new PlyError("end_header is not followed by a newline");
-  return end + 1;
+  let start = 0;
+  for (let i = 0; i < limit; i += 1) {
+    if (bytes[i] !== 0x0a) continue;
+    const line = new TextDecoder("ascii").decode(bytes.subarray(start, i)).replace(/\r$/, "").trim();
+    if (line === "end_header") return i + 1;
+    start = i + 1;
+  }
+  throw new PlyError("no end_header line in the first 64 KiB");
 }
 
 function binaryReader(bytes, offset, vertex, little) {

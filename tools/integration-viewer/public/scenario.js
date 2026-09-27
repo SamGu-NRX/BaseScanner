@@ -120,9 +120,11 @@ export function resultBody(name, status) {
         profile: "C",
       },
     },
+    // No thresholds: clearance limits live in the server's sourced rules files, and an
+    // illustration must not state its own.
     criteria: [
-      { id: "synthetic_gas_clearance", outcome: "pass", measuredFt: 4.1, thresholdFt: 3, coverage: "observed" },
-      { id: "synthetic_window_clearance", outcome: "pass", measuredFt: 2.2, thresholdFt: 1, coverage: "observed" },
+      { id: "synthetic_gas_clearance", outcome: "pass", measuredFt: 4.1, coverage: "observed" },
+      { id: "synthetic_window_clearance", outcome: "pass", measuredFt: 2.2, coverage: "observed" },
       { id: "synthetic_ground_slope", outcome: "unsure", coverage: "partial" },
     ],
     previewUrl: "synthetic",

@@ -49,6 +49,13 @@ const READ_PAGE = `(() => {
     kinds: ["k-photo", "k-depth", "k-other"].map((id) => Number(document.getElementById(id).textContent)).reduce((a, b) => a + b, 0),
     status: document.querySelector("#server-state").textContent,
     doneMark: done ? getComputedStyle(done).backgroundColor : null,
+    band: document.querySelector("#band-text").textContent,
+    caption: document.querySelector("#model-caption").textContent,
+    captionOverCanvas: (() => {
+      const a = document.querySelector("#model-caption").getBoundingClientRect();
+      const b = document.querySelector("#cloud").getBoundingClientRect();
+      return a.top < b.bottom && a.bottom > b.top && a.left < b.right && a.right > b.left;
+    })(),
   };
 })()`;
 
@@ -90,6 +97,13 @@ test("with the animation clock stopped, counts and stage marks still follow the 
       .filter((s) => s.shown !== s.expected || s.kinds !== s.expected);
     assert.deepEqual(wrong, [], "file counts disagreed with the events the same frame showed");
     assert.ok(samples.at(-1).ack > 0);
+
+    // Provenance is text in normal flow: the band names the synthetic source and the caption
+    // never sits over the canvas, which redraws continuously.
+    const last = samples.at(-1);
+    assert.match(last.band, /synthetic local API/);
+    assert.ok(last.caption.length > 0);
+    assert.equal(last.captionOverCanvas, false);
 
     assert.ok(doneSince, "no stage finished within the test window");
     // A transparent computed colour ends in "/ 0)" (oklab) or ", 0)" (rgba).

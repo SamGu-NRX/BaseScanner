@@ -29,6 +29,11 @@ test("reads binary big-endian doubles", () => {
   assert.deepEqual([...parsePly(out.buffer).positions], [7, 8, 9]);
 });
 
+test("a comment that mentions end_header does not end the header", () => {
+  const cloud = parsePly(buf("ply\nformat ascii 1.0\ncomment written before end_header was known\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n1 2 3\n"));
+  assert.deepEqual([...cloud.positions], [1, 2, 3]);
+});
+
 test("an empty cloud parses as zero points", () => {
   const cloud = parsePly(buf("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n"));
   assert.equal(cloud.count, 0);

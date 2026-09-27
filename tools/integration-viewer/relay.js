@@ -98,7 +98,8 @@ export function createViewerServer({ upstreams, publicDir, log = () => {} }) {
     let body = reply.json;
     if (leaf === "result" && body && typeof body === "object") {
       body = { ...body };
-      for (const field of ["previewUrl", "verdictUrl"]) if (typeof body[field] === "string") body[field] = WITHHELD;
+      // Only a real URL is replaced; an empty value still means "no preview" to the page.
+      for (const field of ["previewUrl", "verdictUrl"]) if (typeof body[field] === "string" && body[field] !== "") body[field] = WITHHELD;
     }
     const headers = {};
     if (reply.etag) headers.etag = reply.etag;
@@ -233,9 +234,13 @@ function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
-function allowedHost(host, port) {
+/** Browsers leave the port out of Host when it is 80, so port 80 also accepts the bare names. */
+export function allowedHost(host, port) {
   if (typeof host !== "string") return false;
-  return [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`].includes(host.toLowerCase());
+  const names = ["127.0.0.1", "localhost", "[::1]"];
+  const allowed = names.map((n) => `${n}:${port}`);
+  if (port === 80) allowed.push(...names);
+  return allowed.includes(host.toLowerCase());
 }
 
 function isLoopbackHost(hostname) {
