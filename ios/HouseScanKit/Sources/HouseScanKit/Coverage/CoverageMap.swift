@@ -165,10 +165,11 @@ public struct CoverageConfig: Sendable, Equatable {
 /// The server takes both claims as given and reads no images. They are allowed only because the
 /// homeowner confirms the chosen spot before the result is shown: the spot check (`SpotPhoto`,
 /// `SpotConfirmations`; the app's `ScanEngine+Confirm.swift`) shows a kept photo of the spot and
-/// its clearance area and asks whether anything stands in front of the wall or on the ground
-/// there. "It's clear" backs the claims over that area. "Something's there" withdraws them
-/// (`withdrawClaims(over:)`): the area's wall, ground and walked-path claims export as unseen and
-/// the scan is checked again. Claims away from the chosen spot are not confirmed; they decide only
+/// its front clearance (`SpotArea(result:wall:)`) and asks whether anything is
+/// there. "It's clear" backs the claims over that area, and counts only with a photo that shows
+/// all of it. "Something's there", or no such photo, withdraws them (`withdrawClaims(over:)`): the
+/// area's wall, ground and walked-path claims export as unseen and the scan is checked again.
+/// Claims away from the chosen spot are not confirmed; they decide only
 /// where the server looks for a spot, and any spot it chooses is checked in turn.
 public struct CoverageMap: Sendable {
     public private(set) var wall: WallFrame
@@ -227,6 +228,8 @@ public struct CoverageMap: Sendable {
     /// frame is captured and passes it to `observe`, so a store that finishes after a break
     /// can't join the frame to ones captured on the other side of it.
     public private(set) var pathSegment = 0
+    /// Frame times the walked path is broken at (`breakWalkedPath(at:)`).
+    private var pathBreakTimes: [Double] = []
     /// Per ground depth cell, the rows a kept frame's depth showed hidden behind something nearer
     /// while short of two positions: a later view without depth can't add to them.
     private var depthHidden: [Int: Set<Int>] = [:]
@@ -926,6 +929,16 @@ public struct CoverageMap: Sendable {
         pathSegment += 1
     }
 
+    /// The same, at a time on the frame clock: no step joins a pose captured at or before `time`
+    /// to one captured after it, whatever order the frames and the break reach the map in. The
+    /// live session's interruption arrives on its own path and can overtake a frame captured
+    /// before it; that frame then gets the new `pathSegment`, and the time is what still keeps it
+    /// apart from the frames after the resume.
+    public mutating func breakWalkedPath(at time: Double) {
+        breakWalkedPath()
+        pathBreakTimes.append(time)
+    }
+
     /// Steps between poses kept in the same segment, in capture order (their times): the order
     /// they were observed in is the order their photos finished storing, which can differ.
     private func walkedSteps() -> [WalkedStep] {
@@ -938,7 +951,8 @@ public struct CoverageMap: Sendable {
     }
 
     private func step(from earlier: (Int, Double), to later: (Int, Double)) -> WalkedStep? {
-        guard later.1 - earlier.1 <= config.walkGap else { return nil }
+        guard later.1 - earlier.1 <= config.walkGap,
+              !pathBreakTimes.contains(where: { earlier.1 <= $0 && $0 < later.1 }) else { return nil }
         let first = observedCameras[earlier.0]
         let second = observedCameras[later.0]
         guard simd_distance(first.position, second.position) <= config.walkStep else { return nil }

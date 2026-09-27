@@ -3,28 +3,72 @@ import HouseScanKit
 import simd
 import Testing
 
-// The spot check on the standard wall (face z = 0, s = x, out = z, ground y = 0). The area is a
-// spot 0.9 to 1.7 m right of the meter, 0.3 m deep, inside a clearance zone running to 2.6 m.
+// The spot check on the standard wall (face z = 0, s = x, out = z, ground y = 0). Most tests use
+// a spot 0.9 to 1.7 m right of the meter, 0.3 m deep, in an area running to 2.6 m.
 @Suite struct SpotConfirmationTests {
     static let spot: ClosedRange<Float> = 0.9...1.7
     static let spotOut: ClosedRange<Float> = 0...0.3
-    static let area = SpotArea(spot: spot, spotOut: spotOut, zones: [(0.9...2.6, 0.3), (-0.3...1.5, 0.3), (3...4, 0.3)])
+    static let area = SpotArea(spot: spot, spotOut: spotOut, span: 0.9...2.6, depth: 0.3)
 
     /// A portrait camera `out` m from the wall at chest height, looking at the middle of the area.
     static func camera(s: Float, out: Float, height: Float = 1.4) -> CameraFrame {
         portraitCamera(at: SIMD3(s, height, out), lookingAt: SIMD3(1.75, 0, 0.15))
     }
 
-    // MARK: Area
+    static let wholeView = SpotPhotoChoice(id: "k00012", footprintInView: 1, areaInView: 1, angleFromFront: 0)
 
-    /// Only a zone that holds the whole footprint widens the area: the one overlapping it from
-    /// the left is another run of the sweep, and the one past it doesn't touch it.
-    @Test func areaIsTheSpotAndTheZonesHoldingIt() {
-        #expect(Self.area.span == 0.9...2.6)
-        #expect(Self.area.depth == 0.3)
-        let alone = SpotArea(spot: Self.spot, spotOut: 0.05...0.45, zones: [])
-        #expect(alone.span == Self.spot)
-        #expect(alone.depth == 0.45)
+    static let exchange = SpotExchange(sceneSHA256: "scene", answerSHA256: "answer", rulesSHA256: "rules")
+
+    static func confirmation(
+        _ area: SpotArea, _ answer: SpotConfirmationAnswer = .clear(ground: .type(.mulch)), exchange: SpotExchange = exchange,
+        photo: SpotPhotoChoice? = wholeView
+    ) -> SpotConfirmation {
+        SpotConfirmation(area: area, exchange: exchange, photo: photo, answer: answer)
+    }
+
+    // MARK: Area from the answer
+
+    /// The hosted server's answer to the synthetic replay's scene, through the result decoder.
+    static func serverAnswer(editing edit: (inout [String: Any]) -> Void = { _ in }) throws -> PlacementResult {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Schemas/server-answer-synthetic-wall.json")
+        var json = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+        edit(&json)
+        return try PlacementResult.decode(try JSONSerialization.data(withJSONObject: json))
+    }
+
+    static func setCheck(_ id: String, outcome: String, in json: inout [String: Any]) {
+        var checks = json["checks"] as? [[String: Any]] ?? []
+        for index in checks.indices where checks[index]["id"] as? String == id {
+            checks[index]["outcome"] = outcome
+            checks[index]["unsure_cause"] = nil
+        }
+        json["checks"] = checks
+    }
+
+    /// The answer's facing check passes with r = 3 ft from the battery's front: the outline must
+    /// reach D + 3 ft out, 1.833 + 3 = 4.833 ft, where the sweep-run zones the result screen draws
+    /// stop at the battery's depth. Its other passing checks (the wall behind, equipment above
+    /// with r = 0, headroom, the cable) add nothing past the footprint along the wall.
+    @Test func theAreaReachesWhatThePassingFacingCheckNeeds() throws {
+        let result = try Self.serverAnswer()
+        let area = try #require(SpotArea(result: result, wall: standardWall()))
+        let feet = { (meters: Float) in Double(meters) / 0.3048 }
+        #expect(abs(feet(area.depth) - (1.833333 + 3)) < 1e-3, "depth \(feet(area.depth)) ft")
+        #expect(abs(feet(area.spot.lowerBound) - 0.208333) < 1e-3 && abs(feet(area.spot.upperBound) - 2.791667) < 1e-3)
+        #expect(area.span == area.spot)
+        #expect(abs(feet(area.height) - 3.29) < 0.05)
+    }
+
+    /// The other clearances stay out of the area (the #10 freeze decision): a passing gas
+    /// clearance (r = 3 ft) changes nothing. An unsure front check adds nothing either: the area
+    /// is then the footprint alone.
+    @Test func onlyThePassingFrontClearanceGrowsTheArea() throws {
+        let asGiven = try #require(SpotArea(result: try Self.serverAnswer(), wall: standardWall()))
+        let gasPassing = try #require(SpotArea(result: try Self.serverAnswer { Self.setCheck("gas_clearance", outcome: "pass", in: &$0) }, wall: standardWall()))
+        #expect(gasPassing == asGiven)
+        let frontUnsure = try #require(SpotArea(result: try Self.serverAnswer { Self.setCheck("facing_gap", outcome: "unsure", in: &$0) }, wall: standardWall()))
+        #expect(frontUnsure.span == frontUnsure.spot)
+        #expect(abs(Double(frontUnsure.depth) / 0.3048 - 1.833333) < 1e-3)
     }
 
     // MARK: Photo choice
@@ -43,75 +87,160 @@ import Testing
         ]
         let choice = try #require(SpotPhoto.best(candidates, area: Self.area, wall: standardWall()))
         #expect(choice.id == "front")
-        #expect(choice.footprintInView == 1)
-        #expect(choice.areaInView == 1)
+        #expect(choice.showsWholeArea)
         #expect(choice.angleFromFront < 0.01)
         #expect(SpotPhoto.best(Array(candidates.dropLast()), area: Self.area, wall: standardWall()) == nil)
     }
 
-    /// From 1.2 m the view is too narrow for the whole area: the view from 2.6 m, which shows
-    /// all of it, wins over the nearer one whichever comes first.
+    /// From 1.2 m the view is too narrow for the whole area: it can be shown, but it doesn't
+    /// show the whole area. The view from 2.6 m, which does, wins whichever comes first.
     @Test func prefersTheViewShowingMoreOfTheArea() throws {
         let near = SpotPhotoCandidate(id: "near", camera: Self.camera(s: 1.75, out: 1.2), trackingNormal: true)
         let far = SpotPhotoCandidate(id: "far", camera: Self.camera(s: 1.75, out: 2.6), trackingNormal: true)
         let nearOnly = try #require(SpotPhoto.best([near], area: Self.area, wall: standardWall()))
-        #expect(nearOnly.areaInView < 1)
+        #expect(!nearOnly.showsWholeArea)
         #expect(SpotPhoto.best([near, far], area: Self.area, wall: standardWall())?.id == "far")
         #expect(SpotPhoto.best([far, near], area: Self.area, wall: standardWall())?.id == "far")
     }
 
-    /// Two views showing all of the area: the one nearer straight on wins; an exact tie goes to
-    /// the earlier photo.
-    @Test func tiesGoToTheStraighterThenTheEarlierView() {
-        let straight = SpotPhotoCandidate(id: "straight", camera: Self.camera(s: 1.75, out: 2.6), trackingNormal: true)
-        let angled = SpotPhotoCandidate(id: "angled", camera: Self.camera(s: 2.4, out: 2.6), trackingNormal: true)
-        #expect(SpotPhoto.best([angled, straight], area: Self.area, wall: standardWall())?.id == "straight")
-        let again = SpotPhotoCandidate(id: "again", camera: straight.camera, trackingNormal: true)
-        #expect(SpotPhoto.best([straight, again], area: Self.area, wall: standardWall())?.id == "straight")
+    /// The wall face counts too: 2.6 m out at chest height shows the ground but not the wall 2 m
+    /// up over the whole stretch, so an area reaching that high isn't shown whole.
+    @Test func theWallFaceMustBeInViewToo() throws {
+        var tall = Self.area
+        tall.height = 2.2
+        let front = SpotPhotoCandidate(id: "front", camera: Self.camera(s: 1.75, out: 2.6), trackingNormal: true)
+        #expect(try #require(SpotPhoto.best([front], area: Self.area, wall: standardWall())).showsWholeArea)
+        #expect(try #require(SpotPhoto.best([front], area: tall, wall: standardWall())).areaInView < 1)
+    }
+
+    /// An anchor pose at the meter, moved `shift` m along the wall.
+    static func anchor(_ shift: Float) -> simd_float4x4 {
+        var pose = matrix_identity_float4x4
+        pose.columns.3 = SIMD4(shift, 1.5, 0, 1)
+        return pose
+    }
+
+    /// Pixels of the footprint's corners through `camera` on `wall`.
+    static func corners(_ camera: CameraFrame, _ wall: WallFrame) -> [SIMD2<Float>] {
+        [(0.9, 0.0), (1.7, 0.0), (1.7, 0.3), (0.9, 0.3)].compactMap { camera.pixel(of: wall.world(s: $0.0, height: 0, out: $0.1)) }
+    }
+
+    /// A photo taken at t = 1, then ARKit moves the meter's anchor 0.30 m along the wall at t = 2,
+    /// before the question: the wall moves with it. Judged with its corrected camera the photo
+    /// shows the area as it did, and the outline lands on the footprint's pixels as taken; the raw
+    /// camera against the moved wall puts every corner over 40 px off (fx 500, the corners 2.3 to
+    /// 3.0 m away; 0.30 m at 2 m would be 75 px). A second
+    /// correction at t = 3, while the question is up: judging the same photo again gives the
+    /// camera for the moved wall, and the camera frozen at the question is off again.
+    @Test func anchorCorrectionsKeepTheOutlineOnTheFootprint() throws {
+        let raw = Self.camera(s: 1.75, out: 2.6)
+        let taken = Self.corners(raw, standardWall())
+        #expect(taken.count == 4)
+        let candidate = SpotPhotoCandidate(id: "k00007", camera: raw, trackingNormal: true, capturedAt: 1)
+        let asTaken = try #require(SpotPhoto.best([candidate], area: Self.area, wall: standardWall()))
+
+        var tracking = MeterAnchorTracking(pose: Self.anchor(0))
+        var wall = standardWall()
+        let first = tracking.update(to: Self.anchor(0.30), at: 2)
+        wall.apply(try #require(first))
+        let shown = try #require(SpotPhoto.best([candidate], area: Self.area, wall: wall, corrections: PoseCorrections(tracking)))
+        #expect(shown.footprintInView == asTaken.footprintInView && shown.areaInView == asTaken.areaInView)
+        let frozen = try #require(shown.camera)
+        #expect(zip(Self.corners(frozen, wall), taken).allSatisfy { simd_distance($0, $1) < 0.5 })
+        #expect(zip(Self.corners(raw, wall), taken).allSatisfy { simd_distance($0, $1) > 40 })
+
+        let second = tracking.update(to: Self.anchor(0.55), at: 3)
+        wall.apply(try #require(second))
+        let again = try #require(SpotPhoto.best([candidate], area: Self.area, wall: wall, corrections: PoseCorrections(tracking)))
+        #expect(again.showsWholeArea == shown.showsWholeArea)
+        #expect(zip(Self.corners(try #require(again.camera), wall), taken).allSatisfy { simd_distance($0, $1) < 0.5 })
+        #expect(zip(Self.corners(frozen, wall), taken).allSatisfy { simd_distance($0, $1) > 30 })
+    }
+
+    /// "It's clear" counts only with a shown photo of the whole area: no photo, or one showing
+    /// part of it, records nothing, and nothing then settles the spot. Answers that withdraw the
+    /// area need no photo.
+    @Test func noWholeViewMeansNoConfirmationCounts() {
+        var checks = SpotConfirmations()
+        let partial = SpotPhotoChoice(id: "near", footprintInView: 1, areaInView: 0.8, angleFromFront: 0)
+        #expect(throws: SpotConfirmationError.clearWithoutAWholeView) { try checks.record(Self.confirmation(Self.area, photo: nil)) }
+        #expect(throws: SpotConfirmationError.clearWithoutAWholeView) { try checks.record(Self.confirmation(Self.area, photo: partial)) }
+        #expect(checks.records.isEmpty)
+        #expect(checks.settling(Self.area, in: Self.exchange) == nil)
+        #expect(throws: Never.self) { try checks.record(Self.confirmation(Self.area, .unconfirmed, photo: partial)) }
+        #expect(checks.settling(Self.area, in: Self.exchange)?.answer == .unconfirmed)
     }
 
     // MARK: Binding
 
-    static func confirmation(_ area: SpotArea, _ answer: SpotConfirmationAnswer = .clear) -> SpotConfirmation {
-        SpotConfirmation(area: area, answerSHA256: "answer", sceneSHA256: "scene", photoID: "k00012", answer: answer)
-    }
-
     /// An answer about the spot settles the same spot named again, within the server's 0.01 ft,
     /// and a smaller area around it. A spot that moved, or an area that grew, is asked about again.
-    @Test func aMovedSpotNeedsANewConfirmation() {
+    @Test func aMovedSpotNeedsANewConfirmation() throws {
         var checks = SpotConfirmations()
-        checks.record(Self.confirmation(Self.area))
-        #expect(checks.settling(Self.area) == Self.confirmation(Self.area))
+        try checks.record(Self.confirmation(Self.area))
+        let settled = { (area: SpotArea) in checks.settling(area, in: Self.exchange) }
+        #expect(settled(Self.area) == Self.confirmation(Self.area))
 
         var same = Self.area
         same.spot = (Self.spot.lowerBound + 0.002)...(Self.spot.upperBound - 0.002)
-        #expect(checks.settling(same) != nil)
+        #expect(settled(same) != nil)
         var smaller = Self.area
         smaller.span = Self.spot
-        #expect(checks.settling(smaller) != nil)
+        #expect(settled(smaller) != nil)
 
         var moved = Self.area
         moved.spot = 1.2...2.0
-        #expect(checks.settling(moved) == nil)
+        #expect(settled(moved) == nil)
         var outward = Self.area
         outward.spotOut = 0.05...0.35
-        #expect(checks.settling(outward) == nil)
+        #expect(settled(outward) == nil)
         var wider = Self.area
         wider.span = 0.9...3.0
-        #expect(checks.settling(wider) == nil)
+        #expect(settled(wider) == nil)
         var deeper = Self.area
         deeper.depth = 0.6
-        #expect(checks.settling(deeper) == nil)
+        #expect(settled(deeper) == nil)
+        var taller = Self.area
+        taller.height = 1.0
+        #expect(settled(taller) == nil)
     }
 
-    /// A refusal settles the same spot too: the homeowner already said something stands there,
-    /// and the latest answer about an area wins.
-    @Test func theLatestAnswerAboutAnAreaSettlesIt() {
+    /// Same footprint, same area: "It's clear" is asked again after a new scene, a new answer or
+    /// new rules, each alone. An answer that withdrew the area stays, whatever changed. The ground
+    /// answer is kept for the footprint under the same rules, so the upload that sends it doesn't
+    /// ask it again.
+    @Test func aClearAnswerIsBoundToTheSceneTheAnswerAndTheRules() throws {
         var checks = SpotConfirmations()
-        checks.record(Self.confirmation(Self.area, .somethingThere))
-        #expect(checks.settling(Self.area)?.answer == .somethingThere)
-        checks.record(Self.confirmation(Self.area, .clear))
-        #expect(checks.settling(Self.area)?.answer == .clear)
+        let a = SpotExchange(sceneSHA256: "scene-a", answerSHA256: "answer-a", rulesSHA256: "rules-a")
+        try checks.record(Self.confirmation(Self.area, exchange: a))
+        #expect(checks.settling(Self.area, in: a) != nil)
+        var scene = a
+        scene.sceneSHA256 = "scene-b"
+        var answer = a
+        answer.answerSHA256 = "answer-b"
+        var rules = a
+        rules.rulesSHA256 = "rules-b"
+        for changed in [scene, answer, rules] { #expect(checks.settling(Self.area, in: changed) == nil) }
+        #expect(checks.groundAnswer(for: Self.area, rulesSHA256: "rules-a") == .type(.mulch))
+        #expect(checks.groundAnswer(for: Self.area, rulesSHA256: "rules-b") == nil)
+        var moved = Self.area
+        moved.spot = 2.0...2.8
+        #expect(checks.groundAnswer(for: moved, rulesSHA256: "rules-a") == nil)
+
+        var withdrawn = SpotConfirmations()
+        try withdrawn.record(Self.confirmation(Self.area, .somethingThere, exchange: a))
+        let other = SpotExchange(sceneSHA256: "scene-b", answerSHA256: "answer-b", rulesSHA256: "rules-b")
+        #expect(withdrawn.settling(Self.area, in: other)?.answer == .somethingThere)
+        #expect(withdrawn.groundAnswer(for: Self.area, rulesSHA256: "rules-a") == nil)
+    }
+
+    /// A refusal settles the same spot too, and the latest answer about an area wins.
+    @Test func theLatestAnswerAboutAnAreaSettlesIt() throws {
+        var checks = SpotConfirmations()
+        try checks.record(Self.confirmation(Self.area, .somethingThere))
+        #expect(checks.settling(Self.area, in: Self.exchange)?.answer == .somethingThere)
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .notSure)))
+        #expect(checks.settling(Self.area, in: Self.exchange)?.answer == .clear(ground: .notSure))
         #expect(checks.records.count == 2)
     }
 
@@ -207,5 +336,103 @@ import Testing
         #expect(map.withdrawnCells == Set(inside.map { $0 - 1 }))
         let moved = map.cellRange(inside.lowerBound - 1).lowerBound...map.cellRange(inside.upperBound - 1).upperBound
         #expect(map.wallSeenSpans().allSatisfy { $0.span.upperBound <= moved.lowerBound + 1e-4 || $0.span.lowerBound >= moved.upperBound - 1e-4 })
+    }
+
+    // MARK: Ground
+
+    /// The patches an export of `map` carries for `checks`, as (s, out) points in meters.
+    static func patchPoints(_ map: CoverageMap, _ checks: SpotConfirmations, groundGuessError: Float = 0, ground: [ObservedSpan]? = nil) throws -> [[SIMD2<Double>]] {
+        let wall = SceneWall(meter: map.wall.meter, outward: map.wall.outward, groundY: map.wall.groundY)
+        var coverage = SceneCoverage(map, leftEndMarked: false, rightEndMarked: false)
+        if let ground { coverage.ground = ground }
+        let data = try SceneExport.jsonData(SceneInput(
+            wall: wall, baselineS: -2...5, coverage: coverage,
+            groundPatches: checks.groundPatches(wall: map.wall, groundGuessError: groundGuessError)))
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let patches = try JSONSchemaValidator.Value.parse(data)["ground"]?.array ?? []
+        return patches.map { patch in
+            (patch["polygon"]?.array ?? []).compactMap(\.numbers).map { p in
+                let c = wall.wallCoordinates(ofPlanPointFeet: SIMD2(p[0], p[1]))
+                return SIMD2(Double(c.s), Double(c.out))
+            }
+        }
+    }
+
+    /// The margin on the standard wall (tapped): 0.3 ft plus 0.16 per unit along the wall at the
+    /// footprint's far edge, 1.7 m, so 0.09144 + 0.272 = 0.36344 m; with a guessed ground 0.3 m more.
+    @Test func theMarginIsTheServersWallErrorAtTheFarEdge() {
+        #expect(nearlyEqual(SpotGround.margin(spot: Self.spot, wall: standardWall(), groundGuessError: 0), 0.36344))
+        #expect(nearlyEqual(SpotGround.margin(spot: Self.spot, wall: standardWall(), groundGuessError: 0.3), 0.66344))
+        #expect(nearlyEqual(SpotGround.margin(spot: -1.7 ... -0.9, wall: standardWall(), groundGuessError: 0), 0.36344))
+    }
+
+    /// Mulch at the spot is sent over the footprint plus the margin and nowhere else: along the
+    /// wall 0.9 - m to 1.7 + m, out to 0.3 + m, where the walk saw the ground farther out than that.
+    @Test func theGroundPatchCoversTheFootprintPlusTheMargin() throws {
+        let map = Self.walkedMap()
+        let m: Double = 0.36344
+        let inside = map.indices(overlapping: (0.9 - Float(m))...(1.7 + Float(m)))
+        #expect(inside.allSatisfy { (map.groundDepth(at: $0) ?? 0) > 0.3 + Float(m) }, "the walk sees past the patch")
+        var checks = SpotConfirmations()
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .type(.mulch))))
+        let patches = try Self.patchPoints(map, checks)
+        #expect(patches.count == 1)
+        let points = try #require(patches.first)
+        // 0.0005 m is a few of the export's 0.0001 ft rounding steps and its 0.0001 ft inset.
+        let s = points.map(\.x), out = points.map(\.y)
+        #expect(abs((s.min() ?? .nan) - (0.9 - m)) < 5e-4 && abs((s.max() ?? .nan) - (1.7 + m)) < 5e-4, "s \(s)")
+        #expect(abs((out.max() ?? .nan) - (0.3 + m)) < 5e-4 && (out.min() ?? .nan) < 0, "out \(out)")
+    }
+
+    /// Where the ground was seen less far than the margin, or not along part of the stretch, the
+    /// patch stops at what was seen: here ground seen from 1.0 to 1.5 m, out to 0.4 m.
+    @Test func theGroundPatchStaysInsideSeenGround() throws {
+        var checks = SpotConfirmations()
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .type(.gravel))))
+        let points = try #require(try Self.patchPoints(Self.walkedMap(), checks, ground: [ObservedSpan(span: 1.0...1.5, out: 0.4)]).first)
+        #expect(points.allSatisfy { $0.x >= 1.0 - 1e-4 && $0.x <= 1.5 + 1e-4 && $0.y <= 0.4 + 1e-4 }, "\(points)")
+        #expect(abs((points.map(\.y).max() ?? 0) - 0.4) < 5e-4)
+    }
+
+    /// No spot answered yet (the first upload), "Not sure", and a later "Something's there" about
+    /// the same footprint all send no patch.
+    @Test func noPatchBeforeASpotOrWithNotSure() throws {
+        let map = Self.walkedMap()
+        #expect(try Self.patchPoints(map, SpotConfirmations()).isEmpty)
+        var notSure = SpotConfirmations()
+        try notSure.record(Self.confirmation(Self.area, .clear(ground: .notSure)))
+        #expect(try Self.patchPoints(map, notSure).isEmpty)
+        var withdrawn = SpotConfirmations()
+        try withdrawn.record(Self.confirmation(Self.area, .clear(ground: .type(.mulch))))
+        try withdrawn.record(Self.confirmation(Self.area, .somethingThere))
+        #expect(try Self.patchPoints(map, withdrawn).isEmpty)
+    }
+
+    /// A spot that moved asks the ground question again; until then only the old footprint has a
+    /// patch. Answering about the new footprint adds its own; the old one, still true, stays.
+    @Test func aMovedSpotAsksTheGroundAgain() throws {
+        var checks = SpotConfirmations()
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .type(.mulch))))
+        var moved = Self.area
+        moved.spot = 2.0...2.8
+        #expect(checks.settling(moved, in: Self.exchange) == nil)
+        #expect(checks.groundPatches(wall: standardWall(), groundGuessError: 0).count == 1)
+        try checks.record(Self.confirmation(moved, .clear(ground: .type(.lawn))))
+        #expect(checks.groundPatches(wall: standardWall(), groundGuessError: 0).map(\.type) == [.mulch, .lawn])
+        // Answered again about the first footprint: the latest answer is the one sent.
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .type(.gravel))))
+        #expect(checks.groundPatches(wall: standardWall(), groundGuessError: 0).map(\.type) == [.lawn, .gravel])
+    }
+
+    /// A mark added for unmarked equipment doesn't settle the spot: the homeowner is asked again
+    /// once the scan comes back with it. Equipment that couldn't be marked settles it, as
+    /// "Something's there" does.
+    @Test func equipmentMarkedNowAsksAgain() throws {
+        var checks = SpotConfirmations()
+        try checks.record(Self.confirmation(Self.area, .unmarked(.gasMeter, markedNow: true)))
+        #expect(checks.settling(Self.area, in: Self.exchange) == nil)
+        try checks.record(Self.confirmation(Self.area, .unmarked(.door, markedNow: false)))
+        #expect(checks.settling(Self.area, in: Self.exchange)?.answer == .unmarked(.door, markedNow: false))
+        #expect(checks.groundPatches(wall: standardWall(), groundGuessError: 0).isEmpty)
     }
 }

@@ -6,9 +6,42 @@ public enum SceneGroundType: String, Sendable, CaseIterable {
     case drive, concrete, gravel, lawn, mulch, deck
 }
 
+/// Ground the homeowner said is of `type`: the stretch `span` of s, from the wall out to `out`,
+/// meters. It is sent only where the ground coverage saw ground (`seen(_:)`): an area past what
+/// was seen is clipped, so the server treats that ground as unrecorded, which is what it is.
+public struct SceneGroundPatch: Sendable, Equatable {
+    public var type: SceneGroundType
+    public var span: ClosedRange<Float>
+    public var out: Float
+
+    public init(type: SceneGroundType, span: ClosedRange<Float>, out: Float) {
+        self.type = type
+        self.span = span
+        self.out = out
+    }
+
+    /// The ground spans cut to this area: each span's stretch within `span`, and its reach no
+    /// farther than `out`. Nothing outside the spans is added.
+    public func seen(_ spans: [ObservedSpan]) -> [ObservedSpan] {
+        spans.compactMap { item in
+            guard let stretch = item.span.clamped(overlapping: span) else { return nil }
+            return ObservedSpan(span: stretch, out: min(item.out, out))
+        }
+    }
+}
+
+extension ClosedRange where Bound == Float {
+    /// The overlap of two ranges, or nil when they only touch or don't meet.
+    func clamped(overlapping other: ClosedRange<Float>) -> ClosedRange<Float>? {
+        let low = Swift.max(lowerBound, other.lowerBound), high = Swift.min(upperBound, other.upperBound)
+        return low < high ? low...high : nil
+    }
+}
+
 extension SceneWall {
     /// The ground that ground coverage spans (`coverage.observed` band `ground`) vouch for, as plan
-    /// polygons of [x, z] world meters, for patches of the ground type the homeowner gave.
+    /// polygons of [x, z] world meters, for a patch of the ground type the homeowner gave. The
+    /// export passes the spans already cut to the patch's area (`SceneGroundPatch.seen`).
     ///
     /// A span says the ground in front of the wall was seen over its stretch of s from the wall
     /// line out to its reach. On each piece of the chain, the spans over it that touch (within
@@ -16,8 +49,8 @@ extension SceneWall {
     /// piece's line and out along its outward. Where two joined spans leave a gap between them,
     /// the gap takes the smaller reach. Nothing else is drawn:
     ///
-    /// - Past `extent` (the chain's ends as exported) nothing: the homeowner answered for the
-    ///   ground along the wall, and past a limit end the ground may be a neighbour's.
+    /// - Past `extent` (the chain's ends as exported, cut to the patch's stretch) nothing: past
+    ///   a limit end the ground may be a neighbour's.
     /// - Outside a corner that turns away from the homeowner, the wedge between the two pieces'
     ///   polygons is left out. The coverage samples each piece's ground on its own line; no
     ///   sample lies in that wedge.
