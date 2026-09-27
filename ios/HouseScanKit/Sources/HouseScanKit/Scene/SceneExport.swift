@@ -8,6 +8,10 @@ import simd
 public enum SceneUnits {
     /// Exact by definition: the international foot is 0.3048 m.
     public static let feetPerMeter: Double = 1 / 0.3048
+    /// The server's COVERAGE_TOLERANCE_FT (server/scene.py at t3/server 930e8e5): a gap or an
+    /// overrun this small reads as rounding. `GapPlanner.fraction`, `GapPlanner.reachesPastEnd`
+    /// and `RequestStretch` all compare with it.
+    public static let coverageToleranceFt: Double = 0.01
 }
 
 /// The wall chain described around the electric meter: the meter's wall, plus one more straight

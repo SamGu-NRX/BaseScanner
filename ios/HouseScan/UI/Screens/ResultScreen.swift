@@ -105,8 +105,8 @@ struct ResultScreen: View {
             if let hash = result.rulesHash {
                 footnote(ScanCopy.rulesHash(hash), id: "result.rulesHash")
             }
-            if let side = result.unseenSide {
-                footnote(ScanCopy.unseenSide(side), id: "result.unseenSide")
+            if let end = result.unseenEnd {
+                footnote(ScanCopy.unseenEnd(end, hasSpot: result.spot != nil), id: "result.unseenSide")
             }
             footnote(ScanCopy.panelReview, id: "result.panelReview")
         }

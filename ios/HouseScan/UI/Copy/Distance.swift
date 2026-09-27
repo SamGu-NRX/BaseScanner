@@ -1,4 +1,5 @@
 import Foundation
+import HouseScanKit
 
 /// Lengths in the words a homeowner uses: feet and inches, rounded to the nearest inch.
 enum Distance {
@@ -64,6 +65,32 @@ enum Distance {
     static func fromMeter(_ s: Float) -> String {
         if abs(s) < metersPerInch * 3 { return "at your meter" }
         return "\(feetAndInches(s)) \(s < 0 ? "left" : "right") of your meter"
+    }
+
+    /// "from 4 ft to 34 ft right of your meter", or "from 3 ft left to 2 ft right of your meter":
+    /// a stretch by its two ends in whole feet, nearer end first, for a request that can run
+    /// along much of the wall (issue #75). A server request is met only over its whole span, so
+    /// the ends are rounded outward and never clipped to the wall's marked ends
+    /// (`RequestStretch.wholeFeet`): ground asked for past a limit end is part of the request.
+    /// Ends that round to the same foot read "about 5 ft right of your meter".
+    static func range(_ span: ClosedRange<Float>) -> String {
+        let feet = RequestStretch.wholeFeet(span)
+        switch (feet.lowerBound, feet.upperBound) {
+        case (0, 0):
+            return "around your meter"
+        case let (a, b) where a == b:
+            return "about \(abs(a)) ft \(a < 0 ? "left" : "right") of your meter"
+        case (0, let b) where b > 0:
+            return "from your meter to \(b) ft right of it"
+        case (let a, 0) where a < 0:
+            return "from your meter to \(-a) ft left of it"
+        case let (a, b) where a > 0:
+            return "from \(a) ft to \(b) ft right of your meter"
+        case let (a, b) where b < 0:
+            return "from \(-b) ft to \(-a) ft left of your meter"
+        case let (a, b):
+            return "from \(-a) ft left to \(b) ft right of your meter"
+        }
     }
 
     /// "about 5 ft right of your meter" for the middle of a span: a place to walk to, not a

@@ -313,6 +313,8 @@ final class DemoEngine: ScanActions {
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
         if let serverItem {
+            // The demo's check asks for one view at most.
+            state.followUps = 1
             state.gap?.origin = .server
             state.gap?.reason = .server(detail: serverItem.text)
             run { engine in await engine.gapScript(span: span) }
@@ -359,6 +361,7 @@ final class DemoEngine: ScanActions {
         state.path = []
         state.target = nil
         state.upload = .packaging
+        state.followUps = 0
         run { engine in await engine.uploadScript() }
     }
 
@@ -507,12 +510,16 @@ final class DemoEngine: ScanActions {
         if !followedUp, let item = sample.missing.first(where: \.capturable) {
             state.shareableScan = Self.demoScan
             state.result = sample
+            state.followUps = 1
             state.upload = .done
             followedUp = true
             guard await pause(1.6) else { return }
             enterGap(serverItem: item)
             return
         }
+        // Like the real engine's `resultHold`: every step ticked before the result (#31).
+        state.upload = .done
+        guard await pause(0.8) else { return }
         if spotChecked { showResult() } else { enterSpotCheck() }
     }
 
@@ -549,6 +556,7 @@ final class DemoEngine: ScanActions {
         script?.cancel()
         state.shareableScan = Self.demoScan
         state.result = Self.reviewSample
+        state.followUps = 1
         state.upload = .done
         followedUp = true
         if phase == .gapRequest {
@@ -838,6 +846,11 @@ final class DemoEngine: ScanActions {
         enterUpload()
     }
 
+    /// The demo's check asks for one view at most, so stopping early is skipping it.
+    func showResultNow() {
+        skipGap()
+    }
+
     func cannotAccessArea() {
         if case .seeBehind(let s) = state.guidance {
             obstructions = obstructions.map { (span: $0.span, skipped: $0.skipped || $0.span.contains(s)) }
@@ -1043,6 +1056,10 @@ final class DemoEngine: ScanActions {
             MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false,
                             checkIDs: ["window"]),
         ],
+        // The walk stopped short on the left, nearer the meter than the spot (#83). Fixed copy
+        // for the result screen, not worked out from the demo walk: that walk marks its left end
+        // at -2.9 m, and the gas meter above is "well to the left".
+        unseenEnd: UnseenEnd(side: .left, s: -0.4),
         isSample: true
     )
 
@@ -1064,6 +1081,7 @@ final class DemoEngine: ScanActions {
         sample.decision = .pass
         sample.policyApproved = true
         sample.summary = "The spot fits every check we could measure."
+        sample.unseenEnd = nil
         sample.checks = sample.checks.map { row in
             var row = row
             row.outcome = .pass

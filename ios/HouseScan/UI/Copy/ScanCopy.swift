@@ -254,24 +254,28 @@ enum ScanCopy {
 
     // MARK: Gap
 
+    /// The card for a gap request. A server request can run along much of the wall, so its
+    /// stretch is named by its two ends, all of it (`Distance.range`, issue #75); the phone's own
+    /// requests are short and named by their middle.
     static func gap(_ gap: GapRequest) -> Instruction {
         let place = Distance.aroundFromMeter(gap.span)
+        let stretch = Distance.range(gap.span)
         switch gap.reason {
         case .groundNearCandidate:
             return Instruction(title: "Show the ground \(place)", detail: "This might be a spot for the battery, so the ground there needs a clear look from two places.")
         case .wallAboveCandidate:
             return Instruction(title: "Show the wall \(place)", detail: "Tilt up so the wall above this spot is in view.")
         case .server(let detail):
-            return Instruction(title: gap.band == .ground ? "Show the ground \(place)" : "Show the wall \(place)", detail: detail)
+            return Instruction(title: gap.band == .ground ? "Show the ground \(stretch)" : "Show the wall \(stretch)", detail: detail)
         case .groundOut(let out):
             return Instruction(
                 title: "Show the ground out to about \(Distance.feetAtLeast(out)) from the wall",
-                detail: "\(place.capitalizedFirst). Step back and tilt down until that much ground is in view."
+                detail: "\(stretch.capitalizedFirst). Step back and tilt down until that much ground is in view."
             )
         case .walkOut(let out):
             return Instruction(
                 title: "Walk along this stretch about \(Distance.feetAtLeast(out)) out from the wall",
-                detail: "\(place.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
+                detail: "\(stretch.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
             )
         case .overhead:
             return Instruction(
@@ -434,8 +438,10 @@ enum ScanCopy {
         "Rules \(hash)"
     }
 
-    static func unseenSide(_ side: WallSide) -> String {
-        "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side."
+    /// The note on an unexplored end nearer the meter than the spot (issue #83): where the scan
+    /// stopped, so the homeowner knows which end is meant. Without a spot, any spot past it.
+    static func unseenEnd(_ end: UnseenEnd, hasSpot: Bool) -> String {
+        "The scan stopped \(Distance.fromMeter(end.s)). \(hasSpot ? "A closer spot" : "A spot") may be past there."
     }
 
     static let shareScan = "Share scan"

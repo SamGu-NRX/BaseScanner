@@ -81,26 +81,38 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
     /// in any text on screen.
-    private static let expectations: [String: (identifier: String?, text: String)] = [
-        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
-        "wallWalk-fullLegend": ("wallTape", "2 sections hidden behind something"),
-        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
-        "gapRequest-followUp": ("instruction", "One more view to finish"),
-        "uploading-followUp": (nil, "One more view to finish"),
-        "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+    private static let expectations: [String: [(identifier: String?, text: String)]] = [
+        "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        "gapRequest-followUp": [("instruction", "One more view to finish")],
+        // #75: a server request's stretch by its two ends, not its middle.
+        "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
+        "uploading-followUp": [(nil, "One more view to finish")],
+        "markFeatures-lostPlace": [("review.lostPlace", "Your phone lost its place")],
         // The spot check asks one question over a photo VoiceOver describes, then says the answer.
-        "spotConfirm": ("spot.question", "Is anything in the marked area?"),
-        "spotConfirm-which": ("spot.question", "Which one isn't marked?"),
-        "spotConfirm-ground": ("spot.question", "What's the ground where the battery would stand?"),
-        "spotConfirm-answered": ("spot.answered", "Thanks, it's mulch"),
-        "spotConfirm-cantMark": ("spot.answered", "can't be marked now"),
-        "spotConfirm-unconfirmable": ("spot.question", "Your photos don't show all of this area"),
+        "spotConfirm": [("spot.question", "Is anything in the marked area?")],
+        "spotConfirm-which": [("spot.question", "Which one isn't marked?")],
+        "spotConfirm-ground": [("spot.question", "What's the ground where the battery would stand?")],
+        "spotConfirm-answered": [("spot.answered", "Thanks, it's mulch")],
+        "spotConfirm-cantMark": [("spot.answered", "can't be marked now")],
+        "spotConfirm-unconfirmable": [("spot.question", "Your photos don't show all of this area")],
         // #40: an overlap reads as one, not as clearance.
-        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
+        "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
         // The answer comes from the checks: an unsure ground check a view settles.
-        "result-review": ("result.headline", "One more look"),
+        "result-review": [
+            ("result.headline", "One more look"),
+            // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
+            ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        ],
         // A reject names the closest spot and the check it fails.
-        "result-reject": ("result.nearest", "The closest spot"),
+        "result-reject": [("result.nearest", "The closest spot")],
+    ]
+
+    /// Controls a state must offer, by identifier.
+    private static let controls: [String: [String]] = [
+        // #39: "Show my result" on every request the check sent back, with one view left too.
+        "gapRequest-followUp": ["action.skipGap", "action.showResult"],
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -348,7 +360,7 @@ final class ScreenStatesUITests: XCTestCase {
             if screen == "result" { tap(app, "result.details") }
             XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
                 let target = ElementRead.snapshot(element(app, identifier))
@@ -357,6 +369,9 @@ final class ScreenStatesUITests: XCTestCase {
                 found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
             }
             XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
+        }
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            XCTAssertTrue(element(app, identifier).exists, "\(name): \(identifier) is missing")
         }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
@@ -374,6 +389,29 @@ final class ScreenStatesUITests: XCTestCase {
         for (_, finding) in outcome.persistent {
             XCTFail("\(name): \(finding.message)")
         }
+        // After the audit, so its scrolling can't change what the audit saw: a control that
+        // exists can still sit past the bottom edge, out of the homeowner's reach. At the default
+        // size it must be tappable where it is; at AX5 the screen scrolls, so after scrolling to it
+        // (#39: "Show my result" sits below the tape there).
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            let target = element(app, identifier)
+            guard target.exists else { continue }
+            let reached = name.hasSuffix("-AX5") ? scrollUntilHittable(target, in: app) : target.isHittable
+            XCTAssertTrue(reached, "\(name): \(identifier) can't be tapped")
+        }
+    }
+
+    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
+    /// drag as `revealCutOff`, so it scrolls without momentum.
+    @MainActor
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<4 {
+            if target.isHittable { return true }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        return target.isHittable
     }
 
     /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge

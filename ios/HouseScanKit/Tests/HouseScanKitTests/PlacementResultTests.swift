@@ -163,4 +163,63 @@ import simd
         expectError(.wrongArrayLength(path: "spot.center", expected: 2, actual: 1),
                     try Self.sample(replacing: #""center": [4.25, 0.5]"#, with: #""center": [4.25]"#))
     }
+
+    // MARK: Closer unseen end (issue #83). The first case uses run 3's figures as published in
+    // #83; the others are made up.
+
+    /// The sample with its spot over `spotFt` (nil: no spot) and these ends, in s feet.
+    private func result(
+        spotFt: SIMD2<Double>?, outcome: PlacementOutcome = .unsure,
+        left: (PlacementEndKind, Double, Bool?), right: (PlacementEndKind, Double, Bool?)
+    ) throws -> PlacementResult {
+        var result = try PlacementResult.decode(Self.sampleData())
+        if let spotFt {
+            result.spot?.spanFt = spotFt
+            result.spot?.outcome = outcome
+        } else {
+            result.spot = nil
+        }
+        result.ends.left.kind = left.0
+        result.ends.left.sFt = left.1
+        result.ends.left.beyondReach = left.2
+        result.ends.right.kind = right.0
+        result.ends.right.sFt = right.1
+        result.ends.right.beyondReach = right.2
+        return result
+    }
+
+    /// A spot left of the meter, a far unexplored left end and a near unexplored right one: only
+    /// past the right end could a spot be closer, though the server lists the left first.
+    @Test func theCloserUnseenEndIsTheOneNearerThanTheSpot() throws {
+        let answer = try result(spotFt: SIMD2(-5.9, -3.3), left: (.unexplored, -13.2, nil), right: (.unexplored, 1.75, nil))
+        #expect(answer.closerUnseenEnd() == PlacementUnseenEnd(side: .right, sFt: 1.75))
+        // A spot right of the meter, past a near left end: the left.
+        let right = try result(spotFt: SIMD2(12.0, 14.5), left: (.unexplored, -1.0, nil), right: (.limit, 20.0, nil))
+        #expect(right.closerUnseenEnd() == PlacementUnseenEnd(side: .left, sFt: -1.0))
+    }
+
+    /// A spot over the meter: nothing past an end could be closer.
+    @Test func aSpotOverTheMeterLeavesNoCloserUnseenEnd() throws {
+        let answer = try result(spotFt: SIMD2(-1.0, 2.5), left: (.unexplored, -2.0, nil), right: (.unexplored, 3.0, nil))
+        #expect(answer.closerUnseenEnd() == nil)
+    }
+
+    /// A passing spot with the unexplored end farther out than it: nothing to say.
+    @Test func anEndFartherThanThePassingSpotIsNotNamed() throws {
+        let answer = try result(spotFt: SIMD2(3.0, 5.5), outcome: .pass, left: (.limit, -4.0, nil), right: (.unexplored, 20.0, nil))
+        #expect(answer.closerUnseenEnd() == nil)
+        // The bundled sample: the spot 3 ft right, the left end unexplored 8 ft out.
+        #expect(try PlacementResult.decode(Self.sampleData()).closerUnseenEnd() == nil)
+    }
+
+    /// Without a spot, the nearest unexplored end within cable reach; a limit end or one beyond
+    /// reach is never named.
+    @Test func withoutASpotTheNearestUnexploredEndWithinReach() throws {
+        let both = try result(spotFt: nil, left: (.unexplored, -6.0, nil), right: (.unexplored, 4.0, false))
+        #expect(both.closerUnseenEnd() == PlacementUnseenEnd(side: .right, sFt: 4.0))
+        let beyond = try result(spotFt: nil, left: (.unexplored, -6.0, nil), right: (.unexplored, 4.0, true))
+        #expect(beyond.closerUnseenEnd() == PlacementUnseenEnd(side: .left, sFt: -6.0))
+        let limits = try result(spotFt: nil, left: (.limit, -6.0, nil), right: (.limit, 4.0, nil))
+        #expect(limits.closerUnseenEnd() == nil)
+    }
 }
