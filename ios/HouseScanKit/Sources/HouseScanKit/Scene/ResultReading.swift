@@ -46,10 +46,12 @@ public enum ResultReading {
         }
     }
 
-    /// True when there is a spot and no meter working-space check at it has an outcome other than
-    /// PASS. Other checks, including ids this app doesn't know, don't count here.
+    /// True when there is a spot, the server checked it at all, and no meter working-space check
+    /// at it has an outcome other than PASS. Other checks, including ids this app doesn't know,
+    /// don't count here. A spot with no checks is never clean: the schema allows `checks: []`,
+    /// and "none failed" over no checks is no evidence.
     public static func spotIsClean(hasSpot: Bool, checks: [Check]) -> Bool {
-        hasSpot && checks.allSatisfy { $0.id != meterWorkingSpaceCheckID || $0.outcome == .pass }
+        hasSpot && !checks.isEmpty && checks.allSatisfy { $0.id != meterWorkingSpaceCheckID || $0.outcome == .pass }
     }
 
     public static func answer(decision: PlacementDecision, policyApproved: Bool, hasSpot: Bool, checks: [Check]) -> Answer {
@@ -60,7 +62,8 @@ public enum ResultReading {
         case .reject:
             return .notHere
         case .manualReview:
-            if hasSpot, !policyApproved, checks.allSatisfy({ $0.outcome == .pass }) { return .fits }
+            // Needs at least one check: over none, "every check passes" is vacuously true.
+            if hasSpot, !policyApproved, !checks.isEmpty, checks.allSatisfy({ $0.outcome == .pass }) { return .fits }
             if checks.contains(where: { $0.outcome == .unsure && !$0.needsPerson && $0.viewCapturable }) { return .oneMoreLook }
             return .installer
         }

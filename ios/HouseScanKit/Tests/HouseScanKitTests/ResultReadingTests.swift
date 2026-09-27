@@ -112,6 +112,31 @@ import simd
         #expect(result.answer { _ in true } == .oneMoreLook)
     }
 
+    /// A manual_review held back only by unapproved rules, with every check passing, fits.
+    @Test func allPassUnderUnapprovedRulesFits() throws {
+        var object = try Self.sampleObject()
+        object["checks"] = [
+            Self.check("wall_backing", "pass"),
+            Self.check(ResultReading.meterWorkingSpaceCheckID, "pass", measured: 1.2, threshold: 0),
+        ]
+        object["missing_evidence"] = [Any]()
+        let result = try Self.decode(object)
+        #expect(result.decision == .manualReview && !result.policy.autoApprove && result.spot != nil)
+        #expect(result.spotIsClean)
+        #expect(result.answer { _ in true } == .fits)
+    }
+
+    /// The same answer with `checks: []`, which the schema allows: no evidence is not a fit.
+    @Test func aSpotWithNoChecksGoesToAnInstaller() throws {
+        var object = try Self.sampleObject()
+        object["checks"] = [Any]()
+        object["missing_evidence"] = [Any]()
+        let result = try Self.decode(object)
+        #expect(result.decision == .manualReview && !result.policy.autoApprove && result.spot != nil && result.checks.isEmpty)
+        #expect(!result.spotIsClean)
+        #expect(result.answer { _ in true } == .installer)
+    }
+
     @Test func checksThisAppDoesNotKnowNeverCountAgainstTheSpot() throws {
         let result = try Self.sample(adding: Self.check("some_future_check", "fail", measured: 1, threshold: 3))
         #expect(result.spotIsClean)
