@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		A08E1583C6EBA84CB5619CD2 /* HouseScanKit in Frameworks */ = {isa = PBXBuildFile; productRef = 19E9E07688F7D0E710D21D89 /* HouseScanKit */; };
+		A753FD967B1A2E95FE478E66 /* HouseScanKit in Frameworks */ = {isa = PBXBuildFile; productRef = 5030BDCDCA96F148555945A0 /* HouseScanKit */; };
+		EB67AF266BBD187BAFD12D69 /* LoopbackCaptureAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3497C66D47C5EE884557A620 /* LoopbackCaptureAPI.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -22,6 +24,7 @@
 
 /* Begin PBXFileReference section */
 		0C4096780A5627C9A53A29B2 /* HouseScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HouseScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3497C66D47C5EE884557A620 /* LoopbackCaptureAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoopbackCaptureAPI.swift; sourceTree = "<group>"; };
 		7F2D9FE2C1BDC66F0A144086 /* Integration.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Integration.xcconfig; sourceTree = "<group>"; };
 		B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HouseScanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E5448723EC7099F74C7CCBEC /* HouseScanKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HouseScanKit; path = HouseScanKit; sourceTree = SOURCE_ROOT; };
@@ -241,6 +244,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DB218CD669F08C748A2BABCB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A753FD967B1A2E95FE478E66 /* HouseScanKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -251,6 +262,15 @@
 				B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2EC0574D7C3060DA90D1A9EE /* HouseScanKitTests */ = {
+			isa = PBXGroup;
+			children = (
+				3497C66D47C5EE884557A620 /* LoopbackCaptureAPI.swift */,
+			);
+			name = HouseScanKitTests;
+			path = HouseScanKit/Tests/HouseScanKitTests;
 			sourceTree = "<group>";
 		};
 		8885F681E8E6766935603C4F /* Packages */ = {
@@ -276,6 +296,7 @@
 			children = (
 				8AD6B37B63CD5C86504E5E20 /* Config */,
 				050A16F154C46B951098B8C8 /* HouseScan */,
+				2EC0574D7C3060DA90D1A9EE /* HouseScanKitTests */,
 				AA23F1E57E4893FBA0800AFF /* HouseScanUITests */,
 				8885F681E8E6766935603C4F /* Packages */,
 				15857B17057201C5A1934D04 /* Products */,
@@ -314,6 +335,7 @@
 			buildPhases = (
 				C0D00DE62C374481FAF457A5 /* Sources */,
 				1B7B501579D25B4A33756562 /* Resources */,
+				DB218CD669F08C748A2BABCB /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -325,6 +347,7 @@
 			);
 			name = HouseScanUITests;
 			packageProductDependencies = (
+				5030BDCDCA96F148555945A0 /* HouseScanKit */,
 			);
 			productName = HouseScanUITests;
 			productReference = B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */;
@@ -400,6 +423,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				EB67AF266BBD187BAFD12D69 /* LoopbackCaptureAPI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -426,7 +450,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX).uitests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HouseScan;
@@ -445,7 +469,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX).uitests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HouseScan;
@@ -601,7 +625,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX).uitests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HouseScan;
@@ -709,7 +733,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX).uitests";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HouseScan;
@@ -879,6 +903,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		19E9E07688F7D0E710D21D89 /* HouseScanKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HouseScanKit;
+		};
+		5030BDCDCA96F148555945A0 /* HouseScanKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = HouseScanKit;
 		};

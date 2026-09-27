@@ -34,12 +34,16 @@ final class CaptureIntegration {
     @ObservationIgnored private var resumed: [CaptureUploader] = []
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main) {
+        // A replay's pictures are a recording's, not this phone's camera: the packet says so, and it
+        // is sent only to a receiver on this machine when the run asks (the UI tests).
+        let replay = arguments.contains("-replay")
         #if HOUSESCAN_INTEGRATION
         let argument = arguments.firstIndex(of: "-captureAPIURL").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
         let mode = CaptureIntegrationMode.resolve(
             integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
             endpoint: argument ?? bundle.object(forInfoDictionaryKey: "HouseScanCaptureAPIURL") as? String,
-            sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String)
+            sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String,
+            source: replay ? .replay(sendToLocalReceiver: arguments.contains("-captureSendReplayToLocalReceiver")) : .device)
         #else
         let mode = CaptureIntegrationMode.off("not the integration build")
         #endif
@@ -60,7 +64,8 @@ final class CaptureIntegration {
                 sessionInfo: { packetID, video in
                     // LiveCapture turns on scene depth exactly when the phone supports it.
                     Packet04SessionInfo(
-                        packetID: packetID, sessionID: packetID, source: .device, appVersion: device.appVersion, deviceModel: device.model,
+                        packetID: packetID, sessionID: packetID, source: replay ? .replay : .device, appVersion: device.appVersion,
+                        deviceModel: device.model,
                         systemVersion: device.systemVersion, lidarAvailable: depth, sceneDepthEnabled: depth, meshReconstructionSupported: nil,
                         sceneReconstruction: nil, planeDetection: ["horizontal", "vertical"], videoWidth: Int(video.x), videoHeight: Int(video.y),
                         framesPerSecond: nil, timeZone: zone)

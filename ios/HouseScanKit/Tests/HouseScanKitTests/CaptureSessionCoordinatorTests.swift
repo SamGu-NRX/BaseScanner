@@ -186,6 +186,12 @@ struct NativeCaptureFixture: Sendable {
         #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: url, sendDeviceData: "NO") == .recordOnly(URL(string: url)!))
         #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: url, sendDeviceData: nil) == .recordOnly(URL(string: url)!))
         #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: url, sendDeviceData: "YES") == .send(URL(string: url)!))
+        // A replay goes only to a receiver on this machine, only when asked, whatever the device switch says.
+        let local = "http://127.0.0.1:8765/v1"
+        #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: local, sendDeviceData: "NO", source: .replay(sendToLocalReceiver: true)) == .send(URL(string: local)!))
+        #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: local, sendDeviceData: "YES", source: .replay(sendToLocalReceiver: false)) == .recordOnly(URL(string: local)!))
+        #expect(CaptureIntegrationMode.resolve(integrationBuild: "YES", endpoint: url, sendDeviceData: "YES", source: .replay(sendToLocalReceiver: true)) == .recordOnly(URL(string: url)!))
+        #expect(CaptureIntegrationMode.resolve(integrationBuild: "NO", endpoint: local, sendDeviceData: "YES", source: .replay(sendToLocalReceiver: true)) == .off("not the integration build"))
     }
 
     /// A build that may not send device data records the capture on the phone and never sends it,

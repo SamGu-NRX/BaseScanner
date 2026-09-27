@@ -43,14 +43,30 @@ public enum CaptureIntegrationMode: Sendable, Equatable {
         }
     }
 
+    /// Where the scan's pictures come from.
+    public enum Source: Sendable, Equatable {
+        /// The phone's camera: sending needs the build's device-data switch.
+        case device
+        /// A recorded session played back (`-replay`). Its pictures can be anyone's, so it is sent
+        /// only to a receiver on this machine, and only when the run asks for that
+        /// (`sendToLocalReceiver`, the UI tests' switch); never to a remote endpoint.
+        case replay(sendToLocalReceiver: Bool)
+    }
+
     /// `integrationBuild` and `sendDeviceData` are Info.plist values that must read exactly "YES".
     /// A launch argument can name `endpoint`, but can't turn a client build into an integration
     /// build or allow device data.
-    public static func resolve(integrationBuild: String?, endpoint: String?, sendDeviceData: String?) -> CaptureIntegrationMode {
+    public static func resolve(integrationBuild: String?, endpoint: String?, sendDeviceData: String?, source: Source = .device) -> CaptureIntegrationMode {
         guard integrationBuild == "YES" else { return .off("not the integration build") }
         switch CaptureUploadGate.decide(endpoint: endpoint, consented: true) {
         case .off(let reason): return .off(reason)
-        case .on(let url): return sendDeviceData == "YES" ? .send(url) : .recordOnly(url)
+        case .on(let url):
+            switch source {
+            case .device: return sendDeviceData == "YES" ? .send(url) : .recordOnly(url)
+            case .replay(let local):
+                let loopback = url.host() == "127.0.0.1" || url.host() == "localhost"
+                return local && loopback ? .send(url) : .recordOnly(url)
+            }
         }
     }
 }

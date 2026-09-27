@@ -75,11 +75,16 @@ targets:
         type: syncedFolder
         excludes:
           - Fixtures
+      # The capture API stand-in the package tests use, reused as the integration UI tests'
+      # local receiver (IntegrationUITests).
+      - path: HouseScanKit/Tests/HouseScanKitTests/LoopbackCaptureAPI.swift
     dependencies:
       - target: HouseScan
+      - package: HouseScanKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).housescan.uitests
+        # The integration build's runner has its own id too, so neither install replaces the other's.
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).housescan$(BUNDLE_ID_SUFFIX).uitests
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: HouseScan
         TARGETED_DEVICE_FAMILY: "1"
@@ -113,6 +118,8 @@ schemes:
       config: Integration Debug
     test:
       config: Integration Debug
+      targets:
+        - HouseScanUITests
     profile:
       config: Integration Release
     analyze:

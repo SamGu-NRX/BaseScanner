@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 import Network
 import Synchronization
-@testable import HouseScanKit
+import HouseScanKit
 
 /// A local stand-in for the capture API over real HTTP on 127.0.0.1, so the tests drive the
 /// actual `URLSession` transport. It implements the documented behaviour the uploader relies on:
