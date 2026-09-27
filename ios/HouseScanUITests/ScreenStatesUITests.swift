@@ -198,9 +198,8 @@ final class ScreenStatesUITests: XCTestCase {
             let shown = element(app, "action.cannotAccess")
             if let expected = step.reply {
                 XCTAssertTrue(shown.waitForExistence(timeout: 5), "\(step.name): the card has no reply")
-                if shown.exists {
-                    XCTAssertEqual(shown.label, expected, "\(step.name): wrong reply")
-                }
+                // One read (`ElementRead`), as elsewhere in this file.
+                XCTAssertEqual(ElementRead.snapshot(shown)?.label, expected, "\(step.name): wrong reply")
             } else {
                 XCTAssertFalse(shown.waitForExistence(timeout: 2), "\(step.name): the reply must not show")
             }
