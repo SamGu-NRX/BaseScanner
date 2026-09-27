@@ -32,6 +32,11 @@ enum SceneSchemas {
     /// The server branch the vendored copies come from.
     static let serverBranch = "origin/t3/server"
 
+    /// True where the drift tests must compare, not skip: CI sets HOUSESCAN_REQUIRE_UPSTREAM=1
+    /// after fetching the contract branches, so a missing upstream copy fails there instead of
+    /// letting CI go green without comparing. Locally, without the refs, they still skip.
+    static let requireUpstream = ProcessInfo.processInfo.environment["HOUSESCAN_REQUIRE_UPSTREAM"] == "1"
+
     /// The upstream copy of a vendored file: the repository's own tree once `branch` is merged
     /// into it, otherwise `git show <branch>:<path>`. Nil when neither is there: no repository,
     /// no git, or no such ref. CI checks out one commit of one branch (actions/checkout's default
@@ -175,9 +180,10 @@ enum SceneSchemas {
     }
 
     /// Each vendored copy against the server's current one: the tree's `server/` once merged,
-    /// else origin/t3/server through git. Skipped, not passed, where neither can be read.
+    /// else origin/t3/server through git. Skipped, not passed, where neither can be read, except
+    /// under `requireUpstream`, where that fails.
     @Test(.enabled(
-        if: SceneSchemas.upstream(SceneSchemas.vendored[0].serverPath, branch: SceneSchemas.serverBranch) != nil,
+        if: SceneSchemas.requireUpstream || SceneSchemas.upstream(SceneSchemas.vendored[0].serverPath, branch: SceneSchemas.serverBranch) != nil,
         "neither server/ nor \(SceneSchemas.serverBranch) is available to compare against"))
     func vendoredCopiesMatchServer() throws {
         for (name, serverPath, _) in SceneSchemas.vendored {
