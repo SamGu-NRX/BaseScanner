@@ -161,6 +161,16 @@ def _meet(a: Geometry, b: Geometry) -> Geometry:
     return shapely.intersection(a, b, grid_size=_OVERLAY_GRID)
 
 
+def _overlap_depth(a: Geometry, b: Geometry) -> float:
+    """How deep two shapes overlap, as a lower bound on how far one must move to clear the other:
+    twice the radius of the largest circle inside their intersection (the circle and its
+    translate overlap until the move is at least its diameter). 0 when they only touch."""
+    overlap = _meet(polygonal(a), polygonal(b))
+    if overlap.area <= _MEASURE_EPS:
+        return 0.0
+    return 2 * shapely.maximum_inscribed_circle(overlap, tolerance=1e-6).length
+
+
 def _within(fp: Polygon, radius: float) -> Geometry:
     """Every point within `radius` of the footprint, and slightly more at the corners."""
     return fp.buffer(radius * _CIRCUMSCRIBE, quad_segs=_BUFFER_SEGMENTS) if radius > 0 else fp
@@ -405,9 +415,9 @@ class Solver:
     @staticmethod
     def _items(
         objs: list[SceneObject], counts: Callable[[SceneObject], bool | None] = lambda o: True
-    ) -> list[tuple[str, str, Geometry, float, bool | None]]:
+    ) -> list[tuple[str, str, Geometry, float, bool | None, bool]]:
         """check_clearance's items for scene objects."""
-        return [(o.label, _describe(o), o.geom, o.plus_minus, counts(o)) for o in objs]
+        return [(o.label, _describe(o), o.geom, o.plus_minus, counts(o), o.in_plan) for o in objs]
 
     # --- checks --------------------------------------------------------------------------------
 
@@ -540,7 +550,12 @@ class Solver:
                 # What a view could show here is all outside the radius (between it and the
                 # polygon `within` circumscribes it with): nothing to ask for.
                 continue
-            region = _meet(_meet(unseen, within), coverable)
+            region = _meet(unseen, within)
+            if view == "ground":
+                # Clipping can leave a line where edges touch (no ground to show), which the next
+                # overlay refuses beside an area (the real sim scene after the snapped overlays).
+                region = polygonal(region)
+            region = _meet(region, coverable)
             # Where that meets an unexplored end exactly, a sliver with no length along the wall
             # is left; a request for it could never be settled.
             extents = []
@@ -623,26 +638,31 @@ class Solver:
         rule: Value,
         piece: Piece,
         fp: Polygon,
-        items: list[tuple[str, str, Geometry, float, bool | None]],
+        items: list[tuple[str, str, Geometry, float, bool | None, bool]],
         band: str,
         noun: str,
         wall_height: float | None = None,
+        along_err: float | None = None,
     ) -> Check:
         """Minimum plan distance from the footprint to each item. `items` holds (subject,
-        description, geometry, error, counts): the subject is the id the answer reports, the
-        description how its reason names the item, and counts None means an unknown attribute
-        decides whether it applies. `wall_height` is how high up the wall the face must have
-        been seen, for a check that reads the wall band."""
+        description, geometry, error, counts, in plan): the subject is the id the answer
+        reports, the description how its reason names the item, counts None means an unknown
+        attribute decides whether it applies, and in plan says whether the item was placed in
+        plan (the battery moves against it by its full position error) or along the walls (by
+        its error along them). `wall_height` is how high up the wall the face must have been
+        seen, for a check that reads the wall band."""
         t = rule.value
         c = Check(check_id, label, PASS, "", rule_key, rule, threshold=t, comparison="at_least")
         c.asks_for_views = not self._placeholder(rule_key, rule)
+        if along_err is None:
+            along_err = piece.plus_minus
         worst_key: tuple[int, float] | None = None
         what = ""
-        for name, description, geom, err, counts in items:
+        for name, description, geom, err, counts, in_plan in items:
             if counts is False:
                 continue
             d = fp.distance(geom)
-            e = err + piece.plus_minus
+            e = err + (piece.plus_minus if in_plan else along_err)
             outcome = at_least(d, e, t)
             cause = "margin"
             if counts is None and outcome != PASS:
@@ -718,8 +738,9 @@ class Solver:
             return None
         return None if exempt is None else not exempt
 
-    def check_along_wall(self, piece: Piece, s0: float, s1: float) -> Check:
-        """Wall-mounted boxes and vents directly above the battery, measured along the wall."""
+    def check_along_wall(self, along_err: float, s0: float, s1: float) -> Check:
+        """Wall-mounted boxes and vents directly above the battery, measured along the wall, so
+        against the battery's error along the walls (_errors)."""
         rule = self.r.clearances.wall_equipment_ft
         t = rule.value
         c = Check(
@@ -738,7 +759,7 @@ class Solver:
             gap = max(o.span[0] - s1, s0 - o.span[1])
             # Both ends of the gap carry error: the box's own, and the battery's position, which
             # is known only to the wall's error.
-            e = o.plus_minus + piece.plus_minus
+            e = o.plus_minus + along_err
             outcome = at_least(gap, e, t)
             key = (_SEVERITY[outcome], -(gap - e))
             if worst_key is None or key > worst_key:
@@ -776,9 +797,19 @@ class Solver:
             subject="meter",
         )
         d = fp.distance(self.ws_poly)
-        if d <= EPS:
+        if d <= EPS and piece.s0 - EPS <= 0.0 <= piece.s1 + EPS:
+            # On the meter's own segment the battery can only slide along the wall, so the
+            # overlap along s is how far it must move: the exact measure there.
             d = min(0.0, max(self.ws_span[0] - s1, s0 - self.ws_span[1]))
-        e = self.scene.meter_plus_minus + piece.plus_minus
+        elif d <= EPS:
+            # From another wall s says nothing about the overlap (it was measured as 0, a tie that
+            # never failed); its depth does.
+            d = -_overlap_depth(fp, self.ws_poly)
+        # The working space is drawn in front of the wall under it, so that wall's error counts
+        # as well as the meter's and the battery's: from another wall the battery doesn't move
+        # with it.
+        lo, hi = self.ws_span
+        e = self.scene.meter_plus_minus + piece.plus_minus + self._walls_between(piece, lo, hi)
         c.measured, c.plus_minus = d, e
         c.outcome = at_least(d, e, 0.0)
         box = f"{ft(ws.width_ft.value)} wide by {ft(ws.depth_ft.value)} deep"
@@ -960,18 +991,22 @@ class Solver:
                     small_gaps.append(f"a {ft(gap.s1 - gap.s0)} gap between walls")
         h = r.height_ft.value
         path_line = self.scene.wall_line(lo, hi) if hi - lo > EPS else None
-        # The run's length is known only to the meter's error, the battery's wall's, and that of
-        # every other wall segment the cable runs along: each one's ends (its corners) may lie
-        # anywhere within its error. Summed, which may overstate but never understates.
-        e = self.scene.meter_plus_minus + piece.plus_minus + self._walls_between(piece, lo, hi)
+        # The run's length is known only to the battery's wall's error, that of every other wall
+        # segment the cable runs along (each one's ends, its corners, may lie anywhere within
+        # its error; summed, which may overstate but never understates), and the meter's, added
+        # one-sidedly below (_meter_on_route).
+        e = piece.plus_minus + self._walls_between(piece, lo, hi)
+        # The battery's end of the route slides along the walls when the meter or a corner moves
+        # (_slide); spans in s near it are judged with that too.
+        slide = self._slide(piece, s0)
         maybe_blockers: list[dict[str, Any]] = []
         for o in self.route_objects:
             if path_line is None:
                 continue
-            # The object's ends carry its error and the route's ends the meter's and the wall's,
-            # so a crossing is definite only when the overlap survives all of them, and possible
-            # while any overlap is within them.
-            tol = o.plus_minus + self.scene.meter_plus_minus + piece.plus_minus
+            # The object's ends carry its error and the route's ends the meter's, the wall's and
+            # the battery's slide, so a crossing is definite only when the overlap survives all
+            # of them, and possible while any overlap is within them.
+            tol = o.plus_minus + self.scene.meter_plus_minus + piece.plus_minus + slide
             overlap = min(hi, o.span[1]) - max(lo, o.span[0])
             if overlap + tol <= EPS:
                 continue
@@ -1025,7 +1060,7 @@ class Solver:
         # Each end of the route may lie within its own error: the meter's at the meter, the
         # wall's at the battery. Unseen wall there could hold a blocker, so it must be seen.
         meter_end = self.scene.meter_plus_minus
-        near_end = piece.plus_minus
+        near_end = piece.plus_minus + slide
         lo_err, hi_err = (meter_end, near_end) if lo >= -EPS else (near_end, meter_end)
         missing = self.scene.missing(
             "wall",
@@ -1084,7 +1119,13 @@ class Solver:
         else:
             path.reason = "The cable runs along continuous, observed wall with nothing blocking it."
 
-        outcome = reach_outcome(length, e, r.confident_reach_ft.value, r.max_ft.value)
+        # The meter's error changes the run one-sidedly (_meter_on_route): the check judges the
+        # range the run can truly lie in, reported as its middle +/- half its width.
+        up, down = self._meter_on_route(piece)
+        shortest, longest = length - e - down, length + e + up
+        e += up
+        measured, spread = (shortest + longest) / 2, (longest - shortest) / 2
+        outcome = reach_outcome(measured, spread, r.confident_reach_ft.value, r.max_ft.value)
         # threshold_ft is the maximum, the line past which the run fails (at_most). A run past
         # the confident reach but under the maximum is UNSURE, so the cited rule names both lines
         # and is a placeholder if either is.
@@ -1101,19 +1142,25 @@ class Solver:
             "",
             "route.max_ft",
             rule,
-            measured=length,
-            plus_minus=e,
+            measured=measured,
+            plus_minus=spread,
             threshold=r.max_ft.value,
             review_threshold=cr.value,
             comparison="at_most",
             cites=("route.confident_reach_ft",),
         )
-        run = f"{ft(length)} (± {ft(e)})"
+        run = (
+            f"{ft(length)} (± {ft(e)})"
+            if abs(measured - length) <= EPS
+            else f"between {ft(shortest)} and {ft(longest)}"
+        )
         confident = cr.value
         if reach.outcome == FAIL:
             reach.reason = f"The cable run is {run}, over the {ft(r.max_ft.value)} maximum."
         elif reach.outcome == UNSURE:
-            near_a_line = any(abs(length - line) <= e + EPS for line in (confident, r.max_ft.value))
+            near_a_line = any(
+                abs(measured - line) <= spread + EPS for line in (confident, r.max_ft.value)
+            )
             if near_a_line:
                 reach.unsure_cause = "margin"
                 reach.reason = (
@@ -1146,16 +1193,17 @@ class Solver:
         r = self.r
         s1 = s0 + self.W
         fp = self.footprint(wall_piece, s0)
-        # Checks see the wall's error at the battery's far edge from the meter, where AR drift
-        # is largest.
-        piece = replace(
-            wall_piece, plus_minus=wall_piece.error_at(max(abs(s0), abs(s1))), drift=0.0
-        )
+        # Checks see the battery's position error (_error): its wall's at its far edge from the
+        # meter, where AR drift is largest, and the meter's. The route and the meter's working
+        # space count the meter's error themselves, so they take the wall's alone.
+        plan_err, along_err = self._errors(wall_piece, s0)
+        piece = replace(wall_piece, plus_minus=max(plan_err, along_err), drift=0.0)
+        on_wall = replace(piece, plus_minus=wall_piece.error_at(max(abs(s0), abs(s1))))
         c = r.clearances
         checks = [
             self.check_backing(piece, s0, s1),
             self.check_ground(piece, fp),
-            self.check_meter_space(piece, fp, s0, s1),
+            self.check_meter_space(on_wall, fp, s0, s1),
             self.check_clearance(
                 "gas_clearance",
                 "Distance from gas equipment",
@@ -1168,6 +1216,7 @@ class Solver:
                 "ground+wall",
                 "gas meter or pipe",
                 self.wall_height["above"],
+                along_err=along_err,
             ),
             self.check_clearance(
                 "ac_clearance",
@@ -1179,6 +1228,7 @@ class Solver:
                 self._items(self.ac),
                 "ground",
                 "AC unit",
+                along_err=along_err,
             ),
             *(
                 [
@@ -1193,6 +1243,7 @@ class Solver:
                         "ground+wall",
                         "battery",
                         self.wall_height["above"],
+                        along_err=along_err,
                     )
                 ]
                 if self.battery_check
@@ -1214,11 +1265,13 @@ class Solver:
                         g.polygon,
                         g.plus_minus,
                         True,
+                        True,
                     )
                     for g in self.drives
                 ],
                 "ground",
                 "driveway",
+                along_err=along_err,
             ),
             self.check_clearance(
                 "pool_clearance",
@@ -1230,6 +1283,7 @@ class Solver:
                 self._items(self.pool),
                 "ground",
                 "pool",
+                along_err=along_err,
             ),
             self.check_clearance(
                 "opening_clearance",
@@ -1242,8 +1296,9 @@ class Solver:
                 "wall",
                 "door or window",
                 self.wall_height["openings"],
+                along_err=along_err,
             ),
-            self.check_along_wall(piece, s0, s1),
+            self.check_along_wall(along_err, s0, s1),
             self.check_measured(
                 "facing_gap",
                 "Open space in front",
@@ -1257,7 +1312,7 @@ class Solver:
                 "gap in front of the battery"
                 if r.facing.measured_from == "battery_front"
                 else "gap from the wall to whatever faces it",
-                piece.plus_minus,
+                along_err,
             ),
             self.check_measured(
                 "headroom",
@@ -1270,10 +1325,10 @@ class Solver:
                 s1,
                 0.0,
                 "headroom",
-                piece.plus_minus,
+                along_err,
             ),
         ]
-        route, path, reach = self.route_for(piece, s0, s1)
+        route, path, reach = self.route_for(on_wall, s0, s1)
         checks += [path, reach]
         return Candidate(wall_piece, s0, s1, fp, checks, route, worst([x.outcome for x in checks]))
 
@@ -1288,6 +1343,23 @@ class Solver:
             total += p.error_at(max(abs(a), abs(b)))
         return total
 
+    def _meter_on_route(self, piece: Piece) -> tuple[float, float]:
+        """How much the meter's error can lengthen and shorten a route to a battery on `piece`.
+        The battery is placed by its offset from the meter, so moving the meter by d (at most its
+        error e) moves both: the route's start slides d's component along the meter's wall, the
+        battery d's along its own, and the meter's standoff from its wall changes by d's
+        component across it. On the meter's own wall the slides cancel; from a wall turned by
+        the angle between their directions (a unit-vector difference k) they add up to k|d|.
+        Longer: at most e * sqrt(1 + k^2). Shorter: the standoff can't go below zero, so by at
+        most min(standoff, e) + k * e, and never more than the longer bound. With the meter on
+        its wall's line, a run on that wall is never shorter than measured (golden test 09);
+        test_within_errors covers a battery round a corner."""
+        e = self.scene.meter_plus_minus
+        m = self.scene.meter_piece
+        k = math.hypot(piece.along[0] - m.along[0], piece.along[1] - m.along[1])
+        longer = e * math.sqrt(1 + k * k)
+        return longer, min(longer, min(self.meter_offset, e) + k * e)
+
     def reach_limit(self, piece: Piece) -> float:
         """Past this |s| of its near edge a battery's route fails the maximum length whatever
         else is true: the route is never shorter than |s|, and its error is at most the meter's,
@@ -1295,7 +1367,7 @@ class Solver:
         detour_err = sum(2 * o.plus_minus for o in self.route_objects)
         # Every other wall's error may add to a route (at most, its error at its far end).
         others = self._walls_between(piece, -math.inf, math.inf)
-        e_fixed = self.scene.meter_plus_minus + piece.plus_minus + detour_err + others
+        e_fixed = self._meter_on_route(piece)[1] + piece.plus_minus + detour_err + others
         if piece.drift >= 1:
             return math.inf
         # The route's error grows by the wall's drift at the battery's far edge, |s| + W from the
@@ -1320,16 +1392,22 @@ class Solver:
         k_lo, k_hi = math.floor(lo / step) - 1, math.ceil((hi + W) / step) + 1
         points = [lo, hi] + [k * step - W / 2 for k in range(k_lo, k_hi + 1)]
         # Where a start is first clear of the segment's ends by the wall's error.
-        for e in {piece.plus_minus, piece.error_at(max(abs(lo), abs(hi)))}:
+        # The battery's error beyond its wall's, as _error adds it: one value over a segment, as
+        # the same walls lie between it and the meter wherever it stands on it.
+        slide = self._slide(piece, lo)
+        extra = max(self.scene.meter_plus_minus, slide)
+        # Checks against spans take the error along the walls (_errors), this much smaller.
+        along = extra - slide
+        for e in {piece.plus_minus + extra, piece.error_at(max(abs(lo), abs(hi))) + extra}:
             points += [piece.s0 + e, piece.s1 - W - e]
         # Along the wall: every place an interval can start or stop mattering, each with only
         # its own error offsets (combining every boundary with every error would grow as their
         # product).
-        ew = piece.error_at(max(abs(lo), abs(hi)))
+        ew = piece.error_at(max(abs(lo), abs(hi))) + extra
         # When the error drifts, offsets that include the battery's own error are placed with the
         # error at each start instead (below), since that is the error a start is judged with.
         drifts = piece.drift > 0
-        around = (0.0,) if drifts else (0.0, ew, -ew)
+        around = (0.0,) if drifts else (0.0, ew, -ew, ew - along, along - ew)
         boundaries: list[tuple[float, tuple[float, ...]]] = [(0.0, around)]
         boundaries += [(b, around) for b in self.ws_span]
         # Boundaries whose offset includes the battery's own error, with the fixed part of the
@@ -1337,9 +1415,12 @@ class Solver:
         drifting: list[tuple[float, float]] = [(0.0, 0.0), *((b, 0.0) for b in self.ws_span)]
         for o in self.scene.objects:
             e = o.plus_minus
-            own = (0.0, e, -e) if drifts else (0.0, e, -e, e + ew, -(e + ew))
+            near = e + ew - along
+            own = (0.0, e, -e) if drifts else (0.0, e, -e, e + ew, -(e + ew), near, -near)
             boundaries += [(b, own) for b in o.span]
             drifting += [(b, e) for b in o.span]
+        if along > EPS:
+            drifting += [(b, f - along) for b, f in drifting]
         for m in self.scene.overheads + self.scene.facing:
             boundaries += [(b, around) for b in m.span]
         for band in self.scene.observed.values():
@@ -1366,9 +1447,10 @@ class Solver:
                         )
                     )
         rt = self.r.route
-        e_route = self.scene.meter_plus_minus + ew
+        # Where the run's range [|s| - (wall + down), |s| + wall + up] reaches each line.
+        up, down = self._meter_on_route(piece)
         for line in (rt.confident_reach_ft.value, rt.max_ft.value):
-            for x in (line - e_route, line + e_route, line):
+            for x in (line - (ew - extra) - up, line + (ew - extra) + down, line):
                 points += [x, -x - W]
         # Plan clearances: where a footprint corner's track along the wall crosses the line at
         # the rule's distance (and within error of it) from any part of an object, including
@@ -1380,7 +1462,7 @@ class Solver:
             # battery straddles the meter.
             errs = [self._error(piece, s) for s in (lo, hi, min(max(-W / 2, lo), hi))]
             e_least, e_most = min(errs), max(errs)
-        for geom, base, fixed, k in self._clearance_edges(piece):
+        for geom, base, fixed, k in self._clearance_edges(along):
             if drifts and k != 0:
                 points += self._drifting_outline(
                     piece, geom, base, fixed, k, tracks, strip, e_least, e_most
@@ -1410,16 +1492,21 @@ class Solver:
         mids = [(a + b) / 2 for a, b in itertools.pairwise(pts) if b - a > 1e-6]
         return sorted(set(pts) | set(mids))
 
-    def _clearance_edges(self, piece: Piece) -> list[tuple[Geometry, float, float, float]]:
+    def _clearance_edges(self, along: float) -> list[tuple[Geometry, float, float, float]]:
         """(geometry, base, fixed error, k): outlines at distance base + k * (fixed error + the
-        battery's error) from the geometry bound some check's outcome."""
+        battery's error) from the geometry bound some check's outcome. An object placed along
+        the walls is judged with the battery's error along them, `along` less (_errors)."""
         c = self.r.clearances
+
+        def fixed(o: SceneObject) -> float:
+            return o.plus_minus if o.in_plan else o.plus_minus - along
+
         items = [
-            *((c.gas_ft.value, o.geom, o.plus_minus) for o in self.gas),
-            *((c.ac_ft.value, o.geom, o.plus_minus) for o in self.ac),
-            *((c.battery_ft.value, o.geom, o.plus_minus) for o in self.batteries),
-            *((c.pool_ft.value, o.geom, o.plus_minus) for o in self.pool),
-            *((c.opening_ft.value, o.geom, o.plus_minus) for o in self.openings),
+            *((c.gas_ft.value, o.geom, fixed(o)) for o in self.gas),
+            *((c.ac_ft.value, o.geom, fixed(o)) for o in self.ac),
+            *((c.battery_ft.value, o.geom, fixed(o)) for o in self.batteries),
+            *((c.pool_ft.value, o.geom, fixed(o)) for o in self.pool),
+            *((c.opening_ft.value, o.geom, fixed(o)) for o in self.openings),
             *((c.drive_ft.value, g.polygon, g.plus_minus) for g in self.drives),
         ]
         out = [(geom, t, err, k) for t, geom, err in items for k in (0.0, 1.0, -1.0) if t > 0]
@@ -1428,9 +1515,44 @@ class Solver:
         return out
 
     def _error(self, piece: Piece, s0: float) -> float:
-        """The battery's position error for a start at s0: the wall's error at its far edge from
-        the meter, as evaluate uses."""
-        return piece.error_at(max(abs(s0), abs(s0 + self.W)))
+        """The battery's position error for a start at s0 where a check compares it with both
+        kinds of position (a wall's end and the wall's spans of heights; seen areas): the larger
+        of _errors. The battery is placed by its offset from the meter (the AR view anchors it
+        there), so wherever the meter truly is, the battery goes with it: against anything placed
+        in plan it moves by up to the meter's error, and against anything placed along the walls
+        in s it slides (_slide). test_within_errors has a case of each."""
+        return max(self._errors(piece, s0))
+
+    def _errors(self, piece: Piece, s0: float) -> tuple[float, float]:
+        """The battery's position error for a start at s0 against what was placed in plan (a
+        wall's end, a ground patch, an object's outline), and against what was placed along the
+        walls in s (a span): its wall's error at its far edge from the meter plus the meter's in
+        plan, plus the slide (_slide) along the walls. On the meter's own wall the slide is 0: a
+        span there moves with the meter as the battery does."""
+        wall = piece.error_at(max(abs(s0), abs(s0 + self.W)))
+        return wall + self.scene.meter_plus_minus, wall + self._slide(piece, s0)
+
+    def _slide(self, piece: Piece, s0: float) -> float:
+        """How far the battery's s can move against spans measured along the walls when it
+        stands on `piece` and the meter or a corner between them moves within its error. s = 0
+        is the meter's projection onto its own wall, so moving the meter by d moves s = 0 by d's
+        component along that wall and the battery by d's along its own: d . (along - along_m).
+        Moving the far corner of a wall p between them by d lengthens p by d . along_p and moves
+        the battery's wall with it: d . (along_p - along). Each is at most the error times the
+        difference of the two directions, 0 on the meter's own wall."""
+
+        def turn(p: Piece) -> float:
+            return math.hypot(piece.along[0] - p.along[0], piece.along[1] - p.along[1])
+
+        near = s0 if s0 > 0 else min(s0 + self.W, 0.0)
+        lo, hi = min(0.0, near), max(0.0, near)
+        slide = self.scene.meter_plus_minus * turn(self.scene.meter_piece)
+        for p in self.scene.walls:
+            a, b = max(p.s0, lo), min(p.s1, hi)
+            if b - a <= EPS or (abs(p.s0 - piece.s0) <= EPS and abs(p.s1 - piece.s1) <= EPS):
+                continue
+            slide += p.error_at(max(abs(a), abs(b))) * turn(p)
+        return slide
 
     @staticmethod
     def _settle(place: Callable[[float], float], start: float) -> float:
