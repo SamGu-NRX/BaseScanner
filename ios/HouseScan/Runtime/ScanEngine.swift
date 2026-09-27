@@ -79,8 +79,34 @@ final class ScanEngine {
     private var endKinds: [WallSide: EndKind] = [:]
     /// The side whose end turns a corner the walk is to follow, while it waits for the next wall
     /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
-    var nextWallSide: WallSide?
+    var nextWallSide: WallSide? {
+        didSet { if nextWallSide == nil { pendingNextWall = nil } }
+    }
     var nextWallRefusal: NextWallRefusal?
+    /// The wall marked as the next one, waiting for "Is this the next wall?" (#70); cleared with
+    /// `nextWallSide`. Published as `ScanViewState.nextWallConfirm`.
+    var pendingNextWall: PendingNextWall? {
+        didSet {
+            let confirm = pendingNextWall.map { NextWallConfirm(side: $0.side, fromEnd: $0.fromEnd) }
+            if confirm != state.nextWallConfirm { state.nextWallConfirm = confirm }
+        }
+    }
+
+    /// Meters up the wall the ring on a proposed corner sits: about chest height, where it shows
+    /// in the view of a homeowner aiming at the next wall.
+    static let cornerRingHeight: Float = 1
+
+    /// What `confirmNextWall` needs to follow the corner: the marked point and facing, as
+    /// `markNextWall` found them.
+    struct PendingNextWall {
+        var side: WallSide
+        var point: SIMD3<Float>
+        var outward: SIMD3<Float>
+        var source: WallLineSource
+        var detectedPlane: Bool
+        var s: Float
+        var fromEnd: Float
+    }
 
     // Gap loop
     private(set) var gapPlan: GapPlan?
@@ -166,6 +192,8 @@ final class ScanEngine {
     private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
+    /// The spot check (`ScanEngine+Confirm.swift`).
+    var spotConfirm = SpotConfirmState()
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -288,7 +316,7 @@ final class ScanEngine {
                     replay.play(range: range, speed: replaySpeed)
                 }
             }
-        case .markFeatures, .uploading, .result:
+        case .markFeatures, .uploading, .spotConfirm, .result:
             live?.setMode(.idle)
             replay?.stop()
         case .resultAR:
@@ -386,11 +414,11 @@ final class ScanEngine {
             case .failed, .rejected: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
-        case .onboarding, .result, .resultAR, .unsupported: false
+        case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         let depthFrames = switch state.phase {
         case .meterCloseUp, .wallWalk, .gapRequest: true
-        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        case .onboarding, .findMeter, .markFeatures, .uploading, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
@@ -670,7 +698,10 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let saved = await store.saveStill(frame, name: "meter_close.jpg")
+            let photo = await closeUpPhoto(frame)
+            // Drawing a practice photo suspends: a reset meanwhile must not save into the new scan.
+            guard scan == generation, state.phase == .meterCloseUp else { return }
+            let saved = await store.saveStill(photo, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
                 retakeCloseUp(.blurry)
@@ -718,7 +749,9 @@ final class ScanEngine {
         let sample = FrameSample(timestamp: frame.timestamp, camera: frame.camera, tracking: frame.captureTracking, quality: frame.quality)
         let decision = autoCapture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: frame.camera))
         // Past an end it can't see back from, a photo adds nothing: it is refused and the screen says so.
-        let pastEnd = map.unexploredEndPassed(by: frame.camera)
+        // Not past the end whose next wall is being looked for: that is where the walk asked the
+        // homeowner to go (#70).
+        let pastEnd = map.unexploredEndPassed(by: frame.camera, ignoring: nextWallSide?.walk)
         var skip: CaptureDecision.SkipReason?
         switch decision {
         case .skip(let reason):
@@ -877,7 +910,9 @@ final class ScanEngine {
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
             state.guidanceHint = nil
-            state.target = nil
+            // While "Is this the next wall?" is up, the ring shows the corner: where the marked
+            // wall meets this one, on the wall chain so it moves with the meter's anchor.
+            state.target = pendingNextWall.map { map.wall.world(s: $0.s, height: Self.cornerRingHeight) }
             state.path = []
             logGuidance()
             return
@@ -1295,7 +1330,7 @@ final class ScanEngine {
             // "Add something", which taps into the world frame, waits for tracking to return
             // (`beginMarking`). Nothing is thrown away.
             break
-        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+        case .uploading, .spotConfirm, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
             // tracking is not normal and shows it again if ARKit does relocalize.
@@ -1379,6 +1414,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
         placement = nil
@@ -1470,7 +1506,11 @@ final class ScanEngine {
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
                 let look = live.resultIsDrawn()
-                let usesRealityKit = policy.update(drawn: look.drawn, held: look.held, time: self.screenTime)
+                // While tracking is limited the model is disabled and the screen draws neither
+                // layer, so the AR scene keeps the result: when tracking comes back the two switch
+                // on together, rather than the Canvas showing until the next look.
+                let held = look.held || (look.anchored && self.state.tracking != .normal)
+                let usesRealityKit = policy.update(drawn: look.drawn, held: held, time: self.screenTime)
                 if self.state.resultInCamera != usesRealityKit {
                     RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
                     self.state.resultInCamera = usesRealityKit
@@ -1736,6 +1776,7 @@ final class ScanEngine {
             updateRecording()
             return
         }
+        writeScanStamp(answer: placement)
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1760,6 +1801,8 @@ final class ScanEngine {
                 guard scan == generation, state.phase == .uploading else { return }
             }
             placement = result
+            noteExchange(scene: scene, answer: data)
+            writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.followUps = automaticGapQueue(result).count
             state.upload = .done
@@ -1780,8 +1823,8 @@ final class ScanEngine {
             // replaces the screen: going on in the same turn never drew the tick (issue #31).
             try await Task.sleep(for: .seconds(Self.resultHold))
             guard scan == generation, state.phase == .uploading else { return }
-            // The result appears only after the server answered (checklist R6).
-            go(.result)
+            // Keep the completion tick, then ask about the proposed spot before showing it.
+            presentAnswer()
         } catch is CancellationError {
             return
         } catch {
@@ -1801,8 +1844,14 @@ final class ScanEngine {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
         let asked = automaticGaps + (asking.map { [$0] } ?? [])
+        // A new view cannot settle an area the homeowner has already said is obstructed.
+        // Filter before the request limit so refused areas do not consume the remaining slots.
+        let capturable = result.missingEvidence.filter { item in
+            gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
+                .map { captureCanSettle($0) } ?? false
+        }
         return gapPlanner.serverRequests(
-            in: result.missingEvidence, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
+            in: capturable, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
             asked: asked, skipped: skippedGaps, limit: Self.maxAutomaticGaps - automaticGaps.count)
     }
 
@@ -1851,7 +1900,7 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
@@ -1921,6 +1970,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
@@ -1945,6 +1995,7 @@ final class ScanEngine {
         state.meterNumber = nil
         closeUpRetake = nil
         meterReadout = nil
+        state.isPracticeScan = false
         go(.onboarding)
         replay?.show(index: 0)
     }
@@ -2023,6 +2074,15 @@ final class ScanEngine {
     func resolveGuidance(_ outcome: GuidanceLog.Outcome) {
         guard let t = captureClock else { return }
         guidanceLog.resolve(outcome, at: t)
+    }
+
+    /// Closes the open request and takes it off the log's screen, so the same step shown again
+    /// is a new request: after Back on the next-wall step, "It turns a corner" asks for the next
+    /// wall again while `state.guidance` never left it (review of #136).
+    func withdrawGuidance(_ outcome: GuidanceLog.Outcome) {
+        guard let t = captureClock else { return }
+        guidanceLog.resolve(outcome, at: t)
+        guidanceLog.show(nil, at: t) { _, _ in outcome }
     }
 }
 

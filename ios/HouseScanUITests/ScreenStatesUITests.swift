@@ -29,6 +29,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
+        ("wallWalk-nextWallConfirm", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoNextWallConfirm"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
@@ -52,6 +53,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
+        ("spotConfirm", ["-uiDemoPhase", "spotConfirm"], "spotConfirm"),
+        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
@@ -77,6 +80,7 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
         // The card's reply under the aim step's words and under coaching.
         "wallWalk-aim", "wallWalk-slowDown",
+        "spotConfirm", "spotConfirm-answered",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -96,6 +100,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-tooDark": [("instruction", "It's dark here")],
         "wallWalk-turnSlowly": [("instruction", "Turn more slowly")],
         "gapRequest-tooDark": [("instruction", "Show the ground")],
+        "spotConfirm": [("spot.question", "Is anything standing in the marked area?")],
+        "spotConfirm-answered": [("spot.answered", "Thanks, it's clear")],
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
         // The answer comes from the checks: an unsure ground check a view settles.
@@ -182,6 +188,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endCorner")
         tap(app, "action.markNextWall")
+        // "Is this the next wall?" before the walk follows it (#70).
+        tap(app, "action.nextWallYes")
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endBlocked")
         tap(app, "action.markEnd", timeout: 30)
@@ -200,6 +208,10 @@ final class ScreenStatesUITests: XCTestCase {
         let followUp = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
         XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        // Before the result, the spot is checked on a photo.
+        XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 30))
+        XCTAssertEqual(element(app, "spot.photo").label, "Photo of your wall")
+        tap(app, "action.spotClear")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
@@ -410,7 +422,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+        tap(app, "action.spotClear", timeout: 40)
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
     }
 
     /// #65 soft gate: with the ground or a window's question unanswered, the first "Looks
@@ -456,8 +469,23 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show its progress")
         XCTAssertEqual(ring.value as? String, "50 percent captured")
         let legend = element(app, "aim.legend")
-        XCTAssertTrue(legend.exists, "the first aim ring must come with its legend")
+        XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        let card = element(app, "instruction")
+        XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
+        app.terminate()
+
+        // At the largest text size the card and the controls fill the screen, so there is no
+        // room beside the ring: the legend moves under the card instead of going behind it or
+        // disappearing.
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let largeLegend = element(app, "aim.legend")
+        XCTAssertTrue(largeLegend.waitForExistence(timeout: 5), "the legend must still show at the largest text size")
+        XCTAssertTrue(largeLegend.label.contains("It fills as your phone captures this spot"), "legend reads \(largeLegend.label)")
+        let largeCard = element(app, "instruction")
+        XCTAssertFalse(largeLegend.frame.intersects(largeCard.frame), "the legend must keep clear of the card: \(largeLegend.frame) vs \(largeCard.frame)")
         app.terminate()
 
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
@@ -581,10 +609,15 @@ final class ScreenStatesUITests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
+    /// Taps once the element can take the tap. Existing isn't enough: a control that has just
+    /// appeared can still be moving into place (the walk's controls settle after the close-up),
+    /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
+    /// tray).
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
-        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
+        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: timeout), .completed, "missing or not tappable: \(identifier)")
         target.tap()
     }
 

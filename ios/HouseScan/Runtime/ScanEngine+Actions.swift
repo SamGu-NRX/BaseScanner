@@ -8,6 +8,7 @@ import SwiftUI
 extension ScanEngine: ScanActions {
     func finishOnboarding() {
         guard state.phase == .onboarding else { return }
+        startPracticeIfOn()
         leaveOnboarding()
     }
 
@@ -162,45 +163,103 @@ extension ScanEngine: ScanActions {
     }
 
     /// The wall round the corner: a raycast on a vertical plane under `point`, the same one the
-    /// meter tap uses. Where its line meets the current wall's line on the ground is the corner;
-    /// the wall chain turns there, the end on that side opens again and the walk goes on.
+    /// meter tap uses. Where its line meets the current wall's line on the ground is the corner.
+    /// A corner that passes the checks (`CoverageMap.proposeCorner`) isn't followed yet: the
+    /// walk asks "Is this the next wall?" (`ScanViewState.nextWallConfirm`, #70) and
+    /// `confirmNextWall` follows it.
     func markNextWall(at point: CGPoint?, viewSize: CGSize) {
-        guard state.phase == .wallWalk, let side = nextWallSide, coverage != nil, let frame = currentFrame else { return }
-        func refuse(_ refusal: NextWallRefusal, _ reason: String) {
-            nextWallRefusal = refusal
-            state.guidance = .markNextWall(side: side, refusal: refusal)
-            RuntimeLog.engine.info("next wall refused: \(reason, privacy: .public)")
-        }
-        guard frame.tracking == .normal else { return refuse(.trackingNotReady, "tracking not normal") }
+        guard state.phase == .wallWalk, let side = nextWallSide, pendingNextWall == nil,
+              let map = coverage, let frame = currentFrame else { return }
+        guard frame.tracking == .normal else { return refuseNextWall(side, .trackingNotReady, "tracking not normal") }
         // A replay has no live surfaces to raycast, so it can't mark the next wall.
         let viewPoint = point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
-        guard let hit = liveCapture?.raycastVerticalPlane(from: viewPoint) else { return refuse(.noSurface, "no vertical plane") }
+        guard let hit = liveCapture?.raycastVerticalPlane(from: viewPoint) else { return refuseNextWall(side, .noSurface, "no vertical plane") }
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
-        var turned: Result<WallCorner, CornerRefusal> = .failure(.notAWall)
         // The new piece's line runs through the hit point facing the hit plane's normal, as the
         // meter's does, so its source follows the same rule (`meterLineSource`).
         let source = Self.lineSource(of: hit.source)
+        let proposed: Result<CoverageMap.CornerProposal, CornerRefusal> = Result { () throws(CornerRefusal) in
+            try map.proposeCorner(side.walk, meeting: hit.position, outward: outward, source: source)
+        }
+        let proposal: CoverageMap.CornerProposal
+        switch proposed {
+        case .success(let found): proposal = found
+        case .failure(let refusal): return refuseNextWall(side, refusal)
+        }
+        let detected = hit.source == .detectedPlane
+        nextWallRefusal = nil
+        pendingNextWall = PendingNextWall(
+            side: side, point: hit.position, outward: outward, source: source,
+            detectedPlane: detected, s: proposal.corner.s, fromEnd: proposal.fromEnd
+        )
+        state.guidance = .markNextWall(side: side, refusal: nil)
+        // The ring goes on the corner, not on the point marked: a surface behind the end post
+        // puts the corner past the post, where the homeowner can see it is wrong (#70, 3C).
+        state.target = map.wall.world(s: proposal.corner.s, height: Self.cornerRingHeight)
+        RuntimeLog.engine.info("next wall marked on the \(side.rawValue, privacy: .public): corner at s=\(proposal.corner.s), \(proposal.fromEnd) m from the end (\(detected ? "detected" : "estimated", privacy: .public) plane); asking to confirm")
+    }
+
+    /// "Is this the next wall?": yes follows the corner, and the end on that side opens again and
+    /// the walk goes on along the new wall; no drops the marked wall and keeps looking (#70).
+    func confirmNextWall(_ isNextWall: Bool) {
+        guard state.phase == .wallWalk, let side = nextWallSide, let pending = pendingNextWall, pending.side == side else { return }
+        pendingNextWall = nil
+        let plane = pending.detectedPlane ? "detected" : "estimated"
+        guard isNextWall else {
+            state.target = nil
+            RuntimeLog.engine.info("next wall not confirmed on the \(side.rawValue, privacy: .public): corner at s=\(pending.s), \(pending.fromEnd) m from the end (\(plane, privacy: .public) plane); looking again")
+            return
+        }
+        var turned: Result<WallCorner, CornerRefusal> = .failure(.notAWall)
         updateCoverage { map in
             turned = Result { () throws(CornerRefusal) in
-                try map.turnCorner(side == .left ? .left : .right, meeting: hit.position, outward: outward, source: source)
+                try map.turnCorner(side.walk, meeting: pending.point, outward: pending.outward, source: pending.source)
             }
         }
         let corner: WallCorner
         switch turned {
         case .success(let turn): corner = turn
-        case .failure(.nearlyParallel): return refuse(.sameWall, "nearly parallel to the current wall")
-        case .failure(.notAWall): return refuse(.noSurface, "not a wall")
-        case .failure(.implausible(let s)): return refuse(.notAtCorner, "the walls meet at s=\(s)")
+        case .failure(let refusal): return refuseNextWall(side, refusal)
         }
         // The end moves on with the walk; `clearEnd` also publishes the chain for the overlays.
         clearEnd(side)
         nextWallSide = nil
         nextWallRefusal = nil
-        RuntimeLog.engine.info("corner followed on the \(side.rawValue, privacy: .public) at s=\(corner.s) (\(hit.source == .detectedPlane ? "detected" : "estimated", privacy: .public) plane)")
+        RuntimeLog.engine.info("corner followed on the \(side.rawValue, privacy: .public) at s=\(corner.s), \(pending.fromEnd) m from the end (\(plane, privacy: .public) plane), confirmed")
         // Features tapped past the corner were placed on the old wall's line.
         reprojectFeatures()
-        resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
+        if let frame = currentFrame { resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp) }
+    }
+
+    /// "Back" on the next-wall step: the end stays marked, and the question about it comes back,
+    /// so "Something blocks it" or "The wall just ends" can still be picked (#70).
+    func cancelNextWall() {
+        guard state.phase == .wallWalk, let side = nextWallSide else { return }
+        // The next-wall request didn't happen: resolved before `nextWallSide` clears, which the
+        // log would read as met (`closingOutcome`), and withdrawn so a second "It turns a
+        // corner" logs a new one.
+        withdrawGuidance(.superseded)
+        nextWallSide = nil
+        nextWallRefusal = nil
+        state.target = nil
+        state.endQuestion = side
+        state.endQuestionLeavesOut = nil
+        RuntimeLog.engine.info("next wall: back to the question about the \(side.rawValue, privacy: .public) end")
+    }
+
+    private func refuseNextWall(_ side: WallSide, _ refusal: CornerRefusal) {
+        switch refusal {
+        case .nearlyParallel: refuseNextWall(side, .sameWall, "nearly parallel to the current wall")
+        case .notAWall: refuseNextWall(side, .noSurface, "not a wall")
+        case .implausible(let s): refuseNextWall(side, .notAtCorner, "the walls meet at s=\(s)")
+        }
+    }
+
+    private func refuseNextWall(_ side: WallSide, _ refusal: NextWallRefusal, _ reason: String) {
+        nextWallRefusal = refusal
+        state.guidance = .markNextWall(side: side, refusal: refusal)
+        RuntimeLog.engine.info("next wall refused: \(reason, privacy: .public)")
     }
 
     /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no

@@ -14,6 +14,13 @@ struct Instruction: Hashable {
 enum ScanCopy {
     // MARK: Guidance
 
+    /// Finding the meter on a practice scan (`ScanViewState.isPracticeScan`): any wall will do.
+    static let practiceFindMeter = Instruction(
+        title: "Tap a spot on a wall",
+        detail: "A sample meter goes there, so you can practice the scan without a real one."
+    )
+    static let practiceMarkMeter = "Put the sample meter here"
+
     /// `hint` changes the words of an aim step only (`aim(_:ground:hint:)`).
     static func guidance(_ step: GuidanceStep, hint: GuidanceHint? = nil) -> Instruction {
         switch step {
@@ -73,12 +80,6 @@ enum ScanCopy {
             Instruction(title: "One more view", detail: nil)
         }
     }
-
-    /// The line beside the walk's first aim ring, which fills as its stretch is captured (#81).
-    /// A stretch counts only once it is seen from two places a step apart
-    /// (`CoverageConfig.coveringBaseline`), so holding still never fills the ring: the line asks
-    /// for a step.
-    static let aimRingLegend = "Keep the ring in view and take a small step to one side. It fills as your phone captures this spot."
 
     /// An aim step's card with what the hint adds. The title follows the target: on build 4.1 the
     /// chevron pointed up while the card said "Tilt down" (#81). Seen once from here, the step to
@@ -175,6 +176,19 @@ enum ScanCopy {
         let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
         return Instruction(title: task.title, detail: detail)
     }
+
+    // MARK: Aim ring
+
+    /// The line beside the walk's first aim ring, which fills as its stretch is captured (#81).
+    /// A stretch counts only once it is seen from two places a step apart
+    /// (`CoverageConfig.coveringBaseline`), so holding still never fills the ring: the line asks
+    /// for a step, in the tilt-down card's own words ("Take a small step sideways as you look."),
+    /// so the two lines on screen together ask for the same thing. If the card's wording
+    /// changes, change this with it.
+    static let aimRingLegend = "Keep the ring in view and take a small step sideways. It fills as your phone captures this spot."
+    /// The legend where the whole line doesn't fit beside the ring (large text sizes, short
+    /// screens). Under the card, the whole line is drawn instead.
+    static let aimRingLegendShort = "It fills as your phone captures this spot."
 
     // MARK: Wall ends
 
@@ -305,6 +319,17 @@ enum ScanCopy {
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
         }
+    }
+
+    /// Asked after the next wall is marked, before the walk follows the corner
+    /// (`ScanViewState.nextWallConfirm`, #70): a surface behind the end post passed the checks
+    /// on build 4.1. The ring is on the corner that wall makes with this one, so a wrong surface
+    /// shows as a corner in the wrong place.
+    static func nextWallConfirm(_ confirm: NextWallConfirm) -> Instruction {
+        Instruction(
+            title: "Is this the next wall?",
+            detail: "The ring shows where it meets this wall, about \(Distance.roughFeet(confirm.fromEnd)) from where you ended it. Tap Yes only if that's the corner."
+        )
     }
 
     /// A refused mark of the next wall: what went wrong, then what to do.

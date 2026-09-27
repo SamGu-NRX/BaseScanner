@@ -21,6 +21,7 @@ struct ScanRootView: View {
             .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen, value: state.phase)
             .preferredColorScheme(Self.showsCamera(state.phase) ? .dark : nil)
             .modifier(ScanHaptics(state: state))
+            .environment(\.isPracticeScan, state.isPracticeScan)
     }
 
     private var stack: some View {
@@ -28,6 +29,9 @@ struct ScanRootView: View {
             if Self.showsCamera(state.phase) {
                 CameraBackdrop(feed: state.feed, actions: actions)
                     .transition(.opacity)
+                if state.isPracticeScan {
+                    PracticeMeterOverlay(state: state)
+                }
                 CameraEdgeShade()
             }
             // Camera screens crossfade over the live feed. The light screens cut: a crossfade
@@ -63,6 +67,9 @@ struct ScanRootView: View {
         case .uploading:
             UploadingScreen(state: state, actions: actions)
                 .screenIdentifier(.uploading)
+        case .spotConfirm:
+            SpotConfirmScreen(state: state, actions: actions)
+                .screenIdentifier(.spotConfirm)
         case .result:
             ResultScreen(state: state, actions: actions)
                 .screenIdentifier(.result)
@@ -78,7 +85,7 @@ struct ScanRootView: View {
     static func showsCamera(_ phase: ScanPhase) -> Bool {
         switch phase {
         case .findMeter, .meterCloseUp, .wallWalk, .gapRequest, .resultAR, .markFeatures: true
-        case .onboarding, .uploading, .result, .unsupported: false
+        case .onboarding, .uploading, .spotConfirm, .result, .unsupported: false
         }
     }
 }
