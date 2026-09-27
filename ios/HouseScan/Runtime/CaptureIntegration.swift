@@ -192,7 +192,8 @@ final class CaptureIntegration {
     private static func kept(_ photo: StoredKeyframe, purpose: String?, jpeg: URL, storeDirectory: URL) -> KeptPhoto {
         let stored = photo.depth
         return KeptPhoto(
-            t: photo.t, cameraToWorld: photo.camera.cameraToWorld, cameraIntrinsics: photo.camera.intrinsics, cameraImageSize: photo.camera.imageSize,
+            // The pose exactly as ARKit reported it; anchor corrections apply only to scene.json and the 1.1 packet.
+            t: photo.t, cameraToWorld: photo.rawPose, cameraIntrinsics: photo.camera.intrinsics, cameraImageSize: photo.camera.imageSize,
             width: photo.width, height: photo.height, tracking: TrackingCode(photo.tracking).packetTracking,
             exposure: photo.exposure.map { .init(duration: $0.durationS, offset: $0.offsetEV, iso: $0.iso, fNumber: $0.fNumber) },
             jpeg: jpeg, purpose: purpose,
