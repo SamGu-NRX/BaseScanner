@@ -430,13 +430,12 @@ final class DemoEngine: ScanActions {
             }
             if case .aimAtGround(let s) = state.guidance {
                 // A step to the side at a time: one more ground cell by the ring is covered each
-                // tick, from its middle out, and the walk goes on once the ring is full.
+                // tick, from its middle out. Like the real engine, the walk goes on in the same
+                // update that fills the ring, so the demo shows the hold a phone shows (#81).
+                capture(.walk)
+                coverGroundCell(nearest: s)
                 if (state.aimProgress ?? 0) >= 1 {
-                    capture(.walk)
-                    refreshCoverage()
                     refreshGuidance()
-                } else {
-                    coverGroundCell(nearest: s)
                 }
             }
         }
