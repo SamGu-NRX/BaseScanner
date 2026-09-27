@@ -45,9 +45,9 @@ Here's the whole trip, from the homeowner's phone to our server and back again. 
   <img alt="Architecture in four swimlanes. On the iPhone, ARKit anchors the meter, Vision reads its number, Metal draws the coverage fog and RealityKit raycasts each tap, and the capture becomes scene.json. LiDAR depth is optional. URLSession posts scene.json to the placement server at POST /v1/placements. Keyframes can go to the optional reconstruction worker, where MoGe-2 depth scaled with OpenCV SIFT, or LiDAR depth, fuses into a NumPy TSDF and becomes a rebuilt scene.json for the same endpoint. The shapely solver reads rules.yaml and returns result.json. Back on the iPhone, SwiftUI shows the checks, RealityKit pins the spot to an AnchorEntity, and missing_evidence sends the homeowner back to walk the wall." src="docs/readme/architecture.svg" width="100%">
 </p>
 
-Here's what we didn't compromise on: while the ML models handle the fuzzy parts -- turning photos into a 3D wall, recognizing a gas meter -- they *never* make the call as to whether a battery fits. That decision is comes from a deterministic, criteria-matching evaluation, ensuring that each measurement falls within bounds of a given rule. If all measurements are bounded, great: the model determines the survey to have PASSED. If not, the model marks the survey as a FAIL. If it's unsure whether some measurements pass or not, the survey gets an UNSURE. 
+Here's what we didn't compromise on: while the ML models handle the fuzzy parts -- turning photos into a 3D wall, recognizing a gas meter -- they *never* make the call as to whether a battery fits. That decision comes from a deterministic, criteria-matching evaluation that holds each measurement against the bounds of its rule. If a measurement is within bounds, great: that check is a PASS. If it's out of bounds, the check is a FAIL. If the margin of error makes it too close to call, the check comes back UNSURE.
 
-The criteria (e.g. the distance the battery must b e from the gas meter) exist in a separate rules file. Changing a rule has no effect on the creation of a model, only its evaluation.
+The criteria (e.g. the distance the battery must be from the gas meter) exist in a separate rules file. Changing a rule has no effect on the creation of a model, only its evaluation.
 
 Each part has its own folder:
 
@@ -70,7 +70,7 @@ This is the rule we care about most. Imagine that the phone never saw one stretc
 
 In this scenario, the server would mark that stretch of wall as unknown. It never assumes the best, and no battery placements depending on that stretch being empty would be considered valid.
 
-You can watch that happen above. The homeowner walked to the right and never pointed the phone left, so the left side stays hazed over and the spot nearest it reads "Not seen yet". Once the view sweeps across, the server can finally judge that spot, and it turns out there isn't enough open space in front of it. The spot is revolved: unfortunately, there's no space for a battery.
+You can watch that happen above. The homeowner walked to the right and never pointed the phone left, so the left side stays hazed over and the spot nearest it reads "Not seen yet". Once the view sweeps across, the server can finally judge that spot, and it turns out there isn't enough open space in front of it. The spot is resolved: unfortunately, there's no space for a battery.
 
 Measurements get the same caution, because none of them is exact. The phone keeps track of where it is by adding up its own movements, a bit like finding your way by counting steps, so small errors pile up the farther you walk from the meter. That's why every measurement comes with a margin of error.
 
@@ -98,7 +98,7 @@ The battery measures 31 × 22 × 39.5 in, a bit bigger than a dishwasher. It sta
 
 Each check comes back PASS, FAIL or UNSURE, along with what the server measured, how far off that measurement could be and a reason in plain English. NEC is the National Electrical Code and IRC is the International Residential Code, the two building codes behind several of these rules. The numbers themselves live in `server/rules.yaml` on PR #11's branch, each one next to its source, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations.
 
-The server then gives one of three answers. It says PASS when a spot passes every check. It says FAIL only when every spot within cable reach fails and the app knows where the wall ends on both sides. Anything in between is marked UNSURE, and it goes to a person for review.
+The server then gives one of three answers for the whole scan. It says `pass` when a spot passes every check. It says `reject` only when every spot within cable reach fails and the app knows where the wall ends on both sides. Anything in between is `manual_review`, and it goes to a person.
 
 ### One request, start to finish
 
@@ -246,7 +246,7 @@ Here's every dataset we used, what we used it for and whether it's in the reposi
 | Test fixtures | Server and packet tests | Synthetic, written by hand | Yes |
 | Drawings and animations | This README, the site, the walkthrough | Illustrations with example values, not a real house | Yes |
 
-We use the public datasets only to measure accuracy, and we never redistribute them. ADVIO and ETH3D are licensed for noncommercial use, so if you want to rely on these results for commercial work, permission must be asked for prior.
+We use the public datasets only to measure accuracy, and we never redistribute them. ADVIO and ETH3D are licensed for noncommercial use, so if you want to rely on these results for commercial work, ask their authors for permission first.
 
 ## How accurate it is so far
 
