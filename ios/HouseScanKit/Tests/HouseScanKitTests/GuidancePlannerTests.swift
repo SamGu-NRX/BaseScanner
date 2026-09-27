@@ -49,8 +49,10 @@ import Testing
     /// 2.6 m out with a half-angle of 24 degrees across, cells -2 and 1 as well. One view leaves
     /// them seen; a second 0.3 m away covers all four, which satisfies the task: the planner moves
     /// on at once, well inside the dwell. The same views cover the wall's walking band (1.98 m
-    /// seen against 4.5 ft asked) over a wider stretch, cells -4 to 5, so what it moves on to is
-    /// the ground beside those four cells, which lags the wall. No wall task comes up.
+    /// seen against 4.5 ft asked) over a wider stretch, cells -5 to 6, and the ground over cells
+    /// -3 to 4. The walk goes left first, and a lagging band is looked for only ahead of the
+    /// camera that way, [-1, 0.3]: there the ground lags over cells -5 and -4, fewer than
+    /// `lagRun`'s three, so the walk goes on. No wall task comes up.
     @Test func groundByTheMeterIsMetFromTwoPlaces() {
         var map = CoverageMap(wall: standardWall())
         var planner = GuidancePlanner()
@@ -59,11 +61,9 @@ import Testing
         #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0.2).task == .aimAtGround(s: 0))
         map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
         for index in -2...1 { #expect(map.level(.ground, index) == .covered, "cell \(index)") }
-        let next = planner.update(coverage: map, camera: Self.homeowner(), time: 0.4).task
-        guard case .aimAtGround(let s) = next, s != 0 else {
-            Issue.record("expected the ground beside it next, got \(next)")
-            return
-        }
+        let next = planner.update(coverage: map, camera: Self.homeowner(), time: 0.4)
+        #expect(next.task == .walk(.left))
+        #expect(next.switched == .satisfied)
     }
 
     /// "Can't get there" on it marks the ground skipped, as the engine does, and resets the planner
@@ -81,13 +81,21 @@ import Testing
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: -3), time: 10).task == .walk(.left))
     }
 
-    /// It keeps the 3 s dwell like any other request.
-    @Test func groundByTheMeterKeepsItsDwell() {
+    /// Changed deliberately for #77: stepping too close no longer replaces it with "Take a step
+    /// back" after the 3 s dwell. On build 4.1 the two alternated as two cards, which read as two
+    /// different requests. The request stays and asks to step back as well.
+    @Test func groundByTheMeterStaysWithAStepBackHint() {
         var planner = GuidancePlanner()
         let map = CoverageMap(wall: standardWall())
-        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0).task == .aimAtGround(s: 0))
-        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 2.9).task == .aimAtGround(s: 0))
-        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 3).task == .stepBack)
+        let first = planner.update(coverage: map, camera: Self.homeowner(), time: 0)
+        #expect(first.task == .aimAtGround(s: 0))
+        #expect(!first.stepBack)
+        for time in [2.9, 3, 10] {
+            let close = planner.update(coverage: map, camera: Self.homeowner(out: 1), time: time)
+            #expect(close.task == .aimAtGround(s: 0), "at \(time) s")
+            #expect(close.stepBack, "at \(time) s")
+            #expect(close.switched == nil, "at \(time) s")
+        }
     }
 
     @Test func tooCloseAsksToStepBack() {
@@ -99,10 +107,11 @@ import Testing
 
     @Test func laggingGroundAsksToAimDown() {
         var planner = GuidancePlanner()
-        // Window s in [-1, 1] holds cells -7 ... 6; cells -4, -3 and 2 ... 5 have the wall covered
-        // and the ground unseen (-2 ... 1 are skipped): 6 >= ceil(0.45 / 0.1524) = 3. Middle of the
+        // The walk goes left, so the window runs 1 m ahead that way and 0.3 m back: from s = 0.5,
+        // [-0.5, 0.8], cells -4 ... 5. Cells -4, -3 and 2 ... 5 have the wall covered and the
+        // ground unseen (-2 ... 1 are skipped): 6 >= ceil(0.45 / 0.1524) = 3. Middle of the
         // first and last, (-0.6096 + 0.9144) / 2 = 0.1524.
-        let output = planner.update(coverage: Self.wallOnlyCoverage(), camera: Self.homeowner(), time: 0)
+        let output = planner.update(coverage: Self.wallOnlyCoverage(), camera: Self.homeowner(x: 0.5), time: 0)
         guard case .aimAtGround(let s) = output.task else {
             Issue.record("expected aimAtGround, got \(output.task)")
             return
@@ -112,6 +121,9 @@ import Testing
         #expect(nearlyEqual(output.target ?? .zero, SIMD3(0.1524, 0, 0.6)))
     }
 
+    /// A task other than an aim task is held for 3 s, then gives way. Changed deliberately for
+    /// #84: an unmet aim task whose stretch is still in view is not released at 3 s. On build 4.1
+    /// the 3 s dwell was also the longest any card stayed, and the card changed 22 times in 86 s.
     @Test func hysteresisHoldsATaskForThreeSeconds() {
         var planner = GuidancePlanner()
         let map = Self.meterGroundSkipped()
@@ -119,8 +131,24 @@ import Testing
         // Preferred is stepBack from here on, but walking left isn't satisfied and 3 s haven't passed.
         #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 1).task == .walk(.left))
         #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 2.9).task == .walk(.left))
-        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 3).task == .stepBack)
+        let switched = planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 3)
+        #expect(switched.task == .stepBack)
+        #expect(switched.switched == .dwell)
         #expect(planner.current == .stepBack)
+
+        // The aim task of `laggingGroundAsksToAimDown`, s = 0.1524. From s = -0.5 the walk left is
+        // preferred (the window [-1.5, -0.2] holds two lagging cells), but the stretch is 0.65 m
+        // away, inside the 1 m it is held within.
+        var aiming = GuidancePlanner()
+        let lagging = Self.wallOnlyCoverage()
+        let aim = aiming.update(coverage: lagging, camera: Self.homeowner(x: 0.5), time: 0).task
+        guard case .aimAtGround(let s) = aim, nearlyEqual(s, 0.1524) else {
+            Issue.record("expected aimAtGround at 0.1524, got \(aim)")
+            return
+        }
+        for time in [3.0, 6, 12] {
+            #expect(aiming.update(coverage: lagging, camera: Self.homeowner(x: -0.5), time: time).task == aim, "at \(time) s")
+        }
     }
 
     @Test func satisfiedTaskSwitchesAtOnce() {
@@ -194,17 +222,20 @@ import Testing
     }
 
     /// Checklist I6: instructions never go A, B, A within 3 s. The camera alternates every 0.5 s
-    /// between s = 0 (preferred: aimAtGround) and s = 10 (no lag there, preferred: walk(.left));
-    /// neither task can be satisfied, since the map never changes. Hand trace with minDwell 3:
-    /// aim from 0; at 3.0 the preference is aim again; at 3.5 it is walk and 3.5 s have passed, so
-    /// walk; then aim again at 7.0 (3.5 s later). Switches at exactly 3.5 and 7.0.
+    /// between s = 0.5 (preferred: aimAtGround at 0.1524, as in `laggingGroundAsksToAimDown`) and
+    /// s = 10 (no lag there, preferred: walk(.left)); neither task can be satisfied, since the map
+    /// never changes. Hand trace with minDwell 3: aim from 0; at 3.0 the preference is aim again;
+    /// at 3.5 it is walk, 3.5 s have passed and the aim's stretch is 9.8 m from the camera, so
+    /// walk; then aim again at 7.0 (3.5 s later). Switches at exactly 3.5 and 7.0. Changed
+    /// deliberately from s = 0: the lagging band is now looked for only ahead of the walk, and
+    /// from s = 0 walking left it lags over two cells, too few to ask.
     @Test func neverFlipsBackWithinThreeSeconds() {
         var planner = GuidancePlanner()
         let map = Self.wallOnlyCoverage()
         var history: [(time: Double, task: GuidanceTask)] = []
         for step in 0...20 {
             let time = Double(step) * 0.5
-            let camera = step.isMultiple(of: 2) ? Self.homeowner() : Self.homeowner(x: 10)
+            let camera = step.isMultiple(of: 2) ? Self.homeowner(x: 0.5) : Self.homeowner(x: 10)
             history.append((time, planner.update(coverage: map, camera: camera, time: time).task))
         }
         let switches = zip(history, history.dropFirst()).filter { $0.task != $1.task }.map(\.1.time)
@@ -225,9 +256,9 @@ import Testing
     /// three `lagRun` needs, and their middle is s = 0. (The ground cells there are hidden too:
     /// their row at the wall's foot is the wall's row 0, which these views see at u = 620, just
     /// inside the image margin.) Seeing behind comes before aiming.
-    /// Walking off to s = 5 prefers the ground in front of the meter, hidden and so not done, which
-    /// waits out the 3 s dwell; once the cells are no longer hidden the task is satisfied and
-    /// switches at once.
+    /// Walking off to s = 5 prefers the walk left (the ground in front of the meter, hidden and
+    /// so not done, is asked for only within 1 m of the meter), which waits out the 3 s dwell;
+    /// once the cells are no longer hidden the task is satisfied and switches at once.
     @Test func hiddenCellsNearTheCameraAskToSeeBehind() {
         var map = CoverageMap(wall: standardWall())
         let scene = CoverageDepthTests.boxScene
@@ -245,7 +276,7 @@ import Testing
         #expect(output.path.isEmpty)
 
         #expect(planner.update(coverage: map, camera: Self.homeowner(x: 5), time: 2.9).task == .seeBehind(s: s))
-        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 5), time: 3).task == .aimAtGround(s: 0))
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 5), time: 3).task == .walk(.left))
 
         // Satisfied: nothing within 0.3 m of s is hidden once the homeowner marks it skipped.
         var planner2 = GuidancePlanner()
@@ -280,14 +311,14 @@ import Testing
         #expect(output.path.isEmpty)
     }
 
-    /// The lag window slides with the camera, so the middle of what lags drifts. Here it moves
-    /// from 0.1524 to 0 when the homeowner steps 0.5 m left (window [-1.5, 0.5]: lagging cells -4,
-    /// -3, 2 and 3), less than the task's own half-width: the card keeps its distance past the
-    /// dwell instead of changing it. A different stretch still switches after the dwell.
+    /// The lag window slides with the camera. When the homeowner steps from s = 0.5 to -0.5 the
+    /// window no longer holds enough lagging cells and the walk is preferred, but the task's
+    /// stretch is still in view: the card keeps its distance past the dwell instead of changing
+    /// it. Out of view (s = 10) it gives way.
     @Test func aimTaskKeepsItsStretchWhileTheWindowDrifts() {
         var planner = GuidancePlanner()
         let map = Self.wallOnlyCoverage()
-        let first = planner.update(coverage: map, camera: Self.homeowner(), time: 0).task
+        let first = planner.update(coverage: map, camera: Self.homeowner(x: 0.5), time: 0).task
         guard case .aimAtGround(let s) = first, nearlyEqual(s, 0.1524) else {
             Issue.record("expected aimAtGround at 0.1524, got \(first)")
             return
@@ -298,16 +329,17 @@ import Testing
 
     /// Issue #38: cells seen before an end was set stay in the map, but past the end nothing is
     /// observed or skipped, so a task there could never fill and "Can't get there" didn't clear
-    /// it. In `wallOnlyCoverage` the ground lags over cells -4, -3 and 2 ... 5; a right end at
-    /// s = 0.3 leaves only -4 and -3 between the ends, fewer than `lagRun`'s three, so the walk
-    /// goes left instead of asking to tilt down at s = 0.1524. Likewise the box's twelve hidden
-    /// cells (`hiddenCellsNearTheCameraAskToSeeBehind`) with the ends at s = -0.1 and 0.1: two lie
+    /// it. In `wallOnlyCoverage` the ground lags over cells -4, -3 and 2 ... 5, all in the window
+    /// seen from s = 0.5 (`laggingGroundAsksToAimDown`); a right end at s = 0.3 leaves only -4 and
+    /// -3 between the ends, fewer than `lagRun`'s three, so the walk goes left instead of asking to
+    /// tilt down at s = 0.1524. Likewise the box's twelve hidden cells
+    /// (`hiddenCellsNearTheCameraAskToSeeBehind`) with the ends at s = -0.1 and 0.1: two lie
     /// between them, too few to ask to see behind.
     @Test func noCameraTaskPastAMarkedEnd() {
         var lagging = Self.wallOnlyCoverage()
         lagging.setEnd(.right, at: 0.3)
         var planner = GuidancePlanner()
-        #expect(planner.update(coverage: lagging, camera: Self.homeowner(), time: 0).task == .walk(.left))
+        #expect(planner.update(coverage: lagging, camera: Self.homeowner(x: 0.5), time: 0).task == .walk(.left))
 
         var hidden = CoverageMap(wall: standardWall())
         let scene = CoverageDepthTests.boxScene
@@ -319,5 +351,171 @@ import Testing
         var planner2 = GuidancePlanner()
         let task = planner2.update(coverage: hidden, camera: Self.homeowner(), time: 0).task
         if case .seeBehind = task { Issue.record("asked to see behind cells past the ends: \(task)") }
+    }
+
+    // MARK: Build 4.1 field test (#84, #77)
+
+    /// #84 and #77: an unmet aim task stays while it gains, and stalls once it has gained nothing
+    /// for `stallTimeout` (20 s). The ground by the meter is cells -2 ... 1. Views straight down
+    /// from s = -0.45 and -0.15 (`groundCamera`, 0.3 m apart) cover cells -4 ... -1, half of it,
+    /// at 8 s; nothing more comes, and the request stalls 20 s after that, at 28 s. It is deferred,
+    /// so the walk moves on (here to the wall beside those ground views, which lags the ground),
+    /// and it is asked for again after a reset.
+    @Test func anUnmetAimIsHeldWhileItGainsAndDeferredWhenItStalls() {
+        var map = CoverageMap(wall: standardWall())
+        var planner = GuidancePlanner()
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0).task == .aimAtGround(s: 0))
+        map.observe(groundCamera(s: -0.45), trackingNormal: true)
+        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 4).task == .aimAtGround(s: 0))
+        map.observe(groundCamera(s: -0.15), trackingNormal: true)
+        #expect(nearlyEqual(Float(map.coveredFraction(.ground, in: -0.3...0.3)), 0.5))
+        #expect(planner.update(coverage: map, camera: Self.homeowner(out: 1), time: 8).task == .aimAtGround(s: 0))
+        let held = planner.update(coverage: map, camera: Self.homeowner(), time: 27.9)
+        #expect(held.task == .aimAtGround(s: 0))
+        #expect(held.switched == nil && held.stalled == nil)
+        let stalled = planner.update(coverage: map, camera: Self.homeowner(), time: 28)
+        #expect(stalled.task != .aimAtGround(s: 0))
+        #expect(stalled.switched == .stalled)
+        #expect(stalled.stalled == .aimAtGround(s: 0))
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 40).task != .aimAtGround(s: 0))
+        planner.reset()
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 41).task == .aimAtGround(s: 0))
+    }
+
+    /// Review of #120: a lagging-band request that stalls in the middle of the window is not asked
+    /// for again at once. Walking right (the left end marked) with the phone at s = 2, the window
+    /// is [1.7, 3.0], cells 11 ... 19, and the ground lags the (skipped) wall in all of them: the
+    /// request is their middle, s = 2.3622. Nothing is ever seen, so it stalls at 20 s; its
+    /// stretch holds the middles of cells 14 ... 16, which leaves runs 11 ... 13 and 17 ... 19,
+    /// three cells each. Before, the middle of the cells left was 2.3622 again and the same card
+    /// came straight back. Now the nearer run is asked for (s = 1.905), then the other (2.8194),
+    /// each a different stretch, and once all three have stalled the walk goes on.
+    @Test func aStalledLaggingBandIsNotAskedForAgainAtOnce() {
+        var map = Self.meterGroundSkipped()
+        map.setEnd(.left, at: -0.5)
+        map.markSkipped(.wall, 1...4)
+        let camera = Self.homeowner(x: 2)
+        var planner = GuidancePlanner()
+        let first = planner.update(coverage: map, camera: camera, time: 0)
+        guard case .aimAtGround(let s0) = first.task else {
+            Issue.record("expected a ground request, got \(first.task)")
+            return
+        }
+        #expect(nearlyEqual(s0, 2.3622))
+        #expect(planner.update(coverage: map, camera: camera, time: 19.9).task == first.task)
+
+        var asked = [s0]
+        for time in [20.0, 40.0] {
+            let stalled = planner.update(coverage: map, camera: camera, time: time)
+            #expect(stalled.stalled == .aimAtGround(s: asked[asked.count - 1]), "at \(time) s")
+            #expect(stalled.switched == .stalled, "at \(time) s")
+            guard case .aimAtGround(let s) = stalled.task else {
+                Issue.record("expected another ground request at \(time) s, got \(stalled.task)")
+                return
+            }
+            for earlier in asked {
+                #expect(abs(s - earlier) >= GuidancePlanner.aimHalfWidth, "\(s) asks for the stretch at \(earlier) again")
+            }
+            asked.append(s)
+        }
+        #expect(nearlyEqual(asked[1], 1.905))
+        #expect(nearlyEqual(asked[2], 2.8194))
+        let walk = planner.update(coverage: map, camera: camera, time: 60)
+        #expect(walk.stalled == .aimAtGround(s: asked[2]))
+        #expect(walk.task == .walk(.right))
+    }
+
+    /// #77: the ground in front of the meter is asked for only while the phone is within 1 m of
+    /// the meter. Farther away the walk goes on, and once the phone leaves that metre the request
+    /// gives way after its dwell.
+    @Test func theGroundByTheMeterIsAskedForOnlyNearTheMeter() {
+        let map = CoverageMap(wall: standardWall())
+        for x: Float in [-0.8, 0, 0.8] {
+            var planner = GuidancePlanner()
+            #expect(planner.update(coverage: map, camera: Self.homeowner(x: x), time: 0).task == .aimAtGround(s: 0), "at s = \(x)")
+        }
+        for x: Float in [-1.2, 1.1, 1.5, 6] {
+            var planner = GuidancePlanner()
+            #expect(planner.update(coverage: map, camera: Self.homeowner(x: x), time: 0).task == .walk(.left), "at s = \(x)")
+        }
+        var planner = GuidancePlanner()
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 0.8), time: 0).task == .aimAtGround(s: 0))
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 1.5), time: 2.9).task == .aimAtGround(s: 0))
+        let left = planner.update(coverage: map, camera: Self.homeowner(x: 1.5), time: 3)
+        #expect(left.task == .walk(.left))
+        #expect(left.switched == .leftWindow)
+    }
+
+    /// #77: once both ends are marked, the ground by the meter comes back wherever the phone is,
+    /// as the first stretch between the ends that isn't done (`firstHole`). Everything from -2 to
+    /// 2 is skipped but the ground cells -2 ... 1; from s = 1.8 the walk asks for them only once
+    /// both ends are marked.
+    @Test func theGroundByTheMeterComesBackOnceBothEndsAreMarked() throws {
+        var map = CoverageMap(wall: standardWall())
+        for band in SurfaceBand.allCases {
+            map.markSkipped(band, -2...(-0.35))
+            map.markSkipped(band, 0.35...2)
+        }
+        map.markSkipped(.wall, -0.35...0.35)
+        for index in -2...1 { #expect(map.level(.ground, index) == .unseen, "cell \(index)") }
+        var noEnds = GuidancePlanner()
+        #expect(noEnds.update(coverage: map, camera: Self.homeowner(x: 1.8), time: 0).task == .walk(.left))
+        map.setEnd(.left, at: -2)
+        var oneEnd = GuidancePlanner()
+        #expect(oneEnd.update(coverage: map, camera: Self.homeowner(x: 1.8), time: 0).task == .walk(.right))
+        map.setEnd(.right, at: 2)
+        var bothEnds = GuidancePlanner()
+        let output = bothEnds.update(coverage: map, camera: Self.homeowner(x: 1.8), time: 0)
+        #expect(output.task == .aimAtGround(s: 0))
+        #expect(nearlyEqual(try #require(output.target), SIMD3(0, 0, 0.6)))
+    }
+
+    /// #84: aim targets landed up to about 3 ft behind the phone, and the card changed every 3 s.
+    /// A homeowner walks right (the left end marked, as on run 2) 0.6 m every 2 s, the phone
+    /// glancing between 5 and 35 degrees down, so each view leaves some ground beside the phone
+    /// short of a second position. That ground lies behind the phone by the next step: the walk
+    /// no longer turns back for it (those stretches come back once both ends are marked), and no
+    /// aim task it asks for lies more than 0.3 m behind the phone. Before, the window reached 1 m
+    /// back, and each of five cards asked for ground about 0.5 m behind the phone.
+    @Test func aWalkNeverAimsBehindThePhone() {
+        var map = Self.meterGroundSkipped()
+        map.setEnd(.left, at: -0.5)
+        var planner = GuidancePlanner()
+        var tasks: [GuidanceTask] = []
+        for step in 0...10 {
+            let x = Float(step) * 0.6
+            let camera = portraitCamera(at: SIMD3(x, 1.4, 2.6), forward: forwardFacingWall(pitchedDown: step.isMultiple(of: 2) ? 5 : 35))
+            map.observe(camera, trackingNormal: true)
+            let task = planner.update(coverage: map, camera: camera, time: Double(step) * 2).task
+            guard tasks.last != task else { continue }
+            tasks.append(task)
+            switch task {
+            case .aimAtGround(let s), .aimAtWall(let s):
+                #expect(s >= x - 0.3, "\(task) with the phone at s = \(x)")
+            default:
+                break
+            }
+        }
+        #expect(tasks.count <= 4, "\(tasks)")
+    }
+
+    /// #77: the ground by the meter seen twice from one spot has every row seen once, and a second
+    /// look from there (within `coveringBaseline`, 0.25 m) adds nothing: the planner says a step to
+    /// the side is needed. From 0.3 m away it isn't, and a view from there covers the stretch.
+    @Test func aStretchSeenFromOneSpotNeedsASecondPosition() {
+        var map = CoverageMap(wall: standardWall())
+        #expect(!map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.front))
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        #expect(map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.front))
+        #expect(map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.frontCamera(x: 0.2).position))
+        #expect(!map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.frontCamera(x: 0.3).position))
+        var planner = GuidancePlanner()
+        let output = planner.update(coverage: map, camera: Self.homeowner(), time: 0)
+        #expect(output.task == .aimAtGround(s: 0))
+        #expect(output.needsSecondPosition)
+        map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
+        #expect(!map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.frontCamera(x: 0.3).position))
+        #expect(map.coveredFraction(.ground, in: -0.3...0.3) == 1)
     }
 }

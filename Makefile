@@ -5,7 +5,7 @@ XCODEGEN ?= xcodegen
 # Must match XCODEGEN_VERSION in .github/workflows/ios.yml; other versions write a different project.
 XCODEGEN_VERSION := 2.46.0
 
-.PHONY: check server web ios ios-project
+.PHONY: check server web ios ios-project smoke
 
 check: server web ios
 
@@ -34,3 +34,9 @@ ios-project:
 		exit 1; \
 	fi
 	$(XCODEGEN) generate --spec ios/project.yml
+
+# Posts each scene in server/examples to a placement server and prints its decision:
+# make smoke URL=https://house-scanning-server.vercel.app [KEY_FILE=server/.env.private.local]
+smoke:
+	@test -n "$(URL)" || { echo "usage: make smoke URL=<server> [KEY_FILE=<file with HOUSESCAN_API_KEY=...>]" >&2; exit 2; }
+	python3 server/examples/smoke.py "$(URL)" $(if $(KEY_FILE),--key-file "$(KEY_FILE)")

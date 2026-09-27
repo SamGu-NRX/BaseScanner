@@ -1,0 +1,154 @@
+{
+  "id": "g10-e15-pass",
+  "source": "t3-lane-c-review.md golden 10 at origin/t3/research a7d91f1",
+  "description": "Every start has gas gap d = 4.51 ft with error 1.5 ft (gas meter +/- 1.5, wall exact), against a 3.0 ft threshold. The gas object's recognition conf of 0.6 must not change the error.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        -1.8333333333333333
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -5,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            -1.8333333333333333
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          -5,
+          15
+        ],
+        "source": "tape",
+        "plus_minus_ft": 1.5,
+        "footprint": [
+          [
+            -10,
+            4.51
+          ],
+          [
+            20,
+            4.51
+          ],
+          [
+            20,
+            5.01
+          ],
+          [
+            -10,
+            5.01
+          ]
+        ],
+        "conf": 0.6
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -5,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            8.166666666666666
+          ],
+          [
+            -5,
+            8.166666666666666
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -5.0,
+          15.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -20.0,
+            30.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "checks": [
+      {
+        "match": "gas",
+        "outcome": "pass",
+        "measured_ft": 4.51,
+        "plus_minus_ft": 1.5
+      }
+    ],
+    "missing_evidence_empty": true
+  }
+}

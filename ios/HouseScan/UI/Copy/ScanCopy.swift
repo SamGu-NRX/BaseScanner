@@ -1,4 +1,5 @@
 import Foundation
+import HouseScanKit
 
 /// One instruction: a short line the homeowner acts on, and an optional second line that says
 /// how. Every camera screen shows exactly one of these at a time.
@@ -13,7 +14,8 @@ struct Instruction: Hashable {
 enum ScanCopy {
     // MARK: Guidance
 
-    static func guidance(_ step: GuidanceStep) -> Instruction {
+    /// `hint` changes the words of an aim step only (`aim(_:ground:hint:)`).
+    static func guidance(_ step: GuidanceStep, hint: GuidanceHint? = nil) -> Instruction {
         switch step {
         case .findMeter:
             Instruction(
@@ -21,7 +23,7 @@ enum ScanCopy {
                 detail: "A gray box with a round glass dial or a small screen, usually on an outside wall."
             )
         case .aimAtWallForMeter:
-            Instruction(title: "Step a little closer to the wall", detail: "Then aim at your meter again.")
+            Instruction(title: "Hold on, finding your wall", detail: "Move your phone slowly side to side, then aim at your meter again.")
         case .holdOnMeter:
             Instruction(title: "Hold your meter in the circle", detail: "Your phone takes the photo by itself.")
         case .walk(let side, let remaining):
@@ -36,10 +38,18 @@ enum ScanCopy {
                 detail: "Aim where the wall stops or turns a corner, and tap Wall ends here."
             )
         case .aimAtGround(let s):
-            Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)).")
+            // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
+            // so tilting down without moving never clears it.
+            aim(
+                Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)). Take a small step sideways as you look."),
+                ground: true, hint: hint
+            )
         case .aimAtWall(let s):
             // "Around at your meter" read wrong once the walk starts at the meter.
-            Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s)).")
+            aim(
+                Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s))."),
+                ground: false, hint: hint
+            )
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
         case .tiltUp(let span):
@@ -64,6 +74,33 @@ enum ScanCopy {
         }
     }
 
+    /// An aim step's card with what the hint adds. The title follows the target: on build 4.1 the
+    /// chevron pointed up while the card said "Tilt down" (#81). Seen once from here, the step to
+    /// the side is the whole instruction (#77). Too close, "step back" joins the same card
+    /// instead of replacing it with another (#77).
+    private static func aim(_ base: Instruction, ground: Bool, hint: GuidanceHint?) -> Instruction {
+        guard let hint else { return base }
+        var copy = base
+        if hint.needsSecondPosition {
+            copy.title = "Now take one step to the side and look again"
+        } else {
+            switch hint.aim {
+            case .above? where ground:
+                copy.title = "Tilt up a little"
+            case .below? where !ground:
+                copy.title = "Tilt down a little"
+            case .onScreen? where ground:
+                copy.title = "Put the ring on the strip"
+            default:
+                break
+            }
+        }
+        if hint.stepBack {
+            copy.detail = [copy.detail, "Step back a little."].compactMap { $0 }.joined(separator: " ")
+        }
+        return copy
+    }
+
     // MARK: Coaching
 
     static func coaching(_ coaching: Coaching) -> Instruction {
@@ -75,9 +112,13 @@ enum ScanCopy {
         case .needsTexture:
             Instruction(title: "Aim at a corner or somewhere with more texture", detail: "A plain wall or the sky gives your phone nothing to follow.")
         case .tooDark:
-            Instruction(title: "It's too dark to see the wall", detail: "Turn on a porch light, or try again in daylight.")
+            Instruction(title: "It's dark here", detail: "Some photos won't count. Try your phone's flashlight, or come back in daylight.")
+        case .tooDarkToMeasure:
+            Instruction(title: "It's too dark to measure here", detail: "Try in daylight.")
         case .holdSteady:
             Instruction(title: "Hold steady", detail: nil)
+        case .turnSlowly:
+            Instruction(title: "Turn more slowly", detail: "Photos taken while turning come out blurred.")
         case .relocalizing:
             Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
@@ -93,11 +134,40 @@ enum ScanCopy {
         case .initializing: "iphone.gen3.radiowaves.left.and.right"
         case .slowDown: "tortoise.fill"
         case .needsTexture: "square.grid.3x3.middle.filled"
-        case .tooDark: "moon.fill"
+        case .tooDark, .tooDarkToMeasure: "moon.fill"
         case .holdSteady: "hand.raised.fill"
+        case .turnSlowly: "arrow.clockwise"
         case .relocalizing, .trackingLost: "location.slash.fill"
         case .pastWallEnd: "arrow.uturn.backward"
         }
+    }
+
+    /// One short line for coaching that rides along with the task instead of replacing it (the
+    /// walk's capture-gate coaching): the task's title and second line stay, and this goes under
+    /// them. Only the coaching's title, so the task's own words stay the bigger part of the card.
+    static func coachingNote(_ coaching: Coaching) -> String {
+        let title = ScanCopy.coaching(coaching).title
+        return title.hasSuffix(".") ? title : "\(title)."
+    }
+
+    /// Tracking problems and standing past the end replace the task on the card: nothing the task
+    /// asks for counts until they clear. The capture gate's coaching and too little texture ride
+    /// along with it instead (`withCoaching`). No `default`, so a new case has to pick a side.
+    static func coachingReplacesTask(_ coaching: Coaching) -> Bool {
+        switch coaching {
+        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: true
+        case .slowDown, .needsTexture, .tooDark, .tooDarkToMeasure, .holdSteady, .turnSlowly: false
+        }
+    }
+
+    /// The task with ride-along coaching under it: the task's title and second line both stay (on
+    /// an aim step the second line is the only thing that says where to aim), and the coaching adds
+    /// its own short line (`coachingNote`). Replacing the whole card hid the task each time the
+    /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
+    static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
+        guard let coaching else { return task }
+        let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
+        return Instruction(title: task.title, detail: detail)
     }
 
     // MARK: Aim ring
@@ -110,7 +180,8 @@ enum ScanCopy {
 
     // MARK: Wall ends
 
-    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk.
+    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk,
+    /// only while the walk asks to walk that way or mark the end (`EndPreview.leavesOutWalked`).
     static func endLeavesOut(_ meters: Float) -> String {
         "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
     }
@@ -150,6 +221,9 @@ enum ScanCopy {
     }
 
     static let barcodeMatch = "Matches the barcode"
+    /// The maker read on the close-up, above the number candidates.
+    static func meterBrand(_ brand: String) -> String { "\(brand) meter" }
+    static func notMeterBrand(_ brand: String) -> String { "Not \(brand)" }
     static let noneOfThese = "None of these"
 
     // MARK: Features
@@ -259,24 +333,28 @@ enum ScanCopy {
 
     // MARK: Gap
 
-    static func gap(_ gap: GapRequest) -> Instruction {
+    /// The card for a gap request. A server request can run along much of the wall, so its
+    /// stretch is named by its two ends, clipped to the wall's marked `ends` (issue #75); the
+    /// phone's own requests are short and named by their middle.
+    static func gap(_ gap: GapRequest, ends: (left: Float?, right: Float?) = (nil, nil)) -> Instruction {
         let place = Distance.aroundFromMeter(gap.span)
+        let stretch = Distance.range(gap.span, clippedTo: ends)
         switch gap.reason {
         case .groundNearCandidate:
             return Instruction(title: "Show the ground \(place)", detail: "This might be a spot for the battery, so the ground there needs a clear look from two places.")
         case .wallAboveCandidate:
             return Instruction(title: "Show the wall \(place)", detail: "Tilt up so the wall above this spot is in view.")
         case .server(let detail):
-            return Instruction(title: gap.band == .ground ? "Show the ground \(place)" : "Show the wall \(place)", detail: detail)
+            return Instruction(title: gap.band == .ground ? "Show the ground \(stretch)" : "Show the wall \(stretch)", detail: detail)
         case .groundOut(let out):
             return Instruction(
                 title: "Show the ground out to about \(Distance.feetAtLeast(out)) from the wall",
-                detail: "\(place.capitalizedFirst). Step back and tilt down until that much ground is in view."
+                detail: "\(stretch.capitalizedFirst). Step back and tilt down until that much ground is in view."
             )
         case .walkOut(let out):
             return Instruction(
                 title: "Walk along this stretch about \(Distance.feetAtLeast(out)) out from the wall",
-                detail: "\(place.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
+                detail: "\(stretch.capitalizedFirst). Follow the dotted line. Walking there shows nothing stands in front of the wall."
             )
         case .overhead:
             return Instruction(
@@ -288,6 +366,30 @@ enum ScanCopy {
 
     /// The reply on the see-behind step: the homeowner can't get a view past the obstruction.
     static let cannotSeeBehind = "Can't see past it"
+
+    // MARK: Card replies
+
+    /// The walk card's reply (`ScanActions.cannotAccessArea`) and its VoiceOver hint, worded for
+    /// what it does on `step`; nil on a step that offers none. On an aim or tilt step the
+    /// homeowner is already at the spot and it's the view that can't be had, so "Can't get
+    /// there" read as the wrong answer and testers kept tilting (#63). It stays on the steps
+    /// that ask to go somewhere. The wall's end (`markEnd`) has "Wall ends here" instead.
+    static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
+        switch step {
+        case .aimAtGround, .aimAtWall:
+            (title: "Skip this spot", hint: "An installer will look at it instead.")
+        case .tiltUp:
+            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer will look at it instead.")
+        case .walk:
+            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.")
+        case .markNextWall:
+            (title: "Can't get there", hint: "Skips this part of the wall. An installer will look at it instead.")
+        case .seeBehind:
+            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer will look at it instead.")
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
+            nil
+        }
+    }
 
     // MARK: Follow-up view
 
@@ -316,9 +418,13 @@ enum ScanCopy {
     static let overheadCovered = "A roof edge, porch or stairs"
 
     /// The question after "Wall ends here". A corner means the wall goes on out of sight, which
-    /// the result must not treat as the end of usable wall.
-    static func endQuestion(_ side: WallSide) -> Instruction {
-        Instruction(title: "What's at the \(side.rawValue) end?", detail: "This tells the installer whether the wall keeps going.")
+    /// the result must not treat as the end of usable wall. `leavesOut` is how much of the walk
+    /// the end just made leaves out (`ScanViewState.endQuestionLeavesOut`), said here since the
+    /// strip says it only while the walk asks to walk that way (#66).
+    static func endQuestion(_ side: WallSide, leavesOut: Float? = nil) -> Instruction {
+        let why = "This tells the installer whether the wall keeps going."
+        let detail = leavesOut.map { "This leaves out \(Distance.roughFeet($0)) you walked. \(why)" } ?? why
+        return Instruction(title: "What's at the \(side.rawValue) end?", detail: detail)
     }
 
     /// With no server connected nothing is sent, and the words must not say it is.
@@ -361,11 +467,13 @@ enum ScanCopy {
 
     // MARK: Result
 
-    static func headline(_ result: ResultPresentation) -> String {
-        switch result.decision {
-        case .pass: "There's a spot for your battery"
-        case .manualReview: "An installer will take a look"
-        case .reject: "This wall doesn't have a spot"
+    /// The answer in the homeowner's words (`ResultPresentation.answer`).
+    static func headline(_ answer: ResultReading.Answer) -> String {
+        switch answer {
+        case .fits: "A battery fits here"
+        case .oneMoreLook: "One more look"
+        case .installer: "An installer will confirm"
+        case .notHere: "Not on this wall"
         }
     }
 
@@ -373,14 +481,79 @@ enum ScanCopy {
     static func placement(_ result: ResultPresentation) -> String? {
         guard let spot = result.spot else { return nil }
         let center = (spot.span.lowerBound + spot.span.upperBound) / 2
-        var line = Distance.fromMeter(center).prefix(1).uppercased() + Distance.fromMeter(center).dropFirst()
+        var line = Distance.fromMeter(center).capitalizedFirst
         if let cable = result.cableLength {
             line += ", \(Distance.roughFeet(cable)) of cable"
         }
         return line
     }
 
+    /// Why the closest spot doesn't work, for a result without a spot: "The closest spot, 4 ft
+    /// left of your meter, fails this check: distance from gas equipment. Measured 2 ft 4 in. The
+    /// rule is at least 3 ft." The check's title follows a colon because the server's titles name
+    /// what a passing spot has ("No box or vent above the battery"), so a sentence that used one
+    /// as the failure would say the opposite for some of them.
+    static func nearest(_ result: ResultPresentation, spoken: Bool = false) -> String? {
+        guard let spot = result.nearestSpot, let id = result.nearestFailingCheck,
+              let row = result.checks.first(where: { $0.id == id }) else { return nil }
+        let center = (spot.span.lowerBound + spot.span.upperBound) / 2
+        let place = spoken && abs(center) >= Distance.metersPerInch * 3
+            ? "\(Distance.spoken(center)) \(center < 0 ? "left" : "right") of your meter"
+            : Distance.fromMeter(center)
+        var line = "The closest spot, \(place), fails this check: \(row.title.lowercasedFirst)."
+        if let measurement = measurement(row, spoken: spoken) {
+            line += " \(measurement)"
+        }
+        return line
+    }
+
+    /// The sentence under a failed or unsure line on the result card: the measurement against the
+    /// rule, or without a measurement, the server's reason (fail) or who settles it (unsure).
+    static func cardLine(_ row: CheckRow, spoken: Bool = false) -> String? {
+        switch row.outcome {
+        case .pass: nil
+        case .fail: measurement(row, spoken: spoken) ?? row.reason
+        case .unsure: measurement(row, spoken: spoken) ?? unsureNote(row)
+        }
+    }
+
+    /// "Settles: distance from the gas meter, clear space in front": the checks a requested view
+    /// would settle, by their titles. A check a person has to judge (a borderline measurement, an
+    /// unknown attribute) stays off the list: another view doesn't settle it. Nil when none is left.
+    static func settles(_ item: MissingEvidence, checks: [CheckRow]) -> String? {
+        let titles = item.checkIDs.compactMap { id in
+            checks.first { $0.id == id && !$0.needsPerson }?.title.lowercasedFirst
+        }
+        guard !titles.isEmpty else { return nil }
+        return "Settles: \(titles.joined(separator: ", "))"
+    }
+
+    static let seeOnWall = "See it on your wall"
+    /// For a spot an installer still has to confirm against the meter's working space.
+    static let seeClosest = "See the closest spot"
+    static let showMe = "Show me"
+    static let scanAnotherWall = "Scan another wall"
+    static let details = "Details"
+
+    static let installerConfirms = "An installer confirms this on site."
     static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
+    // The server's result covers where the battery goes, not the panel itself.
+    static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
+
+    /// Which rules answered, for a reviewer: "Rules 2f52ec35".
+    static func rulesHash(_ hash: String) -> String {
+        "Rules \(hash)"
+    }
+
+    static func unseenSide(_ side: WallSide) -> String {
+        "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side."
+    }
+
+    /// The note on an unexplored end nearer the meter than the spot (issue #83): where the scan
+    /// stopped, so the homeowner knows which end is meant. Without a spot, any spot past it.
+    static func unseenEnd(_ end: UnseenEnd, hasSpot: Bool) -> String {
+        "The scan stopped \(Distance.fromMeter(end.s)). \(hasSpot ? "A closer spot" : "A spot") may be past there."
+    }
 
     static let shareScan = "Share scan"
     static let shareScanContents = "Your photos and measurements, for the House Scan team"

@@ -18,11 +18,14 @@ final class ScreenStatesUITests: XCTestCase {
         ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
         ("wallWalk", ["-uiDemoPhase", "wallWalk"], "wallWalk"),
         ("wallWalk-slowDown", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "slowDown"], "wallWalk"),
+        ("wallWalk-tooDark", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"], "wallWalk"),
+        ("wallWalk-turnSlowly", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "turnSlowly"], "wallWalk"),
         ("wallWalk-needsTexture", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "needsTexture"], "wallWalk"),
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
+        ("wallWalk-endQuestionLeavesOut", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
@@ -40,6 +43,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("gapRequest-groundOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "groundOut"], "gapRequest"),
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
+        ("gapRequest-tooDark", ["-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"], "gapRequest"),
         ("gapRequest-overhead", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead"], "gapRequest"),
         ("gapRequest-overheadQuestion", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead", "-uiDemoOverheadQuestion"], "gapRequest"),
         ("gapRequest-followUp", ["-uiDemoPhase", "gapRequest", "-uiDemoFollowUp"], "gapRequest"),
@@ -52,6 +56,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
+        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -59,31 +64,60 @@ final class ScreenStatesUITests: XCTestCase {
         ("replayUnreadable", ["-uiDemoFailure", "replayUnreadable"], "unsupported"),
     ]
 
+    /// A server answer in Fixtures/results, which the demo reads in debug builds.
+    private static func resultFile(_ name: String, file: String = #filePath) -> String {
+        URL(fileURLWithPath: file).deletingLastPathComponent().appending(path: "Fixtures/results/\(name).json").path
+    }
+
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
+        // The card's reply under the aim step's words and under coaching.
+        "wallWalk-aim", "wallWalk-slowDown",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
     /// in any text on screen.
-    private static let expectations: [String: (identifier: String?, text: String)] = [
-        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
-        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
-        "gapRequest-followUp": ("instruction", "One more view to finish"),
-        "uploading-followUp": (nil, "One more view to finish"),
-        "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
-        "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
-        "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+    private static let expectations: [String: [(identifier: String?, text: String)]] = [
+        "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        "gapRequest-followUp": [("instruction", "One more view to finish")],
+        // #75: a server request's stretch by its two ends, not its middle.
+        "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
+        "uploading-followUp": [(nil, "One more view to finish")],
+        "markFeatures-groundQuestion": [(nil, "What's on the ground along this wall?")],
+        "markFeatures-groundAnswered": [("ground.answered", "Mulch")],
+        "markFeatures-lostPlace": [("review.lostPlace", "Your phone lost its place")],
+        // #80, #26: the gate's coaching rides on the task card.
+        "wallWalk-slowDown": [("instruction", "Walk slowly to your right")],
+        "wallWalk-tooDark": [("instruction", "It's dark here")],
+        "wallWalk-turnSlowly": [("instruction", "Turn more slowly")],
+        "gapRequest-tooDark": [("instruction", "Show the ground")],
         // #40: an overlap reads as one, not as clearance.
-        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
-        // #67: the screen draws the result itself unless the AR scene is seen drawing it, and
-        // the demo has no AR scene.
-        "resultAR": ("ar.overlay", "drawn on your wall"),
+        "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
+        // The answer comes from the checks: an unsure ground check a view settles.
+        "result-review": [
+            ("result.headline", "One more look"),
+            // #83: keep the exact stopped end beside the redesigned answer.
+            ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        ],
+        // #66: the end question names the captured stretch it leaves out.
+        "wallWalk-endQuestionLeavesOut": [("instruction", "This leaves out 5 ft you walked")],
+        // A reject names the closest spot and the check it fails.
+        "result-reject": [("result.nearest", "The closest spot")],
+        // #67: the demo has no AR scene, so the screen must draw the result itself.
+        "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
-        "wallWalk-aim": ("aim.ring", "50 percent captured"),
+        "wallWalk-aim": [("aim.ring", "50 percent captured")],
+    ]
+
+    /// Controls a state must offer, by identifier.
+    private static let controls: [String: [String]] = [
+        // #39: stopping is available even when just one requested view remains.
+        "gapRequest-followUp": ["action.skipGap", "action.showResult"],
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -103,6 +137,20 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
+    /// The brand read on the close-up is only offered: "Not <brand>" removes it and leaves the
+    /// number candidates to answer.
+    @MainActor
+    func testRejectingTheMeterBrandKeepsTheNumbers() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"]
+        app.launch()
+        XCTAssertTrue(element(app, "meter.brand").waitForExistence(timeout: 15))
+        tap(app, "action.rejectMeterBrand")
+        XCTAssertTrue(element(app, "meter.brand").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(element(app, "meter.candidate.0").exists)
+    }
+
     /// The homeowner's path through the real buttons and camera taps, not the autopilot.
     @MainActor
     func testWholeFlowThroughTheButtons() throws {
@@ -113,6 +161,10 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         tap(app, "action.onboardingNext")
         tap(app, "action.onboardingNext")
+        // Both prompts come from "Allow camera", so the page says why before either shows.
+        let permissions = element(app, "onboarding.permissions")
+        XCTAssertTrue(permissions.waitForExistence(timeout: 5), "missing onboarding.permissions")
+        XCTAssertTrue(permissions.label.contains("Motion & Fitness, which lets it record air pressure"), "the motion prompt must be explained: \(permissions.label)")
         tap(app, "action.finishOnboarding")
         XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 10))
         // A tap on the camera marks the meter, like the button.
@@ -153,10 +205,10 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
         // B-14: a limit says whether it is a minimum or a maximum. The unit is left off: VoiceOver
         // text spells lengths out ("3 feet") once B-16 lands, the screen text says "3 ft".
-        let window = element(app, "check.window")
-        XCTAssertTrue(window.exists, "missing check.window")
-        XCTAssertTrue((window.value as? String)?.contains("The rule is at least 3") == true,
-                      "the window rule must read as a minimum, got \(String(describing: window.value))")
+        // One read (`ElementRead`): the result's content is still settling in.
+        let window = ElementRead.snapshot(element(app, "check.window"))?.value as? String
+        XCTAssertTrue(window?.contains("The rule is at least 3") == true,
+                      "the window rule must read as a minimum, got \(String(describing: window))")
         // The result reveal slides its content in; a tap while it moves can miss (one failure in
         // three local runs), so wait until the button takes taps.
         let showAR = element(app, "action.showAR")
@@ -166,12 +218,110 @@ final class ScreenStatesUITests: XCTestCase {
         showAR.tap()
         XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 10))
         tap(app, "action.closeAR")
+        // Start over sits under Details, last.
+        tap(app, "result.details", timeout: 10)
         let startOver = element(app, "action.startOver")
         XCTAssertTrue(startOver.waitForExistence(timeout: 10))
         app.swipeUp()
         app.swipeUp()
         startOver.tap()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 10))
+    }
+
+    /// The card's reply says what it does on each step (#63): "Skip this spot" where the phone is
+    /// already at the spot, "Can't get there" where the walk asks to go somewhere. It stays under
+    /// the capture gate's coaching (#80) and goes while the phone has lost its place or is past
+    /// the end of the wall.
+    @MainActor
+    func testCardReplyFollowsTheStep() throws {
+        let steps: [(name: String, arguments: [String], reply: String?)] = [
+            ("walk", [], "Can't get there"),
+            ("aim", ["-uiDemoAim"], "Skip this spot"),
+            ("tiltUp", ["-uiDemoTiltUp"], "Skip this"),
+            ("seeBehind", ["-uiDemoSeeBehind"], "Can't see past it"),
+            ("slowDown", ["-uiDemoCoaching", "slowDown"], "Can't get there"),
+            ("tooDark", ["-uiDemoCoaching", "tooDark"], "Can't get there"),
+            ("relocalizing", ["-uiDemoCoaching", "relocalizing"], nil),
+            ("pastWallEnd", ["-uiDemoCoaching", "pastWallEnd"], nil),
+        ]
+        for step in steps {
+            let app = XCUIApplication()
+            app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + step.arguments
+            app.launch()
+            defer { app.terminate() }
+            guard element(app, "screen.wallWalk").waitForExistence(timeout: 15) else {
+                XCTFail("\(step.name): screen.wallWalk never appeared")
+                continue
+            }
+            let shown = element(app, "action.cannotAccess")
+            if let expected = step.reply {
+                XCTAssertTrue(shown.waitForExistence(timeout: 5), "\(step.name): the card has no reply")
+                // One read (`ElementRead`), as elsewhere in this file.
+                XCTAssertEqual(ElementRead.snapshot(shown)?.label, expected, "\(step.name): wrong reply")
+            } else {
+                XCTAssertFalse(shown.waitForExistence(timeout: 2), "\(step.name): the reply must not show")
+            }
+        }
+    }
+
+    /// Each reply answers its own card: "Skip this spot" on the aim card leads to the walk, whose
+    /// "Can't get there" ends the wall there. A new card's reply takes taps only after a moment
+    /// (#82), so each tap waits for it. The end question's third answer ends the wall (#70), and
+    /// the walk goes on to the other side.
+    @MainActor
+    func testRepliesAnswerTheirOwnCardAndTheWallCanJustEnd() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        tapReply(app, "Skip this spot")
+        tapReply(app, "Can't get there")
+        tap(app, "action.markEnd", timeout: 10)
+        XCTAssertTrue(element(app, "action.endCorner").waitForExistence(timeout: 5), "the end question must ask")
+        XCTAssertTrue(element(app, "action.endBlocked").exists)
+        tap(app, "action.endEnds", timeout: 5)
+        XCTAssertTrue(element(app, "action.endEnds").waitForNonExistence(timeout: 5), "the answer must close the question")
+        let walkLeft = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'to your left'")).firstMatch
+        XCTAssertTrue(walkLeft.waitForExistence(timeout: 5), "the walk must go on to the left once the right end is answered")
+        XCTAssertTrue(reply(app, "Can't get there").waitForExistence(timeout: 5), "the walk's reply must come back")
+    }
+
+    /// #80: the capture gate's coaching keeps the walk's task on the card and adds its own line,
+    /// instead of replacing the card.
+    @MainActor
+    func testGateCoachingKeepsTheTaskOnTheCard() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let card = element(app, "instruction")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        // One snapshot read, never live (the #24 flake fix): a live read of a gone element
+        // records a failure that can't be caught.
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Walk slowly to your right"), "the task must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+    }
+
+    /// #80, as on the walk: the capture gate's coaching keeps a gap request on the card. The dark
+    /// coaching can stay up for a whole night request (field test 4.1, run 3).
+    @MainActor
+    func testGateCoachingKeepsTheGapRequestOnTheCard() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 15))
+        let card = element(app, "instruction")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Show the ground"), "the request must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("a clear look from two places"), "the request's second line must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the
@@ -229,17 +379,18 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "ground.answer.gravel")
         XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5), "the answer must fold into a row")
         XCTAssertTrue(element(app, "ground.answer.lawn").waitForNonExistence(timeout: 5), "the answers must go once answered")
-        XCTAssertTrue(element(app, "ground.answered").label.contains("Gravel"), "the row must show the answer")
+        // Read once each (`ElementRead`): the row and the answers are swapping in and out.
+        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Gravel") == true, "the row must show the answer")
 
         tap(app, "ground.change")
         let gravel = element(app, "ground.answer.gravel")
         XCTAssertTrue(gravel.waitForExistence(timeout: 5), "Change must bring the answers back")
-        XCTAssertTrue(gravel.isSelected, "the current answer must show as selected")
+        XCTAssertTrue(ElementRead.snapshot(gravel)?.isSelected == true, "the current answer must show as selected")
         XCTAssertFalse(element(app, "ground.change").exists)
 
         tap(app, "ground.answer.notSure")
         XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5))
-        XCTAssertTrue(element(app, "ground.answered").label.contains("Not sure"))
+        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Not sure") == true)
     }
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent
@@ -318,56 +469,62 @@ final class ScreenStatesUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
-            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+            // The result keeps Share scan under Details.
+            if screen == "result" { tap(app, "result.details") }
+            XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
-                let target = element(app, identifier)
-                found = target.label.contains(expected.text) || (target.value as? String)?.contains(expected.text) == true
+                let target = ElementRead.snapshot(element(app, identifier))
+                found = target.map { $0.label.contains(expected.text) || ($0.value as? String)?.contains(expected.text) == true } ?? false
             } else {
                 found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
             }
             XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
         }
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            XCTAssertTrue(element(app, identifier).exists, "\(name): \(identifier) is missing")
+        }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
         // audit, after the banner's few seconds on screen, finds it again.
-        let first = try audit(app)
-        guard !first.isEmpty else { return }
-        Thread.sleep(forTimeInterval: 6)
-        revealCutOff(first.values.compactMap(\.frame), in: app)
-        let second = try audit(app)
-        for key in AuditIssueKey.repeated(first, second) {
-            XCTFail("\(name): \(second[key]?.message ?? key)")
+        let outcome = try AccessibilityAudit.run(app) { first in
+            Thread.sleep(forTimeInterval: 6)
+            revealCutOff(first.findings.values.compactMap(\.frame), in: app)
+        }
+        if !outcome.unread.isEmpty {
+            let note = XCTAttachment(string: outcome.unread.joined(separator: "\n"))
+            note.name = "\(name)-element-gone"
+            note.lifetime = .keepAlways
+            add(note)
+        }
+        for (_, finding) in outcome.persistent {
+            XCTFail("\(name): \(finding.message)")
+        }
+        // After the audit, so its scrolling can't change what the audit saw: a control that
+        // exists can still sit past the bottom edge, out of the homeowner's reach. At the default
+        // size it must be tappable where it is; at AX5 the screen scrolls, so after scrolling to it
+        // (#39: "Show my result" sits below the tape there).
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            let target = element(app, identifier)
+            guard target.exists else { continue }
+            let reached = name.hasSuffix("-AX5") ? scrollUntilHittable(target, in: app) : target.isHittable
+            XCTAssertTrue(reached, "\(name): \(identifier) can't be tapped")
         }
     }
 
-    private struct Issue {
-        var message: String
-        var frame: CGRect?
-    }
-
-    /// Issues keyed by `AuditIssueKey`. A failed snapshot (the tree changed while the
-    /// audit read it) is retried once; a second failure throws.
+    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
+    /// drag as `revealCutOff`, so it scrolls without momentum.
     @MainActor
-    private func audit(_ app: XCUIApplication) throws -> [String: Issue] {
-        func run() throws -> [String: Issue] {
-            var found: [String: Issue] = [:]
-            try app.performAccessibilityAudit { issue in
-                let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
-                let key = AuditIssueKey.key(auditType: issue.auditType.rawValue, identifier: issue.element?.identifier, label: issue.element?.label)
-                found[key] = Issue(message: "\(issue.compactDescription) (\(element))", frame: issue.element?.frame)
-                return true
-            }
-            return found
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<4 {
+            if target.isHittable { return true }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
         }
-        do {
-            return try run()
-        } catch {
-            Thread.sleep(forTimeInterval: 1)
-            return try run()
-        }
+        return target.isHittable
     }
 
     /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge
@@ -395,6 +552,23 @@ final class ScreenStatesUITests: XCTestCase {
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        target.tap()
+    }
+
+    /// The card's reply with these words.
+    @MainActor
+    private func reply(_ app: XCUIApplication, _ title: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier == 'action.cannotAccess' AND label == %@", title)).firstMatch
+    }
+
+    /// Taps the card's reply once it takes taps: a new card's reply ignores them for a moment
+    /// (`InstructionCard.replyLock`), and a tap then does nothing.
+    @MainActor
+    private func tapReply(_ app: XCUIApplication, _ title: String) {
+        let target = reply(app, title)
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "missing the reply \"\(title)\"")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: target)
+        XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 5), .completed, "the reply \"\(title)\" never took taps")
         target.tap()
     }
 }

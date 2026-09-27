@@ -4,8 +4,9 @@ import SwiftUI
 ///
 /// Over the camera: haze on what the phone hasn't seen, a blue dotted path on the ground, a
 /// ring on the next thing to aim at, pins on what's been marked. At the bottom: the tape map
-/// and at most two actions. At the top: one instruction, replaced by coaching while there is a
-/// problem, or by the marking prompt while marking.
+/// and at most two actions. At the top: one instruction, with coaching on a line of its own
+/// under it while the photos have a problem, replaced while tracking has one, or by the marking
+/// prompt while marking.
 struct WallWalkScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -79,28 +80,39 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
-        if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
+        if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching { return ScanCopy.coaching(coaching) }
-        if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
-        return ScanCopy.guidance(state.guidance)
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        // Coaching about how the photos come out (the capture gate's, and too little texture)
+        // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
+        if state.wallTooShort {
+            return ScanCopy.withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title), coaching)
+        }
+        return ScanCopy.withCoaching(ScanCopy.guidance(state.guidance, hint: state.guidanceHint), coaching)
     }
 
-    /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark
-    /// and is only turning the phone, which the gate also reads as moving (field test run 1).
-    /// Tracking problems still show.
+    /// "Slow down", "Turn more slowly" and "Hold steady" are for walking and aiming. With the tray
+    /// open the homeowner has stopped to pick a mark and is only turning the phone, which the gate
+    /// also reads as moving or turning (field test run 1). Tracking problems still show.
     private var coaching: Coaching? {
-        if trayOpen, state.coaching == .slowDown { return nil }
-        return state.coaching
+        switch state.coaching {
+        case .slowDown?, .turnSlowly?, .holdSteady?: trayOpen ? nil : state.coaching
+        default: state.coaching
+        }
     }
 
+    /// Coaching that replaces the task marks the card with its symbol. A refusal on the task
+    /// (the next wall wasn't marked, the wall is too short) keeps its red triangle over coaching
+    /// that only rides along: the refusal's words are on the card, so its tone should match.
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching {
+        let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
+        if coachingShows, let coaching, ScanCopy.coachingReplacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.wallTooShort { return .refusal }
+        if coachingShows, state.wallTooShort { return .refusal }
+        if coachingShows, let coaching { return .coaching(symbol: ScanCopy.coachingSymbol(coaching)) }
         return .normal
     }
 
@@ -119,14 +131,6 @@ struct WallWalkScreen: View {
         if case .markEnd = state.guidance { return .markEnd }
         if bothEndsMarked { return .finish }
         return .walking
-    }
-
-    /// True while the guidance points at a particular stretch the homeowner might not reach.
-    private var asksForArea: Bool {
-        switch state.guidance {
-        case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall, .seeBehind: true
-        default: false
-        }
     }
 
     /// The end preview shows only with the buttons that set it: not over a question, a mark or
@@ -170,7 +174,7 @@ struct WallWalkScreen: View {
             }
             .transition(.opacity)
         case .endQuestion:
-            // One question, two equal full-width answers that say what they mean (checklist I4).
+            // One question, three equal full-width answers that say what they mean (checklist I4).
             VStack(spacing: 8) {
                 Button {
                     actions.answerWallEnd(turnsCorner: true)
@@ -189,6 +193,18 @@ struct WallWalkScreen: View {
                 .buttonStyle(.secondaryProminent)
                 .accessibilityHint("A fence, gate, or your neighbor's yard")
                 .accessibilityIdentifier("action.endBlocked")
+                // A garden wall or a fence can just stop, with no corner and nothing in the way,
+                // and neither answer above fits it (#70). Ends the wall as "Something blocks it"
+                // does: the usable wall stops here.
+                Button {
+                    actions.answerWallEnd(turnsCorner: false)
+                } label: {
+                    Label("The wall just ends", systemImage: "arrow.right.to.line")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("No corner and nothing in the way. The wall stops here.")
+                .accessibilityIdentifier("action.endEnds")
             }
             .transition(.opacity)
         case .overheadQuestion:
@@ -261,30 +277,41 @@ struct WallWalkScreen: View {
         }
     }
 
+    /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
+    /// a second while the homeowner walks, and the task under it stays the same, so the card's
+    /// reply stays put through it: hiding it each time made the button fade in and out under the
+    /// homeowner's thumb, and the accessibility audit caught it half faded (CI run 36295565916).
+    /// Coaching about tracking itself hides it, since where an end would land needs the phone's
+    /// place, as does being past an end, where the way on is to walk back (#80). No `default`:
+    /// a new coaching case has to choose.
+    private var coachingHidesReply: Bool {
+        switch state.coaching {
+        case nil, .slowDown?, .needsTexture?, .tooDark?, .tooDarkToMeasure?, .holdSteady?, .turnSlowly?: false
+        case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
+        }
+    }
+
+    /// The card's reply, worded for the step by `ScanCopy.reply(for:)` ("Skip this spot" on an
+    /// aim step, "Can't get there" on the walk). Its identifier is `action.cannotAccess` on
+    /// every step.
     private var reply: InstructionCard.Reply? {
-        guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.coaching == nil, !trayOpen else { return nil }
-        if case .seeBehind = state.guidance {
-            return InstructionCard.Reply(
-                title: ScanCopy.cannotSeeBehind,
-                identifier: "action.cannotAccess",
-                hint: "Skips the part behind it. An installer will look at it instead.",
-                perform: { actions.cannotAccessArea() }
-            )
-        }
-        if case .walk = state.guidance {
-            return InstructionCard.Reply(
-                title: "Can't get there",
-                identifier: "action.cannotAccess",
-                hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.",
-                perform: { actions.cannotAccessArea() }
-            )
-        }
+        guard state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, !coachingHidesReply, !trayOpen,
+              let copy = ScanCopy.reply(for: state.guidance) else { return nil }
         return InstructionCard.Reply(
-            title: "Can't get there",
+            title: copy.title,
             identifier: "action.cannotAccess",
-            hint: "Skips this part of the wall. An installer will look at it instead.",
-            perform: { actions.cannotAccessArea() }
+            hint: copy.hint,
+            perform: { actions.cannotAccessArea() },
+            task: replyTask
         )
+    }
+
+    /// The step the reply answers, in words, for the card's input lock: the step's own words
+    /// while coaching shows over it, and the walk without its distance to go, which changes as
+    /// the homeowner walks and would lock "Can't get there" again each time.
+    private var replyTask: Instruction {
+        if case .walk(let side, _) = state.guidance { return ScanCopy.guidance(.walk(side: side, remaining: nil)) }
+        return ScanCopy.guidance(state.guidance)
     }
 
     private var nextWallSymbol: String {

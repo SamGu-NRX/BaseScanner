@@ -1,0 +1,141 @@
+{
+  "id": "g01-unseen-beyond-garage",
+  "source": "t3-lane-c-review.md golden 01 at origin/t3/research a7d91f1",
+  "description": "The wall beyond a garage door left of the meter was never observed. No spot there can be reached by a cable, so the result asks for no photos, and every start beyond the garage fails its route.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -20,
+            0.0
+          ],
+          [
+            10,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "garage_door",
+        "wall_id": "w1",
+        "span_ft": [
+          -5.5,
+          -1
+        ],
+        "bottom_ft": 0.0,
+        "top_ft": 7.0,
+        "attrs": {
+          "operable": true
+        },
+        "source": "tape",
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -20,
+            0.0
+          ],
+          [
+            10,
+            0.0
+          ],
+          [
+            10,
+            10.0
+          ],
+          [
+            -20,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -20.0,
+          10.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -9.0,
+            25.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -9.0,
+            25.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -9.0,
+            25.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -9.0,
+            25.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {},
+  "expect": {
+    "missing_evidence_empty": true,
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -19.9,
+          -8.2
+        ],
+        "outcome": "fail",
+        "failing_match": "route"
+      }
+    ]
+  }
+}

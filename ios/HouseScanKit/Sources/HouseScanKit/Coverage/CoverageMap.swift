@@ -1234,6 +1234,24 @@ public struct CoverageMap: Sendable {
         return Double(all.filter { level(band, $0) == .covered }.count) / Double(all.count)
     }
 
+    /// Whether looking again from `position` can't finish `band` over `range`, and a step to the
+    /// side can: every open row there (a row of the band the walk asks for, in a cell between the
+    /// ends that is neither covered nor skipped) has exactly one sighting, taken less than
+    /// `coveringBaseline` from `position`. False when nothing there is open, and when some open row
+    /// has no sighting yet: the view has to reach it first. Changes nothing.
+    public func needsSecondPosition(band: SurfaceBand, range: ClosedRange<Float>, from position: SIMD3<Float>) -> Bool {
+        var open = 0
+        for index in indices(overlapping: range) where allows(index) {
+            guard let cell = cells[band]?[index] else { return false }
+            if cell.covered || cell.skipped { continue }
+            for row in cell.rows[cell.firstBandRow...cell.lastWalkRow] where row.count < 2 {
+                guard row.count == 1, simd_distance(row[0].position, position) < config.coveringBaseline else { return false }
+                open += 1
+            }
+        }
+        return open > 0
+    }
+
     /// Total covered cells over both bands.
     public var coveredCount: Int {
         cells.values.reduce(0) { $0 + $1.values.filter(\.covered).count }

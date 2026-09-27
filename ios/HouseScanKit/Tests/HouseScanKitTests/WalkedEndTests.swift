@@ -179,6 +179,51 @@ import Testing
         #expect(groundSeen.contains { $0.span.upperBound > 3 })
     }
 
+    /// What an end at s leaves out of the walk: how far the farthest kept view on that side is
+    /// past it, once that is at least a keyframe's spacing (0.5 m).
+    @Test func walkedPastCountsFromAKeyframesSpacing() {
+        let wall = standardWall()
+        let walked = [0, -1, -2, -3, 1, 2].map(Self.stood)
+        #expect(WalkedEnd.walkedPast(.left, s: -1, walked: walked, wall: wall) == 2)
+        #expect(WalkedEnd.walkedPast(.left, s: -2.5, walked: walked, wall: wall) == 0.5)
+        #expect(WalkedEnd.walkedPast(.left, s: -2.75, walked: walked, wall: wall) == nil)
+        #expect(WalkedEnd.walkedPast(.left, s: -3, walked: walked, wall: wall) == nil)
+        #expect(WalkedEnd.walkedPast(.right, s: 0.5, walked: walked, wall: wall) == 1.5)
+        // A side never walked leaves nothing out.
+        #expect(WalkedEnd.walkedPast(.left, s: 0, walked: [], wall: wall) == nil)
+    }
+
+    /// Issue #66: the strip's "leaves out N ft you walked" shows only while the walk asks to walk
+    /// that side or mark its end. During a tilt or step-back request it stays off, however far
+    /// back the phone's place is from the farthest view.
+    @Test func leavesOutOnlyOnAWalkTask() {
+        let wall = standardWall()
+        let walked = [0, -1, -2, -3].map(Self.stood)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 2, onWalkTask: true) == 2)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 2, onWalkTask: false) == nil)
+        // At the front of the walk there is nothing to leave out, on any task.
+        #expect(WalkedEnd.leavesOut(side: .left, s: -2.8, walked: walked, wall: wall, phoneOut: 2, onWalkTask: true) == nil)
+        // The reticle's end (no phone distance): only the task counts.
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: nil, onWalkTask: true) == 2)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: nil, onWalkTask: false) == nil)
+    }
+
+    /// Issue #66, run 3: walking out into the yard moved the phone's place along the wall and the
+    /// line counted up to 11 ft. More than twice the walk's stand-off (2 m) out from the wall, the
+    /// line stays off; at it, it shows.
+    @Test func leavesOutNotWithThePhoneFarOut() {
+        let wall = standardWall()
+        let walked = [0, -1, -2, -3].map(Self.stood)
+        let limit = 2 * GuidanceConfig().standOff
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit, onWalkTask: true) == 2)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit + 0.5, onWalkTask: true) == nil)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 6, onWalkTask: true) == nil)
+        // Behind the wall's line counts by distance too.
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: -6, onWalkTask: true) == nil)
+        // Where the end lands doesn't change with the phone's distance out (`end`).
+        #expect(WalkedEnd.end(.left, phone: SIMD3(-1, 1.4, 6), walked: walked, wall: wall) == -1)
+    }
+
     /// Made-up ends and marks (issue #42): a mark wholly past an end lies past it; one that reaches
     /// an end, straddles one or sits between them doesn't.
     @Test func marksWhollyPastAnEndLiePastIt() {

@@ -7,7 +7,7 @@ import SwiftUI
 /// - `-uiDemoFreeze`: don't run the timed scripts, so the screen holds still.
 /// - `-uiDemoMarking <FeatureKind raw value>`: open the walk in marking mode.
 /// - `-uiDemoRefusal`: the marking shows a refusal.
-/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost|pastWallEnd>`.
+/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|tooDarkToMeasure|holdSteady|turnSlowly|relocalizing|trackingLost|pastWallEnd>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
 /// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
 /// - `-uiDemoGroundQuestion`: open the feature review with the ground question unanswered.
@@ -19,6 +19,8 @@ import SwiftUI
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoOverlap`: the sample result's spot overlaps the meter's working space.
+/// - `-uiDemoResultFile <path>`: debug builds only. The result is the server answer in this JSON
+///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
@@ -26,6 +28,8 @@ import SwiftUI
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
 ///   `-uiDemoRefusal` the last mark was refused.
 /// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.
+/// - `-uiDemoAim`: with `-uiDemoPhase wallWalk`, the walk asks to tilt down to the ground
+///   about 2 ft right of the meter.
 /// - `-uiDemoOverheadQuestion`: the tilt-up view is in and the walk asks what is overhead.
 /// - `-uiDemoGap <groundOut|walkOut|overhead>`: the gap screen shows that server request.
 /// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.

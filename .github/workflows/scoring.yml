@@ -1,0 +1,40 @@
+name: Scoring experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "experiments/scoring/**"
+      - ".github/workflows/scoring.yml"
+  pull_request:
+    paths:
+      - "experiments/scoring/**"
+      - ".github/workflows/scoring.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scoring-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  scoring-checks:
+    name: Scoring checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/scoring
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Reads tool.uv.required-version from experiments/scoring/pyproject.toml to pick the uv version.
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/scoring
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q

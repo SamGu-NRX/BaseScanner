@@ -1,0 +1,40 @@
+# Accessibility audit harness for hsverify.a11yaudit. The UI test launches an app that is already
+# installed on the Simulator, by bundle id, and runs Apple's accessibility audit on every distinct
+# screen it shows. AuditHost exists only because a UI test target needs a host app.
+name: A11yAudit
+options:
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    CODE_SIGNING_ALLOWED: NO
+targets:
+  AuditHost:
+    type: application
+    platform: iOS
+    sources: [AuditHost]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.housescanning.audithost
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+  AccessibilityAudit:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [AccessibilityAudit]
+    dependencies:
+      - target: AuditHost
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.housescanning.accessibilityaudit
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: AuditHost
+schemes:
+  AccessibilityAudit:
+    build:
+      targets:
+        AuditHost: all
+        AccessibilityAudit: [test]
+    test:
+      targets: [AccessibilityAudit]

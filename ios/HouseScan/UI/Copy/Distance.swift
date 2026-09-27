@@ -66,6 +66,38 @@ enum Distance {
         return "\(feetAndInches(s)) \(s < 0 ? "left" : "right") of your meter"
     }
 
+    /// "from 4 ft to 19 ft right of your meter", or "from 3 ft left to 2 ft right of your meter":
+    /// a stretch by its two ends in whole feet, nearer end first, for a request that can run
+    /// along much of the wall (issue #75). It is clipped to the wall's marked ends, so a request
+    /// running past one names only the wall there is; one lying wholly past an end is named as
+    /// it is. Ends that round to the same foot read "about 5 ft right of your meter".
+    static func range(_ span: ClosedRange<Float>, clippedTo ends: (left: Float?, right: Float?) = (nil, nil)) -> String {
+        var low = max(span.lowerBound, ends.left ?? -.infinity)
+        var high = min(span.upperBound, ends.right ?? .infinity)
+        if low > high {
+            low = span.lowerBound
+            high = span.upperBound
+        }
+        let foot = metersPerInch * 12
+        let lowFeet = Int((low / foot).rounded()), highFeet = Int((high / foot).rounded())
+        switch (lowFeet, highFeet) {
+        case (0, 0):
+            return "around your meter"
+        case let (a, b) where a == b:
+            return "about \(abs(a)) ft \(a < 0 ? "left" : "right") of your meter"
+        case (0, let b) where b > 0:
+            return "from your meter to \(b) ft right of it"
+        case (let a, 0) where a < 0:
+            return "from your meter to \(-a) ft left of it"
+        case let (a, b) where a > 0:
+            return "from \(a) ft to \(b) ft right of your meter"
+        case let (a, b) where b < 0:
+            return "from \(-b) ft to \(-a) ft left of your meter"
+        case let (a, b):
+            return "from \(-a) ft left to \(b) ft right of your meter"
+        }
+    }
+
     /// "about 5 ft right of your meter" for the middle of a span: a place to walk to, not a
     /// measurement to check.
     static func aroundFromMeter(_ span: ClosedRange<Float>) -> String {
@@ -78,4 +110,11 @@ enum Distance {
 extension String {
     /// "about 5 ft right of your meter" as the start of a sentence.
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+
+    /// A title in the middle of a sentence: "Distance from AC units" becomes "distance from AC
+    /// units". A leading acronym ("AC units nearby") keeps its capitals.
+    var lowercasedFirst: String {
+        guard let first, let second = dropFirst().first, second.isLowercase else { return self }
+        return first.lowercased() + dropFirst()
+    }
 }

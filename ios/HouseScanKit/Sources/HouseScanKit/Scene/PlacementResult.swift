@@ -170,9 +170,12 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
     /// A server enum the app doesn't read, kept as raw strings (see the top of this file).
     public var sources: [String]
     public var rulesSHA256: String
+    /// Whose rules decided, to show with the answer ("Demo rules: ... not Base's."). The solver
+    /// also appends it to `summary`. Optional in the schema and absent from older answers.
+    public var notice: String?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, version, sources
+        case id, version, sources, notice
         case autoApprove = "auto_approve"
         case rulesSHA256 = "rules_sha256"
     }
@@ -184,6 +187,7 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
         autoApprove = try c.decode(Bool.self, forKey: .autoApprove)
         sources = try c.decode([String].self, forKey: .sources)
         rulesSHA256 = try c.decode(String.self, forKey: .rulesSHA256)
+        notice = try c.decodeIfPresent(String.self, forKey: .notice)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -193,6 +197,7 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
         try c.encode(autoApprove, forKey: .autoApprove)
         try c.encode(sources, forKey: .sources)
         try c.encode(rulesSHA256, forKey: .rulesSHA256)
+        try c.encodeIfPresent(notice, forKey: .notice)
     }
 }
 
@@ -625,6 +630,43 @@ public struct PlacementResult: Codable, Sendable, Equatable {
         try c.encode(ends, forKey: .ends)
         try c.encode(sweep, forKey: .sweep)
         try c.encode(stats, forKey: .stats)
+    }
+}
+
+/// An unexplored wall end past which a spot nearer the meter could lie
+/// (`PlacementResult.closerUnseenEnd()`).
+public struct PlacementUnseenEnd: Sendable, Equatable {
+    public var side: PlacementSide
+    /// Where the scan stopped, in s feet from the meter.
+    public var sFt: Double
+
+    public init(side: PlacementSide, sFt: Double) {
+        self.side = side
+        self.sFt = sFt
+    }
+}
+
+extension PlacementResult {
+    /// The end to name in "the scan stopped here, a closer spot may be past there", or nil when
+    /// no end calls for it (issue #83).
+    ///
+    /// Only an unexplored end within cable reach counts: a limit end has no wall past it, and
+    /// wall past an end beyond reach can't hold the battery. With a spot, the end must be nearer
+    /// the meter than the spot's near edge, so a spot past it could be closer; a spot over the
+    /// meter leaves none. Of the ends left, the one nearest the meter, whichever side it is on:
+    /// the server lists its past_end requests left first, which says nothing about distance.
+    public func closerUnseenEnd() -> PlacementUnseenEnd? {
+        let nearEdge: Double? = spot.map { spot in
+            let low = min(spot.spanFt.x, spot.spanFt.y), high = max(spot.spanFt.x, spot.spanFt.y)
+            return low <= 0 && high >= 0 ? 0 : min(abs(low), abs(high))
+        }
+        var candidates: [PlacementUnseenEnd] = []
+        for (side, end) in [(PlacementSide.left, ends.left), (PlacementSide.right, ends.right)]
+        where end.kind == .unexplored && end.beyondReach != true {
+            if let nearEdge, abs(end.sFt) >= nearEdge { continue }
+            candidates.append(PlacementUnseenEnd(side: side, sFt: end.sFt))
+        }
+        return candidates.min { abs($0.sFt) < abs($1.sFt) }
     }
 }
 

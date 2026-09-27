@@ -1,4 +1,5 @@
 import ARKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import HouseScanKit
@@ -19,6 +20,10 @@ final class ScanEngine {
     /// Which kind of plane the meter tap hit; an estimated plane widens the meter's error in the
     /// export. A replay's wall comes from the recording, so it counts as detected.
     var meterPlaneSource: MeterPlaneSource = .detectedPlane
+    /// Where the phone was when the meter was marked: the ground choice prefers the plane under
+    /// it, and a re-fit follows the tap's line of sight from it (`refitWallToDetectedPlane`). Nil
+    /// on a replay.
+    var meterTapCamera: SIMD3<Float>?
     private var live: LiveCapture?
 
     // Capture logic (HouseScanKit)
@@ -31,9 +36,11 @@ final class ScanEngine {
     // Stored evidence
     private(set) var store: KeyframeStore
     private var keptSourceIDs: Set<String> = []
-    /// Debounces coaching that comes from the capture gate (see `gateCoaching`).
+    /// Debounces "past the end of the wall" during the walk (see `walkCoaching`).
     private var gateProblem: (coaching: Coaching, since: Double)?
     private var gateClearSince: Double?
+    /// Debounces the capture gate's own coaching during the walk (see `walkCoaching`).
+    private var gateCoaching = CoachingDebouncer()
     private var closeUpPending = false
     /// Why the last close-up has to be retaken (from the meter-number reader, or "None of
     /// these"), and when that was said, in screen seconds. Shown until the next shot fires.
@@ -60,6 +67,8 @@ final class ScanEngine {
     private var sourceState = CaptureSourceState()
     /// Detected horizontal planes, with their classes and outlines.
     private var groundPlanes: [GroundPlaneEvidence] = []
+    /// Detected vertical planes, with their classes, normals and outlines.
+    private var wallPlanes: [WallPlaneEvidence] = []
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
     /// than the chest-height guess. The export widens position errors while it is a guess.
@@ -87,11 +96,12 @@ final class ScanEngine {
     /// The end the past_end request cleared: where it was, its kind and when it was marked, put
     /// back or moved on when the request ends without it marked again (`settleClearedEnd`).
     private var clearedEnd: (s: Float, kind: EndKind, t: Double?)?
-    /// Server requests raised without a tap since the review was confirmed (`nextAutomaticGap`),
-    /// oldest first. Each is raised once; the result still offers it as a capture.
+    /// Server requests raised without a tap since the review was confirmed (`automaticGapQueue`),
+    /// oldest first. Each is raised once, whether its view was taken or the homeowner couldn't
+    /// get there; the result still offers it as a capture.
     private var automaticGaps: [GapPlan] = []
-    /// Set when the homeowner says they can't get to a server request's view: after the upload
-    /// that follows, the result shows instead of the next request.
+    /// Set when the homeowner taps "Show my result" on a server request (`stopGapRequests`):
+    /// after the upload that follows, the result shows instead of the next request.
     private var automaticGapsStopped = false
     /// At most this many server requests are raised without a tap per confirmed review, so a
     /// server that keeps finding new gaps can't hold the homeowner in the loop. A guess, not
@@ -102,6 +112,16 @@ final class ScanEngine {
     /// the answer opens the camera: 1.5 s, about the time to read four words and see the new
     /// step appear, and what the UI lane asked for. Not measured with homeowners.
     static let followUpHold: Double = 1.5
+    /// The least time the upload screen shows "Check clearances" at work before it ticks: 0.6 s,
+    /// enough to see the step start. The server answers in the request that carries the scene,
+    /// often a moment after the last byte, and the step was never drawn (issue #31). A guess
+    /// like `followUpHold`, not measured with homeowners.
+    static let analyzingMinimum: Double = 0.6
+    /// How long the upload screen shows every step ticked before the result replaces it: 0.8 s,
+    /// about the time to see "Clearances checked" land. A guess like `followUpHold`, not measured.
+    static let resultHold: Double = 0.8
+    /// When the upload screen moved to "Check clearances" in this upload, for `analyzingMinimum`.
+    private var analyzingSince: ContinuousClock.Instant?
 
     // LiDAR
     /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`: those with
@@ -140,6 +160,7 @@ final class ScanEngine {
     /// The packet's sensor streams for the current world frame.
     private(set) var recorder: CaptureRecorder
     private let motion = MotionSource()
+    private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
     /// When each mark was made, on the capture clock (`MarkKey`).
@@ -292,6 +313,38 @@ final class ScanEngine {
         }
     }
 
+    /// Leaves the onboarding for the meter search. Live, the camera and then Motion & Fitness are
+    /// asked for first, while the onboarding that says why is still on screen; otherwise the AR
+    /// session and the barometer raise both prompts over "Find your electric meter". Without the
+    /// camera there is no scan, so motion is not asked for and the camera failure screen shows.
+    func leaveOnboarding() {
+        guard options.replayFolder == nil else {
+            go(.findMeter)
+            return
+        }
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        if camera == .denied || camera == .restricted {
+            fail(.cameraDenied)
+            return
+        }
+        guard camera == .notDetermined || MotionSource.needsPermission else {
+            go(.findMeter)
+            return
+        }
+        guard !askingForPermissions else { return }
+        askingForPermissions = true
+        Task {
+            if camera == .notDetermined, !(await AVCaptureDevice.requestAccess(for: .video)) {
+                askingForPermissions = false
+                if state.phase == .onboarding { fail(.cameraDenied) }
+                return
+            }
+            await motion.requestPermission()
+            askingForPermissions = false
+            if state.phase == .onboarding { go(.findMeter) }
+        }
+    }
+
     private func startSourceIfNeeded() {
         // A replay is its own source (`loadReplay`); a failed source waits for Start over.
         guard replay == nil, options.replayFolder == nil, live == nil, sourceState.mayStartSource else { return }
@@ -359,7 +412,12 @@ final class ScanEngine {
             groundPlanes = frame.groundPlanes
             refineGround()
         }
-        refreshMeterFromAnchor(frame)
+        if !frame.wallPlanes.isEmpty, frame.wallPlanes != wallPlanes {
+            wallPlanes = frame.wallPlanes
+            refitWallToDetectedPlane()
+        }
+        // A frame made before the meter was anchored again carries the old anchor's pose.
+        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else {
@@ -380,12 +438,15 @@ final class ScanEngine {
     }
 
     /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
-    /// wall always replaces the guess, and a better plane replaces an earlier one.
+    /// wall always replaces the guess, and a better plane replaces an earlier one. A measured
+    /// ground is never raised by more than `GroundPlaneChoice.maximumRaise`.
     private func refineGround() {
-        guard var wall = coverage?.wall, let y = groundBelow(wall.meter, along: wall.along) else { return }
+        guard var wall = coverage?.wall,
+              let choice = groundBelow(wall.meter, along: wall.along, current: groundMeasured ? wall.groundY : nil) else { return }
+        let y = choice.plane.y
         // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
         guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
-        RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
+        RuntimeLog.engine.info("ground at y=\(y) from \(Self.describe(choice), privacy: .public) (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
         wall.groundY = y
         groundMeasured = true
         coverage?.heightError = 0
@@ -396,8 +457,39 @@ final class ScanEngine {
         reprojectFeatures()
     }
 
+    /// A ground choice for the log: the plane's id, its class and why it was chosen.
+    nonisolated static func describe(_ choice: GroundPlaneChoice.Choice) -> String {
+        "plane \(choice.plane.id) (\(choice.plane.kind), \(choice.reason.rawValue))"
+    }
+
+    /// Moves the wall to a detected wall plane that disagrees with a meter tap on an estimated
+    /// plane (`MeterTap.refit`): the meter goes where the tap's line of sight meets the plane, the
+    /// wall faces the plane's normal, and the meter is anchored again there. Only during the
+    /// close-up, before the walk has kept any view: coverage can't turn a wall it has already
+    /// seen (`CoverageMap.updateWall`), so a wall found wrong later stays wrong.
+    private func refitWallToDetectedPlane() {
+        guard state.phase == .meterCloseUp, replay == nil, meterPlaneSource == .estimatedPlane,
+              let live, let tapCamera = meterTapCamera, let wall = coverage?.wall,
+              let refit = MeterTap.refit(meter: wall.meter, outward: wall.outward, tapCamera: tapCamera, planes: wallPlanes) else { return }
+        let along = simd_normalize(simd_cross(-refit.outward, SIMD3(0, 1, 0)))
+        let choice = groundBelow(refit.meter, along: along, current: nil)
+        let measured = choice != nil || groundMeasured
+        guard setWall(meter: refit.meter, outward: refit.outward, groundY: choice?.plane.y ?? wall.groundY, groundMeasured: measured) else { return }
+        meterPlaneSource = .detectedPlane
+        updateCoverage { $0.setWallLineSource(meterLineSource) }
+        meterAnchorID.map { live.removeAnchor($0) }
+        // Axes as a wall hit's: y the wall's normal, z up the wall.
+        let x = simd_normalize(simd_cross(refit.outward, SIMD3(0, 1, 0)))
+        let pose = simd_float4x4(SIMD4(x, 0), SIMD4(refit.outward, 0), SIMD4(simd_cross(x, refit.outward), 0), SIMD4(refit.meter, 1))
+        setMeterAnchor(live.addMeterAnchor(at: pose), pose: pose)
+        let degrees = refit.turned * 180 / .pi
+        let ground = choice.map(Self.describe) ?? "kept"
+        RuntimeLog.engine.info("wall re-fitted to detected plane \(refit.planeID, privacy: .public): meter moved \(refit.moved) m, wall turned \(degrees) degrees; ground \(ground, privacy: .public)")
+    }
+
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
-    /// points stay put.
+    /// points stay put. An anchor correction moves the points and the wall together instead
+    /// (`refreshMeterFromAnchor`), so it needs no reprojection.
     func reprojectFeatures() {
         guard let wall = coverage?.wall, !state.features.isEmpty else { return }
         var features = state.features
@@ -413,12 +505,33 @@ final class ScanEngine {
     /// (`MeterAnchorTracking`).
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
         guard let anchor = frame.meterAnchor, coverage != nil, let correction = meterTracking?.update(to: anchor) else { return }
+        // How far this correction moves the meter (`WallFrame.apply`).
+        let step = coverage.map { simd_distance(correction.point($0.wall.meter), $0.wall.meter) } ?? 0
         coverage?.apply(correction)
         var features = state.features
         for index in features.indices { features[index].points = features[index].points.map(correction.point) }
         if features != state.features { state.features = features }
         publishWall()
         publishCoverage()
+        logAnchorCorrection(correction, step: step)
+    }
+
+    /// One line per correction applied, with the total since the meter was anchored, for telling
+    /// a map ARKit corrected (the marks and the meter move together) from drift it never
+    /// corrected (no line, and the marks sit off their objects) on a walk away and back (#73).
+    /// `MeterAnchorTracking` already limits the rate: a correction is applied only once the anchor
+    /// has moved 2 cm or turned 0.4 degrees since the last one.
+    private func logAnchorCorrection(_ correction: YawCorrection, step: Float) {
+        guard let tracking = meterTracking else { return }
+        let total = tracking.sinceAnchored
+        let turned = correction.yaw * 180 / .pi
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let marks = state.features.count
+        RuntimeLog.capture.info(
+            "meter anchor corrected: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(self.state.phase.rawValue, privacy: .public))"
+        )
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -538,6 +651,7 @@ final class ScanEngine {
         }
         RuntimeLog.engine.info("meter number: \(readout.candidates.count) candidates to choose from")
         meterReadout = readout
+        state.meterBrand = readout.brand
         state.meterNumber = .choose(readout.candidates)
     }
 
@@ -568,33 +682,32 @@ final class ScanEngine {
             keptSourceIDs.insert(frame.id)
             keep(frame)
         }
-        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, pastEnd: pastEnd != nil, time: frame.timestamp)
+        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, meanLuma: frame.quality?.meanLuma, pastEnd: pastEnd != nil, time: frame.timestamp)
         afterCoverageChange(camera: frame.camera, time: frame.timestamp)
         askOverheadIfTiltedUp(frame)
     }
 
-    /// Tracking problems show at once. A problem the capture gate reports (moving, blurry, too
-    /// dark) shows only once it has lasted `showAfter` seconds and clears after `clearAfter`
-    /// seconds of frames without it: the gate judges every frame, and one fast frame at 30 fps
-    /// would otherwise flash a prompt for a single frame. During the walk moving and blurry read
-    /// as "Slow down", never "Hold steady", which would tell a walking homeowner to stop. Both
-    /// durations are guesses to try on a phone, not measured. Standing past an end the phone
-    /// can't see back from (`pastEnd`) is debounced the same way and comes before the gate's
-    /// reasons: no photo is kept there whatever the gate says.
-    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, pastEnd: Bool, time: Double) -> Coaching? {
+    /// Tracking problems show at once. The capture gate's problems go through `gateCoaching`
+    /// (`CoachingDebouncer`): each has its own clock, darkness is judged from the frames' luma
+    /// with hysteresis, and "Slow down" is kept for walking, so while the homeowner stands and
+    /// aims (`isAiming`) only turning and blur are said. Blur reads as "Slow down" while walking
+    /// and "Hold steady" while aiming. Standing past an end the phone can't see back from
+    /// (`pastEnd`) shows once it has lasted `showAfter` seconds, clears after `clearAfter`
+    /// seconds without it, and comes before the gate's problems: no photo is kept there whatever
+    /// the gate says. Both durations are guesses to try on a phone, not measured.
+    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, meanLuma: Double?, pastEnd: Bool, time: Double) -> Coaching? {
         let showAfter = 0.7
         let clearAfter = 0.5
+        let aiming = isAiming
+        let gate = gateCoaching.update(time: time, skip: skip, meanLuma: meanLuma, aiming: aiming)
         guard tracking == .normal else {
             gateProblem = nil
             gateClearSince = nil
+            // The light is what it was, but the motion from before the phone lost its place is not.
+            gateCoaching.forgetMotion()
             return coaching(for: tracking, skip: nil)
         }
-        var candidate: Coaching? = switch skip {
-        case .moving?, .blurry?: .slowDown
-        case .tooDark?: .tooDark
-        default: nil
-        }
-        if pastEnd { candidate = .pastWallEnd }
+        let candidate: Coaching? = pastEnd ? .pastWallEnd : nil
         if let problem = gateProblem, time < problem.since { gateProblem = nil }  // replay restarted
         if let candidate {
             gateClearSince = nil
@@ -609,8 +722,36 @@ final class ScanEngine {
                 gateClearSince = nil
             }
         }
-        guard let problem = gateProblem, time - problem.since >= showAfter else { return nil }
-        return problem.coaching
+        if let problem = gateProblem, time - problem.since >= showAfter { return problem.coaching }
+        return gate.map { Self.coaching(for: $0, aiming: aiming) }
+    }
+
+    /// Whether the homeowner is asked to stand and aim rather than walk: an aim, tilt, step-back,
+    /// see-behind or mark-the-end step, marking, a question on screen, or a gap request's view.
+    /// Walking too fast is not coached then (#26). Two steps ask for walking and so still say
+    /// "Slow down": the corner ("walk round it, aim at the next wall and mark it"; the mark
+    /// itself is `state.marking`, which aims) and a request to walk the stretch far enough out
+    /// (`GapPlan.Need.asksToWalk`). Read before this frame's guidance update, so it is the step
+    /// on screen when the frame arrived.
+    private var isAiming: Bool {
+        if state.marking != nil || state.endQuestion != nil || state.overheadQuestion { return true }
+        switch state.guidance {
+        case .aimAtGround, .aimAtWall, .tiltUp, .stepBack, .seeBehind, .markEnd: return true
+        case .gap: return !(gapPlan?.need.asksToWalk ?? false)
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .walk, .walkComplete, .markNextWall: return false
+        }
+    }
+
+    /// The coaching for a gate problem. Blur reads as "Slow down" while walking and "Hold
+    /// steady" while aiming, where "Slow down" would tell someone standing still to walk slower.
+    static func coaching(for problem: CoachingDebouncer.GateProblem, aiming: Bool) -> Coaching {
+        switch problem {
+        case .tooDark: .tooDark
+        case .persistentlyDark: .tooDarkToMeasure
+        case .movingFast: .slowDown
+        case .turningFast: .turnSlowly
+        case .blurry: aiming ? .holdSteady : .slowDown
+        }
     }
 
     private func afterCoverageChange(camera: CameraFrame?, time: Double) {
@@ -677,13 +818,15 @@ final class ScanEngine {
         guard let map = coverage, state.endQuestion == nil, !state.overheadQuestion else { return }
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
+            state.guidanceHint = nil
             state.target = nil
             state.path = []
             logGuidance()
             return
         }
-        if let span = tiltUpSpanIfDue(map) {
+        if let span = tiltUpSpanIfDue(map, camera: camera) {
             state.guidance = .tiltUp(span: span)
+            state.guidanceHint = nil
             state.target = map.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: Self.tiltUpHeight(map))
             state.path = []
             logGuidance()
@@ -691,9 +834,11 @@ final class ScanEngine {
         }
         let screenTime = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
         let output = planner.update(coverage: map, camera: camera, time: screenTime)
+        logPlannerSwitch(output)
         if let hidden = hiddenBlock(output.task, map, camera: camera) {
             seeBehindBands = hidden.bands
             state.guidance = .seeBehind(s: hidden.s)
+            state.guidanceHint = nil
             state.target = hidden.bands.contains(.wall)
                 ? map.wall.world(s: hidden.s, height: 1)
                 : map.wall.world(s: hidden.s, height: 0, out: map.config.groundBandDepth / 2)
@@ -702,11 +847,42 @@ final class ScanEngine {
             state.path = []
         } else {
             seeBehindBands = []
-            state.guidance = Self.step(output.task)
+            let step = Self.step(output.task)
+            // The frame before's direction makes the new one sticky near the view's edges
+            // (`AimHint.classify`), but only for the same step and so the same target.
+            let previous = state.guidance == step ? state.guidanceHint?.aim : nil
+            state.guidance = step
+            state.guidanceHint = Self.hint(output, camera: camera, previous: previous)
             state.target = output.target
             state.path = output.path
         }
         logGuidance()
+    }
+
+    /// What the card of an aim step says beside the step (`GuidanceHint`); nil for other steps.
+    /// `previous` is the direction shown for the same step on the frame before, if any.
+    static func hint(_ output: GuidanceOutput, camera: CameraFrame, previous: AimDirection? = nil) -> GuidanceHint? {
+        switch output.task {
+        case .aimAtGround, .aimAtWall:
+            return GuidanceHint(
+                aim: output.target.map { direction(AimHint.classify(target: $0, camera: camera, previous: previous.map(Self.aimHint))) },
+                needsSecondPosition: output.needsSecondPosition,
+                stepBack: output.stepBack
+            )
+        case .walk, .markEnd, .stepBack, .seeBehind, .complete:
+            return nil
+        }
+    }
+
+    /// Why the planner changed the walk's task, and a stalled request, in the guidance log
+    /// channel: the build 4.1 logs couldn't say why a card changed (#84). The packet's guidance
+    /// entries keep their outcome only (`closingOutcome`).
+    private func logPlannerSwitch(_ output: GuidanceOutput) {
+        if let stalled = output.stalled {
+            RuntimeLog.guidance.info("stalled: \(String(describing: stalled), privacy: .public) gained nothing for \(self.planner.config.stallTimeout) s; deferred until both ends are marked")
+        }
+        guard let reason = output.switched else { return }
+        RuntimeLog.guidance.info("switch (\(reason.rawValue, privacy: .public)) to \(String(describing: output.task), privacy: .public)")
     }
 
     // MARK: See-behind step (LiDAR)
@@ -782,6 +958,12 @@ final class ScanEngine {
         let output = planner.cues(for: task, coverage: map, camera: camera)
         state.target = output.target
         state.path = output.path
+        // The card follows the target on the frame shown, as the ring does.
+        if var hint = state.guidanceHint {
+            let previous = hint.aim.map(Self.aimHint)
+            hint.aim = output.target.map { Self.direction(AimHint.classify(target: $0, camera: camera, previous: previous)) }
+            state.guidanceHint = hint
+        }
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next
@@ -800,13 +982,26 @@ final class ScanEngine {
     /// farther along gets its own `.overhead` request from the server.
     static let tiltUpReach: Float = 1.5
 
-    /// The stretch to ask about, once both ends are marked and answered and the step hasn't been
-    /// answered or skipped; nil otherwise, and when the marked ends leave no stretch.
-    private func tiltUpSpanIfDue(_ map: CoverageMap) -> ClosedRange<Float>? {
+    /// The stretch to ask about, once both ends are marked and answered, the step hasn't been
+    /// answered or skipped, and the phone is within reach of the stretch (`tiltUpInReach`) or the
+    /// step is already showing; nil otherwise, and when the marked ends leave no stretch. Out of
+    /// reach the walk's own tasks go on, and the step comes up when the phone comes back; still
+    /// unsettled when the walk ends, it is settled with nothing recorded (`finishWalk`).
+    private func tiltUpSpanIfDue(_ map: CoverageMap, camera: CameraFrame) -> ClosedRange<Float>? {
         guard !tiltUpSettled, let left = map.leftEnd, let right = map.rightEnd else { return nil }
         let low = max(left, -Self.tiltUpReach)
         let high = min(right, Self.tiltUpReach)
-        return low < high ? low...high : nil
+        guard low < high else { return nil }
+        if case .tiltUp = state.guidance { return low...high }
+        return Self.tiltUpInReach(low...high, cameraS: map.wall.wallPoint(camera.position).s) ? low...high : nil
+    }
+
+    /// Whether a phone at `cameraS` along the wall is near enough the tilt-up stretch to be asked
+    /// about it: within `tiltUpReach` plus 1 m of its middle, so within about 1 m of the stretch
+    /// when it is the full 3 m. On build 4.1 the step came up the moment both ends were marked,
+    /// at the right end, 19 ft from the meter (#64). The 1 m is a guess, not measured.
+    static func tiltUpInReach(_ span: ClosedRange<Float>, cameraS: Float) -> Bool {
+        abs(cameraS - (span.lowerBound + span.upperBound) / 2) <= tiltUpReach + 1
     }
 
     /// How far above the top wall row (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a view must
@@ -1092,6 +1287,7 @@ final class ScanEngine {
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
+        wallPlanes = []
         groundMeasured = false
         lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -1099,6 +1295,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
         meterPlaneSource = .detectedPlane
         state.wall = nil
         state.coverage = .empty
@@ -1137,6 +1334,7 @@ final class ScanEngine {
         state.lastCapture = nil
         gateProblem = nil
         gateClearSince = nil
+        gateCoaching = CoachingDebouncer()
         autoCapture.reset()
         planner.reset()
         go(.findMeter)
@@ -1414,15 +1612,14 @@ final class ScanEngine {
         RuntimeLog.engine.info("overhead: kept a view reaching \(reach.map(\.out).min() ?? 0) m over s=\(reach.first?.span.lowerBound ?? 0)...\(reach.last?.span.upperBound ?? 0)")
     }
 
-    /// Ends the current request without the view it asked for ("I can't get there", or something
-    /// overhead): recorded for installer review, then on to the upload. "I can't get there" on a
-    /// server request also ends the requests raised without a tap: after that upload the result
-    /// shows. Something overhead is an answer, not a refusal, so the loop goes on.
+    /// Ends the current request without the view it asked for ("I can't get there", something
+    /// overhead, or "Show my result"): recorded for installer review, then on to the upload. The
+    /// answer that follows raises the next item it lists, never this one again
+    /// (`automaticGapQueue`); only "Show my result" (`stopGapRequests`) ends the requests.
     func skipCurrentGap(because reason: String = "the homeowner can't get there", refused: Bool = true) {
         guard let plan = gapPlan else { return }
         // Something overhead is an answer: the request goes to review without its view.
         resolveGuidance(refused ? .cannotReach : .skipped)
-        if refused, state.gap?.origin == .server { automaticGapsStopped = true }
         // Only a cell request marks cells: skipping a deeper, walked or overhead view says
         // nothing about the band the strip draws.
         if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
@@ -1430,6 +1627,15 @@ final class ScanEngine {
         publishCoverage()
         RuntimeLog.engine.info("gap \(self.gapCounter) left for installer review: \(reason, privacy: .public)")
         afterGapResolved()
+    }
+
+    /// "Show my result" on a server request: this view goes to installer review like one the
+    /// homeowner can't get to, and after the upload that follows the result shows instead of
+    /// the answer's next request.
+    func stopGapRequests() {
+        guard gapPlan != nil, state.gap?.origin == .server else { return }
+        automaticGapsStopped = true
+        skipCurrentGap(because: "the homeowner asked for the result", refused: false)
     }
 
     // MARK: Upload
@@ -1473,22 +1679,33 @@ final class ScanEngine {
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
+        analyzingSince = nil
         do {
             let data = try await resultClient.submit(scene: scene) { [weak self] fraction in
                 Task { @MainActor in
                     guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
+                    if fraction >= 1 { self.analyzingSince = ContinuousClock.now }
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
                 }
             }
             guard scan == generation else { return }
+            if analyzingSince == nil { analyzingSince = ContinuousClock.now }
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
+            // "Check clearances" stays up for `analyzingMinimum` however fast the answer came,
+            // so the step and then its tick are drawn (issue #31).
+            let dwell = UploadPacing.remaining(since: analyzingSince, minimum: .seconds(Self.analyzingMinimum), now: ContinuousClock.now)
+            if dwell > .zero {
+                try await Task.sleep(for: dwell)
+                guard scan == generation, state.phase == .uploading else { return }
+            }
             placement = result
             state.result = presentation(of: result, isSample: resultClient.isSample)
+            state.followUps = automaticGapQueue(result).count
             state.upload = .done
             await waitForGate(.uploading)
             guard scan == generation else { return }
-            if let next = nextAutomaticGap(result) {
+            if let next = automaticGapQueue(result).first {
                 // The upload screen says "One more view to finish" once the answer is in
                 // (`state.result` set, upload `.done`, both kept through the request): long
                 // enough to read before the camera takes over.
@@ -1499,6 +1716,10 @@ final class ScanEngine {
                 beginServerGap(next.item, plan: next.plan)
                 return
             }
+            // Every step ticked, "Clearances checked" last, for `resultHold` before the result
+            // replaces the screen: going on in the same turn never drew the tick (issue #31).
+            try await Task.sleep(for: .seconds(Self.resultHold))
+            guard scan == generation, state.phase == .uploading else { return }
             // The result appears only after the server answered (checklist R6).
             go(.result)
         } catch is CancellationError {
@@ -1511,24 +1732,25 @@ final class ScanEngine {
         }
     }
 
-    /// The first item of the answer's missing evidence a capture can settle (the result's
-    /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
-    /// they can't get to one, or after `maxAutomaticGaps` requests.
-    private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+    /// The answer's items this pass will still raise without a tap, in order, with their
+    /// requests: those a capture can settle (the result's "capturable"), not skipped and not yet
+    /// raised in this pass (`GapPlanner.serverRequests`), up to `maxAutomaticGaps` requests.
+    /// Empty once the homeowner tapped "Show my result". `asking`, a request about to be raised,
+    /// counts as raised.
+    private func automaticGapQueue(_ result: PlacementResult, asking: GapPlan? = nil) -> [(item: PlacementMissingEvidence, plan: GapPlan)] {
         // A request raised while the phone has lost its place could only time out: show the result.
-        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
-              let map = coverage else { return nil }
-        for item in result.missingEvidence {
-            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
-                  !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
-            return (item, plan)
-        }
-        return nil
+        guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
+        let asked = automaticGaps + (asking.map { [$0] } ?? [])
+        return gapPlanner.serverRequests(
+            in: result.missingEvidence, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
+            asked: asked, skipped: skippedGaps, limit: Self.maxAutomaticGaps - automaticGaps.count)
     }
 
     /// Starts the capture for an item of the server's missing evidence, whether tapped on the
     /// result or raised after an upload.
     func beginServerGap(_ item: PlacementMissingEvidence, plan: GapPlan) {
+        // Counted before a past_end request clears its end, which would change the other requests.
+        state.followUps = 1 + (placement.map { automaticGapQueue($0, asking: plan).count } ?? 0)
         var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
             // The walk has to go past the end it stopped at; that end is no longer a limit. It
@@ -1613,6 +1835,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
         meterPlaneSource = .detectedPlane
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
@@ -1621,6 +1844,7 @@ final class ScanEngine {
         resetPacketLog()
         keptSourceIDs = []
         autoCapture.reset()
+        gateCoaching = CoachingDebouncer()
         planner.reset()
         closeUpGate = CloseUpGate()
         gapPlan = nil
@@ -1654,6 +1878,7 @@ final class ScanEngine {
         state.path = []
         state.coaching = nil
         state.guidance = .findMeter
+        state.guidanceHint = nil
         state.closeUp = .aiming(hold: 0, problem: nil)
         state.closeUpFailedAttempts = 0
         state.meterNumber = nil
@@ -1683,6 +1908,7 @@ final class ScanEngine {
     }
 
     var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
+    var detectedWallPlanes: [WallPlaneEvidence] { wallPlanes }
 
     /// The camera failed after the scan was sent: no frame will come to say tracking was lost, so
     /// the last one's "normal" would keep the AR result up and offered. The answer stays; the
@@ -1763,6 +1989,29 @@ extension ScanEngine {
         }
     }
 
+    static func direction(_ hint: AimHint) -> AimDirection {
+        switch hint {
+        case .onScreen: .onScreen
+        case .above: .above
+        case .below: .below
+        case .left: .left
+        case .right: .right
+        case .behind: .behind
+        }
+    }
+
+    /// The inverse of `direction(_:)`.
+    static func aimHint(_ direction: AimDirection) -> AimHint {
+        switch direction {
+        case .onScreen: .onScreen
+        case .above: .above
+        case .below: .below
+        case .left: .left
+        case .right: .right
+        case .behind: .behind
+        }
+    }
+
     static func name(_ tracking: TrackingQuality) -> String {
         switch tracking {
         case .notAvailable: "notAvailable"
@@ -1811,7 +2060,8 @@ extension ScanEngine {
         case .limited(.unknown): return .trackingLost
         case .normal:
             switch skip {
-            case .moving?, .blurry?: return .holdSteady
+            case .movingFast?, .blurry?: return .holdSteady
+            case .turningFast?: return .turnSlowly
             case .tooDark?: return .tooDark
             default: return nil
             }

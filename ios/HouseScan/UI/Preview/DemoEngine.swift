@@ -1,3 +1,4 @@
+import HouseScanKit
 import SwiftUI
 
 /// A fake engine for the UI demo: implements `ScanActions` by scripting `ScanViewState` over
@@ -13,6 +14,9 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
+    /// `-uiDemoResultFile <path>` (debug builds only): a server answer in a JSON file, read
+    /// through the engine's own mapping, in place of the hand-made samples.
+    private let resultFile: String?
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -25,7 +29,8 @@ final class DemoEngine: ScanActions {
     /// How far the walk has seen to each side of the meter, meters.
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
-    private var skippedSpan: ClosedRange<Float>?
+    /// Stretches the homeowner skipped, kept apart so a later skip doesn't undo an earlier one.
+    private var skippedSpans: [ClosedRange<Float>] = []
     /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
     /// of the walk out.
     private var walkedBack: Float?
@@ -58,6 +63,11 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
+        #if DEBUG
+        resultFile = value("-uiDemoResultFile")
+        #else
+        resultFile = nil
+        #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -98,7 +108,13 @@ final class DemoEngine: ScanActions {
             refreshGuidance()
         }
         if arguments.contains("-uiDemoEndQuestion") {
-            state.endQuestion = .left
+            if walkedBack != nil {
+                // With `-uiDemoEndPreview`: "Wall ends here" pressed short of the farthest view,
+                // so the question says what the end leaves out of the walk (#66).
+                endWallHere()
+            } else {
+                state.endQuestion = .left
+            }
         }
         if arguments.contains("-uiDemoNextWall") {
             state.wall?.rightEnd = demoRightEnd
@@ -135,7 +151,7 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
-        if arguments.contains("-uiDemoAim") || arguments.contains("-uiDemoAimOffScreen") {
+        if (arguments.contains("-uiDemoAim") || arguments.contains("-uiDemoAimOffScreen")), state.phase == .wallWalk {
             enterAim(offScreen: arguments.contains("-uiDemoAimOffScreen"))
         }
         if arguments.contains("-uiDemoCorner") {
@@ -160,6 +176,7 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoMeterChoose") {
             state.closeUp = .captured(DemoScene.meterThumbnail)
+            state.meterBrand = Self.demoBrand
             state.meterNumber = .choose(Self.demoCandidates)
         }
         // Frozen, the upload script never runs, so show where it would end.
@@ -302,6 +319,8 @@ final class DemoEngine: ScanActions {
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
         if let serverItem {
+            // The demo's check asks for one view at most.
+            state.followUps = 1
             state.gap?.origin = .server
             state.gap?.reason = .server(detail: serverItem.text)
             run { engine in await engine.gapScript(span: span) }
@@ -348,6 +367,7 @@ final class DemoEngine: ScanActions {
         state.path = []
         state.target = nil
         state.upload = .packaging
+        state.followUps = 0
         run { engine in await engine.uploadScript() }
     }
 
@@ -392,6 +412,7 @@ final class DemoEngine: ScanActions {
         state.meterNumber = .reading
         guard await pause(1.2) else { return }
         // Waits here for the homeowner's pick (`chooseMeterNumber`).
+        state.meterBrand = Self.demoBrand
         state.meterNumber = .choose(Self.demoCandidates)
     }
 
@@ -489,12 +510,16 @@ final class DemoEngine: ScanActions {
         if !followedUp, let item = sample.missing.first(where: \.capturable) {
             state.shareableScan = Self.demoScan
             state.result = sample
+            state.followUps = 1
             state.upload = .done
             followedUp = true
             guard await pause(1.6) else { return }
             enterGap(serverItem: item)
             return
         }
+        // Like the real engine's `resultHold`: every step ticked before the result (#31).
+        state.upload = .done
+        guard await pause(0.8) else { return }
         showResult()
     }
 
@@ -502,8 +527,26 @@ final class DemoEngine: ScanActions {
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
+        if let fileResult { return fileResult }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
+    }
+
+    /// The answer in `-uiDemoResultFile`, mapped as `ScanEngine` maps a server's. A file that
+    /// doesn't decode stops the demo with the decoding error rather than showing a sample.
+    private var fileResult: ResultPresentation? {
+        guard let resultFile else { return nil }
+        let result: PlacementResult
+        do {
+            result = try PlacementResult.decode(Data(contentsOf: URL(fileURLWithPath: resultFile)))
+        } catch {
+            fatalError("-uiDemoResultFile \(resultFile): \(error)")
+        }
+        let planner = GapPlanner()
+        let wall = state.wall
+        return ScanEngine.presentation(of: result, isSample: true, wall: nil) { item in
+            planner.plan(for: item, leftEnd: wall?.leftEnd, rightEnd: wall?.rightEnd) != nil
+        }
     }
 
     /// `-uiDemoFollowUp`: the check has answered and asked for a view. On the upload screen,
@@ -513,6 +556,7 @@ final class DemoEngine: ScanActions {
         script?.cancel()
         state.shareableScan = Self.demoScan
         state.result = Self.reviewSample
+        state.followUps = 1
         state.upload = .done
         followedUp = true
         if phase == .gapRequest {
@@ -537,7 +581,7 @@ final class DemoEngine: ScanActions {
             wallCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0))
             groundCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0.35))
         }
-        if let skippedSpan {
+        for skippedSpan in skippedSpans {
             for index in 0..<count {
                 let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
                 if skippedSpan.contains(center), wallCells[index] != .covered { wallCells[index] = .skipped }
@@ -681,6 +725,11 @@ final class DemoEngine: ScanActions {
         enterWalk()
     }
 
+    func rejectMeterBrand() {
+        guard case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
+    }
+
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {
         guard case .choose = state.meterNumber else { return }
         guard let candidate else {
@@ -708,6 +757,7 @@ final class DemoEngine: ScanActions {
             state.wall?.leftEnd = demoLeftEnd
         }
         state.endQuestion = side
+        state.endQuestionLeavesOut = nil
         refreshCoverage()
         refreshGuidance()
     }
@@ -722,6 +772,7 @@ final class DemoEngine: ScanActions {
             state.wall?.leftEnd = preview.s
         }
         state.endQuestion = side
+        state.endQuestionLeavesOut = preview.leavesOutWalked
         refreshCoverage()
         refreshGuidance()
     }
@@ -730,6 +781,7 @@ final class DemoEngine: ScanActions {
     func answerWallEnd(turnsCorner: Bool) {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         let followed = state.wall?.cornerSegments.contains { side == .right ? $0.span.lowerBound > 0 : $0.span.upperBound < 0 } ?? true
         if turnsCorner, !followed {
             state.guidance = .markNextWall(side: side, refusal: nil)
@@ -812,6 +864,11 @@ final class DemoEngine: ScanActions {
         enterUpload()
     }
 
+    /// The demo's check asks for one view at most, so stopping early is skipping it.
+    func showResultNow() {
+        skipGap()
+    }
+
     func cannotAccessArea() {
         if case .seeBehind(let s) = state.guidance {
             obstructions = obstructions.map { (span: $0.span, skipped: $0.skipped || $0.span.contains(s)) }
@@ -828,12 +885,22 @@ final class DemoEngine: ScanActions {
             refreshGuidance()
             return
         }
+        switch state.guidance {
+        case .aimAtGround(let s), .aimAtWall(let s):
+            // Like the real engine: that stretch goes to review and the walk moves on.
+            skippedSpans.append((s - 0.5)...(s + 0.5))
+            refreshCoverage()
+            refreshGuidance()
+            return
+        default:
+            break
+        }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
-            skippedSpan = (reachedRight + 0.1)...demoRightEnd
+            skippedSpans.append((reachedRight + 0.1)...demoRightEnd)
             reachedRight = demoRightEnd
         } else {
-            skippedSpan = demoLeftEnd...(-reachedLeft - 0.1)
+            skippedSpans.append(demoLeftEnd...(-reachedLeft - 0.1))
             reachedLeft = -demoLeftEnd
         }
         refreshCoverage()
@@ -884,7 +951,7 @@ final class DemoEngine: ScanActions {
         reachedRight = 0.3
         demoLeftEnd = -2.9
         demoRightEnd = 4.3
-        skippedSpan = nil
+        skippedSpans = []
         obstructions = []
         seeBehindTicks = 0
         followedUp = false
@@ -900,6 +967,9 @@ final class DemoEngine: ScanActions {
     }
 
     // MARK: Sample data
+
+    /// The made-up meter's maker, as `MeterBrand.read` would name it.
+    static let demoBrand = "Itron"
 
     /// Made-up readings of a made-up meter: the barcode-confirmed one first, then two near
     /// misses the way a reader confuses 8 with 6 and 3 with 8.
@@ -937,7 +1007,9 @@ final class DemoEngine: ScanActions {
         case "slowDown": .slowDown
         case "needsTexture": .needsTexture
         case "tooDark": .tooDark
+        case "tooDarkToMeasure": .tooDarkToMeasure
         case "holdSteady": .holdSteady
+        case "turnSlowly": .turnSlowly
         case "relocalizing": .relocalizing
         case "trackingLost": .trackingLost
         case "pastWallEnd": .pastWallEnd
@@ -987,7 +1059,7 @@ final class DemoEngine: ScanActions {
                      reason: "The window is close to the spot's right edge.",
                      needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
-                     reason: "Part of the ground was only seen from one place.", needsPerson: false),
+                     reason: "Part of the ground was only seen from one place.", needsPerson: false, settledBy: "ground-right"),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
                      reason: "The AC unit is far enough to the right."),
         ],
@@ -996,9 +1068,15 @@ final class DemoEngine: ScanActions {
             ClearanceZone(id: "window", label: "Window", outcome: .unsure, span: 1.3...2.2, depth: 0.9),
         ],
         missing: [
-            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true),
-            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false),
+            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true,
+                            checkIDs: ["ground"]),
+            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false,
+                            checkIDs: ["window"]),
         ],
+        // The walk stopped short on the left, nearer the meter than the spot (#83). Fixed copy
+        // for the result screen, not worked out from the demo walk: that walk marks its left end
+        // at -2.9 m, and the gas meter above is "well to the left".
+        unseenEnd: UnseenEnd(side: .left, s: -0.4),
         isSample: true
     )
 
@@ -1020,6 +1098,7 @@ final class DemoEngine: ScanActions {
         sample.decision = .pass
         sample.policyApproved = true
         sample.summary = "The spot fits every check we could measure."
+        sample.unseenEnd = nil
         sample.checks = sample.checks.map { row in
             var row = row
             row.outcome = .pass

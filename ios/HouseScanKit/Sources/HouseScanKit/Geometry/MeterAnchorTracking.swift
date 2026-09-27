@@ -70,6 +70,13 @@ public struct MeterAnchorTracking: Sendable, Equatable {
     /// frame (`LiveCapture.showResult`), so it follows the anchor however far it has moved since.
     public private(set) var pose: simd_float4x4
 
+    /// The anchor's pose when the meter was anchored (tapped, or anchored again by a re-fit):
+    /// where everything captured since started out.
+    public let anchoredPose: simd_float4x4
+
+    /// How many corrections have been applied since the meter was anchored.
+    public private(set) var corrections = 0
+
     /// A correction is applied once it moves the meter 2 cm, or turns the wall 0.4 degrees, which
     /// moves a point 3 m from the meter (about where a battery stands) 2 cm. ARKit nudges the
     /// anchor by millimetres most frames, and each correction redraws the overlays; 2 cm is far
@@ -79,6 +86,16 @@ public struct MeterAnchorTracking: Sendable, Equatable {
 
     public init(pose: simd_float4x4) {
         self.pose = pose
+        anchoredPose = pose
+    }
+
+    /// All the corrections applied since the meter was anchored, as one: how far ARKit has moved
+    /// the meter (world x, y, z, in meters) and turned the wall about gravity (radians). What
+    /// hasn't reached `minimumMove` or `minimumTurn` yet isn't in it. A device log of it tells a
+    /// map ARKit corrected from drift it never corrected (#73): the marks and the result follow
+    /// the first, and nothing on the phone can follow the second.
+    public var sinceAnchored: (moved: SIMD3<Float>, yaw: Float) {
+        (Self.origin(pose) - Self.origin(anchoredPose), YawCorrection(from: anchoredPose, to: pose).yaw)
     }
 
     /// The correction from `pose` to `anchor`, when it is large enough to apply; the pose then
@@ -89,7 +106,12 @@ public struct MeterAnchorTracking: Sendable, Equatable {
         let moved = simd_distance(correction.point(origin), origin)
         guard moved > Self.minimumMove || abs(correction.yaw) > Self.minimumTurn else { return nil }
         pose = anchor
+        corrections += 1
         return correction
+    }
+
+    private static func origin(_ m: simd_float4x4) -> SIMD3<Float> {
+        SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z)
     }
 }
 

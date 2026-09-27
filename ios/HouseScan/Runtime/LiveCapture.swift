@@ -440,18 +440,19 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         guard count % Self.sampleEvery == 0 else {
             let pose = SourceFrame(
                 id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
-                quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, isPoseOnly: true
+                quality: nil, jpeg: .none, still: nil, meterAnchor: meterAnchor, meterAnchorID: shared.meterAnchorID, isPoseOnly: true
             )
             encodeQueue.async { [self, pose] in deliver(pose) }
             return
         }
         let quality = Self.quality(frame.capturedImage)
-        let ground = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
-            .filter { $0.alignment == .horizontal }
-            .map(Self.groundEvidence)
+        let planes = frame.anchors.compactMap { $0 as? ARPlaneAnchor }
+        let ground = planes.filter { $0.alignment == .horizontal }.map(Self.groundEvidence)
+        let walls = planes.filter { $0.alignment == .vertical }.map(Self.wallEvidence)
         var snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
-            quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, groundPlanes: ground
+            quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, meterAnchorID: shared.meterAnchorID,
+            groundPlanes: ground, wallPlanes: walls
         )
         let image = tracking == .normal && shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera)
             ? PixelBufferBox(buffer: frame.capturedImage) : nil
@@ -638,7 +639,28 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
             let world = plane.transform * SIMD4(vertex, 1)
             return SIMD2(world.x, world.z)
         }
-        return GroundPlaneEvidence(y: center.y, kind: kind, boundary: boundary)
+        return GroundPlaneEvidence(y: center.y, kind: kind, boundary: boundary, id: plane.identifier.uuidString)
+    }
+
+    /// A vertical plane as the meter tap's checks read it (`MeterTap`): its class, a point on it,
+    /// its normal (the anchor's y axis) and its outline, world meters. On a phone without plane
+    /// classification every plane is `.none`, so every one is unclassified.
+    private static func wallEvidence(_ plane: ARPlaneAnchor) -> WallPlaneEvidence {
+        let center = plane.transform * SIMD4(plane.center, 1)
+        let normal = plane.transform.columns.1
+        let kind: WallPlaneEvidence.Kind = switch plane.classification {
+        case .wall: .wall
+        case .none: .unclassified
+        default: .other
+        }
+        let boundary = plane.geometry.boundaryVertices.map { vertex -> SIMD3<Float> in
+            let world = plane.transform * SIMD4(vertex, 1)
+            return SIMD3(world.x, world.y, world.z)
+        }
+        return WallPlaneEvidence(
+            id: plane.identifier.uuidString, kind: kind, center: SIMD3(center.x, center.y, center.z),
+            normal: SIMD3(normal.x, normal.y, normal.z), boundary: boundary
+        )
     }
 
     // MARK: Session events

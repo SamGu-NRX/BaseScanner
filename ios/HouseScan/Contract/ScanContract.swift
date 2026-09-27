@@ -314,13 +314,44 @@ enum GuidanceStep: Equatable, Sendable {
     case seeBehind(s: Float)
 }
 
-/// A problem that overrides guidance until it clears. UI/ owns the words.
+/// Where the aim target of the step on screen lies from the view, in the terms of a portrait
+/// screen, so the card can agree with the ring and the edge chevron (#81).
+enum AimDirection: Equatable, Sendable {
+    case onScreen
+    case above
+    case below
+    case left
+    case right
+    case behind
+}
+
+/// What the card of an aim step (`GuidanceStep.aimAtGround`, `.aimAtWall`) should say beside the
+/// step itself. UI/ owns the words.
+struct GuidanceHint: Equatable, Sendable {
+    /// Where the target lies from the view now; nil when unknown.
+    var aim: AimDirection?
+    /// Every part of the stretch still open has been seen once, from about here: looking again
+    /// adds nothing, a step to the side does (#77).
+    var needsSecondPosition = false
+    /// Too close to the wall to see the band: step back as well, without leaving the step (#77).
+    var stepBack = false
+}
+
+/// A problem to fix while it lasts. Tracking problems and `pastWallEnd` override guidance; the
+/// capture gate's (`slowDown`, `turnSlowly`, `holdSteady`, `tooDark`, `tooDarkToMeasure`) and
+/// `needsTexture` ride along with it on the walk. UI/ owns the words.
 enum Coaching: Equatable, Sendable {
     case initializing
     case slowDown
     case needsTexture
     case tooDark
+    /// Frames have been mostly too dark for a long while: waiting won't help, daylight will
+    /// (`CoachingDebouncer.GateProblem.persistentlyDark`).
+    case tooDarkToMeasure
     case holdSteady
+    /// Turning or tilting the phone faster than the capture gate keeps photos at, as opposed to
+    /// walking too fast (#26).
+    case turnSlowly
     case relocalizing
     case trackingLost
     /// The phone stands past an end it can't see back from, so the walk keeps no photos: nothing
@@ -342,7 +373,9 @@ struct EndPreview: Equatable, Sendable {
     var atReticle: Bool
     /// Meters of walked path past `s` on this side, set when the homeowner walked back toward the
     /// meter by at least a keyframe's spacing: what the walk saw from there is left out if the wall
-    /// ends at `s`.
+    /// ends at `s`. Only while the walk asks to walk this side or mark its end, and not with the
+    /// phone far out from the wall (`WalkedEnd.leavesOut`, issue #66); "Wall ends here" pressed at
+    /// other times says it on the end question (`ScanViewState.endQuestionLeavesOut`).
     var leavesOutWalked: Float?
 }
 
@@ -565,6 +598,9 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// The `MissingEvidence.id` of the first view that would settle this check, when the server
+    /// named one.
+    var settledBy: String? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -572,6 +608,8 @@ struct MissingEvidence: Identifiable, Equatable, Sendable {
     var text: String
     /// True when another view can resolve it now; false means it goes to installer review.
     var capturable: Bool
+    /// The `CheckRow.id`s this view settles, as the server listed them.
+    var checkIDs: [String] = []
 }
 
 struct BatterySpot: Equatable, Sendable {
@@ -593,6 +631,12 @@ struct ClearanceZone: Identifiable, Equatable, Sendable {
     var depth: Float
 }
 
+/// An unexplored end of the walk: its side and where the scan stopped, meters of s.
+struct UnseenEnd: Equatable, Sendable {
+    var side: WallSide
+    var s: Float
+}
+
 struct ResultPresentation: Equatable, Sendable {
     enum Decision: String, Equatable, Sendable {
         case pass
@@ -601,20 +645,32 @@ struct ResultPresentation: Equatable, Sendable {
     }
 
     var decision: Decision
-    /// The server's one-sentence summary.
+    /// The server's one-sentence summary, without `rulesNotice`.
     var summary: String = ""
     /// False while the server's rules hold placeholder values: every would-be pass or reject is
     /// then manual_review, and the screen should say the rules aren't final.
     var policyApproved: Bool = true
+    /// Whose rules decided, from the server ("Demo rules: ... not Base's."), to show with the
+    /// answer. Nil when the rules need no such label.
+    var rulesNotice: String? = nil
+    /// The first eight characters of the rules' SHA-256 (`policy.rules_sha256`), so a reviewer
+    /// can tell which rules answered.
+    var rulesHash: String? = nil
     var spot: BatterySpot?
+    /// When there is no spot: the spot the server found closest to passing.
+    var nearestSpot: BatterySpot? = nil
+    /// The `CheckRow.id` of the first check `nearestSpot` fails. Without a spot, `checks` are the
+    /// checks at `nearestSpot`.
+    var nearestFailingCheck: String? = nil
     /// Cable route as (s, height) points along the wall, meters, from the meter to the spot.
     var cableRoute: [SIMD2<Float>]
     var cableLength: Float?
     var checks: [CheckRow]
     var clearances: [ClearanceZone]
     var missing: [MissingEvidence]
-    /// A side of the meter the walk didn't reach, so a closer spot may exist there.
-    var unseenSide: WallSide? = nil
+    /// Where the scan stopped on a side it didn't finish, nearer the meter than the spot, so a
+    /// closer spot may lie past it (`PlacementResult.closerUnseenEnd`).
+    var unseenEnd: UnseenEnd? = nil
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
@@ -632,6 +688,8 @@ final class ScanViewState {
     var tracking: TrackingQuality = .notAvailable
     var coaching: Coaching?
     var guidance: GuidanceStep = .findMeter
+    /// Set with an aim step (`GuidanceStep.aimAtGround`, `.aimAtWall`); nil with any other.
+    var guidanceHint: GuidanceHint?
     /// A world point to aim at (ring when on screen, edge chevron when not).
     var target: SIMD3<Float>?
     /// A walking path on the ground from the homeowner toward the next place to stand, world points.
@@ -645,6 +703,22 @@ final class ScanViewState {
     var closeUpFailedAttempts = 0
     /// Nil until the close-up photo is taken.
     var meterNumber: MeterNumberState?
+    /// The meter's maker as read from the close-up, shown above the number candidates. It exists
+    /// only beside those candidates or the number confirmed from them: while `meterNumber` is
+    /// nil, reading or skipped it is nil, so a brand from an earlier photo can't outlive its
+    /// number through a retake, a skip or a new close-up. The homeowner can reject it
+    /// (`rejectMeterBrand`). Like the number, it stays on the phone.
+    var meterBrand: String? {
+        get {
+            switch meterNumber {
+            case .choose, .confirmed: offeredMeterBrand
+            case .reading, .skipped, nil: nil
+            }
+        }
+        set { offeredMeterBrand = newValue }
+    }
+    /// Storage for `meterBrand`, set with the candidates it was read with. Read `meterBrand`.
+    private var offeredMeterBrand: String?
 
     var captureCount = 0
     var lastCapture: CaptureEvent?
@@ -661,6 +735,11 @@ final class ScanViewState {
     /// the wall turns a corner (it continues, unexplored) or something blocks it (a fence, gate
     /// or property line: a real limit). Nil when nothing is being asked.
     var endQuestion: WallSide?
+    /// Meters of the walk the end being asked about leaves out, when "Wall ends here" put it at
+    /// least a keyframe's spacing short of the farthest kept view on that side
+    /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
+    /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
+    var endQuestionLeavesOut: Float?
     /// Where the wall end on the side being walked would land now; nil while ending it isn't on
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
@@ -675,6 +754,9 @@ final class ScanViewState {
     /// an unanswered question exports like `.notSure`.
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
+    /// How many views the finished check's answer will still ask for without a tap, counting a
+    /// server request on screen: what "One more view to finish" and "2 more views to finish" promise.
+    var followUps = 0
     var result: ResultPresentation?
     /// True while the engine sees the AR scene drawing the result in the live camera
     /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
@@ -719,6 +801,8 @@ protocol ScanActions: AnyObject {
     /// The homeowner's pick from `MeterNumberState.choose`; nil means "None of these", which
     /// asks for a retake.
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
+    /// "Not <brand>" beside the number candidates: drops `ScanViewState.meterBrand`.
+    func rejectMeterBrand()
     /// Marks a wall end where `point` meets the wall, on whichever side of the meter that is.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
     /// "Wall ends here" during the walk: ends the wall on the side being walked where
@@ -747,8 +831,13 @@ protocol ScanActions: AnyObject {
     func finishWalk()
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()
-    /// "I can't get there": the gap is recorded for installer review.
+    /// "I can't get there": the gap is recorded for installer review. On a request the finished
+    /// check sent back, the check's next request follows; the result shows once none is left.
     func skipGap()
+    /// "Show my result" on a request the finished check sent back: the view is recorded for
+    /// installer review like a skipped one, and after one more upload the result shows instead
+    /// of the check's next request.
+    func showResultNow()
     /// "I can't get to this part of the wall", during the walk: the cells the guidance is asking
     /// for become `.skipped` and the guidance moves on to the next task. While the walk asks to
     /// walk a side, that side's end goes where `ScanViewState.endPreview` shows, as an unexplored
