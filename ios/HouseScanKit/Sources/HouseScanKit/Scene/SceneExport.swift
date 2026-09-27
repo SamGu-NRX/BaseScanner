@@ -354,6 +354,15 @@ public enum SceneExport {
     /// cell, so any of them can run to many entries.
     static let bandBudget = maxObserved / 4
 
+    /// How many entries `band` ("wall", "ground", "facing" or "overhead") is joined to before it
+    /// is written on a chain with `corners` corners: `bandBudget`, less one ground entry per
+    /// corner, since a ground entry is cut in two at every corner it crosses (`makeDocument`).
+    /// The guidance planner reads each band through this same limit (`GapPlanner.exported`), so
+    /// a request is met locally only when the joined reaches the export writes meet it (#129).
+    static func observedBudget(_ band: String, corners: Int) -> Int {
+        band == "ground" ? max(1, bandBudget - corners) : bandBudget
+    }
+
     /// Encodes the scene as deterministic JSON (sorted keys, numbers rounded to 4 decimals).
     public static func jsonData(_ input: SceneInput) throws -> Data {
         let document = try makeDocument(input)
@@ -489,7 +498,7 @@ public enum SceneExport {
         // for one more entry per corner.
         let serverCorners = Self.serverCornerS(writtenWalls, meterPlan: SIMD2(meterFeet[0], meterFeet[2]), meterWallID: input.wallID)
         reaches = reaches.map { band, spans in
-            (band, ObservedSpan.coarsened(spans, toAtMost: band == "ground" ? max(1, bandBudget - corners.count) : bandBudget))
+            (band, ObservedSpan.coarsened(spans, toAtMost: observedBudget(band, corners: corners.count)))
         }
         var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {
