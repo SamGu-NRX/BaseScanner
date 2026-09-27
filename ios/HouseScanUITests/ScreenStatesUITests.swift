@@ -364,15 +364,17 @@ final class ScreenStatesUITests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
-    /// Taps once the element can take the tap. Existing isn't enough: a control that has just
-    /// appeared can still be moving into place (the walk's controls settle after the close-up),
-    /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
-    /// tray).
+    /// Taps once the element exists, after giving it a moment to become hittable. A control that
+    /// has just appeared can still be moving into place (the walk's controls settle after the
+    /// close-up), and a tap there misses without an error (the button flow at 577acc4 never
+    /// opened the mark tray). An element below the fold of a scroll view never becomes hittable
+    /// on its own, and `tap()` scrolls it into view, so after the short wait it is tapped anyway.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
+        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
         let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
-        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: timeout), .completed, "missing or not tappable: \(identifier)")
+        _ = XCTWaiter().wait(for: [hittable], timeout: 3)
         target.tap()
     }
 }
