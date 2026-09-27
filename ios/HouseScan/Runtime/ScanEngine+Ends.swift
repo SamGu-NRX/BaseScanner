@@ -105,8 +105,8 @@ extension ScanEngine {
         let walked = map.walkedFarthest(side.walk)
         setEnd(side, at: s, kind: .unexplored)
         walkRefusals.ended(side.walk, at: s, walked: walked, time: ScanEngine.refusalClock)
-        if walked < WalkRefusals.walkedMinimum {
-            RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m)")
+        if walkRefusals.wasRefused(side.walk, end: s) {
+            RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m walked, end at s=\(s))")
         }
     }
 

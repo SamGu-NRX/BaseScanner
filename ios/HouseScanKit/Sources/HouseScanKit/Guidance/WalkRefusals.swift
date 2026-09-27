@@ -16,8 +16,8 @@ public struct WalkRefusals: Equatable, Sendable {
     public static let repeatWindow: TimeInterval = 5
 
     /// A side counts as refused when "Can't get there" ended it with less than this walked there
-    /// (`WalkedEnd.farthest`), meters: a battery's width (`WallFrame.minWallLength`), the least
-    /// wall the walk can finish with.
+    /// (`WalkedEnd.farthest`) and the end itself less than this from the meter, meters: a
+    /// battery's width (`WallFrame.minWallLength`), the least wall the walk can finish with.
     public static let walkedMinimum: Float = WallFrame.minWallLength
 
     /// When "Can't get there" last ended a side, seconds on the caller's clock.
@@ -36,10 +36,14 @@ public struct WalkRefusals: Equatable, Sendable {
         return since >= 0 && since <= Self.repeatWindow
     }
 
-    /// "Can't get there" ended `side` at `s` at `time`, with `walked` meters walked on that side.
+    /// "Can't get there" ended `side` at `s` at `time`, with `walked` meters walked on that side
+    /// (`WalkedEnd.farthest`). The side counts as walked when either the walk or the end reached
+    /// `walkedMinimum` from the meter: an end set at the phone's place out along the wall means
+    /// the homeowner walked there, even with few views kept on the way (#71, run 2).
     public mutating func ended(_ side: WalkSide, at s: Float, walked: Float, time: TimeInterval) {
         lastEnded = time
-        refusedEnds[side] = walked < Self.walkedMinimum ? s : nil
+        let reach = max(walked, side.sign * s)
+        refusedEnds[side] = reach < Self.walkedMinimum ? s : nil
     }
 
     /// "Keep walking": the next "Can't get there" ends its side again without asking.

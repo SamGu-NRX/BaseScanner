@@ -59,6 +59,21 @@ import Testing
         #expect(!refusals.wasRefused(.left, end: -0.8))
     }
 
+    /// Run 2's shape once ends land at the phone (#71): the right end at the wall's physical end,
+    /// 5.2 m out, even if few views were kept on the way, and the left end at the meter. The
+    /// right side was walked, so the result keeps its spot.
+    @Test func anEndAtThePhoneOutAlongTheWallCountsAsWalked() {
+        var refusals = WalkRefusals()
+        refusals.ended(.right, at: 5.2, walked: 0.3, time: 1)
+        refusals.ended(.left, at: 0, walked: 0, time: 20)
+        #expect(!refusals.wasRefused(.right, end: 5.2))
+        #expect(refusals.wasRefused(.left, end: 0))
+        #expect(!refusals.neitherSideWalked(leftEnd: 0, rightEnd: 5.2))
+        // The same on the left: the end's distance from the meter counts, not its sign.
+        refusals.ended(.left, at: -1.5, walked: 0, time: 30)
+        #expect(!refusals.wasRefused(.left, end: -1.5))
+    }
+
     /// An end moved or set again by something else (a past-end request that was met, a corner)
     /// is no longer the one the refusal set.
     @Test func anEndThatMovedIsNoLongerRefused() {
