@@ -209,6 +209,7 @@ extension ScanEngine {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
 
         let spot = result.spot.map(Self.batterySpot)
+        let nearestSpot = result.nearestConsidered.map(Self.batterySpot)
 
         var route: [SIMD2<Float>] = []
         if let cable = result.route {
@@ -248,11 +249,13 @@ extension ScanEngine {
             )
         }
 
-        let depth = spot?.depth ?? 0.3
         // A run's start_ft is a range of battery LEFT edges, so the wall it describes reaches one
-        // battery width past its last start. Only the spot carries the width; without a spot the
-        // zone is drawn over the starts alone, which understates it.
-        let width = spot.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
+        // battery width past its last start. The spot carries the size, or after a reject the
+        // nearest spot, which the server sized the same way. With neither, the zone is drawn over
+        // the starts alone at 0.3 m deep, which understates it.
+        let sized = spot ?? nearestSpot
+        let depth = sized?.depth ?? 0.3
+        let width = sized.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
         let clearances = result.sweep.enumerated().map { index, run in
             let first = meters(min(run.startFt.x, run.startFt.y))
             let last = meters(max(run.startFt.x, run.startFt.y))
@@ -291,7 +294,7 @@ extension ScanEngine {
             rulesNotice: result.policy.notice.flatMap { $0.isEmpty ? nil : $0 },
             rulesHash: result.policy.rulesShortHash,
             spot: spot,
-            nearestSpot: result.nearestConsidered.map(Self.batterySpot),
+            nearestSpot: nearestSpot,
             nearestFailingCheck: result.nearestFailure?.id,
             cableRoute: route,
             cableLength: result.route.map { meters($0.lengthFt) },
