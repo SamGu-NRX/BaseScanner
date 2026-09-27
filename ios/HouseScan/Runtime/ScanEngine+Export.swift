@@ -36,12 +36,15 @@ extension ScanEngine {
         let features: [SceneFeature] = try snapshot.features.map { Self.projected($0, onto: wall) }.map { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
-            case .door, .window:
+            case .door, .window, .battery, .elecBox:
                 let heights = [feature.bottom ?? 0, feature.top ?? 0]
                 let bottom = max(0, heights.min() ?? 0)
                 let top = max(bottom, heights.max() ?? 0)
                 if bottom != feature.bottom || top != feature.top {
                     RuntimeLog.engine.info("export: \(feature.kind.rawValue, privacy: .public) heights \(feature.bottom ?? .nan)...\(feature.top ?? .nan) clamped to \(bottom)...\(top)")
+                }
+                if feature.kind == .battery || feature.kind == .elecBox {
+                    return .box(kind: feature.kind == .battery ? .battery : .elecBox, span: feature.span, bottom: bottom, top: top)
                 }
                 return .opening(kind: feature.kind == .door ? .door : .window, span: feature.span, bottom: bottom, top: top,
                                 operable: feature.kind == .window ? feature.opens : nil)
@@ -194,16 +197,22 @@ extension ScanEngine {
             gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
         }
         let settles = plans.map { plan in plan.map { !skippedGaps.contains($0) && captureCanSettle($0) } ?? false }
-        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { item in
+        return Self.presentation(of: result, isSample: isSample, wall: sceneWall, unmeasuredMarks: Self.unmeasuredMarks(state.features)) { item in
             result.missingEvidence.firstIndex(of: item).map { settles[$0] } ?? false
         }
     }
 
+    /// The kinds among `features` whose depth nobody measured, once each in tray order: the
+    /// scene carries them with no footprint, so the answer goes to a person.
+    static func unmeasuredMarks(_ features: [MarkedFeature]) -> [FeatureKind] {
+        FeatureKind.allCases.filter { kind in kind.depthUnmeasured && features.contains { $0.kind == kind } }
+    }
+
     /// `presentation(of:isSample:)` without an engine, for the UI demo: `wall` is the scan's wall
-    /// in world meters (nil draws no route off a sample's frame), `capturable` says whether a
-    /// requested view can be taken now.
+    /// in world meters (nil draws no route off a sample's frame), `unmeasuredMarks` the kinds of
+    /// the scan's marks nobody measured, `capturable` says whether a requested view can be taken now.
     static func presentation(
-        of result: PlacementResult, isSample: Bool, wall sceneWall: SceneWall?,
+        of result: PlacementResult, isSample: Bool, wall sceneWall: SceneWall?, unmeasuredMarks: [FeatureKind] = [],
         capturable: (PlacementMissingEvidence) -> Bool
     ) -> ResultPresentation {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
@@ -302,6 +311,7 @@ extension ScanEngine {
             clearances: clearances,
             missing: missing,
             unseenSide: unseen,
+            unmeasuredMarks: unmeasuredMarks,
             isSample: isSample
         )
     }

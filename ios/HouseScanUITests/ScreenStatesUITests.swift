@@ -21,6 +21,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-needsTexture", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "needsTexture"], "wallWalk"),
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
+        ("wallWalk-markingBox", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "elec_box"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
@@ -80,6 +81,7 @@ final class ScreenStatesUITests: XCTestCase {
     /// in any text on screen.
     private static let expectations: [String: (identifier: String?, text: String)] = [
         "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
+        "wallWalk-markingBox": ("instruction", "A disconnect, sub-panel, EV charger or solar box"),
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
@@ -230,6 +232,31 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
     }
 
+    /// Issue #27: a battery already on the wall and any other box (disconnect, sub-panel, EV
+    /// charger) are marked from the review by two corners where they meet the wall.
+    @MainActor
+    func testReviewMarksAnExistingBatteryAndABox() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "markFeatures"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
+        for (kind, prompt) in [("battery", "Tap where the battery meets the wall"), ("elec_box", "Tap where the box meets the wall")] {
+            tap(app, "feature.\(kind)")
+            let first = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS %@", prompt)).firstMatch
+            XCTAssertTrue(first.waitForExistence(timeout: 5), "marking \(kind) must ask for \(prompt)")
+            tap(app, "action.markPoint", timeout: 5)
+            let second = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'meets the wall, top right'")).firstMatch
+            XCTAssertTrue(second.waitForExistence(timeout: 5), "a \(kind) takes a second corner")
+            tap(app, "action.markPoint", timeout: 5)
+            XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
+        }
+        XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 2)
+    }
+
     /// While the phone has lost its place the review can't start a mark, which taps into the
     /// scene: the chips give way to a line saying so, and "Looks complete" still sends the scan.
     @MainActor
@@ -240,7 +267,7 @@ final class ScreenStatesUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         XCTAssertTrue(element(app, "review.lostPlace").exists, "the review must say the phone lost its place")
-        for kind in ["gas_meter", "door", "window", "ac", "drive", "fence"] {
+        for kind in ["gas_meter", "door", "window", "ac", "battery", "elec_box", "drive", "fence"] {
             XCTAssertFalse(element(app, "feature.\(kind)").exists, "feature.\(kind) must not be offered while the phone is lost")
         }
         XCTAssertTrue(element(app, "action.confirmFeatures").isHittable, "Looks complete must stay available")

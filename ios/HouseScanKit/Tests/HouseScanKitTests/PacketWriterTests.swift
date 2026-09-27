@@ -767,6 +767,10 @@ private func photoJPEG() throws -> URL {
         let fence = try PacketMark.from(.fence(foot: [SIMD3(-1, 0, 3), SIMD3(1, 0, 3)]), id: "f", wall: wall, frame: frame)
         #expect(fence.kind == .fence && fence.points == [SIMD3(-1, -1.5, 3), SIMD3(1, -1.5, 3)])
         #expect(throws: PacketError.self) { try PacketMark.from(.driveway(edge: [SIMD3(0, 0, 1)]), id: "x", wall: wall, frame: frame) }
+        // Manifest schema 1.1 has no mark kind for a box; it is only in scene.json.
+        #expect(throws: PacketError.self) {
+            try PacketMark.from(.box(kind: .battery, span: 0...0.8, bottom: 0, top: 1), id: "b", wall: wall, frame: frame)
+        }
         let end = PacketMark.wallEnd(id: "e", side: .right, endKind: .limit, s: 2.5, wall: wall, frame: frame)
         #expect(end.points == [SIMD3(2.5, 0, 0)] && end.side == .right && end.endKind == .limit)
         #expect(PacketMark.meter(id: "m").points == [.zero])

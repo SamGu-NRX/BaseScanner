@@ -246,6 +246,36 @@ import simd
         #expect(answer(.reject, true, false, [Check(id: "e", outcome: .fail)]) == .notHere)
     }
 
+    /// Review of #52: a scan with a battery or box marked, whose depth nobody measured, never
+    /// reads as settled. The server measured to its stretch of wall line, so its pass and its
+    /// reject both go to a person; a view the camera can take still comes first.
+    @Test func aScanWithAnUnmeasuredMarkGoesToAPerson() {
+        typealias Check = ResultReading.Check
+        let pass = Check(id: "battery_clearance", outcome: .pass)
+        let byView = Check(id: "b", outcome: .unsure, needsPerson: false, viewCapturable: true)
+        let answer = { (decision: PlacementDecision, approved: Bool, spot: Bool, checks: [Check]) in
+            ResultReading.answer(decision: decision, policyApproved: approved, hasSpot: spot, checks: checks, unmeasuredMarks: true)
+        }
+        #expect(answer(.pass, true, true, [pass]) == .installer)
+        #expect(answer(.manualReview, false, true, [pass]) == .installer)
+        #expect(answer(.reject, true, false, [Check(id: "battery_clearance", outcome: .fail)]) == .installer)
+        #expect(answer(.manualReview, true, true, [pass, byView]) == .oneMoreLook)
+    }
+
+    /// The same through a whole answer: the UI tests' passing result, read for a scan with a
+    /// battery marked.
+    @Test func aPassingAnswerToAScanWithABatteryMarkedGoesToAPerson() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // HouseScanKitTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // HouseScanKit
+            .deletingLastPathComponent()  // ios
+            .appendingPathComponent("HouseScanUITests/Fixtures/results/pass.json")
+        let result = try PlacementResult.decode(Data(contentsOf: url))
+        #expect(result.answer { _ in true } == .fits)
+        #expect(result.answer(unmeasuredMarks: true) { _ in true } == .installer)
+    }
+
     @Test func needsPersonFollowsTheUnsureCause() throws {
         let result = try PlacementResult.decode(PlacementResultTests.sampleData())
         #expect(result.checks.map(\.needsPerson) == [false, true, false, false])  // pass, margin, unobserved, pass

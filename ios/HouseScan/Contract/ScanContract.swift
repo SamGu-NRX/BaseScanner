@@ -411,20 +411,31 @@ enum FeatureKind: String, Equatable, Sendable, CaseIterable, Identifiable {
     case door
     case window
     case acUnit = "ac"
+    /// A battery already on the wall, which a new one keeps its clearance from.
+    case battery
+    /// Any other box on the wall: a disconnect, sub-panel, EV charger or solar equipment.
+    case elecBox = "elec_box"
     case driveway = "drive"
     case fence
 
     var id: String { rawValue }
 
-    /// How many taps a mark takes: two diagonal corners for a door or window, two points along
-    /// the near edge of a driveway or the foot of a fence, one point for a gas meter or AC unit.
-    /// scene.json (server/schemas/scene.schema.json) stores a driveway as a ground polygon and a
-    /// fence as a facing gap over a span, so both need a line, not a point.
+    /// How many taps a mark takes: two diagonal corners for a door, window, battery or box, two
+    /// points along the near edge of a driveway or the foot of a fence, one point for a gas meter
+    /// or AC unit. scene.json (server/schemas/scene.schema.json) stores a driveway as a ground
+    /// polygon and a fence as a facing gap over a span, so both need a line, not a point.
     var tapCount: Int {
         switch self {
-        case .door, .window, .driveway, .fence: 2
+        case .door, .window, .battery, .elecBox, .driveway, .fence: 2
         case .gasMeter, .acUnit: 1
         }
+    }
+
+    /// True for a mark whose size off the wall the phone doesn't measure and the server can't be
+    /// told is unknown: a battery or box, tapped where it meets the wall. The answer to a scan
+    /// with one goes to a person (`ResultPresentation.unmeasuredMarks`).
+    var depthUnmeasured: Bool {
+        self == .battery || self == .elecBox
     }
 }
 
@@ -637,6 +648,9 @@ struct ResultPresentation: Equatable, Sendable {
     var missing: [MissingEvidence]
     /// A side of the meter the walk didn't reach, so a closer spot may exist there.
     var unseenSide: WallSide? = nil
+    /// The kinds of the scan's marks whose depth nobody measured (`FeatureKind.depthUnmeasured`),
+    /// once each. Any at all sends the answer to a person (`ResultReading.answer`).
+    var unmeasuredMarks: [FeatureKind] = []
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool

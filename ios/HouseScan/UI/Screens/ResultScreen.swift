@@ -108,6 +108,9 @@ struct ResultScreen: View {
             if let side = result.unseenSide {
                 footnote(ScanCopy.unseenSide(side), id: "result.unseenSide")
             }
+            if let line = ScanCopy.unmeasuredMarks(result.unmeasuredMarks) {
+                footnote(line, id: "result.unmeasuredMarks")
+            }
             footnote(ScanCopy.panelReview, id: "result.panelReview")
         }
     }

@@ -149,6 +149,9 @@ extension ScanEngine {
                     feature.kind == .door ? .door : .window, id: id, span: feature.span, bottom: bottom, top: feature.top ?? bottom,
                     operable: feature.kind == .window ? feature.opens : nil, wall: wall, frame: frame, t: t
                 ))
+            case .battery, .elecBox:
+                // Manifest schema 1.1 has no mark kind for either; they travel in the packet's scene.json.
+                continue
             case .gasMeter, .acUnit:
                 guard let point = points.first else { continue }
                 marks.append(.pointObject(feature.kind == .gasMeter ? .gasMeter : .ac, id: id, point: point, t: t))
