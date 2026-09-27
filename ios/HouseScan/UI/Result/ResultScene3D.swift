@@ -99,9 +99,10 @@ struct ResultScene3D: View {
     }
 
     /// The camera's yaw 0 faces the piece of wall the orbit target stands on, degrees, so a battery
-    /// round a corner is seen from its front.
+    /// round a corner is seen from its front. The same spot as `orbitTarget`, the closest one
+    /// tried when there is no spot, so a rejected candidate round a corner is seen from its front too.
     private var orbitHeading: Float {
-        let s = result.spot.map { ($0.span.lowerBound + $0.span.upperBound) / 2 } ?? 0
+        let s = ResultMarkLayout.focusS(spot: result.spot?.span, nearest: result.nearestSpot?.span)
         let outward = piece(atS: s).outward
         return atan2(outward.x, outward.z) * 180 / .pi
     }
@@ -203,7 +204,7 @@ struct ResultScene3D: View {
             var material = UnlitMaterial(color: SceneColor.outcome(zone.outcome))
             material.blending = .transparent(opacity: .init(floatLiteral: 0.35))
             // Stacked zones sit a few millimeters apart so overlapping ones don't flicker.
-            let lift = 0.006 + Float(index) * 0.003
+            let lift = ResultMarkLayout.zoneLift(index: index, base: Self.zoneBase)
             // A zone that runs past a corner is drawn in parts, one on each piece it covers.
             for (piece, holder) in zip(pieces, holders) {
                 let low = max(zone.span.lowerBound, piece.span.lowerBound)
@@ -217,15 +218,20 @@ struct ResultScene3D: View {
         addCable(to: root, pieces: pieces)
         // Each on the piece its middle is on, as the battery is.
         func middle(_ spot: BatterySpot) -> Float { (spot.span.lowerBound + spot.span.upperBound) / 2 }
+        // Above every clearance zone, however many there are, so none covers it.
+        let outlineLift = ResultMarkLayout.outlineLift(zoneCount: result.clearances.count, base: Self.zoneBase,
+                                                       thickness: FootprintOutline.thickness, minimum: 0.02)
         if let spot = result.spot {
-            if result.spotIsClean {
+            switch ResultMarkLayout.spotMark(spotIsClean: result.spotIsClean) {
+            case .battery:
                 addBattery(spot, to: holder(atS: middle(spot)))
-            } else {
-                addFootprintOutline(spot, color: SceneColor.ink(workingSpaceOutcome), to: holder(atS: middle(spot)))
+            case .outline:
+                holder(atS: middle(spot)).addChild(
+                    FootprintOutline.build(spot, color: SceneColor.ink(result.workingSpaceOutcome), lift: outlineLift))
             }
         }
         if let nearest = result.nearestSpot {
-            addFootprintOutline(nearest, color: SceneColor.ink(.fail), to: holder(atS: middle(nearest)))
+            holder(atS: middle(nearest)).addChild(FootprintOutline.build(nearest, color: SceneColor.ink(.fail), lift: outlineLift))
         }
         addLights(to: root)
         return root
@@ -372,44 +378,9 @@ struct ResultScene3D: View {
                           center: SIMD3(centerX, spot.height / 2, front + 0.003), material: UnlitMaterial(color: SceneColor.signal)))
     }
 
-    /// How the meter working-space check came out at the spot: `.unsure` when it isn't clean
-    /// for any other reason, so the outline never reads as a clear fail without one.
-    private var workingSpaceOutcome: CheckOutcome {
-        result.checks.contains { $0.id == ResultReading.meterWorkingSpaceCheckID && $0.outcome == .fail } ? .fail : .unsure
-    }
-
-    /// A dashed outline of a footprint on the ground: where a battery would stand, drawn without
-    /// one. Dashes start at each corner and the gaps stretch to fit, so every corner reads.
-    private func addFootprintOutline(_ spot: BatterySpot, color: UIColor, to root: Entity) {
-        let material = UnlitMaterial(color: color)
-        let left = spot.span.lowerBound, right = spot.span.upperBound
-        let back = spot.offsetFromWall, front = spot.offsetFromWall + spot.depth
-        // Above the clearance zones (6 mm plus 3 mm a zone) so they don't cover it.
-        let lift: Float = 0.02
-        let edges: [(SIMD2<Float>, SIMD2<Float>)] = [
-            (SIMD2(left, back), SIMD2(right, back)), (SIMD2(right, back), SIMD2(right, front)),
-            (SIMD2(right, front), SIMD2(left, front)), (SIMD2(left, front), SIMD2(left, back)),
-        ]
-        for (from, to) in edges {
-            let length = simd_distance(from, to)
-            guard length > 0.01 else { continue }
-            let direction = (to - from) / length
-            let count = max(1, Int(((length + Self.dashGap) / (Self.dash + Self.dashGap)).rounded()))
-            let gap = count > 1 ? (length - Float(count) * Self.dash) / Float(count - 1) : 0
-            let dash = count > 1 ? Self.dash : length
-            for index in 0..<count {
-                let start = from + direction * Float(index) * (dash + gap)
-                let middle = start + direction * dash / 2
-                let horizontal = abs(direction.x) > abs(direction.y)
-                root.addChild(box(width: horizontal ? dash : Self.lineWidth, height: 0.004, depth: horizontal ? Self.lineWidth : dash,
-                                  center: SIMD3(middle.x, lift, middle.y), material: material))
-            }
-        }
-    }
-
-    private static let dash: Float = 0.1
-    private static let dashGap: Float = 0.06
-    private static let lineWidth: Float = 0.03
+    /// The height of the lowest clearance zone; the rest stack a step apart above it
+    /// (`ResultMarkLayout.zoneLift`).
+    private static let zoneBase: Float = 0.006
 
     /// Point by point on the piece each point's s is on: the route has a vertex at every corner it
     /// passes (`SceneWall.chainS`), so each stretch lies on one piece and it bends with the wall.
@@ -496,8 +467,54 @@ struct ResultScene3D: View {
     }
 }
 
+/// A dashed outline of a footprint on the ground: where a battery would stand, drawn without
+/// one. Dashes start at each corner and the gaps stretch to fit, so every corner reads
+/// (`ResultMarkLayout.dashes`). Built flat on a piece of wall: x = s, y = height, z = out.
+@MainActor
+enum FootprintOutline {
+    /// How tall each dash is, for `ResultMarkLayout.outlineLift`.
+    static let thickness: Float = 0.004
+    private static let dash: Float = 0.1
+    private static let dashGap: Float = 0.06
+    private static let lineWidth: Float = 0.03
+
+    /// `spot`'s footprint, its dashes centered `lift` above the ground.
+    static func build(_ spot: BatterySpot, color: UIColor, lift: Float) -> Entity {
+        build(s: spot.span, out: spot.offsetFromWall...(spot.offsetFromWall + spot.depth), color: color, lift: lift)
+    }
+
+    static func build(s: ClosedRange<Float>, out: ClosedRange<Float>, color: UIColor, lift: Float) -> Entity {
+        let root = Entity()
+        let material = UnlitMaterial(color: color)
+        let left = s.lowerBound, right = s.upperBound, back = out.lowerBound, front = out.upperBound
+        let edges: [(SIMD2<Float>, SIMD2<Float>)] = [
+            (SIMD2(left, back), SIMD2(right, back)), (SIMD2(right, back), SIMD2(right, front)),
+            (SIMD2(right, front), SIMD2(left, front)), (SIMD2(left, front), SIMD2(left, back)),
+        ]
+        for (from, to) in edges {
+            let length = simd_distance(from, to)
+            guard length > 0.01 else { continue }
+            let direction = (to - from) / length
+            let dashes = ResultMarkLayout.dashes(along: length, dash: dash, gap: dashGap)
+            let horizontal = abs(direction.x) > abs(direction.y)
+            for start in dashes.starts {
+                let middle = from + direction * (start + dashes.length / 2)
+                let entity = ModelEntity(
+                    mesh: .generateBox(width: horizontal ? dashes.length : lineWidth, height: thickness,
+                                       depth: horizontal ? lineWidth : dashes.length),
+                    materials: [material]
+                )
+                entity.position = SIMD3(middle.x, lift, middle.y)
+                root.addChild(entity)
+            }
+        }
+        return root
+    }
+}
+
 /// The result for "See it on your wall" (`LiveCapture.showResult`): the battery, the cable run and
-/// the clearance zones, the same pieces as `BatteryOverlay` draws over a replay. Built from
+/// the clearance zones, the same pieces as `BatteryOverlay` draws over a replay. A spot that isn't
+/// a clean fit gets the outline of its footprint instead of a battery, as on the result card. Built from
 /// `WallGeometry` in world axes with the meter at the origin, so it turns a corner where the wall does.
 @MainActor
 enum ResultARModel {
@@ -519,7 +536,7 @@ enum ResultARModel {
             let middle = zone.span.lowerBound + width / 2
             // Stacked zones sit a few millimeters apart so overlapping ones don't flicker.
             let entity = ModelEntity(mesh: .generatePlane(width: width, depth: zone.depth), materials: [material])
-            entity.position = local(middle, meshClearance + Float(index) * 0.003, zone.depth / 2)
+            entity.position = local(middle, ResultMarkLayout.zoneLift(index: index, base: meshClearance), zone.depth / 2)
             entity.orientation = facing(wall, atS: middle)
             root.addChild(entity)
         }
@@ -539,7 +556,20 @@ enum ResultARModel {
             joint.position = point
             root.addChild(joint)
         }
-        if let spot = result.spot {
+        if let spot = result.spot, ResultMarkLayout.spotMark(spotIsClean: result.spotIsClean) == .outline {
+            let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
+            let back = max(spot.offsetFromWall, meshClearance)
+            // Flat on the spot's piece of wall, with s measured from the spot's middle.
+            let outline = FootprintOutline.build(
+                s: (spot.span.lowerBound - middle)...(spot.span.upperBound - middle), out: back...(back + spot.depth),
+                color: SceneColor.ink(result.workingSpaceOutcome),
+                lift: ResultMarkLayout.outlineLift(zoneCount: result.clearances.count, base: meshClearance,
+                                                   thickness: FootprintOutline.thickness)
+            )
+            outline.position = local(middle, 0, 0)
+            outline.orientation = facing(wall, atS: middle)
+            root.addChild(outline)
+        } else if let spot = result.spot {
             let width = max(spot.span.upperBound - spot.span.lowerBound, 0.1)
             let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
             let back = max(spot.offsetFromWall, meshClearance)
