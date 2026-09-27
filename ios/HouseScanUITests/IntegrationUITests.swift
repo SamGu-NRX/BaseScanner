@@ -186,11 +186,18 @@ final class IntegrationUITests: XCTestCase {
         // Up to the result, but not past it: the result's gate file would let the autopilot move
         // on to AR before Start over is tapped (the b33e214 run found it on screen.resultAR).
         for phase in ["markFeatures", "gapRequest", "uploading"] { try run.pass(phase) }
+        // The spot question, when the flow asks it, may go on; the result may not.
+        try Data().write(to: run.gate.appending(path: "spotConfirm"))
         run.waitFor("result", timeout: 150)
 
         // A new scan: the question again, off again, and nothing more sent until it is answered.
         let creates = server.requests("POST captures").count
-        run.app.buttons["action.startOver"].firstMatch.tap()
+        // Start over sits under the result's Details, last, as ScreenStatesUITests reaches it.
+        run.app.descendants(matching: .any)["result.details"].tap()
+        let startOver = run.app.buttons["action.startOver"].firstMatch
+        XCTAssertTrue(startOver.waitForExistence(timeout: 10), "no Start over under the result's Details")
+        run.app.swipeUp()
+        startOver.tap()
         run.waitFor("onboarding")
         // Skip jumps to the last page; the scan starts from its "Allow camera" button.
         run.app.buttons["action.onboardingSkip"].tap()
