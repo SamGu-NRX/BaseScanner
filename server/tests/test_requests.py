@@ -2,6 +2,8 @@
 (issue #78), and no view whose size only a placeholder distance sets (issue #75). Synthetic scenes
 shaped like the build 4.1 field runs; no real home data."""
 
+import copy
+
 import pytest
 from helpers import (
     GOLDEN_RULES,
@@ -17,7 +19,7 @@ from helpers import (
 
 from rules import deep_merge, public_rules_dict, rules_from_dict
 from scene import COVERAGE_TOLERANCE_FT
-from solver import UNSURE
+from solver import _LOOKS_FOR, UNSURE, _either
 
 # Test settings, not Base policy.
 END = 12.0  # the wall's right end, a limit ("Something blocks it")
@@ -40,32 +42,74 @@ def band_requests(result: dict, band: str) -> list[dict]:
     return [m for m in result["missing_evidence"] if m.get("band") == band]
 
 
+def named(result: dict) -> set[str]:
+    """The checks the band requests name: those capturing them settles."""
+    return {i for m in result["missing_evidence"] if m["kind"] == "band" for i in m["checks"]}
+
+
+def unseen(result: dict) -> set[str]:
+    return {c["id"] for c in result["checks"] if c.get("unsure_cause") == "unobserved"}
+
+
+def captured_exactly(raw: dict, result: dict) -> dict:
+    """The next round of the gap loop: the homeowner shows exactly what the answer asked for."""
+    out = copy.deepcopy(raw)
+    out["coverage"]["observed"] += [
+        {
+            "band": m["band"],
+            "span_ft": m["span_ft"],
+            **({"out_ft": m["out_ft"]} if "out_ft" in m else {}),
+        }
+        for m in result["missing_evidence"]
+        if m["kind"] == "band"
+    ]
+    return out
+
+
+def facing_and_overhead_past_the_end() -> dict:
+    """The gap in front and the space overhead are needed over the battery's stretch widened by
+    the wall's error, which beside the end reaches past it: the spot ends 0.4 ft short of the
+    end, and the wall is known to 1 ft."""
+    raw = spot_beside_a_limit_end()
+    raw["walls"][0]["plus_minus_ft"] = 1.0
+    raw["ground"] = pads_ground([(10, END + 5)], hi=END + 20)
+    observed_band(raw, "facing", [(-40, 5)])
+    observed_band(raw, "overhead", [(-40, 5)])
+    return raw
+
+
 def test_no_wall_request_runs_past_a_limit_end() -> None:
     # Before: the gas and opening clearances' 3 ft radius asked for the wall to 3 ft past the
     # end, where there is no wall, and the app dropped the whole request.
     result = run(spot_beside_a_limit_end())
     assert result["spot"]["span_ft"][1] > END - 1  # the spot stands beside the end
     walls = band_requests(result, "wall")
+    # The wall the other checks need beside the battery is still asked for.
     assert walls, result["missing_evidence"]
     assert all(m["span_ft"][1] <= END + 1e-6 for m in walls), walls
-    # The request is clipped at the end, not dropped.
-    assert max(m["span_ft"][1] for m in walls) >= END - 1e-6
     assert not any("past the" in m["message"] for m in walls)
 
 
+def test_a_check_that_needs_the_wall_past_a_limit_end_is_left_to_a_person() -> None:
+    # The gas and opening clearances need the wall past the end, which still counts as unseen,
+    # so no request can settle them. Before, a request clipped at the end still named them,
+    # and capturing it left both unseen (the Codex review of c8d3c9d).
+    result = run(spot_beside_a_limit_end())
+    assert {"gas_clearance", "opening_clearance"} <= unseen(result)
+    assert not {"gas_clearance", "opening_clearance"} & named(result), result["missing_evidence"]
+    assert result["summary"].startswith("More views are needed"), result["summary"]
+    assert "a person also needs to check" in result["summary"]
+    assert "distance from gas equipment" in result["summary"]
+
+
 def test_no_facing_or_overhead_request_runs_past_a_limit_end() -> None:
-    # The gap in front and the space overhead are asked for over the battery's stretch widened
-    # by the wall's error, which beside the end reaches past it: the spot ends 0.4 ft short of
-    # the end, and the wall is known to 1 ft.
-    raw = spot_beside_a_limit_end()
-    raw["walls"][0]["plus_minus_ft"] = 1.0
-    raw["ground"] = pads_ground([(10, END + 5)], hi=END + 20)
-    observed_band(raw, "facing", [(-40, 5)])
-    observed_band(raw, "overhead", [(-40, 5)])
-    result = run(raw)
+    result = run(facing_and_overhead_past_the_end())
     assert result["spot"]["span_ft"][1] > END - 1
-    asked = [m for band in ("facing", "overhead") for m in band_requests(result, band)]
-    assert {m["band"] for m in asked} == {"facing", "overhead"}, result["missing_evidence"]
+    # Their stretch runs past the end, so they are left to a person, not asked for.
+    assert {"facing_gap", "headroom"} <= unseen(result)
+    assert not {"facing_gap", "headroom"} & named(result), result["missing_evidence"]
+    assert band_requests(result, "facing") == band_requests(result, "overhead") == []
+    asked = [m for m in result["missing_evidence"] if m["kind"] == "band" and m["band"] != "ground"]
     assert all(m["span_ft"][1] <= END + 1e-6 for m in asked), asked
 
 
@@ -74,11 +118,16 @@ def test_ground_past_a_limit_end_is_still_asked_for_and_says_why() -> None:
     (ground,) = band_requests(result, "ground")
     assert ground["span_ft"][1] > END + 1  # an AC unit behind the fence still counts
     assert "Part of it is past the right end" in ground["message"]
-    assert "to check for" in ground["message"] and "an AC unit" in ground["message"]
-    # One "or" between the alternatives; before: "a gas meter or pipe or an AC unit".
-    assert ground["message"].count(" or ") == 1, ground["message"]
-    # The pool's distance is a placeholder in these rules, so it doesn't ask (issue #75).
-    assert "pool" not in ground["message"]
+    assert "to check for an AC unit" in ground["message"]
+    # The gas clearance needs the wall past the end too, so it asks for nothing, and the pool's
+    # distance is a placeholder in these rules (issue #75).
+    assert "gas" not in ground["message"] and "pool" not in ground["message"]
+
+
+def test_the_past_end_hint_joins_its_alternatives_with_one_or() -> None:
+    # Before: "a gas meter or pipe or an AC unit".
+    looks_for = [_LOOKS_FOR[i] for i in ("gas_clearance", "ac_clearance", "pool_clearance")]
+    assert _either(looks_for) == "a gas meter, an AC unit or a pool"
 
 
 def test_a_request_inside_the_ends_has_no_past_end_hint() -> None:
@@ -88,28 +137,21 @@ def test_a_request_inside_the_ends_has_no_past_end_hint() -> None:
     assert ground and not any("past the" in m["message"] for m in ground)
 
 
-def test_once_every_request_is_met_the_rest_goes_to_a_person() -> None:
-    # Round 2 of the gap loop: the homeowner shows exactly what round 1 asked for. The gas and
-    # opening clearances' radius still crosses the limit end, where no request reaches, so before
-    # the summary read "More views are needed ... 2 checks depend on areas the scan did not see"
-    # with nothing left to show.
-    raw = spot_beside_a_limit_end()
+@pytest.mark.parametrize(
+    "scene", [spot_beside_a_limit_end, facing_and_overhead_past_the_end], ids=["wall", "bands"]
+)
+def test_capturing_the_requests_settles_every_check_they_name(scene) -> None:
+    # Round 2 of the gap loop beside a limit end. What the checks left to a person need lies
+    # past the end, so before the summary read "More views are needed ... 2 checks depend on
+    # areas the scan did not see" with nothing left to show.
+    raw = scene()
     first = run(raw)
-    asked = [m for m in first["missing_evidence"] if m["kind"] == "band"]
-    assert asked, first["missing_evidence"]
-    raw["coverage"]["observed"] += [
-        {
-            "band": m["band"],
-            "span_ft": m["span_ft"],
-            **({"out_ft": m["out_ft"]} if "out_ft" in m else {}),
-        }
-        for m in asked
-    ]
-    second = run(raw)
+    assert named(first), first["missing_evidence"]
+    second = run(captured_exactly(raw, first))
+    assert not named(first) & unseen(second), second["checks"]
     assert second["missing_evidence"] == [], second["missing_evidence"]
     assert second["summary"].startswith("A person needs to check"), second["summary"]
-    still_unseen = [c for c in second["checks"] if c.get("unsure_cause") == "unobserved"]
-    assert still_unseen  # left for a person, not asked for
+    assert unseen(second)  # left for a person, not asked for
 
 
 def test_a_small_ground_request_settles_its_checks() -> None:

@@ -1612,17 +1612,37 @@ _BAND_TEXT = {
 }
 
 
+def settled_by_views(chk: Check, scene: Scene) -> bool:
+    """Whether views can settle the check, so that requests ask for and name it. Not one on a
+    placeholder distance (issue #75), nor one whose view of the wall, the gap in front of it or
+    the space over it reaches past an end the walk marked as a limit, by more than the coverage
+    tolerance: there is no wall there to show (issue #78), but the stretch still counts as
+    unseen for the check. solve() names those for a person."""
+    if not chk.asks_for_views:
+        return False
+    left, right = scene.end_kinds.get("left"), scene.end_kinds.get("right")
+    return not any(
+        v.band != "ground"
+        and (
+            (left == "limit" and v.a < scene.s_min - COVERAGE_TOLERANCE_FT)
+            or (right == "limit" and v.b > scene.s_max + COVERAGE_TOLERANCE_FT)
+        )
+        for v in chk.all_missing()
+    )
+
+
 def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[View, str]]] = {}
     for chk in c.checks:
-        if not chk.asks_for_views:
+        # A request names only checks that capturing it settles (result.schema.json), and a
+        # check it can't settle asks for none of its views, so none of them size a request.
+        if not settled_by_views(chk, scene):
             continue
         for view in chk.all_missing():
             if view.band != "ground":
-                # Only the ground is asked for past an end mark: past a limit end there is no
-                # wall, gap in front of it or space over it to show, and past an unexplored end
-                # only walking on settles anything (issue #78). The check stays UNSURE for a
-                # person if what it needs lies there.
+                # Only the ground is asked for past an end mark: past an unexplored end only
+                # walking on settles the wall (a past_end request), and a view past a limit end
+                # by less than the tolerance is rounding.
                 a, b = max(view.a, scene.s_min), min(view.b, scene.s_max)
                 if b - a < COVERAGE_TOLERANCE_FT:
                     continue
