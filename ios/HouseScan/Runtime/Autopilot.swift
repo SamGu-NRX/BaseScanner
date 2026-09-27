@@ -270,6 +270,14 @@ final class Autopilot {
             }
             await pause(hold)
             engine.cannotAccessArea()
+            if engine.state.endScanQuestion {
+                // Soon after the other side's: the walk asks whether to end the scan (#82). This
+                // homeowner walked both sides, so keeps walking and ends this side as before.
+                log("asked to end the scan on the \(side.rawValue); keeping walking")
+                await pause(hold)
+                engine.answerEndScan(false)
+                engine.cannotAccessArea()
+            }
             let end = side == .left ? engine.coverage?.leftEnd : engine.coverage?.rightEnd
             log("can't get there on the \(side.rawValue) with the phone at s=\(side.walk.sign * along(index)): end at s=\(end ?? .nan)")
         }

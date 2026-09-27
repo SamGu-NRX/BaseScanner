@@ -193,10 +193,15 @@ extension ScanEngine {
         // its span (and a facing item its out_ft, which a walk can reach), a past_end item its
         // side. Otherwise the button would do nothing. A request the homeowner already skipped
         // or answered with something overhead stays with the installer.
-        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { [self, gapPlanner, coverage, skippedGaps] item in
+        let shown = Self.presentation(of: result, isSample: isSample, wall: sceneWall) { [self, gapPlanner, coverage, skippedGaps] item in
             gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
                 .map { plan in !skippedGaps.contains { plan.asksForSameView(as: $0) } && captureCanSettle(plan) } ?? false
         }
+        // "Can't get there" ended both sides before either was walked (#76): the server placed
+        // the spot on the meter tap's wall line alone, which nothing confirmed.
+        guard walkRefusals.neitherSideWalked(leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd) else { return shown }
+        RuntimeLog.engine.info("result: neither side of the meter was walked; showing no spot")
+        return shown.withWallNotMeasured()
     }
 
     /// `presentation(of:isSample:)` without an engine, for the UI demo: `wall` is the scan's wall
