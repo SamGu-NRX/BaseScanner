@@ -482,6 +482,8 @@ enum MarkRefusal: Equatable, Sendable {
     case wrongSide
     case tooFarFromWall
     case trackingNotReady
+    /// A fence's second tap is round a corner from its first: each side needs its own fence.
+    case fenceAcrossCorner
 }
 
 // MARK: - Gap loop
