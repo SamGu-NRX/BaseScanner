@@ -620,6 +620,9 @@ struct ResultPresentation: Equatable, Sendable {
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
+    /// The answer's `policy.rules_sha256`: which rules judged the scan, for matching a screenshot
+    /// to the scan stamp (`ScanStamp`).
+    var rulesSHA256: String? = nil
 }
 
 // MARK: - Spot check
