@@ -328,6 +328,22 @@ import simd
         #expect(overheads[0]["plus_minus_ft"] == nil)
     }
 
+    /// Where the walk went up to a surface ARKit found facing the wall (#164) becomes a `facing`
+    /// entry with its error written out: the tapped wall's 0.3 ft plus 0.16 ft per foot at the
+    /// far end (3.2808 ft) and a detected plane's 0.75 ft, 1.5749 ft in all. 1.6764 m is 5.5 ft.
+    @Test func planeFacingBecomesFacingWithItsError() throws {
+        var input = Self.input()
+        input.planeFacing = [ObservedSpan(span: 0...1, out: 1.6764)]
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let facing = try #require(try Value.parse(data)["facing"]?.array)
+        #expect(facing.count == 2)
+        #expect(facing[1]["wall_id"] == .string("side"))
+        expectClose(facing[1]["span_ft"]?.numbers, [0, 3.2808])
+        #expect(abs((facing[1]["depth_ft"]?.number ?? 0) - 5.5) < 2e-4)
+        #expect(abs((facing[1]["plus_minus_ft"]?.number ?? 0) - 1.5749) < 1e-3)
+    }
+
     /// Without mesh measurements there is no `overheads` key, as before.
     @Test func noMeshMeansNoOverheads() throws {
         #expect(try Self.exported().value["overheads"] == nil)
