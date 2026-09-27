@@ -4,9 +4,10 @@
 ///
 /// Fog. Coverage decides where it lifts: `LiveFogScene` draws every wall column and ground
 /// stretch of the coverage strip into a mask three times 64 texels wide (red: fog, green: hidden
-/// behind something, blue: requested by a gap), clearing to full fog; a max-pool takes it to 64
-/// texels and a radius-5 Gaussian blur feathers it. The composite is the prototype's: Chalk mixed toward a cool grey, textured by
-/// slow domain-warped fbm and breathing slightly. Two changes: the noise is pinned to the meter
+/// behind something, blue: requested by a gap, alpha: still changing), clearing to full fog; a
+/// max-pool takes it to 64 texels and a radius-3 Gaussian blur feathers it. The composite is the
+/// prototype's: Chalk mixed toward a cool grey, textured by slow domain-warped fbm and breathing
+/// slightly. Two changes: the noise is pinned to the meter
 /// on screen and scaled by its distance, so the texture sits on the wall instead of on the lens
 /// while the phone moves (the prototype cut between keyframes, where that never showed); and
 /// part-lifted fog breaks up along the same noise instead of thinning evenly, so a lift reads as
@@ -51,7 +52,7 @@ enum LiveFogShaders {
 
     struct MaskVertex {
         float4 position;  // world xyz
-        float4 value;     // fog, hidden, requested, unused
+        float4 value;     // fog, hidden, requested, 1 while the cell's fog is changing
     };
 
     struct MaskOut {
@@ -88,7 +89,7 @@ enum LiveFogShaders {
         return m;
     }
 
-    // Separable Gaussian, radius 5 texels (sigma 2.5), all four channels.
+    // Separable Gaussian, radius 3 texels (sigma 1.4, about 8 points), all four channels.
     fragment float4 blurFragment(FullOut in [[stage_in]],
                                  texture2d<float> source [[texture(0)]],
                                  constant int2& direction [[buffer(0)]]) {
@@ -96,8 +97,8 @@ enum LiveFogShaders {
         int2 limit = int2(source.get_width() - 1, source.get_height() - 1);
         float4 sum = float4(0.0f);
         float total = 0.0f;
-        for (int k = -5; k <= 5; k++) {
-            float w = exp(-float(k * k) / (2.0f * 2.5f * 2.5f));
+        for (int k = -3; k <= 3; k++) {
+            float w = exp(-float(k * k) / (2.0f * 1.4f * 1.4f));
             sum += w * source.read(uint2(clamp(p + k * direction, int2(0), limit)));
             total += w;
         }
@@ -149,36 +150,43 @@ enum LiveFogShaders {
         float2 uv = fmod((screen - u.anchor) / u.anchorScale, float2(256.0f));
         float2 q = uv + u.motion * u.time * 0.02f * float2(0.94f, 0.34f);
 
-        // The mask is read through a noise offset of up to 7% of the screen's width, so the
-        // straight edges of cells and columns come out as ragged, drifting fog banks (the
-        // noise-edged fog of war the prototype borrowed from Civilization VI).
-        float2 edgeNoise = float2(valueNoise(q * 1.7f + float2(7.3f, 2.1f)), valueNoise(q * 1.7f + float2(-4.1f, 8.6f)));
-        float2 look = screen + (edgeNoise - 0.5f) * 0.14f * u.viewSize.x;
+        // The mask is read through a fine noise offset, about 27 cm features at the meter and at
+        // most 2.5% of the screen's width either way, so the straight edges of cells come out
+        // ragged, as a fog bank's do (the noise-edged fog of war the prototype borrowed from
+        // Civilization VI). A coarser, larger offset (70 cm, 7%) smeared the edges into what
+        // read as a smudge on the lens in the first hosted screenshots.
+        float2 edgeNoise = float2(valueNoise(q * 4.5f + float2(7.3f, 2.1f)), valueNoise(q * 4.5f + float2(-4.1f, 8.6f)));
+        float2 look = screen + (edgeNoise - 0.5f) * 0.05f * u.viewSize.x;
         // The blur and the noise shape the fog; neither may erase it. The unblurred pooled mask,
-        // read through a fifth of the offset, sets a floor: a cell coverage has not counted keeps
-        // 30% of its fog within 3% of the screen's width of where it is, however narrow. Read
-        // unwarped, the floor drew a straight step along every wide edge.
-        float2 near = screen + (edgeNoise - 0.5f) * 0.03f * u.viewSize.x;
+        // read through a smaller offset, sets a floor: a cell coverage has not counted keeps 30%
+        // of its fog within a few points of where it is, however narrow. Read unwarped, the floor
+        // drew a straight step along every wide edge.
+        float2 near = screen + (edgeNoise - 0.5f) * 0.015f * u.viewSize.x;
         float4 m = max(mask.sample(linear, look / u.viewSize), 0.3f * pooled.sample(linear, near / u.viewSize));
         float fog = saturate(m.r), hidden = saturate(m.g), requested = saturate(m.b);
         if (fog < 0.002f && requested < 0.002f) { return float4(0.0f); }
 
         float2 warp = float2(fbm(q + float2(3.1f, 1.7f)), fbm(q + float2(-2.3f, 5.2f)));
         float n = fbm(q + 0.8f * warp);
-        float noiseTerm = 0.78f + 0.22f * n;
+        // The prototype's texture is barely there; deeper troughs read as dirt on the lens.
+        float noiseTerm = 0.88f + 0.12f * n;
         float breathing = 1.0f + u.motion * 0.04f * sin(2.0f * M_PI_F * 0.08f * u.time);
 
-        // Part-lifted fog breaks up along the noise; full fog and clear stay as they are.
-        float shaped = saturate(fog + (n - 0.5f) * 1.6f * fog * (1.0f - fog));
+        // Lifting fog breaks up along the noise, as mist burning off; fog that holds still (a cell
+        // seen once) stays an even, thinner veil, since held blotches read as a smudge.
+        float erosion = mix(0.4f, 1.6f, saturate(m.a));
+        float shaped = saturate(fog + (n - 0.5f) * erosion * fog * (1.0f - fog));
         float a = saturate(0.66f * noiseTerm * shaped * breathing * mix(1.0f, 0.72f, hidden));
 
+        // Hidden is a tint of real violet, the tape map's colour, not a grey veil over the thing
+        // in front: half-mixed at 0.75 fog it read as a grey ghost over the bin.
         float3 chalk = float3(0xF7, 0xF5, 0xEF) / 255.0f;
         float3 cool = float3(0xD9, 0xE2, 0xEC) / 255.0f;
-        float3 violet = float3(0xB4, 0x9C, 0xFF) / 255.0f;
-        float3 color = mix(mix(chalk, cool, 0.35f), violet, 0.5f * hidden);
+        float3 violet = float3(0xA4, 0x8A, 0xFA) / 255.0f;
+        float3 color = mix(mix(chalk, cool, 0.2f), violet, 0.9f * hidden);
 
         float pulse = 1.0f - u.motion * 0.14f * (0.5f + 0.5f * sin(2.0f * M_PI_F * u.time / 1.8f));
-        float r = saturate(0.36f * requested * noiseTerm * pulse);
+        float r = saturate(0.28f * requested * noiseTerm * pulse);
 
         float3 rgb = color * a;
         rgb = u.requested.rgb * r + rgb * (1.0f - r);
@@ -236,15 +244,17 @@ enum LiveFogShaders {
         float veil = violetOne ? 1.0f : mix(1.0f, 0.2f, saturate(fog));
         float alpha = evidence * birth * fade * veil;
 
-        // Flat 2.5 pt and edge 3.5 pt from 2.5 m out, growing to 4 and 6 pt at 1 m.
-        float far = clamp((length(s.a.xyz - u.cameraAndTime.xyz) - 1.0f) / 1.5f, 0.0f, 1.0f);
-        float size = mix(mix(4.0f, 2.5f, far), mix(6.0f, 3.5f, far), edge);
+        // Flat 3.5 pt and edge 5 pt from 4 m out, growing to 5 and 7.5 pt at 1 m. The prototype's
+        // 2.5 to 4 pt over 1 to 2.5 m left dots at walking distance (1.5 to 3 m) as pinpricks.
+        float far = clamp((length(s.a.xyz - u.cameraAndTime.xyz) - 1.0f) / 3.0f, 0.0f, 1.0f);
+        float size = mix(mix(5.0f, 3.5f, far), mix(7.5f, 5.0f, far), edge);
         float inner = 0.7f;
         float3 color = hologram;
         if (halo) {
-            // Edge 4x at 22%, flat 2x at 8%; a flat dot turning edge grows into it.
-            size *= mix(2.0f, 4.0f, edge);
-            alpha *= mix(0.08f, 0.22f, edge);
+            // Edge 4x at 32%, flat 2.6x at 16%; a flat dot turning edge grows into it. The glow
+            // is what makes the dots read as light; the prototype's 8% flat halo didn't show.
+            size *= mix(2.6f, 4.0f, edge);
+            alpha *= mix(0.16f, 0.32f, edge);
             inner = 0.0f;
             color = glow;
         }

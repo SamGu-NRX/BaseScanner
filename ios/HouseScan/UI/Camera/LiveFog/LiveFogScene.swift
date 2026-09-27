@@ -41,8 +41,10 @@ struct FogValue: Equatable {
     private static func fog(_ state: CellState) -> FogValue {
         return switch state {
         case .unseen: FogValue(fog: 1, hidden: 0, requested: 0)
-        case .seen: FogValue(fog: 0.55, hidden: 0, requested: 0)
-        case .hidden: FogValue(fog: 0.75, hidden: 1, requested: 0)
+        // 0.42 and 0.4 from the taste check against the prototype's videos: at 0.55, seen once
+        // and unseen blurred into one grey; at 0.75 the hidden mist greyed out the bin in front.
+        case .seen: FogValue(fog: 0.42, hidden: 0, requested: 0)
+        case .hidden: FogValue(fog: 0.4, hidden: 1, requested: 0)
         case .covered, .skipped: .clear
         }
     }
@@ -106,6 +108,11 @@ final class FogCellAnimator {
         return track.value(at: now)
     }
 
+    /// True while the cell's fog is still easing toward its target. Call after `value`.
+    func isMoving(_ key: Key, now: Double) -> Bool {
+        tracks[key].map { !$0.isDone(at: now) } ?? false
+    }
+
     /// Forgets cells the last frame did not draw, so the table never outgrows the strip.
     func endFrame() {
         if tracks.count > seen.count { tracks = tracks.filter { seen.contains($0.key) } }
@@ -143,7 +150,7 @@ enum FogMaskGeometry {
         let wallTop = coverage.wallBandHeight, groundEdge = coverage.groundBandDepth
         /// A quad on the wall from height `near` to `far`, or on the ground from `near` to `far`
         /// out; `beyond` picks the part past the band.
-        func quad(_ band: CoverageBand, beyond: Bool, _ s0: Float, _ s1: Float, _ value: FogValue) {
+        func quad(_ band: CoverageBand, beyond: Bool, _ s0: Float, _ s1: Float, _ value: FogValue, moving: Bool = false) {
             guard count + 6 <= capacity else { return }
             let (near, far) = switch (band, beyond) {
             case (.wall, false): (Float(0), wallTop)
@@ -155,7 +162,7 @@ enum FogMaskGeometry {
                 SIMD4(band == .wall ? wall.world(s: s, height: t) : wall.world(s: s, height: 0, out: t), 1)
             }
             let a = point(s0, near), b = point(s1, near), c = point(s1, far), d = point(s0, far)
-            let v = SIMD4(value.fog, value.hidden, value.requested, 0)
+            let v = SIMD4(value.fog, value.hidden, value.requested, moving ? 1 : 0)
             vertices[count] = Vertex(position: a, value: v)
             vertices[count + 1] = Vertex(position: b, value: v)
             vertices[count + 2] = Vertex(position: c, value: v)
@@ -170,7 +177,7 @@ enum FogMaskGeometry {
             for band in CoverageBand.allCases {
                 let states = coverage.cells(band)
                 for beyond in [false, true] {
-                    var run: (s0: Float, s1: Float, value: FogValue, along: SIMD3<Float>)?
+                    var run: (s0: Float, s1: Float, value: FogValue, moving: Bool, along: SIMD3<Float>)?
                     for index in states.indices {
                         let range = coverage.cellRange(index)
                         guard range.upperBound > visible.lowerBound, range.lowerBound < visible.upperBound else { continue }
@@ -179,16 +186,17 @@ enum FogMaskGeometry {
                         let key = FogCellAnimator.Key(band: band, cell: Int((range.lowerBound / coverage.cellWidth).rounded()), beyond: beyond)
                         let target = beyond ? FogValue.beyond(states[index]) : FogValue.target(states[index], requested: requested)
                         let value = animator.value(key, target: target, now: now, reduceMotion: reduceMotion)
+                        let moving = animator.isMoving(key, now: now)
                         let along = wall.along(atS: (s0 + s1) / 2)
-                        if var current = run, current.value == value, current.along == along, abs(current.s1 - s0) < 1e-4 {
+                        if var current = run, current.value == value, current.moving == moving, current.along == along, abs(current.s1 - s0) < 1e-4 {
                             current.s1 = s1
                             run = current
                         } else {
-                            if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value) }
-                            run = (s0, s1, value, along)
+                            if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value, moving: current.moving) }
+                            run = (s0, s1, value, moving, along)
                         }
                     }
-                    if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value) }
+                    if let current = run { quad(band, beyond: beyond, current.s0, current.s1, current.value, moving: current.moving) }
                 }
             }
         }
