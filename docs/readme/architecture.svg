@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 832" width="880" height="832" role="img" aria-labelledby="t d">
+<title id="t">House scanning architecture</title>
+<desc id="d">Architecture in four swimlanes. On the iPhone, ARKit anchors the meter, Vision reads its number, Metal draws the coverage fog and RealityKit raycasts each tap, and the capture becomes scene.json. LiDAR depth is optional. URLSession posts scene.json to the placement server at POST /v1/placements. Keyframes can go to the optional reconstruction worker, where MoGe-2 depth scaled with OpenCV SIFT, or LiDAR depth, fuses into a NumPy TSDF and becomes a rebuilt scene.json for the same endpoint. The shapely solver reads rules.yaml and returns result.json. Back on the iPhone, SwiftUI shows the checks, RealityKit pins the spot to an AnchorEntity, and missing_evidence sends the homeowner back to walk the wall.</desc>
+<defs><style>
+.ht,.t,.bl{font-family:Helvetica,Arial,sans-serif}
+.c,.cd{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
+.ht{font-size:12px;fill:var(--ink)}.ht .b{font-size:12.5px;font-weight:700}.ht .m{fill:var(--mut)}
+.t{font-size:12.5px;font-weight:700;fill:var(--ink)}
+.c{font-size:11px;fill:var(--ink2)}.dl{font-size:11.5px;fill:var(--ink)}
+.bl{font-size:12px;fill:var(--mut)}.cd{font-size:11px;fill:var(--ink2)}
+.lane .body{fill:var(--bg);stroke:var(--s)}.lane .head{fill:var(--f);stroke:var(--s)}
+.box rect{fill:var(--f);stroke:var(--s)}
+.doc path{fill:var(--df);stroke:var(--ds)}
+.edge{fill:none;stroke:var(--edge);stroke-width:1.25}.edge.dashed{stroke-dasharray:5 4}
+.ah{fill:var(--edge)}
+.lbg{fill:var(--bg)}.el{fill:var(--ink2)}
+svg{--bg:#ffffff;--ink:#1a1a1a;--ink2:#333333;--mut:#4d4d4d;--edge:#333333;--df:#fff2cc;--ds:#d6b656}
+.blue{--f:#dae8fc;--s:#6c8ebf}.purple{--f:#e1d5e7;--s:#9673a6}.green{--f:#d5e8d4;--s:#82b366}
+@media (prefers-color-scheme:dark){
+ svg{--bg:#0d1117;--ink:#e6edf3;--ink2:#d1d7e0;--mut:#9198a1;--edge:#9198a1;--df:#2e2a1a;--ds:#9c8540}
+ .blue{--f:#172a45;--s:#4a78b8}.purple{--f:#2a2236;--s:#8a6aa8}.green{--f:#1a2e1f;--s:#5c9148}
+}
+</style>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto"><path d="M0 0 L10 5 L0 10 L2.6 5 z" class="ah"/></marker>
+</defs>
+<g class="lane blue">
+<rect class="body" x="40" y="16" width="800" height="260"/>
+<rect class="head" x="40" y="16" width="800" height="28"/>
+<text x="355.1" y="34.5" class="ht"><tspan class="b">iPhone app</tspan><tspan class="m">  ·  Swift 6 · SwiftUI</tspan></text>
+</g>
+<g class="lane purple">
+<rect class="body" x="40" y="322" width="390" height="272" stroke-dasharray="6 4"/>
+<rect class="head" x="40" y="322" width="390" height="28" stroke-dasharray="6 4"/>
+<text x="112.9" y="340.5" class="ht"><tspan class="b">Reconstruction worker</tspan><tspan class="m">  ·  Python · optional</tspan></text>
+</g>
+<g class="lane green">
+<rect class="body" x="450" y="322" width="390" height="272"/>
+<rect class="head" x="450" y="322" width="390" height="28"/>
+<text x="540.5" y="340.5" class="ht"><tspan class="b">Placement server</tspan><tspan class="m">  ·  FastAPI · Vercel</tspan></text>
+</g>
+<g class="lane blue">
+<rect class="body" x="40" y="640" width="800" height="176"/>
+<rect class="head" x="40" y="640" width="800" height="28"/>
+<text x="347.8" y="658.5" class="ht"><tspan class="b">iPhone app</tspan><tspan class="m">  ·  RealityKit · SwiftUI</tspan></text>
+</g>
+<text x="56" y="66" class="bl"><tspan>ARKit</tspan> <tspan>tracks</tspan> <tspan>the</tspan> <tspan>phone</tspan> <tspan>with</tspan> <tspan class="cd">.gravity</tspan> <tspan>world</tspan> <tspan>alignment,</tspan> <tspan>and</tspan> <tspan class="cd">scene.json</tspan> <tspan>stores</tspan> <tspan>every</tspan> <tspan>position</tspan> <tspan>relative</tspan> <tspan>to</tspan> <tspan>the</tspan> <tspan>meter&#x27;s</tspan> <tspan class="cd">ARAnchor</tspan><tspan>.</tspan> <tspan>Vision</tspan> <tspan>OCR</tspan></text>
+<text x="56" y="83" class="bl"><tspan>reads</tspan> <tspan>the</tspan> <tspan>meter</tspan> <tspan>number,</tspan> <tspan>a</tspan> <tspan>Metal</tspan> <tspan>fog</tspan> <tspan>clears</tspan> <tspan>wherever</tspan> <tspan>the</tspan> <tspan>camera</tspan> <tspan>has</tspan> <tspan>seen</tspan> <tspan>wall,</tspan> <tspan>and</tspan> <tspan>each</tspan> <tspan>tap</tspan> <tspan>raycasts</tspan> <tspan>onto</tspan> <tspan>a</tspan> <tspan>detected</tspan> <tspan>plane.</tspan> <tspan>The</tspan> <tspan>app</tspan> <tspan>uses</tspan></text>
+<text x="56" y="100" class="bl"><tspan>LiDAR</tspan> <tspan>depth</tspan> <tspan>when</tspan> <tspan>the</tspan> <tspan>phone</tspan> <tspan>has</tspan> <tspan>it</tspan> <tspan>and</tspan> <tspan>never</tspan> <tspan>requires</tspan> <tspan>it.</tspan></text>
+<text x="56" y="372" class="bl"><tspan>MoGe-2</tspan> <tspan>predicts</tspan> <tspan>depth</tspan> <tspan>for</tspan> <tspan>each</tspan> <tspan>keyframe,</tspan> <tspan>and</tspan> <tspan>SIFT</tspan> <tspan>points</tspan></text>
+<text x="56" y="389" class="bl"><tspan>triangulated</tspan> <tspan>from</tspan> <tspan>the</tspan> <tspan>ARKit</tspan> <tspan>poses</tspan> <tspan>set</tspan> <tspan>its</tspan> <tspan>scale.</tspan> <tspan>LiDAR</tspan> <tspan>depth</tspan> <tspan>skips</tspan></text>
+<text x="56" y="406" class="bl"><tspan>that</tspan> <tspan>step</tspan> <tspan>when</tspan> <tspan>the</tspan> <tspan>phone</tspan> <tspan>has</tspan> <tspan>it.</tspan> <tspan>A</tspan> <tspan>TSDF</tspan> <tspan>fuses</tspan> <tspan>the</tspan> <tspan>frames,</tspan></text>
+<text x="56" y="423" class="bl"><tspan>RANSAC</tspan> <tspan>fits</tspan> <tspan>wall</tspan> <tspan>and</tspan> <tspan>ground,</tspan> <tspan>and</tspan> <tspan>only</tspan> <tspan>voxels</tspan> <tspan>a</tspan> <tspan>camera</tspan> <tspan>ray</tspan></text>
+<text x="56" y="440" class="bl"><tspan>reached</tspan> <tspan>count</tspan> <tspan>as</tspan> <tspan>seen.</tspan></text>
+<text x="466" y="372" class="bl"><tspan>FastAPI</tspan> <tspan>validates</tspan> <tspan class="cd">scene.json</tspan> <tspan>against</tspan> <tspan>its</tspan> <tspan>JSON</tspan> <tspan>Schema.</tspan> <tspan>The</tspan></text>
+<text x="466" y="389" class="bl"><tspan>solver</tspan> <tspan>slides</tspan> <tspan>the</tspan> <tspan>31</tspan> <tspan>×</tspan> <tspan>22</tspan> <tspan>in</tspan> <tspan>footprint</tspan> <tspan>along</tspan> <tspan>every</tspan> <tspan>observed</tspan> <tspan>wall</tspan></text>
+<text x="466" y="406" class="bl"><tspan>span</tspan> <tspan>and</tspan> <tspan>scores</tspan> <tspan>13</tspan> <tspan>checks</tspan> <tspan>against</tspan> <tspan class="cd">rules.yaml</tspan><tspan>.</tspan> <tspan>A</tspan> <tspan>check</tspan> <tspan>is</tspan></text>
+<text x="466" y="423" class="bl"><tspan>UNSURE</tspan> <tspan>when</tspan> <tspan>its</tspan> <tspan>error</tspan> <tspan>band</tspan> <tspan>straddles</tspan> <tspan>the</tspan> <tspan>threshold</tspan> <tspan>or</tspan> <tspan>its</tspan> <tspan>area</tspan></text>
+<text x="466" y="440" class="bl"><tspan>went</tspan> <tspan>unseen.</tspan></text>
+<text x="56" y="690" class="bl"><tspan class="cd">decision</tspan> <tspan>is</tspan> <tspan class="cd">pass</tspan><tspan>,</tspan> <tspan class="cd">manual_review</tspan> <tspan>or</tspan> <tspan class="cd">reject</tspan><tspan>.</tspan> <tspan>RealityKit</tspan> <tspan>parents</tspan> <tspan>the</tspan> <tspan>spot</tspan> <tspan>to</tspan> <tspan>an</tspan> <tspan class="cd">AnchorEntity</tspan> <tspan>on</tspan> <tspan>the</tspan> <tspan>meter&#x27;s</tspan></text>
+<text x="56" y="707" class="bl"><tspan class="cd">ARAnchor</tspan><tspan>,</tspan> <tspan>so</tspan> <tspan>the</tspan> <tspan>spot</tspan> <tspan>follows</tspan> <tspan>ARKit&#x27;s</tspan> <tspan>anchor</tspan> <tspan>corrections.</tspan> <tspan>Each</tspan> <tspan class="cd">missing_evidence[]</tspan> <tspan>entry</tspan> <tspan>names</tspan> <tspan>the</tspan> <tspan>view</tspan> <tspan>that</tspan></text>
+<text x="56" y="724" class="bl"><tspan>would</tspan> <tspan>settle</tspan> <tspan>an</tspan> <tspan>UNSURE</tspan> <tspan>check.</tspan></text>
+<path d="M192 166.0 L262.6666666666667 166.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M430.6666666666667 166.0 L501.33333333333337 166.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M629.3333333333334 166.0 L700.0 166.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M124.0 214 L124.0 188" class="edge dashed" marker-end="url(#arrow)"/>
+<path d="M762.0 188 L762.0 233.0 L488.0 233.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M180 482.0 L236 482.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M306 504 L306 530" class="edge" marker-end="url(#arrow)"/>
+<path d="M180 552.0 L236 552.0" class="edge dashed" marker-end="url(#arrow)"/>
+<path d="M614 552.0 L654 552.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M739.0 504 L739.0 530" class="edge" marker-end="url(#arrow)"/>
+<path d="M376 552.0 L466 552.0" class="edge dashed" marker-end="url(#arrow)"/>
+<path d="M440.0 258 L440.0 552.0 L466 552.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M56 166.0 L22 166.0 L22 482.0 L56 482.0" class="edge dashed" marker-end="url(#arrow)"/>
+<path d="M739.0 574 L739.0 752" class="edge" marker-end="url(#arrow)"/>
+<path d="M689.0 771.0 L559.0 771.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M427.0 771.0 L297.0 771.0" class="edge" marker-end="url(#arrow)"/>
+<path d="M789.0 771.0 L860 771.0 L860 128 L565.3333333333334 128 L565.3333333333334 144" class="edge" marker-end="url(#arrow)"/>
+<g class="box blue">
+<rect x="56" y="144" width="136" height="44" rx="6"/>
+<text x="124.0" y="163" class="t" text-anchor="middle">ARKit</text>
+<text x="124.0" y="178" class="c" text-anchor="middle">ARAnchor(&quot;meter&quot;)</text>
+</g>
+<g class="box blue">
+<rect x="262.6666666666667" y="144" width="168" height="44" rx="6"/>
+<text x="346.6666666666667" y="163" class="t" text-anchor="middle">Vision</text>
+<text x="346.6666666666667" y="178" class="c" text-anchor="middle">VNRecognizeTextRequest</text>
+</g>
+<g class="box blue">
+<rect x="501.33333333333337" y="144" width="128" height="44" rx="6"/>
+<text x="565.3333333333334" y="163" class="t" text-anchor="middle">Metal</text>
+<text x="565.3333333333334" y="178" class="c" text-anchor="middle">LiveFogRenderer</text>
+</g>
+<g class="box blue">
+<rect x="700.0" y="144" width="124" height="44" rx="6"/>
+<text x="762.0" y="163" class="t" text-anchor="middle">RealityKit</text>
+<text x="762.0" y="178" class="c" text-anchor="middle">ARView.raycast</text>
+</g>
+<g class="box blue">
+<rect x="66.0" y="214" width="116" height="44" rx="6" stroke-dasharray="4 3"/>
+<text x="124.0" y="233" class="t" text-anchor="middle">LiDAR</text>
+<text x="124.0" y="248" class="c" text-anchor="middle">sceneDepth</text>
+</g>
+<g class="doc"><path d="M392.0 214 H488.0 V251 C464.0 239.8 451.52 242.6 440.0 251 C428.48 259.4 416.0 262.2 392.0 251 Z"/>
+<text x="440.0" y="237.0" class="c dl" text-anchor="middle">scene.json</text></g>
+<g class="box purple">
+<rect x="56" y="460" width="124" height="44" rx="6"/>
+<text x="118.0" y="479" class="t" text-anchor="middle">MoGe-2</text>
+<text x="118.0" y="494" class="c" text-anchor="middle">depth</text>
+</g>
+<g class="box purple">
+<rect x="236" y="460" width="140" height="44" rx="6"/>
+<text x="306.0" y="479" class="t" text-anchor="middle">OpenCV</text>
+<text x="306.0" y="494" class="c" text-anchor="middle">SIFT</text>
+</g>
+<g class="box purple">
+<rect x="56" y="530" width="124" height="44" rx="6" stroke-dasharray="4 3"/>
+<text x="118.0" y="549" class="t" text-anchor="middle">LiDAR</text>
+<text x="118.0" y="564" class="c" text-anchor="middle">sceneDepth</text>
+</g>
+<g class="box purple">
+<rect x="236" y="530" width="140" height="44" rx="6"/>
+<text x="306.0" y="549" class="t" text-anchor="middle">NumPy</text>
+<text x="306.0" y="564" class="c" text-anchor="middle">TSDF · RANSAC</text>
+</g>
+<g class="box green">
+<rect x="466" y="530" width="148" height="44" rx="6"/>
+<text x="540.0" y="549" class="t" text-anchor="middle">FastAPI</text>
+<text x="540.0" y="564" class="c" text-anchor="middle">POST /v1/placements</text>
+</g>
+<g class="box green">
+<rect x="654" y="530" width="170" height="44" rx="6"/>
+<text x="739.0" y="549" class="t" text-anchor="middle">shapely</text>
+<text x="739.0" y="564" class="c" text-anchor="middle">solve()</text>
+</g>
+<g class="doc"><path d="M689.0 460 H789.0 V497 C764.0 485.8 751.0 488.6 739.0 497 C727.0 505.4 714.0 508.2 689.0 497 Z"/>
+<text x="739.0" y="483.0" class="c dl" text-anchor="middle">rules.yaml</text></g>
+<g class="doc"><path d="M689.0 752 H789.0 V789 C764.0 777.8 751.0 780.6 739.0 789 C727.0 797.4 714.0 800.2 689.0 789 Z"/>
+<text x="739.0" y="775.0" class="c dl" text-anchor="middle">result.json</text></g>
+<g class="box blue">
+<rect x="427.0" y="752" width="132" height="44" rx="6"/>
+<text x="493.0" y="771" class="t" text-anchor="middle">SwiftUI</text>
+<text x="493.0" y="786" class="c" text-anchor="middle">ResultScreen</text>
+</g>
+<g class="box blue">
+<rect x="157.0" y="752" width="140" height="44" rx="6"/>
+<text x="227.0" y="771" class="t" text-anchor="middle">RealityKit</text>
+<text x="227.0" y="786" class="c" text-anchor="middle">AnchorEntity</text>
+</g>
+<rect class="lbg" x="26.0" y="291.0" width="75.1" height="16"/>
+<text x="30.0" y="302.8" class="c el">keyframes/</text>
+<rect class="lbg" x="402.4" y="291.0" width="75.1" height="16"/>
+<text x="406.4" y="302.8" class="c el">URLSession</text>
+<rect class="lbg" x="593.2" y="763.0" width="61.7" height="16"/>
+<text x="597.2" y="774.8" class="c el">checks[]</text>
+<rect class="lbg" x="344.6" y="763.0" width="34.8" height="16"/>
+<text x="348.6" y="774.8" class="c el">spot</text>
+<rect class="lbg" x="648.3" y="120" width="128.8" height="16"/>
+<text x="652.3" y="131.8" class="c el">missing_evidence[]</text>
+</svg>
