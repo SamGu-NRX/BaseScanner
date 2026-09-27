@@ -286,12 +286,16 @@ struct VoxelGrid {
         let miss = config.missLogOdds
         let floor = config.minLogOdds
         while true {
-            let axis = tMax.x < tMax.y ? (tMax.x < tMax.z ? 0 : 2) : (tMax.y < tMax.z ? 1 : 2)
-            guard tMax[axis] <= end else { return }
+            let exit = tMax.min()
+            guard exit <= end else { return }
             pool[storedIndex(g)].recordPass(stamp: stamp, miss: miss, floor: floor, surface: config.surfaceLogOdds, measured: measured)
-            g[axis] &+= step[axis]
-            guard g[axis] >= 0, g[axis] < dims[axis] else { return }
-            tMax[axis] += tDelta[axis]
+            // Every axis whose boundary the ray crosses at this distance advances together: at an
+            // edge or corner the voxels beside it hold no length of the ray.
+            for axis in 0..<3 where tMax[axis] == exit {
+                g[axis] &+= step[axis]
+                guard g[axis] >= 0, g[axis] < dims[axis] else { return }
+                tMax[axis] += tDelta[axis]
+            }
         }
     }
 
@@ -438,14 +442,21 @@ extension Voxel {
     mutating func recordHit(
         stamp: UInt16, distance: Float, cosine: Float, normal: SIMD3<Float>, sources: UInt8, measured: Bool, config: Map3DConfig
     ) {
-        // Estimated evidence is not allowed to shape what a measured ray found.
-        let keepsMeasured = !measured && self.sources & VoxelSources.measuredHit.rawValue != 0
+        let measuredBefore = self.sources & VoxelSources.measuredHit.rawValue != 0
+        // An estimate adds nothing to what a measured ray found: not its strength, not its normal.
+        if !measured, measuredBefore {
+            self.sources |= sources
+            return
+        }
         if self.stamp != stamp {
             self.stamp = stamp
-            // A measured hit means something is there now, however long the space was seen
-            // empty: start from even odds, so one hit is surface, never still free.
-            logOdds = min(config.maxLogOdds, max(logOdds, 0) &+ config.hitLogOdds)
-            if simd_length_squared(normal) > 0, !keepsMeasured {
+            // A hit means something is there now, however long the space was seen empty: start
+            // from even odds, so one hit is surface, never still free. A voxel's first measured
+            // hit also starts there whatever estimated hits added before it, so a measured
+            // surface's strength is measured evidence alone.
+            let base = measured && !measuredBefore ? 0 : max(logOdds, 0)
+            logOdds = min(config.maxLogOdds, base &+ config.hitLogOdds)
+            if simd_length_squared(normal) > 0 {
                 // A running mean over up to 16 frames, so a normal keeps adapting as views improve.
                 let weight = Float(min(hits, 16))
                 setNormal((self.normal ?? .zero) * weight + normal)

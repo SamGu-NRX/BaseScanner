@@ -69,6 +69,24 @@ import Testing
         #expect(map.cellIndices.filter { map.cellRange($0).lowerBound >= -2 && map.cellRange($0).upperBound <= 0.6 }.allSatisfy { Self.covers(map, coverage.wall, $0) })
     }
 
+    /// The shallow box made 3.5 m wide, wider than the neighbourhood `facadeOffset` takes its
+    /// mode over (about a meter either side): in its middle more samples meet the box's front
+    /// than the wall above it, so the mode is the box. No view reaches the wall behind it.
+    @Test func aWideShallowBoxIsNotTheWall() {
+        let scene = SyntheticScene(
+            walls: [SyntheticScene.Wall(a: SIMD2(-5, 0), b: SIMD2(6, 0))],
+            boxes: [SyntheticScene.Box(min: SIMD3(1, 0, 0.05), max: SIMD3(4.5, 1.2, 0.14))])
+        var map = Map3D(frame: sceneFrame())
+        for camera in bushWalk() { map.integrate(scene.depthFrame(from: camera)) }
+        let coverage = map.coverage(along: Self.wall)
+        for index in map.cellIndices where map.cellRange(index).lowerBound >= 1.2 && map.cellRange(index).upperBound <= 4.3 {
+            #expect(!Self.covers(map, coverage.wall, index), "cell \(index) behind the box claimed seen")
+            #expect(!coverage.wallHeight.contains { $0.span.contains((map.cellRange(index).lowerBound + map.cellRange(index).upperBound) / 2) },
+                    "cell \(index) behind the box reported with a height")
+        }
+        #expect(map.cellIndices.filter { map.cellRange($0).lowerBound >= -2 && map.cellRange($0).upperBound <= 0.6 }.allSatisfy { Self.covers(map, coverage.wall, $0) })
+    }
+
     /// Ground raised 0.2 m under part of the battery's depth and a beam 0.2 to 0.3 m over the
     /// rest: the beam is above that ground's clearance, so overhead is not clear from the ground.
     @Test func overheadStartsFromEachColumnsOwnGround() {

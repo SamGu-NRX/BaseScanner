@@ -354,14 +354,14 @@ extension Map3D {
                 var next = pieces[index]
                 switch (joint, side) {
                 case (.straight, .right):
+                    current.plusMinus = max(current.plusMinus, Self.straightJoinError(current, next))
                     current.end = current.start + current.along * simd_dot(next.end - current.start, current.along)
                     current.support += next.support
-                    current.plusMinus = max(current.plusMinus, next.plusMinus)
                     continue
                 case (.straight, .left):
+                    current.plusMinus = max(current.plusMinus, Self.straightJoinError(current, next))
                     current.start = current.end - current.along * simd_dot(current.end - next.start, current.along)
                     current.support += next.support
-                    current.plusMinus = max(current.plusMinus, next.plusMinus)
                     continue
                 case (.corner(let point), .right):
                     current.end = point
@@ -412,6 +412,16 @@ extension Map3D {
             index -= 1
         }
         return MeasuredWallChain(walls: walls, meterIndex: meter)
+    }
+
+    /// The error `kept`'s line takes on when `joined` is joined to it straight: the joined
+    /// piece's own error plus how far its ends lie off the kept line. A straight join accepts a
+    /// piece up to 2 `wallInlierDistance` to the side, and the server takes an exported
+    /// `plus_minus_ft` instead of its default and drift (server/scene.py, t3/server 9edcd4b), so
+    /// the error must cover the piece the line now stands for.
+    static func straightJoinError(_ kept: MeasuredWall, _ joined: MeasuredWall) -> Float {
+        let offset = [joined.start, joined.end].map { abs(simd_dot($0 - kept.start, kept.outward)) }.max() ?? 0
+        return offset + joined.plusMinus
     }
 
     private enum Joint {

@@ -112,8 +112,22 @@ extension Map3D {
     /// The highest row at s up to which every row, from the lowest, shows the facade: its face,
     /// or attached relief (`attachedRelief`). Relief counts only where it runs on to that height;
     /// where the face shows above relief (a box on the wall, a shrub), the height stops below it.
+    ///
+    /// A surface standing in front of the face at the foot, with the face behind it running on
+    /// up to the highest row seen, is something in front of the wall (a box on the ground), even
+    /// where it became the local facade: `facadeOffset` takes the most common offset, and a box
+    /// wider than its neighbourhood and taller than the wall seen above it wins. Such rows count
+    /// as relief, so the height stops below them. A window recess (the face in front above it
+    /// again) and a door recess (the face in front above it) are not this.
     private func seenHeight(_ wall: WallFrame, s: Float, heights: [Float], facade: Float) -> Float? {
-        let rows = heights.map { faceSample(wall, s: s, height: $0, facade: facade) }
+        var rows = heights.map { faceSample(wall, s: s, height: $0, facade: facade) }
+        if let top = rows.last(where: \.face)?.faceOut {
+            for index in rows.indices {
+                guard let out = rows[index].faceOut, out > top + faceTolerance else { continue }
+                rows[index].face = false
+                rows[index].relief = out
+            }
+        }
         var top = (rows.firstIndex { !$0.face && $0.relief == nil } ?? rows.count) - 1
         if let firstRelief = rows.firstIndex(where: { !$0.face }), firstRelief <= top {
             let relief = Array(rows[firstRelief...top])
@@ -190,6 +204,8 @@ extension Map3D {
         var height: Float
         /// A well-seen surface lies on the wall face.
         var face: Bool
+        /// The frontmost such surface, meters past the facade.
+        var faceOut: Float?
         /// The nearest well-seen surface standing proud of the face, facing out, and how far out.
         var relief: Float?
     }
@@ -198,12 +214,13 @@ extension Map3D {
     /// against the facade's offset.
     func faceSample(_ wall: WallFrame, s: Float, height: Float, facade: Float) -> FaceSample {
         let outward = frame.mapDirection(wall.segment(atS: s).outward)
-        var sample = FaceSample(height: height, face: false, relief: nil)
+        var sample = FaceSample(height: height, face: false, faceOut: nil, relief: nil)
         for out in stride(from: facade - config.recessDepth, through: facade + config.reliefDepth, by: config.voxelSize / 2) {
             guard let g = coordinate(wall, s: s, height: height, out: out), let voxel = grid.voxel(g), grid.isWellSeenSurface(g, config: config) else { continue }
             let centerOut = wall.out(of: frame.world(grid.center(of: g)), pieceAtS: s) - facade
             if centerOut >= -config.recessDepth - 1e-4, centerOut <= faceTolerance + 1e-4 {
                 sample.face = true
+                sample.faceOut = max(sample.faceOut ?? -.infinity, centerOut)
             } else if centerOut <= config.reliefDepth + 1e-4, sample.relief == nil, simd_dot(voxel.normal ?? .zero, outward) >= cos(Float.pi / 4),
                       !Self.clutterClasses.contains(voxel.meshLabel) {
                 sample.relief = centerOut
