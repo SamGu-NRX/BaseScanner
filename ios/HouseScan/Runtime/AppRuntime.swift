@@ -24,7 +24,7 @@ private struct RuntimeRoot: View {
                 engine.start()
                 // A replay has no live source to start the capture packet; the integration build
                 // records it from here (and sends it only as `CaptureIntegration` allows).
-                if engine.options.replayFolder != nil { engine.integration.begin(store: engine.store, recorder: engine.recorder) }
+                if engine.options.replayFolder != nil { engine.integration.beginReplay(store: engine.store, recorder: engine.recorder) }
                 if engine.options.autopilot {
                     await Autopilot(engine: engine).run()
                 }

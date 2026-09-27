@@ -82,6 +82,19 @@ final class IntegrationUITests: XCTestCase {
         XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
     }
 
+    /// `-replay` with no folder after it starts no replay (the engine's own parse), so the replay's
+    /// local-receiver exception must not apply: no question, nothing sent. The Simulator has no
+    /// camera session, so this run stops at the unsupported screen.
+    @MainActor
+    func testADanglingReplayFlagGetsNoReplayException() throws {
+        let server = try LoopbackCaptureAPI()
+        let app = XCUIApplication()
+        app.launchArguments = ["-sampleResult", "-captureAPIURL", server.base.absoluteString, "-captureSendReplayToLocalReceiver", "-replay"]
+        app.launch()
+        XCTAssertFalse(app.buttons["captureConsent.send"].waitForExistence(timeout: 8), "a dangling -replay got the replay's send exception")
+        XCTAssertTrue(server.state.withLock { $0.log.isEmpty })
+    }
+
     /// The question comes before the meter is marked, with the toggle off and Send disabled; Skip
     /// sends nothing for the whole scan.
     @MainActor

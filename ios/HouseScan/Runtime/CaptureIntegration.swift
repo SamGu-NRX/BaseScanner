@@ -26,63 +26,80 @@ final class CaptureIntegration {
     private(set) var revision = 0
     var needsConsent: Bool {
         _ = revision
-        return coordinator.needsConsent
+        return coordinator?.needsConsent ?? false
     }
 
-    @ObservationIgnored private let coordinator: CaptureSessionCoordinator
+    /// The rules for each source, read at launch. Which one applies is decided by the source that
+    /// actually starts (`begin` for the camera, `beginReplay` for a replay the engine is playing),
+    /// never by the launch arguments alone.
+    @ObservationIgnored private let environments: (device: CaptureSessionCoordinator.Environment?, replay: CaptureSessionCoordinator.Environment?)
+    /// Made by the first source to start; one process runs one kind of source.
+    @ObservationIgnored private var coordinator: CaptureSessionCoordinator?
     @ObservationIgnored private weak var store: KeyframeStore?
     @ObservationIgnored private var resumed: [CaptureUploader] = []
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main) {
-        // A replay's pictures are a recording's, not this phone's camera: the packet says so, and it
-        // is sent only to a receiver on this machine when the run asks (the UI tests).
-        let replay = arguments.contains("-replay")
         #if HOUSESCAN_INTEGRATION
         let argument = arguments.firstIndex(of: "-captureAPIURL").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
-        let mode = CaptureIntegrationMode.resolve(
-            integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
-            endpoint: argument ?? bundle.object(forInfoDictionaryKey: "HouseScanCaptureAPIURL") as? String,
-            sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String,
-            source: replay ? .replay(sendToLocalReceiver: arguments.contains("-captureSendReplayToLocalReceiver")) : .device)
+        func mode(_ source: CaptureIntegrationMode.Source) -> CaptureIntegrationMode {
+            CaptureIntegrationMode.resolve(
+                integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
+                endpoint: argument ?? bundle.object(forInfoDictionaryKey: "HouseScanCaptureAPIURL") as? String,
+                sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String, source: source)
+        }
+        // A replay's pictures are a recording's: sent only to a receiver on this machine, and only
+        // when the run asks (the UI tests).
+        let modes = (device: mode(.device), replay: mode(.replay(sendToLocalReceiver: arguments.contains("-captureSendReplayToLocalReceiver"))))
         #else
-        let mode = CaptureIntegrationMode.off("not the integration build")
+        let off = CaptureIntegrationMode.off("not the integration build")
+        let modes = (device: off, replay: off)
         #endif
+        environments = (Self.environment(modes.device, source: .device), Self.environment(modes.replay, source: .replay))
+        if let device = environments.device {
+            resumed = CaptureSessionCoordinator(environment: device).resumeSealedCaptures()
+            if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
+        }
+    }
+
+    private static func environment(_ mode: CaptureIntegrationMode, source: Packet04.Source.Kind) -> CaptureSessionCoordinator.Environment? {
         let modeName = switch mode {
         case .off: "off"
         case .recordOnly: "record only"
         case .send: "send after consent"
         }
-        RuntimeLog.engine.info("capture packet mode: \(modeName, privacy: .public)")
-        var environment: CaptureSessionCoordinator.Environment?
-        if let endpoint = mode.endpoint {
-            let depth = LiveCapture.supportsDepth
-            let device = CaptureAPI.Device(model: ScanEngine.hardwareModel(), systemVersion: UIDevice.current.systemVersion, appVersion: Self.appVersion)
-            let zone = TimeZone.current.identifier
-            let sends = if case .send = mode { true } else { false }
-            environment = .init(
-                endpoint: endpoint, sends: sends, http: URLSessionCaptureHTTP.ephemeral(timeout: 60), capturesFolder: Self.capturesFolder,
-                sessionInfo: { packetID, video in
-                    // LiveCapture turns on scene depth exactly when the phone supports it.
-                    Packet04SessionInfo(
-                        packetID: packetID, sessionID: packetID, source: replay ? .replay : .device, appVersion: device.appVersion,
-                        deviceModel: device.model,
-                        systemVersion: device.systemVersion, lidarAvailable: depth, sceneDepthEnabled: depth, meshReconstructionSupported: nil,
-                        sceneReconstruction: nil, planeDetection: ["horizontal", "vertical"], videoWidth: Int(video.x), videoHeight: Int(video.y),
-                        framesPerSecond: nil, timeZone: zone)
-                },
-                device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
-        }
-        coordinator = CaptureSessionCoordinator(environment: environment)
-        coordinator.onStatus = { [weak self] in self?.publish($0) }
-        resumed = coordinator.resumeSealedCaptures()
-        if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
+        RuntimeLog.engine.info("capture packet mode for \(source.rawValue, privacy: .public): \(modeName, privacy: .public)")
+        guard let endpoint = mode.endpoint else { return nil }
+        let depth = LiveCapture.supportsDepth
+        let device = CaptureAPI.Device(model: ScanEngine.hardwareModel(), systemVersion: UIDevice.current.systemVersion, appVersion: Self.appVersion)
+        let zone = TimeZone.current.identifier
+        let sends = if case .send = mode { true } else { false }
+        return .init(
+            endpoint: endpoint, sends: sends, http: URLSessionCaptureHTTP.ephemeral(timeout: 60), capturesFolder: Self.capturesFolder,
+            sessionInfo: { packetID, video in
+                // LiveCapture turns on scene depth exactly when the phone supports it.
+                Packet04SessionInfo(
+                    packetID: packetID, sessionID: packetID, source: source, appVersion: device.appVersion, deviceModel: device.model,
+                    systemVersion: device.systemVersion, lidarAvailable: depth, sceneDepthEnabled: depth, meshReconstructionSupported: nil,
+                    sceneReconstruction: nil, planeDetection: ["horizontal", "vertical"], videoWidth: Int(video.x), videoHeight: Int(video.y),
+                    framesPerSecond: nil, timeZone: zone)
+            },
+            device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
+    }
+
+    /// The coordinator for the source that is starting; the first source to start decides it.
+    private func coordinator(for environment: CaptureSessionCoordinator.Environment?) -> CaptureSessionCoordinator {
+        if let coordinator { return coordinator }
+        let made = CaptureSessionCoordinator(environment: environment)
+        made.onStatus = { [weak self] in self?.publish($0) }
+        coordinator = made
+        return made
     }
 
     /// The answer for this scan. A yes is recorded with the capture it covers, for that capture's
     /// resume; nothing is remembered for the next scan.
     func answerConsent(_ yes: Bool) {
         RuntimeLog.engine.info("capture upload consent: \(yes ? "yes" : "no", privacy: .public)")
-        coordinator.answerConsent(yes)
+        coordinator?.answerConsent(yes)
         revision += 1
     }
 
@@ -108,22 +125,31 @@ final class CaptureIntegration {
 
     // MARK: Engine hooks
 
-    /// The live source started: photos kept in `store` from now on go into the packet.
+    /// The live camera started: photos kept in `store` from now on go into the packet, under the
+    /// camera's rules (the device-data switch).
     func begin(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
-        coordinator.begin(recording: Self.recording(recorder))
+        coordinator(for: environments.device).begin(recording: Self.recording(recorder))
+        revision += 1
+    }
+
+    /// The engine is playing a replay (`LaunchOptions.replayFolder`): the same, under the replay's
+    /// rules and labelled as a replay.
+    func beginReplay(store: KeyframeStore, recorder: CaptureRecorder) {
+        attach(store)
+        coordinator(for: environments.replay).begin(recording: Self.recording(recorder))
         revision += 1
     }
 
     /// The ARKit world was thrown away: this packet can't be finished in it.
     func worldReset(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
-        coordinator.newWorld("world reset", recording: Self.recording(recorder), newScan: false)
+        coordinator?.newWorld("world reset", recording: Self.recording(recorder), newScan: false)
     }
 
     func startOver(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
-        coordinator.newWorld("start over", recording: Self.recording(recorder), newScan: true)
+        coordinator?.newWorld("start over", recording: Self.recording(recorder), newScan: true)
         revision += 1
     }
 
@@ -136,7 +162,7 @@ final class CaptureIntegration {
             return
         }
         let camera = SIMD3(tap.cameraToWorld.columns.3.x, tap.cameraToWorld.columns.3.y, tap.cameraToWorld.columns.3.z)
-        coordinator.meterTapped(tap, hit: Packet04.TapHit(
+        coordinator?.meterTapped(tap, hit: Packet04.TapHit(
             position: [hit.position.x, hit.position.y, hit.position.z].map(Double.init),
             target: hit.source == .detectedPlane ? "existingPlaneGeometry" : "estimatedPlane", alignment: "vertical",
             distance: Double(simd_distance(hit.position, camera))))
@@ -145,7 +171,7 @@ final class CaptureIntegration {
     /// The scan was sent for placement: the packet is frozen. `acceptedCloseUpAt` is the frame time
     /// of the close-up the scan accepted, nil after a skip. Later sends change nothing.
     func captureEnded(acceptedCloseUpAt: Double?) {
-        coordinator.captureEnded(acceptedCloseUpAt: acceptedCloseUpAt)
+        coordinator?.captureEnded(acceptedCloseUpAt: acceptedCloseUpAt)
     }
 
     // MARK: Translation
@@ -159,7 +185,7 @@ final class CaptureIntegration {
         self.store = store
         store.onKept = { [weak self, weak store] photo, purpose, jpeg in
             guard let self, let store, store === self.store else { return }
-            self.coordinator.kept(Self.kept(photo, purpose: purpose, jpeg: jpeg, storeDirectory: store.directory))
+            self.coordinator?.kept(Self.kept(photo, purpose: purpose, jpeg: jpeg, storeDirectory: store.directory))
         }
     }
 
