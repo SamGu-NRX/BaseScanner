@@ -1,0 +1,24 @@
+// The capture API test build ("House Scan Integration"): the same app as Shared.xcconfig under
+// its own bundle id and name, so it installs beside the client beta. project.yml attaches this
+// file to the Integration Debug and Integration Release configurations.
+//
+// The capture API's address is not in the repository: the test API takes uploads without a
+// credential, and this repository is public. Put it in Integration.local.xcconfig (gitignored;
+// copy Integration.local.xcconfig.example); the -captureAPIURL launch argument can also name one
+// for a development run.
+//
+// With an endpoint, the build records each scan's 0.4 capture on the phone. It sends captures
+// only when Integration.local.xcconfig also sets HOUSESCAN_CAPTURE_SEND_DEVICE_DATA = YES, which
+// is a decision to send photos of a real home to that endpoint, and then only after the
+// homeowner's yes.
+
+#include "Shared.xcconfig"
+
+BUNDLE_ID_SUFFIX = .integration
+HOUSESCAN_DISPLAY_NAME = House Scan Integration
+HOUSESCAN_INTEGRATION_BUILD = YES
+// Compiles the integration code paths in: the client build doesn't contain the consent sheet or
+// the capture recording at all, whatever its Info.plist says.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) HOUSESCAN_INTEGRATION
+
+#include? "Integration.local.xcconfig"

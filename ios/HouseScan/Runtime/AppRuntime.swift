@@ -17,10 +17,14 @@ private struct RuntimeRoot: View {
 
     var body: some View {
         ScanRootView(state: engine.state, actions: engine)
+            .modifier(CaptureIntegrationOverlay(integration: engine.integration, phase: engine.state.phase))
             .task {
                 guard !started else { return }
                 started = true
                 engine.start()
+                // A replay has no live source to start the capture packet; the integration build
+                // records it from here (and sends it only as `CaptureIntegration` allows).
+                if engine.options.replayFolder != nil { engine.integration.beginReplay(store: engine.store, recorder: engine.recorder) }
                 if engine.options.autopilot {
                     await Autopilot(engine: engine).run()
                 }

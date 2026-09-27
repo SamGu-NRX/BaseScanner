@@ -12,3 +12,6 @@ build/
 # SwiftPM build output of the capture package.
 HouseScanKit/.build/
 HouseScanKit/.swiftpm/
+
+# The integration build's capture API address; see Config/Integration.xcconfig.
+Config/Integration.local.xcconfig

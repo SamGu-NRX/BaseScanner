@@ -12,6 +12,16 @@ BUNDLE_ID_PREFIX = dev.housescanning
 // Set it empty in Local.xcconfig to fall back to the bundled sample result.
 HOUSESCAN_SERVER_URL = https:/$()/house-scanning-server.vercel.app
 
+// The integration build (Config/Integration.xcconfig) sets these. Here they are the client
+// build's: no bundle id suffix, the usual name, no capture API, and not the integration build, so
+// nothing is recorded for the capture API and no photo leaves the phone, whatever the launch
+// arguments say.
+BUNDLE_ID_SUFFIX =
+HOUSESCAN_DISPLAY_NAME = House Scan
+HOUSESCAN_CAPTURE_API_URL =
+HOUSESCAN_INTEGRATION_BUILD = NO
+HOUSESCAN_CAPTURE_SEND_DEVICE_DATA = NO
+
 #include? "Local.xcconfig"
 
 // The commit the app was built from, for the scan stamp (HouseScanGitCommit in Info.plist). A

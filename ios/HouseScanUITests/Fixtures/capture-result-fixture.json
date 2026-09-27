@@ -1,0 +1,14 @@
+{
+  "runId": "run_ui_fixture",
+  "status": "needs_views",
+  "viewsNeeded": [
+    {"id": "vn1", "kind": "wall_band", "criteria": ["C3"], "why": "unseen", "promptId": "p1",
+     "prompt": {"title": "UI FIXTURE: step back and show the wall", "body": "UI FIXTURE: include the ground under the meter."}}
+  ],
+  "memberActions": [],
+  "outcome": {
+    "kind": "needs_more_photos", "profile": "C",
+    "message": "UI FIXTURE: one more view of the wall, please.",
+    "viewsNeeded": [], "reasons": []
+  }
+}

@@ -1,0 +1,9 @@
+// Copy to Integration.local.xcconfig (gitignored) to point the integration build at a capture API:
+// the API base including /v1. xcconfig reads // as a comment, so $() splits the slashes.
+
+HOUSESCAN_CAPTURE_API_URL = https:/$()/capture-api.example.com/v1
+
+// Sends device captures (photos of a real home) to that endpoint after the homeowner's yes. Leave
+// it NO for an endpoint that takes uploads without a credential, unless the people whose home is
+// scanned have agreed to that; with NO the capture is recorded on the phone only.
+HOUSESCAN_CAPTURE_SEND_DEVICE_DATA = NO

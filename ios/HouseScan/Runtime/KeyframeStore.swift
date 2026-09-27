@@ -51,6 +51,9 @@ final class KeyframeStore {
     private var nextIndex = 1
     /// Bumped by `discardKeyframes`, so a write that started before it doesn't land in the list.
     private var epoch = 0
+    /// Called for each photo kept, once its JPEG is on disk, with the still's purpose (nil for a
+    /// keyframe). The capture upload seals it from here (`CaptureIntegration`).
+    var onKept: (@MainActor (_ photo: StoredKeyframe, _ purpose: String?, _ jpeg: URL) -> Void)?
 
     /// Makes a new, empty scan folder and deletes every other one: only the current scan is kept
     /// on the phone. Covers both a start over (the previous scan's folder) and launch (folders a
@@ -109,6 +112,7 @@ final class KeyframeStore {
         }
         keyframes.append(stored)
         keyframes.sort { $0.id < $1.id }
+        onKept?(stored, nil, directory.appending(path: stored.fileName))
         return (true, thumbnail)
     }
 
@@ -183,6 +187,7 @@ final class KeyframeStore {
         }
         stills[id] = name
         stillFrames[id] = written
+        onKept?(written, id, directory.appending(path: name))
         return true
     }
 

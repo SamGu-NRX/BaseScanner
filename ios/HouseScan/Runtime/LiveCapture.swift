@@ -391,7 +391,9 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         let shared = shared.withLock { $0 }
         let tracking = Self.tracking(frame.camera.trackingState)
         // Every frame's pose goes to the packet's trajectory, before any sampling.
-        shared.recorder?.recordPose(t: frame.timestamp, tracking: TrackingCode(tracking), cameraToWorld: frame.camera.transform)
+        shared.recorder?.recordPose(
+            t: frame.timestamp, tracking: TrackingCode(tracking), cameraToWorld: frame.camera.transform, intrinsics: frame.camera.intrinsics,
+            imageSize: frame.camera.imageResolution)
         let intrinsics = frame.camera.intrinsics
         let resolution = frame.camera.imageResolution
         let camera = CameraFrame(

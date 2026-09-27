@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>House Scan</string>
+	<string>$(HOUSESCAN_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,6 +24,12 @@
 	<string>$(HOUSESCAN_GIT_COMMIT)</string>
 	<key>HouseScanServerURL</key>
 	<string>$(HOUSESCAN_SERVER_URL)</string>
+	<key>HouseScanCaptureAPIURL</key>
+	<string>$(HOUSESCAN_CAPTURE_API_URL)</string>
+	<key>HouseScanIntegrationBuild</key>
+	<string>$(HOUSESCAN_INTEGRATION_BUILD)</string>
+	<key>HouseScanCaptureSendDeviceData</key>
+	<string>$(HOUSESCAN_CAPTURE_SEND_DEVICE_DATA)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
