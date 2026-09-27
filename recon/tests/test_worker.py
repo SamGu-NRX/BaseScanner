@@ -649,3 +649,19 @@ def test_a_frame_id_that_is_not_one_safe_name_is_refused(packet, fmt, bad):
 @pytest.mark.parametrize("good", ["k00001", "DSC_9257", "frame-1.v2"])
 def test_frame_ids_real_captures_use_are_accepted(good):
     assert cap.frame_id(good) == good
+
+
+@pytest.mark.parametrize("bad", ["../escaped", "/tmp/escaped", "sub/escaped"])
+def test_the_moge_cache_refuses_a_file_outside_its_folder(tmp_path, monkeypatch, bad):
+    # A Capture built without the readers' id check: the cache still refuses to write out.
+    monkeypatch.setattr(depth.subprocess, "run", lambda *_, **__: pytest.fail("model ran"))
+    c = _capture_named_scan(tmp_path, 10)
+    c = replace(c, frames=[replace(c.frames[0], id=bad)])
+    work = tmp_path / "work"
+    with pytest.raises(cap.UnsafePath, match="resolves outside"):
+        depth.moge(c, work)
+    assert not list(tmp_path.glob("escaped*")) and not list(work.rglob("*.upright.jpg"))
+
+
+def test_the_moge_cache_file_for_a_valid_id_is_directly_in_its_folder(tmp_path):
+    assert depth.cache_file(tmp_path, "k00001", ".moge2.npz") == tmp_path / "k00001.moge2.npz"

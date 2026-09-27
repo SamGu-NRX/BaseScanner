@@ -27,7 +27,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from recon.capture import UP, Capture, Frame
+from recon.capture import UP, Capture, Frame, UnsafePath
 from recon.triangulate import view_scales
 
 MAX_SIDE = 640  # MoGe-2 input; keeps the model process under 4 GB (2.97 GB peak at 640 x 480)
@@ -156,6 +156,16 @@ def moge_cache(capture: Capture, work: Path) -> Path:
     return folder
 
 
+def cache_file(work: Path, fid: str, suffix: str) -> Path:
+    """`work/<fid><suffix>`, refused unless it resolves to a file directly in `work`. The
+    readers already refuse unsafe ids (`capture.frame_id`); this second check covers any Capture
+    built another way, since the path is written to and handed to the model process."""
+    path = work / f"{fid}{suffix}"
+    if path.resolve().parent != work.resolve():
+        raise UnsafePath(f"cache file for keyframe {fid!r} resolves outside {work}")
+    return path
+
+
 def moge(capture: Capture, work: Path) -> dict[str, Depth]:
     """MoGe-2 depth per frame at up to MAX_SIDE px, in the frame's own (unrotated) orientation,
     cached under `work` by the capture's content (`moge_cache`)."""
@@ -169,10 +179,10 @@ def moge(capture: Capture, work: Path) -> dict[str, Depth]:
         )
         k_small = scaled(f.intrinsics, small.shape[1] / f.width)
         turns = upright_turns(f.cam_to_world)
-        up_path = work / f"{f.id}.upright.jpg"
+        up_path = cache_file(work, f.id, ".upright.jpg")
         cv2.imwrite(str(up_path), np.rot90(small, turns), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         k_up = rotated_intrinsics(k_small, small.shape[1], small.shape[0], turns)
-        out = work / f"{f.id}.moge2.npz"
+        out = cache_file(work, f.id, ".moge2.npz")
         meta[f.id] = (out, turns, k_small, small)
         if not out.exists():
             manifest.append({"image": str(up_path), "fx": float(k_up[0]), "out": str(out)})
