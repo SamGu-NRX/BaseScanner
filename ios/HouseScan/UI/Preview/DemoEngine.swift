@@ -123,6 +123,8 @@ final class DemoEngine: ScanActions {
             state.guidance = .markNextWall(side: .right, refusal: arguments.contains("-uiDemoRefusal") ? .notAtCorner : nil)
             state.target = nil
             state.path = []
+            // With `-uiDemoNextWallConfirm`: the next wall marked, "Is this the next wall?" up (#70).
+            if arguments.contains("-uiDemoNextWallConfirm") { markNextWall(at: nil, viewSize: .zero) }
         }
         if arguments.contains("-uiDemoOverheadQuestion"), state.phase == .gapRequest {
             // An overhead request whose tilted-up view just came in.
@@ -793,9 +795,35 @@ final class DemoEngine: ScanActions {
         refreshGuidance()
     }
 
-    /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
+    /// Like the real engine: a marked next wall waits for "Is this the next wall?" (#70). The
+    /// made-up corner is where the end was marked.
     func markNextWall(at point: CGPoint?, viewSize: CGSize) {
-        guard case .markNextWall(let side, _) = state.guidance, var wall = state.wall else { return }
+        guard case .markNextWall(let side, _) = state.guidance, state.nextWallConfirm == nil else { return }
+        let end = side == .right ? demoRightEnd : demoLeftEnd
+        state.nextWallConfirm = NextWallConfirm(side: side, fromEnd: 0.4)
+        // On the corner, where the next wall meets the demo wall's line.
+        state.target = SIMD3(end, 1, 0)
+    }
+
+    func confirmNextWall(_ isNextWall: Bool) {
+        guard let confirm = state.nextWallConfirm else { return }
+        state.nextWallConfirm = nil
+        state.target = nil
+        if isNextWall { followCorner(confirm.side) }
+    }
+
+    /// Like the real engine: back to the question about that end.
+    func cancelNextWall() {
+        guard case .markNextWall(let side, _) = state.guidance else { return }
+        state.nextWallConfirm = nil
+        state.target = nil
+        state.endQuestion = side
+        state.endQuestionLeavesOut = nil
+    }
+
+    /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
+    private func followCorner(_ side: WallSide) {
+        guard var wall = state.wall else { return }
         let end = side == .right ? demoRightEnd : demoLeftEnd
         // Facing back across the demo wall's front, running toward the camera (+z).
         let outward = SIMD3<Float>(side == .right ? -1 : 1, 0, 0)

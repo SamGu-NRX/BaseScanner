@@ -4,7 +4,8 @@ import simd
 import Testing
 
 /// Where "Can't get there" (and "Wall ends here" during the walk) puts a wall end: the phone's s
-/// along the chain, kept within the stretch walked on that side (`WalkedEnd`).
+/// along the chain on its own side with tracking normal, else within the stretch walked on that
+/// side (`WalkedEnd`, team decision on #71, 2026-09-27).
 @Suite struct WalkedEndTests {
     /// A kept view's position, 2 m in front of the standard wall at s = x.
     static func stood(_ x: Float) -> SIMD3<Float> { SIMD3(x, 1.4, 2) }
@@ -16,9 +17,15 @@ import Testing
         #expect(WalkedEnd.end(.left, phone: Self.stood(-2.5), walked: walked, wall: wall) == -2.5)
         // Walked back toward the meter: the end follows the phone, not the farthest view.
         #expect(WalkedEnd.end(.left, phone: Self.stood(-1.2), walked: walked, wall: wall) == -1.2)
-        // Ahead of every kept view: no farther than the walk has evidence for.
-        #expect(WalkedEnd.end(.left, phone: Self.stood(-4), walked: walked, wall: wall) == -3)
-        // How far out the phone stands doesn't matter, only its s.
+        // Ahead of every kept view (#71, changed deliberately: this was capped at -3, the farthest
+        // kept view): with tracking normal, standing there is the evidence.
+        #expect(WalkedEnd.end(.left, phone: Self.stood(-4), walked: walked, wall: wall) == -4)
+        let ahead = WalkedEnd.choose(.left, phone: Self.stood(-4), walked: walked, wall: wall)
+        #expect(ahead == WalkedEnd.Choice(s: -4, phone: -4, cap: -3, capped: false))
+        // With tracking limited the phone's place is less sure: no farther than the kept views.
+        #expect(WalkedEnd.end(.left, phone: Self.stood(-4), trackingNormal: false, walked: walked, wall: wall) == -3)
+        #expect(WalkedEnd.end(.left, phone: Self.stood(-2.5), trackingNormal: false, walked: walked, wall: wall) == -2.5)
+        // Within the walked stretch, how far out the phone stands doesn't change the end.
         #expect(WalkedEnd.end(.left, phone: SIMD3(-2.5, 1.4, 6), walked: walked, wall: wall) == -2.5)
     }
 
@@ -31,16 +38,102 @@ import Testing
         #expect(WalkedEnd.end(.right, phone: Self.stood(-2), walked: walked, wall: wall) == 2)
         // The phone's place unknown (lost tracking): the same.
         #expect(WalkedEnd.end(.left, phone: nil, walked: walked, wall: wall) == -3)
+        #expect(WalkedEnd.choose(.left, phone: nil, walked: walked, wall: wall).capped)
+        // Tracking limited across the meter: the same.
+        #expect(WalkedEnd.end(.left, phone: Self.stood(1.5), trackingNormal: false, walked: walked, wall: wall) == -3)
     }
 
-    /// A side the walk never went to ends at the meter, wherever the phone is.
-    @Test func sideNeverWalkedEndsAtTheMeter() {
+    /// A side with no kept view ends at the meter unless the phone stands on it with tracking
+    /// normal. Changed deliberately (#71): the phone at -1 m on the left ended at 0 because no
+    /// photo was kept there; it now ends under the phone.
+    @Test func sideNeverWalkedEndsAtTheMeterUnlessThePhoneIsThere() {
         let wall = standardWall()
         let walked = [0.4, 1, 2].map(Self.stood)
         #expect(WalkedEnd.farthest(.left, walked: walked, wall: wall) == 0)
         #expect(WalkedEnd.end(.left, phone: Self.stood(2), walked: walked, wall: wall) == 0)
-        #expect(WalkedEnd.end(.left, phone: Self.stood(-1), walked: walked, wall: wall) == 0)
+        #expect(WalkedEnd.end(.left, phone: Self.stood(-1), walked: walked, wall: wall) == -1)
+        #expect(WalkedEnd.end(.left, phone: Self.stood(-1), trackingNormal: false, walked: walked, wall: wall) == 0)
         #expect(WalkedEnd.end(.left, phone: nil, walked: [], wall: wall) == 0)
+    }
+
+    /// Build 4.1 run 2 (#71): the two photos kept were right of the meter, at s = 0.32 and 0.11,
+    /// and the homeowner walked to the end post about 1.2 m left of it, where the strip showed
+    /// cells left of the meter. "Wall ends here" there put the end at the meter and the strip
+    /// dropped them. It now lands under the phone and they stay.
+    @Test func run2WallEndsHereAtThePostLandsAtThePhone() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0.32), trackingNormal: true)
+        map.observe(wallCamera(s: 0.11), trackingNormal: true)
+        let seen = map.seenExtent
+        #expect((seen?.lowerBound ?? 0) < -0.3)
+        let phone = Self.stood(-1.2)
+        #expect(WalkedEnd.side(phone: phone, wall: map.wall, leftEnd: nil, rightEnd: nil) == .left)
+        let left = WalkedEnd.end(.left, phone: phone, walked: map.walkedPositions, wall: map.wall)
+        #expect(left != 0)
+        #expect(nearlyEqual(left, -1.2))
+        // Every cell the strip showed on the left is between the ends, so none is dropped.
+        #expect((seen?.lowerBound ?? 0) >= left)
+        #expect(WalkedEnd.shownPast(.left, s: left, seen: seen) == nil)
+    }
+
+    /// Review of #136: past the kept views, the phone's s counts only within `phoneOutLimit`
+    /// (4 m) of the wall's line, in front or behind; farther out, a skewed wall line (#69) turns
+    /// distance out into distance along, and the cap applies.
+    @Test func phoneFarFromTheWallLineFallsBackToTheCap() {
+        let wall = standardWall()
+        let walked = [0, -1, -2, -3].map(Self.stood)
+        #expect(WalkedEnd.phoneOutLimit == 4)
+        #expect(WalkedEnd.end(.left, phone: SIMD3(-4, 1.4, 3.9), walked: walked, wall: wall) == -4)
+        let far = WalkedEnd.choose(.left, phone: SIMD3(-4, 1.4, 4.5), walked: walked, wall: wall)
+        #expect(far == WalkedEnd.Choice(s: -3, phone: -4, cap: -3, capped: true))
+        #expect(WalkedEnd.end(.left, phone: SIMD3(-4, 1.4, -4.5), walked: walked, wall: wall) == -3)
+        // Short of the farthest kept view, the phone's s is inside the cap anyway.
+        #expect(WalkedEnd.end(.left, phone: SIMD3(-2, 1.4, 6), walked: walked, wall: wall) == -2)
+    }
+
+    /// Review of #136: with tracking limited the end is capped, and the strip's cells count toward
+    /// what it leaves out only up to the phone, not what its camera saw ahead of it.
+    @Test func limitedTrackingCountsSeenCellsOnlyUpToThePhone() {
+        let wall = standardWall()
+        let walked = [0, -1, -2].map(Self.stood)
+        let seen: ClosedRange<Float> = -5 ... 1
+        let choice = WalkedEnd.choose(.left, phone: Self.stood(-3.5), trackingNormal: false, walked: walked, wall: wall)
+        #expect(choice.capped && choice.s == -2)
+        let counted = WalkedEnd.countedSeen(.left, choice: choice, seen: seen)
+        #expect(counted == Float(-3.5) ... Float(1))
+        #expect(WalkedEnd.leftOut(.left, s: choice.s, walked: walked, wall: wall, seen: counted) == 1.5)
+        // The phone short of the cap: nothing past the end counts (under the 1 m minimum).
+        let near = WalkedEnd.choose(.left, phone: Self.stood(-1.5), trackingNormal: false, walked: walked, wall: wall)
+        #expect(WalkedEnd.leftOut(.left, s: near.s, walked: walked, wall: wall, seen: WalkedEnd.countedSeen(.left, choice: near, seen: seen)) == 0.5)
+        // Right side, mirrored.
+        let right = WalkedEnd.Choice(s: 1, phone: 2.5, cap: 1, capped: true)
+        #expect(WalkedEnd.countedSeen(.right, choice: right, seen: -1 ... 4) == Float(-1) ... Float(2.5))
+        // Across the meter or place lost: the whole extent. At the phone (not capped): none.
+        let across = WalkedEnd.choose(.left, phone: Self.stood(1), walked: walked, wall: wall)
+        #expect(WalkedEnd.countedSeen(.left, choice: across, seen: seen) == seen)
+        let atPhone = WalkedEnd.choose(.left, phone: Self.stood(-3.5), walked: walked, wall: wall)
+        #expect(WalkedEnd.countedSeen(.left, choice: atPhone, seen: seen) == nil)
+    }
+
+    /// Where the cap decides the end, cells the strip shows past it are said, not dropped
+    /// silently: `leftOut` counts them from `shownPastMinimum` (1 m), with the walk past the end.
+    @Test func cappedEndSaysWhatTheStripShowedPastIt() {
+        let wall = standardWall()
+        let walked = [0, -1, -2, 1].map(Self.stood)
+        let seen: ClosedRange<Float> = -3.5 ... 2
+        // Across the meter: the end is the farthest kept view on the left, -2.
+        let choice = WalkedEnd.choose(.left, phone: Self.stood(1), walked: walked, wall: wall)
+        #expect(choice.capped && choice.s == -2)
+        #expect(WalkedEnd.shownPast(.left, s: choice.s, seen: seen) == 1.5)
+        #expect(WalkedEnd.leftOut(.left, s: choice.s, walked: walked, wall: wall, seen: seen) == 1.5)
+        #expect(WalkedEnd.leavesOut(side: .left, s: choice.s, walked: walked, wall: wall, phoneOut: nil, onWalkTask: true, seen: seen) == 1.5)
+        // Under a meter past it: the camera's look-ahead, not said.
+        #expect(WalkedEnd.shownPast(.left, s: -2.6, seen: seen) == nil)
+        #expect(WalkedEnd.shownPast(.right, s: 1, seen: seen) == 1)
+        #expect(WalkedEnd.shownPast(.right, s: 1, seen: nil) == nil)
+        // Without `seen` only the walk past the end counts, as before.
+        #expect(WalkedEnd.leftOut(.left, s: -1, walked: walked, wall: wall, seen: nil) == 1)
+        #expect(WalkedEnd.leftOut(.left, s: -1, walked: walked, wall: wall, seen: seen) == 2.5)
     }
 
     /// Round a followed corner s runs on along the chain (`rightCornerWall`: corner at s = 3, the
@@ -52,7 +145,10 @@ import Testing
         let walked = [Self.stood(1), Self.stood(2.5)] + [4.0, 5.0].map { corner.roundCornerCamera(s: $0).position }
         #expect(nearlyEqual(WalkedEnd.farthest(.right, walked: walked, wall: wall), 5))
         #expect(nearlyEqual(WalkedEnd.end(.right, phone: corner.roundCornerCamera(s: 4.6).position, walked: walked, wall: wall), 4.6))
-        #expect(nearlyEqual(WalkedEnd.end(.right, phone: corner.roundCornerCamera(s: 5.5).position, walked: walked, wall: wall), 5))
+        // Past the farthest kept view, round the corner (#71, changed deliberately: this was capped
+        // at 5): the phone's place along the chain.
+        #expect(nearlyEqual(WalkedEnd.end(.right, phone: corner.roundCornerCamera(s: 5.5).position, walked: walked, wall: wall), 5.5))
+        #expect(nearlyEqual(WalkedEnd.end(.right, phone: corner.roundCornerCamera(s: 5.5).position, trackingNormal: false, walked: walked, wall: wall), 5))
         // In front of the meter's piece, short of the corner.
         #expect(nearlyEqual(WalkedEnd.end(.right, phone: Self.stood(2), walked: walked, wall: wall), 2))
     }
@@ -92,7 +188,8 @@ import Testing
 
     /// Ending both sides at the meter without walking ("Wall ends here" or "Can't get there" on
     /// each side before a step) puts both ends there: a wall of no length, which the walk must
-    /// not finish with. A meter by a corner, with one end close to it, is still a wall.
+    /// not finish with. A meter by a corner, with one end close to it, is still a wall. The right
+    /// end is under the phone, 0.1 m right (#71: it was capped at 0, the only kept view).
     @Test func endsAtTheMeterAreTooClose() {
         let wall = standardWall()
         var map = CoverageMap(wall: wall)
@@ -100,7 +197,7 @@ import Testing
         let phone = Self.stood(0.1)
         let left = WalkedEnd.end(.left, phone: phone, walked: map.walkedPositions, wall: wall)
         let right = WalkedEnd.end(.right, phone: phone, walked: map.walkedPositions, wall: wall)
-        #expect(left == 0 && right == 0)
+        #expect(left == 0 && right == 0.1)
         #expect(!map.endsTooClose)
         map.setEnd(.left, at: left)
         #expect(!map.endsTooClose)
@@ -126,6 +223,10 @@ import Testing
         #expect(map.unexploredEndPassed(by: wallCamera(s: -4)) == .left)
         #expect(map.unexploredEndPassed(by: wallCamera(s: 2.5)) == nil)
         #expect(map.unexploredEndPassed(by: wallCamera(s: 1)) == nil)
+        // #70: while the next wall round that end is looked for, past it is where the homeowner
+        // was asked to go. The other side still counts.
+        #expect(map.unexploredEndPassed(by: wallCamera(s: 4), ignoring: .right) == nil)
+        #expect(map.unexploredEndPassed(by: wallCamera(s: -4), ignoring: .right) == .left)
         map.setEndIsLimit(.right, true)
         #expect(map.unexploredEndPassed(by: wallCamera(s: 4)) == nil)
     }
