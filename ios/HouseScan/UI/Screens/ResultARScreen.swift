@@ -102,11 +102,13 @@ private struct SpotDirection: View {
                     TargetMarker(placement: .offScreen(chevron.point, angle: chevron.angle))
                     Text("Your battery spot is this way")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Palette.chalk)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.65), in: .capsule)
+                        // Solid, as the other camera captions: see-through black over a bright
+                        // wall can fail the accessibility audit's contrast check.
+                        .background(ScrimShape.capsule)
                         .frame(maxWidth: 220)
                         .fixedSize(horizontal: false, vertical: true)
                         .position(x: min(max(chevron.point.x, 120), max(size.width - 120, 120)), y: chevron.point.y + 50)
@@ -121,12 +123,15 @@ private struct SpotDirection: View {
         .allowsHitTesting(false)
     }
 
-    /// Where the chevron goes and which way it points, or nil while the spot is on screen. The
-    /// same lane as the walk's aim chevron (`WayfindingOverlay`), clear of the instruction card
+    /// Where the chevron goes and which way it points, or nil while the spot is in view. In view
+    /// means in the part of the screen the chrome leaves clear: a spot under the instruction card
+    /// (its bottom edge is about 220 pt down with a two-line detail) or under the Done button
+    /// (its top edge is about 100 pt up) can't be seen, so it gets the chevron too. The chevron
+    /// sits in the same lane as the walk's aim chevron (`WayfindingOverlay`), clear of the card
     /// above and the buttons below.
     private func chevronPlacement(in size: CGSize) -> (point: CGPoint, angle: Angle)? {
-        let view = CGRect(origin: .zero, size: size).insetBy(dx: 24, dy: 24)
-        if let point = projection.viewPoint(for: spot, in: size), view.contains(point) { return nil }
+        let clear = CGRect(x: 24, y: 260, width: size.width - 48, height: max(size.height - 260 - 160, 80))
+        if let point = projection.viewPoint(for: spot, in: size), clear.contains(point) { return nil }
         guard let direction = projection.screenDirection(toward: spot) else { return nil }
         let lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 260 - 300, 80))
         let tx = direction.dx == 0 ? CGFloat.infinity : lane.width / 2 / abs(direction.dx)
