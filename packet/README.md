@@ -1,325 +1,101 @@
 # The capture packet
 
-The contract between the iPhone app and the server. The app guides the homeowner, takes the
-photos and records what the phone knows. The server builds a 3D model from them and evaluates
-the placement rules. One packet is one scan session: a folder, or a zip of one, holding
-`manifest.json`, the photos and the sensor files. This document is the specification.
-[`manifest.schema.json`](manifest.schema.json) checks the manifest's shape, and
-`python -m packet validate` checks everything below.
+The capture packet is how a scan leaves the phone. It is specified by the server team's capture
+packet spec, `formatVersion` 0.4, together with its intake API. The spec is
+`docs/capture-packet-spec.md` in the private repository `huntertcarver/house-scanning-server`,
+and the intake API is its Appendix D. That spec is the one contract; this folder does not define
+a format of its own.
 
-Version 1.1 ([what changed from 1.0](#versioning)). The **App** column in each table says what `t3/ios-mvf` at `a39d0a5` records:
-**now** (exported today), **partial** (computed in the app but not exported, or exported in
-another form) or **planned**. [What the app records today](#what-the-app-records-today) lists
-the gaps.
+This folder holds the app side's proposals for the next revision (0.5): what the app records
+that 0.4 has no field for, and three arrival checks for the server's validator
+([validator-checks.md](validator-checks.md)). Packet 1.1, which this folder used to define, is
+retired; it is still readable at `t3/packet` commit `d5439cf`.
 
-## Layout
+## Proposals for 0.5
 
-```
-manifest.json          what everything is (this document)
-photos/p00001.jpg      full-resolution photos, one per kept frame
-depth/p00001.f32       depth aligned to that photo (LiDAR phones)
-depth/p00001.conf.u8   its confidence
-depth_frames/d00001.*  depth recorded between photos, without an image (1.1)
-streams/*.csv          trajectory, IMU, barometer, location, heading
-lidar/mesh.ply         ARKit mesh with per-face classification (LiDAR phones)
-scene.json             the app's placement request (C1), unchanged
-```
+Each item is something the app knows at capture time and the server would otherwise have to
+guess. All eleven are unapproved proposals. None is part of the current contract, and the app must
+not send them until the contract's owners adopt them in a version and with a compatibility rule
+of their choosing. The study numbers cited motivate device tests; none is measured phone
+performance.
 
-Only `manifest.json` has a fixed name. Every other file is named by a manifest entry,
-`{"path", "bytes", "sha256"}`. The path is relative to the manifest, uses `/`, and never starts
-with `/` or contains `..`. A reader must refuse a zip whose entries leave the packet. A zip may
-hold the packet at its root or inside one top-level folder.
+1. **The meter anchor's orientation.** 0.4 records the meter tap's point, not the wall it sits
+   on. Every placement distance is measured along that wall from the meter (C1's `s = 0`), and
+   the app knows the wall at the tap: the vertical plane its raycast hit. Proposal: on the
+   `meter` tap, a `meterAnchor` with `transform` (anchor to world in the tap's epoch: origin at
+   the meter, +y up, +z the wall's outward normal, +x along the wall to the right seen from
+   outside) and `normalSource`: `single_raycast` (one plane hit at the tap), `fitted` (fitted
+   across the walk), `mesh` or `estimated`. The source matters: the signals lab (#59,
+   `experiments/edge-geometry`) found a yaw error of 2.2° median and 6.7° p90 for a stand-in for
+   the app's plane, a 0.3 m plane fitted to depth on ETH3D photos, not a device raycast. At that
+   p90, 10 ft along the wall moves a point about 1 ft. A per-capture yaw uncertainty is worth
+   adding once a device study measures it.
+2. **The ground's height at the meter.** 0.4 notes that world y = 0 is the phone's height at
+   session start, not the ground. The app measures the ground where it can: the horizontal plane
+   below the meter. Proposal: `meterAnchor.groundY` (world meters) with `groundSource`
+   (`plane`, `mesh`, `assumed`), so headroom and "ground under the battery" start from a
+   measurement when there is one.
+3. **What a marked end or feature is.** 0.4's tap labels name the point, not the answers the
+   homeowner gave about it:
+   - whether a wall end is a real end (something blocks it) or unexplored (it turns a corner,
+     or no answer), which decides whether the server may reject for want of space;
+   - whether a window opens, which the rules may use (whether a fixed window is exempt from the
+     opening clearance is the rules' choice, not the app's);
+   - which corner taps belong to the same door or window.
 
-## Units, frames and clocks
+   Proposal: `taps[].attrs` with `endKind` (`limit`, `unexplored`) and `operable`, and
+   `taps[].group` for taps that outline one object.
+4. **The guidance log.** Every request the homeowner was shown (walk, tilt to the ground, mark
+   an end, close-up, a gap the phone or the server asked for), when, and its outcome: `met`,
+   `skipped`, `cannot_reach`, `superseded` or `unresolved`. Today "I can't get there" never
+   reaches the server, so the server can ask for the same unreachable view again. Proposal:
+   `guidance[]` with `id`, `kind`, `origin` (`phone`, `server`), `message`, optional `band` and
+   `span`, `tShown`, `tResolved` and `outcome`.
+5. **Depth between keyframes** (from S6's live map, draft PR #21). Keyframes are kept about every
+   0.5 m, but the phone fuses depth at about 10 Hz to decide what was seen. With keyframe depth
+   alone the server cannot rebuild that decision. Proposal: optional `depthFrames[]` with `t`,
+   `epoch`, pose, intrinsics of the depth map's own grid, and the same depth and confidence files
+   as a keyframe. At 256 × 192, one frame with confidence is about 246 KB, so a few hertz rather
+   than ten.
+6. **Estimated depth with its uncertainty** (S6). A phone without LiDAR can infer metric depth
+   from the image, but used without its uncertainty it creates surfaces that are not there.
+   Proposal: a depth `source` of `estimated`, which requires a `sigma` file (float32 meters, one
+   standard deviation per depth pixel, the depth's layout).
+7. **The frame of a plane's boundary.** 0.4 lists `planes[].boundary` without saying its frame.
+   ARKit's `boundaryVertices` are relative to the anchor transform, not to `planeExtent`'s centre
+   and `rotationOnYAxis`, and packet 1.1 found that mixing the two is an easy mistake. Proposal:
+   carry the anchor-frame boundary in a new field whose frame is stated, rather than giving the
+   existing `boundary` a meaning an existing reader might not share, and have the validator check
+   it lies within `planeExtent` once the centre and rotation are applied.
+8. **Photos that frame one span.** With learned depth on ETH3D photos, an along-wall edge came to
+   0.9 in p90 when seen within 15° of face-on and 24 in beyond 45° (#59,
+   `experiments/edge-geometry`), so a distance measured inside one face-on photo is likely far
+   better than one chained across the walk. Proposal: a still or
+   keyframe purpose `span` that names the marks the photo frames.
+9. **Scale references in view.** One reference near the meter may not be enough: on MARViN's
+   walks ARKit's scale varied 1.8% (robust SD) within a walk (#59, `experiments/drift-anatomy`),
+   so a reference helps where it appears. Proposal: `references[]` with `kind` (door, brick course, and hand-held ones such
+   as an ID card or a Letter sheet), nominal size, and its corners in each photo that shows it.
+   Hand-held references ask the homeowner to hold something; #59 rates them worth a device test
+   (`experiments/sensor-budget`), and whether the flow may ask is Sam's and Hunter's call.
+10. **The meter anchor's pose over time.** ARKit re-estimates an anchor as tracking corrects, so
+    the anchor pose at tap time goes stale. Proposal: an optional stream of the meter anchor's
+    world pose at each ARKit update, so the server can see how far the meter frame moved. Each
+    sample needs its timestamp, on the pose stream's clock, and its epoch: the epoch tells a
+    world reset from a correction within one world, and the timestamp ties the sample to the
+    keyframes and taps around it. There is no measurement of that movement yet.
+11. **Distances from a second phone (low priority).** When a second phone with UWB is present,
+    an optional stream of phone-to-phone distances. In #59's simulation on MARViN walks
+    (`experiments/drift-anatomy`, question A4), a second phone left at the meter cut the p90 error
+    at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at 5 cm. That result
+    depends on the second phone staying still at a known place, so the proposal requires three
+    things: where the second phone stands (at the meter, or a stated position) and that it did
+    not move; a time for each range on the capture's clock, so it matches a pose; and the range's
+    uncertainty. Ranges from a second phone that moves, or whose place is unknown, are not what
+    the study simulated.
 
-These hold for every field unless its row says otherwise.
-
-- **Units.** Meters and seconds. Angles are degrees where a person reads them (headings,
-  latitude and longitude) and radians per second for the gyroscope. The accelerometer is in
-  m/s² (Core Motion reports g: multiply by 9.80665), the magnetometer in microtesla and
-  pressure in kPa.
-- **Clock.** Seconds of device uptime: the clock of `ARFrame.timestamp`, `CMLogItem.timestamp`
-  and `ProcessInfo.systemUptime`. `session.capture.started_at` (ISO 8601, UTC) and
-  `started_at_uptime` are the same instant, so a wall-clock time such as `CLLocation.timestamp`
-  converts as `uptime = started_at_uptime + (date - started_at)`.
-- **World frame.** ARKit's world frame with `worldAlignment = .gravity`: right-handed, +y up
-  (against gravity), origin and heading wherever the session started. Nothing in the packet is
-  in this frame except `session.meter_anchor.pose_in_world`, and heading is never used.
-- **Meter frame.** Every pose and point in the packet is in the meter frame. Its origin is the
-  meter anchor, the point the homeowner tapped on the meter. +y is up (the world's +y), and +z
-  is the wall's outward normal, horizontal, toward where the homeowner stands. +x = y × z runs
-  along the wall to the right as seen facing it: the same direction as `scene.json`'s `s`.
-  `session.meter_anchor.pose_in_world` maps meter-frame points into the world frame. Results
-  are placed relative to the meter because ARKit's world origin is arbitrary per session, and
-  the meter is the one point every later visit can find again.
-- **Camera frame.** ARKit's: +x right and +y up in the stored image, and the camera looks along
-  −z. For OpenCV's camera axes (y down, looking along +z), multiply by diag(1, −1, −1).
-- **Poses.** Rigid 4 × 4 transforms, written as 16 numbers column by column (`simd_float4x4`
-  layout, as in Measure Lab v2 and `scene.json`). A photo's pose maps camera coordinates into
-  the meter frame.
-- **Images and intrinsics.** The camera image is landscape and the intrinsics match it. A photo
-  is stored exactly as the sensor delivers it: landscape (width > height), never rotated to the
-  phone's orientation, EXIF orientation absent or 1. `intrinsics` are `[fx, fy, cx, cy]` in
-  pixels of that stored image, where (0, 0) is the top-left corner of the top-left pixel (pixel
-  centres at half-integers). A resized image scales all four by the same factor. Rotating an
-  image would mean rotating the intrinsics with it, so neither is rotated.
-- **Depth alignment.** A depth map covers the same field of view as its photo, at lower
-  resolution and the same aspect ratio (within 1%). Depth pixel (row r, column c) covers photo
-  pixels x ∈ [c·W/w, (c+1)·W/w), y ∈ [r·H/h, (r+1)·H/h). Values are float32 little-endian
-  meters along the camera's −z axis (not the distance along the ray), row by row from the top,
-  and 0 means no measurement. Confidence is one byte per depth pixel, ARKit's
-  `ARConfidenceLevel`: 0 low, 1 medium, 2 high. Sigma (1.1) is float32 meters per depth pixel,
-  one standard deviation, in the same layout. A depth frame has no photo: its `intrinsics`
-  describe the depth map's own pixel grid.
-
-## Session
-
-| Field | Meaning | App |
-| --- | --- | --- |
-| `packet_version` | `"1.0"`; see [Versioning](#versioning) | planned |
-| `session.id` | Unique per scan | planned |
-| `session.producer` | `kind` (`app` or `converter`), `name`, `version`, optional `commit` | planned |
-| `session.device.model` | Hardware identifier, e.g. `iPhone16,1` (`utsname.machine`), never the phone's name | planned |
-| `session.device.ios_version` | `UIDevice.systemVersion` | planned |
-| `session.device.lidar` | `ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)` | planned |
-| `session.device.scene_depth_enabled`, `mesh_enabled` | What the session actually ran with | planned |
-| `session.device.mesh_classification_enabled` | 1.1. `sceneReconstruction` included `.meshWithClassification`. Required with a mesh; when false every face's class is 0, which otherwise could not be told from ARKit's own "none" | planned (S6) |
-| `session.capture.started_at`, `started_at_uptime`, `ended_at_uptime` | Wall clock and uptime at the first frame, uptime at the last | planned |
-| `session.capture.distance_walked_m` | Horizontal length of the trajectory (meter frame x and z). Must match `streams.trajectory` within 1% | planned |
-| `session.world_alignment` | Always `"gravity"` | partial: the app runs with `.gravity` but does not write it |
-| `session.meter_anchor.pose_in_world` | The meter frame in the world frame | partial: `scene.json` has the meter's position (feet, ground at y = 0), not its orientation |
-| `session.meter_anchor.ground_y_m` | The ground's height at the meter on the meter frame's y (negative) | partial: implied by `scene.json`'s y = 0 |
-| `session.consent.location` | The homeowner agreed to share location and heading. Must be true if either stream is present | planned |
-
-## Photos
-
-One entry per kept frame, in time order. Required: `id`, `image`, `width`, `height`, `t`, `pose`,
-`intrinsics`.
-
-| Field | Meaning | App |
-| --- | --- | --- |
-| `image` | JPEG of the full frame: at least ARKit's `capturedImage` at its native size (1920 × 1440 on current iPhones). On iOS 16 and later, prefer `captureHighResolutionFrame`'s still (4032 × 3024) with its own intrinsics. Never a thumbnail | now: `capturedImage` at native size, quality 0.8 |
-| `width`, `height` | Pixels of the stored JPEG | now |
-| `t` | `ARFrame.timestamp` | partial: recorded, not exported |
-| `pose` | Camera to meter frame, from `ARFrame.camera.transform` | partial: exported camera-to-world in feet |
-| `intrinsics` | `ARFrame.camera.intrinsics` for the stored image | now |
-| `tracking.state`, `tracking.reason` | `normal`, `limited` or `not_available`, with the limited reason | partial: recorded, not exported |
-| `exposure.duration_s`, `exposure.iso`, `exposure.offset_ev` | `ARCamera.exposureDuration` and `exposureOffset` (iOS 15); ISO from the high-resolution still's metadata | planned |
-| `lens.focal_length_mm`, `lens.f_number`, `lens.camera` | From the still's EXIF; `camera` is `wide`, `ultra_wide` or `telephoto` | planned |
-| `sharpness` | `{"method": "laplacian_variance_luma_640", "value"}`, defined below | partial: the app scores sharpness another way and does not export it |
-| `depth` | `map`, `confidence`, `sigma`, `width`, `height`, `source`. Sources: `arkit_scene_depth` and `arkit_smoothed_scene_depth` (LiDAR; from 1.1 they need `confidence`, which marks glass, dark surfaces and edges low); `estimated` (1.1: metric depth inferred from the image on a phone without LiDAR; needs `sigma`, since the uncertainty decides what counts as a surface); `rendered_from_laser_scan` (samples only) | planned (S6) |
-
-**Sharpness** is the variance of the 4-neighbour Laplacian of the image's luma, after scaling the
-long side to 640 px with bilinear filtering (images already smaller are used as they are). One
-fixed method makes scores comparable across phones and resolutions. `packet/write.py` has the
-reference implementation.
-
-## Streams
-
-CSV files with a header row. The first column is always `t`, strictly increasing. Each has a
-manifest entry `{"path", "bytes", "sha256", "rows", "nominal_rate_hz"}`, and its columns are
-fixed:
-
-| Stream | Columns | Source | App |
-| --- | --- | --- | --- |
-| `trajectory` | `t, tracking, px, py, pz, qx, qy, qz, qw` | Every ARFrame (60 Hz): camera-to-meter position and unit quaternion, tracking state | planned: the app keeps pose-only frames at 30 Hz for its overlay and discards them |
-| `accelerometer` | `t, x, y, z` (m/s²) | `CMAccelerometerData` | planned |
-| `gyroscope` | `t, x, y, z` (rad/s) | `CMGyroData` | planned |
-| `magnetometer` | `t, x, y, z` (µT, uncalibrated) | `CMMagnetometerData` | planned |
-| `device_motion` | `t, qx, qy, qz, qw, gravity_x, gravity_y, gravity_z, user_accel_x, user_accel_y, user_accel_z, rotation_rate_x, rotation_rate_y, rotation_rate_z, heading_deg` | `CMDeviceMotion` (gravity and user acceleration in g, as Core Motion reports them) | planned |
-| `barometer` | `t, pressure_kpa, relative_altitude_m` | `CMAltimeter` | planned |
-| `location` | `t, latitude, longitude, altitude_m, horizontal_accuracy_m, vertical_accuracy_m` | `CLLocation`, with consent only | planned |
-| `heading` | `t, magnetic_deg, true_deg, accuracy_deg` | `CLHeading`, with consent only | planned |
-
-IMU axes are Core Motion's device frame: +x to the right and +y toward the top of a phone held in
-portrait, +z out of the screen. A photo from a tracked frame must sit on the trajectory: the
-trajectory has a sample within 1/60 s of the photo's `t`, at the same position to 1 cm.
-
-## LiDAR extras
-
-On a LiDAR phone with scene reconstruction on, `lidar.mesh` is ARKit's mesh (`ARMeshAnchor`s
-merged, in the meter frame), as a binary PLY with exactly this header:
-
-```
-ply
-format binary_little_endian 1.0
-element vertex N
-property float x
-property float y
-property float z
-element face M
-property list uchar int vertex_indices
-property uchar classification
-end_header
-```
-
-Every face is a triangle. `classification` is `ARMeshClassification`'s raw value: 0 none, 1 wall,
-2 floor, 3 ceiling, 4 table, 5 seat, 6 window, 7 door. When classification was off, every class
-is 0 and `session.device.mesh_classification_enabled` is false (1.1). `comment` lines may follow
-`ply`.
-
-## Depth frames
-
-`depth_frames` (1.1) holds depth recorded between photos, with no image: `id`, `t`, `pose`
-(camera to meter frame), `intrinsics` for the depth map's grid, `width`, `height`, `map`, and
-`confidence` or `sigma` as for a photo's depth. Photos are kept about every 0.5 m, but an
-on-device map fuses depth at about 10 Hz, so photo-rate depth alone cannot rebuild the
-occupancy the phone used to decide what was seen. Each frame must sit on the trajectory like a
-photo. Cost: at 256 × 192 a frame with confidence is about 246 KB, so 10 Hz is about 2.5 MB/s;
-record a few hertz. App: planned (S6).
-
-## Planes
-
-`planes` (1.1, top level) lists `ARPlaneAnchor`s, which every ARKit phone detects, LiDAR or not:
-`id`, `alignment` (`horizontal` or `vertical`), `classification`, `pose`, `extent_m` and optional
-`boundary_m`. `pose` maps the plane into the meter frame and already includes the extent's
-centre and `planeExtent.rotationOnYAxis`, so `extent_m` ([x, z]) is a rectangle centred on it.
-ARKit's anchor transform alone is not that centre. The plane is its local x-z plane and its
-normal is +y. `boundary_m` is `geometry.boundaryVertices` as [x, z] in the same frame as
-`extent_m`, since ARKit's extent often claims a full rectangle over an L of wall or a wall broken
-by a window. The validator checks that the boundary lies inside the extent, which catches a
-boundary left in the anchor's frame. 1.0 put planes in `lidar.planes`; 1.x readers still accept
-it there, but a packet may not use both. App: planned. The app reads plane anchors for its
-coverage and taps but does not export them.
-
-## Marks, guidance and the scene
-
-`marks` are what the homeowner marked, in the meter frame. `kind` is `meter`, `wall_end`,
-`gas_meter`, `ac`, `door`, `window`, `garage_door`, `drive_edge` or `fence`. `points` holds one
-point for a meter, wall end, gas meter or AC unit, and two for an opening (bottom-left and
-top-right corners), a drive edge or a fence. Each mark also has optional `t`, `photo_ids` and
-`attrs.operable`. A wall end adds `side` (`left`, `right`) and `end_kind` (`limit` when something
-blocks it, `unexplored` for a corner or no answer). App: partial. `scene.json` carries these as
-objects and wall ends in C1's feet and `s` coordinates, without times or photo links.
-
-`guidance` logs every request the homeowner was shown, and whether it was met:
-
-- `kind`: `walk`, `tilt_to_ground`, `step_back`, `mark_end`, `closeup`, `gap_band` or
-  `gap_past_end`;
-- `origin`: `phone` or `server`;
-- `message`, and for a band request `band` and `span_m` (meter frame x);
-- `t_shown` and `t_resolved`;
-- `outcome`: `met`, `skipped`, `cannot_reach`, `superseded` or `unresolved`.
-
-The log is how the server learns what the homeowner could not reach, which `scene.json` cannot
-say today (bug triage B-08). App: planned; guidance is transient UI state.
-
-`scene` is the app's `scene.json`, unchanged, with its `schema_version`. It stays the input to
-placement; the packet carries it so reconstruction and placement see the same capture. App: now.
-
-`provenance` (`dataset`, `license`, `source`, `notes`) says where a converted sample came from and
-what it lacks. The app does not write it.
-
-## Versioning
-
-`packet_version` is `MAJOR.MINOR`. A reader accepts any packet with its own major version and
-ignores fields it does not know. A writer bumps the minor version for additions (a new optional
-field, stream or enum value a reader may skip) and the major version for anything an old reader
-would misread: a renamed or removed field, a changed unit, frame or column order. The validator
-accepts `1.x`.
-
-1.1 adds, from S6's proposals on #22: `depth_frames`; the `estimated` depth source with
-`sigma`; top-level `planes` with `boundary_m`, and the statement of what a plane's `pose`
-includes; and `session.device.mesh_classification_enabled`. Two rules apply only to packets
-that say 1.1 or later, so 1.0 packets stay valid: ARKit depth needs `confidence`, and a mesh
-needs the classification flag. A 1.0 reader of a 1.1 packet misses depth frames, sigma and
-top-level planes, and reads everything else as before.
-
-## Transport
-
-This is a recommendation; Hunter's team decides. A packet does not fit in one request. The
-hosted API refuses bodies over 4.5 MB (Vercel's limit). The app's Simulator export of 77 photos
-at 1280 × 720 is already 16.5 MB. At an estimated 0.5 MB per 1920 × 1440 photo and 3 MB per
-high-resolution still, 80 photos come to about 40 MB, or 250 MB with stills. These are estimates:
-no device capture has been measured.
-
-1. The phone writes the packet on disk as it captures, so a crash or a lost connection loses
-   nothing already taken.
-2. `POST /v1/packets` with `manifest.json` only (tens of KB). The server validates the manifest
-   and answers with a packet id and one presigned upload URL per file in object storage (S3,
-   R2 or Vercel Blob), keyed by sha256.
-3. The phone uploads each file with a background `URLSession` upload task, which iOS continues
-   after the app is suspended. Files over about 8 MB use multipart upload. Because files are
-   named by their hash, a retry skips any file the server already holds.
-4. `POST /v1/packets/{id}/complete`. The server checks every size and hash (this validator),
-   then queues reconstruction.
-5. Placement stays a separate small request. `POST /v1/placements` with `scene.json` (KB) can
-   answer at once, and a later answer can use the reconstruction.
-
-## Relation to existing formats
-
-- **`scene.json` (C1)** is unchanged and travels inside the packet. It stays in feet and in
-  ARKit's world moved so the ground is y = 0. The rest of the packet is in meters and in the
-  meter frame.
-- **Measure Lab session v2** (the replay format) shares the packet's units, camera axes,
-  column-major poses and depth encoding. It differs in frame (world, not meter), file names, a
-  per-keyframe `depth` object `{file, confidenceFile, w, h}`, and a `tracking[]` timeline where
-  the packet has a trajectory stream.
-- **`recon/recon/capture.py`** on `t3/recon` reads `scene.json` bundles (feet, scaled to meters
-  on load) and Measure Lab v2. Reading a packet needs a third branch: photo poses are already
-  in meters, and the wall direction and normal are the meter frame's x and z axes.
-
-## What the app records today
-
-At `t3/ios-mvf` `a39d0a5`, the app's export (`scan.zip`) is `scene.json` plus one JPEG per kept
-keyframe. The upload sends `scene.json` alone. To write a 1.0 packet the app needs, in rough
-order of cost:
-
-1. **Already in memory, not exported:** each photo's timestamp and tracking state, the meter
-   anchor's orientation, and mark times.
-2. **One read at session start:** device model, iOS version, app version, LiDAR support, the
-   wall-clock start.
-3. **Convert:** poses to meters in the meter frame, and marks from C1's `s`/height to meter-frame
-   points.
-4. **Record and write:** the 60 Hz trajectory (today discarded after the overlay uses it),
-   exposure and ISO per photo, sharpness by the fixed method, distance walked, and the guidance
-   log.
-5. **New sensors:** Core Motion (accelerometer, gyroscope, magnetometer, device motion,
-   altimeter); location and heading behind a consent prompt.
-6. **LiDAR and the live map (S6):** `sceneDepth` with confidence per photo, depth frames between
-   photos, estimated depth with sigma on phones without LiDAR, the mesh with its
-   classification flag, plane anchors with boundaries.
-7. **Transport:** the manifest-then-files upload above.
-
-## Tools
-
-From `packet/`:
-
-```
-uv run python -m packet validate <folder or zip>        # exit 0 when valid; --json for a report
-uv run python -m packet.samples.synthetic --out fixtures/synthetic
-uv run python -m packet.samples.app_export --sim-report <report> --replay <session> --out <dir>
-uv run python -m packet.samples.advio --replay <session> --advio <advio-20> --out <dir>
-uv run python -m packet.samples.eth3d --eth3d <electro> --out <dir>
-uv run pytest -q && uv run ruff check . && uv run ruff format --check .
-```
-
-`fixtures/synthetic` is the only packet in git: three invented photos with every optional
-section. The dataset samples are written to `~/house-scanning-data/packets/` and never
-committed. ADVIO is CC BY-NC 4.0, ETH3D CC BY-NC-SA 4.0, and the app sample carries ADVIO frames.
-
-| Sample | Source | Contents | What it shows |
-| --- | --- | --- | --- |
-| `app-export-a39d0a5` | The app's `scan.zip` from a Simulator run on the ADVIO replay | 77 photos (1280 × 720), marks, `scene.json` | Exactly what the app records today. Times are recovered by matching each photo to its replay frame |
-| `advio-20-0040-0075` | ADVIO sequence 20, 40 to 75 s, iPhone 6s | 79 photos (1280 × 720), 60 Hz trajectory, accelerometer, gyroscope, magnetometer, barometer, location | Real phone IMU on the same clock as ARKit poses |
-| `eth3d-electro` | ETH3D electro, 8 DSLR photos within about 6 m of the walls | 8 photos (6198 × 4132, originals) with laser-rendered depth | Depth aligned to full-resolution photos. ETH3D's own 3-D points reproject through the packet's poses to a median 0.65 to 1.01 px, and the depth agrees with them to a median 0.2 to 0.6% |
-
-The validator checks:
-
-- the schema;
-- every file's presence, size and sha256;
-- that every pose is a rotation plus a translation;
-- that intrinsics fit each image (landscape, principal point inside it, square pixels within 5%,
-  a horizontal field of view between 20° and 150°);
-- that JPEG sizes and EXIF orientation match the manifest;
-- that times strictly increase and fall inside the capture;
-- the stream columns, unit quaternions and tracking values;
-- that photos sit on the trajectory, and that distance walked matches it;
-- that depth has its photo's aspect and the right byte count, with finite, non-negative values
-  and sigma, confidence of at most 2, and confidence for ARKit depth and sigma for estimated
-  depth;
-- that depth frames sit on the trajectory, in time order, with intrinsics that fit their grid;
-- that plane boundaries lie inside their extent, and planes appear in one place only;
-- the mesh layout, face indices and classes, and the classification flag;
-- mark and guidance consistency;
-- consent for location and heading.
+Already in 0.4, so not proposed: the kind and distance of each tap's hit, a keyframe for every
+tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked
+and a flag for consent to share location. They are not proposed here: distance walked can be
+derived from the pose stream, and whether a sharpness score or a sharing-consent record belongs
+in the contract is for its owners.

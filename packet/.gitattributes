@@ -1,4 +1,0 @@
-# Packet sensor files are raw binary; never convert line endings or diff them as text.
-*.f32 binary
-*.u8 binary
-*.ply binary
