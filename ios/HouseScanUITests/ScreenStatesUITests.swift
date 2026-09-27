@@ -30,6 +30,9 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
+        // All three legend entries under the map at once (end preview, hidden, depth): they
+        // overlapped in one row on CI's LiDAR walk (run 36307476187).
+        ("wallWalk-fullLegend", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoHidden"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("markFeatures-lostPlace", ["-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"], "markFeatures"),
@@ -71,7 +74,7 @@ final class ScreenStatesUITests: XCTestCase {
     private static let largestTextStates: Set<String> = [
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
-        "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
+        "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-lostPlace",
         "spotConfirm", "spotConfirm-which", "spotConfirm-ground", "spotConfirm-answered", "spotConfirm-cantMark", "spotConfirm-unconfirmable",
     ]
@@ -80,6 +83,7 @@ final class ScreenStatesUITests: XCTestCase {
     /// in any text on screen.
     private static let expectations: [String: (identifier: String?, text: String)] = [
         "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
+        "wallWalk-fullLegend": ("wallTape", "2 sections hidden behind something"),
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
@@ -146,7 +150,11 @@ final class ScreenStatesUITests: XCTestCase {
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 10))
         // Nothing is filled in: the homeowner picks the reading that matches the meter.
-        tap(app, "meter.candidate.0", timeout: 15)
+        // The demo's close-up shows the picker 4.5 s after it opens. 30 s, not 15: on CI run
+        // 36307476187 the Simulator's push daemon spun in a reconnect loop and the app's main
+        // thread got no time for 14.6 s (09:42:19.6 to 09:42:34.2 in its log), so the picker
+        // would have come at about 17.3 s, just after the old limit.
+        tap(app, "meter.candidate.0", timeout: 30)
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         // A window takes two taps on the camera: bottom-left corner, then top-right.
         tap(app, "action.markSomething")
@@ -225,6 +233,8 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore)
         tap(app, "feature.ac")
+        // An AC unit takes two taps, its front corners.
+        tap(app, "action.markPoint", timeout: 5)
         tap(app, "action.markPoint", timeout: 5)
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)

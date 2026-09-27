@@ -59,9 +59,11 @@ extension ScanEngine {
         var frames: [ReplayFrame]
     }
 
-    /// Nil before there is a wall: the meter frame is built from it.
-    func packetInputs(scene: Data, mesh: LiveCapture.MeshSnapshot?) -> PacketInputs? {
-        guard let map = coverage else { return nil }
+    /// Everything spatial comes from `snapshot` (the wall, the marks, the photos, the mesh, the
+    /// planes, the stream cutoff); only the logs (guidance, mark times) are read here. Nil when
+    /// the wall has no outward to build the meter frame from.
+    func packetInputs(scene: Data, snapshot: UploadSnapshot) -> PacketInputs? {
+        let map = snapshot.map
         let wall = map.wall
         // The wall in world meters, as scene.json's wall type describes it, for the marks.
         let sceneWall = SceneWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
@@ -91,19 +93,19 @@ extension ScanEngine {
                 meshClassificationEnabled: settings?.meshClassification ?? false
             ),
             meterFrame: frame,
-            corrections: poseCorrections,
-            streamCutoff: replay == nil ? captureClock : nil,
+            corrections: snapshot.corrections,
+            streamCutoff: replay == nil ? snapshot.frameTime : nil,
             groundWorldY: wall.groundY,
-            photos: store.keyframes + store.stillFrames.keys.sorted().compactMap { store.stillFrames[$0] },
-            mesh: mesh,
-            planes: (liveCapture?.planeSnapshot() ?? []).map { plane in
+            photos: snapshot.keyframes + snapshot.stillFrames.keys.sorted().compactMap { snapshot.stillFrames[$0] },
+            mesh: snapshot.mesh,
+            planes: snapshot.planes.map { plane in
                 PacketPlane(
                     id: plane.id, alignment: plane.vertical ? .vertical : .horizontal, classification: plane.classification,
                     anchorToMeter: frame.pose(plane.anchorToWorld), center: plane.center, rotationOnYAxis: plane.rotationOnYAxis,
                     extent: plane.extent, boundaryVertices: plane.boundary
                 )
             },
-            marks: packetMarks(map, wall: sceneWall, frame: frame),
+            marks: packetMarks(snapshot, wall: sceneWall, frame: frame),
             guidance: guidanceLog.entries.map { Self.packetEntry($0, wall: sceneWall, frame: frame) },
             scene: scene,
             trajectoryRate: settings.map { Double($0.framesPerSecond) },
@@ -124,18 +126,19 @@ extension ScanEngine {
     // MARK: Marks
 
     /// The meter, the marked wall ends and every marked feature, in the meter frame.
-    private func packetMarks(_ map: CoverageMap, wall: SceneWall, frame: MeterFrame) -> [PacketMark] {
+    private func packetMarks(_ snapshot: UploadSnapshot, wall: SceneWall, frame: MeterFrame) -> [PacketMark] {
+        let map = snapshot.map
         var marks = [PacketMark.meter(
-            id: "meter", t: markTimes[MarkKey.meter], photoIDs: store.stillFrames["meter_close"] == nil ? nil : ["meter_close"]
+            id: "meter", t: markTimes[MarkKey.meter], photoIDs: snapshot.stillFrames["meter_close"] == nil ? nil : ["meter_close"]
         )]
         for (side, s) in [(WallSide.left, map.leftEnd), (.right, map.rightEnd)] {
             guard let s else { continue }
             marks.append(.wallEnd(
                 id: "wall_end_\(side.rawValue)", side: side == .left ? .left : .right,
-                endKind: wallEndKinds[side] == .limit ? .limit : .unexplored, s: s, wall: wall, frame: frame, t: markTimes[MarkKey.end(side)]
+                endKind: (side == .left ? snapshot.leftEndIsLimit : snapshot.rightEndIsLimit) ? .limit : .unexplored, s: s, wall: wall, frame: frame, t: markTimes[MarkKey.end(side)]
             ))
         }
-        for feature in state.features {
+        for feature in snapshot.features.map({ Self.projected($0, onto: map.wall) }) {
             let id = feature.id.uuidString.lowercased()
             let t = markTimes[MarkKey.feature(feature.id)]
             let points = feature.points.map { frame.point($0) }
@@ -147,8 +150,12 @@ extension ScanEngine {
                     operable: feature.kind == .window ? feature.opens : nil, wall: wall, frame: frame, t: t
                 ))
             case .gasMeter, .acUnit:
-                guard let point = points.first else { continue }
-                marks.append(.pointObject(feature.kind == .gasMeter ? .gasMeter : .ac, id: id, point: point, t: t))
+                // The manifest gives these one point: the middle of the two corners.
+                guard points.count == 2 else {
+                    RuntimeLog.engine.error("packet: \(feature.kind.rawValue, privacy: .public) mark has \(points.count) taps, not 2; left out")
+                    continue
+                }
+                marks.append(.pointObject(feature.kind == .gasMeter ? .gasMeter : .ac, id: id, point: (points[0] + points[1]) / 2, t: t))
             case .driveway, .fence:
                 guard points.count == 2 else {
                     RuntimeLog.engine.error("packet: \(feature.kind.rawValue, privacy: .public) mark has \(points.count) taps, not 2; left out")

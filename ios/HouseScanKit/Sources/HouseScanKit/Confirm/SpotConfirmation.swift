@@ -96,13 +96,28 @@ public struct SpotArea: Sendable, Equatable {
 /// A kept photo the spot check may show.
 public struct SpotPhotoCandidate: Sendable, Equatable {
     public var id: String
+    /// The camera as ARKit reported it when the photo was taken (`StoredKeyframe.rawPose`).
     public var camera: CameraFrame
     public var trackingNormal: Bool
+    /// When it was taken, on the frame clock; nil when no anchor correction can apply to it.
+    public var capturedAt: Double?
 
-    public init(id: String, camera: CameraFrame, trackingNormal: Bool) {
+    public init(id: String, camera: CameraFrame, trackingNormal: Bool, capturedAt: Double? = nil) {
         self.id = id
         self.camera = camera
         self.trackingNormal = trackingNormal
+        self.capturedAt = capturedAt
+    }
+
+    /// The camera in the frame the wall agrees with now: the raw camera moved by every anchor
+    /// correction applied after the photo was taken (`MeterAnchorTracking`). The wall has moved
+    /// with those corrections, so the raw camera against it would put the outline off the spot
+    /// by as much as the corrections moved it.
+    public func camera(correctedBy corrections: PoseCorrections) -> CameraFrame {
+        guard let capturedAt else { return camera }
+        return CameraFrame(
+            cameraToWorld: corrections.pose(camera.cameraToWorld, capturedAt: capturedAt), intrinsics: camera.intrinsics,
+            imageSize: camera.imageSize)
     }
 }
 
@@ -116,12 +131,16 @@ public struct SpotPhotoChoice: Sendable, Equatable {
     /// Angle between the view from the area's middle to the camera and the wall's outward, in
     /// plan, radians.
     public var angleFromFront: Float
+    /// The camera the fractions were worked out with, corrected (`SpotPhotoCandidate
+    /// .camera(correctedBy:)`): the one to draw the outline through. Nil when made by hand.
+    public var camera: CameraFrame?
 
-    public init(id: String, footprintInView: Float, areaInView: Float, angleFromFront: Float) {
+    public init(id: String, footprintInView: Float, areaInView: Float, angleFromFront: Float, camera: CameraFrame? = nil) {
         self.id = id
         self.footprintInView = footprintInView
         self.areaInView = areaInView
         self.angleFromFront = angleFromFront
+        self.camera = camera
     }
 
     /// Every sample of the footprint and the whole area is in the photo: the homeowner can see all
@@ -162,8 +181,14 @@ public enum SpotPhoto {
     /// front of the camera, inside the image margin and within `maxDistance`; the ground is
     /// sampled every `sampleSpacing` along the wall and out from it, edges included, and the whole
     /// area's wall face as far up as `SpotArea.height`, on the same spacing.
+    ///
+    /// Each candidate is judged with its camera corrected by `corrections` into the frame `wall`
+    /// is in (`SpotPhotoCandidate.camera(correctedBy:)`), and the choice carries that camera for
+    /// the outline. After another correction, judging the same candidate again against the moved
+    /// wall gives the same fractions and a camera that draws the outline in the same place.
     public static func best(
-        _ candidates: [SpotPhotoCandidate], area: SpotArea, wall: WallFrame, config: SpotPhotoConfig = SpotPhotoConfig()
+        _ candidates: [SpotPhotoCandidate], area: SpotArea, wall: WallFrame, corrections: PoseCorrections = .none,
+        config: SpotPhotoConfig = SpotPhotoConfig()
     ) -> SpotPhotoChoice? {
         let footprint = samples(wall, along: area.spot, out: area.spotOut, spacing: config.sampleSpacing)
         let whole = samples(wall, along: area.span, out: 0...area.depth, spacing: config.sampleSpacing)
@@ -173,7 +198,7 @@ public enum SpotPhoto {
         let centre = wall.world(s: middle, height: 0, out: area.depth / 2)
         var best: (choice: SpotPhotoChoice, score: Float)?
         for candidate in candidates where candidate.trackingNormal {
-            let camera = candidate.camera
+            let camera = candidate.camera(correctedBy: corrections)
             guard wall.out(of: camera.position, pieceAtS: middle) > 0 else { continue }
             let toCamera = SIMD2(camera.position.x - centre.x, camera.position.z - centre.z)
             guard simd_length(toCamera) > 0 else { continue }
@@ -189,7 +214,8 @@ public enum SpotPhoto {
             }
             let footprintInView = fraction(footprint)
             guard footprintInView >= config.minFootprintInView else { continue }
-            let choice = SpotPhotoChoice(id: candidate.id, footprintInView: footprintInView, areaInView: fraction(whole), angleFromFront: angle)
+            let choice = SpotPhotoChoice(
+                id: candidate.id, footprintInView: footprintInView, areaInView: fraction(whole), angleFromFront: angle, camera: camera)
             let score = (footprintInView + choice.areaInView) / 2
             if let current = best, score < current.score || (score == current.score && angle >= current.choice.angleFromFront) { continue }
             best = (choice, score)

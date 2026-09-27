@@ -177,6 +177,7 @@ extension ScanEngine: ScanActions {
         case .failure(.notAWall): return refuse(.noSurface, "not a wall")
         case .failure(.implausible(let s)): return refuse(.notAtCorner, "the walls meet at s=\(s)")
         }
+        spatialRevision += 1
         // The end moves on with the walk; `clearEnd` also publishes the chain for the overlays.
         clearEnd(side)
         nextWallSide = nil
@@ -223,7 +224,9 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
-        let onGround = marking.kind == .driveway || marking.kind == .fence
+        // An AC unit is marked where its front meets the ground: a ray aimed at it meets the
+        // ground in front of the wall, and the wall's plane only below the floor.
+        let onGround = marking.kind == .driveway || marking.kind == .fence || marking.kind == .acUnit
         let pixel = frame.projection.imagePixel(forViewPoint: point ?? CGPoint(x: viewSize.width / 2, y: viewSize.height / 2), in: viewSize)
         let ray = frame.camera.ray(throughPixel: pixel)
         if wall.wallPoint(frame.camera.position).out <= 0 {
@@ -245,12 +248,15 @@ extension ScanEngine: ScanActions {
         }
         // A fence's feet on two pieces of the wall would be sent as one depth that misses how
         // close its line comes to the wall by the corner: refused, and asked for per side.
-        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(wall.world(first), wall.world(hit)) {
-            marking.refusal = .fenceAcrossCorner
+        // So are an AC unit's front corners: no one box from the wall reaches both.
+        if marking.kind == .fence || marking.kind == .acUnit, let first = pendingTaps.first, !wall.onSamePiece(first, wall.world(hit)) {
+            marking.refusal = marking.kind == .fence ? .fenceAcrossCorner : .unitAcrossCorner
             state.marking = marking
             return
         }
-        pendingTaps.append(hit)
+        // The world point, not its wall coordinates: a ground refined before the next tap would
+        // otherwise move this one's height with it.
+        pendingTaps.append(wall.world(hit))
         marking.refusal = nil
         marking.step += 1
         if marking.step < marking.kind.tapCount {
@@ -266,10 +272,17 @@ extension ScanEngine: ScanActions {
         spotMarkPlaced()
     }
 
-    private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
-        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps.map { wall.world($0) }, opens: nil)
+    private func feature(_ kind: FeatureKind, taps: [SIMD3<Float>], wall: WallFrame) -> MarkedFeature {
+        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps, opens: nil)
         Self.project(&marked, onto: wall)
         return marked
+    }
+
+    /// `feature` with its wall coordinates worked out on `wall`.
+    static func projected(_ feature: MarkedFeature, onto wall: WallFrame) -> MarkedFeature {
+        var copy = feature
+        project(&copy, onto: wall)
+        return copy
     }
 
     /// Sets a feature's wall coordinates from its tapped world points. Run again whenever the
@@ -280,15 +293,15 @@ extension ScanEngine: ScanActions {
         let ss = taps.map(\.s)
         let span = (ss.min() ?? 0)...(ss.max() ?? 0)
         switch feature.kind {
-        case .door, .window:
+        case .door, .window, .gasMeter:
             let heights = taps.map(\.height)
             feature.span = span
             feature.bottom = max(0, heights.min() ?? 0)
             feature.top = heights.max()
-        case .gasMeter, .acUnit:
-            // One tap marks the object's middle; 0.3 m is a nominal width, not a measurement.
-            let s = ss.first ?? 0
-            feature.span = (s - 0.15)...(s + 0.15)
+        case .acUnit:
+            // The front corners on the ground: the unit takes the wall out to the farther one.
+            feature.span = span
+            feature.out = taps.map(\.out).max() ?? 0
         case .driveway, .fence:
             feature.span = span
             // The nearer tap, as the export uses: the narrow end must not be overstated.

@@ -120,8 +120,17 @@ public enum SceneFeature: Sendable {
     /// A door or window on the wall. `span` is in s meters; `bottom` and `top` are meters above the
     /// ground. `operable` nil means the homeowner was not asked, and it is then left out.
     case opening(kind: SceneOpeningKind, span: ClosedRange<Float>, bottom: Float, top: Float, operable: Bool?)
-    /// Something tapped once that stands off the wall (gas meter, AC unit). `tap` is a world point.
-    case pointObject(kind: ScenePointObjectKind, tap: SIMD3<Float>, bottom: Float?, top: Float?)
+    /// Something on the wall marked, as a window is, at two corners where it meets the wall
+    /// (a gas meter): `span` in s meters, `bottom` and `top` in meters above the ground. The taps
+    /// are wall-plane hits, which don't say how far it stands out, so it goes out with no
+    /// footprint: the server measures to its stretch of wall line. The same geometry as a
+    /// battery or box on the wall (#52).
+    case wallObject(kind: ScenePointObjectKind, span: ClosedRange<Float>, bottom: Float, top: Float)
+    /// Something standing in front of the wall marked at the two corners where its front meets
+    /// the ground (an AC unit), world points. Its footprint runs from the wall out to that front
+    /// edge: how far out it stands is measured, and the space behind it, which nobody can use for
+    /// a battery, counts as taken. Height is not measured and is left out.
+    case groundObject(kind: ScenePointObjectKind, front: [SIMD3<Float>])
     /// Two world points at the foot of a fence or hedge facing the wall.
     case fence(foot: [SIMD3<Float>])
     /// Two world points along one edge of a driveway.
@@ -211,14 +220,19 @@ public struct SceneInput: Sendable {
     /// s meters of the chain's left and right ends. Must contain 0, the meter.
     public var baselineS: ClosedRange<Float>
     public var wallHeight: Float?
-    /// Meter position error, meters. Nil leaves the server's default for AR taps.
-    public var meterPlusMinus: Float?
+    /// Error to add to the meter's, meters (a guessed ground's). Nil adds none. With an extra the
+    /// meter is sent with `plus_minus_ft`: the server's default, `errors.meter_ft`, plus it.
+    public var meterExtraError: Float?
     /// How the meter tap found the wall. An estimated plane widens the exported meter error by
     /// `MeterPlaneSource.estimatedPlaneExtraError`.
     public var meterPlane: MeterPlaneSource
-    /// Position error of every object (openings, gas meter, AC), meters. Nil leaves the server's
-    /// default for the object's source.
-    public var objectPlusMinus: Float?
+    /// Error to add to every tapped object's (openings, gas meter, AC), meters (a guessed
+    /// ground's). Nil adds none, and objects go without `plus_minus_ft`, taking the server's
+    /// default. An explicit `plus_minus_ft` replaces that default, which grows with distance from
+    /// the meter, so with an extra each object gets the default at its span, `tap_ft` plus the
+    /// drift, and the extra on top (`ServerErrorDefaults.tapObject`). Sending the extra alone
+    /// gave a window 10 ft out 0.98 ft where the server's own error there is 1.9 ft.
+    public var objectExtraError: Float?
     public var features: [SceneFeature]
     public var coverage: SceneCoverage
     public var keyframes: [SceneKeyframe]
@@ -239,7 +253,7 @@ public struct SceneInput: Sendable {
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
-        meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
+        meterExtraError: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectExtraError: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
         meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundPatches: [SceneGroundPatch] = []
     ) {
@@ -247,9 +261,9 @@ public struct SceneInput: Sendable {
         self.wallID = wallID
         self.baselineS = baselineS
         self.wallHeight = wallHeight
-        self.meterPlusMinus = meterPlusMinus
+        self.meterExtraError = meterExtraError
         self.meterPlane = meterPlane
-        self.objectPlusMinus = objectPlusMinus
+        self.objectExtraError = objectExtraError
         self.features = features
         self.coverage = coverage
         self.keyframes = keyframes
@@ -278,6 +292,9 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     /// would be its feet's distance out, while by the corner the fence's straight line runs much
     /// closer to the wall; each side of the corner has to be its own fence.
     case fenceAcrossCorner(feature: String)
+    /// An object whose two front corners lie in front of different pieces of the wall: no one
+    /// rectangle from the wall to them describes it.
+    case objectAcrossCorner(feature: String)
 
     public var description: String {
         switch self {
@@ -294,6 +311,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
         case .fenceAcrossCorner(let f): "\(f): its feet are on different pieces of the wall"
+        case .objectAcrossCorner(let f): "\(f): its corners are in front of different pieces of the wall"
         }
     }
 }
@@ -323,12 +341,10 @@ extension ObservedSpan {
 }
 
 public enum SceneExport {
-    /// Half the plan width of a tapped point object. The tap gives one point, not a size, so the
-    /// object is drawn as a 0.3 m square: a hypothesis for a typical residential gas meter or
-    /// regulator, not a measured size. Replace it once the capture measures the object.
-    static let pointObjectHalfWidth: Float = 0.15
-    /// How far a tapped point object is assumed to stand off the wall, same 0.3 m hypothesis.
-    static let pointObjectDepth: Float = 0.3
+    /// The smallest width, and height on the wall, a two-corner object is sent with: two taps
+    /// closer than 1 cm are one tap, not a size. The app's collapsed-line check uses the same
+    /// 1 cm (`ScanEngine.groundLine`).
+    public static let minObjectSize: Float = 0.01
     /// Width of the strip drawn along a tapped driveway edge, feet. The tap marks only the edge
     /// line; the strip gives the polygon the area the schema requires. Illustrative, not measured.
     static let drivewayStripFeet: Double = 0.5
@@ -339,6 +355,13 @@ public enum SceneExport {
     static let maxObserved = 500
     /// scene.schema.json's `facing` and `overheads` maxItems.
     static let maxMeasured = 500
+    /// The ground entries as written, before each is cut at the corners: joined to the band's
+    /// budget less one entry per corner, which the cutting adds back. The phone's gap settlement
+    /// reads ground through this too (`GapPlanner`), so what it settles is what is sent.
+    public static func groundEntries(_ spans: [ObservedSpan], corners: Int) -> [ObservedSpan] {
+        ObservedSpan.coarsened(spans, toAtMost: max(1, bandBudget - corners))
+    }
+
     /// scene.schema.json's `ground` maxItems, shared by driveway strips and ground patches.
     static let maxGround = 200
 
@@ -381,13 +404,14 @@ public enum SceneExport {
             throw SceneExportError.meterOutsideBaseline(lower: input.baselineS.lowerBound, upper: input.baselineS.upperBound)
         }
         if let h = input.wallHeight, !(h > 0) { throw SceneExportError.nonPositiveWallHeight(h) }
-        if let pm = input.meterPlusMinus { try requireNonNegative(pm, "meterPlusMinus") }
-        if let pm = input.objectPlusMinus { try requireNonNegative(pm, "objectPlusMinus") }
-        let objectError = input.objectPlusMinus.map(feet)
-        let meterError: Float? = switch input.meterPlane {
-        case .detectedPlane: input.meterPlusMinus
-        case .estimatedPlane: (input.meterPlusMinus ?? ServerErrorDefaults.meter) + MeterPlaneSource.estimatedPlaneExtraError
+        if let pm = input.meterExtraError { try requireNonNegative(pm, "meterExtraError") }
+        if let pm = input.objectExtraError { try requireNonNegative(pm, "objectExtraError") }
+        /// A tapped object's `plus_minus_ft` over `span`: nil without an extra (the server's default).
+        func objectError(_ span: ClosedRange<Float>) -> Double? {
+            input.objectExtraError.map { feet(ServerErrorDefaults.tapObject(farthest: max(abs(span.lowerBound), abs(span.upperBound))) + $0) }
         }
+        let meterExtra = (input.meterExtraError ?? 0) + (input.meterPlane == .estimatedPlane ? MeterPlaneSource.estimatedPlaneExtraError : 0)
+        let meterError: Float? = meterExtra > 0 ? ServerErrorDefaults.meter + meterExtra : nil
 
         let plan = { (s: Float, out: Float) in planFeet(wall.world(s: s, height: 0, out: out)) }
         // One scene wall per piece of the chain: the meter's keeps `wallID`.
@@ -423,21 +447,34 @@ public enum SceneExport {
                     type: kind.rawValue, wall_id: wallIDAt((span.lowerBound + span.upperBound) / 2), span_ft: spanFeet(span),
                     bottom_ft: feet(bottom), top_ft: feet(top),
                     attrs: operable.map { SceneDocument.Attrs(operable: $0) }, source: "tap", footprint: nil,
-                    plus_minus_ft: objectError))
-            case let .pointObject(kind, tap, bottom, top):
-                if let bottom { try requireNonNegative(bottom, "\(name).bottom") }
-                if let top { try requireNonNegative(top, "\(name).top") }
-                if let bottom, let top, top < bottom {
-                    throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top)
+                    plus_minus_ft: objectError(span)))
+            case let .wallObject(kind, span, bottom, top):
+                try requireNonNegative(bottom, "\(name).bottom")
+                guard top >= bottom else { throw SceneExportError.topBelowBottom(field: name, bottom: bottom, top: top) }
+                guard span.upperBound - span.lowerBound >= minObjectSize, top - bottom >= minObjectSize else {
+                    throw SceneExportError.degenerateSegment(feature: "\(name) \(kind.rawValue)")
                 }
-                let s = wall.wallCoordinates(of: tap).s
-                let left = s - pointObjectHalfWidth
-                let right = s + pointObjectHalfWidth
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(left...right),
-                    bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
-                    footprint: [plan(left, 0), plan(right, 0), plan(right, pointObjectDepth), plan(left, pointObjectDepth)],
-                    plus_minus_ft: objectError))
+                    type: kind.rawValue, wall_id: wallIDAt((span.lowerBound + span.upperBound) / 2), span_ft: spanFeet(span),
+                    bottom_ft: feet(bottom), top_ft: feet(top), attrs: nil, source: "tap", footprint: nil,
+                    plus_minus_ft: objectError(span)))
+            case let .groundObject(kind, front):
+                guard front.count == 2 else {
+                    throw SceneExportError.wrongPointCount(feature: "\(name) \(kind.rawValue)", expected: 2, actual: front.count)
+                }
+                let corners = front.map { wall.wallCoordinates(of: $0) }.sorted { $0.s < $1.s }
+                let (left, right) = (corners[0], corners[1])
+                guard WallSegment.index(in: chain.segments, atS: left.s) == WallSegment.index(in: chain.segments, atS: right.s) else {
+                    throw SceneExportError.objectAcrossCorner(feature: name)
+                }
+                guard right.s - left.s >= minObjectSize else { throw SceneExportError.degenerateSegment(feature: "\(name) \(kind.rawValue)") }
+                try requireNonNegative(left.out, "\(name) front out")
+                try requireNonNegative(right.out, "\(name) front out")
+                objects.append(.init(
+                    type: kind.rawValue, wall_id: wallIDAt((left.s + right.s) / 2), span_ft: spanFeet(left.s...right.s),
+                    bottom_ft: nil, top_ft: nil, attrs: nil, source: "tap",
+                    footprint: [plan(left.s, 0), plan(right.s, 0), plan(right.s, right.out), plan(left.s, left.out)],
+                    plus_minus_ft: objectError(left.s...right.s)))
             case let .fence(foot):
                 guard foot.count == 2 else {
                     throw SceneExportError.wrongPointCount(feature: "\(name) fence", expected: 2, actual: foot.count)
@@ -486,7 +523,7 @@ public enum SceneExport {
         // for one more entry per corner.
         let serverCorners = Self.serverCornerS(writtenWalls, meterPlan: SIMD2(meterFeet[0], meterFeet[2]), meterWallID: input.wallID)
         reaches = reaches.map { band, spans in
-            (band, ObservedSpan.coarsened(spans, toAtMost: band == "ground" ? max(1, bandBudget - corners.count) : bandBudget))
+            (band, band == "ground" ? groundEntries(spans, corners: corners.count) : ObservedSpan.coarsened(spans, toAtMost: bandBudget))
         }
         var observed: [SceneDocument.Observed] = []
         for (band, spans) in reaches {

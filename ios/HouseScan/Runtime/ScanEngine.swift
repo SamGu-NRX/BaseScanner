@@ -58,6 +58,15 @@ final class ScanEngine {
     private var meterTracking: MeterAnchorTracking?
     /// Whether a frame source may start, and what a failure and Start over do to it.
     private var sourceState = CaptureSourceState()
+    /// Counts changes to the captured geometry: every anchor correction, ground refinement or
+    /// revocation, new wall and followed corner. An upload's snapshot records it; an answer to a
+    /// scan whose count has moved on since is stale (`upload`).
+    var spatialRevision = 0
+    /// An upload waiting for a frame with its mesh (`takeUploadSnapshot`), and its number.
+    var pendingSnapshot: CheckedContinuation<UploadSnapshot?, Never>?
+    var snapshotRequest = 0
+    /// The snapshot the last upload sent, which the spot check's repackaging writes again.
+    private(set) var lastUploadSnapshot: UploadSnapshot?
     /// Detected horizontal planes, with their classes and outlines.
     private var groundPlanes: [GroundPlaneEvidence] = []
     private var lastFrame: SourceFrame?
@@ -152,7 +161,8 @@ final class ScanEngine {
     private var lastGuidanceLog = ""
     private var lastGateLog = ""
     /// Taps of the feature being marked, in wall coordinates.
-    var pendingTaps: [WallPoint] = []
+    /// Tapped world points of the feature being marked.
+    var pendingTaps: [SIMD3<Float>] = []
 
     enum EndKind {
         /// The homeowner marked the end and said something blocks the wall there (a fence, gate
@@ -367,6 +377,8 @@ final class ScanEngine {
         }
         if let planes = frame.groundPlanes { groundPlanes = planes }
         applySpatialUpdate(frame)
+        // After the frame's corrections, so a snapshot taken on it agrees with its mesh.
+        completeUploadSnapshot(with: frame)
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else {
@@ -397,12 +409,15 @@ final class ScanEngine {
         let outcome = SpatialUpdate.apply(
             anchor: frame.meterAnchor, planes: frame.groundPlanes, time: frame.timestamp,
             map: &map, tracking: &meterTracking, ground: &groundEvidence)
-        guard outcome.correction != nil || outcome.groundChanged else { return }
+        guard outcome.changed else { return }
+        spatialRevision += 1
         coverage = map
         if let correction = outcome.correction {
             var features = state.features
             for index in features.indices { features[index].points = features[index].points.map(correction.point) }
             if features != state.features { state.features = features }
+            // The first tap of a mark still being made was in the old frame too.
+            pendingTaps = pendingTaps.map(correction.point)
         }
         if outcome.groundChanged {
             RuntimeLog.engine.info("ground \(self.groundEvidence.measured ? "measured" : "a guess again", privacy: .public) at y=\(map.wall.groundY) (was \(before.y), \(before.measured ? "measured" : "estimated", privacy: .public))")
@@ -1118,6 +1133,9 @@ final class ScanEngine {
     func resetSpatialState(reason: String) {
         RuntimeLog.engine.info("spatial reset: \(reason, privacy: .public)")
         generation += 1
+        spatialRevision += 1
+        cancelPendingSnapshot()
+        lastUploadSnapshot = nil
         // A new world frame is a new packet session: what was recorded is in the old frame.
         recorder.restart()
         resetPacketLog()
@@ -1179,6 +1197,7 @@ final class ScanEngine {
     /// Sets the wall from a meter point and the wall's outward normal, and starts coverage.
     func setWall(meter: SIMD3<Float>, outward: SIMD3<Float>, groundY: Float, groundMeasured: Bool) -> Bool {
         guard let frame = WallFrame(meter: meter, outward: outward, groundY: groundY) else { return false }
+        spatialRevision += 1
         coverage = CoverageMap(wall: frame)
         coverage?.heightError = groundMeasured ? 0 : Self.estimatedGroundError
         self.groundMeasured = groundMeasured
@@ -1206,6 +1225,7 @@ final class ScanEngine {
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
         publishFeaturesPastEnds()
+        refreshSpotPhoto()
     }
 
     /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
@@ -1415,98 +1435,105 @@ final class ScanEngine {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
-        // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
-        // overhead, off the main actor since ray casts over a whole mesh take a while.
-        //
-        // The measurement is against the wall as it stands when the measuring starts; scene.json
-        // and the packet are built after it, from the wall as it stands then. An anchor
-        // correction or a ground refinement while the mesh is measured would make the two
-        // describe different walls, so a measurement whose wall or exported stretch changed
-        // meanwhile is done again against the new one. Everything after the last await runs on
-        // the main actor without a break, so nothing can move the wall between that measurement
-        // and the export. If the wall keeps moving, the mesh's measurements are left out: less
-        // evidence, never evidence about another wall.
-        //
-        // The mesh is read again on each attempt, with the wall, so both are in the frame ARKit
-        // reports at that moment: a mesh read before a correction and measured against the
-        // corrected wall would put an overhang at the old height (a 0.2 m lower ground reads a
-        // 2 m overhang as 2.2 m). The packet gets the snapshot the measurement used.
-        var meshSnapshot = live?.meshSnapshot()
-        var measured = MeshMeasurements()
-        if meshSnapshot != nil {
-            var agreed = false
-            for _ in 0..<3 {
-                guard let map = coverage else { break }
-                // Without a session nothing corrects the wall, so the last snapshot still agrees.
-                if let fresh = live?.meshSnapshot() { meshSnapshot = fresh }
-                guard let mesh = meshSnapshot?.mesh else { break }
-                let wall = map.wall
-                let span = Self.exportSpan(map)
-                let result = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-                guard scan == generation else { return }
-                if let now = coverage, now.wall == wall, Self.exportSpan(now) == span {
-                    measured = result
-                    agreed = true
-                    break
-                }
-                RuntimeLog.engine.info("mesh: the wall moved while it was measured; measuring again")
-            }
-            if !agreed { RuntimeLog.engine.error("mesh: the wall kept moving; the scene goes without the mesh's measurements") }
-            let mesh = meshSnapshot?.mesh
-            RuntimeLog.engine.info("mesh: \(mesh?.vertices.count ?? 0) vertices, \((mesh?.indices.count ?? 0) / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
-        }
-        let scene: Data
-        do {
-            scene = try sceneJSON(mesh: measured)
-        } catch {
-            RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.packaging(error)
-            updateRecording()
-            return
-        }
-        writeScanStamp(answer: placement)
-        saveBundle(scene: scene, mesh: meshSnapshot)
-        guard !Task.isCancelled else { return }
-        state.upload = .uploading(fraction: 0)
-        do {
-            let data = try await resultClient.submit(scene: scene) { [weak self] fraction in
-                Task { @MainActor in
-                    guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
-                    self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
-                }
-            }
-            guard scan == generation else { return }
-            state.upload = .analyzing
-            let result = try PlacementResult.decode(data)
-            placement = result
-            noteExchange(scene: scene, answer: data)
-            writeScanStamp(answer: result)
-            state.result = presentation(of: result, isSample: resultClient.isSample)
-            state.upload = .done
-            await waitForGate(.uploading)
-            guard scan == generation else { return }
-            if let next = nextAutomaticGap(result) {
-                // The upload screen says "One more view to finish" once the answer is in
-                // (`state.result` set, upload `.done`, both kept through the request): long
-                // enough to read before the camera takes over.
-                try await Task.sleep(for: .seconds(Self.followUpHold))
-                guard scan == generation, state.phase == .uploading else { return }
-                automaticGaps.append(next.plan)
-                RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
-                beginServerGap(next.item, plan: next.plan)
+        var resends = 0
+        while true {
+            // Everything this attempt sends is built from one snapshot of one frame
+            // (`UploadSnapshot`): scene.json, the mesh's measurements and the packet.
+            guard let snapshot = await takeUploadSnapshot() else {
+                guard scan == generation, !Task.isCancelled else { return }
+                RuntimeLog.engine.error("scene.json export failed: no wall")
+                state.upload = UploadFailure.packaging(ExportError.noWall)
+                updateRecording()
                 return
             }
-            // The result appears only after the server answered (checklist R6), and after the
-            // homeowner checked its spot (`presentAnswer`).
-            presentAnswer()
-        } catch is CancellationError {
-            return
-        } catch {
-            guard scan == generation else { return }
-            RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.state(for: error)
-            updateRecording()
+            guard scan == generation, !Task.isCancelled else { return }
+            // LiDAR phones: the frame's mesh, measured for what faces the wall and what is
+            // overhead against the snapshot's wall, off the main actor since ray casts over a
+            // whole mesh take a while. Nothing the measurement or the export reads can move
+            // meanwhile: both read the snapshot.
+            var measured = MeshMeasurements()
+            if let mesh = snapshot.mesh?.mesh {
+                let wall = snapshot.map.wall
+                let span = Self.exportSpan(snapshot.map)
+                measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
+                guard scan == generation, !Task.isCancelled else { return }
+                RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+            }
+            let scene: Data
+            do {
+                scene = try sceneJSON(snapshot, mesh: measured)
+            } catch {
+                RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
+                state.upload = UploadFailure.packaging(error)
+                updateRecording()
+                return
+            }
+            writeScanStamp(answer: placement)
+            saveBundle(scene: scene, snapshot: snapshot)
+            guard !Task.isCancelled else { return }
+            state.upload = .uploading(fraction: 0)
+            let result: PlacementResult
+            let data: Data
+            do {
+                data = try await resultClient.submit(scene: scene) { [weak self] fraction in
+                    Task { @MainActor in
+                        guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
+                        self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
+                    }
+                }
+                guard scan == generation else { return }
+                state.upload = .analyzing
+                result = try PlacementResult.decode(data)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard scan == generation else { return }
+                RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
+                state.upload = UploadFailure.state(for: error)
+                updateRecording()
+                return
+            }
+            // An answer about geometry the phone has since corrected would be drawn on the
+            // wrong wall (`AnswerFreshness`).
+            switch AnswerFreshness.of(sent: snapshot.revision, now: spatialRevision, resends: resends) {
+            case .current:
+                break
+            case .sendAgain:
+                resends += 1
+                RuntimeLog.engine.info("answer is stale (sent at revision \(snapshot.revision), now \(self.spatialRevision)): sending again")
+                state.upload = .packaging
+                continue
+            case .stillChanging:
+                RuntimeLog.engine.error("answer is stale again (sent at revision \(snapshot.revision), now \(self.spatialRevision)): not shown")
+                state.upload = UploadFailure.stillChanging
+                updateRecording()
+                return
+            }
+            placement = result
+            lastUploadSnapshot = snapshot
+            noteExchange(scene: scene, answer: data)
+            break
         }
+        guard let result = placement else { return }
+        writeScanStamp(answer: result)
+        state.result = presentation(of: result, isSample: resultClient.isSample)
+        state.upload = .done
+        await waitForGate(.uploading)
+        guard scan == generation else { return }
+        if let next = nextAutomaticGap(result) {
+            // The upload screen says "One more view to finish" once the answer is in
+            // (`state.result` set, upload `.done`, both kept through the request): long
+            // enough to read before the camera takes over.
+            guard (try? await Task.sleep(for: .seconds(Self.followUpHold))) != nil,
+                  scan == generation, state.phase == .uploading else { return }
+            automaticGaps.append(next.plan)
+            RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
+            beginServerGap(next.item, plan: next.plan)
+            return
+        }
+        // The result appears only after the server answered (checklist R6), and after the
+        // homeowner checked its spot (`presentAnswer`).
+        presentAnswer()
     }
 
     /// The first item of the answer's missing evidence a capture can settle (the result's
@@ -1567,13 +1594,13 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    func saveBundle(scene: Data, snapshot: UploadSnapshot) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
         let scan = generation
         let previous = bundleTask
-        guard let inputs = packetInputs(scene: scene, mesh: mesh) else {
+        guard let inputs = packetInputs(scene: scene, snapshot: snapshot) else {
             RuntimeLog.engine.error("scan bundle not written: no wall")
             return
         }
@@ -1606,7 +1633,10 @@ final class ScanEngine {
 
     func resetAll() {
         generation += 1
+        spatialRevision += 1
         uploadTask?.cancel()
+        cancelPendingSnapshot()
+        lastUploadSnapshot = nil
         replay?.stop()
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
