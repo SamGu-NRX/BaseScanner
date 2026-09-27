@@ -386,8 +386,8 @@ sweep: {step_ft: {value: 0.166666666667}}
     assert rules.needs["battery_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
     assert rules.needs["opening_clearance"] == (Need("wall", 3.0, 6.5),)
     assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
-    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5, drift=False),)
-    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5, drift=False),)
+    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5),)
+    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5),)
     assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
     lower = RuleSet.from_yaml(
         text.replace("exempt_bottom_above_ft: null", "exempt_bottom_above_ft: 2")
@@ -671,8 +671,8 @@ BAND_RULES = replace(
     RULES,
     needs=RULES.needs
     | {
-        "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0, drift=False),),
-        "headroom": (Need("overhead", 0.0, 6.5, drift=False),),
+        "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0),),
+        "headroom": (Need("overhead", 0.0, 6.5),),
         "battery_clearance": (Need("ground", 100.0),),
     },
 )
@@ -841,3 +841,20 @@ def test_facing_and_headroom_need_the_band_past_the_battery_by_the_wall_error():
     assert any("facing [0.70, 1.00]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
     scene["coverage"]["observed"][-1]["span_ft"] = [0.7, 3.9]
     assert invariant_problems(scene, r, rules=BAND_RULES) == []
+
+
+def test_facing_and_headroom_widen_by_the_default_error_with_drift():
+    # The caretaker's repro: no explicit wall error, views over [5.7, 8.88] out 9 ft. At start 6
+    # the battery [6, 8.58] is 0.3 + 0.16 x 8.58 = 1.67 ft uncertain, so both bands are needed
+    # over [4.33, 10.25]; the error without drift (0.3) would ask only [5.7, 8.88].
+    r = result(checks=[passing("facing_gap"), passing("headroom")], spot=False)
+    r["sweep"][0]["start_ft"] = [6.0, 6.0]
+    scene = copy.deepcopy(SCENE)
+    del scene["walls"][0]["plus_minus_ft"]
+    for band in ("facing", "overhead"):
+        scene["coverage"]["observed"].append(
+            {"band": band, "span_ft": [5.7, 6 + 31 / 12 + 0.3], "out_ft": 9.0}
+        )
+    problems = coverage_problems(scene, r, BAND_RULES)
+    assert any("facing [4.33, 5.70] observed, none seen" in m for m in problems)
+    assert any("overhead [4.33, 5.70] observed, none seen" in m for m in problems)

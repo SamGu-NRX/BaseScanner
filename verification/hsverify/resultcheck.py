@@ -51,16 +51,14 @@ class Need:
     - `facing`, `overhead`: the band over [lo - r, hi + r]; where no measurement (`facing`,
       `overheads`) covers a stretch, the band's `out_ft` there must be beyond `height`.
 
-    r is `radius`, plus the battery's position error when `widen`: with the drift for its
-    distance from the meter when `drift`, else the wall's own error alone (the server widens
-    facing and headroom by `piece.plus_minus`, server/solver.py at 903d86f).
+    r is `radius`, plus the battery's position error when `widen` (battery_error: the server's
+    checks see the wall's error at the battery's far edge, server/solver.py at 903d86f).
     """
 
     band: str
     radius: float = 0.0
     height: float = 0.0
     widen: bool = True
-    drift: bool = True
 
 
 # Scene lists whose entries settle facing_gap and headroom where they cover the battery.
@@ -123,8 +121,8 @@ class RuleSet:
             "pool_clearance": (reach("pool_ft"),),
             "opening_clearance": (Need("wall", r("opening_ft"), opening_height),),
             "wall_equipment_above": (Need("wall", r("wall_equipment_ft"), headroom, widen=False),),
-            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft"), drift=False),),
-            "headroom": (Need("overhead", 0.0, headroom, drift=False),),
+            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft")),),
+            "headroom": (Need("overhead", 0.0, headroom),),
         }
         errors = {
             name: value("errors", f"{name}_ft")
@@ -311,12 +309,8 @@ def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: floa
         raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
     if "plus_minus_ft" in wall:
         return wall["plus_minus_ft"]
-    return wall_error(wall, rules) + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
-
-
-def wall_error(wall: dict, rules: RuleSet) -> float:
-    """A wall's own position error, without drift: its explicit one or its source's default."""
-    return wall.get("plus_minus_ft", rules.errors[WALL_ERROR[wall.get("source", "tap")]])
+    default = rules.errors[WALL_ERROR[wall.get("source", "tap")]]
+    return default + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
 
 
 def reach_gaps(
@@ -338,15 +332,8 @@ def reach_gaps(
       the check's distance unless measured.
     """
     gaps = []
-    wall = next((w for w in scene["walls"] if w["id"] == wall_id), None)
     for need in rules.needs[check]:
-        if not need.widen:
-            error = 0.0
-        elif need.drift:
-            error = battery_error(scene, rules, wall_id, lo, hi)
-        else:
-            error = wall_error(wall, rules) if wall is not None else 0.0
-        reach = need.radius + error
+        reach = need.radius + (battery_error(scene, rules, wall_id, lo, hi) if need.widen else 0.0)
         if need.band == "ground":
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
         elif need.band == "wall":
