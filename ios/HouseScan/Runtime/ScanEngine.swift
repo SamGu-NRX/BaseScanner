@@ -75,6 +75,9 @@ final class ScanEngine {
     /// What the coverage map's far surface was last measured from (`noteFarSurface`): the planes,
     /// the wall and the stretch seen.
     private var farSurfaceBasis: (planes: [WallPlaneEvidence], wall: WallFrame, seen: ClosedRange<Float>?)?
+    /// The detected plane the meter's wall was refit to (`refitWallToDetectedPlane`): the wall's
+    /// own, never where the space in front of it ends.
+    private var refitPlaneID: String?
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
     /// than the chest-height guess. The export widens position errors while it is a guess.
@@ -548,6 +551,7 @@ final class ScanEngine {
         let measured = choice != nil || groundMeasured
         guard setWall(meter: refit.meter, outward: refit.outward, groundY: choice?.plane.y ?? wall.groundY, groundMeasured: measured) else { return }
         meterPlaneSource = .detectedPlane
+        refitPlaneID = refit.planeID
         updateCoverage { $0.setWallLineSource(meterLineSource) }
         meterAnchorID.map { live.removeAnchor($0) }
         // Axes as a wall hit's: y the wall's normal, z up the wall.
@@ -1036,7 +1040,8 @@ final class ScanEngine {
         let around = seen ?? -1...1
         let reach = map.config.maxDistance
         let spans = FarSurface.spans(
-            planes: wallPlanes, wall: map.wall, over: (around.lowerBound - reach)...(around.upperBound + reach), cellWidth: map.config.cellWidth)
+            planes: wallPlanes, wall: map.wall, over: (around.lowerBound - reach)...(around.upperBound + reach), cellWidth: map.config.cellWidth,
+            excluding: Set(refitPlaneID.map { [$0] } ?? []))
         if spans.isEmpty != map.farSurface.isEmpty {
             let found = spans.map(\.out).min().map { "found, nearest \($0) m out, over \(spans.count) stretches" } ?? "none"
             RuntimeLog.engine.info("far surface: \(found, privacy: .public)")
@@ -1307,21 +1312,26 @@ final class ScanEngine {
 
     /// A walk-out request's reading and whether the space ends short of its line (#164): the
     /// card then gives the distance that counts where the phone is, or says the space ends
-    /// before the line and "I can't get there" is the answer. Both are rounded to 3 in, the
-    /// reading's out down and what counts up, so the card changes every few strides rather than
-    /// every frame and never asks for less than counts. A guess at what reads calmly.
+    /// before the line and "I can't get there" is the answer. The reading is rounded to 3 in, its
+    /// out down and what counts up, so it changes every few strides rather than every frame and
+    /// never asks for less than counts; a guess at what reads calmly. Where the space ends is
+    /// kept for the request once shown: ARKit refines its planes about ten times a second, and a
+    /// headline that moved or came and went with them would re-arm the reply's lock each time
+    /// (`InstructionCard.replyLock`).
     private func noteWalkOut(_ plan: GapPlan, _ map: CoverageMap, camera: CameraFrame?, into request: inout GapRequest) {
         guard case .walkOut = plan.need else { return }
         let step: Float = 0.0762
         let block = gapPlanner.walkOutBlock(plan, map)
         let ends = block.map { GapRequest.SpaceEnds(at: ($0.spaceEnds / step).rounded(.down) * step, needed: ($0.needed / step).rounded(.up) * step) }
-        if (ends == nil) != (request.spaceEnds == nil) {
-            let found = block.map { "the space ends \($0.spaceEnds) m out over s \($0.span.lowerBound)...\($0.span.upperBound), short of the line at up to \($0.needed) m" } ?? "the line lies short of where the space ends"
+        if request.spaceEnds == nil, let block, let ends {
+            let found = String(
+                format: "the space ends %.2f m out over s %.2f...%.2f, short of the line at up to %.2f m",
+                block.spaceEnds, block.span.lowerBound, block.span.upperBound, block.needed)
             // The log's message is an escaping autoclosure, which can't capture `request`.
             let id = request.id
             RuntimeLog.engine.info("gap \(id) walk-out: \(found, privacy: .public)")
+            request.spaceEnds = ends
         }
-        request.spaceEnds = ends
         request.walkOut = camera.flatMap { camera in
             let at = map.wall.wallPoint(camera.position)
             return gapPlanner.walkOutNeeded(plan, map, atS: at.s).map {
@@ -1485,6 +1495,7 @@ final class ScanEngine {
         groundPlanes = []
         wallPlanes = []
         farSurfaceBasis = nil
+        refitPlaneID = nil
         groundMeasured = false
         lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -2050,6 +2061,7 @@ final class ScanEngine {
         replay?.stop()
         coverage = nil
         farSurfaceBasis = nil
+        refitPlaneID = nil
         liveDots.reset()
         state.liveDots = .empty
         meterAnchorID.map { live?.removeAnchor($0) }
