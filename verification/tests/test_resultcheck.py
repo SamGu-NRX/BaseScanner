@@ -9,6 +9,7 @@ from hsverify.resultcheck import (
     RuleSet,
     assumption_mismatches,
     battery_error,
+    chain_ends_s,
     comparable,
     expectation_problems,
     invariant_problems,
@@ -733,15 +734,17 @@ def test_the_wall_source_sets_the_default_error(wall, error):
     assert battery_error(scene, RULES, "w1", 0.0, 1.0) == pytest.approx(error + drift)
 
 
-def test_a_request_to_walk_past_an_end_covers_every_band_beyond_it():
-    two_band = RuleSet(
+def test_a_request_to_walk_past_the_real_end_covers_what_lies_beyond_it():
+    wide = RuleSet(
         RULES.width_ft,
         RULES.depth_ft,
-        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 1.0, height=6.5))},
+        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 3.0, height=6.5))},
         RULES.errors,
     )
     scene = copy.deepcopy(SCENE)
-    scene["coverage"]["observed"][0]["span_ft"] = [1.0, 10.0]  # the wall ends at 1, unexplored
+    scene["walls"][0]["baseline"] = [[-1.0, 0.0], [12.0, 0.0]]  # the chain's left end is s = -1
+    scene["coverage"]["ends"]["left"] = {"kind": "unexplored"}
+    scene["coverage"]["observed"][0]["span_ft"] = [-1.0, 10.0]
     r = result(checks=[check("unsure", None, cause="unobserved")])
     r["reasons"] = [{"code": "unobserved_area", "message": ""}]
     r["missing_evidence"] = [
@@ -751,12 +754,45 @@ def test_a_request_to_walk_past_an_end_covers_every_band_beyond_it():
             "span_ft": [0, 5],
             "checks": ["gas_clearance"],
             "message": "",
-        },
+        }
     ]
-    assert any(
-        "no wall request names it" in m for m in missing_evidence_problems(scene, r, two_band)
-    )
-    r["missing_evidence"].append(
-        {"kind": "past_end", "side": "left", "span_ft": [1.0, 1.0], "message": ""}
-    )
-    assert missing_evidence_problems(scene, r, two_band) == []
+    # The spot [1, 3.58] needs the wall over [-2, 6.58]; [-2, -1] lies past the end.
+    assert any("no wall request names it" in m for m in missing_evidence_problems(scene, r, wide))
+
+    def past_end(at: float) -> dict:
+        return {"kind": "past_end", "side": "left", "span_ft": [at, at], "message": ""}
+
+    asked = r | {"missing_evidence": [*r["missing_evidence"], past_end(-1.0)]}
+    assert missing_evidence_problems(scene, asked, wide) == []
+    elsewhere = r | {"missing_evidence": [*r["missing_evidence"], past_end(1.0)]}
+    assert missing_evidence_problems(scene, elsewhere, wide) != []  # not the chain's end
+    scene["coverage"]["ends"]["left"] = {"kind": "limit"}
+    assert missing_evidence_problems(scene, asked, wide) != []  # nothing to walk past
+
+
+def test_chain_ends_are_measured_from_the_meter():
+    scene = {
+        "meter": {"pos": [2.0, 4.0, 0.3], "wall_id": "b"},
+        "walls": [
+            {"id": "a", "baseline": [[-5.0, 3.0], [-5.0, 0.0]]},
+            {"id": "b", "baseline": [[-5.0, 0.0], [5.0, 0.0]]},
+        ],
+    }
+    assert chain_ends_s(scene) == pytest.approx((-10.0, 3.0))
+
+
+def test_a_view_that_only_reaches_the_needed_height_is_not_higher():
+    r = result(checks=[check(), passing("opening_clearance")])
+    msgs = invariant_problems(with_wall_seen(6.5), r, rules=RULES)
+    assert any("observed higher than 6.5 ft" in m for m in msgs)
+    assert invariant_problems(with_wall_seen(6.51), r, rules=RULES) == []
+
+
+def test_a_facing_view_that_only_reaches_the_needed_depth_is_not_beyond():
+    r = result(checks=[check(), passing("facing_gap")])
+    scene = copy.deepcopy(SCENE)
+    need = 22 / 12 + 3.0
+    scene["coverage"]["observed"].append({"band": "facing", "span_ft": [0.0, 5.0], "out_ft": need})
+    assert any("facing [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
+    scene["coverage"]["observed"][-1]["out_ft"] = need + 0.01
+    assert invariant_problems(scene, r, rules=BAND_RULES) == []

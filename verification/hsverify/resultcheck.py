@@ -146,14 +146,19 @@ def reached(entry: dict) -> float:
     return entry.get("out_ft", default)
 
 
-def observed(scene: dict, band: str, min_out_ft: float = 0.0) -> list[tuple[float, float]]:
+def observed(
+    scene: dict, band: str, min_out_ft: float = 0.0, beyond: bool = False
+) -> list[tuple[float, float]]:
     """Merged observed s-intervals for a band, counting only entries whose view reached
-    `min_out_ft` (out from the wall for ground and facing, up for wall and overhead)."""
+    `min_out_ft` (out from the wall for ground and facing, up for wall and overhead). With
+    `beyond`, the view must pass it strictly, as the server requires of a wall seen "higher
+    than" a height (server/scene.py at 6c7ca23)."""
     spans = []
     for entry in scene.get("coverage", {}).get("observed", []):
         if entry["band"] != band:
             continue
-        if reached(entry) + EPS < min_out_ft:
+        far = reached(entry)
+        if (far <= min_out_ft) if beyond else (far + EPS < min_out_ft):
             continue
         spans.append(tuple(sorted(entry["span_ft"])))
     spans.sort()
@@ -323,7 +328,7 @@ def reach_gaps(
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
         elif need.band == "wall":
             a, b = required_span(lo, hi, reach)
-            seen = covers(observed(scene, "wall", min_out_ft=need.height), a, b)
+            seen = covers(observed(scene, "wall", min_out_ft=need.height, beyond=True), a, b)
             gap = None if seen else f"wall [{a:.2f}, {b:.2f}] observed higher than {need.height} ft"
         else:
             gap = measured_band_gap(scene, need.band, wall_id, lo, hi, need.height)
@@ -357,7 +362,8 @@ def measured_band_gap(
         if not seen:
             return f"{where}, none seen"
         settled = any(x <= p + EPS and q - EPS <= y for x, y in measured)
-        if not settled and max(seen) + EPS < need:
+        # Strictly beyond, as the server requires (server/solver.py at 6c7ca23).
+        if not settled and max(seen) <= need:
             return f"{where} out to {need:.2f} ft or measured, seen {max(seen):.2f} ft"
     return None
 
@@ -368,7 +374,7 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     wall and cable route back to the meter. No slack: runs list exactly the starts that were
     evaluated."""
     problems: list[str] = []
-    route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft)
+    route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft, beyond=True)
     # A passing run passes every check the server evaluated; a check it did not evaluate (a
     # battery clearance with no battery in the scene, say) needs nothing.
     evaluated = {c["id"] for c in result.get("checks", [])} or set(rules.needs)
@@ -475,20 +481,62 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
     return problems
 
 
+# How far a past_end request may sit from the chain's actual end and still name it.
+END_TOL_FT = 0.1
+
+
+def chain_ends_s(scene: dict) -> tuple[float, float] | None:
+    """s of the wall chain's left and right ends (the meter's projection is s = 0; distance
+    runs along every wall and across the gaps between them), or None without a meter wall."""
+    walls = scene.get("walls", [])
+    points, owner = [], []
+    for wall in walls:
+        for pt in wall["baseline"]:
+            points.append(tuple(pt))
+            owner.append(wall["id"])
+    if len(points) < 2 or "meter" not in scene:
+        return None
+    cum = [0.0]
+    for p, q in itertools.pairwise(points):
+        cum.append(cum[-1] + math.dist(p, q))
+    mx, _, mz = scene["meter"]["pos"]
+    best = None
+    for i, (p, q) in enumerate(itertools.pairwise(points)):
+        if owner[i] != scene["meter"]["wall_id"] or owner[i + 1] != owner[i]:
+            continue
+        seg = math.dist(p, q)
+        if seg == 0:
+            continue
+        t = ((mx - p[0]) * (q[0] - p[0]) + (mz - p[1]) * (q[1] - p[1])) / seg**2
+        t = min(1.0, max(0.0, t))
+        d = math.dist((mx, mz), (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])))
+        if best is None or d < best[0]:
+            best = (d, cum[i] + t * seg)
+    if best is None:
+        return None
+    return -best[1], cum[-1] - best[1]
+
+
 def with_past_ends_asked(scene: dict, requests: list[dict]) -> dict:
     """The scene as if everything past each end the result asks to walk past were observed.
 
     Past an unexplored end the wall may turn, so a view along the same line settles nothing; the
     server asks to keep walking (`past_end`) instead of for a band there, and that request covers
-    every band beyond the end."""
+    every band beyond the end. Only a request at the chain's actual end, on a side not marked
+    `limit`, earns that credit."""
+    ends = chain_ends_s(scene)
+    kinds = scene.get("coverage", {}).get("ends", {})
     past = [r for r in requests if r["kind"] == "past_end" and "span_ft" in r and "side" in r]
-    if not past:
+    if not past or ends is None:
         return scene
     m = copy.deepcopy(scene)
     observed_ = m.setdefault("coverage", {}).setdefault("observed", [])
     for r in past:
-        end = r["span_ft"][0]
-        span = [end - 1e6, end] if r["side"] == "left" else [end, end + 1e6]
+        side = r["side"]
+        end = ends[0] if side == "left" else ends[1]
+        if kinds.get(side, {}).get("kind") == "limit" or abs(r["span_ft"][0] - end) > END_TOL_FT:
+            continue
+        span = [end - 1e6, end] if side == "left" else [end, end + 1e6]
         for band in ("wall", "facing", "overhead"):
             observed_.append({"band": band, "span_ft": span})
         observed_.append({"band": "ground", "span_ft": span, "out_ft": 1e6})
