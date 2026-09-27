@@ -474,7 +474,14 @@ enum ScanCopy {
         title: "End the scan here?",
         detail: "We'll check the part of the wall you've walked."
     )
+    /// The same question when too little of the wall was walked to check it
+    /// (`ScanViewState.endScanTooShort`): the way out is a new scan.
+    static let endScanTooShort = Instruction(
+        title: "End the scan here?",
+        detail: "You haven't walked enough of the wall to check it yet. Start over, or keep walking along the wall."
+    )
     static let endScanYes = "Yes, end here"
+    static let endScanStartOver = "Start over"
     static let keepWalking = "Keep walking"
 
     /// With no server connected nothing is sent, and the words must not say it is.

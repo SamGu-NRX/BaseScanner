@@ -26,6 +26,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
         ("wallWalk-endScanQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion"], "wallWalk"),
+        ("wallWalk-endScanTooShort", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion", "-uiDemoEndScanTooShort"], "wallWalk"),
         ("wallWalk-endQuestionLeavesOut", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
@@ -122,6 +123,7 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
         // #82: a second "Can't get there" soon after the first asks before ending the scan.
         "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
+        "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
         // #76: a wall never walked shows no spot.
         "result-wallNotMeasured": [("result.headline", "We couldn't measure your wall")],
     ]
@@ -131,6 +133,8 @@ final class ScreenStatesUITests: XCTestCase {
         // #39: stopping is available even when just one requested view remains.
         "gapRequest-followUp": ["action.skipGap", "action.showResult"],
         "wallWalk-endScanQuestion": ["action.endScan", "action.keepWalking"],
+        // Too little walked to finish: a new scan, not a loop back to the walk.
+        "wallWalk-endScanTooShort": ["action.endScanStartOver", "action.keepWalking"],
         "result-wallNotMeasured": ["action.startOver"],
     ]
 

@@ -279,6 +279,7 @@ final class ScanEngine {
         if state.phase == .resultAR { hideResultInCamera() }
         // "End the scan here?" belongs to the walk it was asked on.
         state.endScanQuestion = false
+        state.endScanTooShort = false
         let previous = state.phase
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")

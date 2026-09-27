@@ -30,12 +30,34 @@ import Testing
         #expect(refusals.wasRefused(.left, end: -0.2))
     }
 
-    /// Run 3's shape: both sides ended by "Can't get there" before either was walked.
-    @Test func bothSidesRefusedMeansNeitherWasWalked() {
+    /// Synthetic: both sides ended by "Can't get there" with the walk and the end within a
+    /// battery's width of the meter on each side. This is the only case the rule catches.
+    @Test func bothSidesEndedNearTheMeterMeansNeitherWasWalked() {
         var refusals = WalkRefusals()
         refusals.ended(.left, at: -0.3, walked: 0.2, time: 1)
         refusals.ended(.right, at: 0.6, walked: 0, time: 2)
         #expect(refusals.neitherSideWalked(leftEnd: -0.3, rightEnd: 0.6))
+    }
+
+    /// The rule's known limit (#76): field test run 3 is NOT caught. Its kept views reached about
+    /// 2.0 m left and 1.8 m right of the meter before both walk cards were refused, and its ends
+    /// were recorded at -4.0 m and +0.5 m, so both sides count as walked and the spot still shows.
+    /// Run 3's spot inside the house came from a bad meter tap (#69).
+    @Test func run3IsNotCaughtBecauseItsViewsReachedPastTheMinimum() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -4.0, walked: 2.04, time: 1)
+        refusals.ended(.right, at: 0.525, walked: 1.83, time: 2)
+        #expect(!refusals.neitherSideWalked(leftEnd: -4.0, rightEnd: 0.525))
+    }
+
+    /// "Yes, end here" can't finish a wall shorter than a battery's width, so the question
+    /// offers "Start over" then instead of looping back to the walk.
+    @Test func endsTooCloseToFinish() {
+        #expect(WalkRefusals.endsTooClose(left: -0.2, right: 0.3))
+        #expect(WalkRefusals.endsTooClose(left: 0, right: 0))
+        #expect(WalkRefusals.endsTooClose(left: nil, right: 2))
+        #expect(!WalkRefusals.endsTooClose(left: -0.4, right: 0.4))
+        #expect(!WalkRefusals.endsTooClose(left: -3, right: 0))
     }
 
     @Test func oneSideRefusedIsNotEnough() {

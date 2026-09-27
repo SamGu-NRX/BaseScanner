@@ -57,6 +57,14 @@ public struct WalkRefusals: Equatable, Sendable {
         return refused == end
     }
 
+    /// True when ends at `left` and `right` would be closer than `WallFrame.minWallLength`, so
+    /// finishing the walk with them is refused (`CoverageMap.endsTooClose`). A missing end counts
+    /// as too close: there is nothing to finish with.
+    public static func endsTooClose(left: Float?, right: Float?) -> Bool {
+        guard let left, let right else { return true }
+        return right - left < WallFrame.minWallLength
+    }
+
     /// True when both ends of the wall are ones a refusal set: neither side of the meter was
     /// walked, and the result must not show a spot.
     public func neitherSideWalked(leftEnd: Float?, rightEnd: Float?) -> Bool {

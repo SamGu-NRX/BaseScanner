@@ -86,7 +86,7 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
-        if state.endScanQuestion { return ScanCopy.endScanQuestion }
+        if state.endScanQuestion { return state.endScanTooShort ? ScanCopy.endScanTooShort : ScanCopy.endScanQuestion }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let confirm = state.nextWallConfirm { return ScanCopy.nextWallConfirm(confirm) }
@@ -186,16 +186,30 @@ struct WallWalkScreen: View {
         case .endScanQuestion:
             // "Can't get there" again soon after it ended a side (#82): two equal full-width
             // answers, like the end question's.
+            // With too little walked to finish, "Start over" takes the place of "Yes, end here",
+            // which would only put the homeowner back on the walk.
             VStack(spacing: 8) {
-                Button {
-                    actions.answerEndScan(true)
-                } label: {
-                    Label(ScanCopy.endScanYes, systemImage: "checkmark")
-                        .frame(maxWidth: .infinity)
+                if state.endScanTooShort {
+                    Button {
+                        actions.startOver()
+                    } label: {
+                        Label(ScanCopy.endScanStartOver, systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
+                    .accessibilityIdentifier("action.endScanStartOver")
+                } else {
+                    Button {
+                        actions.answerEndScan(true)
+                    } label: {
+                        Label(ScanCopy.endScanYes, systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Finishes the walk with the part of the wall you've walked")
+                    .accessibilityIdentifier("action.endScan")
                 }
-                .buttonStyle(.secondaryProminent)
-                .accessibilityHint("Finishes the walk with the part of the wall you've walked")
-                .accessibilityIdentifier("action.endScan")
                 Button {
                     actions.answerEndScan(false)
                 } label: {

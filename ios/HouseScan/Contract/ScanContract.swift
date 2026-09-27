@@ -817,6 +817,10 @@ final class ScanViewState {
     /// that last ended a side: the walk asks "End the scan here?" instead of ending this side too
     /// (#82). Answered by `answerEndScan`.
     var endScanQuestion = false
+    /// Set with `endScanQuestion` when ending the open sides now would leave ends closer than a
+    /// battery is wide (`WalkRefusals.endsTooClose`): "Done with this wall" would refuse them and
+    /// the walk would go on, so the question offers "Start over" instead of "Yes, end here".
+    var endScanTooShort = false
     /// True after "Done with this wall" was refused because the ends were closer together than
     /// `WallFrame.minWallLength`; the ends were cleared. False again once an end is marked.
     var wallTooShort = false

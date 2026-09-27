@@ -438,6 +438,11 @@ extension ScanEngine: ScanActions {
                 // the homeowner may be trying to stop, so ask before ending this side too (#82).
                 // The task stays unresolved until the answer.
                 RuntimeLog.engine.info("cannot access area again during \(task, privacy: .public): asking to end the scan")
+                if let map = coverage {
+                    // With nothing walked the ends would land too close to finish, and "Yes, end
+                    // here" would only put the homeowner back on the walk.
+                    state.endScanTooShort = WalkRefusals.endsTooClose(left: map.leftEnd ?? walkedEnd(.left), right: map.rightEnd ?? walkedEnd(.right))
+                }
                 state.endScanQuestion = true
                 return
             }
@@ -485,6 +490,7 @@ extension ScanEngine: ScanActions {
     func answerEndScan(_ end: Bool) {
         guard state.phase == .wallWalk, state.endScanQuestion else { return }
         state.endScanQuestion = false
+        state.endScanTooShort = false
         guard end else {
             RuntimeLog.engine.info("end the scan here? keep walking")
             walkRefusals.keepWalking()

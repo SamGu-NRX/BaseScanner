@@ -126,6 +126,8 @@ final class DemoEngine: ScanActions {
         if arguments.contains("-uiDemoEndScanQuestion") {
             // "Can't get there" again soon after it ended the right side (#82).
             state.endScanQuestion = true
+            // `-uiDemoEndScanTooShort`: too little walked to finish, so it offers "Start over".
+            state.endScanTooShort = arguments.contains("-uiDemoEndScanTooShort")
         }
         if arguments.contains("-uiDemoNextWall") {
             state.wall?.rightEnd = demoRightEnd
@@ -924,6 +926,7 @@ final class DemoEngine: ScanActions {
     func answerEndScan(_ end: Bool) {
         guard state.endScanQuestion else { return }
         state.endScanQuestion = false
+        state.endScanTooShort = false
         guard end else { return }
         finishedWalkState()
         finishWalk()
@@ -1037,6 +1040,8 @@ final class DemoEngine: ScanActions {
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
+        state.endScanQuestion = false
+        state.endScanTooShort = false
         state.groundAnswer = nil
     }
 
