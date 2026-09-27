@@ -1,0 +1,393 @@
+{
+ "atrium": [
+  {
+   "walk": "seq1",
+   "images": 210,
+   "walked_m": 94.41016428310266,
+   "scale": 1.0023602932316809,
+   "heading_offset_spread_deg": 0.51,
+   "gps_over_truth": [
+    0.9544334598959915,
+    6.180105581277903
+   ]
+  },
+  {
+   "walk": "seq2",
+   "images": 218,
+   "walked_m": 84.96580536604357,
+   "scale": 1.0052688092531439,
+   "heading_offset_spread_deg": 0.31,
+   "gps_over_truth": [
+    0.15516691381792894,
+    4.808667819792621
+   ]
+  },
+  {
+   "walk": "seq3",
+   "images": 220,
+   "walked_m": 86.31645591411336,
+   "scale": 1.003246589937209,
+   "heading_offset_spread_deg": 2.19,
+   "gps_over_truth": [
+    0.8219571884447006,
+    4.981361191410862
+   ]
+  },
+  {
+   "walk": "seq4",
+   "images": 211,
+   "walked_m": 80.37055536221209,
+   "scale": 1.003131331974088,
+   "heading_offset_spread_deg": 1.09,
+   "gps_over_truth": [
+    0.6810396658344083,
+    5.3425497760692915
+   ]
+  },
+  {
+   "walk": "seq5",
+   "images": 217,
+   "walked_m": 92.65937612940037,
+   "scale": 1.005627200567819,
+   "heading_offset_spread_deg": 0.67,
+   "gps_over_truth": [
+    0.5960577804888686,
+    8.916284685405333
+   ]
+  },
+  {
+   "walk": "seq6",
+   "images": 224,
+   "walked_m": 97.08311813609826,
+   "scale": 1.0102453876770578,
+   "heading_offset_spread_deg": 0.6,
+   "gps_over_truth": [
+    0.37872463093575653,
+    7.248418603314583
+   ]
+  },
+  {
+   "walk": "seq7",
+   "images": 207,
+   "walked_m": 48.855792152413514,
+   "scale": 0.8227205626621225,
+   "heading_offset_spread_deg": 2.32,
+   "gps_over_truth": [
+    0.9195251915966183,
+    3.654793997032829
+   ]
+  },
+  {
+   "walk": "seq8",
+   "images": 210,
+   "walked_m": 44.89448219467613,
+   "scale": 0.5862882462447312,
+   "heading_offset_spread_deg": 2.7,
+   "gps_over_truth": [
+    0.7097237167859158,
+    7.711446333848967
+   ]
+  },
+  {
+   "walk": "seq9",
+   "images": 210,
+   "walked_m": 65.93007454020871,
+   "scale": 1.0078025001937108,
+   "heading_offset_spread_deg": 1.1,
+   "gps_over_truth": [
+    0.8868285367370585,
+    7.54096921857418
+   ]
+  },
+  {
+   "walk": "seq10",
+   "images": 208,
+   "walked_m": 48.40964088676492,
+   "scale": 0.49319206199023025,
+   "heading_offset_spread_deg": 1.98,
+   "gps_over_truth": [
+    0.4903890825998695,
+    3.010050382848813
+   ]
+  }
+ ],
+ "bar": [
+  {
+   "walk": "seq1",
+   "images": 216,
+   "walked_m": 175.86654543309672,
+   "scale": 1.0119566167379175,
+   "heading_offset_spread_deg": 0.51,
+   "gps_over_truth": [
+    0.9579480610937561,
+    1.3772267742039346
+   ]
+  },
+  {
+   "walk": "seq2",
+   "images": 212,
+   "walked_m": 127.19432929579634,
+   "scale": 1.0172815131096447,
+   "heading_offset_spread_deg": 0.28,
+   "gps_over_truth": [
+    0.9779587230528283,
+    1.3838165071294877
+   ]
+  },
+  {
+   "walk": "seq3",
+   "images": 198,
+   "walked_m": 141.89159529119655,
+   "scale": 1.0212684332194755,
+   "heading_offset_spread_deg": 0.33,
+   "gps_over_truth": [
+    0.9356655122238959,
+    2.3704164161463037
+   ]
+  },
+  {
+   "walk": "seq4",
+   "images": 201,
+   "walked_m": 124.64806966097674,
+   "scale": 1.0121136482692539,
+   "heading_offset_spread_deg": 0.3,
+   "gps_over_truth": [
+    0.6604146747410872,
+    5.097564074125843
+   ]
+  },
+  {
+   "walk": "seq5",
+   "images": 201,
+   "walked_m": 143.10773950826143,
+   "scale": 1.0009616239552566,
+   "heading_offset_spread_deg": 0.52,
+   "gps_over_truth": [
+    0.6369285079875624,
+    5.36528822706711
+   ]
+  },
+  {
+   "walk": "seq6",
+   "images": 201,
+   "walked_m": 138.4959665395486,
+   "scale": 1.0010668096557958,
+   "heading_offset_spread_deg": 0.39,
+   "gps_over_truth": [
+    0.8089766337375268,
+    6.387337161265863
+   ]
+  },
+  {
+   "walk": "seq7",
+   "images": 202,
+   "walked_m": 170.17932795219318,
+   "scale": 1.0167883077362732,
+   "heading_offset_spread_deg": 0.57,
+   "gps_over_truth": [
+    0.6847391281434964,
+    5.809812301734013
+   ]
+  },
+  {
+   "walk": "seq8",
+   "images": 208,
+   "walked_m": 209.46759929422564,
+   "scale": 1.0189493528347173,
+   "heading_offset_spread_deg": 0.86,
+   "gps_over_truth": [
+    1.0645516349542963,
+    1.3517126378212698
+   ]
+  },
+  {
+   "walk": "seq9",
+   "images": 203,
+   "walked_m": 173.55071373965527,
+   "scale": 1.0066311229670113,
+   "heading_offset_spread_deg": 0.6,
+   "gps_over_truth": [
+    0.9740703092115618,
+    2.144422536158645
+   ]
+  },
+  {
+   "walk": "seq10",
+   "images": 210,
+   "walked_m": 192.4238101626739,
+   "scale": 1.0083759873921443,
+   "heading_offset_spread_deg": 0.61,
+   "gps_over_truth": [
+    0.993729984618413,
+    0.9201707340885078
+   ]
+  },
+  {
+   "walk": "seq11",
+   "images": 207,
+   "walked_m": 175.9338154180696,
+   "scale": 1.010333121129963,
+   "heading_offset_spread_deg": 0.61,
+   "gps_over_truth": [
+    0.9091302556542299,
+    1.9019401878929387
+   ]
+  },
+  {
+   "walk": "seq12",
+   "images": 210,
+   "walked_m": 191.96990076498213,
+   "scale": 0.996197045053592,
+   "heading_offset_spread_deg": 3.14,
+   "gps_over_truth": [
+    0.8011488936700454,
+    5.267189011800247
+   ]
+  },
+  {
+   "walk": "seq13",
+   "images": 203,
+   "walked_m": 114.02980056127909,
+   "scale": 1.0119872935503242,
+   "heading_offset_spread_deg": 0.76,
+   "gps_over_truth": [
+    0.7947689756051507,
+    4.285617655990388
+   ]
+  }
+ ],
+ "church": [
+  {
+   "walk": "seq1",
+   "images": 207,
+   "walked_m": 231.99872887418232,
+   "scale": 0.9848750055548867,
+   "heading_offset_spread_deg": 0.49,
+   "gps_over_truth": [
+    0.9799948771309479,
+    1.3515356720807354
+   ]
+  },
+  {
+   "walk": "seq2",
+   "images": 200,
+   "walked_m": 160.92811256928104,
+   "scale": 0.9902665052054505,
+   "heading_offset_spread_deg": 0.25,
+   "gps_over_truth": [
+    0.9377087263498249,
+    1.1972932900317899
+   ]
+  },
+  {
+   "walk": "seq3",
+   "images": 201,
+   "walked_m": 218.24603230682933,
+   "scale": 0.9800607376538126,
+   "heading_offset_spread_deg": 0.63,
+   "gps_over_truth": [
+    0.9782533175523683,
+    0.9938601410726303
+   ]
+  },
+  {
+   "walk": "seq4",
+   "images": 204,
+   "walked_m": 151.4563413261829,
+   "scale": 0.9778316135150016,
+   "heading_offset_spread_deg": 1.14,
+   "gps_over_truth": [
+    0.9898721574350746,
+    0.9009096876438962
+   ]
+  },
+  {
+   "walk": "seq5",
+   "images": 204,
+   "walked_m": 231.87872958177226,
+   "scale": 0.9821881576545499,
+   "heading_offset_spread_deg": 0.71,
+   "gps_over_truth": [
+    0.9668839999665497,
+    3.902258984045079
+   ]
+  },
+  {
+   "walk": "seq6",
+   "images": 207,
+   "walked_m": 145.27615052372002,
+   "scale": 0.9823983125136755,
+   "heading_offset_spread_deg": 0.36,
+   "gps_over_truth": [
+    0.9550968067771002,
+    1.70942980633456
+   ]
+  },
+  {
+   "walk": "seq7",
+   "images": 210,
+   "walked_m": 191.28715718075017,
+   "scale": 0.9873264572724576,
+   "heading_offset_spread_deg": 0.24,
+   "gps_over_truth": [
+    0.9963768132994598,
+    4.812542566599604
+   ]
+  },
+  {
+   "walk": "seq8",
+   "images": 212,
+   "walked_m": 235.22587305325493,
+   "scale": 0.9819571546728899,
+   "heading_offset_spread_deg": 0.95,
+   "gps_over_truth": [
+    0.9493346479478224,
+    1.5393253837100358
+   ]
+  },
+  {
+   "walk": "seq9",
+   "images": 205,
+   "walked_m": 192.89081292348538,
+   "scale": 0.9842011055064939,
+   "heading_offset_spread_deg": 0.41,
+   "gps_over_truth": [
+    0.953053003649021,
+    1.4336826429734981
+   ]
+  },
+  {
+   "walk": "seq10",
+   "images": 210,
+   "walked_m": 198.5111834322479,
+   "scale": 0.982038687843804,
+   "heading_offset_spread_deg": 0.51,
+   "gps_over_truth": [
+    0.9937814452260965,
+    1.5063768901615515
+   ]
+  },
+  {
+   "walk": "seq11",
+   "images": 206,
+   "walked_m": 189.39173346415305,
+   "scale": 0.9868560546713097,
+   "heading_offset_spread_deg": 0.44,
+   "gps_over_truth": [
+    0.9480531325568134,
+    0.9878992016179327
+   ]
+  },
+  {
+   "walk": "seq12",
+   "images": 230,
+   "walked_m": 255.20136533919222,
+   "scale": 0.9845775222021418,
+   "heading_offset_spread_deg": 0.34,
+   "gps_over_truth": [
+    0.9225200677831688,
+    1.478394025204613
+   ]
+  }
+ ]
+}

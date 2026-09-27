@@ -1,0 +1,11 @@
+{
+  "name": "integration-viewer",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node server.js",
+    "synthetic": "node server.js --synthetic",
+    "test": "node --test \"test/*.test.js\""
+  }
+}

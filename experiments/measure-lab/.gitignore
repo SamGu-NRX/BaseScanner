@@ -1,0 +1,16 @@
+# Per-person signing overrides; see Config/Local.xcconfig.example.
+Config/Local.xcconfig
+
+# Per-user Xcode state inside the committed project.
+xcuserdata/
+*.xcuserstate
+
+# Build output.
+DerivedData/
+build/
+Geometry/.build/
+Geometry/.swiftpm/
+
+# Exported sessions copied off a phone go in data/. They show a real home; never commit them.
+data/
+*.zip

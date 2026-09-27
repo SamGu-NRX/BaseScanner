@@ -1,0 +1,159 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g10-derived-compound-error",
+  "source": "t3-lane-c-review.md golden 10 at origin/t3/research a7d91f1",
+  "description": "Gas gap 3.5 ft between a gas meter at +/- 0.3 and a battery on a wall at +/- 0.3. The gap carries +/- 0.6 (linear sum), so 3.5 - 0.6 = 2.9 is not above 3: unsure by margin. A root-sum-square error of 0.424 would wrongly pass it.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        -1.8333333333333333
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -5,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            -1.8333333333333333
+          ]
+        ],
+        "plus_minus_ft": 0.3
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          -5,
+          15
+        ],
+        "source": "tape",
+        "plus_minus_ft": 0.3,
+        "footprint": [
+          [
+            -10,
+            3.5
+          ],
+          [
+            20,
+            3.5
+          ],
+          [
+            20,
+            4.0
+          ],
+          [
+            -10,
+            4.0
+          ]
+        ],
+        "conf": 0.6
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -5,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            -1.8333333333333333
+          ],
+          [
+            15,
+            8.166666666666666
+          ],
+          [
+            -5,
+            8.166666666666666
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -5.0,
+          15.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -20.0,
+            30.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "decision_not": [
+      "pass"
+    ],
+    "checks": [
+      {
+        "match": "gas",
+        "outcome": "unsure",
+        "unsure_cause": "margin",
+        "measured_ft": 3.5,
+        "plus_minus_ft": 0.6
+      }
+    ],
+    "missing_evidence_empty": true
+  }
+}

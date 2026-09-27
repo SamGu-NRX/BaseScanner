@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-09-26",
+  "purpose": "Selected local evidence identities for the public research handoff. Paths are relative to the retained, ignored private/research archive; these files are not shipped in this commit. Hashes do not make unshipped evidence independently reproducible. Read the accompanying experiment-evidence report for the status and scope of each result; a preparation manifest does not imply execution.",
+  "records": [
+    {
+      "localArchiveRelativePath": "experiments/capture-admission/REPORT.md",
+      "bytes": 9448,
+      "sha256": "548df37bfd2d537f96cb170805c97822e0c715f678e9ade08cdf469fdc7dfbf2"
+    },
+    {
+      "localArchiveRelativePath": "experiments/capture-admission/review/fix-receipts.json",
+      "bytes": 11513,
+      "sha256": "702ccf8d1ab1ea22d3f847f69e1b3ce0d5986685d750405c461aec3883f5aee5"
+    },
+    {
+      "localArchiveRelativePath": "experiments/equipment-association/fix-v2/REPORT.md",
+      "bytes": 2151,
+      "sha256": "bb033b9af77b95854a3f81d227911242574c246e6694d835f0eb40486ad69588"
+    },
+    {
+      "localArchiveRelativePath": "native-producer-update-20260926-1217/reset-review/current-patch/REPORT.md",
+      "bytes": 5509,
+      "sha256": "03606b7c18994aa4a4dfb84e24078cffab8dbf2433d58bdc6e950d547047709d"
+    },
+    {
+      "localArchiveRelativePath": "native-producer-update-20260926-1217/reset-review/current-patch/final-manifest.json",
+      "bytes": 18424,
+      "sha256": "2a41a977e0a209d54963e263b59a8e77ff57663f41821d68d3610e05acceee56"
+    },
+    {
+      "localArchiveRelativePath": "native-producer-update-20260926-1217/geometry-review/ground-update-probe/REPORT.md",
+      "bytes": 4505,
+      "sha256": "678428ffb39c1cb24c9b0a77426335a4cf3424faa780cde7e78098756ff3ab29"
+    },
+    {
+      "localArchiveRelativePath": "native-producer-update-20260926-1217/geometry-review/ground-update-probe/artifact-manifest.json",
+      "bytes": 15089,
+      "sha256": "329968483d233783d6df0334f6c890b37b8fd0e7bc41b5a8bcf4b7cdae38f658"
+    },
+    {
+      "localArchiveRelativePath": "experiments/bootstapir-book/REPORT.md",
+      "bytes": 5189,
+      "sha256": "1224f49aa3c3a936366c5f3393a40107a5c712bc4ce626ff73b54999315d8dde"
+    },
+    {
+      "localArchiveRelativePath": "experiments/bootstapir-book/independent-review.md",
+      "bytes": 4276,
+      "sha256": "849b343413af50acab3fbdb98095b65daef77a5a443bce34731aabb26b24be85"
+    },
+    {
+      "localArchiveRelativePath": "experiments/bootstapir-book/final-manifest.json",
+      "bytes": 5108,
+      "sha256": "eecfbf6500a0191b5d9c9abc9c6181bac00f6b9a225ffec26c3f2d6912db7fb9"
+    },
+    {
+      "localArchiveRelativePath": "experiments/da3-prefix-update/REPORT.md",
+      "bytes": 8270,
+      "sha256": "0d9ebcd60a0a4fa85e09b9919fa9d2e7cce685227df0007a28049116dfde2550"
+    },
+    {
+      "localArchiveRelativePath": "experiments/apple-depth-runtime/README.md",
+      "bytes": 7200,
+      "sha256": "a5e0d85923ae53ec6327cec6ef1a72d625814d0fee075b9462f8f617bde2715b"
+    },
+    {
+      "localArchiveRelativePath": "experiments/tum-fr3-reference-prep/acquisition-prep/REPORT.md",
+      "bytes": 4680,
+      "sha256": "36d99f7567d7dd36ce52cc157616082ab66e2b79b4a0147a89ef9cac220c2d21"
+    },
+    {
+      "localArchiveRelativePath": "experiments/tum-fr3-reference-prep/acquisition-prep/artifact-manifest.json",
+      "bytes": 200386,
+      "sha256": "7ce8dc59d2d75cc9830b099779969c7997f917a171313645fe07a838772b66cf"
+    },
+    {
+      "localArchiveRelativePath": "experiments/tum-fr3-reference-consistency/prepared-manifest.json",
+      "bytes": 1120,
+      "sha256": "133358bd1281c13530e1335d4044c831856d550f9643458f96a899bed2c0d2f8"
+    },
+    {
+      "localArchiveRelativePath": "deployment-input-limits/REPORT.md",
+      "bytes": 4991,
+      "sha256": "1e72c6f955242fda08d6e0ea54ca35eb3cf1c7d4dce67fb03639989918973124"
+    },
+    {
+      "localArchiveRelativePath": "experiments/upload-direct-build/runtime-prep/RUNTIME-RESULT.md",
+      "bytes": 2636,
+      "sha256": "7f63c04670ab85431fcf15aad3fede592b160ee2e5753eb20a6d11fdf63dea29"
+    },
+    {
+      "localArchiveRelativePath": "point-reference-options.md",
+      "bytes": 7286,
+      "sha256": "5e3135236423f859f83829e683dcf637f627e2f60632bce1f1faf2fed101e30e"
+    }
+  ]
+}

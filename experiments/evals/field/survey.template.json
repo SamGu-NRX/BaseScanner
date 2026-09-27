@@ -1,0 +1,164 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "house": "field-01",
+  "captures": [],
+  "scale_reference": "scale-ref",
+  "candidates": [
+    {
+      "id": "c1",
+      "marker": "chalk at the fence base, mark F",
+      "location": "FILL: distance of F along the wall from mark A"
+    }
+  ],
+  "measurements": [
+    {
+      "id": "span-30-ab",
+      "candidate": null,
+      "from": "wall-base mark A",
+      "to": "wall-base mark B, about 30 ft along the wall",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape along the wall base",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "scale-ref",
+      "candidate": null,
+      "from": "scale cross S1 on the wall",
+      "to": "scale cross S2, 1 to 3 m away",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.005,
+      "method": "tape",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "opening-width",
+      "candidate": null,
+      "from": "opening's left edge (frame, not glass)",
+      "to": "opening's right edge",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "sill-height",
+      "candidate": null,
+      "from": "ground at the wall below the sill",
+      "to": "sill",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape, vertical",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "meter-height",
+      "candidate": null,
+      "from": "ground at the wall below the meter",
+      "to": "meter's bottom edge",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape, vertical",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "facing-gap",
+      "candidate": "c1",
+      "from": "wall",
+      "to": "fence-base mark F, perpendicular to the wall",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.02,
+      "method": "tape, perpendicular",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "overhead-height",
+      "candidate": null,
+      "from": "ground below the overhead corner",
+      "to": "overhead corner (eave or porch beam)",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.02,
+      "method": "tape, vertical",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "return-gap",
+      "candidate": null,
+      "from": "reference X, first tap",
+      "to": "reference X, tapped again after the walk",
+      "status": "measured",
+      "value_ft": 0,
+      "plus_minus_ft": 0.0,
+      "method": "none: the true gap is 0",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "span-30-ba",
+      "candidate": null,
+      "from": "wall-base mark B",
+      "to": "wall-base mark A, taped again from B",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape along the wall base",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    },
+    {
+      "id": "span-20",
+      "candidate": null,
+      "from": "long-span mark L1 on paving",
+      "to": "long-span mark L2, 20 ft or more away",
+      "status": "measured",
+      "value_ft": "FILL ft in",
+      "plus_minus_ft": 0.01,
+      "method": "tape",
+      "measured_by": [
+        "tape-1",
+        "tape-2"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "candidate": "c1",
+      "check": "facing",
+      "measurement": "facing-gap",
+      "threshold": "facing_gap_ft"
+    }
+  ]
+}
