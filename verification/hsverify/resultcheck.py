@@ -48,16 +48,19 @@ class Need:
 
     - `ground`: ground over [lo - r, hi + r], out to depth + r in front of the battery;
     - `wall`: the wall band over [lo - r, hi + r], seen higher than `height`;
-    - `facing`, `overhead`: the band over [lo, hi]; where no measurement (`facing`, `overheads`)
-      covers a stretch, the band's `out_ft` there must reach `height`.
+    - `facing`, `overhead`: the band over [lo - r, hi + r]; where no measurement (`facing`,
+      `overheads`) covers a stretch, the band's `out_ft` there must be beyond `height`.
 
-    r is `radius`, plus the battery's position error when `widen`.
+    r is `radius`, plus the battery's position error when `widen`: with the drift for its
+    distance from the meter when `drift`, else the wall's own error alone (the server widens
+    facing and headroom by `piece.plus_minus`, server/solver.py at 903d86f).
     """
 
     band: str
     radius: float = 0.0
     height: float = 0.0
     widen: bool = True
+    drift: bool = True
 
 
 # Scene lists whose entries settle facing_gap and headroom where they cover the battery.
@@ -120,8 +123,8 @@ class RuleSet:
             "pool_clearance": (reach("pool_ft"),),
             "opening_clearance": (Need("wall", r("opening_ft"), opening_height),),
             "wall_equipment_above": (Need("wall", r("wall_equipment_ft"), headroom, widen=False),),
-            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft"), widen=False),),
-            "headroom": (Need("overhead", 0.0, headroom, widen=False),),
+            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft"), drift=False),),
+            "headroom": (Need("overhead", 0.0, headroom, drift=False),),
         }
         errors = {
             name: value("errors", f"{name}_ft")
@@ -308,8 +311,12 @@ def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: floa
         raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
     if "plus_minus_ft" in wall:
         return wall["plus_minus_ft"]
-    default = rules.errors[WALL_ERROR[wall.get("source", "tap")]]
-    return default + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+    return wall_error(wall, rules) + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+
+
+def wall_error(wall: dict, rules: RuleSet) -> float:
+    """A wall's own position error, without drift: its explicit one or its source's default."""
+    return wall.get("plus_minus_ft", rules.errors[WALL_ERROR[wall.get("source", "tap")]])
 
 
 def reach_gaps(
@@ -327,12 +334,19 @@ def reach_gaps(
     - ground band: out to depth + R + e in front of the battery (a battery sits flush on one
       straight segment), and at distance d past either end out to R + e - d. The ground point
       there is at most d along the wall plus R + e - d out from the battery's end;
-    - facing and overhead bands: over the battery, reaching the check's distance unless
-      measured.
+    - facing and overhead bands: over [lo - e, hi + e], every place the battery may sit, beyond
+      the check's distance unless measured.
     """
     gaps = []
+    wall = next((w for w in scene["walls"] if w["id"] == wall_id), None)
     for need in rules.needs[check]:
-        reach = need.radius + (battery_error(scene, rules, wall_id, lo, hi) if need.widen else 0.0)
+        if not need.widen:
+            error = 0.0
+        elif need.drift:
+            error = battery_error(scene, rules, wall_id, lo, hi)
+        else:
+            error = wall_error(wall, rules) if wall is not None else 0.0
+        reach = need.radius + error
         if need.band == "ground":
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
         elif need.band == "wall":
@@ -340,7 +354,8 @@ def reach_gaps(
             seen = covers(observed(scene, "wall", min_out_ft=need.height, beyond=True), a, b)
             gap = None if seen else f"wall [{a:.2f}, {b:.2f}] observed higher than {need.height} ft"
         else:
-            gap = measured_band_gap(scene, need.band, wall_id, lo, hi, need.height)
+            a, b = required_span(lo, hi, reach)
+            gap = measured_band_gap(scene, need.band, wall_id, a, b, need.height)
         if gap:
             gaps.append((need.band, gap))
     return gaps
@@ -517,7 +532,10 @@ END_TOL_FT = 0.1
 
 def chain_ends_s(scene: dict) -> tuple[float, float] | None:
     """s of the wall chain's left and right ends (the meter's projection is s = 0; distance
-    runs along every wall and across the gaps between them), or None without a meter wall."""
+    runs along every wall and across the spaces between them), or None without a meter wall.
+
+    TODO: skip the space between walls that meet, as the server does, once S2 settles when two
+    walls meet (#11); counting it now puts an end up to sweep.wall_join_ft too far out."""
     walls = scene.get("walls", [])
     points, owner = [], []
     for wall in walls:
@@ -554,9 +572,9 @@ def with_past_ends_asked(scene: dict, requests: list[dict]) -> dict:
     server asks to keep walking (`past_end`) instead of for a band there, and that request covers
     every band beyond the end. Only a request at the chain's actual end, on a side not marked
     `limit`, earns that credit."""
-    ends = chain_ends_s(scene)
     kinds = scene.get("coverage", {}).get("ends", {})
     past = [r for r in requests if r["kind"] == "past_end" and "span_ft" in r and "side" in r]
+    ends = chain_ends_s(scene) if past else None
     if not past or ends is None:
         return scene
     m = copy.deepcopy(scene)

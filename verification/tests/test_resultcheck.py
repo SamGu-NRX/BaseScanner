@@ -386,8 +386,8 @@ sweep: {step_ft: {value: 0.166666666667}}
     assert rules.needs["battery_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
     assert rules.needs["opening_clearance"] == (Need("wall", 3.0, 6.5),)
     assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
-    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5, widen=False),)
-    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5, widen=False),)
+    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5, drift=False),)
+    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5, drift=False),)
     assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
     lower = RuleSet.from_yaml(
         text.replace("exempt_bottom_above_ft: null", "exempt_bottom_above_ft: 2")
@@ -671,8 +671,8 @@ BAND_RULES = replace(
     RULES,
     needs=RULES.needs
     | {
-        "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0, widen=False),),
-        "headroom": (Need("overhead", 0.0, 6.5, widen=False),),
+        "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0, drift=False),),
+        "headroom": (Need("overhead", 0.0, 6.5, drift=False),),
         "battery_clearance": (Need("ground", 100.0),),
     },
 )
@@ -830,3 +830,14 @@ def test_sweep_run_starts_are_sampled_at_the_rules_step_plus_the_ends():
     assert run_starts([2.0, 2.0], 1 / 6) == [2.0]
     with pytest.raises(ValueError, match=r"sweep\.step_ft"):
         run_starts([1.0, 2.0], None)
+
+
+def test_facing_and_headroom_need_the_band_past_the_battery_by_the_wall_error():
+    # The spot [1, 3.58] on a wall with 0.3 ft of error needs facing seen over [0.7, 3.88].
+    r = result(checks=[passing("facing_gap")])
+    scene = copy.deepcopy(SCENE)
+    scene["walls"][0]["plus_minus_ft"] = 0.3
+    scene["coverage"]["observed"].append({"band": "facing", "span_ft": [1.0, 3.6]})
+    assert any("facing [0.70, 1.00]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
+    scene["coverage"]["observed"][-1]["span_ft"] = [0.7, 3.9]
+    assert invariant_problems(scene, r, rules=BAND_RULES) == []
