@@ -88,11 +88,14 @@ enum UploadFailure {
         }
     }
 
-    /// A busy server: when it said how long to wait, the homeowner hears that, rounded up to a
-    /// minute past 90 seconds; either way the scan is kept and "Try again" is offered.
+    /// A busy server: when it said how long to wait (at most a day, `UploadFailureKind`), the
+    /// homeowner hears that, rounded up to a minute past 90 seconds; either way the scan is kept
+    /// and "Try again" is offered at once.
     static func busyMessage(_ retryAfter: Int?) -> String {
-        let wait: String? = retryAfter.map { seconds in
-            seconds <= 90 ? "about \(max(seconds, 1)) seconds" : "about \((seconds + 59) / 60) minutes"
+        let wait: String? = retryAfter.map { raw in
+            let seconds = min(max(raw, 1), UploadFailureKind.maxRetryAfterSeconds)
+            let minutes = seconds / 60 + (seconds % 60 == 0 ? 0 : 1)
+            return seconds <= 90 ? "about \(seconds) seconds" : "about \(minutes) minutes"
         }
         let when = wait.map { "Try again in \($0)." } ?? "Try again in a moment."
         return "The House Scan server is busy. Your scan is saved on this phone. \(when)"
