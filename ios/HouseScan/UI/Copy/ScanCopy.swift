@@ -424,6 +424,11 @@ enum ScanCopy {
     // The server's result covers where the battery goes, not the panel itself.
     static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
 
+    /// Which rules answered, for a reviewer: "Rules 2f52ec35".
+    static func rulesHash(_ hash: String) -> String {
+        "Rules \(hash)"
+    }
+
     static func unseenSide(_ side: WallSide) -> String {
         "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side."
     }

@@ -95,6 +95,13 @@ public enum ResultReading {
     }
 }
 
+extension PlacementPolicy {
+    /// The first eight characters of `rulesSHA256`: enough to tell two rule sets apart on screen.
+    public var rulesShortHash: String {
+        String(rulesSHA256.prefix(8))
+    }
+}
+
 extension PlacementCheck {
     /// For an UNSURE check, true when a person has to judge it: a measurement inside its error
     /// band, an attribute the camera can't establish, or a rule that always goes to review. False

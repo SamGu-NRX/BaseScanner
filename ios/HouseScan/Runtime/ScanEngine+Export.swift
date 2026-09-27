@@ -186,10 +186,27 @@ extension ScanEngine {
 
     /// The server's result in the terms the screens use (meters, wall coordinates).
     func presentation(of result: PlacementResult, isSample: Bool) -> ResultPresentation {
-        let meters: (Double) -> Float = { Float($0 * 0.3048) }
         let sceneWall = coverage.map {
             SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY, leftCorners: $0.wall.leftCorners, rightCorners: $0.wall.rightCorners)
         }
+        // A view is capturable only when a gap request can be built from it: a band item needs
+        // its span (and a facing item its out_ft, which a walk can reach), a past_end item its
+        // side. Otherwise the button would do nothing. A request the homeowner already skipped
+        // or answered with something overhead stays with the installer.
+        return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { [gapPlanner, coverage, skippedGaps] item in
+            gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
+                .map { !skippedGaps.contains($0) } ?? false
+        }
+    }
+
+    /// `presentation(of:isSample:)` without an engine, for the UI demo: `wall` is the scan's wall
+    /// in world meters (nil draws no route off a sample's frame), `capturable` says whether a
+    /// requested view can be taken now.
+    static func presentation(
+        of result: PlacementResult, isSample: Bool, wall sceneWall: SceneWall?,
+        capturable: (PlacementMissingEvidence) -> Bool
+    ) -> ResultPresentation {
+        let meters: (Double) -> Float = { Float($0 * 0.3048) }
 
         let spot = result.spot.map(Self.batterySpot)
 
@@ -251,12 +268,7 @@ extension ScanEngine {
         let missing = result.missingEvidence.enumerated().map { index, item in
             MissingEvidence(
                 id: Self.missingID(index), text: item.message,
-                // Only when a gap request can be built from it: a band item needs its span (and
-                // a facing item its out_ft, which a walk can reach), a past_end item its side.
-                // Otherwise the button would do nothing. A request the homeowner already skipped
-                // or answered with something overhead stays with the installer.
-                capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
-                    .map { !skippedGaps.contains($0) } ?? false,
+                capturable: capturable(item),
                 checkIDs: item.checks ?? []
             )
         }
@@ -277,6 +289,7 @@ extension ScanEngine {
             summary: result.summaryWithoutNotice,
             policyApproved: result.policy.autoApprove,
             rulesNotice: result.policy.notice.flatMap { $0.isEmpty ? nil : $0 },
+            rulesHash: result.policy.rulesShortHash,
             spot: spot,
             nearestSpot: result.nearestConsidered.map(Self.batterySpot),
             nearestFailingCheck: result.nearestFailure?.id,
@@ -302,6 +315,12 @@ extension ScanEngine {
     /// spot's own `along` gave s only on the meter's piece: past a corner it measured along the
     /// other piece's direction and drew the spot on the meter's wall. Both s and the depth below
     /// are frame-free, so the bundled sample (in its own frame) still means the same on any wall.
+    ///
+    /// The size is the server's (`span_ft`, `depth_ft`, `height_ft`), never a battery size of the
+    /// app's own, for `nearest_considered` as for `spot`. There is no fallback for a missing one:
+    /// decoding requires every dimension (`PlacementSpot.init(from:)`), so an answer without one
+    /// fails with its path, such as `nearest_considered.depth_ft`, and the upload screen says the
+    /// answer couldn't be read (`ResultReadingTests.aNearestSpotWithoutADimensionIsRefused`).
     static func batterySpot(_ placed: PlacementSpot) -> BatterySpot {
         let meters: (Double) -> Float = { Float($0 * 0.3048) }
         let low = meters(min(placed.spanFt.x, placed.spanFt.y))

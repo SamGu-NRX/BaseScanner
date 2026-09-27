@@ -614,6 +614,9 @@ struct ResultPresentation: Equatable, Sendable {
     /// Whose rules decided, from the server ("Demo rules: ... not Base's."), to show with the
     /// answer. Nil when the rules need no such label.
     var rulesNotice: String? = nil
+    /// The first eight characters of the rules' SHA-256 (`policy.rules_sha256`), so a reviewer
+    /// can tell which rules answered.
+    var rulesHash: String? = nil
     var spot: BatterySpot?
     /// When there is no spot: the spot the server found closest to passing.
     var nearestSpot: BatterySpot? = nil

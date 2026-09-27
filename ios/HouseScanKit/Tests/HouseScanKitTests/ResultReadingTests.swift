@@ -64,6 +64,33 @@ import simd
         #expect(result.answer { _ in true } == .notHere)
     }
 
+    /// The outline uses the server's size for the nearest spot, not a battery size of the app's.
+    @Test func theNearestSpotCarriesItsOwnSize() throws {
+        var object = try Self.sampleObject()
+        var nearest = try #require(object["spot"] as? [String: Any])
+        nearest["width_ft"] = 2.6
+        nearest["depth_ft"] = 1.8
+        nearest["height_ft"] = 3.3
+        object["spot"] = NSNull()
+        object["route"] = NSNull()
+        object["nearest_considered"] = nearest
+        let spot = try #require(try Self.decode(object).nearestConsidered)
+        #expect(spot.widthFt == 2.6 && spot.depthFt == 1.8 && spot.heightFt == 3.3)
+    }
+
+    /// No default size stands in for a missing one: the answer is refused, naming the key.
+    @Test(arguments: ["width_ft", "depth_ft", "height_ft", "span_ft"])
+    func aNearestSpotWithoutADimensionIsRefused(key: String) throws {
+        var object = try Self.sampleObject()
+        var nearest = try #require(object["spot"] as? [String: Any])
+        nearest[key] = nil
+        object["spot"] = NSNull()
+        object["route"] = NSNull()
+        object["nearest_considered"] = nearest
+        let data = try JSONSerialization.data(withJSONObject: object)
+        #expect(throws: PlacementDecodingError.missingKey(path: "nearest_considered.\(key)")) { try PlacementResult.decode(data) }
+    }
+
     @Test func aSpotHasNoNearestFailure() throws {
         let result = try PlacementResult.decode(PlacementResultTests.sampleData())
         #expect(result.spot != nil && result.nearestFailure == nil)
@@ -125,6 +152,10 @@ import simd
         #expect(try PlacementResult.decode(encoded).policy.notice == result.policy.notice)
     }
 
+    @Test func theRulesHashIsItsFirstEightCharacters() throws {
+        #expect(try Self.serverAnswer().policy.rulesShortHash == "2f52ec35")
+    }
+
     // MARK: D. Each unsure check linked to its view
 
     @Test func aViewLinksEveryCheckItSettles() throws {
@@ -145,6 +176,26 @@ import simd
             #expect(result.evidenceIndex(settling: id) == 0, "\(id)")
         }
         #expect(result.evidenceIndex(settling: "wall_backing") == nil)
+    }
+
+    // MARK: The UI tests' result files
+
+    /// ios/HouseScanUITests/Fixtures/results, the answers the screenshots and UI tests show
+    /// through `-uiDemoResultFile`. Each must stay in the schema and read as its name says.
+    @Test(arguments: [
+        ("pass", ResultReading.Answer.fits), ("reject-nearest", .notHere),
+        ("unsure-view", .oneMoreLook), ("no-clean-spot", .installer),
+    ])
+    func uiResultFilesReadAsNamed(file: String, answer: ResultReading.Answer) throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // HouseScanKitTests
+            .deletingLastPathComponent()  // Tests
+            .deletingLastPathComponent()  // HouseScanKit
+            .deletingLastPathComponent()  // ios
+            .appendingPathComponent("HouseScanUITests/Fixtures/results/\(file).json")
+        let data = try Data(contentsOf: url)
+        #expect(try SceneSchemas.result().validate(data) == [])
+        #expect(try PlacementResult.decode(data).answer { _ in true } == answer)
     }
 
     // MARK: The answer
