@@ -28,10 +28,16 @@ public struct ScanFolderCleanup: Sendable {
     public init(root: URL, keeping kept: String, keepCompleted: Int = defaultKeepCompleted) {
         let files = FileManager.default
         let names = ((try? files.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0 != kept }.sorted()
+        // A folder whose bundle is being replaced (`ZipWriter.write`) counts as completed too,
+        // dated by its replacement: its previous bundle stays until the new one is complete.
+        let partial = ZipWriter.temporaryName(for: Self.bundleName)
         let completed = names.compactMap { name -> (name: String, date: Date)? in
-            let bundle = root.appending(path: name).appending(path: Self.bundleName)
-            guard let attributes = try? files.attributesOfItem(atPath: bundle.path) else { return nil }
-            return (name, attributes[.modificationDate] as? Date ?? .distantPast)
+            let folder = root.appending(path: name)
+            let dates = [Self.bundleName, partial].compactMap { file in
+                (try? files.attributesOfItem(atPath: folder.appending(path: file).path))?[.modificationDate] as? Date
+            }
+            guard let date = dates.max() else { return nil }
+            return (name, date)
         }
         .sorted { ($0.date, $0.name) > ($1.date, $1.name) }
         let keep = Set(completed.prefix(max(0, keepCompleted)).map(\.name))

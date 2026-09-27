@@ -20,7 +20,8 @@
 //   electric meter x [-0.15, 0.15] y [1.3, 1.7]; gas meter x [-1.35, -1.05] y [0.3, 0.8];
 //   door x [-3.4, -2.5] y [0, 2.05]; window x [2.0, 3.0] y [0.9, 2.0].
 //   --lidar only: a bin x [1.2, 1.8] y [0, 1.1] z [0.5, 1.1].
-// The last three frames tilt up at the wall above the meter and the sky, for the tilt-up step.
+// Frames 39 to 41 tilt up at the wall above the meter and the sky, for the tilt-up step; frames
+// 42 to 61 walk along the wall tilted up the same way, for the upper rows (see f below).
 // Images are the unrotated landscape sensor image: camera +x is world down, so the ground appears
 // on the right of each JPEG. Output is deterministic; the only "noise" comes from integer hashes.
 
@@ -337,6 +338,22 @@ for degrees in [22.0, 26.0, 30.0] {
     let up = degrees * Double.pi / 180
     shots.append(Shot(camera: Camera(position: V3(0.2, 1.5, 2.6), forward: V3(0, sin(up), -cos(up))), time: time))
     time += 0.5
+}
+// f) Appended after the frames above, which keep their numbers and bytes (k00001 to k00041): a
+// walk along the wall 22 degrees up, x = 0.7, 1.2, ..., 5.2 and then back from -0.3 to -4.8, every
+// 0.5 m. Its views show the wall from about 1.1 m to past the 7.5 ft top row from positions 0.5 m
+// apart, so the upper rows get the second position the three views from one place above don't
+// give; the replay's first 41 frames are the case without it. It starts 0.5 m from the tilt-up
+// position and stays tilted up, so it is part of the recording's closing tilt-up run.
+time += 0.5
+let upperXs = (0...9).map { 0.7 + 0.5 * Double($0) } + (0...9).map { -0.3 - 0.5 * Double($0) }
+let upperUp = 22.0 * Double.pi / 180
+for (index, x) in upperXs.enumerated() {
+    // Back past the start, unfilmed, at a walking pace: 6.5 s for the 5.5 m, under
+    // auto-capture's 1.5 m/s between kept frames.
+    if index == 10 { time += 6.5 }
+    shots.append(Shot(camera: Camera(position: V3(x, 1.5, 2.6), forward: V3(0, sin(upperUp), -cos(upperUp))), time: time))
+    time += 0.55
 }
 
 // MARK: - Output
