@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, resultKey, stageRows, viewsToShow } from "../public/model.js";
+import { connectionView, initialState, reduce, resultExpected, resultKey, stageRows, stageTimingUninterpretable, viewsToShow } from "../public/model.js";
 
 const source = { key: "t", label: "test", kind: "synthetic" };
 
@@ -250,10 +250,6 @@ test("a model whose points are all unusable is empty, not ready", () => {
   assert.equal(s.preview.phase, "empty");
 });
 
-test("a finished stage with no reported duration keeps the placeholder warning off", () => {
-  const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
-  assert.ok(!looksLikePlaceholderStages(run(selected(), events([...quick, stage(4, "dense", "done")]))));
-});
 
 test("a failed refresh keeps the result already shown", () => {
   const s = run(selected(), { type: "result", body: { runId: "run_a", status: "manual_review", outcome: { kind: "manual_review" } } }, { type: "result-loading" }, { type: "result-error", error: "network error" });
@@ -269,11 +265,22 @@ test("the eligible illustration leaves no check unsure", async () => {
   assert.ok(body.criteria.every((c) => c.outcome === "pass"));
 });
 
-test("near-zero stage durations are flagged as placeholders", () => {
-  const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
-  assert.ok(looksLikePlaceholderStages(run(selected(), events(quick))));
-  const real = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 3 }));
-  assert.ok(!looksLikePlaceholderStages(run(selected(), events(real))));
+test("stage timing that is zero, tiny or missing is flagged as uninterpretable, not as fake processing", () => {
+  // A real run reported durationS 0.0 for every stage; the flag must describe timing only.
+  const zero = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0 }));
+  assert.ok(stageTimingUninterpretable(run(selected(), events(zero))));
+  const missing = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done"));
+  assert.ok(stageTimingUninterpretable(run(selected(), events(missing))));
+  const measured = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: n === "poses" ? 3 : 0 }));
+  assert.ok(!stageTimingUninterpretable(run(selected(), events(measured))));
+});
+
+test("the timing caution makes no claim about whether real processing ran", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const caution = /<p class="caution" id="timing-caution"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? "";
+  assert.match(caution, /do not identify whether real processing ran/);
+  assert.doesNotMatch(caution, /placeholder|not real|stub|fake/i);
 });
 
 test("the illustration states no clearance thresholds of its own", async () => {

@@ -382,12 +382,14 @@ export function stageRows(state) {
 }
 
 /**
- * True when the finished stages all reported near-zero durations, which is what placeholder
- * stages produce. The viewer shows this as a caution next to the stages, never as a verdict.
+ * True when no finished stage reported a usable duration: each one is missing or under 0.05 s.
+ * This is about the telemetry only. A real run can report durations of 0 (one live run did, after
+ * 11 minutes of processing), so the page says the timing cannot be read and never infers from it
+ * whether real processing ran.
  */
-export function looksLikePlaceholderStages(state) {
+export function stageTimingUninterpretable(state) {
   const done = stageRows(state).filter((r) => r.status === "done");
-  return done.length >= 3 && done.every((r) => r.durationS != null && r.durationS < 0.05);
+  return done.length >= 3 && done.every((r) => r.durationS == null || r.durationS < 0.05);
 }
 
 /**

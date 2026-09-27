@@ -4,7 +4,7 @@
 import { CloudView } from "./cloud.js";
 import { Conduit } from "./conduit.js";
 import { followCapture } from "./live.js";
-import { connectionView, hasPreview, initialState, looksLikePlaceholderStages, reduce, stageRows, viewsToShow } from "./model.js";
+import { connectionView, hasPreview, initialState, reduce, stageRows, stageTimingUninterpretable, viewsToShow } from "./model.js";
 import { REPLAY_CAPTURE_ID, ReplayPlayer } from "./replay.js";
 import { SCENARIOS } from "./scenario.js";
 
@@ -284,7 +284,7 @@ function renderServer() {
     li.dataset.status = r.status;
     li.querySelector(".st-state").textContent = stageText(r);
   });
-  $("placeholder-caution").hidden = !looksLikePlaceholderStages(state);
+  $("timing-caution").hidden = !stageTimingUninterpretable(state);
   const unknown = $("unknown-caution");
   unknown.hidden = state.unknownTypes.length === 0;
   unknown.textContent = `The server sent event types this viewer does not know (${state.unknownTypes.join(", ")}). They appear in the log and change nothing else.`;

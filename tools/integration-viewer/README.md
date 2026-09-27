@@ -44,7 +44,7 @@ The synthetic API picks its scenario from the capture id and starts that capture
 ## What the live view does and does not claim
 
 - A file mark moves when a `files_committed` event arrives. The viewer does not see the phone, so a mark shows receipt, not transfer time or progress. Files acknowledged before the viewer connected update the count without animating.
-- Stage rows change only on `stage` events. A stage the server never closed shows "no end reported" once the capture has settled. When every finished stage reports under 0.05 s, the viewer warns that the stages look like placeholders.
+- Stage rows change only on `stage` events. A stage the server never closed shows "no end reported" once the capture has settled. When no finished stage reports a usable duration (each is missing or under 0.05 s), the viewer says the stage timing cannot be interpreted. Timing does not tell whether real processing ran, and the viewer does not guess.
 - The outcome and message come from `GET /result`, verbatim. A `verdict_ready` event alone only triggers that read.
 - The model appears only when the result has a `previewUrl` and the file parses as a PLY point cloud. It is labeled as the final model. A zero-point file reads as empty, and any other file reads as preview unavailable. The viewer never draws a model of its own in live mode.
 - The identity strip shows the source host and the version, storage and state that the API's health check reports. Check it before filming, because the deployed API's image changes often.
