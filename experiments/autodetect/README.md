@@ -12,7 +12,7 @@ Prompts, thresholds and detector settings are in `autodetect/config.py`.
 
 ## Rerun
 
-Needs about 400 MB in `~/house-scanning-data/autodetect/` plus about 350 MB for one model's weights at a time, and the ETH3D electro packet and scan from the evals lane for the 3D step.
+Needs about 300 MB in `~/house-scanning-data/autodetect/`, plus one model's weights at a time (up to 360 MB) and 230 MB of Create ML checkpoints while the student trains. The 3D step needs the ETH3D electro packet and scan from the evals lane. `results/resources.md` has the time and memory of each step.
 
 ```sh
 uv sync && uv run pytest
@@ -20,13 +20,15 @@ uv run python -m autodetect.openimages select && uv run python -m autodetect.ope
 uv run python -m autodetect.cmp
 swift build -c release --package-path vision   # copy rects, coremldet, trainod to ~/house-scanning-data/autodetect/bin
 uv run python -m autodetect.run_vision oi_tune oi_eval cmp electro
-uv run python -m autodetect.owl oi_tune oi_eval cmp electro      # needs weights/owlv2/model_fp16.onnx
-uv run python -m autodetect.gdino                                # needs weights/gdino/model_fp16.onnx
-uv run python -m autodetect.student prepare && uv run python -m autodetect.student train transfer
-uv run python -m autodetect.student crop transfer && uv run python -m autodetect.student predict transfer <crop>
+uv run python -m autodetect.owl oi_tune oi_eval cmp electro      # needs weights/owlv2/model_fp16.onnx, then delete it
+uv run python -m autodetect.student prepare && uv run python -m autodetect.student train transfer 1000
+uv run python -m autodetect.student crop transfer                # tune set only; scaleFill won
+uv run python -m autodetect.student predict transfer scaleFill
 uv run python -m autodetect.score                                # results/proposals.md
 uv run python -m autodetect.extent_gt save && uv run python -m autodetect.extent   # results/extent.md
 ```
+
+Written but not run to completion, for lack of time on the shared Mac: `autodetect.gdino` (Grounding DINO tiny) and `autodetect.dfine` (D-FINE small fine-tune). Each module's docstring says why.
 
 ## Result
 

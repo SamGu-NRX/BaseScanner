@@ -8,7 +8,10 @@
     crop      compare Vision's crop-and-scale options on the tune set only (the one setting chosen
               after training, and never on a scored set)
 
-Usage: python -m autodetect.student prepare|train|crop|predict [algorithm]
+Usage: python -m autodetect.student prepare
+       python -m autodetect.student train <transfer|yolo> <iterations>
+       python -m autodetect.student crop <algorithm>
+       python -m autodetect.student predict <algorithm> <crop option>
 """
 
 from __future__ import annotations
@@ -54,10 +57,14 @@ def prepare() -> None:
     print(f"{len(ann)} images, {n} boxes", file=sys.stderr)
 
 
-def train(algo: str) -> None:
-    out = subprocess.run([str(BIN / "trainod"), str(TRAIN), str(model_path(algo)), algo], capture_output=True, text=True)
+def train(algo: str, iterations: int) -> None:
+    """Progress goes to DATA/student/train_<algo>.log; rerunning resumes from the session folder."""
+    log = DIR / f"train_{algo}.log"
+    cmd = [str(BIN / "trainod"), str(TRAIN), str(model_path(algo)), algo, str(iterations), str(DIR / f"session_{algo}")]
+    with open(log, "a") as err:
+        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=err, text=True)
     if out.returncode:
-        raise RuntimeError(out.stderr[-4000:])
+        raise RuntimeError(f"trainod failed; see {log}")
     report = out.stdout[out.stdout.index("{") :]
     (DIR / f"train_{algo}.json").write_text(report)
     print(report)
@@ -75,7 +82,8 @@ def _run(algo: str, name: str, units: str, crop: str) -> dict:
         r = json.loads(line)
         if r.get("error"):
             raise RuntimeError(f"{name}/{i}: {r['error']}")
-        images[i] = {"elapsed_ms": r["elapsed_ms"], "dets": r["detections"]}
+        dets = sorted(r["detections"], key=lambda d: -d["score"])[: config.MAX_DETS]
+        images[i] = {"elapsed_ms": r["elapsed_ms"], "dets": [{k: d[k] for k in ("label", "score", "box")} for d in dets]}
     return images
 
 
@@ -110,7 +118,7 @@ if __name__ == "__main__":
     if step == "prepare":
         prepare()
     elif step == "train":
-        train(algo)
+        train(algo, int(sys.argv[3]))
     elif step == "crop":
         crop(algo)
     elif step == "predict":

@@ -8,6 +8,11 @@ relative to the real pixels, as in DETR-style models. The caption joins the phra
 each ending in " ."; a box's score for a phrase is the highest token probability within that
 phrase's tokens, and the box takes its best phrase.
 
+Not scored in this run: one electro photo took 15 to 31 s on this shared Mac at a load average
+near 130, about 5 hours for the 836 images. The torch route used for OWLv2 does not carry over:
+294 of the 1,046 parameters of transformers 5.17's GroundingDinoForObjectDetection have no
+same-named weight in the export (the Swin backbone is named differently).
+
 Usage: python -m autodetect.gdino [set ...]    # default: every set, then electro
 """
 

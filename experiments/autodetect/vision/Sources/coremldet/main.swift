@@ -16,6 +16,7 @@ struct Detection: Encodable {
     let label: String
     let score: Float
     let box: [Double]
+    let label_share: Float  // the top label's share among classes, not the box's confidence
 }
 
 struct Result: Encodable {
@@ -78,9 +79,11 @@ while let path = readLine() {
     let dets = (request.results as? [VNRecognizedObjectObservation] ?? []).compactMap { o -> Detection? in
         let b = o.boundingBox  // normalized, bottom-left origin
         let box = [Double(b.minX), 1 - Double(b.maxY), Double(b.maxX), 1 - Double(b.minY)]
-        // One label per box, the most confident, as for the other candidates.
+        // One label per box, the most confident, as for the other candidates. The score is the
+        // observation's confidence (the model's box confidence for that label); the label's own
+        // confidence is its share among the classes and is near 1 for almost every box.
         guard let top = o.labels.first else { return nil }
-        return Detection(label: top.identifier, score: top.confidence, box: box)
+        return Detection(label: top.identifier, score: o.confidence, box: box, label_share: top.confidence)
     }
     print(String(decoding: try encoder.encode(Result(path: path, elapsed_ms: ms, detections: dets, error: failure)), as: UTF8.self))
     fflush(stdout)

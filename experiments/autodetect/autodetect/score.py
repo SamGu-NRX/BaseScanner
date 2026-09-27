@@ -71,7 +71,10 @@ def score_model(model: str) -> dict:
             r["passes"] = bool(r["recall"] >= config.MIN_RECALL and r["precision"] >= config.MIN_PRECISION)
             rn = at_threshold(near, t)
             rn["ap50"] = average_precision(near)
-            row["sets"][s] = {"all": r, "near": rn}
+            t_oracle, oracle_rule = choose_threshold(e, config.MIN_PRECISION)
+            ro = at_threshold(e, t_oracle)
+            ro["reaches_bar"] = oracle_rule.startswith("lowest")
+            row["sets"][s] = {"all": r, "near": rn, "oracle": ro}
         out["classes"][cls] = row
     out["latency"] = {s: latency(load_preds(model, s)) for s in HELD_OUT}
     return out
@@ -113,6 +116,23 @@ def write(results: list[dict]) -> None:
         for cls, row in r["classes"].items():
             tu = row["tune"]
             L.append(f"| {r['model']} | {cls} | {row['threshold']:.3f} | {row['rule']} | {_fmt(tu['precision'])} | {_fmt(tu['recall'])} |")
+    L += [
+        "",
+        "## Diagnostic: best recall at 60% precision on the scored set itself",
+        "",
+        "Not a pass criterion: the threshold here is chosen on the set it is scored on. It shows whether",
+        "a failure comes from the tune-set threshold not transferring or from the model, since no",
+        "threshold passes when even this recall is under 80%.",
+        "",
+        "| Model | Class | Set | Threshold | Precision | Recall |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        for cls, row in r["classes"].items():
+            for s in HELD_OUT:
+                o = row["sets"][s]["oracle"]
+                note = "" if o["reaches_bar"] else " (never reaches 60%; best F1)"
+                L.append(f"| {r['model']} | {cls} | {SET_NAMES[s]} | {o['threshold']:.3f}{note} | {_fmt(o['precision'])} | {_fmt(o['recall'])} |")
     L += [
         "",
         "## Diagnostic: near-sized objects only",

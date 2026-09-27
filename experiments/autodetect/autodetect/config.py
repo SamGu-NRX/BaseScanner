@@ -42,7 +42,8 @@ GDINO_PHRASES = {
 }
 
 # Post-processing for the open-vocabulary models: per-class NMS at this IoU, then the top
-# MAX_DETS boxes above MIN_SCORE per image. The low floor keeps the tail needed for AP.
+# MAX_DETS boxes above MIN_SCORE per image. The low floor keeps the tail needed for AP. The
+# student gets the same per-image cap after its own NMS (set before it was scored).
 NMS_IOU = 0.5
 MAX_DETS = 100
 MIN_SCORE = 0.01

@@ -1,8 +1,9 @@
 # 3D extent: detected door edges lifted onto the wall
 
 Generated 2026-09-26 by `uv run python -m autodetect.extent` (ground truth first:
-`uv run python -m autodetect.extent_gt save`). Data: the ETH3D electro packet, 8 DSLR photos at
-about 3 to 6 m with depth rendered from the laser scan, standing in for LiDAR.
+`uv run python -m autodetect.extent_gt save`). Data: the ETH3D electro packet, 8 DSLR photos
+with depth rendered from the laser scan, standing in for LiDAR. Door centres are 3.3 to 12.7 m
+from the camera (median 7.6 m) and seen 5 to 43 degrees off the wall's normal (median 16).
 
 Ground truth is each door's edges measured once in the laser scan, independent of any photo or
 detector (method in `autodetect/extent_gt.py`). Four doors: two gray metal doors in recesses and
@@ -30,6 +31,10 @@ for their edges that are in view (not part of the pass).
 | owlv2 | inner corner | 0.318 | 2 / 10 | 8 | 0.31 | 1.62 | 4.30 | no | 1 / 5 | 0.43 (3) |
 | owlv2 (any score) | mid-side | 0.010 | 7 / 10 | 28 | 0.40 | 3.28 | 4.04 | n/a | 5 / 5 | 0.75 (10) |
 | owlv2 (any score) | inner corner | 0.010 | 7 / 10 | 28 | 0.44 | 2.78 | 4.30 | n/a | 5 / 5 | 0.52 (10) |
+| student_transfer | mid-side | 0.976 | 0 / 10 | 0 | n/a | n/a | n/a | no | 0 / 5 | n/a (0) |
+| student_transfer | inner corner | 0.976 | 0 / 10 | 0 | n/a | n/a | n/a | no | 0 / 5 | n/a (0) |
+| student_transfer (any score) | mid-side | 0.010 | 10 / 10 | 40 | 0.72 | 2.08 | 3.07 | n/a | 4 / 5 | 1.89 (9) |
+| student_transfer (any score) | inner corner | 0.010 | 10 / 10 | 40 | 0.60 | 1.81 | 2.77 | n/a | 4 / 5 | 1.70 (9) |
 | vision_rects | mid-side | 1.000 | 4 / 10 | 16 | 0.33 | 1.78 | 2.45 | no | 2 / 5 | 2.23 (5) |
 | vision_rects | inner corner | 1.000 | 4 / 10 | 16 | 0.38 | 1.18 | 2.34 | no | 2 / 5 | 1.43 (5) |
 | vision_rects (any score) | mid-side | 0.010 | 4 / 10 | 16 | 0.33 | 1.78 | 2.45 | n/a | 2 / 5 | 2.23 (5) |
@@ -45,6 +50,10 @@ for their edges that are in view (not part of the pass).
 | owlv2 | inner corner | 3.92 (2) | 0.44 (2) | 0.10 (2) | 0.33 (2) |
 | owlv2 (any score) | mid-side | 3.59 (7) | 0.28 (7) | 0.55 (7) | 3.08 (7) |
 | owlv2 (any score) | inner corner | 3.86 (7) | 0.47 (7) | 0.34 (7) | 1.42 (7) |
+| student_transfer | mid-side | n/a (0) | n/a (0) | n/a (0) | n/a (0) |
+| student_transfer | inner corner | n/a (0) | n/a (0) | n/a (0) | n/a (0) |
+| student_transfer (any score) | mid-side | 1.53 (10) | 2.62 (10) | 1.22 (10) | 1.41 (10) |
+| student_transfer (any score) | inner corner | 1.61 (10) | 2.69 (10) | 1.37 (10) | 0.98 (10) |
 | vision_rects | mid-side | 1.89 (4) | 0.49 (4) | 0.24 (4) | 2.05 (4) |
 | vision_rects | inner corner | 1.77 (4) | 0.68 (4) | 0.46 (4) | 1.28 (4) |
 | vision_rects (any score) | mid-side | 1.89 (4) | 0.49 (4) | 0.24 (4) | 2.05 (4) |
@@ -62,6 +71,10 @@ For each door edge seen in two or more photos: the largest minus the smallest li
 | owlv2 | inner corner | 0 | n/a | n/a |
 | owlv2 (any score) | mid-side | 8 | 0.25 | 1.39 |
 | owlv2 (any score) | inner corner | 8 | 0.22 | 0.45 |
+| student_transfer | mid-side | 0 | n/a | n/a |
+| student_transfer | inner corner | 0 | n/a | n/a |
+| student_transfer (any score) | mid-side | 12 | 0.98 | 3.32 |
+| student_transfer (any score) | inner corner | 12 | 1.16 | 3.15 |
 | vision_rects | mid-side | 4 | 0.32 | 0.35 |
 | vision_rects | inner corner | 4 | 0.14 | 0.49 |
 | vision_rects (any score) | mid-side | 4 | 0.32 | 0.35 |
@@ -269,6 +282,104 @@ For each door edge seen in two or more photos: the largest minus the smallest li
 | owlv2 (any score) | inner corner | p00006 | F_glass_double | cut off | left (eye-only truth) | -0.35 |
 | owlv2 (any score) | inner corner | p00006 | F_glass_double | cut off | bottom | -0.08 |
 | owlv2 (any score) | inner corner | p00006 | F_glass_double | cut off | top | +0.46 |
+| student_transfer (any score) | mid-side | p00001 | C_gray_double | whole | left | +0.23 |
+| student_transfer (any score) | mid-side | p00001 | C_gray_double | whole | right | -0.22 |
+| student_transfer (any score) | mid-side | p00001 | C_gray_double | whole | bottom | +0.08 |
+| student_transfer (any score) | mid-side | p00001 | C_gray_double | whole | top | +0.22 |
+| student_transfer (any score) | mid-side | p00001 | B_open_niche | whole | left | +0.22 |
+| student_transfer (any score) | mid-side | p00001 | B_open_niche | whole | right | +0.62 |
+| student_transfer (any score) | mid-side | p00001 | B_open_niche | whole | bottom | -0.69 |
+| student_transfer (any score) | mid-side | p00001 | B_open_niche | whole | top | +1.29 |
+| student_transfer (any score) | mid-side | p00002 | F_glass_double | whole | left (eye-only truth) | -0.72 |
+| student_transfer (any score) | mid-side | p00002 | F_glass_double | whole | right | -2.04 |
+| student_transfer (any score) | mid-side | p00002 | F_glass_double | whole | bottom | -1.19 |
+| student_transfer (any score) | mid-side | p00002 | F_glass_double | whole | top | +1.07 |
+| student_transfer (any score) | mid-side | p00002 | C_gray_double | cut off | left | +0.67 |
+| student_transfer (any score) | mid-side | p00002 | C_gray_double | cut off | top | +0.09 |
+| student_transfer (any score) | mid-side | p00002 | B_open_niche | whole | left | -0.63 |
+| student_transfer (any score) | mid-side | p00002 | B_open_niche | whole | right | +0.49 |
+| student_transfer (any score) | mid-side | p00002 | B_open_niche | whole | bottom | -0.72 |
+| student_transfer (any score) | mid-side | p00002 | B_open_niche | whole | top | +0.93 |
+| student_transfer (any score) | mid-side | p00003 | F_glass_double | whole | left (eye-only truth) | -0.61 |
+| student_transfer (any score) | mid-side | p00003 | F_glass_double | whole | right | -2.56 |
+| student_transfer (any score) | mid-side | p00003 | F_glass_double | whole | bottom | -1.16 |
+| student_transfer (any score) | mid-side | p00003 | F_glass_double | whole | top | +1.15 |
+| student_transfer (any score) | mid-side | p00003 | B_open_niche | whole | left | -0.15 |
+| student_transfer (any score) | mid-side | p00003 | B_open_niche | whole | right | -0.53 |
+| student_transfer (any score) | mid-side | p00003 | B_open_niche | whole | bottom | -0.13 |
+| student_transfer (any score) | mid-side | p00003 | B_open_niche | whole | top | +1.16 |
+| student_transfer (any score) | mid-side | p00004 | E_glass_64 | cut off | right | +2.29 |
+| student_transfer (any score) | mid-side | p00004 | E_glass_64 | cut off | bottom | -0.24 |
+| student_transfer (any score) | mid-side | p00004 | E_glass_64 | cut off | top | +1.80 |
+| student_transfer (any score) | mid-side | p00004 | F_glass_double | whole | left (eye-only truth) | -1.17 |
+| student_transfer (any score) | mid-side | p00004 | F_glass_double | whole | right | -2.57 |
+| student_transfer (any score) | mid-side | p00004 | F_glass_double | whole | bottom | -0.71 |
+| student_transfer (any score) | mid-side | p00004 | F_glass_double | whole | top | +1.02 |
+| student_transfer (any score) | mid-side | p00004 | B_open_niche | cut off | left | -0.59 |
+| student_transfer (any score) | mid-side | p00005 | F_glass_double | whole | left (eye-only truth) | +0.09 |
+| student_transfer (any score) | mid-side | p00005 | F_glass_double | whole | right | -0.49 |
+| student_transfer (any score) | mid-side | p00005 | F_glass_double | whole | bottom | -1.45 |
+| student_transfer (any score) | mid-side | p00005 | F_glass_double | whole | top | +0.78 |
+| student_transfer (any score) | mid-side | p00005 | E_glass_64 | whole | left | +1.53 |
+| student_transfer (any score) | mid-side | p00005 | E_glass_64 | whole | right | -0.25 |
+| student_transfer (any score) | mid-side | p00005 | E_glass_64 | whole | bottom | +0.04 |
+| student_transfer (any score) | mid-side | p00005 | E_glass_64 | whole | top | -0.54 |
+| student_transfer (any score) | mid-side | p00006 | F_glass_double | cut off | left (eye-only truth) | -0.30 |
+| student_transfer (any score) | mid-side | p00006 | F_glass_double | cut off | bottom | -1.14 |
+| student_transfer (any score) | mid-side | p00006 | F_glass_double | cut off | top | +1.10 |
+| student_transfer (any score) | mid-side | p00006 | E_glass_64 | whole | left | +1.53 |
+| student_transfer (any score) | mid-side | p00006 | E_glass_64 | whole | right | +3.07 |
+| student_transfer (any score) | mid-side | p00006 | E_glass_64 | whole | bottom | +1.16 |
+| student_transfer (any score) | mid-side | p00006 | E_glass_64 | whole | top | +2.40 |
+| student_transfer (any score) | inner corner | p00001 | C_gray_double | whole | left | +0.45 |
+| student_transfer (any score) | inner corner | p00001 | C_gray_double | whole | right | -0.51 |
+| student_transfer (any score) | inner corner | p00001 | C_gray_double | whole | bottom | +0.30 |
+| student_transfer (any score) | inner corner | p00001 | C_gray_double | whole | top | -0.27 |
+| student_transfer (any score) | inner corner | p00001 | B_open_niche | whole | left | +0.22 |
+| student_transfer (any score) | inner corner | p00001 | B_open_niche | whole | right | +0.45 |
+| student_transfer (any score) | inner corner | p00001 | B_open_niche | whole | bottom | -0.42 |
+| student_transfer (any score) | inner corner | p00001 | B_open_niche | whole | top | +0.71 |
+| student_transfer (any score) | inner corner | p00002 | F_glass_double | whole | left (eye-only truth) | -0.60 |
+| student_transfer (any score) | inner corner | p00002 | F_glass_double | whole | right | -2.10 |
+| student_transfer (any score) | inner corner | p00002 | F_glass_double | whole | bottom | -0.78 |
+| student_transfer (any score) | inner corner | p00002 | F_glass_double | whole | top | +0.84 |
+| student_transfer (any score) | inner corner | p00002 | C_gray_double | cut off | left | +1.12 |
+| student_transfer (any score) | inner corner | p00002 | C_gray_double | cut off | top | -0.51 |
+| student_transfer (any score) | inner corner | p00002 | B_open_niche | whole | left | -0.27 |
+| student_transfer (any score) | inner corner | p00002 | B_open_niche | whole | right | +0.15 |
+| student_transfer (any score) | inner corner | p00002 | B_open_niche | whole | bottom | +0.01 |
+| student_transfer (any score) | inner corner | p00002 | B_open_niche | whole | top | -0.11 |
+| student_transfer (any score) | inner corner | p00003 | F_glass_double | whole | left (eye-only truth) | -0.45 |
+| student_transfer (any score) | inner corner | p00003 | F_glass_double | whole | right | -2.66 |
+| student_transfer (any score) | inner corner | p00003 | F_glass_double | whole | bottom | -0.81 |
+| student_transfer (any score) | inner corner | p00003 | F_glass_double | whole | top | +0.90 |
+| student_transfer (any score) | inner corner | p00003 | B_open_niche | whole | left | +0.21 |
+| student_transfer (any score) | inner corner | p00003 | B_open_niche | whole | right | -0.85 |
+| student_transfer (any score) | inner corner | p00003 | B_open_niche | whole | bottom | +0.60 |
+| student_transfer (any score) | inner corner | p00003 | B_open_niche | whole | top | +0.03 |
+| student_transfer (any score) | inner corner | p00004 | E_glass_64 | cut off | right | +2.25 |
+| student_transfer (any score) | inner corner | p00004 | E_glass_64 | cut off | bottom | +0.15 |
+| student_transfer (any score) | inner corner | p00004 | E_glass_64 | cut off | top | +1.56 |
+| student_transfer (any score) | inner corner | p00004 | F_glass_double | whole | left (eye-only truth) | -1.14 |
+| student_transfer (any score) | inner corner | p00004 | F_glass_double | whole | right | -2.69 |
+| student_transfer (any score) | inner corner | p00004 | F_glass_double | whole | bottom | -0.50 |
+| student_transfer (any score) | inner corner | p00004 | F_glass_double | whole | top | +0.93 |
+| student_transfer (any score) | inner corner | p00004 | B_open_niche | cut off | left | -0.59 |
+| student_transfer (any score) | inner corner | p00005 | F_glass_double | whole | left (eye-only truth) | +0.39 |
+| student_transfer (any score) | inner corner | p00005 | F_glass_double | whole | right | -0.85 |
+| student_transfer (any score) | inner corner | p00005 | F_glass_double | whole | bottom | -1.39 |
+| student_transfer (any score) | inner corner | p00005 | F_glass_double | whole | top | +0.51 |
+| student_transfer (any score) | inner corner | p00005 | E_glass_64 | whole | left | +1.59 |
+| student_transfer (any score) | inner corner | p00005 | E_glass_64 | whole | right | -0.38 |
+| student_transfer (any score) | inner corner | p00005 | E_glass_64 | whole | bottom | +0.07 |
+| student_transfer (any score) | inner corner | p00005 | E_glass_64 | whole | top | -0.78 |
+| student_transfer (any score) | inner corner | p00006 | F_glass_double | cut off | left (eye-only truth) | +0.13 |
+| student_transfer (any score) | inner corner | p00006 | F_glass_double | cut off | bottom | -0.99 |
+| student_transfer (any score) | inner corner | p00006 | F_glass_double | cut off | top | +0.76 |
+| student_transfer (any score) | inner corner | p00006 | E_glass_64 | whole | left | +1.78 |
+| student_transfer (any score) | inner corner | p00006 | E_glass_64 | whole | right | +2.77 |
+| student_transfer (any score) | inner corner | p00006 | E_glass_64 | whole | bottom | +1.37 |
+| student_transfer (any score) | inner corner | p00006 | E_glass_64 | whole | top | +1.40 |
 | vision_rects | mid-side | p00001 | C_gray_double | whole | left | -0.66 |
 | vision_rects | mid-side | p00001 | C_gray_double | whole | right | +0.16 |
 | vision_rects | mid-side | p00001 | C_gray_double | whole | bottom | +0.21 |
@@ -354,6 +465,6 @@ For each door edge seen in two or more photos: the largest minus the smallest li
 | vision_rects (any score) | inner corner | p00006 | F_glass_double | cut off | bottom | -1.39 |
 | vision_rects (any score) | inner corner | p00006 | F_glass_double | cut off | top | +0.33 |
 
-Limits: four doors on one building, seen by a DSLR from farther away than the app's 1 to 3 m, with
+Limits: four doors on one building, seen by a DSLR from two to four times the app's 1 to 3 m, with
 laser depth that is denser and cleaner than an iPhone's LiDAR and absent on phones without it.
 No windows: the electro windows are curtain-wall glazing, not house windows.

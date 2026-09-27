@@ -42,7 +42,7 @@ import sys
 import numpy as np
 
 from . import config
-from .electro import FT, WallFrame, fit_vertical_plane, photos
+from .electro import FT, WallFrame, fit_vertical_plane, ground_y, photos
 from .oieval import _iou, choose_threshold, class_entries
 from .paths import DATA, RESULTS
 from .sets import ground_truth, load_preds, pred_path
@@ -62,7 +62,6 @@ def gt_doors() -> dict[str, dict]:
 def rectangle(door: dict) -> np.ndarray:
     """The door's four corners in the meter frame: TL, TR, BR, BL."""
     f, e = door["frame"], door["edges_m"]
-    from .electro import ground_y
 
     def pt(a: float, h: float) -> np.ndarray:
         p = f.origin + a * f.along
@@ -225,8 +224,9 @@ def write(results: list[dict]) -> None:
         "# 3D extent: detected door edges lifted onto the wall",
         "",
         f"Generated {datetime.date.today()} by `uv run python -m autodetect.extent` (ground truth first:",
-        "`uv run python -m autodetect.extent_gt save`). Data: the ETH3D electro packet, 8 DSLR photos at",
-        "about 3 to 6 m with depth rendered from the laser scan, standing in for LiDAR.",
+        "`uv run python -m autodetect.extent_gt save`). Data: the ETH3D electro packet, 8 DSLR photos",
+        "with depth rendered from the laser scan, standing in for LiDAR. Door centres are 3.3 to 12.7 m",
+        "from the camera (median 7.6 m) and seen 5 to 43 degrees off the wall's normal (median 16).",
         "",
         "Ground truth is each door's edges measured once in the laser scan, independent of any photo or",
         "detector (method in `autodetect/extent_gt.py`). Four doors: two gray metal doors in recesses and",
@@ -295,7 +295,7 @@ def write(results: list[dict]) -> None:
             L.append(f"| {r['model']} | {r['rule']} | {x['photo']} | {x['door']} | {'whole' if x['whole'] else 'cut off'} | {x['edge']}{' (eye-only truth)' if x['eye_only'] else ''} | {x['error_ft']:+.2f} |")
     L += [
         "",
-        "Limits: four doors on one building, seen by a DSLR from farther away than the app's 1 to 3 m, with",
+        "Limits: four doors on one building, seen by a DSLR from two to four times the app's 1 to 3 m, with",
         "laser depth that is denser and cleaner than an iPhone's LiDAR and absent on phones without it.",
         "No windows: the electro windows are curtain-wall glazing, not house windows.",
     ]
