@@ -149,6 +149,7 @@ extension ScanEngine: ScanActions {
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
         setEnd(side, at: hit.s, kind: .unexplored)
     }
 
@@ -156,6 +157,7 @@ extension ScanEngine: ScanActions {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
         if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
         // During the walk a corner is followed: the next wall is marked, and the walk goes on
         // along it. Until then the end stays marked, as an unexplored corner.
@@ -252,6 +254,7 @@ extension ScanEngine: ScanActions {
         state.target = nil
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
         RuntimeLog.engine.info("next wall: back to the question about the \(side.rawValue, privacy: .public) end")
     }
 

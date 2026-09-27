@@ -404,6 +404,9 @@ struct EndPreview: Equatable, Sendable {
     /// phone far out from the wall (`WalkedEnd.leavesOut`, issue #66); "Wall ends here" pressed at
     /// other times says it on the end question (`ScanViewState.endQuestionLeavesOut`).
     var leavesOutWalked: Float?
+    /// True when `leavesOutWalked` counts cells the strip showed past the end rather than the
+    /// walk (`WalkedEnd.leftOutIsSeen`), so the words say "you saw".
+    var leavesOutSeen = false
 }
 
 // MARK: - Captures
@@ -833,6 +836,8 @@ final class ScanViewState {
     /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
     /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
     var endQuestionLeavesOut: Float?
+    /// True when `endQuestionLeavesOut` counts cells the strip showed rather than the walk.
+    var endQuestionLeavesOutSeen = false
     /// A wall marked during `GuidanceStep.markNextWall` whose corner passed the checks, waiting
     /// for "Is this the next wall?" (`ScanActions.confirmNextWall`, #70). Nil otherwise.
     var nextWallConfirm: NextWallConfirm?

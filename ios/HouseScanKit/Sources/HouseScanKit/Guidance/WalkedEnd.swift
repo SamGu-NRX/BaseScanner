@@ -31,12 +31,16 @@ public enum WalkedEnd {
         /// True when the cap decided the end: the phone across the meter, its place lost, or
         /// tracking limited.
         public var capped: Bool
+        /// True when the end stopped `maxPastEvidence` past the farthest kept view or seen cell,
+        /// short of the phone, rather than at the kept-photo cap.
+        public var pastEvidence: Bool
 
-        public init(s: Float, phone: Float?, cap: Float, capped: Bool) {
+        public init(s: Float, phone: Float?, cap: Float, capped: Bool, pastEvidence: Bool = false) {
             self.s = s
             self.phone = phone
             self.cap = cap
             self.capped = capped
+            self.pastEvidence = pastEvidence
         }
     }
 
@@ -48,17 +52,21 @@ public enum WalkedEnd {
 
     /// s of the end on `side` (`choose`).
     public static func end(
-        _ side: WalkSide, phone: SIMD3<Float>?, trackingNormal: Bool = true, walked: [SIMD3<Float>], wall: WallFrame
+        _ side: WalkSide, phone: SIMD3<Float>?, trackingNormal: Bool = true, walked: [SIMD3<Float>], wall: WallFrame,
+        seen: ClosedRange<Float>? = nil
     ) -> Float {
-        choose(side, phone: phone, trackingNormal: trackingNormal, walked: walked, wall: wall).s
+        choose(side, phone: phone, trackingNormal: trackingNormal, walked: walked, wall: wall, seen: seen).s
     }
 
     /// The end on `side`. `walked` holds the positions of the kept views; `phone` is where the
     /// phone is now, nil when it has lost its place; `trackingNormal` is false while tracking is
-    /// limited.
+    /// limited, taken as it is at the tap: a brief drop before it doesn't matter (review of #147);
+    /// `seen` is the strip's seen extent
+    /// (`CoverageMap.seenExtent`).
     ///
     /// - Phone on that side of the meter, tracking normal: its s, past the farthest kept view
-    ///   too. Standing at the end is the measurement.
+    ///   too, but no more than `maxPastEvidence` past the farthest kept view or seen cell there.
+    ///   Standing at the end is the measurement.
     /// - Phone on that side, tracking limited, or more than `phoneOutLimit` out from the wall's
     ///   line: its s, but no farther out than `farthest`.
     /// - Phone across the meter, or its place unknown: `farthest`. The phone's position then says
@@ -66,7 +74,8 @@ public enum WalkedEnd {
     ///   it; an end at the meter would drop everything walked there, which is how run 1 lost its
     ///   wall. Nothing walked on that side: the meter.
     public static func choose(
-        _ side: WalkSide, phone: SIMD3<Float>?, trackingNormal: Bool = true, walked: [SIMD3<Float>], wall: WallFrame
+        _ side: WalkSide, phone: SIMD3<Float>?, trackingNormal: Bool = true, walked: [SIMD3<Float>], wall: WallFrame,
+        seen: ClosedRange<Float>? = nil
     ) -> Choice {
         let reach = farthest(side, walked: walked, wall: wall)
         let cap = side.sign * reach
@@ -75,15 +84,27 @@ public enum WalkedEnd {
         let s = point.s
         let along = side.sign * s
         if along < 0 { return Choice(s: cap, phone: s, cap: cap, capped: true) }
-        if trackingNormal, abs(point.out) <= phoneOutLimit { return Choice(s: s, phone: s, cap: cap, capped: false) }
+        if trackingNormal, abs(point.out) <= phoneOutLimit {
+            let seenEdge = seen.map { side.sign * (side == .left ? $0.lowerBound : $0.upperBound) } ?? 0
+            let limit = max(reach, seenEdge) + maxPastEvidence
+            if along <= limit { return Choice(s: s, phone: s, cap: cap, capped: false) }
+            return Choice(s: side.sign * limit, phone: s, cap: cap, capped: true, pastEvidence: true)
+        }
         return Choice(s: side.sign * min(along, reach), phone: s, cap: cap, capped: true)
     }
 
     /// 4 m, twice the walk's stand-off (`GuidanceConfig.standOff`), as for `leavesOut`: farther
-    /// out from the wall's line than this, the phone's s says little about where the wall ends,
-    /// and a wall line skewed by a bad tap (#69) turns distance out into distance along. 2 m
-    /// would cap ordinary walks, which stand about 2 m out. A guess, not measured.
+    /// out from the wall's line than this, the phone's s says little about where the wall ends.
+    /// 2 m would cap ordinary walks, which stand about 2 m out. A guess, not measured. This does
+    /// not cover a wall line skewed by a bad tap (#69): distance out is measured from that same
+    /// line, so a skewed line can read a phone as close; `maxPastEvidence` bounds that case.
     public static let phoneOutLimit: Float = 2 * GuidanceConfig().standOff
+
+    /// 2 m: how far past the farthest kept view or seen cell on its side an end at the phone may
+    /// land. Whatever the wall line, the walk has evidence up to there, so a skewed line (#69)
+    /// or a bad pose can't put the end far out along nothing. Run 2's end post was about 0.6 m
+    /// past the cells seen. A guess, not measured.
+    public static let maxPastEvidence: Float = 2
 
     /// The strip's seen extent that counts toward what an end leaves out (`leftOut`): nil unless
     /// the cap decided the end, since the camera of a phone standing at the end sees past it.
@@ -220,6 +241,16 @@ extension WalkedEnd {
     ) -> Float? {
         let parts = [walkedPast(side, s: s, walked: walked, wall: wall), shownPast(side, s: s, seen: seen)]
         return parts.compactMap(\.self).max()
+    }
+
+    /// Whether `leftOut`'s meters are the cells the strip showed rather than the walk: then the
+    /// words say "you saw", not "you walked" (re-review of #136: across the meter the homeowner
+    /// never walked that stretch).
+    public static func leftOutIsSeen(
+        _ side: WalkSide, s: Float, walked: [SIMD3<Float>], wall: WallFrame, seen: ClosedRange<Float>?
+    ) -> Bool {
+        guard let shown = shownPast(side, s: s, seen: seen) else { return false }
+        return shown > (walkedPast(side, s: s, walked: walked, wall: wall) ?? 0)
     }
 
     /// Whether a mark's span (meters of s) lies wholly past a marked end. The scan doesn't cover

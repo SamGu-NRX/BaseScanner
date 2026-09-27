@@ -797,6 +797,7 @@ final class DemoEngine: ScanActions {
         }
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
         refreshCoverage()
         refreshGuidance()
     }
@@ -812,6 +813,7 @@ final class DemoEngine: ScanActions {
         }
         state.endQuestion = side
         state.endQuestionLeavesOut = preview.leavesOutWalked
+        state.endQuestionLeavesOutSeen = preview.leavesOutSeen
         refreshCoverage()
         refreshGuidance()
     }
@@ -821,6 +823,7 @@ final class DemoEngine: ScanActions {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
         let followed = state.wall?.cornerSegments.contains { side == .right ? $0.span.lowerBound > 0 : $0.span.upperBound < 0 } ?? true
         if turnsCorner, !followed {
             state.guidance = .markNextWall(side: side, refusal: nil)
@@ -855,6 +858,7 @@ final class DemoEngine: ScanActions {
         state.target = nil
         state.endQuestion = side
         state.endQuestionLeavesOut = nil
+        state.endQuestionLeavesOutSeen = false
     }
 
     /// The made-up wall turns toward the homeowner at the marked end and goes on `pastCorner`.
