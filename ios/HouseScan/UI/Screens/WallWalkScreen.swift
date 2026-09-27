@@ -4,8 +4,9 @@ import SwiftUI
 ///
 /// Over the camera: haze on what the phone hasn't seen, a blue dotted path on the ground, a
 /// ring on the next thing to aim at, pins on what's been marked. At the bottom: the tape map
-/// and at most two actions. At the top: one instruction, replaced by coaching while there is a
-/// problem, or by the marking prompt while marking.
+/// and at most two actions. At the top: one instruction, with coaching on its second line while
+/// the photos have a problem, replaced while tracking has one, or by the marking prompt while
+/// marking.
 struct WallWalkScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -81,9 +82,27 @@ struct WallWalkScreen: View {
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching { return ScanCopy.coaching(coaching) }
-        if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
-        return ScanCopy.guidance(state.guidance)
+        if let coaching, Self.replacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        if state.wallTooShort { return withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title)) }
+        return withCoaching(ScanCopy.guidance(state.guidance))
+    }
+
+    /// Coaching about how the photos come out (the capture gate's, and too little texture) rides
+    /// along with the task: the task's title stays, the coaching takes the second line, and its
+    /// symbol marks the card (`tone`). Replacing the whole card hid the task each time the
+    /// coaching came up (#80).
+    private func withCoaching(_ task: Instruction) -> Instruction {
+        guard let coaching else { return task }
+        return Instruction(title: task.title, detail: ScanCopy.coachingNote(coaching))
+    }
+
+    /// Tracking problems and standing past the end replace the task: nothing the task asks for
+    /// counts until they clear.
+    private static func replacesTask(_ coaching: Coaching) -> Bool {
+        switch coaching {
+        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: true
+        case .slowDown, .needsTexture, .tooDark, .tooDarkToMeasure, .holdSteady, .turnSlowly: false
+        }
     }
 
     /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark

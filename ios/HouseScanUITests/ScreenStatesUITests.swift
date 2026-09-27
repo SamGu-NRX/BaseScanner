@@ -18,6 +18,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
         ("wallWalk", ["-uiDemoPhase", "wallWalk"], "wallWalk"),
         ("wallWalk-slowDown", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "slowDown"], "wallWalk"),
+        ("wallWalk-tooDark", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"], "wallWalk"),
+        ("wallWalk-turnSlowly", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "turnSlowly"], "wallWalk"),
         ("wallWalk-needsTexture", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "needsTexture"], "wallWalk"),
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
@@ -70,6 +72,10 @@ final class ScreenStatesUITests: XCTestCase {
     private static let expectations: [String: (identifier: String?, text: String)] = [
         "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
+        // #80, #26: the gate's coaching rides on the task card.
+        "wallWalk-slowDown": ("instruction", "Walk slowly to your right"),
+        "wallWalk-tooDark": ("instruction", "It's dark here"),
+        "wallWalk-turnSlowly": ("instruction", "Turn more slowly"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
@@ -165,6 +171,21 @@ final class ScreenStatesUITests: XCTestCase {
         app.swipeUp()
         startOver.tap()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 10))
+    }
+
+    /// #80: the capture gate's coaching keeps the walk's task on the card and adds its own line,
+    /// instead of replacing the card.
+    @MainActor
+    func testGateCoachingKeepsTheTaskOnTheCard() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let card = element(app, "instruction")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(card.label.contains("Walk slowly to your right"), "the task must stay on the card, got \(card.label)")
+        XCTAssertTrue(card.label.contains("It's dark here"), "the coaching must show on the card, got \(card.label)")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the

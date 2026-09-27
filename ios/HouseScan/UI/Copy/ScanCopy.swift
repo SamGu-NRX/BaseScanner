@@ -75,9 +75,13 @@ enum ScanCopy {
         case .needsTexture:
             Instruction(title: "Aim at a corner or somewhere with more texture", detail: "A plain wall or the sky gives your phone nothing to follow.")
         case .tooDark:
-            Instruction(title: "It's too dark to see the wall", detail: "Turn on a porch light, or try again in daylight.")
+            Instruction(title: "It's dark here", detail: "Some photos won't count. Try your phone's flashlight, or come back in daylight.")
+        case .tooDarkToMeasure:
+            Instruction(title: "It's too dark to measure here", detail: "Try in daylight.")
         case .holdSteady:
             Instruction(title: "Hold steady", detail: nil)
+        case .turnSlowly:
+            Instruction(title: "Turn more slowly", detail: "Photos taken while turning come out blurred.")
         case .relocalizing:
             Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
@@ -93,11 +97,21 @@ enum ScanCopy {
         case .initializing: "iphone.gen3.radiowaves.left.and.right"
         case .slowDown: "tortoise.fill"
         case .needsTexture: "square.grid.3x3.middle.filled"
-        case .tooDark: "moon.fill"
+        case .tooDark, .tooDarkToMeasure: "moon.fill"
         case .holdSteady: "hand.raised.fill"
+        case .turnSlowly: "arrow.clockwise"
         case .relocalizing, .trackingLost: "location.slash.fill"
         case .pastWallEnd: "arrow.uturn.backward"
         }
+    }
+
+    /// One line for coaching that rides along with the task instead of replacing it (the walk's
+    /// capture-gate coaching): the task's title stays, and this takes its second line.
+    static func coachingNote(_ coaching: Coaching) -> String {
+        let words = ScanCopy.coaching(coaching)
+        let title = words.title.hasSuffix(".") ? words.title : "\(words.title)."
+        guard let detail = words.detail else { return title }
+        return "\(title) \(detail)"
     }
 
     // MARK: Wall ends
