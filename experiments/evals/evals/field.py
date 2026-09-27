@@ -69,6 +69,9 @@ MAX_ZIP_BYTES = 2 * 1024**3
 # (folders and __MACOSX included), so neither the file nor its index can be arbitrarily large.
 MAX_ZIP_ARCHIVE_BYTES = 2 * 1024**3
 MAX_ZIP_ENTRIES = 2 * MAX_ZIP_MEMBERS
+# The central directory ZipFile reads whole and parses into one object per entry. 20,000 entries
+# with 100-byte names take about 3 MB; the cap also bounds entries with minimal 46-byte records.
+MAX_ZIP_DIRECTORY_BYTES = 8 * 1024**2
 MIN_FREE_AFTER_UNPACK = 3 * 1024**3
 
 
@@ -96,6 +99,28 @@ def file_sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def check_zip_directory(session: Path) -> None:
+    """Refuse a zip whose central directory is too large or lists too many entries, reading only
+    its end record. `zipfile.ZipFile` reads the whole directory and builds every entry while it is
+    constructed, so a later count comes too late. The end record is read by `zipfile._EndRecData`,
+    the function ZipFile itself uses (ZIP64 included), so the sizes checked here are the ones it
+    will read."""
+    with session.open("rb") as f:
+        try:
+            end = zipfile._EndRecData(f)
+        except OSError as e:
+            raise ValueError(f"{session}: not a zip file ({e})") from e
+    if not end:
+        raise ValueError(f"{session}: not a zip file (no end-of-central-directory record)")
+    entries, directory_bytes = end[zipfile._ECD_ENTRIES_TOTAL], end[zipfile._ECD_SIZE]
+    if entries > MAX_ZIP_ENTRIES:
+        raise ValueError(f"{session}: {entries} zip entries, more than {MAX_ZIP_ENTRIES}")
+    if directory_bytes > MAX_ZIP_DIRECTORY_BYTES:
+        raise ValueError(
+            f"{session}: {directory_bytes}-byte zip directory, more than {MAX_ZIP_DIRECTORY_BYTES}"
+        )
+
+
 def unpack(session: Path) -> tuple[Path, str | None]:
     """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped.
 
@@ -109,6 +134,7 @@ def unpack(session: Path) -> tuple[Path, str | None]:
     size = session.stat().st_size
     if size > MAX_ZIP_ARCHIVE_BYTES:
         raise ValueError(f"{session}: {size} bytes, more than {MAX_ZIP_ARCHIVE_BYTES}")
+    check_zip_directory(session)
     digest = file_sha256(session)
     out = FIELD_DIR / digest[:16]
     with zipfile.ZipFile(session) as z:

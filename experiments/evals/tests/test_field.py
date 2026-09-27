@@ -486,3 +486,42 @@ def test_file_sha256_streams_and_matches_hashlib(tmp_path):
     path = tmp_path / "f"
     path.write_bytes(b"x" * (3 << 20) + b"tail")  # spans several 1 MB reads
     assert field.file_sha256(path) == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_zip_directory_limits_apply_before_zipfile_reads_the_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    entries = [("s/session.json", SESSION_JSON)] + [(f"s/{i:03d}", "") for i in range(20)]
+    archive = _zip(tmp_path / "s.zip", entries)
+
+    def no_zipfile(*args, **kwargs):
+        raise AssertionError("ZipFile read the directory before the limits were checked")
+
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_zipfile)
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 10)
+    with pytest.raises(ValueError, match="21 zip entries, more than 10"):
+        field.unpack(archive)
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 100)
+    monkeypatch.setattr(field, "MAX_ZIP_DIRECTORY_BYTES", 200)
+    with pytest.raises(ValueError, match="zip directory, more than 200"):
+        field.unpack(archive)
+
+
+def test_zip_directory_limits_read_zip64_end_records(tmp_path, monkeypatch):
+    archive = tmp_path / "z64.zip"
+    # Writing more entries than this limit makes zipfile add a ZIP64 end record, as a very large
+    # session would, without writing 65,536 files.
+    monkeypatch.setattr(zipfile, "ZIP_FILECOUNT_LIMIT", 1)
+    _zip(archive, [("s/session.json", SESSION_JSON), ("s/a", "x"), ("s/b", "y")])
+    with archive.open("rb") as f:
+        assert zipfile._EndRecData(f)[zipfile._ECD_SIGNATURE] == zipfile.stringEndArchive64
+    field.check_zip_directory(archive)  # a well-formed ZIP64 archive passes
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 2)
+    with pytest.raises(ValueError, match="3 zip entries, more than 2"):
+        field.check_zip_directory(archive)
+
+
+def test_a_file_that_is_not_a_zip_is_refused_loudly(tmp_path):
+    path = tmp_path / "s.zip"
+    path.write_bytes(b"not a zip at all")
+    with pytest.raises(ValueError, match="not a zip file"):
+        field.check_zip_directory(path)
