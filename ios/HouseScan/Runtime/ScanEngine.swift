@@ -1,4 +1,5 @@
 import ARKit
+import AVFoundation
 import CoreGraphics
 import Foundation
 import HouseScanKit
@@ -133,6 +134,7 @@ final class ScanEngine {
     /// The packet's sensor streams for the current world frame.
     private(set) var recorder: CaptureRecorder
     private let motion = MotionSource()
+    private var askingForPermissions = false
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
     /// When each mark was made, on the capture clock (`MarkKey`).
@@ -282,6 +284,38 @@ final class ScanEngine {
         let deadline = ContinuousClock.now + .seconds(120)
         while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    /// Leaves the onboarding for the meter search. Live, the camera and then Motion & Fitness are
+    /// asked for first, while the onboarding that says why is still on screen; otherwise the AR
+    /// session and the barometer raise both prompts over "Find your electric meter". Without the
+    /// camera there is no scan, so motion is not asked for and the camera failure screen shows.
+    func leaveOnboarding() {
+        guard options.replayFolder == nil else {
+            go(.findMeter)
+            return
+        }
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        if camera == .denied || camera == .restricted {
+            fail(.cameraDenied)
+            return
+        }
+        guard camera == .notDetermined || MotionSource.needsPermission else {
+            go(.findMeter)
+            return
+        }
+        guard !askingForPermissions else { return }
+        askingForPermissions = true
+        Task {
+            if camera == .notDetermined, !(await AVCaptureDevice.requestAccess(for: .video)) {
+                askingForPermissions = false
+                if state.phase == .onboarding { fail(.cameraDenied) }
+                return
+            }
+            await motion.requestPermission()
+            askingForPermissions = false
+            if state.phase == .onboarding { go(.findMeter) }
         }
     }
 
