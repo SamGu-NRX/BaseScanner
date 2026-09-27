@@ -15,7 +15,7 @@ out.
 
 The limit: COLMAP from one moving camera has no scale of its own, and the dataset does not say how
 its reconstructions were put into meters. The phone's GPS, the one independent reference shipped,
-cannot pin that scale better than several percent over these 25 to 160 m walks (checked here). So
+cannot pin that scale better than several percent over these 45 to 255 m walks (checked here). So
 ARKit's scale is measured against the ground truth's scale, not against the tape.
 """
 
@@ -376,7 +376,7 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         f"GPS / truth over each walk: median {np.median(g):.3f}, range {g.min():.3f} to "
         f"{g.max():.3f} ({len(g)} walks). On the {len(tight)} walks where GPS fits within 1.5 m, "
         f"median {np.median(tight):.3f}, range {tight.min():.3f} to {tight.max():.3f}. GPS noise of "
-        "1 to 9 m over 25 to 160 m walks cannot pin the scale to 2%.",
+        "1 to 9 m over 45 to 255 m walks cannot pin the scale to 2%.",
         "",
         "## Files (Google Drive folder " + FOLDER + ")",
         "",

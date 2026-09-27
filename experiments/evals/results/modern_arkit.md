@@ -45,7 +45,7 @@ Standard deviation over each site's walks within 10% of the reference, with a 95
 
 ## Can GPS check the ground truth's scale?
 
-GPS / truth over each walk: median 0.936, range 0.155 to 1.065 (35 walks). On the 11 walks where GPS fits within 1.5 m, median 0.978, range 0.923 to 1.065. GPS noise of 1 to 9 m over 25 to 160 m walks cannot pin the scale to 2%.
+GPS / truth over each walk: median 0.936, range 0.155 to 1.065 (35 walks). On the 11 walks where GPS fits within 1.5 m, median 0.978, range 0.923 to 1.065. GPS noise of 1 to 9 m over 45 to 255 m walks cannot pin the scale to 2%.
 
 ## Files (Google Drive folder https://drive.google.com/drive/folders/18vPfKB4jlDwtFzytMijYOpmeqU1A9-Ie)
 
