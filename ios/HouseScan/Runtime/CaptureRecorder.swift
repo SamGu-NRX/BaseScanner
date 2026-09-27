@@ -332,9 +332,13 @@ final class MotionSource {
             && CMMotionActivityManager.isActivityAvailable()
     }
 
-    /// The onboarding's answer, nil if it asked nothing. Unanswered holds the barometer
-    /// (`CapturePermissions.barometerMayStart`).
-    private(set) var permission: CapturePermissions.Motion?
+    /// Holds the barometer after an unanswered request, and starts it once the permission is
+    /// decided, mid-recording too.
+    private var barometerGate = BarometerGate()
+    /// Checks the permission once a second while the barometer is held.
+    private var permissionWatch: Task<Void, Never>?
+
+    private static var motionUndecided: Bool { CMAltimeter.authorizationStatus() == .notDetermined }
 
     /// Shows the Motion & Fitness prompt and reports the answer. CMAltimeter has no call that only
     /// asks; an activity query asks for the same permission and calls back once it is answered.
@@ -343,10 +347,12 @@ final class MotionSource {
     @discardableResult
     func requestPermission() async -> CapturePermissions.Motion {
         let answer = await askForPermission()
-        permission = answer
+        barometerGate.answer = answer
         return answer
     }
 
+    /// The answer comes from the authorization status, not the callback's error: a "not
+    /// authorized" error while the status is still undecided is no answer.
     private func askForPermission() async -> CapturePermissions.Motion {
         guard Self.needsPermission else { return .notNeeded }
         let now = Date()
@@ -355,9 +361,8 @@ final class MotionSource {
                 continuation.resume(returning: error)
             }
         }
-        if let error = error as NSError?, error.domain == CMErrorDomain,
-           error.code == Int(CMErrorMotionActivityNotAuthorized.rawValue) {
-            return .denied
+        if let error {
+            RuntimeLog.capture.info("Motion & Fitness query error: \(String(describing: error), privacy: .public)")
         }
         switch CMMotionActivityManager.authorizationStatus() {
         case .authorized: return .allowed
@@ -381,14 +386,35 @@ final class MotionSource {
     func start(into recorder: CaptureRecorder) {
         guard !isRunning else { return }
         isRunning = true
-        let barometer = CapturePermissions.barometerMayStart(after: permission, undecided: CMAltimeter.authorizationStatus() == .notDetermined)
+        let barometer = barometerGate.recordingStarted(undecided: Self.motionUndecided)
         Self.startUpdates(manager, altimeter, queue: queue, recorder: recorder, interval: 1 / Self.rate, barometer: barometer)
         RuntimeLog.capture.info("motion recording on: \(self.available.map { "\($0)" }.sorted().joined(separator: ", "), privacy: .public)\(barometer ? "" : " (barometer held: Motion & Fitness unanswered)", privacy: .public)")
+        if barometerGate.held { watchPermission(into: recorder) }
+    }
+
+    /// While the barometer is held, starts it in this recording as soon as the permission is
+    /// decided (the alert answered late, or a change in Settings).
+    private func watchPermission(into recorder: CaptureRecorder) {
+        permissionWatch?.cancel()
+        permissionWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, !Task.isCancelled, barometerGate.held else { return }
+                if barometerGate.permissionChecked(undecided: Self.motionUndecided) {
+                    Self.startBarometer(altimeter, queue: queue, recorder: recorder)
+                    RuntimeLog.capture.info("Motion & Fitness decided; barometer recording on")
+                    return
+                }
+            }
+        }
     }
 
     func stop() {
         guard isRunning else { return }
         isRunning = false
+        permissionWatch?.cancel()
+        permissionWatch = nil
+        barometerGate.recordingStopped()
         manager.stopAccelerometerUpdates()
         manager.stopGyroUpdates()
         manager.stopMagnetometerUpdates()
@@ -435,11 +461,14 @@ final class MotionSource {
                 recorder.append(.deviceMotion, [motion.timestamp, q.x, q.y, q.z, q.w, g.x, g.y, g.z, a.x, a.y, a.z, r.x, r.y, r.z, motion.heading])
             }
         }
-        if barometer, CMAltimeter.isRelativeAltitudeAvailable() {
-            altimeter.startRelativeAltitudeUpdates(to: queue) { data, _ in
-                guard let data else { return }
-                recorder.append(.barometer, [data.timestamp, data.pressure.doubleValue, data.relativeAltitude.doubleValue])
-            }
+        if barometer { startBarometer(altimeter, queue: queue, recorder: recorder) }
+    }
+
+    private nonisolated static func startBarometer(_ altimeter: CMAltimeter, queue: OperationQueue, recorder: CaptureRecorder) {
+        guard CMAltimeter.isRelativeAltitudeAvailable() else { return }
+        altimeter.startRelativeAltitudeUpdates(to: queue) { data, _ in
+            guard let data else { return }
+            recorder.append(.barometer, [data.timestamp, data.pressure.doubleValue, data.relativeAltitude.doubleValue])
         }
     }
 }
