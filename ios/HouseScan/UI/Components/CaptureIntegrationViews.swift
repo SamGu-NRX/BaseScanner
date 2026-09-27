@@ -47,40 +47,53 @@ struct CaptureSyncLine: View {
     }
 }
 
-/// Asks once, in the integration build only, whether this phone may send its scans to the test
-/// server. Nothing is sent before the answer, and nothing after a no.
+/// Asks, on the result, whether this scan may go to the test server: what is sent, who gets it,
+/// and that skipping changes nothing. The toggle starts off and Send works only once it is on. A
+/// yes is remembered for this server, so later scans send while scanning.
 struct CaptureConsentSheet: View {
     let answer: (Bool) -> Void
+    @State private var agreed = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Send this scan to the test server?")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Send your scan to the test server?")
                 .font(Typeface.sectionTitle)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("This build tests a new upload. While you scan, photos of the wall and meter, the camera's path and the phone's motion go to a test server run by the House Scan team. Your result on this phone is the same either way.")
+            VStack(alignment: .leading, spacing: 6) {
+                Text("What's sent").font(Typeface.caption).foregroundStyle(.secondary)
+                Label("Photos of your wall and meter", systemImage: "photo")
+                Label("Measurements of your wall and your marks", systemImage: "ruler")
+                Label("3D data: the camera's path and the phone's motion", systemImage: "move.3d")
+            }
+            .font(Typeface.hint)
+            Text("It goes to the House Scan team's test server. Sending is optional, and your result stays the same if you skip.")
                 .font(Typeface.hint)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Toggle("Send my photos, measurements and 3D data to the test server", isOn: $agreed)
+                .font(Typeface.hint)
+                .accessibilityIdentifier("captureConsent.agree")
             Spacer(minLength: 0)
             Button { answer(true) } label: {
-                Text("Send while I scan").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
+                Text("Send").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
             }
             .buttonStyle(.borderedProminent)
+            .disabled(!agreed)
             .accessibilityIdentifier("captureConsent.send")
             Button { answer(false) } label: {
-                Text("Don't send").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
+                Text("Skip").font(Typeface.button).frame(maxWidth: .infinity, minHeight: Metrics.minTarget)
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("captureConsent.skip")
         }
         .padding(Metrics.edge + 8)
-        .presentationDetents([.medium])
+        .presentationDetents([.large])
         .interactiveDismissDisabled()
     }
 }
 
-/// The integration build's two additions over any screen: the consent question once the scan
-/// has started, and the sync line while a capture is being sent.
+/// The integration build's two additions: the consent question on the result of a scan that can
+/// be sent, and the sync line while a capture is being sent.
 struct CaptureIntegrationOverlay: ViewModifier {
     let integration: CaptureIntegration
     let phase: ScanPhase
@@ -97,7 +110,7 @@ struct CaptureIntegrationOverlay: ViewModifier {
             }
             .animation(reduceMotion ? nil : Motion.text, value: integration.status)
             // Only an answer closes it; the binding ignores a dismissal.
-            .sheet(isPresented: Binding(get: { integration.needsConsent && phase != .onboarding }, set: { _ in })) {
+            .sheet(isPresented: Binding(get: { phase == .result && integration.needsConsent }, set: { _ in })) {
                 CaptureConsentSheet { integration.answerConsent($0) }
             }
     }

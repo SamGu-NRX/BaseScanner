@@ -6,40 +6,55 @@ import simd
 import UIKit
 
 /// The integration build's capture upload, as the app wires it: the engine's events go to
-/// `CaptureSessionCoordinator` (HouseScanKit), which seals each kept photo into a 0.4 packet and
-/// uploads it while the homeowner scans. This class only translates the app's types, keeps the
-/// consent answer, and publishes the status line.
+/// `CaptureSessionCoordinator` (HouseScanKit), which seals each kept photo into a 0.4 packet on
+/// the phone and sends it when that is allowed. This class only translates the app's types, keeps
+/// the consent answer, and publishes the status line.
 ///
-/// It runs only when the build names a capture API (`HouseScanCaptureAPIURL`, or the
-/// `-captureAPIURL` launch argument) and the homeowner said yes. The placement request
-/// (`ResultClient`, scene.json) is unchanged and never waits for it. Files live in Application
-/// Support/Captures/<packet id>, outside the scan folders the store cleans up.
+/// Only the integration build records a capture (`HouseScanIntegrationBuild`); a launch argument
+/// can name another endpoint (`-captureAPIURL`) but can't turn a client build into one. Captures
+/// are sent only when the build also allows device data at that endpoint
+/// (`HouseScanCaptureSendDeviceData`) and the homeowner says yes on the screen after the result.
+/// A yes is remembered for that endpoint, so later scans send while scanning. The placement
+/// request (`ResultClient`, scene.json) is unchanged and never waits for this. Files live in
+/// Application Support/Captures/<packet id>, outside the scan folders the store cleans up.
 @MainActor
 @Observable
 final class CaptureIntegration {
-    static let consentKey = "captureUploadConsent.v1"
-    static let infoKey = "HouseScanCaptureAPIURL"
+    /// The endpoint the homeowner said yes to, as a string; a yes counts only for that endpoint.
+    static let consentKey = "captureUploadConsentEndpoint.v2"
 
     private(set) var status: CaptureUploadStatus?
-    private(set) var needsConsent: Bool
+    /// Bumped on each answer, so a view reading `needsConsent` updates.
+    private(set) var answers = 0
+    var needsConsent: Bool {
+        _ = answers
+        return coordinator.needsConsent
+    }
 
     @ObservationIgnored private let coordinator: CaptureSessionCoordinator
     @ObservationIgnored private weak var store: KeyframeStore?
     @ObservationIgnored private var resumed: [CaptureUploader] = []
 
-    init(
-        arguments: [String] = ProcessInfo.processInfo.arguments,
-        infoValue: String? = Bundle.main.object(forInfoDictionaryKey: CaptureIntegration.infoKey) as? String,
-        defaults: UserDefaults = .standard
-    ) {
+    init(arguments: [String] = ProcessInfo.processInfo.arguments, bundle: Bundle = .main, defaults: UserDefaults = .standard) {
         let argument = arguments.firstIndex(of: "-captureAPIURL").flatMap { $0 + 1 < arguments.count ? arguments[$0 + 1] : nil }
+        let mode = CaptureIntegrationMode.resolve(
+            integrationBuild: bundle.object(forInfoDictionaryKey: "HouseScanIntegrationBuild") as? String,
+            endpoint: argument ?? bundle.object(forInfoDictionaryKey: "HouseScanCaptureAPIURL") as? String,
+            sendDeviceData: bundle.object(forInfoDictionaryKey: "HouseScanCaptureSendDeviceData") as? String)
+        let modeName = switch mode {
+        case .off: "off"
+        case .recordOnly: "record only"
+        case .send: "send after consent"
+        }
+        RuntimeLog.engine.info("capture packet mode: \(modeName, privacy: .public)")
         var environment: CaptureSessionCoordinator.Environment?
-        if case .on(let endpoint) = CaptureUploadGate.decide(endpoint: argument ?? infoValue, consented: true) {
+        if let endpoint = mode.endpoint {
             let depth = LiveCapture.supportsDepth
             let device = CaptureAPI.Device(model: ScanEngine.hardwareModel(), systemVersion: UIDevice.current.systemVersion, appVersion: Self.appVersion)
             let zone = TimeZone.current.identifier
+            let sends = if case .send = mode { true } else { false }
             environment = .init(
-                endpoint: endpoint, http: URLSessionCaptureHTTP.ephemeral(timeout: 60), capturesFolder: Self.capturesFolder,
+                endpoint: endpoint, sends: sends, http: URLSessionCaptureHTTP.ephemeral(timeout: 60), capturesFolder: Self.capturesFolder,
                 sessionInfo: { packetID, video in
                     // LiveCapture turns on scene depth exactly when the phone supports it.
                     Packet04SessionInfo(
@@ -50,17 +65,21 @@ final class CaptureIntegration {
                 },
                 device: device, tier: depth ? .arkitLidar : .arkit, log: { line in RuntimeLog.engine.info("\(line, privacy: .public)") })
         }
-        coordinator = CaptureSessionCoordinator(environment: environment, consent: defaults.object(forKey: Self.consentKey) as? Bool)
-        needsConsent = coordinator.needsConsent
+        let remembered = environment.map { defaults.string(forKey: Self.consentKey) == $0.endpoint.absoluteString } ?? false
+        coordinator = CaptureSessionCoordinator(environment: environment, rememberedYes: remembered)
         coordinator.onStatus = { [weak self] in self?.status = $0 }
-        if let environment { resumeSealedCaptures(environment) }
+        resumed = coordinator.resumeSealedCaptures()
+        if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
     }
 
+    /// A yes is remembered for this endpoint; a no holds for this scan only.
     func answerConsent(_ yes: Bool) {
-        UserDefaults.standard.set(yes, forKey: Self.consentKey)
+        if yes, let endpoint = coordinator.environment?.endpoint {
+            UserDefaults.standard.set(endpoint.absoluteString, forKey: Self.consentKey)
+        }
         RuntimeLog.engine.info("capture upload consent: \(yes ? "yes" : "no", privacy: .public)")
         coordinator.answerConsent(yes)
-        needsConsent = coordinator.needsConsent
+        answers += 1
     }
 
     // MARK: Engine hooks
@@ -74,17 +93,17 @@ final class CaptureIntegration {
     /// The ARKit world was thrown away: this packet can't be finished in it.
     func worldReset(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
-        coordinator.newWorld("world reset", recording: Self.recording(recorder))
+        coordinator.newWorld("world reset", recording: Self.recording(recorder), newScan: false)
     }
 
     func startOver(store: KeyframeStore, recorder: CaptureRecorder) {
         attach(store)
-        coordinator.newWorld("start over", recording: Self.recording(recorder))
+        coordinator.newWorld("start over", recording: Self.recording(recorder), newScan: true)
+        answers += 1
     }
 
     /// The homeowner marked the meter on `tap`'s frame; `hit` is what the app's raycast found.
     func meterTapped(_ tap: TapObservation?, hit: VerticalPlaneHit) {
-        guard coordinator.isEnabled else { return }
         guard let tap else {
             RuntimeLog.engine.info("capture packet: no frame for the meter tap; no tap recorded")
             return
@@ -145,20 +164,5 @@ final class CaptureIntegration {
         let bundle = Bundle.main.infoDictionary ?? [:]
         let parts = [bundle["CFBundleShortVersionString"], bundle["CFBundleVersion"]].compactMap { $0 as? String }
         return parts.count == 2 ? "\(parts[0]) (\(parts[1]))" : parts.first ?? "unknown"
-    }
-
-    // MARK: Relaunch
-
-    /// Captures frozen before the app last quit finish uploading; ones still being captured can't
-    /// be finished (their streams belonged to that process's world) and are left as they are.
-    private func resumeSealedCaptures(_ environment: CaptureSessionCoordinator.Environment) {
-        guard let folders = try? FileManager.default.contentsOfDirectory(at: Self.capturesFolder, includingPropertiesForKeys: nil) else { return }
-        for folder in folders {
-            guard let saved = try? CaptureUploadState.load(from: CaptureUploader.stateURL(in: folder)), saved.end == nil, saved.packet != nil,
-                  let uploader = try? CaptureUploader.resume(folder: folder, base: environment.endpoint, http: environment.http) else { continue }
-            resumed.append(uploader)
-            Task { await uploader.kick() }
-        }
-        if !resumed.isEmpty { RuntimeLog.engine.info("capture upload: resuming \(self.resumed.count) sealed captures") }
     }
 }

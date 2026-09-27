@@ -24,6 +24,10 @@
 	<string>$(HOUSESCAN_SERVER_URL)</string>
 	<key>HouseScanCaptureAPIURL</key>
 	<string>$(HOUSESCAN_CAPTURE_API_URL)</string>
+	<key>HouseScanIntegrationBuild</key>
+	<string>$(HOUSESCAN_INTEGRATION_BUILD)</string>
+	<key>HouseScanCaptureSendDeviceData</key>
+	<string>$(HOUSESCAN_CAPTURE_SEND_DEVICE_DATA)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

@@ -213,15 +213,22 @@ public actor Packet04Producer {
     }
 
     /// A checklist still taken from an ARKit keyframe already sealed: the same pixels under
-    /// stills/<purpose>.jpg, linked to the keyframe so it keeps its pose. Stills go first.
+    /// stills/<id>.jpg, linked to the keyframe so it keeps its pose. Stills go first.
+    ///
+    /// A retake of the same purpose is a new still ("meter_close-2"): sealed files never change,
+    /// and the latest still of a purpose is the one the scale reference names.
     public func sealStill(purpose: String, keyframe keyframeID: String) throws -> SealedFile {
         guard finished == nil else { throw Packet04Error.sealedAfterFinish("still") }
         guard Packet04.isSegmentID(purpose) else { throw Packet04Error.invalidID(purpose) }
-        guard !stills.contains(where: { $0.id == purpose }) else { throw Packet04Error.duplicate(purpose) }
         guard let frame = keyframes.first(where: { $0.id == keyframeID }) else { throw Packet04Error.unknownKeyframe(keyframeID) }
+        if let same = stills.last(where: { $0.purpose == purpose }), same.keyframe == keyframeID {
+            throw Packet04Error.duplicate(same.id)
+        }
+        let taken = stills.filter { $0.purpose == purpose }.count
+        let id = taken == 0 ? purpose : "\(purpose)-\(taken + 1)"
         let jpeg = try Data(contentsOf: folder.appending(path: frame.img))
         let still = Packet04.Still(
-            id: purpose, purpose: purpose, img: "stills/\(purpose).jpg", w: frame.w, h: frame.h, timestamp: frame.timestamp,
+            id: id, purpose: purpose, img: "stills/\(id).jpg", w: frame.w, h: frame.h, timestamp: frame.timestamp,
             orientation: 1, keyframe: frame.id, intrinsics: frame.intrinsics, intrinsicsSource: "arkit")
         let file = try write(jpeg, still.img, role: .still, type: "image/jpeg", meta: .still(still), priority: 0)
         stills.append(still)
@@ -280,8 +287,9 @@ public actor Packet04Producer {
         ext["rawAccelerometerFile"] = accelFile.path
         ext["rawGyroscopeFile"] = gyroFile.path
 
-        let close = stills.first { $0.purpose == "meter_close" }
-        let oblique = stills.first { $0.purpose == "meter_oblique" }
+        // The latest shot of each is the accepted one: a retake replaces a refused close-up.
+        let close = stills.last { $0.purpose == "meter_close" }
+        let oblique = stills.last { $0.purpose == "meter_oblique" }
         let packet = Packet04.Packet(
             packetId: info.packetID, createdAt: PacketWriter.iso8601(createdAt),
             source: .init(kind: info.source, appBuild: info.appVersion),

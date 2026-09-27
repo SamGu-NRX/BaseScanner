@@ -23,3 +23,34 @@ public enum CaptureUploadGate {
         return .on(url)
     }
 }
+
+/// What the app does with its captures, from three build settings read once at launch. Only the
+/// integration build records a 0.4 capture at all; only a build that also names an endpoint and
+/// says device data may go there sends one, and then only after the homeowner's yes.
+public enum CaptureIntegrationMode: Sendable, Equatable {
+    /// The client build, or no usable endpoint: nothing is recorded for the capture API or sent.
+    case off(String)
+    /// The capture is recorded on the phone and never sent: the endpoint may not receive device
+    /// data (an unauthenticated test server, unless the build says otherwise).
+    case recordOnly(URL)
+    /// Recorded, and sent after the homeowner's yes.
+    case send(URL)
+
+    public var endpoint: URL? {
+        switch self {
+        case .off: nil
+        case .recordOnly(let url), .send(let url): url
+        }
+    }
+
+    /// `integrationBuild` and `sendDeviceData` are Info.plist values that must read exactly "YES".
+    /// A launch argument can name `endpoint`, but can't turn a client build into an integration
+    /// build or allow device data.
+    public static func resolve(integrationBuild: String?, endpoint: String?, sendDeviceData: String?) -> CaptureIntegrationMode {
+        guard integrationBuild == "YES" else { return .off("not the integration build") }
+        switch CaptureUploadGate.decide(endpoint: endpoint, consented: true) {
+        case .off(let reason): return .off(reason)
+        case .on(let url): return sendDeviceData == "YES" ? .send(url) : .recordOnly(url)
+        }
+    }
+}

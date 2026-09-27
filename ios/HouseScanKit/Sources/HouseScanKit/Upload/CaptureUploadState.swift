@@ -22,6 +22,13 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
         public var attempts = 0
         /// Order in which the file was sealed, the tie-break after priority.
         public var sequence: Int
+
+        public init(sealed: SealedFile, phase: FilePhase = .queued, attempts: Int = 0, sequence: Int) {
+            self.sealed = sealed
+            self.phase = phase
+            self.attempts = attempts
+            self.sequence = sequence
+        }
     }
 
     public enum End: Codable, Sendable, Equatable {
@@ -42,6 +49,9 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
     /// Local identity of this upload. Answers that arrive for another attempt are dropped.
     public var attemptID: String
     public var packetID: String
+    /// The API base the capture was created on. A resume goes only there: its capture id and
+    /// signed URLs mean nothing to another server.
+    public var destination: String?
     /// The create body exactly as first sent.
     public var createBody: Data
     public var captureID: String?

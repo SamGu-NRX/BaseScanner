@@ -74,15 +74,15 @@ import Testing
         let coordinator = CaptureSessionCoordinator(
             environment: NativeCaptureFixture.environment(
                 endpoint: base, http: URLSessionCaptureHTTP.ephemeral(timeout: 90), captures: root.appending(path: "Captures"), eventsWait: 20, log: log),
-            consent: true)
+            rememberedYes: true)
         let fixture = NativeCaptureFixture(folder: root.appending(path: "store"))
         let committedBeforeEnd = Mutex(0)
         try await fixture.run(coordinator) {
-            let count = await coordinator.session!.uploader.snapshot.committedCount
+            let count = await coordinator.session!.uploader!.snapshot.committedCount
             committedBeforeEnd.withLock { $0 = count }
         }
         let session = try #require(coordinator.session)
-        let state = await session.uploader.snapshot
+        let state = await session.uploader!.snapshot
 
         let target = evidence.appending(path: "native-export-live")
         try? FileManager.default.removeItem(at: target)

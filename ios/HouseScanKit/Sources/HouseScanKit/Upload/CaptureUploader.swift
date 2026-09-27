@@ -87,14 +87,16 @@ public actor CaptureUploader {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         var state = CaptureUploadState(attemptID: UUID().uuidString, packetID: create.packetId, createBody: try encoder.encode(create))
+        state.destination = base.absoluteString
         state.marks["started"] = now()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try state.save(to: stateURL(in: folder))
         return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
     }
 
-    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none. The resumed
-    /// upload gets a new attempt id, so nothing from the previous process can land in it.
+    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, or when it was
+    /// created on another API than `base`. The resumed upload gets a new attempt id, so nothing from
+    /// the previous process can land in it.
     public static func resume(
         folder: URL, base: URL, http: any CaptureHTTP, policy: Policy = .init(),
         now: @escaping @Sendable () -> Date = { Date() },
@@ -103,6 +105,7 @@ public actor CaptureUploader {
         let url = stateURL(in: folder)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         var state = try CaptureUploadState.load(from: url)
+        guard state.destination == base.absoluteString else { return nil }
         state.attemptID = UUID().uuidString
         try state.save(to: url)
         return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
@@ -214,10 +217,12 @@ public actor CaptureUploader {
         requeueExpiring()
         let queued = ordered(where: { $0.phase == .queued })
         if !queued.isEmpty { try await register(Array(queued.prefix(min(policy.batch, state.maxBatch)))); return true }
-        let registered = ordered(where: { if case .registered = $0.phase { true } else { false } })
-        if !registered.isEmpty { try await put(Array(registered.prefix(policy.batch))); return true }
+        // Each round of PUTs is committed before the next starts, so the first photos count as
+        // received after one round trip of uploads rather than a whole register batch.
         let uploaded = ordered(where: { $0.phase == .uploaded })
         if !uploaded.isEmpty { try await commit(Array(uploaded.prefix(min(policy.batch, state.maxBatch)))); return true }
+        let registered = ordered(where: { if case .registered = $0.phase { true } else { false } })
+        if !registered.isEmpty { try await put(Array(registered.prefix(policy.maxConcurrentPuts))); return true }
         if state.finalized != nil, state.end == nil {
             if state.result != nil || CaptureAPI.terminalStatuses.contains(state.backendStatus ?? "") {
                 try await fetchResult()

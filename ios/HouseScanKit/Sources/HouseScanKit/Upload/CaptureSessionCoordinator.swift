@@ -108,8 +108,10 @@ public struct RecorderRows: Sendable {
 }
 
 /// What the integration build does with a scan: one 0.4 packet per ARKit world, each kept photo
-/// sealed and uploaded while the homeowner scans, the packet frozen when the scan is sent.
-/// Inert without an endpoint or without the homeowner's yes.
+/// sealed into it on the phone as it is kept, the packet frozen when the scan is sent for
+/// placement. Sending is separate: only a build allowed to send device data (`sends`) sends, and
+/// only after the homeowner's yes. From the yes on, every sealed file goes up, and later photos go
+/// up as they are kept.
 ///
 /// Work for one world runs in order on that world's chain; a world reset or start over ends the
 /// session, and nothing queued for it reaches the next one.
@@ -117,6 +119,8 @@ public struct RecorderRows: Sendable {
 public final class CaptureSessionCoordinator {
     public struct Environment: Sendable {
         public var endpoint: URL
+        /// Whether device captures may go to `endpoint` at all (`CaptureIntegrationMode.send`).
+        public var sends: Bool
         public var http: any CaptureHTTP
         /// Each session writes to `<folder>/<packet id>`.
         public var capturesFolder: URL
@@ -127,11 +131,12 @@ public final class CaptureSessionCoordinator {
         public var log: @Sendable (String) -> Void
 
         public init(
-            endpoint: URL, http: any CaptureHTTP, capturesFolder: URL,
+            endpoint: URL, sends: Bool, http: any CaptureHTTP, capturesFolder: URL,
             sessionInfo: @escaping @Sendable (_ packetID: String, _ video: SIMD2<Float>) -> Packet04SessionInfo,
             device: CaptureAPI.Device, tier: Packet04.Tier, policy: CaptureUploader.Policy = .init(), log: @escaping @Sendable (String) -> Void = { _ in }
         ) {
             self.endpoint = endpoint
+            self.sends = sends
             self.http = http
             self.capturesFolder = capturesFolder
             self.sessionInfo = sessionInfo
@@ -149,17 +154,19 @@ public final class CaptureSessionCoordinator {
     public final class Session {
         public let packetID: String
         public let folder: URL
-        public let uploader: CaptureUploader
+        /// Nil until the homeowner says yes on a build that sends.
+        public fileprivate(set) var uploader: CaptureUploader?
         public private(set) var producer: Packet04Producer?
         let recording: RecordingSource
         var chain: Task<Void, Never>?
         var sealing = false
         var ended = false
+        /// packet.json as frozen, once the scan was sent for placement.
+        var frozen: Data?
 
-        init(packetID: String, folder: URL, uploader: CaptureUploader, recording: RecordingSource) {
+        init(packetID: String, folder: URL, recording: RecordingSource) {
             self.packetID = packetID
             self.folder = folder
-            self.uploader = uploader
             self.recording = recording
         }
 
@@ -184,24 +191,29 @@ public final class CaptureSessionCoordinator {
     }
 
     public let environment: Environment?
+    /// The homeowner's answer: true once they said yes (for this device and endpoint), false for
+    /// a no on this scan, nil before they were asked.
     public private(set) var consent: Bool?
     public private(set) var session: Session?
     private var recording: RecordingSource?
-    /// The current session's status; nil when there is none.
+    /// The current session's status; nil when there is none or nothing is being sent.
     public var onStatus: (@MainActor (CaptureUploadStatus?) -> Void)?
 
-    public init(environment: Environment?, consent: Bool?) {
+    /// `rememberedYes`: the homeowner already agreed to send to this environment's endpoint.
+    public init(environment: Environment?, rememberedYes: Bool) {
         self.environment = environment
-        self.consent = consent
+        consent = rememberedYes ? true : nil
     }
 
-    public var needsConsent: Bool { environment != nil && consent == nil }
-    public var isEnabled: Bool { environment != nil && consent == true }
+    /// Whether the homeowner should be asked now: a build that sends, no answer on this scan, and
+    /// a capture with photos to send.
+    public var needsConsent: Bool {
+        environment?.sends == true && consent == nil && session?.producer != nil
+    }
 
     public func answerConsent(_ yes: Bool) {
         consent = yes
-        if yes, recording != nil, session == nil { startSession() }
-        if !yes { endSession("the homeowner said no") }
+        if yes, let session { startUploading(session) }
     }
 
     // MARK: Scan events
@@ -209,15 +221,17 @@ public final class CaptureSessionCoordinator {
     /// The live source started recording a world.
     public func begin(recording: RecordingSource) {
         self.recording = recording
-        if isEnabled, session == nil { startSession() }
+        if environment != nil, session == nil { startSession() }
     }
 
-    /// The ARKit world was thrown away, or the scan started over: this packet can't be finished,
-    /// and the next one belongs to `recording`'s new world.
-    public func newWorld(_ reason: String, recording: RecordingSource) {
+    /// The ARKit world was thrown away, or (`newScan`) the scan started over: this packet can't
+    /// be finished, and the next one belongs to `recording`'s new world. A new scan asks again
+    /// after a no; a yes stands.
+    public func newWorld(_ reason: String, recording: RecordingSource, newScan: Bool) {
         endSession(reason)
+        if newScan, consent == false { consent = nil }
         self.recording = recording
-        if isEnabled { startSession() }
+        if environment != nil { startSession() }
     }
 
     public func kept(_ photo: KeptPhoto) {
@@ -234,7 +248,7 @@ public final class CaptureSessionCoordinator {
                 if let purpose = photo.purpose, Self.stillPurposes.contains(purpose), let keyframe = await producer.keyframeID(at: photo.t) {
                     files.append(try await producer.sealStill(purpose: purpose, keyframe: keyframe))
                 }
-                await session.uploader.add(files)
+                await session.uploader?.add(files)
             } catch {
                 environment.log("capture packet: a kept photo was not sealed: \(error)")
             }
@@ -254,7 +268,7 @@ public final class CaptureSessionCoordinator {
                 let observation = Packet04Observation(
                     t: tap.t, cameraToWorld: tap.cameraToWorld, intrinsics: tap.intrinsics, width: tap.width, height: tap.height, tracking: tap.tracking)
                 let files = try await producer.sealTap(id: "meter", label: "meter", jpeg: jpeg, observation: observation, pixel: tap.pixel, hit: hit)
-                await session.uploader.add(files)
+                await session.uploader?.add(files)
             } catch {
                 environment.log("capture packet: the meter tap was not recorded: \(error)")
             }
@@ -268,7 +282,7 @@ public final class CaptureSessionCoordinator {
         session.sealing = true
         session.enqueue { session in
             guard let producer = session.producer else {
-                await session.uploader.abandon("no photos were kept")
+                await session.uploader?.abandon("no photos were kept")
                 return
             }
             let recording = session.recording
@@ -278,10 +292,11 @@ public final class CaptureSessionCoordinator {
                 let finished = try await producer.finish(
                     poses: poses, accelerometer: Packet04Streams.motionRows(rows.accelerometer),
                     gyroscope: Packet04Streams.motionRows(rows.gyroscope), endedAtUptime: poses.last?.t ?? 0)
-                await session.uploader.seal(packet: finished.packet, files: await producer.sealedFiles)
+                session.frozen = finished.packet
+                await session.uploader?.seal(packet: finished.packet, files: await producer.sealedFiles)
             } catch {
                 environment.log("capture packet not finished: \(error)")
-                await session.uploader.abandon("packet refused on the phone")
+                await session.uploader?.abandon("packet refused on the phone")
             }
         }
     }
@@ -294,7 +309,24 @@ public final class CaptureSessionCoordinator {
             await chain.value
             if session.chain == chain { break }
         }
-        await session.uploader.settled()
+        await session.uploader?.settled()
+    }
+
+    /// After a relaunch: captures frozen before the app quit, created on this endpoint, finish
+    /// uploading, but only with the homeowner's standing yes for this endpoint. Returns them.
+    public func resumeSealedCaptures() -> [CaptureUploader] {
+        guard let environment, environment.sends, consent == true,
+              let folders = try? FileManager.default.contentsOfDirectory(at: environment.capturesFolder, includingPropertiesForKeys: nil)
+        else { return [] }
+        var resumed: [CaptureUploader] = []
+        for folder in folders {
+            guard let saved = try? CaptureUploadState.load(from: CaptureUploader.stateURL(in: folder)), saved.end == nil, saved.packet != nil,
+                  let uploader = try? CaptureUploader.resume(folder: folder, base: environment.endpoint, http: environment.http, policy: environment.policy)
+            else { continue }
+            resumed.append(uploader)
+            Task { await uploader.kick() }
+        }
+        return resumed
     }
 
     // MARK: Sessions
@@ -302,13 +334,21 @@ public final class CaptureSessionCoordinator {
     private func startSession() {
         guard let environment, let recording else { return }
         let packetID = UUID().uuidString
-        let folder = environment.capturesFolder.appending(path: packetID, directoryHint: .isDirectory)
+        let session = Session(packetID: packetID, folder: environment.capturesFolder.appending(path: packetID, directoryHint: .isDirectory), recording: recording)
+        self.session = session
+        environment.log("capture packet: new packet for this world")
+        if consent == true { startUploading(session) }
+    }
+
+    /// Opens the capture on the server and queues everything sealed so far, then the frozen
+    /// packet if the scan was already sent. Photos kept later go up as they are sealed.
+    private func startUploading(_ session: Session) {
+        guard let environment, environment.sends, consent == true, session.uploader == nil, !session.ended else { return }
         do {
             let uploader = try CaptureUploader.start(
-                folder: folder, base: environment.endpoint, http: environment.http,
-                create: .init(packetId: packetID, tier: environment.tier, device: environment.device), policy: environment.policy)
-            let session = Session(packetID: packetID, folder: folder, uploader: uploader, recording: recording)
-            self.session = session
+                folder: session.folder, base: environment.endpoint, http: environment.http,
+                create: .init(packetId: session.packetID, tier: environment.tier, device: environment.device), policy: environment.policy)
+            session.uploader = uploader
             // Status from an ended session's uploader never reaches the screen.
             let publish: @Sendable (CaptureUploadStatus) -> Void = { [weak self] status in
                 Task { @MainActor in
@@ -321,7 +361,16 @@ public final class CaptureSessionCoordinator {
                 await uploader.observe(publish, log: log)
                 await uploader.kick()
             }
-            environment.log("capture upload: new packet for this world")
+            session.enqueue { session in
+                guard let producer = session.producer else { return }
+                let files = await producer.sealedFiles
+                if let frozen = session.frozen {
+                    await uploader.seal(packet: frozen, files: files)
+                } else {
+                    await uploader.add(files)
+                }
+            }
+            environment.log("capture upload: sending this world's packet")
         } catch {
             environment.log("capture upload not started: \(error)")
         }
@@ -332,7 +381,7 @@ public final class CaptureSessionCoordinator {
         self.session = nil
         session.ended = true
         onStatus?(nil)
-        Task { await session.uploader.abandon(reason) }
+        if let uploader = session.uploader { Task { await uploader.abandon(reason) } }
     }
 }
 
