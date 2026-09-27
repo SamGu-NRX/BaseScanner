@@ -264,9 +264,10 @@ final class ScanEngine {
             live?.setMode(.walk)
             if let replay {
                 autoCapture.reset()
-                // An overhead request is answered by tilting up, which the tilt-up frames show;
-                // other requests by the frames held back from the walk.
-                if case .overhead = gapPlan?.need, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
+                // An overhead request, or one for the wall above what the walk saw, is answered
+                // by tilting up, which the tilt-up frames show; other requests by the frames held
+                // back from the walk.
+                if gapPlan?.asksAboveTheWalk == true, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
                     replay.play(range: Self.tiltUpFrames(in: replay, map: map), speed: replaySpeed)
                 } else {
                     let range = replay.heldBack.map { ReplayPlanning.gapReplayRange($0.frames) } ?? 0..<replay.frames.count
@@ -1078,10 +1079,12 @@ final class ScanEngine {
         // An event from a source that failed or was replaced says nothing about the running one.
         guard sourceState.accepts(source) else { return }
         switch event {
-        case .interrupted:
+        case .interrupted(let lastFrameTime):
             // The phase, captures and strip stay as they are; ARKit relocalizes into the same
-            // world frame when the session resumes (checklist R4).
+            // world frame when the session resumes (checklist R4). The break is placed after the
+            // last frame the session delivered, which may still be on its way here.
             RuntimeLog.capture.info("session interrupted")
+            if let lastFrameTime { coverage?.breakWalkedPath(at: lastFrameTime) }
             breakWalkedPath(because: "session interrupted")
             state.coaching = .relocalizing
         case .interruptionEnded:
@@ -1091,13 +1094,21 @@ final class ScanEngine {
             fail(.cameraDenied)
         case .failed(let message):
             // Once the scan is sent, the upload and its result no longer need the camera: keep
-            // them on screen. Only the AR view needs it, and it already hides the battery while
-            // the camera isn't tracking.
+            // them on screen. So does the spot check, which shows a stored photo; with tracking
+            // gone, unmarked equipment can't be marked there and its area is left out. Only the AR
+            // view needs the camera, and it already hides the battery while it isn't tracking.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
+            case .markFeatures where spotConfirmIsMarking:
+                // Marking unmarked equipment from the spot check: back to its photo, where the
+                // thing can't be marked now and its area is left out.
+                RuntimeLog.engine.error("camera session failed while marking for the spot check: \(message, privacy: .public)")
+                _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
+                loseSpatialResult()
+                cancelMarking()
             default:
                 // The screen shows plain words, so the camera's own error is only recorded here.
                 RuntimeLog.engine.error("camera session failed: \(message, privacy: .public)")
@@ -1106,8 +1117,8 @@ final class ScanEngine {
         }
     }
 
-    /// Forgets everything tied to the old world frame and asks for the meter again. What
-    /// describes the house rather than a place in the old frame stays: the ground answer. The
+    /// Forgets everything tied to the old world frame and asks for the meter again, the spot
+    /// check's answers with it: even the ground answer is about a footprint in that frame. The
     /// close-up's own state (gate, readout, view) is reset when the close-up starts again
     /// (`go(.meterCloseUp)`).
     func resetSpatialState(reason: String) {
@@ -1429,12 +1440,20 @@ final class ScanEngine {
         // the main actor without a break, so nothing can move the wall between that measurement
         // and the export. If the wall keeps moving, the mesh's measurements are left out: less
         // evidence, never evidence about another wall.
-        let meshSnapshot = live?.meshSnapshot()
+        //
+        // The mesh is read again on each attempt, with the wall, so both are in the frame ARKit
+        // reports at that moment: a mesh read before a correction and measured against the
+        // corrected wall would put an overhang at the old height (a 0.2 m lower ground reads a
+        // 2 m overhang as 2.2 m). The packet gets the snapshot the measurement used.
+        var meshSnapshot = live?.meshSnapshot()
         var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh {
+        if meshSnapshot != nil {
             var agreed = false
             for _ in 0..<3 {
                 guard let map = coverage else { break }
+                // Without a session nothing corrects the wall, so the last snapshot still agrees.
+                if let fresh = live?.meshSnapshot() { meshSnapshot = fresh }
+                guard let mesh = meshSnapshot?.mesh else { break }
                 let wall = map.wall
                 let span = Self.exportSpan(map)
                 let result = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
@@ -1447,7 +1466,8 @@ final class ScanEngine {
                 RuntimeLog.engine.info("mesh: the wall moved while it was measured; measuring again")
             }
             if !agreed { RuntimeLog.engine.error("mesh: the wall kept moving; the scene goes without the mesh's measurements") }
-            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+            let mesh = meshSnapshot?.mesh
+            RuntimeLog.engine.info("mesh: \(mesh?.vertices.count ?? 0) vertices, \((mesh?.indices.count ?? 0) / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data
         do {
@@ -1658,7 +1678,6 @@ final class ScanEngine {
         state.wall = nil
         state.coverage = .empty
         state.features = []
-        state.groundAnswer = nil
         state.marking = nil
         state.gap = nil
         state.result = nil

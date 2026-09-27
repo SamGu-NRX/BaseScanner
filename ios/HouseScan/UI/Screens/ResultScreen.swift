@@ -32,8 +32,8 @@ struct ResultScreen: View {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
                     AnswerCard(result: result, canShowAR: state.spatialResultAvailable, revealed: revealed, actions: actions)
-                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
-                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                    if result.spot != nil, let answer = state.spotCheck?.answer, let leftOut = ScanCopy.spotLeftOut(answer) {
+                        Notice(symbol: "exclamationmark.triangle.fill", text: leftOut)
                             .accessibilityIdentifier("result.spotRefused")
                     }
                     footnotes(result)

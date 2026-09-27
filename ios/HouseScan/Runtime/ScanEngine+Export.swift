@@ -78,22 +78,11 @@ extension ScanEngine {
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
             meshOverheads: mesh.overheads,
-            // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
-            groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
+            // Only what the homeowner said about a checked spot's footprint; before any spot,
+            // none, and the server reports the surface unknown.
+            groundPatches: spotGroundPatches
         )
         return try SceneExport.jsonData(input)
-    }
-
-    static func sceneGroundType(_ answer: GroundAnswer) -> SceneGroundType? {
-        switch answer {
-        case .notSure: nil
-        case .type(.lawn): .lawn
-        case .type(.mulch): .mulch
-        case .type(.gravel): .gravel
-        case .type(.concrete): .concrete
-        case .type(.drive): .drive
-        case .type(.deck): .deck
-        }
     }
 
     /// How the line of the meter's piece of wall was found, for scene.json's `walls[].source`.

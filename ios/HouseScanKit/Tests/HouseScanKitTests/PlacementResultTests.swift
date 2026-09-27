@@ -68,7 +68,7 @@ import simd
         _ = try PlacementResult.decode(
             try Self.sample(replacing: #""schema_version": "1.0","#, with: #""schema_version": "1.0", "extra": true,"#))
         _ = try PlacementResult.decode(
-            try Self.sample(replacing: #""key": "sample_window_clearance_ft""#, with: #""key": "sample_window_clearance_ft", "bogus": 1"#))
+            try Self.sample(replacing: #""key": "clearances.opening_ft""#, with: #""key": "clearances.opening_ft", "bogus": 1"#))
     }
 
     /// A real answer from the hosted server (deployed from origin/t3/server at 737bf75) to the
