@@ -59,7 +59,7 @@ struct InstructionCard: View {
                     .foregroundStyle(Palette.chalk)
                     .padding(.horizontal, 16)
                     .frame(minHeight: Metrics.minTarget)
-                    .background(.white.opacity(0.14), in: .capsule)
+                    .background(Palette.replyFill, in: .capsule)
                     .contentShape(.capsule)
                     .buttonStyle(PressableStyle())
                     // The colours are set above and PressableStyle doesn't read isEnabled, so the

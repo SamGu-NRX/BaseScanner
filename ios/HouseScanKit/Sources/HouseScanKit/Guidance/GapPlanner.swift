@@ -49,6 +49,15 @@ public struct GapPlan: Sendable, Equatable {
     /// Nil for a request built in meters, whose span is then read at the export's four decimals.
     public var requestedSpanFt: ClosedRange<Double>?
 
+    /// A request a view tilted up at the wall answers: something overhead, or the wall seen
+    /// higher than the walk's band.
+    public var asksAboveTheWalk: Bool {
+        switch need {
+        case .overhead, .wallUp: true
+        case .cells, .groundOut, .walkOut: false
+        }
+    }
+
     public init(
         band: SurfaceBand, span: ClosedRange<Float>, reason: Reason, need: Need = .cells,
         requestedOutFt: Double? = nil, requestedSpanFt: ClosedRange<Double>? = nil

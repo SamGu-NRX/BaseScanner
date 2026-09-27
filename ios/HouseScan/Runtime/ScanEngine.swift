@@ -320,9 +320,10 @@ final class ScanEngine {
             live?.setMode(.walk)
             if let replay {
                 autoCapture.reset()
-                // An overhead request is answered by tilting up, which the tilt-up frames show;
-                // other requests by the frames held back from the walk.
-                if case .overhead = gapPlan?.need, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
+                // An overhead request, or one for the wall above what the walk saw, is answered
+                // by tilting up, which the tilt-up frames show; other requests by the frames held
+                // back from the walk.
+                if gapPlan?.asksAboveTheWalk == true, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
                     replay.play(range: Self.tiltUpFrames(in: replay, map: map), speed: replaySpeed)
                 } else {
                     let range = replay.heldBack.map { ReplayPlanning.gapReplayRange($0.frames) } ?? 0..<replay.frames.count
@@ -349,10 +350,15 @@ final class ScanEngine {
     private var autoAdvanceDelay: Double { options.autopilot ? max(1.2, options.autopilotHold) : 1.2 }
 
     /// With `-autopilotGate`, waits until the UI test has finished with `phase` (its file exists),
-    /// for at most two minutes so a lost gate file can't hang the app.
+    /// for at most two minutes so a lost gate file can't hang the app. While it waits, the file
+    /// `<phase>.held` says the autopilot has finished with the screen and holds it still, for a UI
+    /// test that must audit it settled rather than while the autopilot drives it.
     func waitForGate(_ phase: ScanPhase) async {
         guard options.autopilot, let gate = options.autopilotGate else { return }
         let file = gate.appending(path: phase.rawValue)
+        if !FileManager.default.fileExists(atPath: file.path) {
+            try? Data().write(to: gate.appending(path: "\(phase.rawValue).held"))
+        }
         let deadline = ContinuousClock.now + .seconds(120)
         while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
