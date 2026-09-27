@@ -92,7 +92,7 @@ struct OnboardingScreen: View {
                         }
                         .buttonStyle(.primary)
                         .accessibilityLabel("Allow camera")
-                        .accessibilityHint("Your phone will ask to use the camera, then Motion & Fitness")
+                        .accessibilityHint("Your phone may ask to use the camera, then Motion & Fitness")
                         .accessibilityIdentifier("action.finishOnboarding")
                         if !typeSize.isAccessibilitySize {
                             OnboardingPermissionNote()
@@ -255,7 +255,7 @@ private struct OnboardingPageView: View {
 
 private struct OnboardingPermissionNote: View {
     var body: some View {
-        Text("Your phone will ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
+        Text("Your phone may ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
             .font(.footnote)
             .foregroundStyle(Palette.muted)
             .multilineTextAlignment(.center)
