@@ -15,6 +15,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("onboarding", [], "onboarding"),
         // Keep the Practice-on accessibility check even when ordinary fixtures force it off.
         ("onboarding-practice", ["-practiceMeter", "YES"], "onboarding"),
+        ("onboarding-moves", [], "onboarding"),
         ("findMeter", ["-uiDemoPhase", "findMeter"], "findMeter"),
         ("meterCloseUp-cantGetClearShot", ["-uiDemoPhase", "meterCloseUp", "-uiDemoCloseUpFailed"], "meterCloseUp"),
         ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
@@ -79,7 +80,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "onboarding-practice", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "onboarding-practice", "onboarding-moves", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -129,6 +130,21 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
         // #76: a wall never walked shows no spot.
         "result-wallNotMeasured": [("result.headline", "We couldn't measure your wall")],
+        // #85: each move in the cards' own words, one element per move.
+        "onboarding-moves": [
+            ("onboarding.move.1", "Aim at your meter"),
+            ("onboarding.move.2", "Tilt down to show the ground"),
+            ("onboarding.move.3", "Take a step back"),
+            ("onboarding.move.4", "An arrow at the screen edge means the spot is off screen"),
+            ("onboarding.move.5", "Wall ends here"),
+        ],
+    ]
+
+    /// States past the screen's first view: the controls tapped to get there, and an element whose
+    /// page must then be the one across the screen.
+    private static let navigation: [String: (taps: [String], shows: String)] = [
+        // #85: the page after the walk page previews the moves the walk asks for.
+        "onboarding-moves": (["action.onboardingNext"], "onboarding.move.1"),
     ]
 
     /// Controls a state must offer, by identifier.
@@ -180,6 +196,8 @@ final class ScreenStatesUITests: XCTestCase {
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo"]
         app.launch()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
+        // The walk, the moves it asks for (#85), the haze, then safety with the camera prompt.
+        tap(app, "action.onboardingNext")
         tap(app, "action.onboardingNext")
         tap(app, "action.onboardingNext")
         // Both prompts come from "Allow camera", so the page says why before either shows.
@@ -575,6 +593,27 @@ final class ScreenStatesUITests: XCTestCase {
         guard element(app, "screen.\(screen)").waitForExistence(timeout: 15) else {
             XCTFail("\(name): screen.\(screen) never appeared")
             return
+        }
+        if let route = Self.navigation[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+            for identifier in route.taps { tap(app, identifier) }
+            // Across, not down: at AX5 the element can sit below the fold of its page.
+            let window = app.windows.firstMatch.frame
+            let deadline = Date().addingTimeInterval(10)
+            var arrived = false
+            repeat {
+                if let frame = ElementRead.snapshot(element(app, route.shows))?.frame,
+                   frame.minX >= window.minX, frame.maxX <= window.maxX {
+                    arrived = true
+                } else {
+                    Thread.sleep(forTimeInterval: 0.25)
+                }
+            } while !arrived && Date() < deadline
+            guard arrived else {
+                XCTFail("\(name): \(route.shows) never slid into view")
+                return
+            }
+            // The page slides in; let it settle before the screenshot and the audit.
+            Thread.sleep(forTimeInterval: 0.5)
         }
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = name
