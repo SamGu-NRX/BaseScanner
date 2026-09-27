@@ -9,6 +9,7 @@ experiments/measure-lab/README.md ("Session format"). Only the fields used here 
 import argparse
 import hashlib
 import json
+import os
 import sys
 import tempfile
 import zipfile
@@ -54,6 +55,10 @@ SCALE_SOURCE = "ar_poses"
 RULE_SUFFIX = "+rule"
 
 MAP_ENTRY_FIELDS = {"session_measurement", "key", "plus_minus_ft", "refusal"}
+
+# A session zip holds every keyframe JPEG, and optional depth maps, so its size grows with the walk;
+# hash it 1 MiB at a time instead of reading it whole.
+HASH_CHUNK_BYTES = 1 << 20
 
 
 def meters_to_feet(meters: Decimal) -> Decimal:
@@ -120,11 +125,21 @@ def _session_member(archive: zipfile.ZipFile, path: Path) -> str:
     return found[0]
 
 
-def load_session(path: Path) -> Session:
+def sha256_file(path: Path) -> str:
+    """The file's sha256, read in HASH_CHUNK_BYTES pieces so a session zip with many keyframes is
+    never held in memory whole."""
+    digest = hashlib.sha256()
     try:
-        raw_zip = path.read_bytes()
+        with path.open("rb") as handle:
+            while chunk := handle.read(HASH_CHUNK_BYTES):
+                digest.update(chunk)
     except OSError as error:
         raise InputError(f"{path}: cannot read ({error.strerror})") from None
+    return digest.hexdigest()
+
+
+def load_session(path: Path) -> Session:
+    zip_sha256 = sha256_file(path)
     try:
         with zipfile.ZipFile(path) as archive:
             member = _session_member(archive, path)
@@ -187,7 +202,7 @@ def load_session(path: Path) -> Session:
 
     return Session(
         zip_path=path,
-        zip_sha256=hashlib.sha256(raw_zip).hexdigest(),
+        zip_sha256=zip_sha256,
         member=member,
         id=session_id,
         started_at_uptime=started,
@@ -434,6 +449,20 @@ def _string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _refuse_output_over_input(out_path: Path, inputs: dict[str, Path]) -> None:
+    """Stop before any write when --out names one of the inputs, by path, symlink or hard link."""
+    out_resolved = out_path.resolve()
+    for role, path in inputs.items():
+        same = out_resolved == path.resolve()
+        if not same and out_path.exists() and path.exists():
+            same = os.path.samefile(out_path, path)
+        if same:
+            raise InputError(
+                f"--out {out_path} is the {role} {path}; writing there would overwrite an input. "
+                "Choose another output path"
+            )
+
+
 def import_session(
     session_path: Path,
     map_path: Path,
@@ -443,6 +472,10 @@ def import_session(
     *,
     decide_outcomes: bool,
 ) -> dict[str, Any]:
+    _refuse_output_over_input(
+        out_path,
+        {"session zip": session_path, "map": map_path, "rules": rules_path, "truth": truth_path},
+    )
     rules = load_rules(rules_path)
     truth = load_truth(truth_path, rules)
     session = load_session(session_path)

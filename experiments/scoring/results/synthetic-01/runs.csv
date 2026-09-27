@@ -1,0 +1,4 @@
+house,capture,pipeline,scale_source,capture_s,processing_s,measurements,scored,median_abs_error_in,max_abs_error_in,within_reported,with_reported_uncertainty,missing_unsupported,missing_failed,false_absent,phantom,absent_agreed,not_surveyed,checks,judged,agrees,unsafe_passes,missed_reviews,over_cautious,false_rejections,decided_without_measurement,abstentions_justified,abstentions_avoidable,could_flip
+synthetic-01,synthetic-01-walk-1,ar-taps,ar_poses,420.0,12.5,9,6,3.48,4.80,3,6,0,1,0,0,1,1,8,7,4,1,2,0,0,2,0,0,2
+synthetic-01,synthetic-01-walk-1,photo-depth,native_metric,420.0,95.0,9,6,12.60,24.00,5,6,1,0,0,1,0,1,8,7,2,0,0,2,1,0,1,1,2
+synthetic-01,synthetic-01-walk-1,mesh-scaled,scale_reference,420.0,,9,5,1.20,6.00,4,4,0,1,1,0,1,1,8,7,,,,,,,,,0

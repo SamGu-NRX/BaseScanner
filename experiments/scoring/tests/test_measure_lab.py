@@ -1,16 +1,21 @@
 """The Measure Lab importer on a synthetic format-2 session, with hand-computed feet.
 
 The committed session (fixtures/measure-lab/synthetic-session-01) holds, in meters:
-m1 scale 1.524 (5 ft), m2 wall 9.87552 (32.4 ft), m3 c1 gas 1.4 (4.593175853... ft, written
-4.593176), m4 c1 facing gap 1.49352 (4.9 ft), m5 c1 route 3.71856 (12.2 ft), m6 c2 gas 0.95 with
-heightAboveGround -0.04 and accepted false, m7 c2 route 6.00456 (19.7 ft), and refusal r1 for the
-c2 facing gap. The session starts at uptime 1000.25 and the last measurement is at 1412.75.
+m1 scale 1.524 (5 ft) point to point; m2 wall 9.87552 (32.4 ft) along the wall; m3 c1 gas, straight
+from the footprint edge p10 to the regulator p5, 1.4 (4.593175853... ft, written 4.593176); m4 c1
+facing, a gapToWall of 1.49352 (4.9 ft); m5 and m7, along-wall distances the map leaves unused; m6
+c2 gas, straight from p11 to p8, 0.95 but not accepted because p8 is on ARKit's estimated plane;
+and refusal r1 for the c2 facing gap. The
+map marks both routes unsupported, because Measure Lab records no routed cable path. The session
+starts at uptime 1000.25 and the last measurement is at 1412.75.
 """
 
 import copy
 import csv
 import hashlib
 import json
+import math
+import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -20,7 +25,13 @@ from helpers import FIXTURES, MEASURE_LAB, SESSION_ZIP, committed_session, sessi
 
 from scoring.cli import main
 from scoring.inputs import InputError, load_study
-from scoring.measure_lab import import_session, meters_to_feet
+from scoring.measure_lab import (
+    HASH_CHUNK_BYTES,
+    import_session,
+    load_session,
+    meters_to_feet,
+    sha256_file,
+)
 
 D = Decimal
 RULES = FIXTURES / "rules.json"
@@ -126,8 +137,6 @@ class TestImport:
         assert entries["wall-length"]["value_ft"] == D("32.400000")
         assert entries["c1-gas"]["value_ft"] == D("4.593176")
         assert entries["c1-facing"]["value_ft"] == D("4.900000")
-        assert entries["c1-route"]["value_ft"] == D("12.200000")
-        assert entries["c2-route"]["value_ft"] == D("19.700000")
         assert {entry.get("plus_minus_ft") for entry in entries.values() if entry["value_ft"]} == {
             D("0.3")
         }
@@ -137,9 +146,11 @@ class TestImport:
         assert entries["c1-pool"] == {"id": "c1-pool", "value_ft": None, "missing": "absent"}
         assert entries["c2-facing"] == {"id": "c2-facing", "value_ft": None, "missing": "failed"}
         assert entries["c2-pool"] == {"id": "c2-pool", "value_ft": None, "missing": "unsupported"}
+        for route in ("c1-route", "c2-route"):
+            assert entries[route] == {"id": route, "value_ft": None, "missing": "unsupported"}
 
     def test_not_accepted_becomes_failed(self, setup: Setup):
-        # m6 has heightAboveGround -0.04 m, warning belowGround and accepted false.
+        # m6 starts at a ground point on ARKit's estimated plane: warning estimatedPlane.
         assert by_id(setup.run())["c2-gas"] == {
             "id": "c2-gas",
             "value_ft": None,
@@ -152,11 +163,11 @@ class TestImport:
         assert by_id(setup.run())["c1-gas"]["missing"] == "failed"
 
     def test_accepted_straight_does_not_validate_unchecked_along_wall(self, setup: Setup):
-        m5 = setup.measurement("m5")
-        m5.update(compared="straight", accepted=True, warnings=[])
+        m2 = setup.measurement("m2")
+        m2.update(compared="straight", accepted=True, warnings=[])
         setup.session["walls"][0].update(validations=[], warnings=["wallNotValidated"])
         error = setup.error()
-        assert "map.json: measurements.c1-route.key" in error
+        assert "map.json: measurements.wall-length.key" in error
         assert "'alongWall'" in error and "'straight'" in error
 
     def test_missing_compared_quantity_is_rejected(self, setup: Setup):
@@ -196,11 +207,11 @@ class TestDecide:
         assert outcomes == {
             ("c1", "gas"): "pass",  # 4.593176 - 3 = 1.593176 > 0.3
             ("c1", "facing_gap"): "pass",  # 4.9 - 3 = 1.9 > 0.3
-            ("c1", "route"): "pass",  # 15 - 12.2 = 2.8 > 0.3
-            ("c1", "pool"): "pass",  # the rig saw no pool: an absent feature clears it
+            ("c1", "route"): "unsure",  # unsupported: no routed path
+            ("c1", "pool"): "pass",  # the operator asserted no pool: an absent feature clears it
             ("c2", "gas"): "unsure",  # not accepted: no value
             ("c2", "facing_gap"): "unsure",  # refused: no value
-            ("c2", "route"): "unsure",  # 19.7: past 15 + 0.3, not past 20 + 0.3: review
+            ("c2", "route"): "unsure",  # unsupported: no routed path
             ("c2", "pool"): "unsure",  # unsupported
         }
 
@@ -253,7 +264,7 @@ ERRORS: list[tuple[str, Any, str]] = [
         "values key absent from the measurement",
         lambda s: s.map["measurements"]["c1-gas"].update(key="alongWall"),
         "measurements.c1-gas.key: measurement 'm3' has no 'alongWall' value; it has straight, "
-        "horizontal, vertical, gapToWall, heightAboveGround",
+        "horizontal, vertical",
     ),
     ("format version 1", edit_session("formatVersion", 1), "formatVersion is 1; this importer"),
     ("format version 3", edit_session("formatVersion", 3), "formatVersion is 3; this importer"),
@@ -349,21 +360,28 @@ def test_end_to_end_scores_and_decide_row_lands_in_checks(tmp_path: Path, capsys
     assert main([*args, "--results", *map(str, outputs)]) == 0
     stdout = capsys.readouterr().out
     assert (
-        "| `measure-lab` | ar_poses | 5/9 | 1.20 | 2.40 | 5/5 | 0 | 2 | 0 | 0 | 1 | 1 |" in stdout
+        "| `measure-lab` | ar_poses | 3/9 | 1.20 | 1.20 | 3/3 | 2 | 2 | 0 | 0 | 1 | 1 |" in stdout
     )
-    assert "| `measure-lab+rule` | 6/7 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 1 |" in stdout
+    assert "| `measure-lab+rule` | 5/7 | 0 | 0 | 1 | 0 | 0 | 4 | 0 | 0 |" in stdout
     assert "| `measure-lab` | no decisions |" in stdout
 
     with (csv_dir / "checks.csv").open(newline="") as handle:
         rows = [r for r in csv.DictReader(handle) if r["pipeline"] == "measure-lab+rule"]
     assert len(rows) == 8
-    route = next(r for r in rows if (r["candidate"], r["check"]) == ("c2", "route"))
-    assert (route["truth_outcome"], route["run_outcome"], route["agrees"]) == (
+    route = {r["candidate"]: r for r in rows if r["check"] == "route"}
+    # An unsupported route is a justified unsure: over-cautious at c1, where the survey passes, and
+    # correct at c2, where the survey is review.
+    assert [route["c1"][k] for k in ("truth_outcome", "run_outcome", "over_caution")] == [
+        "pass",
+        "unsure",
+        "true",
+    ]
+    assert [route["c2"][k] for k in ("truth_outcome", "run_outcome", "agrees")] == [
         "review",
         "unsure",
         "true",
-    )
-    assert route["error_to_margin"] == "2.00"  # 0.2 / max(min(0.1, 4.9), 0.05)
+    ]
+    assert route["c1"]["abstention"] == route["c2"]["abstention"] == "justified"
 
 
 def test_cli_reports_errors_with_exit_2(tmp_path: Path, capsys):
@@ -372,3 +390,187 @@ def test_cli_reports_errors_with_exit_2(tmp_path: Path, capsys):
     assert code == 2
     assert "score import-measure-lab:" in capsys.readouterr().err
     assert not (tmp_path / "o").exists()
+
+
+# The committed session must hold only what Measure Lab's exporter at 43fda59 can write
+# (measuredValues and measurementWarnings in MeasureGeometry, addMeasurement in LabSession).
+POINT_TO_POINT = frozenset({"straight", "horizontal", "vertical"})
+POINT_TO_WALL = frozenset({"gapToWall", "heightAboveGround"})
+SESSION = committed_session()
+WALL_BY_ID = {wall["id"]: wall for wall in SESSION["walls"]}
+WALLS = frozenset(WALL_BY_ID)
+POINTS = {point["id"]: point for point in SESSION["points"]}
+WALL_WARNINGS = frozenset(warning for wall in SESSION["walls"] for warning in wall["warnings"])
+
+
+class TestFixtureMatchesTheExporter:
+    @pytest.mark.parametrize("measurement", SESSION["measurements"], ids=lambda m: m["id"])
+    def test_quantity_set_follows_the_endpoints(self, measurement):
+        assert measurement["from"] in POINTS
+        if measurement["to"] in WALLS:
+            # Point to wall: facing gap and height above ground only, and no reference wall.
+            assert set(measurement["values"]) == POINT_TO_WALL
+            assert measurement["referenceWall"] is None
+        else:
+            # Point to point: straight, horizontal and vertical, plus alongWall exactly when a
+            # reference wall is recorded.
+            assert measurement["to"] in POINTS
+            expected = set(POINT_TO_POINT)
+            if measurement["referenceWall"] is not None:
+                assert measurement["referenceWall"] in WALLS
+                expected.add("alongWall")
+            assert set(measurement["values"]) == expected
+
+    @pytest.mark.parametrize("measurement", SESSION["measurements"], ids=lambda m: m["id"])
+    def test_compared_is_emitted_and_accepted_means_no_warnings(self, measurement):
+        values = measurement["values"]
+        assert measurement["compared"] in values
+        assert measurement["accepted"] == (measurement["warnings"] == [])
+        below = measurement["compared"] == "heightAboveGround" and values["heightAboveGround"] < 0
+        assert ("belowGround" in measurement["warnings"]) == below
+        for key, value in values.items():
+            assert key == "heightAboveGround" or value >= 0
+
+    @pytest.mark.parametrize("measurement", SESSION["measurements"], ids=lambda m: m["id"])
+    def test_warnings_come_from_the_endpoints(self, measurement):
+        endpoints = [POINTS[measurement["from"]], POINTS.get(measurement["to"])]
+        inherited = {
+            flag for point in endpoints if point for flag in point["flags"] + point["wallWarnings"]
+        }
+        assert set(measurement["warnings"]) - {"belowGround"} <= inherited | WALL_WARNINGS
+
+    @pytest.mark.parametrize("measurement", SESSION["measurements"], ids=lambda m: m["id"])
+    def test_values_follow_from_the_coordinates(self, measurement):
+        # Recompute each value from point positions and the wall, as MeasureGeometry does.
+        a = POINTS[measurement["from"]]["position"]
+        if measurement["to"] in WALLS:
+            wall = WALL_BY_ID[measurement["to"]]
+            start, direction, normal = wall["start"], wall["direction"], wall["normal"]
+            rel = [a[i] - start[i] for i in range(3)]
+            along = sum(rel[i] * direction[i] for i in range(3))
+            ground = start[1] + (wall["end"][1] - start[1]) * along / wall["length"]
+            expected = {
+                "gapToWall": abs(sum(rel[i] * normal[i] for i in range(3))),
+                "heightAboveGround": a[1] - ground,
+            }
+        else:
+            b = POINTS[measurement["to"]]["position"]
+            d = [b[i] - a[i] for i in range(3)]
+            expected = {
+                "straight": math.hypot(*d),
+                "horizontal": math.hypot(d[0], d[2]),
+                "vertical": abs(d[1]),
+            }
+            if measurement["referenceWall"] is not None:
+                direction = WALL_BY_ID[measurement["referenceWall"]]["direction"]
+                expected["alongWall"] = abs(sum(d[i] * direction[i] for i in range(3)))
+        for key, value in measurement["values"].items():
+            assert value == pytest.approx(expected[key], abs=1e-4), key
+
+    def test_refusals_name_a_real_tool(self):
+        tools = {"ground", "wall", "wallPoint", "twoView"}
+        assert {refusal["tool"] for refusal in SESSION["refusals"]} <= tools
+
+
+def record_reads(monkeypatch, path: Path) -> tuple[list[int], list[int]]:
+    """Record each read's requested size and returned length on `path`, and fail on read_bytes."""
+    sizes: list[int] = []
+    lengths: list[int] = []
+    real_open = Path.open
+
+    def recording_open(self: Path, *args: Any, **kwargs: Any):
+        handle = real_open(self, *args, **kwargs)
+        if self != path:
+            return handle
+        real_read = handle.read
+
+        def read(size: int = -1) -> bytes:
+            sizes.append(size)
+            data = real_read(size)
+            lengths.append(len(data))
+            return data
+
+        handle.read = read
+        return handle
+
+    def no_read_bytes(self: Path) -> bytes:
+        raise AssertionError(f"{self} was read whole")
+
+    monkeypatch.setattr(Path, "open", recording_open)
+    monkeypatch.setattr(Path, "read_bytes", no_read_bytes)
+    return sizes, lengths
+
+
+def test_session_zip_is_hashed_in_bounded_chunks(tmp_path: Path, monkeypatch):
+    path = session_zip(committed_session(), tmp_path / "session.zip")
+    expected = hashlib.sha256(path.read_bytes()).hexdigest()
+    sizes, _ = record_reads(monkeypatch, path)
+    assert sha256_file(path) == expected
+    assert load_session(path).zip_sha256 == expected
+    assert sizes and all(size == HASH_CHUNK_BYTES for size in sizes)
+
+
+def test_hash_accumulates_across_chunks(tmp_path: Path, monkeypatch):
+    # Two full chunks and a 17-byte tail, so the digest must combine three reads.
+    data = bytes(i % 251 for i in range(2 * HASH_CHUNK_BYTES + 17))
+    path = tmp_path / "large.bin"
+    path.write_bytes(data)
+    expected = hashlib.sha256(data).hexdigest()
+    sizes, lengths = record_reads(monkeypatch, path)
+    assert sha256_file(path) == expected
+    assert sizes == [HASH_CHUNK_BYTES] * 4
+    assert lengths == [HASH_CHUNK_BYTES, HASH_CHUNK_BYTES, 17, 0]
+
+
+INPUT_ROLES = ("session zip", "map", "rules", "truth")
+
+
+class TestOutputNeverOverwritesAnInput:
+    def inputs(self, root: Path) -> list[Path]:
+        paths = [root / name for name in ("session.zip", "map.json", "rules.json", "truth.json")]
+        paths[0].write_bytes(SESSION_ZIP.read_bytes())
+        paths[1].write_bytes(MAP.read_bytes())
+        paths[2].write_bytes(RULES.read_bytes())
+        paths[3].write_bytes(TRUTH.read_bytes())
+        return paths
+
+    def check_refused(self, paths: list[Path], out: Path, role: str) -> None:
+        before = [path.read_bytes() for path in paths]
+        with pytest.raises(InputError, match=f"--out .* is the {role} "):
+            import_session(*paths, out, decide_outcomes=False)
+        assert [path.read_bytes() for path in paths] == before
+
+    @pytest.mark.parametrize("role", INPUT_ROLES)
+    def test_same_path(self, tmp_path: Path, role: str):
+        paths = self.inputs(tmp_path)
+        self.check_refused(paths, paths[INPUT_ROLES.index(role)], role)
+
+    @pytest.mark.parametrize("role", INPUT_ROLES)
+    def test_other_spelling_of_the_same_path(self, tmp_path: Path, role: str):
+        paths = self.inputs(tmp_path)
+        target = paths[INPUT_ROLES.index(role)]
+        (tmp_path / "sub").mkdir()
+        self.check_refused(paths, tmp_path / "sub" / ".." / target.name, role)
+
+    @pytest.mark.parametrize("role", INPUT_ROLES)
+    def test_symlink(self, tmp_path: Path, role: str):
+        paths = self.inputs(tmp_path)
+        link = tmp_path / "link.json"
+        link.symlink_to(paths[INPUT_ROLES.index(role)])
+        self.check_refused(paths, link, role)
+
+    @pytest.mark.parametrize("role", INPUT_ROLES)
+    def test_hard_link(self, tmp_path: Path, role: str):
+        paths = self.inputs(tmp_path)
+        link = tmp_path / "hard.json"
+        os.link(paths[INPUT_ROLES.index(role)], link)
+        self.check_refused(paths, link, role)
+
+    def test_cli_exit_2_and_inputs_intact(self, tmp_path: Path, capsys):
+        paths = self.inputs(tmp_path)
+        before = paths[1].read_bytes()
+        args = [str(paths[0]), "--map", str(paths[1]), "--rules", str(paths[2])]
+        code = main(["import-measure-lab", *args, "--truth", str(paths[3]), "--out", str(paths[1])])
+        assert code == 2
+        assert "would overwrite an input" in capsys.readouterr().err
+        assert paths[1].read_bytes() == before
