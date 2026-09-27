@@ -512,7 +512,6 @@ final class ScanEngine {
     /// `view` is the shot's, which coverage may take once the reader has passed its photo.
     private func readMeterNumber(scan: Int, view: CloseUpView?) async {
         state.meterNumber = .reading
-        state.meterBrand = nil
         let reader = MeterNumberReaders.make()
         let photo = store.directory.appending(path: "meter_close.jpg")
         let readout = await Task.detached(priority: .userInitiated) { () -> MeterReadout? in
@@ -1585,7 +1584,6 @@ final class ScanEngine {
         state.closeUp = .aiming(hold: 0, problem: nil)
         state.closeUpFailedAttempts = 0
         state.meterNumber = nil
-        state.meterBrand = nil
         closeUpRetake = nil
         meterReadout = nil
         go(.onboarding)

@@ -645,10 +645,22 @@ final class ScanViewState {
     var closeUpFailedAttempts = 0
     /// Nil until the close-up photo is taken.
     var meterNumber: MeterNumberState?
-    /// The meter's maker as read from the close-up, shown above the number candidates. The
-    /// homeowner can reject it (`rejectMeterBrand`); it is confirmed only together with the
-    /// number (`meterNumber == .confirmed`). Like the number, it stays on the phone.
-    var meterBrand: String?
+    /// The meter's maker as read from the close-up, shown above the number candidates. It exists
+    /// only beside those candidates or the number confirmed from them: while `meterNumber` is
+    /// nil, reading or skipped it is nil, so a brand from an earlier photo can't outlive its
+    /// number through a retake, a skip or a new close-up. The homeowner can reject it
+    /// (`rejectMeterBrand`). Like the number, it stays on the phone.
+    var meterBrand: String? {
+        get {
+            switch meterNumber {
+            case .choose, .confirmed: offeredMeterBrand
+            case .reading, .skipped, nil: nil
+            }
+        }
+        set { offeredMeterBrand = newValue }
+    }
+    /// Storage for `meterBrand`, set with the candidates it was read with. Read `meterBrand`.
+    private var offeredMeterBrand: String?
 
     var captureCount = 0
     var lastCapture: CaptureEvent?

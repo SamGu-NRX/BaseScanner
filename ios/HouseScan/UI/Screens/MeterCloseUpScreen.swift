@@ -223,7 +223,8 @@ private struct MeterNumberPicker: View {
                             .font(Typeface.caption)
                             .underline()
                             .foregroundStyle(Palette.chalk.opacity(0.8))
-                            .frame(minHeight: 44)
+                            // 44 pt both ways: "Not GE" in caption type is narrower than that.
+                            .frame(minWidth: 44, minHeight: 44)
                             .contentShape(.rect)
                     }
                     .buttonStyle(PressableStyle())
