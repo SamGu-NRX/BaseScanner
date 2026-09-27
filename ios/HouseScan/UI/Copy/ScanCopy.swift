@@ -36,7 +36,9 @@ enum ScanCopy {
                 detail: "Aim where the wall stops or turns a corner, and tap Wall ends here."
             )
         case .aimAtGround(let s):
-            Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)).")
+            // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
+            // so tilting down without moving never clears it.
+            Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)). Take a small step sideways as you look.")
         case .aimAtWall(let s):
             // "Around at your meter" read wrong once the walk starts at the meter.
             Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s)).")
