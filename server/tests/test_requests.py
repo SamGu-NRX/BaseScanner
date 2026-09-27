@@ -15,6 +15,7 @@ from helpers import (
 )
 
 from rules import deep_merge, public_rules_dict, rules_from_dict
+from scene import COVERAGE_TOLERANCE_FT
 from solver import UNSURE
 
 # Test settings, not Base policy.
@@ -139,10 +140,11 @@ def test_a_band_only_placeholder_checks_need_raises_no_request() -> None:
 
 def test_a_real_rules_depth_is_kept() -> None:
     # Ground seen 4 ft out: the gas and AC clearances still ask for theirs, 3 ft past the
-    # battery's front, and nothing deeper.
+    # battery's front (less the seen ground's tolerance, as the request is the smallest depth
+    # that covers the region), and nothing deeper.
     result = run(ground_seen_out_to(4))
     (ground,) = band_requests(result, "ground")
-    assert D + 3 - 1e-6 <= ground["out_ft"] <= D + 3 + 0.05, ground
+    assert D + 3 - COVERAGE_TOLERANCE_FT <= ground["out_ft"] <= D + 3 + 0.05, ground
     assert {"ac_clearance", "gas_clearance"} <= set(ground["checks"])
     assert not {"drive_clearance", "pool_clearance"} & set(ground["checks"]), ground
 

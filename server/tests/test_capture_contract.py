@@ -106,10 +106,11 @@ def test_a_ground_request_names_how_far_out() -> None:
     assert request["out_ft"] >= D + 10.0
     jsonschema.validate(result, RESULT_SCHEMA)
     # Under the public rules the pool's 10 ft is a placeholder, and the gas and AC clearances'
-    # 3 ft size the request instead (issue #75).
+    # 3 ft size the request instead (issue #75). The request is the smallest depth that covers
+    # the region, which the seen ground's tolerance can make a little less than D + 3.
     result = answer(shallow_ground())
     request = next(m for m in result["missing_evidence"] if m.get("band") == "ground")
-    assert D + 3.0 <= request["out_ft"] < D + 5.0
+    assert D + 3.0 - COVERAGE_TOLERANCE_FT <= request["out_ft"] < D + 5.0
 
 
 def test_supplying_the_ground_request_settles_it() -> None:

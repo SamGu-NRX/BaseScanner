@@ -146,6 +146,17 @@ class Route(_Strict):
     corner_allowance_ft: Value
     crossing: dict[ObjectType, Effect]
 
+    @model_validator(mode="after")
+    def _confident_within_max(self) -> "Route":
+        # Past the confident reach a run goes to review, past the maximum it fails; a confident
+        # reach beyond the maximum would let a run over the maximum pass.
+        if self.confident_reach_ft.value > self.max_ft.value:
+            raise ValueError(
+                f"route.confident_reach_ft ({self.confident_reach_ft.value}) must not exceed "
+                f"route.max_ft ({self.max_ft.value})"
+            )
+        return self
+
 
 class Rules(_Strict):
     policy: Policy
@@ -160,6 +171,18 @@ class Rules(_Strict):
     meter_working_space: MeterWorkingSpace
     ground: Ground
     route: Route
+
+    @model_validator(mode="after")
+    def _exemption_within_the_opening_checks_height(self) -> "Rules":
+        # The opening check needs the wall seen only up to headroom height; a window above that
+        # would still count under a higher exemption but could be missed, unseen, above the view.
+        exempt = self.openings.exempt_bottom_above_ft
+        if exempt is not None and exempt > self.headroom.min_ft.value:
+            raise ValueError(
+                f"openings.exempt_bottom_above_ft ({exempt}) must not exceed headroom.min_ft "
+                f"({self.headroom.min_ft.value}), the wall height the opening check requires seen"
+            )
+        return self
 
 
 @dataclass(frozen=True)
@@ -286,8 +309,17 @@ def _placeholders_left(merged: dict[str, Any], private_keys: frozenset[str]) -> 
 
     def walk(node: dict[str, Any], path: str) -> None:
         if node.get("placeholder") is True:
-            private = any(p == path or p.startswith(f"{path}.") for p in private_keys)
-            if not private:
+            # A cited value is replaced when the private file sets it; a group (such as ground)
+            # only when it sets every child that decides something, not just one of them.
+            if "value" in node:
+                replaced = path in private_keys
+            else:
+                children = [k for k in node if k not in ("source", "placeholder")]
+                replaced = all(
+                    any(p == f"{path}.{k}" or p.startswith(f"{path}.{k}.") for p in private_keys)
+                    for k in children
+                )
+            if not replaced:
                 left.append(path)
             return
         for key, value in node.items():
