@@ -102,8 +102,10 @@ private func relativeError(_ value: Double, _ reference: Double) -> Double {
         #expect(!MeterPhotoChecks.isOutOfFocus(sharpness: MeterPhotoChecks.wholePhotoSharpness(checkerboard(width: 200, height: 100))))
         let flat = MeterGrayImage(width: 200, height: 100, pixels: .init(repeating: 128, count: 20000))
         #expect(MeterPhotoChecks.isOutOfFocus(sharpness: MeterPhotoChecks.wholePhotoSharpness(flat)))
-        #expect(MeterPhotoChecks.isOutOfFocus(sharpness: 6.63))
-        #expect(!MeterPhotoChecks.isOutOfFocus(sharpness: 6.64))
+        // The pinned threshold, t3/meter-closeup 5b78ded: 6.68 is out of focus, just above isn't.
+        #expect(MeterPhotoChecks.minSharpness == 6.68)
+        #expect(MeterPhotoChecks.isOutOfFocus(sharpness: 6.68))
+        #expect(!MeterPhotoChecks.isOutOfFocus(sharpness: 6.69))
     }
 
     @Test func noCandidateMeansNoChoices() {

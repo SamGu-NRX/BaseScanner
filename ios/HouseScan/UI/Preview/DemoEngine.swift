@@ -1,3 +1,4 @@
+import HouseScanKit
 import SwiftUI
 
 /// A fake engine for the UI demo: implements `ScanActions` by scripting `ScanViewState` over
@@ -13,6 +14,9 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
+    /// `-uiDemoResultFile <path>` (debug builds only): a server answer in a JSON file, read
+    /// through the engine's own mapping, in place of the hand-made samples.
+    private let resultFile: String?
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -38,6 +42,9 @@ final class DemoEngine: ScanActions {
     /// like the real engine does; the next answer goes to the result.
     private var followedUp = false
     private var followUpSkipped = false
+    /// The spot check was answered; the next answer goes straight to the result, as the engine's
+    /// does for a spot an earlier answer settles.
+    private var spotChecked = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -58,6 +65,11 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
+        #if DEBUG
+        resultFile = value("-uiDemoResultFile")
+        #else
+        resultFile = nil
+        #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -135,6 +147,19 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if arguments.contains("-uiDemoCorner") {
+            // The walk followed an outside corner right of the meter, between the battery spot and
+            // the window, and went on 1.6 m along the next wall: that wall runs away from the
+            // homeowner and faces right.
+            let corner: Float = 1.8
+            state.wall?.cornerSegments = [WallGeometry.Segment(
+                span: corner...Float.infinity, along: SIMD3(0, 0, -1), outward: SIMD3(1, 0, 0),
+                anchor: SIMD3(corner, 0, 0), anchorS: corner)]
+            state.wall?.rightEnd = corner + 1.6
+        }
+        if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
+            state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
+        }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
         }
@@ -147,6 +172,7 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoMeterChoose") {
             state.closeUp = .captured(DemoScene.meterThumbnail)
+            state.meterBrand = Self.demoBrand
             state.meterNumber = .choose(Self.demoCandidates)
         }
         // Frozen, the upload script never runs, so show where it would end.
@@ -190,6 +216,10 @@ final class DemoEngine: ScanActions {
             placeMeter()
             finishedWalkState()
             enterUpload()
+        case .spotConfirm:
+            placeMeter()
+            finishedWalkState()
+            enterSpotCheck()
         case .result:
             placeMeter()
             finishedWalkState()
@@ -326,6 +356,22 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.uploadScript() }
     }
 
+    /// The spot check of the answer's spot, before the result. The made-up zones don't hold the
+    /// spot, so the area is the footprint alone, as the engine would draw it.
+    private func enterSpotCheck() {
+        let result = sample
+        state.shareableScan = Self.demoScan
+        state.upload = .done
+        state.result = result
+        guard let spot = result.spot else { return showResult() }
+        let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
+        state.spotCheck = SpotCheck(
+            id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound,
+            photo: DemoScene.image.map { SpotCheck.Photo(image: $0, projection: DemoScene.projection) },
+            answer: nil, isSample: result.isSample)
+        state.phase = .spotConfirm
+    }
+
     private func showResult() {
         state.shareableScan = Self.demoScan
         state.upload = .done
@@ -367,6 +413,7 @@ final class DemoEngine: ScanActions {
         state.meterNumber = .reading
         guard await pause(1.2) else { return }
         // Waits here for the homeowner's pick (`chooseMeterNumber`).
+        state.meterBrand = Self.demoBrand
         state.meterNumber = .choose(Self.demoCandidates)
     }
 
@@ -460,15 +507,33 @@ final class DemoEngine: ScanActions {
             enterGap(serverItem: item)
             return
         }
-        showResult()
+        if spotChecked { showResult() } else { enterSpotCheck() }
     }
 
     /// The check's answer, before or after its follow-up view.
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
+        if let fileResult { return fileResult }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
+    }
+
+    /// The answer in `-uiDemoResultFile`, mapped as `ScanEngine` maps a server's. A file that
+    /// doesn't decode stops the demo with the decoding error rather than showing a sample.
+    private var fileResult: ResultPresentation? {
+        guard let resultFile else { return nil }
+        let result: PlacementResult
+        do {
+            result = try PlacementResult.decode(Data(contentsOf: URL(fileURLWithPath: resultFile)))
+        } catch {
+            fatalError("-uiDemoResultFile \(resultFile): \(error)")
+        }
+        let planner = GapPlanner()
+        let wall = state.wall
+        return ScanEngine.presentation(of: result, isSample: true, wall: nil) { item in
+            planner.plan(for: item, leftEnd: wall?.leftEnd, rightEnd: wall?.rightEnd) != nil
+        }
     }
 
     /// `-uiDemoFollowUp`: the check has answered and asked for a view. On the upload screen,
@@ -629,6 +694,11 @@ final class DemoEngine: ScanActions {
         state.closeUp = .skipped
         state.meterNumber = .skipped
         enterWalk()
+    }
+
+    func rejectMeterBrand() {
+        guard case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
     }
 
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {
@@ -839,6 +909,8 @@ final class DemoEngine: ScanActions {
         seeBehindTicks = 0
         followedUp = false
         followUpSkipped = false
+        spotChecked = false
+        state.spotCheck = nil
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -850,6 +922,9 @@ final class DemoEngine: ScanActions {
     }
 
     // MARK: Sample data
+
+    /// The made-up meter's maker, as `MeterBrand.read` would name it.
+    static let demoBrand = "Itron"
 
     /// Made-up readings of a made-up meter: the barcode-confirmed one first, then two near
     /// misses the way a reader confuses 8 with 6 and 3 with 8.
@@ -937,7 +1012,7 @@ final class DemoEngine: ScanActions {
                      reason: "The window is close to the spot's right edge.",
                      needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
-                     reason: "Part of the ground was only seen from one place.", needsPerson: false),
+                     reason: "Part of the ground was only seen from one place.", needsPerson: false, settledBy: "ground-right"),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
                      reason: "The AC unit is far enough to the right."),
         ],
@@ -946,8 +1021,10 @@ final class DemoEngine: ScanActions {
             ClearanceZone(id: "window", label: "Window", outcome: .unsure, span: 1.3...2.2, depth: 0.9),
         ],
         missing: [
-            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true),
-            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false),
+            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true,
+                            checkIDs: ["ground"]),
+            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false,
+                            checkIDs: ["window"]),
         ],
         isSample: true
     )
@@ -1013,6 +1090,17 @@ private extension ResultPresentation {
 }
 
 extension DemoEngine {
+    /// Like the engine: the answer stays up a moment, then the result, or the check again.
+    func answerSpotCheck(clear: Bool) {
+        guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
+        state.spotCheck?.answer = clear ? .clear : .somethingThere
+        spotChecked = true
+        run { engine in
+            guard await engine.pause(1.2) else { return }
+            if clear { engine.showResult() } else { engine.enterUpload() }
+        }
+    }
+
     /// Nothing to record in the demo: either answer ends the step, as in the real engine.
     func answerGround(_ answer: GroundAnswer) {
         guard state.phase == .markFeatures else { return }

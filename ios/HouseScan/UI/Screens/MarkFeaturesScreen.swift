@@ -105,10 +105,11 @@ struct MarkFeaturesScreen: View {
             VStack(spacing: 10) {
                 ForEach(state.features) { feature in
                     FeatureRow(feature: feature, pastEnd: state.featuresPastEnds.contains(feature.id), actions: actions)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
-            .animation(Motion.settle, value: state.features)
+            // A row added or removed moves the rows under it; with Reduce Motion they move at once.
+            .animation(reduceMotion ? nil : Motion.settle, value: state.features)
         }
     }
 

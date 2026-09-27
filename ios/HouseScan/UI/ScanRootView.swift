@@ -63,6 +63,9 @@ struct ScanRootView: View {
         case .uploading:
             UploadingScreen(state: state, actions: actions)
                 .screenIdentifier(.uploading)
+        case .spotConfirm:
+            SpotConfirmScreen(state: state, actions: actions)
+                .screenIdentifier(.spotConfirm)
         case .result:
             ResultScreen(state: state, actions: actions)
                 .screenIdentifier(.result)
@@ -78,7 +81,7 @@ struct ScanRootView: View {
     static func showsCamera(_ phase: ScanPhase) -> Bool {
         switch phase {
         case .findMeter, .meterCloseUp, .wallWalk, .gapRequest, .resultAR, .markFeatures: true
-        case .onboarding, .uploading, .result, .unsupported: false
+        case .onboarding, .uploading, .spotConfirm, .result, .unsupported: false
         }
     }
 }

@@ -42,8 +42,13 @@ struct MeterCloseUpScreen: View {
             ) {
                 VStack(spacing: 12) {
                     if case .choose(let candidates) = state.meterNumber {
-                        MeterNumberPicker(candidates: candidates, choose: actions.chooseMeterNumber)
-                            .transition(.opacity.combined(with: .offset(y: 12)))
+                        MeterNumberPicker(
+                            candidates: candidates,
+                            brand: state.meterBrand,
+                            choose: actions.chooseMeterNumber,
+                            rejectBrand: actions.rejectMeterBrand
+                        )
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12)))
                     } else if state.meterNumber == .reading {
                         ProgressView()
                             .controlSize(.large)
@@ -132,11 +137,12 @@ struct MeterCloseUpScreen: View {
                     .foregroundStyle(.white)
                     .padding(22)
                     .background(Palette.covered, in: .circle)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
             }
         }
         .frame(width: 250, height: 250)
-        .scaleEffect(lockedOn ? 1 : 1.25)
+        // Closes in on the meter; with Reduce Motion it only fades in.
+        .scaleEffect(lockedOn || reduceMotion ? 1 : 1.25)
         // The ring steps back while the answers are up, so it never sits behind them.
         .opacity(lockedOn && !isChoosing ? 1 : 0)
         .animation(Motion.pin, value: done)
@@ -192,15 +198,45 @@ struct MeterCloseUpScreen: View {
     }
 }
 
-/// "Which number is on your meter?": up to three readings as full-width answers, then "None of
-/// these". The numbers are set in a monospaced face so similar readings line up character by
-/// character (8 against B, 0 against O) and the homeowner can compare them with the meter.
+/// "Which number is on your meter?": the maker when one was read, up to three readings as
+/// full-width answers, then "None of these". The numbers are set in a monospaced face so similar
+/// readings line up character by character (8 against B, 0 against O) and the homeowner can
+/// compare them with the meter. The maker is never taken silently: it sits above the numbers
+/// with "Not <maker>", and counts only with the number the homeowner taps.
 private struct MeterNumberPicker: View {
     var candidates: [MeterNumberCandidate]
+    var brand: String?
     var choose: (MeterNumberCandidate?) -> Void
+    var rejectBrand: () -> Void
 
     var body: some View {
         VStack(spacing: 8) {
+            if let brand {
+                // A chip, not a full-width answer: it states what was read, and the one thing to
+                // do with it is say it's wrong. Caption size keeps it below the numbers in rank.
+                HStack(spacing: 10) {
+                    Text(ScanCopy.meterBrand(brand))
+                        .font(Typeface.caption)
+                        .foregroundStyle(Palette.chalk)
+                    Button(action: rejectBrand) {
+                        Text(ScanCopy.notMeterBrand(brand))
+                            .font(Typeface.caption)
+                            .underline()
+                            .foregroundStyle(Palette.chalk.opacity(0.8))
+                            // 44 pt both ways: "Not GE" in caption type is narrower than that.
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(PressableStyle())
+                    .accessibilityHint("Leaves the brand out.")
+                    .accessibilityIdentifier("action.rejectMeterBrand")
+                }
+                .padding(.horizontal, 16)
+                .background(ScrimShape.capsule)
+                .transition(.opacity)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("meter.brand")
+            }
             ForEach(Array(candidates.prefix(3).enumerated()), id: \.element.id) { index, candidate in
                 Button {
                     choose(candidate)
@@ -233,5 +269,7 @@ private struct MeterNumberPicker: View {
             .accessibilityHint("Takes another photo of the meter.")
             .accessibilityIdentifier("action.noneOfThese")
         }
+        // "Not <brand>" fades the chip out, and the numbers close the gap in the same 0.2 s.
+        .animation(Motion.text, value: brand)
     }
 }
