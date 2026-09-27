@@ -122,3 +122,37 @@ test("a finished capture is polled at a bounded rate, even when the API ignores 
   // The harness divides sleeps by 20, so the 1 s floor becomes 50 ms: about 10 polls, not thousands.
   assert.ok(polls <= 15, `polled ${polls} times in 500 ms`);
 });
+
+test("an empty previewUrl fetches no preview, and long polls end by the next status refresh", async () => {
+  const waits = [];
+  let previewCalls = 0;
+  const json = (body) => ({ ok: true, status: 200, headers: new Headers(), json: async () => body });
+  const fetchImpl = async (path) => {
+    if (path.includes("/preview")) previewCalls += 1;
+    if (path.endsWith("/healthz")) return json({ status: "ok", version: "stub" });
+    if (path.includes("/events")) {
+      const params = new URL(path, "http://x").searchParams;
+      waits.push(Number(params.get("wait")));
+      const events = params.get("after") === "0" ? [{ seq: 1, type: "verdict_ready", at: "x", data: { runId: "run_s", kind: "manual_review" } }] : [];
+      return json({ status: "manual_review", next: 1, events });
+    }
+    if (path.endsWith("/result")) return json({ runId: "run_s", status: "manual_review", outcome: { kind: "manual_review", message: "m" }, previewUrl: "" });
+    return json({ captureId: "cap_STUB_1", status: "manual_review", filesRegistered: 0, runId: "run_s" });
+  };
+  let state = reduce(initialState(), { type: "select", mode: "live", source: { key: "s", label: "s", kind: "synthetic" }, captureId: "cap_STUB_1" });
+  const follower = followCapture({
+    sourceKey: "s",
+    captureId: "cap_STUB_1",
+    session: state.session,
+    dispatch: (a) => { state = reduce(state, a); },
+    getState: () => state,
+    fetchImpl,
+    sleep: () => new Promise((r) => setTimeout(r, 5)),
+    online: () => true,
+  });
+  await until(() => state.result.phase === "ready" && waits.length > 3);
+  follower.stop();
+  assert.equal(previewCalls, 0);
+  assert.equal(state.preview.phase, "none");
+  assert.ok(waits.every((w) => w <= 5), `waits ${waits.join(",")}`);
+});

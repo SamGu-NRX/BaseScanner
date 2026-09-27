@@ -3,7 +3,7 @@
 // Every dispatch carries the session it started under; the reducer ignores it after a switch,
 // and stop() aborts whatever request is in flight.
 
-import { resultExpected, resultKey } from "./model.js";
+import { hasPreview, resultExpected, resultKey } from "./model.js";
 import { PlyError, parsePly } from "./ply.js";
 
 const WAIT_S = 20;
@@ -80,7 +80,9 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
         }
         const cursor = getState().cursor;
         const asked = now();
-        const body = await get(`/captures/${captureId}/events?after=${cursor}&wait=${catchUp ? 0 : waitS}`);
+        // The wait ends by the next status refresh, so a status change with no event still shows.
+        const untilStatusS = Math.ceil(Math.max(0, STATUS_EVERY_MS - (now() - statusAt)) / 1000);
+        const body = await get(`/captures/${captureId}/events?after=${cursor}&wait=${catchUp ? 0 : Math.min(waitS, untilStatusS)}`);
         const count = Array.isArray(body?.events) ? body.events.length : 0;
         send({ type: "events", body, at: now(), catchUp });
         failures = 0;
@@ -127,7 +129,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
 
       const result = getState().result;
       const runId = result.body?.runId ?? null;
-      if (result.phase === "ready" && typeof result.body?.previewUrl === "string" && typeof runId === "string" && previewKey !== runId) {
+      if (result.phase === "ready" && hasPreview(result.body) && typeof runId === "string" && previewKey !== runId) {
         previewKey = runId;
         send({ type: "preview-loading", runId });
         try {
@@ -160,10 +162,14 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
 
 function abortableSleep(ms, signal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }

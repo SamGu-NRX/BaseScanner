@@ -51,7 +51,7 @@ export function initialState() {
     seen: new Set(),
     firstBatchDone: false,
     status: null,
-    counts: { registered: null, acknowledged: 0, listed: null },
+    counts: { registered: null, acknowledged: 0, listed: null, backlog: 0 },
     files: new Map(), // path -> { seq, group }
     arrivals: [], // newest last; { id, seq, count, groups, backlog }
     arrivalSerial: 0,
@@ -244,6 +244,8 @@ function applyEvent(state, event, backlog) {
     }
     case "retake_request": {
       const views = Array.isArray(data.viewsNeeded) ? data.viewsNeeded.map(String) : [];
+      // A retake starts from a run; if it names a newer one, that run's evidence replaces the old.
+      if (str(data.runId)) state = noteRun(state, data.runId, base.seq);
       return log({ ...state, retake: { ...base, views, runId: str(data.runId) } }, { ...base, kind: "retake", text: `Server asked for ${views.length || "more"} extra view${views.length === 1 ? "" : "s"}` });
     }
     case "verdict_ready": {
@@ -280,7 +282,9 @@ function filesCommitted(state, data, base, backlog) {
     added += 1;
   }
   const listed = toCount(data.listed) ?? state.counts.listed;
-  let next = { ...state, files, counts: { ...state.counts, acknowledged: files.size, listed } };
+  // The backlog total is counted here, not from `arrivals`, which keeps only recent batches.
+  const backlogCount = state.counts.backlog + (backlog ? added : 0);
+  let next = { ...state, files, counts: { ...state.counts, acknowledged: files.size, listed, backlog: backlogCount } };
   if (added === 0) return next;
   const arrival = { id: state.arrivalSerial + 1, seq: base.seq, count: added, groups, backlog };
   next = { ...next, arrivalSerial: arrival.id, arrivals: [...state.arrivals, arrival].slice(-ARRIVAL_LIMIT) };
@@ -371,6 +375,11 @@ export function looksLikePlaceholderStages(state) {
   return done.length >= 3 && done.every((r) => r.durationS < 0.05);
 }
 
+/** A non-empty preview URL; an empty string means the result has no preview. */
+export function hasPreview(body) {
+  return typeof body?.previewUrl === "string" && body.previewUrl !== "";
+}
+
 /** Whether the events say a result exists, or that none will come, so the viewer should read it. */
 export function resultExpected(state) {
   return state.verdict != null || RESULT_STATUSES.has(state.status);
@@ -378,7 +387,7 @@ export function resultExpected(state) {
 
 /** Identifies what the result was read for; a new verdict or status means read it again. */
 export function resultKey(state) {
-  return `${state.verdict?.seq ?? "-"}|${state.status}`;
+  return `${state.currentRunId ?? "-"}|${state.verdict?.seq ?? "-"}|${state.status}`;
 }
 
 function isObject(value) {

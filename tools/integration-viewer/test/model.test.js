@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, stageRows } from "../public/model.js";
+import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, resultKey, stageRows } from "../public/model.js";
 
 const source = { key: "t", label: "test", kind: "synthetic" };
 
@@ -125,6 +125,27 @@ describe("events", () => {
     const s = run(selected(), events([stage(1, "validate", "done")]), { type: "result", body: { runId: "run_z", status: "manual_review", outcome: { kind: "manual_review" } } });
     assert.equal(s.currentRunId, "run_z");
     assert.equal(s.result.phase, "ready");
+  });
+
+  test("a retake that names a new run clears the earlier run's answer at once", () => {
+    const a = run(selected(), events([stage(1, "result", "done")]), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
+    assert.equal(a.result.phase, "ready");
+    const b = run(a, events([{ seq: 2, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["v1"], memberActions: [] } }], 2));
+    assert.equal(b.currentRunId, "run_b");
+    assert.equal(b.result.phase, "none");
+  });
+
+  test("a new run changes the result key even when the status does not", () => {
+    const a = run(selected(), events([stage(1, "validate", "failed")], 1, "failed"));
+    const b = run(a, events([{ ...stage(2, "validate", "failed"), data: { stage: "validate", status: "failed", attempt: 1, runId: "run_b" } }], 2, "failed"));
+    assert.notEqual(resultKey(a), resultKey(b));
+  });
+
+  test("the before-you-connected total survives more batches than the arrival queue keeps", () => {
+    const batches = Array.from({ length: 30 }, (_, i) => committed(i + 1, [`keyframes/k${i}.jpg`]));
+    const s = run(selected(), { ...events(batches), catchUp: true });
+    assert.equal(s.arrivals.length < 30, true);
+    assert.equal(s.counts.backlog, 30);
   });
 
   test("history read while catching up counts as backlog on every page", () => {

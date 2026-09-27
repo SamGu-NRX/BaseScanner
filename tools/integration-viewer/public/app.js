@@ -4,7 +4,7 @@
 import { CloudView } from "./cloud.js";
 import { Conduit } from "./conduit.js";
 import { followCapture } from "./live.js";
-import { connectionView, initialState, looksLikePlaceholderStages, reduce, stageRows } from "./model.js";
+import { connectionView, hasPreview, initialState, looksLikePlaceholderStages, reduce, stageRows } from "./model.js";
 import { REPLAY_CAPTURE_ID, ReplayPlayer } from "./replay.js";
 import { SCENARIOS } from "./scenario.js";
 
@@ -236,7 +236,7 @@ function renderArrivals() {
     }
   }
   if (countTimers.size === 0) writeCounts();
-  const backlog = state.arrivals.filter((a) => a.backlog).reduce((n, a) => n + a.count, 0);
+  const backlog = counts.backlog;
   const parts = [];
   if (counts.registered != null) parts.push(`of ${counts.registered} registered`);
   if (counts.listed != null) parts.push(`packet lists ${counts.listed}`);
@@ -322,7 +322,7 @@ function renderResult() {
   } else if (preview.phase === "empty") caption = "The server returned a model with no points.";
   else if (preview.phase === "unsupported") caption = `Preview unavailable: the file is not a point cloud this viewer reads (${preview.error}).`;
   else if (preview.phase === "error") caption = `Could not load the model: ${preview.error}.`;
-  else if (result.phase === "ready" && typeof result.body?.previewUrl !== "string") {
+  else if (result.phase === "ready" && !hasPreview(result.body)) {
     phase = "none";
     caption = state.status === "failed" ? "No model: the run failed before one was built." : "The result came back without a model preview.";
   } else if (state.verdict || result.phase === "loading") caption = "The server reported a result. Reading it…";
