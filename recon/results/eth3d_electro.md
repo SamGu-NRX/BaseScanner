@@ -4,5 +4,5 @@ Wall offset: the laser's wall face relative to the worker's fitted plane at the 
 
 | Depth | Wall offset L / mid / R (in) | Angle | Point error median / p90 (in) | Pair error median / p90 (in) | Wall | Claimed | False-observed | Pass |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| laser as LiDAR | +0.7 / -0.2 / -1.1 | -0.28° | 1.4 / 5.8 | 0.6 / 2.1 | 31.9 ft | 25.5 ft | 0.46 ft | yes |
-| MoGe-2, photos only | +2.6 / +1.3 / +0.0 | -0.78° | 1.4 / 11.2 | 0.5 / 2.8 | 15.8 ft | 14.8 ft | 0.39 ft | yes |
+| laser as LiDAR | +0.7 / -0.2 / -1.1 | -0.28° | 1.4 / 5.8 | 0.6 / 2.1 | 31.9 ft | 22.5 ft | 0.07 ft | yes |
+| MoGe-2, photos only | +2.6 / +1.3 / +0.0 | -0.78° | 1.4 / 11.2 | 0.5 / 2.8 | 15.8 ft | 12.8 ft | 0.39 ft | yes |

@@ -27,8 +27,8 @@ make accept                                           # ETH3D acceptance (prepar
 
 | Depth | Wall pair error, 1–3 m, median / p90 | Wall claimed | False-observed |
 | --- | --- | --- | --- |
-| Laser scan standing in for LiDAR | 0.6 / 2.1 in | 25.5 of 31.9 ft | 0.46 ft (passes) |
-| MoGe-2 rescaled with the poses | 0.5 / 2.8 in | 14.8 of 15.8 ft | 0.39 ft (passes) |
+| Laser scan standing in for LiDAR | 0.6 / 2.1 in | 22.5 of 31.9 ft | 0.07 ft (passes) |
+| MoGe-2 rescaled with the poses | 0.5 / 2.8 in | 12.8 of 15.8 ft | 0.39 ft (passes) |
 
 The two paths chose different stretches of wall, so their geometry rows are not directly comparable. The ADVIO replay and the app's Simulator bundle each reach a server result (`manual_review`: the ADVIO camera looks along its path, so little wall is seen head-on). The Simulator bundle needs `ARGS=--move-meter`, because its replayed wall has no surface behind it.
 
