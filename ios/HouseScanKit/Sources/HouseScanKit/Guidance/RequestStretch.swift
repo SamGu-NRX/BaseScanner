@@ -11,7 +11,7 @@ public enum RequestStretch {
     /// How far an end may lie past a whole foot and still round to it: the server's
     /// COVERAGE_TOLERANCE_FT, under which a gap reads as rounding (`GapPlanner.fraction`). It also
     /// keeps a span given in whole feet from gaining a foot on its way to meters and back.
-    public static let toleranceFt: Double = 0.01
+    public static let toleranceFt: Double = SceneUnits.coverageToleranceFt
 
     /// `span`, meters along the wall, as whole feet rounded outward: the lower end down, the upper
     /// end up. 2.4...7.4 ft is 2...8 ft, -7.4...-2.4 ft is -8...-2 ft, -2.4...7.4 ft is -3...8 ft.

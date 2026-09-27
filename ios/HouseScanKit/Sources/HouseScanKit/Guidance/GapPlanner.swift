@@ -236,7 +236,7 @@ public struct GapPlanner: Sendable {
         let high = requested.upperBound
         guard high > low else { return 0 }
         let eps = 1e-9
-        let tolerance = 0.01
+        let tolerance = SceneUnits.coverageToleranceFt
         var cursor = low
         var missing = 0.0
         let written = spans.compactMap { SceneExport.spanInward($0) }.map { ($0[0], $0[1]) }
@@ -277,7 +277,7 @@ extension GapPlanner {
     /// A span within the server's COVERAGE_TOLERANCE_FT (0.01 ft) of an end reaches it, not past.
     public func reachesPastEnd(_ item: PlacementMissingEvidence, leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>) -> Bool {
         guard item.kind == .band, let span = item.spanFt else { return false }
-        let tolerance = 0.01
+        let tolerance = SceneUnits.coverageToleranceFt
         let feet = { (meters: Float) in Double(meters) * SceneUnits.feetPerMeter }
         var past: [WalkSide] = []
         if let leftEnd, min(span.x, span.y) < feet(leftEnd) - tolerance { past.append(.left) }
