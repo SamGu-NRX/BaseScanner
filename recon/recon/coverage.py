@@ -133,8 +133,8 @@ class CellCoverage:
     cells: np.ndarray  # left edge of each cell, meters of s
     wall: np.ndarray  # bool per cell
     ground_out: np.ndarray  # meters out from the wall the ground was seen, contiguous from the foot
-    facing_gap: np.ndarray  # meters to the first thing facing the wall, NaN if none seen
-    facing_clear: np.ndarray  # meters seen empty in front of the wall
+    facing_gap: np.ndarray  # meters from the wall's front to the first thing facing it, or NaN
+    facing_clear: np.ndarray  # meters seen empty out from the wall's front
     overhead_clearance: np.ndarray  # meters up to the first thing overhead, NaN if none seen
     overhead_clear: np.ndarray  # meters seen empty above the footprint
 
@@ -203,8 +203,12 @@ def wall_front(wall: WallFrame, vol: Volume, across: np.ndarray) -> float:
 
 
 def free_space(wall: WallFrame, vol: Volume, cells: np.ndarray):
-    """Per cell: (facing gap or NaN, facing clear, overhead clearance or NaN, overhead clear),
-    all measured from the wall's reconstructed front."""
+    """Per cell: (facing gap or NaN, facing clear, overhead clearance or NaN, overhead clear).
+    The facing gap and clear distance are measured out from the wall's reconstructed front, not
+    from the fitted plane: in front of a pilaster 0.3 m proud, something 1.3 m out of the plane
+    is 1.0 m from the face the battery would stand against. The front is the first free step
+    past the wall's occupied voxels, so both read up to a voxel short, never long. Overhead
+    clearance is a height above the ground over the footprint in front of that face."""
     step = vol.voxel
     n = len(cells)
     facing_gap, facing_clear = np.full(n, np.nan), np.zeros(n)
@@ -214,16 +218,16 @@ def free_space(wall: WallFrame, vol: Volume, cells: np.ndarray):
         across = cells[c] + CELL_M * np.array([0.25, 0.5, 0.75])
         front = wall_front(wall, vol, across)
         hits = 0
-        for out in np.arange(front + step, FACING_MAX_M, step):
+        for out in np.arange(front + step, front + FACING_MAX_M, step):
             share, seen = _slab(wall, vol, across, fh, [out])
             hits = hits + 1 if share >= OCCUPIED_SHARE else 0
             if hits == 2:
-                facing_gap[c] = out - step
+                facing_gap[c] = out - step - front
                 break
             if not seen:
                 break
             if hits == 0:
-                facing_clear[c] = out
+                facing_clear[c] = out - front
         oo = front + np.arange(OVERHEAD_OUT_M[0], OVERHEAD_OUT_M[1] + 1e-9, step)
         hits = 0
         for h in np.arange(0.3, OVERHEAD_MAX_M, step):

@@ -1,10 +1,11 @@
 """Wall and ground geometry fitted to the reconstruction, and the meter's wall frame.
 
 The ground is a least-squares plane through the reconstruction's upward-facing surface near the
-phone's ground (or its lowest broad surface). Walls are vertical planes: straight lines in plan
-through the reconstruction's vertical surface between 0.3 and 2 m above the ground, found by
-repeated RANSAC. The wall the phone marked is the fitted line nearest its line; without one, the
-wall is the stretch the most frames see.
+phone's ground (or its lowest broad surface); the wall frame's ground height is that plane at the
+meter's foot. Walls are vertical planes: straight lines in plan through the reconstruction's
+vertical surface between 0.3 and 2 m above the local ground, found by repeated RANSAC. The wall
+the phone marked is the fitted stretch along its line nearest the meter; without one, the wall is
+the stretch the most frames see.
 
 Wall frame (the app's `WallGeometry`): `s` meters along the wall from the meter, positive to the
 right for someone facing the wall; `out` meters from the wall toward the homeowner; height above
@@ -29,10 +30,17 @@ METER_HEIGHT_M = 1.5
 
 @dataclass(frozen=True)
 class Ground:
-    y: float  # height at the wall's foot
-    normal: np.ndarray
+    point: np.ndarray  # on the fitted plane: the centroid of the points it was fitted to
+    normal: np.ndarray  # unit, pointing up
     rms_m: float
     points: int
+
+    def height_at(self, x, z):
+        """The plane's y above plan position (x, z). On sloped ground this differs from the
+        samples' median height wherever the samples are not centred on (x, z)."""
+        px, py, pz = self.point
+        nx, ny, nz = self.normal
+        return py - (nx * (np.asarray(x) - px) + nz * (np.asarray(z) - pz)) / ny
 
 
 @dataclass(frozen=True)
@@ -97,7 +105,7 @@ def fit_ground(mesh: Mesh, hint_y: float | None) -> Ground:
         r = (cand - c) @ n
         rms = float(np.sqrt(np.mean(r**2)))
         cand = cand[np.abs(r) <= max(3 * rms, 0.02)]
-    return Ground(float(np.median(cand[:, 1])), n, rms, len(cand))
+    return Ground(c, n, rms, len(cand))
 
 
 def _runs(t: np.ndarray, gap: float, min_length: float) -> list[tuple[float, float]]:
@@ -114,12 +122,12 @@ def _runs(t: np.ndarray, gap: float, min_length: float) -> list[tuple[float, flo
 
 
 def wall_lines(
-    mesh: Mesh, ground_y: float, cameras: np.ndarray, rng: np.random.Generator
+    mesh: Mesh, ground: Ground, cameras: np.ndarray, rng: np.random.Generator
 ) -> list[WallLine]:
     """Straight wall stretches in the reconstruction, each with its outward side toward the
     cameras that saw it."""
     v = mesh.vertices
-    h = v[:, 1] - ground_y
+    h = v[:, 1] - ground.height_at(v[:, 0], v[:, 2])
     vertical = (np.abs(mesh.normals @ UP) < 0.3) & (h > WALL_BAND_M[0]) & (h < WALL_BAND_M[1])
     plan = np.unique(np.floor(v[vertical][:, [0, 2]] / 0.05), axis=0) * 0.05 + 0.025
     lines, remaining = [], plan
@@ -147,7 +155,7 @@ def wall_lines(
         for lo, hi in _runs(t, GAP_M, MIN_STRETCH_M):
             along = np.array([d2[0], 0.0, d2[1]])
             outward = np.array([-along[2], 0.0, along[0]])
-            foot = np.array([c[0], ground_y, c[1]])
+            foot = np.array([c[0], float(ground.height_at(c[0], c[1])), c[1]])
             mid = foot + along * (lo + hi) / 2
             if np.median((cameras - mid) @ outward) < 0:  # outward faces the cameras
                 along, outward, lo, hi = -along, -outward, -hi, -lo
@@ -181,10 +189,20 @@ def frames_seeing(line: WallLine, frames) -> int:
     return count
 
 
+def beyond_extent(line: WallLine, point: np.ndarray) -> float:
+    """How far past the ends of the line's fitted stretch a point lies, along the line (0 when
+    it is beside the stretch)."""
+    t = float((point - line.foot) @ line.along)
+    return max(line.extent[0] - t, t - line.extent[1], 0.0)
+
+
 def choose_wall(lines: list[WallLine], capture: Capture, move_meter: bool) -> WallLine:
-    """The line matching the phone's wall (within 25 degrees and 0.6 m of it). With no match this
-    refuses, since the homeowner's wall and meter would be silently replaced, unless `move_meter`
-    allows the most-seen wall. Without a phone wall, the most-seen wall."""
+    """The stretch matching the phone's wall: within 25 degrees and 0.6 m of its line, and of
+    those the one whose fitted extent lies nearest the meter (the phone's first wall point
+    without one). RANSAC splits a wall at a doorway into collinear stretches that share one
+    infinite line, so the line's offset alone cannot tell them apart. With no match this refuses,
+    since the homeowner's wall and meter would be silently replaced, unless `move_meter` allows
+    the most-seen wall. Without a phone wall, the most-seen wall."""
     if not lines:
         raise RuntimeError("no straight vertical wall found in the reconstruction")
     most_seen = max(
@@ -199,10 +217,11 @@ def choose_wall(lines: list[WallLine], capture: Capture, move_meter: bool) -> Wa
         parallel = abs(line.along @ hint.along) > np.cos(np.radians(MATCH_ANGLE_DEG))
         return abs((hint.point - line.foot) @ line.outward) if parallel else np.inf
 
-    best = min(lines, key=offset)
-    if offset(best) <= MATCH_OFFSET_M:
-        return best
-    nearest = offset(best) / 0.3048
+    anchor = capture.meter if capture.meter is not None else hint.point
+    matching = [line for line in lines if offset(line) <= MATCH_OFFSET_M]
+    if matching:
+        return min(matching, key=lambda line: (beyond_extent(line, anchor), offset(line)))
+    nearest = min(offset(line) for line in lines) / 0.3048
     msg = (
         f"no reconstructed wall lies along the phone's wall line (the nearest parallel one is "
         f"{nearest:.1f} ft away)"
@@ -213,10 +232,10 @@ def choose_wall(lines: list[WallLine], capture: Capture, move_meter: bool) -> Wa
     return most_seen
 
 
-def wall_frame(line: WallLine, capture: Capture, ground_y: float, move_meter: bool) -> WallFrame:
+def wall_frame(line: WallLine, capture: Capture, ground: Ground, move_meter: bool) -> WallFrame:
     """The meter's frame on the fitted wall: the phone's meter moved onto the fitted wall face,
     which must be within 3 ft unless `move_meter`; without one, a meter assumed mid-stretch,
-    1.5 m up, and said so."""
+    1.5 m up, and said so. The frame's ground height is the ground plane at the meter's foot."""
     if capture.meter is not None:
         t = (capture.meter - line.foot) @ line.along
         move = abs((capture.meter - line.foot) @ line.outward)
@@ -232,7 +251,8 @@ def wall_frame(line: WallLine, capture: Capture, ground_y: float, move_meter: bo
         moved = float(np.linalg.norm((meter - capture.meter)[[0, 2]]))
     else:
         t = sum(line.extent) / 2
-        meter = line.foot + line.along * t + UP * METER_HEIGHT_M
+        meter = line.foot + line.along * t
+        meter[1] = ground.height_at(meter[0], meter[2]) + METER_HEIGHT_M
         moved = 0.0
         capture.notes.append(
             "the capture marks no electric meter: one is assumed mid-wall, 1.5 m up, so the "
@@ -240,4 +260,5 @@ def wall_frame(line: WallLine, capture: Capture, ground_y: float, move_meter: bo
         )
     # A meter past the reconstructed end of its wall extends the wall to it.
     lo, hi = min(line.extent[0] - t, 0.0), max(line.extent[1] - t, 0.0)
+    ground_y = float(ground.height_at(meter[0], meter[2]))
     return WallFrame(meter, line.along, line.outward, ground_y, (lo, hi), moved)

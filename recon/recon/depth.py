@@ -2,13 +2,14 @@
 features triangulated with the AR poses.
 
 LiDAR depth is metric as measured and is used as is, keeping medium and high confidence only.
+Keyframes a LiDAR capture saved without depth get none (`depth_maps` says why).
 
 The photos-only path is method (b) of the evals (experiments/evals README section 3 on t3/evals):
 MoGe-2 predicts each photo's depth with a scale that is a few percent wrong and different per
 photo; SIFT features matched across the photo and its nearest neighbours facing the same way are
 triangulated with the AR poses, and each photo's depth is multiplied by median(z_tri / z_pred).
-Measured there on ETH3D electro, 8 photos, 1 to 3 m spans on walls: p90 2.8 in [2.0, 4.4] with
-exact poses, 5.0 in [3.8, 6.8] with an assumed 2% pose scale error, 10.8 in [8.6, 13.1] with the
+Measured there on ETH3D electro, 8 photos, 1 to 3 m spans on walls: p90 2.8 in [2.0, 4.6] with
+exact poses, 5.0 in [3.7, 6.9] with an assumed 2% pose scale error, 10.8 in [8.6, 13.1] with the
 2018 iPhone's measured pose error. Those assume perfect feature matching; with real matching
 walls reached 6.3 in even with exact poses.
 """
@@ -39,7 +40,7 @@ ACCURACY_NOTE = {
     "lidar": "LiDAR depth as measured; this worker has no measured error bar for iPhone LiDAR.",
     "moge2-triangulated": (
         "MoGe-2 rescaled per photo by features triangulated with the AR poses. On ETH3D, wall "
-        "p90 over 1 to 3 m spans was 5.0 in [3.8, 6.8] at an assumed 2% pose scale error and "
+        "p90 over 1 to 3 m spans was 5.0 in [3.7, 6.9] at an assumed 2% pose scale error and "
         "10.8 in [8.6, 13.1] at the 2018 iPhone's measured pose error."
     ),
 }
@@ -258,12 +259,37 @@ def rescale(capture: Capture, depths: dict[str, Depth]) -> tuple[dict[str, Depth
     return out, report
 
 
+MIN_LIDAR_FRAMES = 2  # coverage needs a sample seen from two positions; one frame sees nothing
+
+
 def depth_maps(capture: Capture, work: Path, mode: str) -> tuple[dict[str, Depth], dict]:
-    """mode: "auto" (LiDAR when every frame has it), "lidar" or "moge"."""
-    if mode == "lidar" or (mode == "auto" and capture.has_lidar):
-        if not capture.has_lidar:
-            raise ValueError("--depth lidar, but not every keyframe carries LiDAR depth")
-        return {f.id: lidar(f) for f in capture.frames}, {"source": "lidar"}
+    """Depth per frame, keyed by frame id, and a report. mode: "auto" (LiDAR when at least
+    MIN_LIDAR_FRAMES keyframes carry it, else MoGe-2), "lidar" or "moge".
+
+    When only some keyframes carry LiDAR (a LiDAR phone that saved a frame without its depth
+    map), the reconstruction uses those frames' LiDAR and gives the others no depth at all. They
+    add nothing to the model and see nothing in coverage, so wall or ground that only they showed
+    stays unobserved and the server answers UNSURE there, never clear. Filling them with MoGe-2
+    instead would fuse a second, coarser source into the same volume: its wall p90 on ETH3D was
+    about 5 in at a simulated 2% pose error, and the fused wall and every error bar sent with it
+    would then have to carry that worse bound. It would also start a 3 GB model for a few frames.
+    """
+    with_lidar = [f for f in capture.frames if f.lidar is not None]
+    if mode == "lidar" or (mode == "auto" and len(with_lidar) >= MIN_LIDAR_FRAMES):
+        if len(with_lidar) < MIN_LIDAR_FRAMES:
+            raise ValueError(
+                f"--depth lidar, but only {len(with_lidar)} of {len(capture.frames)} keyframes "
+                f"carry LiDAR depth; coverage needs at least {MIN_LIDAR_FRAMES}"
+            )
+        without = [f.id for f in capture.frames if f.lidar is None]
+        if without:
+            capture.notes.append(
+                f"{len(without)} of {len(capture.frames)} keyframes carry no LiDAR depth "
+                f"({', '.join(without[:5])}{', ...' if len(without) > 5 else ''}); they add "
+                "nothing to the model, and what only they saw stays unobserved"
+            )
+        report = {"source": "lidar", "frames": len(with_lidar), "without_depth": without}
+        return {f.id: lidar(f) for f in with_lidar}, report
     print(f"depth: MoGe-2 on {len(capture.frames)} frames", file=sys.stderr)
     raw = moge(capture, work / "moge2")
     depths, report = rescale(capture, raw)

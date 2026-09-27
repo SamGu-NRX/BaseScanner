@@ -75,10 +75,6 @@ class Capture:
     scene: dict | None = None  # the bundle's scene.json, updated in place of rebuilt
     notes: list[str] = field(default_factory=list)
 
-    @property
-    def has_lidar(self) -> bool:
-        return bool(self.frames) and all(f.lidar is not None for f in self.frames)
-
 
 ROTATION_TOL = 1e-2  # scene.json rounds poses to 4 decimals; anything further off is not a pose
 

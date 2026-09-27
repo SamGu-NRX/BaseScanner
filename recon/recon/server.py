@@ -24,7 +24,11 @@ def _post(url: str, body: bytes) -> tuple[int, bytes]:
 
 def place(scene: dict, base_url: str, out: Path) -> dict:
     """POSTs bare scene.json (the server reads no images, and Vercel caps bodies at 4.5 MB) and
-    saves result.json and site-plan.svg. A refusal is saved too, then raised."""
+    saves result.json and site-plan.svg. A refusal of either raises; a refused placement's body
+    is saved as result.json. Both files are deleted first, so a reused output folder never shows
+    a previous run's answer or plan beside this run's scene."""
+    for name in ("result.json", "site-plan.svg"):
+        (out / name).unlink(missing_ok=True)
     body = json.dumps(scene).encode()
     status, data = _post(f"{base_url.rstrip('/')}/v1/placements", body)
     (out / "result.json").write_bytes(data)
@@ -33,6 +37,10 @@ def place(scene: dict, base_url: str, out: Path) -> dict:
             f"server refused the scene ({status}): {data[:500].decode(errors='replace')}"
         )
     status, svg = _post(f"{base_url.rstrip('/')}/v1/placements/site-plan.svg", body)
-    if status == 200:
-        (out / "site-plan.svg").write_bytes(svg)
+    if status != 200:
+        raise RuntimeError(
+            f"server placed the scene but refused its site plan ({status}): "
+            f"{svg[:500].decode(errors='replace')}"
+        )
+    (out / "site-plan.svg").write_bytes(svg)
     return json.loads(data)

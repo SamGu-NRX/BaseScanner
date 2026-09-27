@@ -22,8 +22,8 @@ For the server team building photos, then a 3D model, then evaluation against th
 - **One photo plus one taped distance:** median 1.6 in. The p90 is 9.3 in on surfaces, 13.6 in on vertical surfaces and 25.3 in at depth edges.
 - **Averaging photos placed with true poses makes it worse.** On one set of seed groups, with one tape, p90 rises from 5.2 in with 1 photo to 11.9 in with 8, because each photo carries its own scale error.
 - **Best recipe: MoGe-2 rescaled per photo by SIFT features triangulated with the AR poses** (method b), then fused over 8 photos. Wall p90, with 95% intervals over seed groups and 5 pose-noise draws:
-  - exact poses: 2.8 in [2.0, 4.4];
-  - an assumed modern phone: 5.0 in [3.8, 6.8]. This is a synthetic setting, not a measured phone: ETH3D's true poses degraded by a simulated 2% scale error plus 1 cm and 0.1° of noise per photo (`evals/ar_poses.py`);
+  - exact poses: 2.8 in [2.0, 4.6];
+  - an assumed modern phone: 5.0 in [3.7, 6.9]. This is a synthetic setting, not a measured phone: ETH3D's true poses degraded by a simulated 2% scale error plus 1 cm and 0.1° of noise per photo (`evals/ar_poses.py`);
   - the 2018 phone's measured pose error: 10.8 in [8.6, 13.1].
 
   These assume perfect feature matching; with real matching, walls reach 6.3 in even with exact poses. Edges stay at 8 in or worse everywhere.
@@ -37,11 +37,12 @@ For the server team building photos, then a 3D model, then evaluation against th
 - **A depth test does fix it.** Against true depth it claims nothing unseen but misses 3.3 ft: pilasters 0.36 m proud read as occluders. LiDAR's roughly 5 m reach costs 7.8 ft on these photos.
 
 **This worker, today** (`recon/results/eth3d_electro.md`, `make accept`). It fuses depth into a truncated signed distance field (TSDF) and tests coverage against it. On ETH3D electro:
-- **Laser-as-LiDAR:** wall pair p90 2.1 in; 0.07 ft false-observed of 22.5 ft claimed (bar 0.5 ft: passes).
-- **MoGe-2 photos-only:** wall pair p90 2.8 in; 0.39 ft false-observed of 12.8 ft claimed (passes).
-- These follow two review fixes: a wall sample now counts as seen only where the depth puts a surface at it, and the acceptance truth no longer credits a pixel without a laser return (`recon/results/eth3d_electro.md`).
-- **The two paths picked different walls** (31.9 and 15.8 ft stretches), so their geometry numbers are not on the same wall.
-- **End to end:** the ADVIO replay and the app's Simulator bundle both reach a server result, `manual_review`. Neither saw much wall head-on, because the ADVIO camera looks along its path.
+- **Laser-as-LiDAR:** wall pair p90 1.8 in; 0.07 ft false-observed of 22.5 ft claimed (bar 0.5 ft: passes).
+- **MoGe-2 photos-only:** wall pair p90 1.5 in; 0.00 ft false-observed of 19.9 ft claimed (passes).
+- A wall sample counts as seen only where the depth puts a surface at it, and the acceptance truth credits no pixel without a laser return (`recon/results/eth3d_electro.md`).
+- **Each laser point is scored from the nearest photo that sees it**, by the laser's own visibility. Before, the nearest photo scored it regardless of whether it was in frame or behind the scaffold. On the laser path, whose wall did not move, that fix alone took the pair p90 from 2.1 to 1.8 in.
+- **Both paths fit the same wall.** The laser path fits a 31.9 ft stretch of it, and MoGe-2 a 20.5 ft stretch inside that one (`wall_ends_xz_m` in `recon/results/eth3d_electro.json`). Which MoGe-2 stretch wins is fragile. RANSAC splits MoGe-2's noisier surface into collinear pieces, and fitting the ground as a plane (tilted 0.4°) instead of taking its median height moved the pick from a 15.7 ft piece to the 20.4 ft one. The MoGe-2 row's drop from 2.8 to 1.5 in therefore mixes the scoring fix with a different stretch.
+- **End to end:** at c6a8be3 the ADVIO replay and the app's Simulator bundle both reached a server result, `manual_review`. Neither saw much wall head-on, because the ADVIO camera looks along its path. They were not rerun after this round's geometry changes.
 
 ## 2. What to reuse
 
@@ -69,7 +70,7 @@ In `recon/` on this branch:
 **Memory, on a shared 24 GB Mac with a 4 GB per-process limit:**
 - MoGe-2 peaked at 4.07 GB on 24 MP photos. The worker feeds it at most 640 px, which peaks at 2.95 GB (`recon/models/moge_depth.py`).
 - MapAnything fits only 2 and 4 views at 392 px with bf16 weights (4.05 GB).
-- The worker itself peaks at 2.9 GB.
+- The worker itself peaks at 2.9 GB. `make accept` with MoGe-2's depth already cached peaked at 1.2 GB.
 
 ## 3. Pitfalls we hit
 
@@ -82,7 +83,7 @@ In `recon/` on this branch:
 - **"Up" from the cameras was 10° off.** The mean camera up axis was 10° off on ETH3D facade; level on the ground plane under the cameras instead.
 - **The ADVIO reference scale is wrong in places.** Use the GPS-referenced ARKit scales (`results/advio_drift.json`).
 - **MARViN poses need converting.** Its quaternions are (w, x, y, z) in Unity's left-handed axes; handedness was chosen per walk by the steadiest heading offset.
-- **One noise draw is not a result.** A single draw showed walls at 3.9 in; five draws put it at 5.0 [3.8, 6.8]. Bootstrap over seed groups and draws.
+- **One noise draw is not a result.** A single draw showed walls at 3.9 in; five draws put it at 5.0 [3.7, 6.9]. Bootstrap over seed groups and draws.
 - **Caches go stale.** MoGe-2 depth is cached per bundle under `~/house-scanning-data/recon/work/`; delete it when the model or resolution changes.
 - **Marching cubes finds false surfaces.** A TSDF (truncated signed distance field) leaves unobserved voxels at +1, which puts a false surface one truncation distance behind every real one. Drop vertices on half-observed edges (`recon/fusion.py`, tested).
 - **Scikit-image flips normals.** Its marching-cubes normals point into the surface whichever `gradient_direction` is set; flip them.
@@ -95,6 +96,7 @@ In `recon/` on this branch:
   - Keep confidence of medium or better.
   - Its roughly 5 m reach means capture must stand within about 4 m of the wall.
   - The worker reads per-keyframe `depth: {file, confidenceFile, w, h}`: Float32 meters and UInt8 confidence, row-major, in the keyframe's unrotated orientation, as Measure Lab writes them. S3 is adding the app's fields; match them at `recon/capture.py`.
+  - A keyframe saved without depth gets no depth rather than MoGe-2's: it adds nothing to the model, and what only it saw stays unobserved. Mixing in MoGe-2 would make the whole wall carry MoGe-2's error bar (`recon/depth.py`, `depth_maps`).
 - **Without LiDAR:** MoGe-2 at 640 px or less, rescaled per photo by triangulation with the AR poses, fused into a TSDF.
   - Expect wall p90 of about 5 in over 1–3 m spans at a simulated 2% pose scale error (not a measured phone): more at the 2018 phone's measured error, about 2 to 3 in with exact poses.
   - Never trust a model's own scale.
@@ -102,7 +104,7 @@ In `recon/` on this branch:
 - **What to test first:**
   1. A real field session with a tape survey (`make field`), for the phone's own pose error.
   2. A LiDAR bundle from the app once S3 exports depth.
-  3. Why the two depth paths choose different walls.
+  3. Why MoGe-2's wall splits into collinear stretches, and which one the worker should pick (a 0.4° ground change moved it).
   4. The ground band. It is still untested, because ETH3D's photographers stood too far away for a 65° view of the ground.
   5. Stepped walls, which the 6 cm line fit handles poorly.
 
@@ -115,7 +117,9 @@ In `recon/` on this branch:
   - The Simulator bundle's wall comes from the replay autopilot: it lies 4 ft from any reconstructed surface.
 - **Scene contract:** `server/schemas/scene.schema.json` and "What settles each check" in `server/README.md` on t3/server.
   - `coverage.observed` entries are `wall`, `ground` (with `out_ft`), `facing` and `overhead`.
-  - `facing` and `overheads` carry measured gaps and clearances.
+  - `facing` and `overheads` carry measured gaps and clearances. A facing gap is measured from the reconstructed wall's front, so in front of a pilaster it starts at the pilaster's face.
+  - The reconstructed wall carries `source`: `mesh` when LiDAR built it, `plane` from photos alone. It carries no `plus_minus_ft`, so the server applies that source's default (0.5 or 0.75 ft) plus 0.16 ft per foot walked from the meter. An explicit bound would switch that drift off. `facing` and `overheads` entries carry the depth source's error, 0.5 ft for LiDAR and 0.56 ft for photos.
+- **Known limit for the server team: ground is sampled only 10 ft out** (`GROUND_MAX_M`, `recon/coverage.py`). The server asks for ground out to D + r + e, which for the public pool rule is 1.83 + 10 + e, at least 12.3 ft. A pool check therefore stays UNSURE even when the photos show ground past 10 ft. That errs toward UNSURE, never toward a pass. The reach should come from the server's request, not from a constant in the worker; the server team owns that request.
 - **Servers:**
   - public demo https://house-scanning-server.vercel.app, public rules only: `POST /v1/placements`, `POST /v1/placements/site-plan.svg`, bare `scene.json` under 4.5 MB;
   - a private, key-protected deployment with the real rules: ask Sam for access and its auth scheme.

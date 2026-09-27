@@ -200,6 +200,62 @@ def laser_depths(scene: str, views: list[View], capture: Capture, scan: np.ndarr
     return out
 
 
+@dataclass(frozen=True)
+class LaserView:
+    """A view with the laser scan rendered into it: the nearest laser depth per pixel at 512 px
+    wide, and ETH3D's mask of what the scanner missed at 1024 px."""
+
+    view: View
+    zbuf: np.ndarray
+    missing: np.ndarray
+
+
+def laser_views(scene: str, views: list[View], scan: np.ndarray) -> list[LaserView]:
+    return [LaserView(v, zbuffer(v, scan, 512, 5), missing_mask(scene, v, 1024)) for v in views]
+
+
+def laser_sees(nearest: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Whether the laser shows a sample at depth `z` visible: its nearest surface at the pixel is
+    not nearer by more than the tolerance. A pixel with no laser return (NaN) is no evidence, so
+    the sample stays unseen: an unknown must not lower the false-observed length it is checked
+    against."""
+    return np.isfinite(nearest) & (nearest >= z - np.maximum(HIDE_ABS_M, HIDE_REL * z))
+
+
+def laser_visible(
+    lv: LaserView, X: np.ndarray, pts: np.ndarray, R: np.ndarray, outward: np.ndarray
+) -> np.ndarray:
+    """Which points the laser shows visible in this view: inside the image, within MAX_RANGE_M,
+    with the camera on the wall's outward side, the laser's nearest surface at the pixel being the
+    point itself (`laser_sees`), and the pixel not one the scanner missed. `X` holds the points in
+    ETH3D's world, `pts` the same points levelled."""
+    v = lv.view
+    Xc = X @ v.R_wc.T + v.t_wc
+    z = Xc[:, 2]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        u = v.K[0] * Xc[:, 0] / z + v.K[2]
+        vv = v.K[1] * Xc[:, 1] / z + v.K[3]
+    framed = (z > 0.05) & (u >= 0) & (u <= v.width) & (vv >= 0) & (vv <= v.height)
+    near = np.linalg.norm(X - v.center, axis=1) <= MAX_RANGE_M
+    front = (R @ v.center - pts) @ outward > 0
+
+    def pixel(mask: np.ndarray, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        s = mask.shape[1] / v.width
+        iu = np.clip(np.nan_to_num(a * s).astype(int), 0, mask.shape[1] - 1)
+        iv = np.clip(np.nan_to_num(b * s).astype(int), 0, mask.shape[0] - 1)
+        return mask[iv, iu]
+
+    visible = laser_sees(pixel(lv.zbuf, u, vv), z) & ~pixel(lv.missing, u, vv)
+    return framed & near & front & visible
+
+
+def nearest_seeing(dist: np.ndarray, sees: np.ndarray) -> np.ndarray:
+    """Per point (row), the nearest view (column) that sees it, or -1 when none does."""
+    d = np.where(sees, dist, np.inf)
+    best = np.argmin(d, axis=1)
+    return np.where(np.isfinite(d[np.arange(len(d)), best]), best, -1)
+
+
 # --- Geometry against the scan ---------------------------------------------------------------
 
 
@@ -226,7 +282,7 @@ def surface_along(
 
 
 def geometry_errors(
-    r: dict, views: list[View], R: np.ndarray, scan_lev: np.ndarray, rng: np.random.Generator
+    r: dict, lviews: list[LaserView], R: np.ndarray, scan_lev: np.ndarray, rng: np.random.Generator
 ) -> dict:
     wall = r["wall"]
     loc = wall.local(scan_lev)
@@ -240,13 +296,17 @@ def geometry_errors(
         for name, x in (("left", lo), ("middle", (lo + hi) / 2), ("right", hi))
     }
 
-    # Per-pixel correspondence: each sampled laser wall point, seen from its nearest view.
+    # Per-pixel correspondence: each sampled laser wall point, along its ray from the nearest view
+    # in which the laser shows it visible. The nearest view regardless could be aimed elsewhere or
+    # have the scaffold in front of the point, and its ray would then meet another surface.
     pts = scan_lev[keep][rng.choice(keep.sum(), min(3000, keep.sum()), replace=False)]
-    centers = np.array([R @ v.center for v in views])
+    centers = np.array([R @ lv.view.center for lv in lviews])
+    X = pts @ R  # levelled -> ETH3D world
+    sees = np.stack([laser_visible(lv, X, pts, R, wall.outward) for lv in lviews], axis=1)
+    pick = nearest_seeing(np.linalg.norm(pts[:, None] - centers[None], axis=-1), sees)
     recon = np.full_like(pts, np.nan)
-    order = np.argsort(np.linalg.norm(pts[:, None] - centers[None], axis=-1), axis=1)[:, 0]
-    for j in np.unique(order):
-        sel = np.flatnonzero(order == j)
+    for j in np.unique(pick[pick >= 0]):
+        sel = np.flatnonzero(pick == j)
         dirs = pts[sel] - centers[j]
         dirs /= np.linalg.norm(dirs, axis=1, keepdims=True)
         recon[sel] = surface_along(r["volume"], centers[j], dirs)
@@ -259,10 +319,17 @@ def geometry_errors(
     dr = np.linalg.norm(recon[idx[i]] - recon[idx[j]], axis=1)
     pair = np.abs(dr[sel] - dt[sel]) / FEET * 12
     return {
+        # The fitted wall's ends in plan (x, z), meters in the levelled ETH3D world, so rows from
+        # the two depth paths show whether they fitted the same wall.
+        "wall_ends_xz_m": [
+            [round(float(p[0]), 2), round(float(p[2]), 2)]
+            for p in wall.world(np.array([lo, hi]), 0.0)
+        ],
         "wall_offset_in": {k: round(float(v), 2) for k, v in ends.items()},
         "wall_angle_deg": round(float(np.degrees(np.arctan(b))), 2),
         "laser_wall_points": int(keep.sum()),
-        "points_found": f"{int(ok.sum())} of {len(pts)}",
+        "points_visible": f"{int((pick >= 0).sum())} of {len(pts)}",
+        "points_found": f"{int(ok.sum())} of {int((pick >= 0).sum())} visible",
         "point_error_in": {
             "median": round(float(np.median(along)) / FEET * 12, 2),
             "p90": round(float(np.percentile(along, 90)) / FEET * 12, 2),
@@ -306,20 +373,10 @@ def laser_face(
     return out
 
 
-def laser_sees(nearest: np.ndarray, z: np.ndarray) -> np.ndarray:
-    """Whether the laser shows a sample at depth `z` visible: its nearest surface at the pixel is
-    not nearer by more than the tolerance. A pixel with no laser return (NaN) is no evidence, so
-    the sample stays unseen: an unknown must not lower the false-observed length it is checked
-    against."""
-    return np.isfinite(nearest) & (nearest >= z - np.maximum(HIDE_ABS_M, HIDE_REL * z))
-
-
 def false_observed(
     r: dict,
-    scene: str,
-    views: list[View],
+    lviews: list[LaserView],
     R: np.ndarray,
-    scan: np.ndarray,
     plane: tuple[float, float],
     scan_lev: np.ndarray,
 ) -> dict:
@@ -334,27 +391,8 @@ def false_observed(
     pts = wall.world(S, H, np.broadcast_to(face[:, None], S.shape)).reshape(-1, 3)
     X = pts @ R  # levelled -> ETH3D world
     seen = np.zeros(len(pts), bool)
-    for v in views:
-        Xc = X @ v.R_wc.T + v.t_wc
-        z = Xc[:, 2]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            u = v.K[0] * Xc[:, 0] / z + v.K[2]
-            vv = v.K[1] * Xc[:, 1] / z + v.K[3]
-        framed = (z > 0.05) & (u >= 0) & (u <= v.width) & (vv >= 0) & (vv <= v.height)
-        near = np.linalg.norm(X - v.center, axis=1) <= MAX_RANGE_M
-        front = (R @ v.center - pts) @ wall.outward > 0
-        buf = zbuffer(v, scan, 512, 5)
-        miss = missing_mask(scene, v, 1024)
-        s = 512 / v.width
-        iu = np.clip(np.nan_to_num(u * s).astype(int), 0, buf.shape[1] - 1)
-        iv = np.clip(np.nan_to_num(vv * s).astype(int), 0, buf.shape[0] - 1)
-        visible = laser_sees(buf[iv, iu], z)
-        m = 1024 / v.width
-        visible &= ~miss[
-            np.clip(np.nan_to_num(vv * m).astype(int), 0, miss.shape[0] - 1),
-            np.clip(np.nan_to_num(u * m).astype(int), 0, miss.shape[1] - 1),
-        ]
-        seen |= framed & near & front & visible
+    for lv in lviews:
+        seen |= laser_visible(lv, X, pts, R, wall.outward)
     unseen = (~seen).reshape(len(cols), len(heights)).sum(axis=1)
     cell = np.floor((cols - cov.cells[0]) / CELL_M).astype(int)
     claimed = cov.wall[np.clip(cell, 0, len(cov.wall) - 1)] & (cell >= 0) & (cell < len(cov.wall))
@@ -378,6 +416,7 @@ def false_observed(
 def run(scene: str, work: Path) -> dict:
     views, R, scan, capture = load_scene(scene)
     scan_lev = np.load(ETH3D / scene / "scan_points_10mm.npy")[::2].astype(np.float64) @ R.T
+    lviews = laser_views(scene, views, scan)
     rng = np.random.default_rng(0)
     rows = {}
     for label in ("laser as LiDAR", "MoGe-2, photos only"):
@@ -388,8 +427,8 @@ def run(scene: str, work: Path) -> dict:
             depths, report = dep.rescale(capture, raw)
             report["source"] = "moge2-triangulated"
         r = reconstruct(capture, depths, report)
-        geo = geometry_errors(r, views, R, scan_lev, rng)
-        cov = false_observed(r, scene, views, R, scan, geo.pop("laser_face"), scan_lev)
+        geo = geometry_errors(r, lviews, R, scan_lev, rng)
+        cov = false_observed(r, lviews, R, geo.pop("laser_face"), scan_lev)
         rows[label] = {"wall": geo, "coverage": cov, "notes": list(capture.notes)}
         capture.notes.clear()
         print(label, json.dumps(rows[label]), file=sys.stderr)
@@ -403,7 +442,8 @@ def markdown(scene: str, rows: dict) -> str:
         "Wall offset: the laser's wall face relative to the worker's fitted plane at the wall's "
         "ends "
         "and middle. Point error: the reconstruction's surface along each pixel's ray against the "
-        "laser point seen there. Pair error: |reconstructed - laser| distance between two such "
+        "laser point seen there, from the nearest photo in which the laser shows that point "
+        "unoccluded. Pair error: |reconstructed - laser| distance between two such "
         f"points 1 to 3 m apart. False-observed: pass at {PASS_FT} ft or less.",
         "",
         "| Depth | Wall offset L / mid / R (in) | Angle | Point error median / p90 (in) "

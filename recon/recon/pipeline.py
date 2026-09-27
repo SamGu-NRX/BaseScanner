@@ -19,14 +19,19 @@ from recon import coverage, depth, fusion, geometry, scene, server
 from recon.capture import FEET, Capture
 from recon.glb import write_glb
 
-# Error bars the worker states on what it measures (the wall line, facing gaps and overhead
-# clearances), by depth source. MoGe-2: the upper end of the 95% interval of the ETH3D surface p90
-# over 1 to 3 m spans at an assumed 2% pose error, 6.7 in (experiments/evals README section 3 on
+# The fitted wall line's `source` in scene.json, by depth source. The server gives a wall without
+# `plus_minus_ft` its source's default error plus drift per foot walked from the meter (mesh 0.5 ft
+# or plane 0.75 ft, plus 0.16 ft/ft, in server/rules.yaml on t3/server), so the worker sends no
+# wall bound: neither depth path has a measured error for a wall longer than the 1 to 3 m spans
+# the evals measured. "plane" is the schema's non-LiDAR source, and its default is the larger one.
+WALL_SOURCE = {"lidar": "mesh", "moge2-triangulated": "plane"}
+
+# Error bars on the facing gaps and overhead clearances the worker measures, by depth source.
+# These are short distances out from or up from the wall, not positions along it, and the server
+# adds no drift to them. MoGe-2: the upper end of the 95% interval of the ETH3D surface p90 over
+# 1 to 3 m spans at an assumed 2% pose error, 6.7 in (experiments/evals README section 3 on
 # t3/evals). LiDAR: no measured value exists here; 0.5 ft is the server's default for mesh
-# measurements (errors.mesh_ft in server/rules.yaml on t3/server, a day-1 estimate), sent
-# explicitly so the wall line cannot keep a tap's bound. The server does not grow an explicit
-# bound with distance walked from the meter (errors.drift_per_ft), so neither value covers pose
-# drift along a long wall; no measurement of that exists for this worker.
+# measurements (errors.mesh_ft, a day-1 estimate).
 PLUS_MINUS_FT = {"moge2-triangulated": 0.56, "lidar": 0.5}
 
 
@@ -46,10 +51,13 @@ def reconstruct(
     _log(f"fused at {vol.voxel * 100:.1f} cm voxels: {len(surface.vertices)} vertices")
     ground = geometry.fit_ground(surface, capture.ground_y)
     cams = np.array([f.center for f in capture.frames])
-    lines = geometry.wall_lines(surface, ground.y, cams, np.random.default_rng(0))
+    lines = geometry.wall_lines(surface, ground, cams, np.random.default_rng(0))
     line = geometry.choose_wall(lines, capture, move_meter)
-    wall = geometry.wall_frame(line, capture, ground.y, move_meter)
-    cov = coverage.compute(wall, capture.frames, depths, vol, surface)
+    wall = geometry.wall_frame(line, capture, ground, move_meter)
+    # Only frames with a depth map can see anything (depth.depth_maps: LiDAR frames saved
+    # without depth get none).
+    seeing = [f for f in capture.frames if f.id in depths]
+    cov = coverage.compute(wall, seeing, depths, vol, surface)
     _log(f"coverage over {len(cov.cells)} cells ({time.perf_counter() - t0:.0f} s)")
     return {
         "depths": depths,
@@ -99,7 +107,7 @@ def geometry_doc(r: dict) -> dict:
             if w is not line
         ],
         "ground": {
-            "height_ft": round(ground.y / FEET, 4),
+            "height_ft": round(wall.ground_y / FEET, 4),  # the plane at the meter's foot
             "normal": [round(float(v), 5) for v in ground.normal],
             "tilt_deg": round(float(np.degrees(np.arccos(min(1.0, ground.normal[1])))), 2),
             "fit_rms_in": round(ground.rms_m / FEET * 12, 2),
@@ -127,7 +135,8 @@ def run(
     geo = geometry_doc(r)
     (out / "geometry.json").write_text(json.dumps(geo, indent=1))
     cov = r["coverage"]
-    doc = scene.build(capture, r["wall"], cov, PLUS_MINUS_FT[r["source"]])
+    src = r["source"]
+    doc = scene.build(capture, r["wall"], cov, WALL_SOURCE[src], PLUS_MINUS_FT[src])
     (out / "scene.json").write_text(json.dumps(doc, indent=1))
     (out / "coverage.json").write_text(json.dumps(_coverage_doc(cov), indent=1))
     result = None

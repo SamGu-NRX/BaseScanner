@@ -27,9 +27,9 @@ make accept                                           # ETH3D acceptance (prepar
 
 | Depth | Wall pair error, 1–3 m, median / p90 | Wall claimed | False-observed |
 | --- | --- | --- | --- |
-| Laser scan standing in for LiDAR | 0.6 / 2.1 in | 22.5 of 31.9 ft | 0.07 ft (passes) |
-| MoGe-2 rescaled with the poses | 0.5 / 2.8 in | 12.8 of 15.8 ft | 0.39 ft (passes) |
+| Laser scan standing in for LiDAR | 0.5 / 1.8 in | 22.5 of 31.9 ft | 0.07 ft (passes) |
+| MoGe-2 rescaled with the poses | 0.7 / 1.5 in | 19.9 of 20.5 ft | 0.00 ft (passes) |
 
-The two paths chose different stretches of wall, so their geometry rows are not directly comparable. The ADVIO replay and the app's Simulator bundle each reach a server result (`manual_review`: the ADVIO camera looks along its path, so little wall is seen head-on). The Simulator bundle needs `ARGS=--move-meter`, because its replayed wall has no surface behind it.
+Both paths fit the same wall; MoGe-2's stretch lies inside the laser path's. Each laser point is scored from the nearest photo in which the laser shows it unoccluded. At c6a8be3 the ADVIO replay and the app's Simulator bundle each reached a server result (`manual_review`: the ADVIO camera looks along its path, so little wall is seen head-on); they were not rerun after this round's geometry changes. The Simulator bundle needs `ARGS=--move-meter`, because its replayed wall has no surface behind it.
 
 The handoff to the server team, with everything measured and reusable, is [HANDOFF.md](HANDOFF.md).

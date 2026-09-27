@@ -1,22 +1,33 @@
 {
  "laser as LiDAR": {
   "wall": {
+   "wall_ends_xz_m": [
+    [
+     -0.33,
+     -4.69
+    ],
+    [
+     8.17,
+     -9.39
+    ]
+   ],
    "wall_offset_in": {
-    "left": 0.73,
-    "middle": -0.19,
-    "right": -1.12
+    "left": 1.01,
+    "middle": -0.16,
+    "right": -1.34
    },
-   "wall_angle_deg": -0.28,
-   "laser_wall_points": 95246,
-   "points_found": "3000 of 3000",
+   "wall_angle_deg": -0.35,
+   "laser_wall_points": 95188,
+   "points_visible": "2946 of 3000",
+   "points_found": "2946 of 2946 visible",
    "point_error_in": {
-    "median": 1.41,
-    "p90": 5.77
+    "median": 1.46,
+    "p90": 3.85
    },
    "pair_error_1_3m_in": {
-    "pairs": 7954,
-    "median": 0.59,
-    "p90": 2.1
+    "pairs": 8072,
+    "median": 0.52,
+    "p90": 1.76
    }
   },
   "coverage": {
@@ -37,34 +48,40 @@
  },
  "MoGe-2, photos only": {
   "wall": {
+   "wall_ends_xz_m": [
+    [
+     0.64,
+     -5.19
+    ],
+    [
+     6.07,
+     -8.29
+    ]
+   ],
    "wall_offset_in": {
-    "left": 2.62,
-    "middle": 1.32,
-    "right": 0.02
+    "left": -0.25,
+    "middle": 0.36,
+    "right": 0.96
    },
-   "wall_angle_deg": -0.78,
-   "laser_wall_points": 50186,
-   "points_found": "3000 of 3000",
+   "wall_angle_deg": 0.28,
+   "laser_wall_points": 71058,
+   "points_visible": "2984 of 3000",
+   "points_found": "2984 of 2984 visible",
    "point_error_in": {
     "median": 1.38,
-    "p90": 11.25
+    "p90": 3.35
    },
    "pair_error_1_3m_in": {
-    "pairs": 11835,
-    "median": 0.52,
-    "p90": 2.84
+    "pairs": 10092,
+    "median": 0.66,
+    "p90": 1.5
    }
   },
   "coverage": {
-   "false_observed_runs_ft": [
-    [
-     -7.86,
-     -7.53
-    ]
-   ],
-   "wall_ft": 15.8,
-   "claimed_ft": 12.8,
-   "false_observed_ft": 0.39,
+   "false_observed_runs_ft": [],
+   "wall_ft": 20.5,
+   "claimed_ft": 19.95,
+   "false_observed_ft": 0.0,
    "passes": true
   },
   "notes": [

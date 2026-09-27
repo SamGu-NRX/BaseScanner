@@ -7,11 +7,14 @@ fitted extent and the phone's baseline), `coverage.observed` is replaced by the 
 coverage, and the measured facing gaps and overhead clearances are added to whatever the phone
 marked. A Measure Lab session gets a new scene with the same parts.
 
-The fitted wall is marked `source: "mesh"` with the depth source's `plus_minus_ft`. Without that
-the server would read the old line's provenance: a bundle's tap source and its tap bound, or, with
-none (a new scene), the tap default of 0.3 ft, tighter than anything the reconstruction measured.
-"mesh" is the schema's only non-tap, non-plane source; it covers the photos-only path too, whose
-bound is its own.
+The fitted wall takes the source of the depth that built it (`pipeline.WALL_SOURCE`: "mesh" from
+LiDAR, "plane" from photos alone) and no `plus_minus_ft`; a bundle's tapped bound is removed. The
+server then applies that source's default error plus its drift per foot walked from the meter
+(errors.mesh_ft, plane_ft and drift_per_ft in server/rules.yaml on t3/server). An explicit bound
+would switch the drift off: the server adds none to a wall that carries one, so a LiDAR wall
+30 ft from the meter would stay at 0.5 ft instead of about 5.3 ft. Keeping the old line's
+provenance would be wrong too: a bundle's tap source and bound, or with none the tap default of
+0.3 ft, describe a line the reconstruction replaced.
 """
 
 from __future__ import annotations
@@ -31,9 +34,13 @@ def _plan_ft(p: np.ndarray) -> list[float]:
     return [round(float(p[0]) / FEET, 4), round(float(p[2]) / FEET, 4)]
 
 
-def build(capture: Capture, wall: WallFrame, cov: CellCoverage, plus_minus_ft: float) -> dict:
-    """The scene to send. For a bundle the scene frame is the bundle's own (its ground is y = 0 by
-    the phone's estimate); for a session it is ARKit's world lowered to the fitted ground."""
+def build(
+    capture: Capture, wall: WallFrame, cov: CellCoverage, wall_source: str, plus_minus_ft: float
+) -> dict:
+    """The scene to send. `wall_source` labels the fitted wall line; `plus_minus_ft` is the error
+    of the measured facing gaps and overhead clearances. For a bundle the scene frame is the
+    bundle's own (its ground is y = 0 by the phone's estimate); for a session it is ARKit's world
+    lowered to the fitted ground."""
     shift = 0.0 if capture.scene is not None else wall.ground_y
     lo, hi = wall.s_range
     if capture.scene is not None:
@@ -74,8 +81,8 @@ def build(capture: Capture, wall: WallFrame, cov: CellCoverage, plus_minus_ft: f
         }
         target = doc["walls"][0]
     target["baseline"] = [_plan_ft(wall.world(s, 0.0)) for s in (lo, hi)]
-    target["source"] = "mesh"
-    target["plus_minus_ft"] = plus_minus_ft
+    target["source"] = wall_source
+    target.pop("plus_minus_ft", None)
     doc.setdefault("coverage", {})["observed"] = observed(cov)[:500]
     facing, overheads = measurements(cov, wid, plus_minus_ft)
     doc["facing"] = [*doc.get("facing", []), *facing]

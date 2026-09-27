@@ -1,5 +1,5 @@
-"""Hand-computed cases for the worker's adapters, depth helpers and cache, fusion, coverage,
-scene.json output, the acceptance oracle and GLB."""
+"""Hand-computed cases for the worker's adapters, depth helpers and cache, fusion, geometry,
+coverage, scene.json output, the server call, the acceptance oracle and GLB."""
 
 import json
 from dataclasses import replace
@@ -10,14 +10,14 @@ import numpy as np
 import pytest
 
 from recon import capture as cap
-from recon import coverage, depth, scene
+from recon import coverage, depth, geometry, scene, server
 from recon.coverage import CELL_M, GROUND_MAX_M, CellCoverage, _runs, observed, seen_by
 from recon.depth import Depth, lidar, rotated_intrinsics, upright_turns
-from recon.eth3d import laser_sees
-from recon.fusion import Mesh, integrate, mesh
-from recon.geometry import WallFrame
+from recon.eth3d import LaserView, View, laser_sees, laser_visible, nearest_seeing
+from recon.fusion import Mesh, Volume, integrate, mesh
+from recon.geometry import WallFrame, WallLine
 from recon.glb import read_glb, write_glb
-from recon.pipeline import PLUS_MINUS_FT
+from recon.pipeline import PLUS_MINUS_FT, WALL_SOURCE
 
 
 def test_outward_is_the_baseline_turned_clockwise_from_above():
@@ -298,12 +298,18 @@ NO_COVERAGE = CellCoverage(
 )
 
 
-def test_a_new_scene_marks_its_wall_as_reconstructed_with_the_depth_sources_error():
+def _new_scene(source: str) -> dict:
     frames = _frames_facing({"a": 0.0}, 1.0, np.eye(3))
     c = cap.Capture("measure-lab", Path("s"), frames, 0.0, None, None)
-    doc = scene.build(c, WALL, NO_COVERAGE, PLUS_MINUS_FT["moge2-triangulated"])
-    (w,) = doc["walls"]
-    assert w["source"] == "mesh" and w["plus_minus_ft"] == 0.56
+    return scene.build(c, WALL, NO_COVERAGE, WALL_SOURCE[source], PLUS_MINUS_FT[source])
+
+
+def test_a_new_scene_labels_its_wall_by_depth_source_and_leaves_the_error_to_the_server():
+    # No plus_minus_ft: the server adds its drift per foot walked only to walls without one.
+    (lidar_wall,) = _new_scene("lidar")["walls"]
+    (photo_wall,) = _new_scene("moge2-triangulated")["walls"]
+    assert lidar_wall["source"] == "mesh" and "plus_minus_ft" not in lidar_wall
+    assert photo_wall["source"] == "plane" and "plus_minus_ft" not in photo_wall
 
 
 def test_a_bundles_tap_bound_does_not_survive_the_reconstructed_line():
@@ -322,11 +328,11 @@ def test_a_bundles_tap_bound_does_not_survive_the_reconstructed_line():
         ],
     }
     c = cap.Capture("scan-bundle", Path("b"), [], 0.0, np.array([0.0, 1.524, 0]), None, prior)
-    doc = scene.build(c, WALL, NO_COVERAGE, PLUS_MINUS_FT["lidar"])
+    doc = scene.build(c, WALL, NO_COVERAGE, WALL_SOURCE["lidar"], PLUS_MINUS_FT["lidar"])
     w, v = doc["walls"]
-    assert w["source"] == "mesh" and w["plus_minus_ft"] == 0.5 and w["height_ft"] == 9.0
+    assert w["source"] == "mesh" and "plus_minus_ft" not in w and w["height_ft"] == 9.0
     assert v == prior["walls"][1]  # another wall's tap stays as the phone marked it
-    assert prior["walls"][0]["source"] == "tap"  # the input scene is not modified
+    assert prior["walls"][0]["plus_minus_ft"] == 0.1  # the input scene is not modified
 
 
 # --- The MoGe-2 depth cache -----------------------------------------------------------------
@@ -391,3 +397,169 @@ def test_the_cache_key_changes_with_pose_intrinsics_and_the_model(tmp_path, monk
     )
     monkeypatch.setattr(depth, "MOGE_SCRIPT", other)
     assert depth.moge_key(c) != base
+
+
+# --- Depth: a LiDAR capture with frames saved without depth -----------------------------------
+
+
+def _lidar_frames(root: Path, with_depth: dict[str, bool]) -> list[cap.Frame]:
+    frames = []
+    for fid, has in with_depth.items():
+        cv2.imwrite(str(root / f"{fid}.jpg"), np.zeros((6, 8, 3), np.uint8))
+        lid = None
+        if has:
+            np.full((2, 2), 2.0, "<f4").tofile(root / f"{fid}.f32")
+            lid = cap.LidarDepth(root / f"{fid}.f32", None, 2, 2)
+        frames.append(
+            cap.Frame(fid, root / f"{fid}.jpg", 8, 6, np.array([8.0, 8, 4, 3]), np.eye(4), lid)
+        )
+    return frames
+
+
+def test_a_frame_saved_without_lidar_keeps_the_other_frames_lidar(tmp_path, monkeypatch):
+    monkeypatch.setattr(depth, "moge", lambda *_: pytest.fail("MoGe-2 must not run"))
+    frames = _lidar_frames(tmp_path, {"a": True, "b": False, "c": True})
+    c = cap.Capture("measure-lab", tmp_path, frames, 0.0, None, None)
+    depths, report = depth.depth_maps(c, tmp_path / "work", "auto")
+    assert sorted(depths) == ["a", "c"]  # b gets no depth, so it can see nothing in coverage
+    assert report["source"] == "lidar" and report["without_depth"] == ["b"]
+    assert any(n.startswith("1 of 3 keyframes carry no LiDAR depth (b)") for n in c.notes)
+
+
+def test_one_lidar_frame_falls_back_to_photos_in_auto_and_refuses_in_lidar_mode(
+    tmp_path, monkeypatch
+):
+    frames = _lidar_frames(tmp_path, {"a": True, "b": False, "c": False})
+    c = cap.Capture("measure-lab", tmp_path, frames, 0.0, None, None)
+    monkeypatch.setattr(depth, "moge", lambda *_: {})
+    monkeypatch.setattr(depth, "rescale", lambda *_: ({}, {"fitted": 0}))
+    assert depth.depth_maps(c, tmp_path / "work", "auto")[1]["source"] == "moge2-triangulated"
+    with pytest.raises(ValueError, match="only 1 of 3 keyframes carry LiDAR depth"):
+        depth.depth_maps(c, tmp_path / "work", "lidar")
+
+
+# --- Geometry: the ground plane and the wall stretch -----------------------------------------
+
+
+def _upward_mesh(points: np.ndarray) -> Mesh:
+    n = len(points)
+    return Mesh(
+        points.astype(np.float32),
+        np.zeros((0, 3), np.uint32),
+        np.tile([0.0, 1.0, 0.0], (n, 1)).astype(np.float32),
+        np.zeros((n, 3), np.uint8),
+    )
+
+
+def test_ground_height_is_the_plane_at_the_meter_not_the_median_sample():
+    # Ground rising 1 in 10 away from a wall at x = 1, where it is 0.5 m; sampled only on the
+    # wall's outward side, so the samples' median height (0.65 m) is 1.5 m out, not at the wall.
+    x, z = np.meshgrid(np.linspace(1, 4, 31), np.linspace(-2, 2, 21))
+    pts = np.stack([x.ravel(), 0.5 + 0.1 * (x.ravel() - 1), z.ravel()], axis=1)
+    ground = geometry.fit_ground(_upward_mesh(pts), 0.5)
+    assert np.median(pts[:, 1]) == pytest.approx(0.65)
+    assert ground.height_at(1.0, 0.7) == pytest.approx(0.5, abs=1e-5)
+    line = WallLine(
+        np.array([1.0, 0.5, 0.0]), np.array([0, 0, -1.0]), np.array([1.0, 0, 0]), (-2, 2), 0, 0
+    )
+    c = cap.Capture("measure-lab", Path("s"), [], 0.5, np.array([1.1, 1.7, 0.4]), None)
+    wall = geometry.wall_frame(line, c, ground, False)
+    assert wall.ground_y == pytest.approx(0.5, abs=1e-5)
+
+
+def _stretch(extent: tuple[float, float], z: float = 0.0) -> WallLine:
+    return WallLine(
+        np.array([0.0, 0.0, z]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]), extent, 0.01, 100
+    )
+
+
+def test_the_stretch_beside_the_meter_wins_over_a_collinear_one_past_a_doorway():
+    # One wall split at a doorway into two stretches on the same infinite line.
+    far, near = _stretch((-6.0, -3.0)), _stretch((1.0, 4.0))
+    hint = cap.WallHint(np.array([-5.0, 0, 0.1]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]))
+    meter = np.array([2.0, 1.2, 0.05])
+    with_meter = cap.Capture("scan-bundle", Path("b"), [], 0.0, meter, hint)
+    assert geometry.choose_wall([far, near], with_meter, False) is near
+    no_meter = cap.Capture("measure-lab", Path("s"), [], 0.0, None, hint)  # the phone's point
+    assert geometry.choose_wall([near, far], no_meter, False) is far
+    with pytest.raises(geometry.WallMismatch):  # a parallel line 1 m off is not the wall
+        geometry.choose_wall([_stretch((1.0, 4.0), z=1.0)], with_meter, False)
+
+
+# --- Coverage: facing space is measured from the wall's front ---------------------------------
+
+
+def _slab_volume(occupied: list[tuple[float, float]], observed_to: float) -> Volume:
+    """x in [-0.5, 0.5], y in [0, 3.2], z in [-0.5, 7] at 5 cm: occupied where z falls in one of
+    the ranges, seen empty elsewhere up to z = observed_to, unobserved beyond."""
+    voxel, origin, shape = 0.05, np.array([-0.5, 0.0, -0.5]), (21, 65, 151)
+    z = origin[2] + np.arange(shape[2]) * voxel
+    occ = np.zeros(shape[2], bool)
+    for a, b in occupied:
+        occ |= (z >= a - 1e-6) & (z <= b + 1e-6)
+    tsdf = np.broadcast_to(np.where(occ, -1.0, 1.0).astype(np.float32), shape).copy()
+    weight = np.broadcast_to((z <= observed_to + 1e-6).astype(np.float32), shape).copy()
+    color = np.zeros((*shape, 3), np.float32)
+    return Volume(origin, voxel, shape, tsdf, weight, color, np.zeros(shape, np.float32))
+
+
+def test_facing_gap_and_clear_space_start_at_a_proud_wall_face():
+    # The fitted plane is z = 0 (outward +z). A pilaster stands 0.3 m proud of it; something
+    # faces the wall 1.0 m from the pilaster's face, 1.3 m from the plane.
+    wall = WallFrame(
+        np.array([0.0, 1.0, 0.0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]), 0.0, (0, 0.3)
+    )
+    cells = np.array([0.0])
+    flat = coverage.free_space(wall, _slab_volume([(-0.3, 0.0), (1.0, 1.4)], 7.0), cells)
+    proud = coverage.free_space(wall, _slab_volume([(-0.3, 0.3), (1.3, 1.7)], 7.0), cells)
+    assert proud[0][0] == pytest.approx(flat[0][0]) == pytest.approx(0.95, abs=0.01)
+    # Nothing faces it, and the volume was seen empty to 2.0 m from the plane: 1.7 m from the face.
+    clear = coverage.free_space(wall, _slab_volume([(-0.3, 0.3)], 2.0), cells)
+    assert np.isnan(clear[0][0]) and 1.6 <= clear[1][0] <= 1.7
+
+
+# --- The server call ------------------------------------------------------------------------
+
+
+def _replies(monkeypatch, *replies):
+    it = iter(replies)
+    monkeypatch.setattr(server, "_post", lambda *_: next(it))
+
+
+def test_a_refused_site_plan_fails_the_run_and_leaves_no_plan_behind(tmp_path, monkeypatch):
+    (tmp_path / "site-plan.svg").write_text("<svg>a previous run's plan</svg>")
+    _replies(monkeypatch, (200, b'{"decision": "manual_review"}'), (500, b"plan failed"))
+    with pytest.raises(RuntimeError, match=r"refused its site plan \(500\): plan failed"):
+        server.place({}, "https://example.test", tmp_path)
+    assert not (tmp_path / "site-plan.svg").exists()
+
+
+def test_a_placed_scene_saves_its_result_and_plan(tmp_path, monkeypatch):
+    _replies(monkeypatch, (200, b'{"decision": "manual_review"}'), (200, b"<svg/>"))
+    assert server.place({}, "https://example.test", tmp_path) == {"decision": "manual_review"}
+    assert (tmp_path / "site-plan.svg").read_bytes() == b"<svg/>"
+
+
+# --- The acceptance oracle: which view scores a laser point -----------------------------------
+
+
+def test_a_laser_point_is_scored_from_the_nearest_view_that_sees_it():
+    dist = np.array([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
+    sees = np.array([[False, True, True], [False, False, False]])
+    np.testing.assert_array_equal(nearest_seeing(dist, sees), [1, -1])
+
+
+def test_laser_visibility_needs_the_point_in_frame_and_unoccluded():
+    # A COLMAP camera at the origin looking along +z; points 2 m ahead, and one out of frame.
+    view = View("v", 512, 512, np.array([256.0, 256, 256, 256]), np.eye(3), np.zeros(3))
+    pts = np.array([[0.0, 0, 2.0], [10.0, 0, 2.0]])
+    toward_camera = np.array([0, 0, -1.0])
+    miss = np.zeros((1024, 1024), bool)
+
+    def visible(nearest: float) -> list[bool]:
+        lv = LaserView(view, np.full((512, 512), nearest, np.float32), miss)
+        return laser_visible(lv, pts, pts, np.eye(3), toward_camera).tolist()
+
+    assert visible(2.0) == [True, False]
+    assert visible(1.0) == [False, False]  # the laser saw something nearer: occluded
+    assert visible(np.nan) == [False, False]  # no laser return is no evidence
