@@ -8,12 +8,22 @@ The server under test is either started from a git ref (a detached worktree unde
 endpoint is read from its OpenAPI document; with more than one candidate the run stops and
 asks for `--endpoint` instead of guessing.
 
+A server started here is killed past 3.5 GB. Scenes go as the app sends them: JSON when the
+endpoint takes it, a zip only for the compressed-scene hostile input. Bundles read from disk
+stay within fixed entry and size limits, checked before reading.
+
 Each scene is first validated against the scene schema published at the same ref, so a bad
 input is reported as an input problem, not a server bug. Each response must validate against
-the result schema and pass the invariants in `resultcheck`. Case files add the outcomes their
-geometry forces. Every scene is also sent three more ways: again (the result must be
-identical apart from timing), mirrored left to right (same decision, same length of passing,
-unsure and failing wall), and without coverage (never a pass).
+the result schema and pass the invariants in `resultcheck`, with rules read from the ref's
+`rules.yaml`. Case files add the outcomes their geometry forces. Every scene is also resent
+changed, and the answers must stay ordered: again (identical apart from timing), mirrored (same
+decision and outcome lengths), without or with less coverage, with ground trimmed just short
+of the largest clearance, with more error or tape re-measured by tap (nothing improves), and
+with every requested view added, up to three rounds (no check left unsure for coverage). Five
+hostile inputs must be refused or answered within 10 s and 500 MB of server growth.
+
+A run claims the contract (`contract_ok`) only when at least one scene was answered and
+checked and none broke it, and real-scene latency only from an HTTP 200 result.
 
 Reports go to ~/house-scanning-data/reports/e2e/<run>/ (outside git; real scenes can
 reference dataset images).

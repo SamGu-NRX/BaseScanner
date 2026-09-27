@@ -61,8 +61,8 @@ class TreeLimit:
         measure: Callable[[int], float] = tree_rss_mb,
     ):
         self.proc, self.limit_mb, self.interval_s = proc, limit_mb, interval_s
-        # How a process group's memory is read; tests pass a fixed reading, since what the OS
-        # reports as resident depends on memory compression and cannot be held steady.
+        # How a process group's memory is read; tests pass a fixed reading, since how much
+        # the OS keeps resident varies with memory pressure and cannot be held steady.
         self.measure = measure
         self.peak_mb, self.killed = 0.0, False
         self._stop = threading.Event()

@@ -8,8 +8,14 @@ checks hold for any policy and any rule values, so they can run on every respons
 - the margin rule: a check's outcome must follow from its measurement, error and threshold
   (PASS only when the margin beats the error, and clears the review line when the check has
   one; FAIL only when past the threshold by more than the error; otherwise UNSURE);
-- coverage: no battery position whose wall stretch, cable route or ground was never observed
-  may pass, and nothing may ask for photos of an area the scene says was observed;
+- coverage: no battery position passes without the coverage each passing check needs, as the
+  server's README ("What settles each check") states it: the wall seen high enough over the
+  clearance's reach, the ground out to the battery's depth plus the reach, the facing and
+  overhead bands unless measured, and the cable route. The reach includes the battery's
+  position error, which depends on how the wall was found. Only points within reach whatever
+  the wall's shape are required, so a correct server is not flagged;
+- requests: every check left unsure for coverage is named for each band it lacks, and nothing
+  is requested that was already seen as far as the request needs;
 - bookkeeping: counts add up, the input hash matches what was sent, the spot's offset from
   the meter matches its centre.
 
