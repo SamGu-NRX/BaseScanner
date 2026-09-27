@@ -35,21 +35,9 @@ targets:
         buildPhase: none
     dependencies:
       - package: HouseScanKit
-    # The commit the app was built from, for the scan stamp: written into the built Info.plist as
-    # HouseScanGitCommit, after Xcode has processed it and before signing. "-dirty" marks a
-    # build with uncommitted changes to tracked files; Config/Info.plist's "unknown" stays when
-    # the build runs outside a git checkout. Runs on every build, so it never lags a new commit.
-    postCompileScripts:
-      - name: Stamp the git commit
-        basedOnDependencyAnalysis: false
-        inputFiles:
-          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
-        script: |
-          commit=$(git -C "$SRCROOT" rev-parse --short=12 HEAD 2>/dev/null) || exit 0
-          if [ -n "$(git -C "$SRCROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]; then
-            commit="$commit-dirty"
-          fi
-          /usr/libexec/PlistBuddy -c "Set :HouseScanGitCommit $commit" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+    # The commit the app was built from, for the scan stamp, is HouseScanGitCommit in
+    # Config/Info.plist. TestFlight builds get it from a step in .github/workflows/testflight.yml,
+    # because that job refuses script phases; other builds keep "unknown".
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig

@@ -71,7 +71,7 @@ extension ScanEngine {
             producer: PacketManifest.Producer(
                 kind: .app, name: info["CFBundleName"] as? String ?? "HouseScan",
                 version: version.count == 2 ? "\(version[0]) (\(version[1]))" : version.first ?? "unknown",
-                // The "Stamp the git commit" build phase writes it (ios/project.yml).
+                // The TestFlight job's "Stamp the git commit" step writes it (.github/workflows/testflight.yml).
                 commit: (info["HouseScanGitCommit"] as? String).flatMap { $0 == "unknown" ? nil : $0 }
             ),
             device: PacketManifest.Device(
