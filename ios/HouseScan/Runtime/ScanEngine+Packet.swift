@@ -28,6 +28,12 @@ extension ScanEngine {
         /// those made after its time before it goes into the meter frame. The raw poses stay as
         /// they were recorded.
         var corrections: PoseCorrections
+        /// The latest frame time the engine had seen when these inputs were taken. Live stream
+        /// rows after it are left out: the recorder goes on taking rows while the packet is
+        /// queued, and a row after a correction that isn't in `corrections` would be written in
+        /// the wrong frame. The capture window ends at the last row kept, so depth frames and
+        /// motion rows stop there too. Nil keeps every row (a replay has no corrections).
+        var streamCutoff: Double?
         var groundWorldY: Float
         /// Keyframes and stills; `writePacket` orders them by time.
         var photos: [StoredKeyframe]
@@ -53,9 +59,11 @@ extension ScanEngine {
         var frames: [ReplayFrame]
     }
 
-    /// Nil before there is a wall: the meter frame is built from it.
-    func packetInputs(scene: Data, mesh: LiveCapture.MeshSnapshot?) -> PacketInputs? {
-        guard let map = coverage else { return nil }
+    /// Everything spatial comes from `snapshot` (the wall, the marks, the photos, the mesh, the
+    /// planes, the stream cutoff); only the logs (guidance, mark times) are read here. Nil when
+    /// the wall has no outward to build the meter frame from.
+    func packetInputs(scene: Data, snapshot: UploadSnapshot) -> PacketInputs? {
+        let map = snapshot.map
         let wall = map.wall
         // The wall in world meters, as scene.json's wall type describes it, for the marks.
         let sceneWall = SceneWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, leftCorners: wall.leftCorners, rightCorners: wall.rightCorners)
@@ -85,18 +93,19 @@ extension ScanEngine {
                 meshClassificationEnabled: settings?.meshClassification ?? false
             ),
             meterFrame: frame,
-            corrections: poseCorrections,
+            corrections: snapshot.corrections,
+            streamCutoff: replay == nil ? snapshot.frameTime : nil,
             groundWorldY: wall.groundY,
-            photos: store.keyframes + store.stillFrames.keys.sorted().compactMap { store.stillFrames[$0] },
-            mesh: mesh,
-            planes: (liveCapture?.planeSnapshot() ?? []).map { plane in
+            photos: snapshot.keyframes + snapshot.stillFrames.keys.sorted().compactMap { snapshot.stillFrames[$0] },
+            mesh: snapshot.mesh,
+            planes: snapshot.planes.map { plane in
                 PacketPlane(
                     id: plane.id, alignment: plane.vertical ? .vertical : .horizontal, classification: plane.classification,
                     anchorToMeter: frame.pose(plane.anchorToWorld), center: plane.center, rotationOnYAxis: plane.rotationOnYAxis,
                     extent: plane.extent, boundaryVertices: plane.boundary
                 )
             },
-            marks: packetMarks(map, wall: sceneWall, frame: frame),
+            marks: packetMarks(snapshot, wall: sceneWall, frame: frame),
             guidance: guidanceLog.entries.map { Self.packetEntry($0, wall: sceneWall, frame: frame) },
             scene: scene,
             trajectoryRate: settings.map { Double($0.framesPerSecond) },
@@ -117,18 +126,19 @@ extension ScanEngine {
     // MARK: Marks
 
     /// The meter, the marked wall ends and every marked feature, in the meter frame.
-    private func packetMarks(_ map: CoverageMap, wall: SceneWall, frame: MeterFrame) -> [PacketMark] {
+    private func packetMarks(_ snapshot: UploadSnapshot, wall: SceneWall, frame: MeterFrame) -> [PacketMark] {
+        let map = snapshot.map
         var marks = [PacketMark.meter(
-            id: "meter", t: markTimes[MarkKey.meter], photoIDs: store.stillFrames["meter_close"] == nil ? nil : ["meter_close"]
+            id: "meter", t: markTimes[MarkKey.meter], photoIDs: snapshot.stillFrames["meter_close"] == nil ? nil : ["meter_close"]
         )]
         for (side, s) in [(WallSide.left, map.leftEnd), (.right, map.rightEnd)] {
             guard let s else { continue }
             marks.append(.wallEnd(
                 id: "wall_end_\(side.rawValue)", side: side == .left ? .left : .right,
-                endKind: wallEndKinds[side] == .limit ? .limit : .unexplored, s: s, wall: wall, frame: frame, t: markTimes[MarkKey.end(side)]
+                endKind: (side == .left ? snapshot.leftEndIsLimit : snapshot.rightEndIsLimit) ? .limit : .unexplored, s: s, wall: wall, frame: frame, t: markTimes[MarkKey.end(side)]
             ))
         }
-        for feature in state.features {
+        for feature in snapshot.features.map({ Self.projected($0, onto: map.wall) }) {
             let id = feature.id.uuidString.lowercased()
             let t = markTimes[MarkKey.feature(feature.id)]
             let points = feature.points.map { frame.point($0) }
@@ -319,7 +329,9 @@ extension ScanEngine {
             return Trajectory(sessionID: UUID().uuidString, startedAt: nil, rate: rate, rows: rows)
         }
         let snapshot = inputs.recorder.flush()
-        let rows = inputs.recorder.rows(.trajectory).map { row in
+        let cutoff = inputs.streamCutoff ?? .infinity
+        let recorded: [[Double]] = inputs.recorder.rows(.trajectory).filter { $0[0] <= cutoff }
+        let rows = recorded.map { row in
             let pose = simd_float4x4(
                 SIMD4(Float(row[3]), Float(row[4]), Float(row[5]), Float(row[6])),
                 SIMD4(Float(row[7]), Float(row[8]), Float(row[9]), Float(row[10])),

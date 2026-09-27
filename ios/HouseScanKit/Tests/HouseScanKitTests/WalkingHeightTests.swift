@@ -21,7 +21,8 @@ import Testing
         var capture = AutoCapture()
         var planner = GuidancePlanner()
         var tasks: [GuidanceTask] = []
-        for frame in session.frames.dropLast(3) {
+        // Up to the closing tilt-up run, frame 38 on, which the walk doesn't play.
+        for frame in session.frames.prefix(38) {
             let camera = CameraFrame(cameraToWorld: frame.cameraToWorld, intrinsics: frame.intrinsics, imageSize: SIMD2(Float(frame.width), Float(frame.height)))
             let sample = FrameSample(timestamp: frame.timestamp, camera: camera, tracking: .normal, quality: nil)
             if capture.evaluate(sample, newlySeenCells: map.newlySeenCount(from: camera)).isKeep {

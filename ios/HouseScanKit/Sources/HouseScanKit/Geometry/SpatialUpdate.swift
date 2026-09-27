@@ -32,6 +32,10 @@ public enum SpatialUpdate {
         public var groundChanged = false
         /// The plane taken as ground and why, when the ground moved to one or became measured.
         public var groundChoice: GroundPlaneChoice.Choice?
+
+        /// Whether the captured geometry changed: an answer to a scene sent before it is stale
+        /// (`AnswerFreshness`).
+        public var changed: Bool { correction != nil || groundChanged }
     }
 
     /// Ground moves under 1 cm are plane jitter and republish nothing.
