@@ -282,6 +282,11 @@ def invariant_problems(
     if decision == "reject":
         if spot is not None:
             problems.append("decision reject but a spot is given")
+        # A reject says no start can pass or be settled by a person: every start fails.
+        for outcome in ("pass", "unsure"):
+            runs = [r["start_ft"] for r in result.get("sweep", []) if r["outcome"] == outcome]
+            if runs:
+                problems.append(f"decision reject but the sweep has {outcome} starts {runs}")
         if result.get("missing_evidence"):
             problems.append("decision reject while asking for more evidence")
     if decision == "manual_review" and not result.get("reasons"):
@@ -316,10 +321,73 @@ def invariant_problems(
             problems.append(f"spot.meter_offset_ft {got} != centre - meter {want}")
 
     problems += spot_sweep_problems(result)
+    if rules is not None:
+        problems += footprint_problems(scene, result, rules)
     problems += missing_evidence_problems(scene, result, rules)
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
         problems += declared_height_problems(scene, result, rules)
+    return problems
+
+
+# Walls and baseline points within this of one straight line are one straight stretch
+# (server/scene.py COLLINEAR_FT and _join_straight_walls at a726199). Also the slack on a
+# footprint's ends, since s here and the server's s can differ by a merged point's offset.
+COLLINEAR_FT = 0.05
+
+
+def straight_pieces(scene: dict, rules: RuleSet) -> list[tuple[float, float]]:
+    """The s-extent of each straight stretch of scanned wall a battery can back onto: baseline
+    segments joined where the next one starts at the previous one's end and continues its line,
+    within a wall or across two walls that meet."""
+    pieces: list[list] = []  # [s0, s1, start point, end point]
+    for _, s0, s1, a, b in segments_s(scene, rules) or []:
+        if pieces:
+            prev = pieces[-1]
+            length = math.dist(prev[2], prev[3])
+            if length > EPS and math.dist(prev[3], a) <= COLLINEAR_FT:
+                ux, uz = (prev[3][0] - prev[2][0]) / length, (prev[3][1] - prev[2][1]) / length
+                off = abs((b[0] - prev[2][0]) * uz - (b[1] - prev[2][1]) * ux)
+                ahead = (b[0] - prev[3][0]) * ux + (b[1] - prev[3][1]) * uz > 0
+                if off <= COLLINEAR_FT and ahead and abs(s0 - prev[1]) <= COLLINEAR_FT:
+                    prev[1], prev[3] = s1, b
+                    continue
+        pieces.append([s0, s1, a, b])
+    return [(p[0], p[1]) for p in pieces]
+
+
+def footprint_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    """A battery that passes or is left to a person backs onto one straight stretch of scanned
+    wall along its whole width; a footprint past the stretch's end (a corner, the end of the
+    wall, a gap) can't sit flush, so the server fails it (server/solver.py check_backing)."""
+    pieces = straight_pieces(scene, rules)
+    if not pieces:
+        return []
+
+    def off_wall(lo: float, hi: float) -> str | None:
+        # The stretch it starts on, or else ends on: the one it would back onto. A start on a
+        # boundary belongs to the stretch it runs onto, an end to the one it runs off.
+        piece = next((p for p in pieces if p[0] - EPS <= lo < p[1] - EPS), None) or next(
+            (p for p in pieces if p[0] + EPS < hi <= p[1] + EPS), None
+        )
+        if piece is None:
+            return "is not on any scanned wall"
+        if lo < piece[0] - COLLINEAR_FT or hi > piece[1] + COLLINEAR_FT:
+            return f"runs past its straight wall [{piece[0]:.2f}, {piece[1]:.2f}]"
+        return None
+
+    problems = []
+    spot = result.get("spot")
+    if spot is not None and spot["outcome"] in ("pass", "unsure"):
+        lo, hi = spot["span_ft"]
+        if (why := off_wall(lo, hi)) is not None:
+            problems.append(f"spot [{lo:.2f}, {hi:.2f}] {why}")
+    for run in result.get("sweep", []):
+        if run["outcome"] not in ("pass", "unsure"):
+            continue
+        for start in dict.fromkeys(run["start_ft"]):  # a run's two ends bound all its starts
+            if (why := off_wall(start, start + rules.width_ft)) is not None:
+                problems.append(f"sweep {run['outcome']} start {start:.2f} {why}")
     return problems
 
 

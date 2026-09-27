@@ -16,6 +16,7 @@ from hsverify.resultcheck import (
     coverage_problems,
     declared_height_problems,
     expectation_problems,
+    footprint_problems,
     invariant_problems,
     less_coverage_problems,
     margin_problem,
@@ -26,6 +27,7 @@ from hsverify.resultcheck import (
     outcome_at,
     outcome_lengths,
     run_starts,
+    straight_pieces,
     tape_to_tap,
     with_ground_short_of,
     with_less_coverage,
@@ -1128,3 +1130,76 @@ def test_a_ground_gap_narrower_than_the_sampling_step_is_not_counted_seen():
     assert GroundPlan(scene, rules).seen((7.5095, 1.0)) is False
     scene["coverage"]["observed"][2]["span_ft"] = [7.5, 40.0]
     assert coverage_problems(scene, r, rules) == []
+
+
+@pytest.mark.parametrize("outcome", ["pass", "unsure"])
+def test_a_reject_must_have_every_start_failing(outcome):
+    # Review 4114676165: decision reject, no spot, nothing asked, but the sweep has a start
+    # that is not failing and stats that agree with it.
+    run = {
+        "wall_id": "w1",
+        "start_ft": [1.0, 1.0],
+        "outcome": outcome,
+        "failing": [],
+        "unsure": [] if outcome == "pass" else ["gas_clearance"],
+    }
+    r = result(decision="reject", spot=False, checks=[check("fail", 2.0)], sweep=[run])
+    r["stats"] |= {
+        "candidates": 1,
+        "pass": int(outcome == "pass"),
+        "unsure": int(outcome == "unsure"),
+        "fail": 0,
+    }
+    assert any(
+        f"decision reject but the sweep has {outcome} starts" in m
+        for m in invariant_problems(SCENE, r, rules=RULES)
+    )
+
+
+def broadly_seen() -> dict:
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["ends"] = {"left": {"kind": "limit"}, "right": {"kind": "limit"}}
+    scene["coverage"]["observed"] = [
+        {"band": "wall", "span_ft": [-100.0, 100.0]},
+        {"band": "ground", "span_ft": [-100.0, 100.0], "out_ft": 30.0},
+    ]
+    return scene
+
+
+def test_a_passing_spot_must_stand_on_the_scanned_wall():
+    # Review 4114676173: a pass at start 11, 31 in wide, on a wall that ends at s = 12.
+    r = result(
+        decision="pass",
+        sweep=[
+            {
+                "wall_id": "w1",
+                "start_ft": [11.0, 11.0],
+                "outcome": "pass",
+                "failing": [],
+                "unsure": [],
+            }
+        ],
+    )
+    r["spot"]["span_ft"] = [11.0, 11.0 + 31 / 12]
+    msgs = invariant_problems(broadly_seen(), r, rules=RULES)
+    assert any("spot [11.00, 13.58] runs past its straight wall [-12.00, 12.00]" in m for m in msgs)
+    assert any("sweep pass start 11.00 runs past its straight wall" in m for m in msgs)
+
+
+def test_walls_meeting_in_a_straight_line_are_one_stretch_and_a_corner_is_not():
+    scene = broadly_seen()
+    scene["walls"] = [
+        {"id": "w1", "baseline": [[-12.0, 0.0], [5.0, 0.0]], "plus_minus_ft": 0.0},
+        {"id": "w2", "baseline": [[5.0, 0.0], [12.0, 0.0]], "plus_minus_ft": 0.0},
+    ]
+    assert straight_pieces(scene, RULES) == [(-12.0, 12.0)]
+    r = result(sweep=[])
+    r["spot"]["span_ft"] = [4.0, 4.0 + 31 / 12]  # across the join
+    assert footprint_problems(scene, r, RULES) == []
+    scene["walls"][1]["baseline"] = [[5.0, 0.0], [5.0, 7.0]]  # a corner at s = 5
+    assert straight_pieces(scene, RULES) == [(-12.0, 5.0), (5.0, 12.0)]
+    assert footprint_problems(scene, r, RULES) == [
+        "spot [4.00, 6.58] runs past its straight wall [-12.00, 5.00]"
+    ]
+    r["spot"]["span_ft"] = [5.0, 5.0 + 31 / 12]  # starts exactly at the corner, on the next wall
+    assert footprint_problems(scene, r, RULES) == []
