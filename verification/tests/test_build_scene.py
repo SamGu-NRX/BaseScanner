@@ -4,6 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scenes" / "eth3d-facade" / "build_scene.py"
@@ -50,3 +51,44 @@ def test_a_symlinked_output_is_unlinked_not_followed(tmp_path):
     build_scene.clear_outputs(out)
     assert (elsewhere / "precious").read_text() == "keep"
     assert not (out / "bundle").exists()
+
+
+def wall(wid: str, s0: float, length: float):
+    return build_scene.Wall(wid, np.array([s0, 0.0]), np.array([s0 + length, 0.0]), s0=s0)
+
+
+def seen_everywhere(kf, w, X, walls):
+    return True
+
+
+@pytest.mark.parametrize(
+    ("band", "out_ft"),
+    [
+        ("wall", 3.29),  # up to the battery's height, not the headroom an omitted view claims
+        ("ground", build_scene.GROUND_OUT_FT),
+        ("overhead", build_scene.HEADROOM_FT),  # not clear all the way up
+    ],
+)
+def test_every_band_claims_only_the_reach_its_probes_showed(band, out_ft):
+    entries, spans = build_scene.band_coverage(
+        band, [wall("w", 0.0, 2.0)], [], ["kf"], seen_everywhere
+    )
+    assert entries == [{"band": band, "span_ft": [0.0, 2.0], "out_ft": out_ft}]
+    assert spans == [[0.0, 2.0]]
+
+
+def test_facing_claims_the_smallest_depth_probed_and_nothing_past_20_ft():
+    walls = [wall("a", 0.0, 1.0), wall("b", 1.0, 1.0)]  # meet at a corner: one merged entry
+    facing = [("a", 0.0, 1.0, 35.0), ("b", 1.0, 1.5, 12.345), ("b", 1.5, 2.0, 30.0)]
+    entries, _ = build_scene.band_coverage("facing", walls, facing, ["kf"], seen_everywhere)
+    assert entries == [{"band": "facing", "span_ft": [0.0, 2.0], "out_ft": 12.34}]
+    entries, _ = build_scene.band_coverage("facing", walls[:1], facing, ["kf"], seen_everywhere)
+    assert entries[0]["out_ft"] == 20.0
+
+
+def test_an_unseen_probe_leaves_the_stretch_out():
+    def only_low(kf, w, X, walls):
+        return X[1] <= 1.0  # the top of the wall probe is never seen
+
+    entries, _ = build_scene.band_coverage("wall", [wall("w", 0.0, 2.0)], [], ["kf"], only_low)
+    assert entries == []

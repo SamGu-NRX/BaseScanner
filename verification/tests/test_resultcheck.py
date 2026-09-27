@@ -317,8 +317,6 @@ def test_photo_request_for_an_observed_area_is_flagged():
 def test_every_unobserved_check_needs_a_request_naming_it():
     unseen = check("unsure", None, cause="unobserved")
     r = result(checks=[unseen])
-    # No unobserved_area reason: every position fails anyway, so no photo is owed.
-    assert missing_evidence_problems(SCENE, r) == []
     r["reasons"] = [{"code": "unobserved_area", "message": ""}]
     assert missing_evidence_problems(SCENE, r) == [
         "reason unobserved_area but missing_evidence is empty"
@@ -960,3 +958,52 @@ def test_a_pass_needing_the_wall_above_headroom_is_flagged_without_out_ft():
     tall = replace(RULES, needs=RULES.needs | {"opening_clearance": (Need("wall", 1.0, 7.0),)})
     r = result(checks=[check(), passing("opening_clearance")])
     assert any("observed higher than 7.0 ft" in m for m in invariant_problems(SCENE, r, rules=tall))
+
+
+def test_without_a_spot_or_the_reason_no_photo_is_owed():
+    # Every position fails anyway: no spot, no unobserved_area reason, nothing to capture.
+    unseen = check("unsure", None, cause="unobserved")
+    r = result(decision="reject", spot=False, checks=[unseen])
+    assert missing_evidence_problems(SCENE, r, RULES) == []
+
+
+def test_a_spot_with_an_unobserved_check_needs_the_reason_and_the_request():
+    # The server marks the spot's check unsure for lack of coverage but drops both the reason
+    # and the request: the homeowner would never be asked for the view that settles it.
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"] = [scene["coverage"]["observed"][0]]  # no ground seen
+    r = result(checks=[check("unsure", None, cause="unobserved")])
+    msgs = missing_evidence_problems(scene, r, RULES)
+    assert msgs and all("no reason unobserved_area and no ground request" in m for m in msgs)
+    assert any("no reason unobserved_area" in m for m in invariant_problems(scene, r, rules=RULES))
+    r["reasons"].append({"code": "unobserved_area", "message": ""})
+    r["missing_evidence"] = [
+        {
+            "kind": "band",
+            "band": "ground",
+            "span_ft": [-1, 5],
+            "out_ft": 3.0,
+            "checks": ["gas_clearance"],
+            "message": "",
+        }
+    ]
+    assert missing_evidence_problems(scene, r, RULES) == []
+
+
+def test_what_lies_past_an_unexplored_end_needs_only_the_walk_past_it():
+    # As the server answers once every band view is in: reason unexplored_end, a past_end
+    # request naming no checks, and checks unsure only for what lies beyond the end.
+    wide = replace(
+        RULES, needs=RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 3.0, 6.5))}
+    )
+    scene = copy.deepcopy(SCENE)
+    scene["walls"][0]["baseline"] = [[-1.0, 0.0], [12.0, 0.0]]  # the chain's left end is s = -1
+    scene["coverage"]["ends"]["left"] = {"kind": "unexplored"}
+    scene["coverage"]["observed"][0]["span_ft"] = [-1.0, 10.0]
+    r = result(checks=[check("unsure", None, cause="unobserved")])
+    r["reasons"] = [{"code": "unexplored_end", "message": ""}]
+    assert any("wall [-2.00, 6.58]" in m for m in missing_evidence_problems(scene, r, wide))
+    r["missing_evidence"] = [
+        {"kind": "past_end", "side": "left", "span_ft": [-1.0, -1.0], "message": ""}
+    ]
+    assert missing_evidence_problems(scene, r, wide) == []

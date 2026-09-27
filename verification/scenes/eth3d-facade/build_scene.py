@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import shutil
 import sys
@@ -441,38 +442,73 @@ def visible(kf: Keyframe, wall: Wall, X, walls) -> bool:
     return True
 
 
+FACING_PROBE_MAX_FT = 20.0  # the facing probe looks no further out than this
+
+
+def band_reach(band: str, facing_depth: float | None) -> float | None:
+    """How far a band's probes reach, and so the most a view that sees them all demonstrates:
+    up the wall and up above the ground (wall, overhead), out from the wall (ground, facing).
+    It becomes the entry's `out_ft`: without one, the server reads a wall view as reaching
+    headroom and facing and overhead views as reaching all the way, more than was checked."""
+    if band == "wall":
+        return BATTERY_HEIGHT_FT
+    if band == "ground":
+        return GROUND_OUT_FT
+    if band == "overhead":
+        return HEADROOM_FT
+    if band == "facing":
+        return None if facing_depth is None else min(facing_depth, FACING_PROBE_MAX_FT)
+    raise ValueError(band)
+
+
 def band_probes(band: str, wall: Wall, s: float, facing_depth: float | None):
     q = wall.plan_at(s)
     o = wall.outward
+    reach = band_reach(band, facing_depth)
 
     def at(out, y):
         p = q + out * o
         return np.array([p[0], y, p[1]])
 
+    if reach is None:
+        return None
     if band == "wall":
-        return [at(0.0, 0.0), at(0.0, BATTERY_HEIGHT_FT)]
+        return [at(0.0, 0.0), at(0.0, reach)]
     if band == "ground":
-        return [at(0.0, 0.0), at(GROUND_OUT_FT, 0.0)]
+        return [at(0.0, 0.0), at(reach, 0.0)]
     if band == "overhead":
-        return [at(0.0, HEADROOM_FT), at(OVERHEAD_OUT_FT, HEADROOM_FT), at(OVERHEAD_OUT_FT, 0.0)]
-    if band == "facing":
-        if facing_depth is None:
-            return None
-        return [at(0.0, 3.0), at(min(facing_depth, 20.0), 3.0)]
-    raise ValueError(band)
+        return [at(0.0, reach), at(OVERHEAD_OUT_FT, reach), at(OVERHEAD_OUT_FT, 0.0)]
+    return [at(0.0, 3.0), at(reach, 3.0)]
 
 
-def intervals(ss, ok, step):
-    """Sample centres ss with flags ok -> [start, end] spans of consecutive True samples."""
-    out = []
-    for s, k in zip(ss, ok, strict=True):
-        if not k:
-            continue
-        if out and abs(out[-1][1] - (s - step / 2)) < 1e-9:
-            out[-1][1] = s + step / 2
+def band_coverage(band, walls, facing, kfs, seen=visible):
+    """Observed entries for one band: stretches where some keyframe sees every probe, merged
+    across corners, each with the smallest reach demonstrated inside it as `out_ft`, rounded
+    down so it never claims more. `seen(kf, wall, X, walls)` is `visible`; tests replace it."""
+    samples = []  # (s0, s1, reach) per sample seen
+    for w in walls:
+        for s in np.arange(w.s0 + COVERAGE_STEP_FT / 2, w.s0 + w.length, COVERAGE_STEP_FT):
+            fd = next((v for (wid, a, b, v) in facing if wid == w.id and a <= s < b), None)
+            probes = band_probes(band, w, s, fd)
+            if probes is not None and any(all(seen(k, w, X, walls) for X in probes) for k in kfs):
+                half = COVERAGE_STEP_FT / 2
+                samples.append([s - half, s + half, band_reach(band, fd)])
+    merged = []  # consecutive samples, also across a corner, keep the smaller reach
+    for a, b, reach in samples:
+        if merged and abs(merged[-1][1] - a) < 1e-6:
+            merged[-1][1] = b
+            merged[-1][2] = min(merged[-1][2], reach)
         else:
-            out.append([s - step / 2, s + step / 2])
-    return out
+            merged.append([a, b, reach])
+    entries = [
+        {
+            "band": band,
+            "span_ft": [round(a, 2), round(b, 2)],
+            "out_ft": math.floor(reach * 100) / 100,
+        }
+        for a, b, reach in merged
+    ]
+    return entries, [[a, b] for a, b, _ in merged]
 
 
 WALL_RELIEF_FT = 1.0  # pilasters, sills and downspouts stand out less than this; see scan_profiles
@@ -767,31 +803,8 @@ def main():
     observed = []
     per_band = {}
     for band in ("wall", "ground", "overhead", "facing"):
-        spans = []
-        for w in walls:
-            ss = np.arange(w.s0 + COVERAGE_STEP_FT / 2, w.s0 + w.length, COVERAGE_STEP_FT)
-            ok = []
-            for s in ss:
-                fd = next((v for (wid, a, b, v) in facing if wid == w.id and a <= s < b), None)
-                probes = band_probes(band, w, s, fd)
-                ok.append(
-                    probes is not None
-                    and any(all(visible(k, w, X, walls) for X in probes) for k in kfs)
-                )
-            spans += [(w.id, a, b) for a, b in intervals(ss, ok, COVERAGE_STEP_FT)]
-        # join spans that touch across a corner
-        merged = []
-        for _, a, b in spans:
-            if merged and abs(merged[-1][1] - a) < 1e-6:
-                merged[-1][1] = b
-            else:
-                merged.append([a, b])
-        per_band[band] = merged
-        for a, b in merged:
-            entry = {"band": band, "span_ft": [round(a, 2), round(b, 2)]}
-            if band == "ground":
-                entry["out_ft"] = GROUND_OUT_FT
-            observed.append(entry)
+        entries, per_band[band] = band_coverage(band, walls, facing, kfs)
+        observed += entries
 
     # 7. Assemble ----------------------------------------------------------------------------
     scene = {

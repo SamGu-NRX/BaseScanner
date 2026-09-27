@@ -105,8 +105,16 @@ def latest_ios_runtime() -> str:
     return ios[-1]["identifier"]
 
 
-def ensure_device() -> dict:
-    """The runner's own Simulator, so it never disturbs devices other workers are using."""
+def ensure_device(udid: str | None = None) -> dict:
+    """The runner's own Simulator, so it never disturbs devices other workers are using, or
+    the existing device `udid` when one has been handed over (creating a device costs disk)."""
+    if udid is not None:
+        for runtime, devices in json.loads(simctl("list", "devices", "-j"))["devices"].items():
+            for device in devices:
+                if device["udid"] == udid:
+                    simctl("bootstatus", udid, "-b")
+                    return {"name": device["name"], "udid": udid, "runtime": runtime}
+        raise SystemExit(f"No Simulator with UDID {udid}; see `xcrun simctl list devices`.")
     runtime = latest_ios_runtime()
     devices = json.loads(simctl("list", "devices", "-j"))["devices"].get(runtime, [])
     for device in devices:
@@ -563,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="report folder (default under reports/sim)")
     parser.add_argument("--label", default="", help="short name added to the report folder")
     parser.add_argument("--keep-worktree", action="store_true")
+    parser.add_argument("--udid", help="run on this existing Simulator instead of the runner's own")
     parser.add_argument("--keep-booted", action="store_true", help="leave the Simulator on")
     parser.add_argument("--build-wait", type=float, default=1200.0)
     args = parser.parse_args(argv)
@@ -599,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         flush=True,
     )
 
-    device = ensure_device()
+    device = ensure_device(args.udid)
     rep = RunReport(
         ref=args.ref,
         sha=sha,

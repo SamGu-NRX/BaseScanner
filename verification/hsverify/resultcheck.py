@@ -522,21 +522,46 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
     """When coverage is what stands in the way (reason unobserved_area), every check left unsure
     for an unobserved area is named by a request, and a clearance check by a request of each
     band it lacks around the chosen spot: a check that forgets one band leaves the next capture
-    still unsure. Otherwise no photo would change the answer, and C2 lets missing_evidence stay
-    empty."""
+    still unsure.
+
+    Without that reason, a chosen spot may still have checks unsure for an unobserved area only
+    where what they lack lies past an unexplored end the result asks to walk past (reason
+    unexplored_end, a past_end request, which names no checks). Anything else they lack is owed
+    the reason and its requests; leaving both out would never ask the homeowner for the view
+    that settles the check. Without a spot and without the reason, every position fails anyway,
+    no photo would change the answer, and C2 lets missing_evidence stay empty."""
     codes = {r["code"] for r in result.get("reasons", [])}
-    if "unobserved_area" not in codes:
-        return []
+    spot = result.get("spot")
+    unseen = unobserved_checks(result)
     requests = result.get("missing_evidence", [])
+    if "unobserved_area" not in codes:
+        if spot is None or not unseen:
+            return []
+        if rules is None:
+            if requests:
+                return []
+            return [
+                f"the chosen spot has checks unsure for an unobserved area ({', '.join(unseen)}) "
+                "but no reason unobserved_area and no missing_evidence"
+            ]
+        lo, hi = spot["span_ft"]
+        asked = with_past_ends_asked(scene, requests, rules)
+        return [
+            f"check {c} is unsure and needs {gap}, not past an end the result asks to walk "
+            f"past, but there is no reason unobserved_area and no {band} request"
+            for c in unseen
+            if c in rules.needs
+            for band, gap in reach_gaps(asked, rules, c, spot["wall_id"], lo, hi)
+        ]
     if not requests:
         return ["reason unobserved_area but missing_evidence is empty"]
+    problems: list[str] = []
     named = {(r.get("band"), c) for r in requests for c in r.get("checks", [])}
-    problems = [
+    problems += [
         f"check {c} is unsure (unobserved) but no missing_evidence entry names it"
-        for c in unobserved_checks(result)
+        for c in unseen
         if not any(check == c for _, check in named)
     ]
-    spot = result.get("spot")
     if rules is None or spot is None:
         return problems
     lo, hi = spot["span_ft"]
