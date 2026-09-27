@@ -133,6 +133,12 @@ final class ScanEngine {
     /// The packet's sensor streams for the current world frame.
     private(set) var recorder: CaptureRecorder
     private let motion = MotionSource()
+    /// LiDAR phones: the dots over the camera, fused off the main actor from the keyframes
+    /// coverage observes. Guidance for the overlay only; nothing reads them back.
+    private lazy var liveDots = LiveDotsFeed { [weak self] dots, scan in
+        guard let self, scan == self.generation else { return }
+        self.state.liveDots = dots
+    }
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
     /// The spot check (`ScanEngine+Confirm.swift`).
@@ -409,6 +415,7 @@ final class ScanEngine {
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
         guard let anchor = frame.meterAnchor, coverage != nil, let correction = meterTracking?.update(to: anchor) else { return }
         coverage?.apply(correction)
+        if let wall = coverage?.wall { liveDots.apply(correction, wall: wall, generation: generation) }
         var features = state.features
         for index in features.indices { features[index].points = features[index].points.map(correction.point) }
         if features != state.features { state.features = features }
@@ -653,6 +660,9 @@ final class ScanEngine {
             // The frame's own time lets the walked path join only poses kept close together in time.
             // With LiDAR depth, a cell counts only where depth confirms the camera saw it.
             let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
+            if let depth = frame.depth, frame.tracking == .normal, let wall = coverage?.wall {
+                liveDots.integrate(camera: frame.camera, depth: depth, wall: wall, generation: scan)
+            }
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
             state.captureCount += 1
@@ -1545,6 +1555,8 @@ final class ScanEngine {
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
+        liveDots.reset()
+        state.liveDots = .empty
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterPlaneSource = .detectedPlane

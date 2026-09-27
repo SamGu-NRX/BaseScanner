@@ -272,6 +272,31 @@ struct CoverageStrip: Equatable, Sendable {
     }
 }
 
+/// LiDAR phones: dots on the surfaces depth has measured, drawn over the camera by the live fog.
+/// Guidance, never evidence: `coverage` alone decides what the scan has seen, and the fog lifts
+/// only where it says so. Built from the same kept keyframes as coverage (`LiveDotsFeed`).
+struct LiveDots: Sendable {
+    struct Dot: Sendable, Equatable {
+        /// Stable while the dot exists, so the renderer can tell a birth from a survivor.
+        var id: UInt64
+        var position: SIMD3<Float>
+        /// On a crease or a silhouette; drawn larger, with a stronger glow.
+        var isEdge: Bool
+        /// On something standing in front of the wall (a bin, a bush): drawn violet, the hidden
+        /// state's colour.
+        var onOccluder: Bool
+        /// 0.45 seen from one direction, up to 0.9 from four.
+        var opacity: Float
+    }
+
+    /// At most `SurfaceDotConfig.maxDots` (5,000), those within 6 m of the latest keyframe.
+    var dots: [Dot] = []
+    /// Increments on every change, so the renderer rebuilds its buffer only then.
+    var revision = 0
+
+    static let empty = LiveDots()
+}
+
 // MARK: - Guidance
 
 enum WallSide: String, Equatable, Sendable {
@@ -685,6 +710,8 @@ final class ScanViewState {
 
     var wall: WallGeometry?
     var coverage: CoverageStrip = .empty
+    /// LiDAR phones: the live dots. Empty without depth.
+    var liveDots: LiveDots = .empty
     var closeUp: CloseUpState = .aiming(hold: 0, problem: nil)
     /// Close-up attempts that ended without a usable photo. "Can't get a clear shot" appears
     /// from the second one on, never earlier.

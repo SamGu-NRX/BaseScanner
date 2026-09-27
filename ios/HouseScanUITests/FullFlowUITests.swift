@@ -58,6 +58,34 @@ final class FullFlowUITests: XCTestCase {
         XCTAssertTrue(showedHidden, "the wall map never reported hidden cells behind the bin")
     }
 
+    /// The LiDAR walk under the live fog, screenshotted as fast as the runner allows from the
+    /// moment the walk appears, for comparing against the prototype's keyframes (see
+    /// `LiveFogShaders`). No audit here: the audit's six-second wait would span the whole walk,
+    /// which plays in about 6 s at the autopilot's 3x. The run stops at the walk.
+    @MainActor
+    func testLiveFogWalkScreenshots() throws {
+        let app = XCUIApplication()
+        let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: gate) }
+        // The screens before the walk may leave as soon as the autopilot is done with them.
+        for phase in ["onboarding", "findMeter", "meterCloseUp"] { try Data().write(to: gate.appending(path: phase)) }
+        app.launchArguments = ["-replay", Self.lidarFixture, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path, "-sampleResult"]
+        app.launch()
+        XCTAssertTrue(app.descendants(matching: .any)["screen.wallWalk"].waitForExistence(timeout: 90), "screen.wallWalk never appeared")
+        let start = Date()
+        var index = 0
+        while Date().timeIntervalSince(start) < 16 {
+            let shot = XCTAttachment(screenshot: app.screenshot())
+            shot.name = String(format: "liveFog-%02d-%04.1fs", index, Date().timeIntervalSince(start))
+            shot.lifetime = .keepAlways
+            add(shot)
+            index += 1
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        app.terminate()
+    }
+
     /// Device run 1's failure on the synthetic replay (`-autopilotCantGetThere`): "Can't get there"
     /// goes to the ground by the meter before it is seen, then ends each side where the walk went
     /// farthest, 5 m left and right of the meter (16 ft 5 in). The old rule put the ends at the
