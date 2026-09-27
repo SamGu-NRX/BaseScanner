@@ -1470,7 +1470,11 @@ final class ScanEngine {
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
                 let look = live.resultIsDrawn()
-                let usesRealityKit = policy.update(drawn: look.drawn, held: look.held, time: self.screenTime)
+                // While tracking is limited the model is disabled and the screen draws neither
+                // layer, so the AR scene keeps the result: when tracking comes back the two switch
+                // on together, rather than the Canvas showing until the next look.
+                let held = look.held || (look.anchored && self.state.tracking != .normal)
+                let usesRealityKit = policy.update(drawn: look.drawn, held: held, time: self.screenTime)
                 if self.state.resultInCamera != usesRealityKit {
                     RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
                     self.state.resultInCamera = usesRealityKit
