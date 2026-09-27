@@ -171,6 +171,14 @@ final class FullFlowUITests: XCTestCase {
     /// over clears the badge and the switch is turned off again for the tests that follow.
     @MainActor
     func testPracticeMeterFromReplay() throws {
+        // A failed result assertion must not leave the saved switch on for later tests.
+        addTeardownBlock { @MainActor in
+            let cleanup = XCUIApplication()
+            cleanup.launchArguments = ["-uiDemo", "-uiDemoFreeze"]
+            cleanup.launch()
+            Self.setPracticeMeter(false, in: cleanup)
+            cleanup.terminate()
+        }
         var readNumber: String?
         var unbadged: [String] = []
         var app: XCUIApplication?
@@ -193,10 +201,26 @@ final class FullFlowUITests: XCTestCase {
         XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
 
         let running = try XCTUnwrap(app)
-        running.buttons["action.startOver"].firstMatch.tap()
+        // The redesigned result keeps Start over in Details, below the answer and footnotes.
+        Self.tapAfterScrolling(running, "result.details")
+        Self.tapAfterScrolling(running, "action.startOver")
         XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
         XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
         Self.setPracticeMeter(false, in: running)
+    }
+
+    @MainActor
+    private static func tapAfterScrolling(_ app: XCUIApplication, _ identifier: String) {
+        let target = app.descendants(matching: .any)[identifier].firstMatch
+        XCTAssertTrue(target.waitForExistence(timeout: 10), "missing \(identifier)")
+        let scroll = app.scrollViews.firstMatch
+        XCTAssertTrue(scroll.exists, "the result has no scroll view")
+        for _ in 0..<8 {
+            if target.isHittable { break }
+            scroll.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(target.isHittable, "not tappable after scrolling: \(identifier)")
+        target.tap()
     }
 
     /// `PracticeMeter.number` in HouseScanKit, which the test bundle doesn't link.

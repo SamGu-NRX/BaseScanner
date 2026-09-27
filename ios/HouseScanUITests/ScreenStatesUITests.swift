@@ -13,6 +13,8 @@ final class ScreenStatesUITests: XCTestCase {
     /// Name, extra launch arguments, and the screen identifier that must appear.
     private static let states: [(name: String, arguments: [String], screen: String)] = [
         ("onboarding", [], "onboarding"),
+        // Keep the Practice-on accessibility check even when ordinary fixtures force it off.
+        ("onboarding-practice", ["-practiceMeter", "YES"], "onboarding"),
         ("findMeter", ["-uiDemoPhase", "findMeter"], "findMeter"),
         ("meterCloseUp-cantGetClearShot", ["-uiDemoPhase", "meterCloseUp", "-uiDemoCloseUpFailed"], "meterCloseUp"),
         ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
@@ -74,7 +76,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "onboarding-practice", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -86,6 +88,7 @@ final class ScreenStatesUITests: XCTestCase {
     /// Words a state must show: in the named element's label or value, or with no identifier,
     /// in any text on screen.
     private static let expectations: [String: [(identifier: String?, text: String)]] = [
+        "onboarding-practice": [("action.developerOptions", "Practice meter is on.")],
         "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
@@ -149,7 +152,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testRejectingTheMeterBrandKeepsTheNumbers() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"]
         app.launch()
         XCTAssertTrue(element(app, "meter.brand").waitForExistence(timeout: 15))
         tap(app, "action.rejectMeterBrand")
@@ -162,7 +165,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testWholeFlowThroughTheButtons() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo"]
         app.launch()
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         tap(app, "action.onboardingNext")
@@ -258,7 +261,7 @@ final class ScreenStatesUITests: XCTestCase {
         ]
         for step in steps {
             let app = XCUIApplication()
-            app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + step.arguments
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + step.arguments
             app.launch()
             defer { app.terminate() }
             guard element(app, "screen.wallWalk").waitForExistence(timeout: 15) else {
@@ -284,7 +287,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testRepliesAnswerTheirOwnCardAndTheWallCanJustEnd() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         tapReply(app, "Skip this spot")
@@ -306,7 +309,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testGateCoachingKeepsTheTaskOnTheCard() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "tooDark"]
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         let card = element(app, "instruction")
@@ -325,7 +328,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testGateCoachingKeepsTheGapRequestOnTheCard() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"]
         app.launch()
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 15))
         let card = element(app, "instruction")
@@ -342,7 +345,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testAddSomethingFromTheReviewMarksOnTheCamera() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "markFeatures"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoPhase", "markFeatures"]
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
@@ -364,7 +367,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testReviewWhileLostOffersFinishingNotMarking() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"]
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         XCTAssertTrue(element(app, "review.lostPlace").exists, "the review must say the phone lost its place")
@@ -380,7 +383,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testGroundQuestionFoldsIntoARowAndChangeReopensIt() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoGroundQuestion"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoGroundQuestion"]
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         for id in ["lawn", "mulch", "gravel", "concrete", "drive", "deck", "notSure"] {
@@ -411,7 +414,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testRejectedUploadGoesBackToReview() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "gapRequest", "-uiDemoRejected"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoPhase", "gapRequest", "-uiDemoRejected"]
         app.launch()
         XCTAssertTrue(element(app, "action.backToReview").waitForExistence(timeout: 30))
         XCTAssertFalse(element(app, "action.retryUpload").exists, "a refused scan must not offer Try again")
@@ -433,7 +436,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testLooksCompleteFirstPointsToAnUnansweredQuestion() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "markFeatures"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoPhase", "markFeatures"]
         app.launch()
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
         XCTAssertTrue(element(app, "window.opens.notSure").exists, "the window question must offer Not sure")
@@ -463,7 +466,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testAimRingShowsProgressAndItsLegend() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         let ring = element(app, "aim.ring")
@@ -479,7 +482,7 @@ final class ScreenStatesUITests: XCTestCase {
         // At the largest text size the card fills most of the screen. The legend sits under it in
         // the same stack, so it grows and scrolls with the card instead of going behind it or
         // disappearing.
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         let largeLegend = element(app, "aim.legend")
@@ -489,7 +492,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(largeLegend.frame.intersects(largeCard.frame), "the legend must keep clear of the card: \(largeLegend.frame) vs \(largeCard.frame)")
         app.terminate()
 
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         XCTAssertFalse(element(app, "aim.ring").exists, "off screen, the arrow stands in for the ring")
@@ -501,7 +504,7 @@ final class ScreenStatesUITests: XCTestCase {
     func testShareScanOpensTheShareSheet() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
         app.launch()
         tap(app, "action.shareScan")
         let sheet = app.otherElements["ActivityListView"]
@@ -519,7 +522,9 @@ final class ScreenStatesUITests: XCTestCase {
     @MainActor
     private func check(_ name: String, arguments: [String], screen: String) throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-uiDemo", "-uiDemoFreeze"] + arguments
+        // Ordinary fixtures must not inherit a Practice switch saved by another test.
+        let practice = arguments.contains("-practiceMeter") ? [] : ["-practiceMeter", "NO"]
+        app.launchArguments = practice + ["-uiDemo", "-uiDemoFreeze"] + arguments
         app.launch()
         defer { app.terminate() }
         guard element(app, "screen.\(screen)").waitForExistence(timeout: 15) else {
