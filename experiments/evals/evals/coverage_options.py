@@ -11,8 +11,6 @@ Each option runs the app's CoverageMap (HouseScanKit at `coverage.KIT_COMMIT`, u
 
 from __future__ import annotations
 
-import json
-
 from evals.coverage import (
     FEET,
     HIDE_ABS_M,
@@ -25,6 +23,7 @@ from evals.coverage import (
     run_app,
     setup_scene,
 )
+from evals.pairs import results_json
 
 SCENE = "electro"
 # Pre-registered: 0-45 degrees and 0.25-2 m. 60 and 75 degrees and 5 m were added after that grid
@@ -167,7 +166,7 @@ def main() -> None:
     check_kit()
     res = evaluate()
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "coverage_options.json").write_text(json.dumps(res, indent=1))
+    (RESULTS / "coverage_options.json").write_text(results_json(res))
     md = markdown(res)
     (RESULTS / "coverage_options.md").write_text(md)
     print(md)

@@ -15,6 +15,8 @@ point over several views keeps that form: the mean of `c_v + s r_v` is `mean(c) 
 
 from __future__ import annotations
 
+import json
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -177,3 +179,27 @@ def pool(raws: list[dict]) -> dict[str, dict]:
         round(100 * (1 - sum(r["ref_failures"] for r in raws) / refs), 1) if refs else None
     )
     return out
+
+
+def strict_json_value(value):
+    """`value` with every non-finite float spelled out, so the results files are strict JSON: a
+    failed percentile (+inf, see `summarize`) becomes "failed", and a statistic with nothing to
+    compute (NaN) becomes null. A -inf has no meaning in these results and is refused."""
+    if isinstance(value, dict):
+        return {k: strict_json_value(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [strict_json_value(v) for v in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        if math.isnan(value):
+            return None
+        if value > 0:
+            return "failed"
+        raise ValueError("-inf in a results file")
+    return value
+
+
+def results_json(value, indent: int = 1, default=None) -> str:
+    """Serialise a results document as strict JSON (see `strict_json_value`)."""
+    if default is not None:
+        value = json.loads(json.dumps(value, default=default))
+    return json.dumps(strict_json_value(value), indent=indent, allow_nan=False)

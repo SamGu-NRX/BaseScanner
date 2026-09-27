@@ -36,6 +36,7 @@ from evals.coverage import (
     two_positions,
 )
 from evals.eth3d import excluded_pixels, occluder_points, scan_points
+from evals.pairs import results_json
 from evals.paths import EVALS_DIR
 
 KIT_COMMIT = "66cdcba"
@@ -151,10 +152,17 @@ def seen_empty(setup: Setup, points: np.ndarray, tol_abs: float = HIDE_ABS_M) ->
     return seen
 
 
-def column_weights(cols: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    """Meters of [lo, hi] each 2 cm column (centred on `cols`) covers, so a span that is not a
-    whole number of columns is not rounded up to the next one."""
-    return np.clip(np.minimum(cols + 0.01, hi) - np.maximum(cols - 0.01, lo), 0.0, None)
+def span_columns(lo: float, hi: float) -> tuple[np.ndarray, np.ndarray]:
+    """2 cm columns that tile [lo, hi] exactly: their centres and widths in meters. The last column
+    is the partial strip left over, so the widths sum to the span's length."""
+    edges = np.append(np.arange(lo, hi - 1e-9, 0.02), hi)
+    return (edges[:-1] + edges[1:]) / 2, np.diff(edges)
+
+
+def within_bar(false_observed_ft: float) -> bool:
+    """The pre-registered 0.5 ft bar, inclusive. Rounding to a micro-foot keeps a claim of exactly
+    the bar from failing on floating-point sums of column widths."""
+    return round(false_observed_ft, 6) <= PASS_FT
 
 
 def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HIDE_ABS_M) -> dict:
@@ -166,7 +174,7 @@ def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HI
     for sp in spans:
         lo, hi = sp["s"]
         reach = sp["out"]
-        cols = np.arange(lo + 0.01, hi, 0.02)
+        cols, w = span_columns(lo, hi)
         if kind == "facing":
             outs = np.arange(VOXEL_M, reach + 1e-6, 0.05)
             heights = np.arange(GROUND_CLEARANCE_M, HEADROOM_M + 1e-6, 0.05)
@@ -179,7 +187,6 @@ def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HI
         pts = wall.world(grid_s, grid_h, grid_o).reshape(-1, 3)
         unseen = (~seen_empty(setup, pts, tol_abs)).reshape(len(cols), -1).sum(axis=1)
         bad = unseen >= 2
-        w = column_weights(cols, lo, hi)
         claimed_ft += w.sum() / FEET
         bad_ft += w[bad].sum() / FEET
         if bad.any():
@@ -187,7 +194,7 @@ def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HI
     return {
         "claimed_ft": round(claimed_ft, 2),
         "false_observed_ft": round(bad_ft, 2),
-        "passes": bad_ft <= PASS_FT,
+        "passes": within_bar(bad_ft),
         "spans_with_unseen_ft": runs,
     }
 
@@ -200,7 +207,7 @@ def ground_claims(setup: Setup, spans: list[dict]) -> dict:
     claimed_ft, bad_ft, runs = 0.0, 0.0, []
     for sp in spans:
         lo, hi = sp["s"]
-        cols = np.arange(lo + 0.01, hi, 0.02)
+        cols, w = span_columns(lo, hi)
         outs = np.arange(VOXEL_M, sp["out"] + 1e-6, 0.05)
         if not len(cols) or not len(outs):
             continue
@@ -215,7 +222,6 @@ def ground_claims(setup: Setup, spans: list[dict]) -> dict:
             )
             seen |= t.saw & ~t.no_scan
         bad = (~seen).reshape(len(cols), -1).sum(axis=1) >= 2
-        w = column_weights(cols, lo, hi)
         claimed_ft += w.sum() / FEET
         bad_ft += w[bad].sum() / FEET
         if bad.any():
@@ -230,7 +236,7 @@ def ground_claims(setup: Setup, spans: list[dict]) -> dict:
     return {
         "claimed_ft": round(claimed_ft, 2),
         "false_observed_ft": round(bad_ft, 2),
-        "passes": bad_ft <= PASS_FT,
+        "passes": within_bar(bad_ft),
         "spans_with_unseen_ft_s_s_reach_bad": runs,
     }
 
@@ -478,7 +484,7 @@ def main() -> None:
     check_kit()
     r = evaluate()
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "map3d.json").write_text(json.dumps(r, indent=1, default=float))
+    (RESULTS / "map3d.json").write_text(results_json(r, default=float))
     md = markdown(r)
     (RESULTS / "map3d.md").write_text(md)
     print(md)

@@ -30,6 +30,7 @@ produced them, so rescoring does not refit and changed inputs do.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -39,7 +40,7 @@ import numpy as np
 
 from evals.ar_poses import ADVIO_ARKIT_SCALES, SETTINGS, group_poses, noise_draws
 from evals.eth3d import SCENES, read_views
-from evals.pairs import INCH, evaluate_fixed, pool
+from evals.pairs import INCH, evaluate_fixed, pool, results_json
 from evals.paths import ETH3D_DIR
 from evals.recon import (
     COHORTS,
@@ -111,13 +112,29 @@ class FitCache:
             self.changed = False
 
 
-def fit_inputs(T: dict, K: dict, max_reproj_px: float) -> str:
-    """What a group's scale fit depends on besides the images and depth maps on disk."""
+@functools.cache
+def _file_digest(path: Path, mtime_ns: int, size: int) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def file_digest(path: Path) -> str:
+    """sha256 of a file's bytes, computed once per (path, modification time, size)."""
+    st = path.stat()
+    return _file_digest(path, st.st_mtime_ns, st.st_size)
+
+
+def fit_inputs(
+    T: dict, K: dict, max_reproj_px: float, images: dict[str, Path], depths: dict[str, Path]
+) -> str:
+    """Everything a group's scale fit reads: poses, intrinsics, the threshold, and the bytes of
+    each member's image and depth prediction."""
     spec = {
         "model": MODEL,
         "poses": {m: np.asarray(t).tolist() for m, t in T.items()},
         "K": {m: np.asarray(k).tolist() for m, k in K.items()},
         "max_reproj_px": max_reproj_px,
+        "images": {m: file_digest(p) for m, p in images.items()},
+        "depths": {m: file_digest(p) for m, p in depths.items()},
     }
     return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16]
 
@@ -128,14 +145,20 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
     gray: dict[str, np.ndarray] = {}
     depths: dict[str, np.ndarray] = {}
 
+    def image_path(name):
+        return scene.dir / f"images_{WIDTH}" / f"{name}.jpg"
+
+    def depth_path(name):
+        return root / MODEL / f"{name}.npz"
+
     def image(name):
         if name not in gray:
-            gray[name] = cv2.imread(str(scene.dir / f"images_{WIDTH}" / f"{name}.jpg"), 0)
+            gray[name] = cv2.imread(str(image_path(name)), 0)
         return gray[name]
 
     def depth(name):
         if name not in depths:
-            depths[name] = load_prediction(root / MODEL / f"{name}.npz")[0]
+            depths[name] = load_prediction(depth_path(name))[0]
         return depths[name]
 
     def fused_with(setting: str, draw: int, rescale: bool) -> Method:
@@ -160,7 +183,14 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
                     )
                     return {m: f[m].scale for m in members}
 
-                scale = fits.get(f"{setting}/draw{draw}/{gid}", fit_inputs(T, K, px), fit)
+                key = fit_inputs(
+                    T,
+                    K,
+                    px,
+                    {m: image_path(m) for m in members},
+                    {m: depth_path(m) for m in members},
+                )
+                scale = fits.get(f"{setting}/draw{draw}/{gid}", key, fit)
 
             def pv(name):
                 d, s = depth(name), scale[name]
@@ -381,7 +411,7 @@ def main() -> None:
         results[s] = score_scene(scene, pose_methods(scene, fits))
         fits.save()
     out = Path(__file__).resolve().parents[1] / "results"
-    (out / "pose_priors.json").write_text(json.dumps(results, indent=1))
+    (out / "pose_priors.json").write_text(results_json(results))
     md = markdown(results)
     (out / "pose_priors.md").write_text(md)
     print(md)

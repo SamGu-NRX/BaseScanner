@@ -34,20 +34,36 @@ def set_cache_dirs() -> dict[str, str]:
     return {k: os.environ[k] for k in ("HF_HOME", "TORCH_HOME")}
 
 
+def hf_cache_dir() -> Path:
+    """Where Hugging Face writes downloads: HF_HOME, which `set_cache_dirs` fills in unless the
+    caller chose it."""
+    return Path(os.environ.get("HF_HOME", CACHE_ROOT / "hf-cache")).expanduser()
+
+
+def require_free_space(destination: Path, what: str) -> None:
+    """Refuse to write `what` to `destination` with less than 6 GB free on its volume: the disk is
+    shared and has run out before. `destination` need not exist yet; its nearest existing parent is
+    measured, which is on the volume the download will land on."""
+    probe = destination
+    while not probe.exists():
+        probe = probe.parent
+    free = shutil.disk_usage(probe).free
+    if free < MIN_FREE_BYTES_FOR_DOWNLOAD:
+        raise RuntimeError(
+            f"{what} is not cached and only {free / 1024**3:.1f} GB is free at {probe}; "
+            f"refusing to download with less than {MIN_FREE_BYTES_FOR_DOWNLOAD / 1024**3:.0f} GB free"
+        )
+
+
 def require_free_space_for_download(repo_id: str, filename: str, revision: str) -> None:
-    """Refuse to start a checkpoint download with less than 6 GB free: the disk is shared and has
-    run out before. A checkpoint already in the cache needs no space."""
+    """Refuse to start a checkpoint download into the Hugging Face cache with less than 6 GB free
+    there. A checkpoint already in the cache needs no space."""
     from huggingface_hub import try_to_load_from_cache
 
     cached = try_to_load_from_cache(repo_id, filename, revision=revision)
     if isinstance(cached, str) and Path(cached).exists():
         return
-    free = shutil.disk_usage(Path.home()).free
-    if free < MIN_FREE_BYTES_FOR_DOWNLOAD:
-        raise RuntimeError(
-            f"{repo_id}/{filename} is not cached and only {free / 1024**3:.1f} GB is free; "
-            f"refusing to download with less than {MIN_FREE_BYTES_FOR_DOWNLOAD / 1024**3:.0f} GB free"
-        )
+    require_free_space(hf_cache_dir(), f"{repo_id}/{filename}")
 
 
 def checkpoint_record(repo_id: str, filename: str, revision: str, sha256: str) -> dict:
@@ -379,11 +395,21 @@ def depth_summary(depth: np.ndarray, valid: np.ndarray) -> dict:
     }
 
 
-def fingerprint(members: list[str], images: list[Path], poses, max_side: int | None) -> str:
-    """sha256 over what an output depends on: members, image bytes, poses and input size."""
-    h = hashlib.sha256(json.dumps({"members": members, "max_side": max_side}).encode())
+def fingerprint(
+    members: list[str],
+    images: list[Path],
+    intrinsics,
+    poses,
+    max_side: int | None,
+    checkpoint_sha256: str,
+) -> str:
+    """sha256 over everything a grouped output depends on: members, image bytes, the intrinsics
+    given to the model, poses, input size and the checkpoint."""
+    header = {"members": members, "max_side": max_side, "checkpoint": checkpoint_sha256}
+    h = hashlib.sha256(json.dumps(header).encode())
     for path in images:
         h.update(path.read_bytes())
+    h.update(np.asarray(intrinsics, np.float64).tobytes())
     if poses is not None:
         for pose in poses:
             h.update(np.asarray(pose, np.float64).tobytes())

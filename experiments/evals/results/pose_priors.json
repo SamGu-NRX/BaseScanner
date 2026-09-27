@@ -16,7 +16,7 @@
         "pairs": 24000,
         "failed_pct": 10.8,
         "median_in": 39.42,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -14.58
        }
       },
@@ -25,14 +25,14 @@
         "pairs": 600000,
         "failed_pct": 13.35,
         "median_in": 6.17,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.15
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 15.61,
         "median_in": 19.51,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.43
        }
       },
@@ -47,7 +47,7 @@
         ],
         "p90_in": [
          22.53,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -57,7 +57,7 @@
         ],
         "p90_in": [
          93.26,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -84,14 +84,14 @@
         "pairs": 600000,
         "failed_pct": 10.49,
         "median_in": 5.49,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.43
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 11.84,
         "median_in": 17.49,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.52
        }
       },
@@ -126,15 +126,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 84.83,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -10.64
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 91.1,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -12.44
        }
       },
@@ -142,15 +142,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 85.64,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.52
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 91.67,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.9
        }
       },
@@ -160,22 +160,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -211,7 +211,7 @@
         "pairs": 600000,
         "failed_pct": 10.67,
         "median_in": 16.9,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.42
        }
       },
@@ -305,15 +305,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 80.45,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -9.07
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 86.72,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -13.32
        }
       },
@@ -321,15 +321,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 81.15,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.88
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 87.29,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.39
        }
       },
@@ -339,22 +339,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -376,7 +376,7 @@
         "pairs": 24000,
         "failed_pct": 10.82,
         "median_in": 41.43,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -15.72
        }
       },
@@ -385,14 +385,14 @@
         "pairs": 600000,
         "failed_pct": 13.35,
         "median_in": 5.66,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.15
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 15.69,
         "median_in": 17.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.4
        }
       },
@@ -407,7 +407,7 @@
         ],
         "p90_in": [
          24.21,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -417,7 +417,7 @@
         ],
         "p90_in": [
          95.85,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -444,14 +444,14 @@
         "pairs": 600000,
         "failed_pct": 10.69,
         "median_in": 5.08,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.42
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 12.09,
         "median_in": 15.96,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.49
        }
       },
@@ -486,15 +486,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 85.31,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -12.68
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 91.55,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -13.41
        }
       },
@@ -502,15 +502,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 86.09,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.73
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 92.05,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.38
        }
       },
@@ -520,22 +520,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -564,14 +564,14 @@
         "pairs": 600000,
         "failed_pct": 10.06,
         "median_in": 5.15,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.32
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 11.1,
         "median_in": 15.53,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.42
        }
       },
@@ -665,15 +665,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 81.09,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -9.94
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 87.21,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -11.59
        }
       },
@@ -681,15 +681,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 81.72,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.62
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 87.77,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.0
        }
       },
@@ -699,22 +699,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -736,7 +736,7 @@
         "pairs": 24000,
         "failed_pct": 10.81,
         "median_in": 41.41,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -15.73
        }
       },
@@ -745,14 +745,14 @@
         "pairs": 600000,
         "failed_pct": 13.86,
         "median_in": 5.8,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.07
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 16.12,
         "median_in": 18.48,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.32
        }
       },
@@ -767,7 +767,7 @@
         ],
         "p90_in": [
          24.38,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -777,7 +777,7 @@
         ],
         "p90_in": [
          96.67,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -804,14 +804,14 @@
         "pairs": 600000,
         "failed_pct": 11.18,
         "median_in": 5.19,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.32
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 12.55,
         "median_in": 16.53,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.41
        }
       },
@@ -846,15 +846,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 85.53,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -13.12
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 91.51,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -13.42
        }
       },
@@ -862,15 +862,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 86.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.59
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 92.03,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.49
        }
       },
@@ -880,22 +880,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -924,14 +924,14 @@
         "pairs": 600000,
         "failed_pct": 10.24,
         "median_in": 5.14,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.24
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 11.28,
         "median_in": 15.32,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.22
        }
       },
@@ -1025,15 +1025,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 81.65,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -10.89
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 87.88,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -12.2
        }
       },
@@ -1041,15 +1041,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 82.32,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.72
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 88.45,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.09
        }
       },
@@ -1059,22 +1059,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -1096,7 +1096,7 @@
         "pairs": 24000,
         "failed_pct": 10.84,
         "median_in": 41.84,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -15.87
        }
       },
@@ -1105,14 +1105,14 @@
         "pairs": 600000,
         "failed_pct": 13.36,
         "median_in": 5.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.15
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 15.7,
         "median_in": 17.9,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.39
        }
       },
@@ -1127,7 +1127,7 @@
         ],
         "p90_in": [
          24.36,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -1137,7 +1137,7 @@
         ],
         "p90_in": [
          96.29,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -1164,14 +1164,14 @@
         "pairs": 600000,
         "failed_pct": 10.71,
         "median_in": 5.09,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.42
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 12.08,
         "median_in": 15.95,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.49
        }
       },
@@ -1206,15 +1206,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 85.33,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -12.97
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 91.54,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -13.45
        }
       },
@@ -1222,15 +1222,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 86.11,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.92
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 92.05,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.36
        }
       },
@@ -1240,22 +1240,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -1284,14 +1284,14 @@
         "pairs": 600000,
         "failed_pct": 10.11,
         "median_in": 5.13,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.34
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 11.15,
         "median_in": 15.47,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.42
        }
       },
@@ -1385,15 +1385,15 @@
        "1-3m": {
         "pairs": 24000,
         "failed_pct": 81.35,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -10.66
        },
        "3-10m": {
         "pairs": 24000,
         "failed_pct": 87.51,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -12.26
        }
       },
@@ -1401,15 +1401,15 @@
        "1-3m": {
         "pairs": 600000,
         "failed_pct": 81.98,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.53
        },
        "3-10m": {
         "pairs": 600000,
         "failed_pct": 88.05,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.96
        }
       },
@@ -1419,22 +1419,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -3104,7 +3104,7 @@
         ],
         "p90_in": [
          24.6,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -3114,7 +3114,7 @@
         ],
         "p90_in": [
          83.39,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -3163,7 +3163,7 @@
         ],
         "p90_in": [
          24.21,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -3173,7 +3173,7 @@
         ],
         "p90_in": [
          80.62,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -3222,7 +3222,7 @@
         ],
         "p90_in": [
          26.76,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -3232,7 +3232,7 @@
         ],
         "p90_in": [
          74.14,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -4182,7 +4182,7 @@
         ],
         "p90_in": [
          11.67,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -4192,7 +4192,7 @@
         ],
         "p90_in": [
          40.21,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -4241,7 +4241,7 @@
         ],
         "p90_in": [
          10.99,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -4251,7 +4251,7 @@
         ],
         "p90_in": [
          38.31,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -4300,7 +4300,7 @@
         ],
         "p90_in": [
          16.23,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -4310,7 +4310,7 @@
         ],
         "p90_in": [
          43.33,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -4685,14 +4685,14 @@
         "pairs": 6000,
         "failed_pct": 29.77,
         "median_in": 10.22,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 6.2
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 44.98,
         "median_in": 27.66,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.26
        }
       },
@@ -4701,14 +4701,14 @@
         "pairs": 150000,
         "failed_pct": 44.16,
         "median_in": 4.13,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.11
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 57.81,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.66
        }
       },
@@ -4722,18 +4722,18 @@
          17.11
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
          26.95,
-         Infinity
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -4760,14 +4760,14 @@
         "pairs": 75000,
         "failed_pct": 37.17,
         "median_in": 4.05,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.14
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 38.3,
         "median_in": 6.99,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.93
        }
       },
@@ -4802,15 +4802,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 78.43,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 15.75
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 77.33,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 16.09
        }
       },
@@ -4818,15 +4818,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 85.33,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.8
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 84.59,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.48
        }
       },
@@ -4836,22 +4836,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -4864,14 +4864,14 @@
         "pairs": 6000,
         "failed_pct": 25.88,
         "median_in": 8.4,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 4.51
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 41.02,
         "median_in": 24.74,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 11.62
        }
       },
@@ -4880,14 +4880,14 @@
         "pairs": 150000,
         "failed_pct": 42.34,
         "median_in": 4.43,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.41
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 53.79,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.95
        }
       },
@@ -4901,18 +4901,18 @@
          14.71
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
          24.41,
-         Infinity
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -4939,14 +4939,14 @@
         "pairs": 75000,
         "failed_pct": 22.51,
         "median_in": 3.7,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.41
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 23.76,
         "median_in": 5.37,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.61
        }
       },
@@ -4981,15 +4981,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 73.37,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 14.08
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 71.9,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 15.5
        }
       },
@@ -4997,15 +4997,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 78.69,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.82
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 77.52,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.53
        }
       },
@@ -5015,22 +5015,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5045,14 +5045,14 @@
         "pairs": 6000,
         "failed_pct": 28.95,
         "median_in": 8.28,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.82
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 39.12,
         "median_in": 19.98,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 9.41
        }
       },
@@ -5061,14 +5061,14 @@
         "pairs": 150000,
         "failed_pct": 46.87,
         "median_in": 5.46,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.27
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 55.13,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.89
        }
       },
@@ -5082,8 +5082,8 @@
          13.88
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5092,8 +5092,8 @@
          21.3
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5120,14 +5120,14 @@
         "pairs": 75000,
         "failed_pct": 37.19,
         "median_in": 4.55,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.26
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 37.87,
         "median_in": 7.3,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.23
        }
       },
@@ -5162,15 +5162,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 78.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 12.18
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 77.47,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 12.72
        }
       },
@@ -5178,15 +5178,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 85.24,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.5
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 84.68,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.92
        }
       },
@@ -5196,22 +5196,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5224,14 +5224,14 @@
         "pairs": 6000,
         "failed_pct": 24.75,
         "median_in": 3.37,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.87
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 37.88,
         "median_in": 9.33,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.25
        }
       },
@@ -5240,14 +5240,14 @@
         "pairs": 150000,
         "failed_pct": 39.55,
         "median_in": 3.15,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.16
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 50.61,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.62
        }
       },
@@ -5261,8 +5261,8 @@
          6.42
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5271,8 +5271,8 @@
          9.77
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5299,14 +5299,14 @@
         "pairs": 75000,
         "failed_pct": 26.58,
         "median_in": 2.99,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.38
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 27.72,
         "median_in": 4.65,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.21
        }
       },
@@ -5341,15 +5341,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 73.47,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.98
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 71.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 6.68
        }
       },
@@ -5357,15 +5357,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 79.83,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.44
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 78.19,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.63
        }
       },
@@ -5375,22 +5375,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5405,14 +5405,14 @@
         "pairs": 6000,
         "failed_pct": 28.15,
         "median_in": 7.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 2.39
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 38.63,
         "median_in": 19.1,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 8.84
        }
       },
@@ -5421,14 +5421,14 @@
         "pairs": 150000,
         "failed_pct": 44.54,
         "median_in": 4.42,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.18
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 53.51,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.82
        }
       },
@@ -5442,8 +5442,8 @@
          13.65
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5452,8 +5452,8 @@
          20.72
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5480,14 +5480,14 @@
         "pairs": 75000,
         "failed_pct": 37.24,
         "median_in": 4.51,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.09
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 37.89,
         "median_in": 7.26,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.18
        }
       },
@@ -5522,15 +5522,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 78.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 11.12
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 77.47,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 12.05
        }
       },
@@ -5538,15 +5538,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 85.24,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.97
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 84.68,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.01
        }
       },
@@ -5556,22 +5556,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5584,14 +5584,14 @@
         "pairs": 6000,
         "failed_pct": 23.77,
         "median_in": 3.88,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.35
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 37.88,
         "median_in": 12.85,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 5.15
        }
       },
@@ -5600,14 +5600,14 @@
         "pairs": 150000,
         "failed_pct": 42.06,
         "median_in": 4.18,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.22
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 52.79,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.65
        }
       },
@@ -5621,8 +5621,8 @@
          7.65
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5631,8 +5631,8 @@
          13.25
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5659,14 +5659,14 @@
         "pairs": 75000,
         "failed_pct": 26.41,
         "median_in": 3.85,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.58
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 27.37,
         "median_in": 6.09,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.59
        }
       },
@@ -5701,15 +5701,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 73.2,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 7.77
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 71.1,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 8.98
        }
       },
@@ -5717,15 +5717,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 79.63,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.58
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 78.04,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.75
        }
       },
@@ -5735,22 +5735,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5765,14 +5765,14 @@
         "pairs": 6000,
         "failed_pct": 28.15,
         "median_in": 7.63,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.31
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 38.02,
         "median_in": 18.75,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 8.51
        }
       },
@@ -5781,14 +5781,14 @@
         "pairs": 150000,
         "failed_pct": 47.86,
         "median_in": 6.25,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.29
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 55.44,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.95
        }
       },
@@ -5802,8 +5802,8 @@
          13.45
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5812,8 +5812,8 @@
          20.46
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5840,14 +5840,14 @@
         "pairs": 75000,
         "failed_pct": 37.21,
         "median_in": 4.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.33
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 37.87,
         "median_in": 7.28,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.34
        }
       },
@@ -5882,15 +5882,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 78.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 11.43
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 77.47,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 12.09
        }
       },
@@ -5898,15 +5898,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 85.24,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.95
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 84.68,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -1.07
        }
       },
@@ -5916,22 +5916,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -5944,14 +5944,14 @@
         "pairs": 6000,
         "failed_pct": 23.45,
         "median_in": 2.72,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.59
        },
        "3-10m": {
         "pairs": 6000,
         "failed_pct": 35.58,
         "median_in": 7.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 2.12
        }
       },
@@ -5960,14 +5960,14 @@
         "pairs": 150000,
         "failed_pct": 38.46,
         "median_in": 2.98,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.09
        },
        "3-10m": {
         "pairs": 150000,
         "failed_pct": 48.68,
         "median_in": 12.47,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.59
        }
       },
@@ -5981,8 +5981,8 @@
          5.76
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
@@ -5991,8 +5991,8 @@
          8.46
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -6019,14 +6019,14 @@
         "pairs": 75000,
         "failed_pct": 26.58,
         "median_in": 3.03,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.38
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 27.72,
         "median_in": 4.78,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.27
        }
       },
@@ -6061,15 +6061,15 @@
        "1-3m": {
         "pairs": 3000,
         "failed_pct": 73.67,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.01
        },
        "3-10m": {
         "pairs": 3000,
         "failed_pct": 71.47,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.79
        }
       },
@@ -6077,15 +6077,15 @@
        "1-3m": {
         "pairs": 75000,
         "failed_pct": 79.99,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.65
        },
        "3-10m": {
         "pairs": 75000,
         "failed_pct": 78.31,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.54
        }
       },
@@ -6095,22 +6095,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -7742,14 +7742,14 @@
         "pairs": 30000,
         "failed_pct": 10.0,
         "median_in": 12.48,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.61
        },
        "3-10m": {
         "pairs": 30000,
         "failed_pct": 10.0,
         "median_in": 25.01,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.99
        }
       },
@@ -7758,14 +7758,14 @@
         "pairs": 750000,
         "failed_pct": 10.0,
         "median_in": 1.27,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.01
        },
        "3-10m": {
         "pairs": 750000,
         "failed_pct": 10.0,
         "median_in": 2.21,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.12
        }
       },
@@ -7780,7 +7780,7 @@
         ],
         "p90_in": [
          17.69,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -7790,7 +7790,7 @@
         ],
         "p90_in": [
          30.35,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -8820,14 +8820,14 @@
         "pairs": 30000,
         "failed_pct": 10.0,
         "median_in": 6.83,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.68
        },
        "3-10m": {
         "pairs": 30000,
         "failed_pct": 10.0,
         "median_in": 14.93,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 2.57
        }
       },
@@ -8836,14 +8836,14 @@
         "pairs": 750000,
         "failed_pct": 10.0,
         "median_in": 1.19,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.0
        },
        "3-10m": {
         "pairs": 750000,
         "failed_pct": 10.0,
         "median_in": 2.1,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.1
        }
       },
@@ -8858,7 +8858,7 @@
         ],
         "p90_in": [
          12.22,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -8868,7 +8868,7 @@
         ],
         "p90_in": [
          19.52,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -9363,14 +9363,14 @@
         "pairs": 21000,
         "failed_pct": 13.28,
         "median_in": 13.4,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 12.79
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 17.5,
         "median_in": 33.94,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.03
        }
       },
@@ -9379,14 +9379,14 @@
         "pairs": 525000,
         "failed_pct": 24.37,
         "median_in": 6.2,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.16
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 28.07,
         "median_in": 17.18,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.68
        }
       },
@@ -9401,7 +9401,7 @@
         ],
         "p90_in": [
          37.55,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9410,8 +9410,8 @@
          40.76
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -9429,7 +9429,7 @@
         "pairs": 21000,
         "failed_pct": 13.37,
         "median_in": 30.6,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.53
        }
       },
@@ -9438,14 +9438,14 @@
         "pairs": 525000,
         "failed_pct": 20.93,
         "median_in": 5.45,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.13
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 24.66,
         "median_in": 14.93,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.41
        }
       },
@@ -9460,7 +9460,7 @@
         ],
         "p90_in": [
          24.85,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9470,7 +9470,7 @@
         ],
         "p90_in": [
          79.3,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -9480,15 +9480,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 79.58,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -2.35
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 84.79,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.56
        }
       },
@@ -9496,15 +9496,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 82.0,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.71
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 86.81,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.73
        }
       },
@@ -9514,22 +9514,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -9549,7 +9549,7 @@
         "pairs": 21000,
         "failed_pct": 13.44,
         "median_in": 38.86,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 17.02
        }
       },
@@ -9558,14 +9558,14 @@
         "pairs": 525000,
         "failed_pct": 16.6,
         "median_in": 5.23,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.2
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 20.22,
         "median_in": 13.66,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.65
        }
       },
@@ -9580,7 +9580,7 @@
         ],
         "p90_in": [
          30.61,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9590,7 +9590,7 @@
         ],
         "p90_in": [
          81.41,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -9617,14 +9617,14 @@
         "pairs": 525000,
         "failed_pct": 12.83,
         "median_in": 4.32,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.11
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 14.57,
         "median_in": 12.11,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.39
        }
       },
@@ -9659,15 +9659,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 68.27,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 18.39
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 76.89,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 8.65
        }
       },
@@ -9675,15 +9675,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 70.61,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.31
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 78.53,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -0.14
        }
       },
@@ -9693,22 +9693,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -9723,14 +9723,14 @@
         "pairs": 21000,
         "failed_pct": 13.26,
         "median_in": 4.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.03
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 17.25,
         "median_in": 15.11,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.21
        }
       },
@@ -9739,14 +9739,14 @@
         "pairs": 525000,
         "failed_pct": 24.42,
         "median_in": 5.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.1
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 27.9,
         "median_in": 15.7,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.54
        }
       },
@@ -9761,7 +9761,7 @@
         ],
         "p90_in": [
          22.96,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9770,8 +9770,8 @@
          24.18
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -9789,7 +9789,7 @@
         "pairs": 21000,
         "failed_pct": 13.1,
         "median_in": 11.55,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.41
        }
       },
@@ -9798,14 +9798,14 @@
         "pairs": 525000,
         "failed_pct": 20.86,
         "median_in": 5.04,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.01
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 24.54,
         "median_in": 13.32,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.02
        }
       },
@@ -9820,7 +9820,7 @@
         ],
         "p90_in": [
          11.53,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9830,7 +9830,7 @@
         ],
         "p90_in": [
          56.6,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -9840,15 +9840,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 78.44,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.86
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 84.39,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.23
        }
       },
@@ -9856,15 +9856,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 81.44,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.89
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 86.61,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.96
        }
       },
@@ -9874,22 +9874,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -9909,7 +9909,7 @@
         "pairs": 21000,
         "failed_pct": 13.52,
         "median_in": 12.05,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.21
        }
       },
@@ -9918,14 +9918,14 @@
         "pairs": 525000,
         "failed_pct": 18.32,
         "median_in": 5.03,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.3
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 21.86,
         "median_in": 12.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.76
        }
       },
@@ -9940,7 +9940,7 @@
         ],
         "p90_in": [
          13.12,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -9950,7 +9950,7 @@
         ],
         "p90_in": [
          33.36,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -9977,14 +9977,14 @@
         "pairs": 525000,
         "failed_pct": 14.52,
         "median_in": 3.88,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.1
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 16.28,
         "median_in": 10.56,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.25
        }
       },
@@ -10019,15 +10019,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 67.75,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.32
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 75.58,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.02
        }
       },
@@ -10035,15 +10035,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 70.89,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.23
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 77.78,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.9
        }
       },
@@ -10054,21 +10054,21 @@
        "1-3m": {
         "median_in": [
          18.14,
-         Infinity
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10083,14 +10083,14 @@
         "pairs": 21000,
         "failed_pct": 13.21,
         "median_in": 5.22,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.71
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 17.43,
         "median_in": 14.18,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.63
        }
       },
@@ -10099,14 +10099,14 @@
         "pairs": 525000,
         "failed_pct": 24.92,
         "median_in": 6.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.12
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 28.58,
         "median_in": 16.5,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.51
        }
       },
@@ -10121,7 +10121,7 @@
         ],
         "p90_in": [
          29.17,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10130,8 +10130,8 @@
          28.19
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10149,7 +10149,7 @@
         "pairs": 21000,
         "failed_pct": 13.2,
         "median_in": 11.2,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.68
        }
       },
@@ -10158,14 +10158,14 @@
         "pairs": 525000,
         "failed_pct": 21.28,
         "median_in": 5.1,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.11
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 25.17,
         "median_in": 13.78,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.3
        }
       },
@@ -10180,7 +10180,7 @@
         ],
         "p90_in": [
          12.01,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10190,7 +10190,7 @@
         ],
         "p90_in": [
          58.39,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -10200,15 +10200,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 78.04,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.59
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 84.28,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.78
        }
       },
@@ -10216,15 +10216,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 81.48,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.68
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 86.77,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.98
        }
       },
@@ -10234,22 +10234,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10269,7 +10269,7 @@
         "pairs": 21000,
         "failed_pct": 13.54,
         "median_in": 16.08,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -3.65
        }
       },
@@ -10278,14 +10278,14 @@
         "pairs": 525000,
         "failed_pct": 17.91,
         "median_in": 4.86,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.28
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 21.34,
         "median_in": 12.41,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.77
        }
       },
@@ -10300,7 +10300,7 @@
         ],
         "p90_in": [
          14.66,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10310,7 +10310,7 @@
         ],
         "p90_in": [
          45.77,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -10337,14 +10337,14 @@
         "pairs": 525000,
         "failed_pct": 13.94,
         "median_in": 3.88,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.09
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 15.7,
         "median_in": 10.05,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.26
        }
       },
@@ -10379,15 +10379,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 68.53,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -2.41
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 75.82,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": -2.64
        }
       },
@@ -10395,15 +10395,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 71.22,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.89
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 77.74,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.62
        }
       },
@@ -10413,22 +10413,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10443,14 +10443,14 @@
         "pairs": 21000,
         "failed_pct": 13.24,
         "median_in": 4.18,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.19
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 17.28,
         "median_in": 13.06,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.13
        }
       },
@@ -10459,14 +10459,14 @@
         "pairs": 525000,
         "failed_pct": 23.94,
         "median_in": 5.8,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.11
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 27.49,
         "median_in": 15.46,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.54
        }
       },
@@ -10481,7 +10481,7 @@
         ],
         "p90_in": [
          22.46,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10490,8 +10490,8 @@
          24.56
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10509,7 +10509,7 @@
         "pairs": 21000,
         "failed_pct": 13.02,
         "median_in": 8.96,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.62
        }
       },
@@ -10518,14 +10518,14 @@
         "pairs": 525000,
         "failed_pct": 20.31,
         "median_in": 4.95,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.04
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 23.97,
         "median_in": 12.93,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.03
        }
       },
@@ -10540,7 +10540,7 @@
         ],
         "p90_in": [
          11.03,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10550,7 +10550,7 @@
         ],
         "p90_in": [
          58.84,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -10560,15 +10560,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 78.5,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.5
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 84.45,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.76
        }
       },
@@ -10576,15 +10576,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 81.36,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.79
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 86.56,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.92
        }
       },
@@ -10594,22 +10594,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -10629,7 +10629,7 @@
         "pairs": 21000,
         "failed_pct": 13.52,
         "median_in": 11.3,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.78
        }
       },
@@ -10638,14 +10638,14 @@
         "pairs": 525000,
         "failed_pct": 18.28,
         "median_in": 5.02,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.28
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 21.86,
         "median_in": 12.96,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.78
        }
       },
@@ -10660,7 +10660,7 @@
         ],
         "p90_in": [
          13.25,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -10670,7 +10670,7 @@
         ],
         "p90_in": [
          31.12,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -10697,14 +10697,14 @@
         "pairs": 525000,
         "failed_pct": 14.54,
         "median_in": 3.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.14
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 16.27,
         "median_in": 10.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.26
        }
       },
@@ -10739,15 +10739,15 @@
        "1-3m": {
         "pairs": 21000,
         "failed_pct": 67.9,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.67
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 75.31,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.44
        }
       },
@@ -10755,15 +10755,15 @@
        "1-3m": {
         "pairs": 525000,
         "failed_pct": 71.03,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 3.53
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 77.54,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.06
        }
       },
@@ -10774,21 +10774,21 @@
        "1-3m": {
         "median_in": [
          17.6,
-         Infinity
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -11342,14 +11342,14 @@
         "pairs": 21000,
         "failed_pct": 14.31,
         "median_in": 1.74,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.13
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 14.39,
         "median_in": 4.31,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.76
        }
       },
@@ -11358,14 +11358,14 @@
         "pairs": 525000,
         "failed_pct": 14.31,
         "median_in": 2.98,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.05
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 14.39,
         "median_in": 7.28,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.37
        }
       },
@@ -11380,7 +11380,7 @@
         ],
         "p90_in": [
          4.65,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -11390,7 +11390,7 @@
         ],
         "p90_in": [
          9.02,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -11401,14 +11401,14 @@
         "pairs": 21000,
         "failed_pct": 14.35,
         "median_in": 1.31,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.07
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 14.44,
         "median_in": 4.81,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.63
        }
       },
@@ -11417,14 +11417,14 @@
         "pairs": 525000,
         "failed_pct": 14.35,
         "median_in": 2.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.15
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 14.44,
         "median_in": 7.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.26
        }
       },
@@ -11439,7 +11439,7 @@
         ],
         "p90_in": [
          3.55,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -11449,7 +11449,7 @@
         ],
         "p90_in": [
          8.55,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -11460,14 +11460,14 @@
         "pairs": 21000,
         "failed_pct": 14.61,
         "median_in": 2.23,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.08
        },
        "3-10m": {
         "pairs": 20816,
         "failed_pct": 13.72,
         "median_in": 3.77,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.03
        }
       },
@@ -11476,14 +11476,14 @@
         "pairs": 525000,
         "failed_pct": 14.61,
         "median_in": 4.11,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.16
        },
        "3-10m": {
         "pairs": 520400,
         "failed_pct": 13.72,
         "median_in": 7.45,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.03
        }
       },
@@ -11498,7 +11498,7 @@
         ],
         "p90_in": [
          8.55,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -11508,7 +11508,7 @@
         ],
         "p90_in": [
          10.13,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -12420,14 +12420,14 @@
         "pairs": 105000,
         "failed_pct": 14.31,
         "median_in": 10.51,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.96
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.39,
         "median_in": 28.3,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.73
        }
       },
@@ -12436,14 +12436,14 @@
         "pairs": 2625000,
         "failed_pct": 14.31,
         "median_in": 3.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.1
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.39,
         "median_in": 8.75,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.31
        }
       },
@@ -12458,7 +12458,7 @@
         ],
         "p90_in": [
          15.9,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -12468,7 +12468,7 @@
         ],
         "p90_in": [
          40.63,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -12479,14 +12479,14 @@
         "pairs": 105000,
         "failed_pct": 14.35,
         "median_in": 10.1,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -10.21
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.44,
         "median_in": 23.01,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -7.61
        }
       },
@@ -12495,14 +12495,14 @@
         "pairs": 2625000,
         "failed_pct": 14.35,
         "median_in": 3.06,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.21
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.44,
         "median_in": 8.41,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.36
        }
       },
@@ -12517,7 +12517,7 @@
         ],
         "p90_in": [
          14.62,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -12527,7 +12527,7 @@
         ],
         "p90_in": [
          34.99,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -12538,14 +12538,14 @@
         "pairs": 105000,
         "failed_pct": 14.61,
         "median_in": 10.35,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.38
        },
        "3-10m": {
         "pairs": 104080,
         "failed_pct": 13.72,
         "median_in": 21.74,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.65
        }
       },
@@ -12554,14 +12554,14 @@
         "pairs": 2625000,
         "failed_pct": 14.61,
         "median_in": 4.5,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.06
        },
        "3-10m": {
         "pairs": 2602000,
         "failed_pct": 13.72,
         "median_in": 8.14,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.14
        }
       },
@@ -12576,7 +12576,7 @@
         ],
         "p90_in": [
          16.26,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -12586,7 +12586,7 @@
         ],
         "p90_in": [
          31.99,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13498,14 +13498,14 @@
         "pairs": 105000,
         "failed_pct": 14.31,
         "median_in": 3.45,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.0
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.39,
         "median_in": 9.04,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.41
        }
       },
@@ -13514,14 +13514,14 @@
         "pairs": 2625000,
         "failed_pct": 14.31,
         "median_in": 3.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.08
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.39,
         "median_in": 7.46,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.35
        }
       },
@@ -13536,7 +13536,7 @@
         ],
         "p90_in": [
          6.94,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13546,7 +13546,7 @@
         ],
         "p90_in": [
          15.68,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13557,14 +13557,14 @@
         "pairs": 105000,
         "failed_pct": 14.35,
         "median_in": 2.7,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.96
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.44,
         "median_in": 8.85,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.13
        }
       },
@@ -13573,14 +13573,14 @@
         "pairs": 2625000,
         "failed_pct": 14.35,
         "median_in": 2.64,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.16
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.44,
         "median_in": 7.67,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.25
        }
       },
@@ -13595,7 +13595,7 @@
         ],
         "p90_in": [
          4.92,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13605,7 +13605,7 @@
         ],
         "p90_in": [
          15.26,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13616,14 +13616,14 @@
         "pairs": 105000,
         "failed_pct": 14.61,
         "median_in": 3.92,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.6
        },
        "3-10m": {
         "pairs": 104080,
         "failed_pct": 13.72,
         "median_in": 6.97,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.51
        }
       },
@@ -13632,14 +13632,14 @@
         "pairs": 2625000,
         "failed_pct": 14.61,
         "median_in": 4.16,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.2
        },
        "3-10m": {
         "pairs": 2602000,
         "failed_pct": 13.72,
         "median_in": 7.55,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.02
        }
       },
@@ -13654,7 +13654,7 @@
         ],
         "p90_in": [
          8.49,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13664,7 +13664,7 @@
         ],
         "p90_in": [
          13.51,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13715,7 +13715,7 @@
         ],
         "p90_in": [
          6.19,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13725,7 +13725,7 @@
         ],
         "p90_in": [
          11.64,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13774,7 +13774,7 @@
         ],
         "p90_in": [
          5.15,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13784,7 +13784,7 @@
         ],
         "p90_in": [
          11.71,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -13833,7 +13833,7 @@
         ],
         "p90_in": [
          10.13,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -13843,7 +13843,7 @@
         ],
         "p90_in": [
          14.63,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14046,7 +14046,7 @@
         "pairs": 21000,
         "failed_pct": 10.3,
         "median_in": 25.89,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 13.71
        }
       },
@@ -14055,14 +14055,14 @@
         "pairs": 525000,
         "failed_pct": 17.43,
         "median_in": 3.76,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.24
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 18.53,
         "median_in": 7.72,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.24
        }
       },
@@ -14077,7 +14077,7 @@
         ],
         "p90_in": [
          23.43,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14087,7 +14087,7 @@
         ],
         "p90_in": [
          46.93,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14098,14 +14098,14 @@
         "pairs": 18000,
         "failed_pct": 13.51,
         "median_in": 12.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 10.88
        },
        "3-10m": {
         "pairs": 18000,
         "failed_pct": 20.23,
         "median_in": 24.66,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 10.09
        }
       },
@@ -14114,14 +14114,14 @@
         "pairs": 450000,
         "failed_pct": 22.65,
         "median_in": 4.48,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.86
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 29.16,
         "median_in": 10.56,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.39
        }
       },
@@ -14136,7 +14136,7 @@
         ],
         "p90_in": [
          23.71,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14146,7 +14146,7 @@
         ],
         "p90_in": [
          49.06,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14156,15 +14156,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 82.03,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 26.13
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 84.11,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 6.46
        }
       },
@@ -14172,15 +14172,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 83.3,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.98
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 85.48,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.47
        }
       },
@@ -14190,22 +14190,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -14234,14 +14234,14 @@
         "pairs": 525000,
         "failed_pct": 11.84,
         "median_in": 2.83,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.33
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 12.61,
         "median_in": 5.69,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.38
        }
       },
@@ -14284,7 +14284,7 @@
         "pairs": 18000,
         "failed_pct": 13.83,
         "median_in": 27.77,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 16.18
        }
       },
@@ -14293,14 +14293,14 @@
         "pairs": 450000,
         "failed_pct": 16.35,
         "median_in": 3.8,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.15
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 21.68,
         "median_in": 7.96,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.94
        }
       },
@@ -14315,7 +14315,7 @@
         ],
         "p90_in": [
          20.56,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14325,7 +14325,7 @@
         ],
         "p90_in": [
          39.44,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14335,15 +14335,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 70.52,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 27.78
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 79.51,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 11.04
        }
       },
@@ -14351,15 +14351,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 72.05,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.11
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 81.07,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 0.63
        }
       },
@@ -14369,22 +14369,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -14406,7 +14406,7 @@
         "pairs": 21000,
         "failed_pct": 10.31,
         "median_in": 7.93,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.15
        }
       },
@@ -14415,14 +14415,14 @@
         "pairs": 525000,
         "failed_pct": 16.79,
         "median_in": 3.47,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.17
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 18.15,
         "median_in": 7.04,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.07
        }
       },
@@ -14437,7 +14437,7 @@
         ],
         "p90_in": [
          8.28,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14447,7 +14447,7 @@
         ],
         "p90_in": [
          15.86,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14458,14 +14458,14 @@
         "pairs": 18000,
         "failed_pct": 12.92,
         "median_in": 3.41,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.1
        },
        "3-10m": {
         "pairs": 18000,
         "failed_pct": 19.87,
         "median_in": 8.63,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.97
        }
       },
@@ -14474,14 +14474,14 @@
         "pairs": 450000,
         "failed_pct": 21.76,
         "median_in": 4.08,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.97
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 28.48,
         "median_in": 9.31,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.53
        }
       },
@@ -14496,7 +14496,7 @@
         ],
         "p90_in": [
          5.5,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14506,7 +14506,7 @@
         ],
         "p90_in": [
          37.64,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14516,15 +14516,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 81.46,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.27
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 84.11,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.85
        }
       },
@@ -14532,15 +14532,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 82.7,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.16
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 85.41,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.58
        }
       },
@@ -14550,22 +14550,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -14594,14 +14594,14 @@
         "pairs": 525000,
         "failed_pct": 12.76,
         "median_in": 3.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.25
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 13.56,
         "median_in": 6.5,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.18
        }
       },
@@ -14644,7 +14644,7 @@
         "pairs": 18000,
         "failed_pct": 13.32,
         "median_in": 6.15,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 3.43
        }
       },
@@ -14653,14 +14653,14 @@
         "pairs": 450000,
         "failed_pct": 16.87,
         "median_in": 3.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.24
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 21.77,
         "median_in": 7.99,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.49
        }
       },
@@ -14675,7 +14675,7 @@
         ],
         "p90_in": [
          4.85,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14685,7 +14685,7 @@
         ],
         "p90_in": [
          15.85,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14695,15 +14695,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 70.99,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 7.34
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 78.38,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.75
        }
       },
@@ -14711,15 +14711,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 72.54,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 7.35
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 79.98,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.51
        }
       },
@@ -14729,22 +14729,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -14766,7 +14766,7 @@
         "pairs": 21000,
         "failed_pct": 10.38,
         "median_in": 8.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.14
        }
       },
@@ -14775,14 +14775,14 @@
         "pairs": 525000,
         "failed_pct": 16.78,
         "median_in": 3.59,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.23
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 18.21,
         "median_in": 7.35,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.01
        }
       },
@@ -14797,7 +14797,7 @@
         ],
         "p90_in": [
          8.09,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14807,7 +14807,7 @@
         ],
         "p90_in": [
          19.49,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14818,14 +14818,14 @@
         "pairs": 18000,
         "failed_pct": 12.85,
         "median_in": 4.79,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.29
        },
        "3-10m": {
         "pairs": 18000,
         "failed_pct": 19.86,
         "median_in": 9.64,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 2.74
        }
       },
@@ -14834,14 +14834,14 @@
         "pairs": 450000,
         "failed_pct": 21.7,
         "median_in": 4.09,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.94
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 28.48,
         "median_in": 9.61,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.5
        }
       },
@@ -14856,7 +14856,7 @@
         ],
         "p90_in": [
          7.48,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -14866,7 +14866,7 @@
         ],
         "p90_in": [
          34.27,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -14876,15 +14876,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 81.13,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.45
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 83.8,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.3
        }
       },
@@ -14892,15 +14892,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 82.42,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.46
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 85.13,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.51
        }
       },
@@ -14910,22 +14910,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -14954,14 +14954,14 @@
         "pairs": 525000,
         "failed_pct": 13.5,
         "median_in": 3.12,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.37
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 14.22,
         "median_in": 6.5,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.18
        }
       },
@@ -15004,7 +15004,7 @@
         "pairs": 18000,
         "failed_pct": 13.27,
         "median_in": 10.48,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.8
        }
       },
@@ -15013,14 +15013,14 @@
         "pairs": 450000,
         "failed_pct": 17.39,
         "median_in": 3.82,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.4
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 22.14,
         "median_in": 8.29,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.82
        }
       },
@@ -15035,7 +15035,7 @@
         ],
         "p90_in": [
          8.74,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -15045,7 +15045,7 @@
         ],
         "p90_in": [
          15.46,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -15055,15 +15055,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 70.96,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 4.81
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 78.16,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.02
        }
       },
@@ -15071,15 +15071,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 72.73,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 7.81
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 79.81,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.25
        }
       },
@@ -15089,22 +15089,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -15126,7 +15126,7 @@
         "pairs": 21000,
         "failed_pct": 10.33,
         "median_in": 7.04,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.41
        }
       },
@@ -15135,14 +15135,14 @@
         "pairs": 525000,
         "failed_pct": 16.8,
         "median_in": 3.5,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.19
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 18.17,
         "median_in": 7.08,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.08
        }
       },
@@ -15157,7 +15157,7 @@
         ],
         "p90_in": [
          7.2,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -15167,7 +15167,7 @@
         ],
         "p90_in": [
          13.37,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -15178,14 +15178,14 @@
         "pairs": 18000,
         "failed_pct": 12.91,
         "median_in": 3.64,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.36
        },
        "3-10m": {
         "pairs": 18000,
         "failed_pct": 19.83,
         "median_in": 7.64,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 2.49
        }
       },
@@ -15194,14 +15194,14 @@
         "pairs": 450000,
         "failed_pct": 21.75,
         "median_in": 4.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.92
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 28.45,
         "median_in": 9.24,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.47
        }
       },
@@ -15216,7 +15216,7 @@
         ],
         "p90_in": [
          5.78,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -15226,7 +15226,7 @@
         ],
         "p90_in": [
          38.75,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -15236,15 +15236,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 81.56,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.98
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 84.21,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.35
        }
       },
@@ -15252,15 +15252,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 82.79,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 5.0
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 85.5,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 1.44
        }
       },
@@ -15270,22 +15270,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -15314,14 +15314,14 @@
         "pairs": 525000,
         "failed_pct": 12.81,
         "median_in": 3.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.26
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 13.58,
         "median_in": 6.47,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.13
        }
       },
@@ -15364,7 +15364,7 @@
         "pairs": 18000,
         "failed_pct": 13.34,
         "median_in": 4.04,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.84
        }
       },
@@ -15373,14 +15373,14 @@
         "pairs": 450000,
         "failed_pct": 16.95,
         "median_in": 3.68,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.19
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 21.79,
         "median_in": 7.99,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 1.44
        }
       },
@@ -15395,7 +15395,7 @@
         ],
         "p90_in": [
          3.55,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -15405,7 +15405,7 @@
         ],
         "p90_in": [
          12.05,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -15415,15 +15415,15 @@
        "1-3m": {
         "pairs": 18000,
         "failed_pct": 70.68,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 6.26
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 78.05,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.76
        }
       },
@@ -15431,15 +15431,15 @@
        "1-3m": {
         "pairs": 450000,
         "failed_pct": 72.24,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 7.41
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 79.66,
-        "median_in": Infinity,
-        "p90_in": Infinity,
+        "median_in": "failed",
+        "p90_in": "failed",
         "scale_error_pct": 2.57
        }
       },
@@ -15449,22 +15449,22 @@
       "interval_95": {
        "1-3m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ],
         "p90_in": [
-         Infinity,
-         Infinity
+         "failed",
+         "failed"
         ]
        }
       }
@@ -16018,14 +16018,14 @@
         "pairs": 21000,
         "failed_pct": 14.34,
         "median_in": 1.73,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.04
        },
        "3-10m": {
         "pairs": 21000,
         "failed_pct": 14.46,
         "median_in": 3.57,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.27
        }
       },
@@ -16034,14 +16034,14 @@
         "pairs": 525000,
         "failed_pct": 14.34,
         "median_in": 1.59,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.07
        },
        "3-10m": {
         "pairs": 525000,
         "failed_pct": 14.46,
         "median_in": 3.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.19
        }
       },
@@ -16056,7 +16056,7 @@
         ],
         "p90_in": [
          3.23,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -16066,7 +16066,7 @@
         ],
         "p90_in": [
          4.79,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -16077,14 +16077,14 @@
         "pairs": 18000,
         "failed_pct": 17.58,
         "median_in": 1.26,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.78
        },
        "3-10m": {
         "pairs": 18000,
         "failed_pct": 17.63,
         "median_in": 2.74,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.32
        }
       },
@@ -16093,14 +16093,14 @@
         "pairs": 450000,
         "failed_pct": 17.58,
         "median_in": 1.77,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.12
        },
        "3-10m": {
         "pairs": 450000,
         "failed_pct": 17.63,
         "median_in": 4.13,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.43
        }
       },
@@ -16111,21 +16111,21 @@
        "1-3m": {
         "median_in": [
          0.79,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          2.1,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
          1.88,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          3.53,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -16136,14 +16136,14 @@
         "pairs": 18000,
         "failed_pct": 17.8,
         "median_in": 2.24,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.64
        },
        "3-10m": {
         "pairs": 17786,
         "failed_pct": 16.34,
         "median_in": 3.13,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.96
        }
       },
@@ -16152,14 +16152,14 @@
         "pairs": 450000,
         "failed_pct": 17.8,
         "median_in": 2.95,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.13
        },
        "3-10m": {
         "pairs": 444650,
         "failed_pct": 16.34,
         "median_in": 4.54,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.41
        }
       },
@@ -16170,11 +16170,11 @@
        "1-3m": {
         "median_in": [
          1.12,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          3.84,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -16184,7 +16184,7 @@
         ],
         "p90_in": [
          4.69,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -17096,14 +17096,14 @@
         "pairs": 105000,
         "failed_pct": 14.34,
         "median_in": 10.07,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.7
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.46,
         "median_in": 22.31,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.49
        }
       },
@@ -17112,14 +17112,14 @@
         "pairs": 2625000,
         "failed_pct": 14.34,
         "median_in": 2.4,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.08
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.46,
         "median_in": 4.65,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.18
        }
       },
@@ -17134,7 +17134,7 @@
         ],
         "p90_in": [
          14.69,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -17144,7 +17144,7 @@
         ],
         "p90_in": [
          31.96,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -17155,14 +17155,14 @@
         "pairs": 90000,
         "failed_pct": 17.58,
         "median_in": 10.59,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -11.61
        },
        "3-10m": {
         "pairs": 90000,
         "failed_pct": 17.63,
         "median_in": 19.95,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.1
        }
       },
@@ -17171,14 +17171,14 @@
         "pairs": 2250000,
         "failed_pct": 17.58,
         "median_in": 2.47,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.1
        },
        "3-10m": {
         "pairs": 2250000,
         "failed_pct": 17.63,
         "median_in": 5.3,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.77
        }
       },
@@ -17189,21 +17189,21 @@
        "1-3m": {
         "median_in": [
          7.3,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          15.04,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
          12.71,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          26.54,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -17214,14 +17214,14 @@
         "pairs": 90000,
         "failed_pct": 17.8,
         "median_in": 10.49,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -9.92
        },
        "3-10m": {
         "pairs": 88930,
         "failed_pct": 16.34,
         "median_in": 18.63,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -10.09
        }
       },
@@ -17230,14 +17230,14 @@
         "pairs": 2250000,
         "failed_pct": 17.8,
         "median_in": 3.54,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.43
        },
        "3-10m": {
         "pairs": 2223250,
         "failed_pct": 16.34,
         "median_in": 5.52,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.05
        }
       },
@@ -17248,11 +17248,11 @@
        "1-3m": {
         "median_in": [
          7.38,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          16.99,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -17262,7 +17262,7 @@
         ],
         "p90_in": [
          25.8,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18174,14 +18174,14 @@
         "pairs": 105000,
         "failed_pct": 14.34,
         "median_in": 2.84,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.81
        },
        "3-10m": {
         "pairs": 105000,
         "failed_pct": 14.46,
         "median_in": 6.18,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -1.79
        }
       },
@@ -18190,14 +18190,14 @@
         "pairs": 2625000,
         "failed_pct": 14.34,
         "median_in": 1.71,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.06
        },
        "3-10m": {
         "pairs": 2625000,
         "failed_pct": 14.46,
         "median_in": 3.21,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.19
        }
       },
@@ -18212,7 +18212,7 @@
         ],
         "p90_in": [
          4.75,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -18222,7 +18222,7 @@
         ],
         "p90_in": [
          10.99,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18233,14 +18233,14 @@
         "pairs": 90000,
         "failed_pct": 17.58,
         "median_in": 2.67,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.24
        },
        "3-10m": {
         "pairs": 90000,
         "failed_pct": 17.63,
         "median_in": 6.42,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.81
        }
       },
@@ -18249,14 +18249,14 @@
         "pairs": 2250000,
         "failed_pct": 17.58,
         "median_in": 1.87,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.04
        },
        "3-10m": {
         "pairs": 2250000,
         "failed_pct": 17.63,
         "median_in": 4.36,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.58
        }
       },
@@ -18267,21 +18267,21 @@
        "1-3m": {
         "median_in": [
          1.51,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          3.81,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
         "median_in": [
          2.61,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          12.11,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18292,14 +18292,14 @@
         "pairs": 90000,
         "failed_pct": 17.8,
         "median_in": 3.96,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.21
        },
        "3-10m": {
         "pairs": 88930,
         "failed_pct": 16.34,
         "median_in": 6.81,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -2.05
        }
       },
@@ -18308,14 +18308,14 @@
         "pairs": 2250000,
         "failed_pct": 17.8,
         "median_in": 3.02,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.03
        },
        "3-10m": {
         "pairs": 2223250,
         "failed_pct": 16.34,
         "median_in": 4.6,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -0.32
        }
       },
@@ -18326,11 +18326,11 @@
        "1-3m": {
         "median_in": [
          2.1,
-         Infinity
+         "failed"
         ],
         "p90_in": [
          7.13,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -18340,7 +18340,7 @@
         ],
         "p90_in": [
          12.48,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18391,7 +18391,7 @@
         ],
         "p90_in": [
          4.61,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -18401,7 +18401,7 @@
         ],
         "p90_in": [
          7.53,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18450,7 +18450,7 @@
         ],
         "p90_in": [
          4.44,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -18460,7 +18460,7 @@
         ],
         "p90_in": [
          7.29,
-         Infinity
+         "failed"
         ]
        }
       }
@@ -18509,7 +18509,7 @@
         ],
         "p90_in": [
          5.42,
-         Infinity
+         "failed"
         ]
        },
        "3-10m": {
@@ -18519,7 +18519,7 @@
         ],
         "p90_in": [
          8.47,
-         Infinity
+         "failed"
         ]
        }
       }

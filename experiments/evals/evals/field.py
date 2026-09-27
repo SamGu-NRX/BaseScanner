@@ -488,16 +488,27 @@ def parse_tape(text: str) -> float:
     return round(feet + inches / 12, 6)
 
 
+# The session field of field/map.template.json before `stamp` binds it to a session.
+MAP_SESSION_PLACEHOLDER = "filled in by make field"
+
+
 def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -> Path:
     """Makes the team's files match this session: tape readings typed as text become feet and the
     zip's sha256 joins the survey's captures (both in place), and a copy of the map naming this
-    session goes to out_dir/inputs/map.json, which is returned."""
+    session goes to out_dir/inputs/map.json, which is returned. A map already bound to another
+    session is refused before anything is written, since its M numbers belong to that walk."""
     folder, capture = unpack(session_path)
     if capture is None:
         raise ValueError(
             f"{session_path}: pass the zip Measure Lab shared; its sha256 is the capture id"
         )
     session_id = load_session(folder)["session"]["id"]
+    mapping = json.loads(map_path.read_text())
+    if mapping.get("session") not in (MAP_SESSION_PLACEHOLDER, session_id):
+        raise ValueError(
+            f"{map_path} is the map for session {mapping.get('session')!r}, not {session_id!r}; "
+            f"start from field/map.template.json for a new session"
+        )
     survey = json.loads(truth_path.read_text())
     for m in survey["measurements"]:
         if m["status"] == "measured" and isinstance(m.get("value_ft"), str):
@@ -511,7 +522,6 @@ def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -
         survey["captures"].append(capture)
         print(f"survey captures += {capture}", file=sys.stderr)
     truth_path.write_text(json.dumps(survey, indent=2) + "\n")
-    mapping = json.loads(map_path.read_text())
     mapping["session"] = session_id
     stamped = out_dir / "inputs" / "map.json"
     stamped.parent.mkdir(parents=True, exist_ok=True)

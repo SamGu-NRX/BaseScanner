@@ -42,7 +42,7 @@ from evals.eth3d import (
     up_direction,
     visible_scan_points,
 )
-from evals.pairs import BINS_M, Points, bin_key, evaluate_fixed, pool, sample_pairs
+from evals.pairs import BINS_M, Points, bin_key, evaluate_fixed, pool, results_json, sample_pairs
 from evals.paths import ETH3D_DIR, EVALS_DIR
 from evals.triangulate import sample_depth
 
@@ -513,7 +513,7 @@ def main() -> None:
             prepare(s)
     elif args.step == "score":
         results = score()
-        (args.out / "eth3d_recon.json").write_text(json.dumps(results, indent=1))
+        (args.out / "eth3d_recon.json").write_text(results_json(results))
         md = markdown(results)
         (args.out / "eth3d_recon.md").write_text(md)
         print(md)

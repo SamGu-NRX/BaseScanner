@@ -6160,7 +6160,7 @@
         "pairs": 99972,
         "failed_pct": 12.36,
         "median_in": 14.66,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": -7.3
        }
       },
@@ -6176,7 +6176,7 @@
         "pairs": 2499300,
         "failed_pct": 13.98,
         "median_in": 6.76,
-        "p90_in": Infinity,
+        "p90_in": "failed",
         "scale_error_pct": 0.29
        }
       },

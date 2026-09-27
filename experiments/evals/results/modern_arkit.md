@@ -11,9 +11,9 @@ MARViN, iPhone 14 Pro Max, ARKit 6, outdoor walks, against the dataset's COLMAP 
 
 Walks within 2% of the ground truth's scale: 30 of 35.
 
-## Walk-to-walk spread of ARKit's scale within a site
+## Walk-to-walk spread of the ARKit / reference scale ratio within a site
 
-Standard deviation over each site's walks within 10% of the reference, with a 95% bootstrap interval over walks. A reference scaled to ARKit would carry one scale per site, which shifts every walk of that site alike, so this spread survives it: a single walk's scale error is at least this large, unless the reference's own scale varies walk to walk in step with ARKit's.
+Standard deviation over each site's walks within 10% of the reference, with a 95% bootstrap interval over walks. It measures how much ARKit and the reference disagree from walk to walk, not ARKit's error alone: a perfect ARKit paired with a reference whose local scale varies would give the same spread. A single site scale for the reference cannot remove its local reconstruction error, and no independent bound on that error exists here.
 
 | Site | Walks used | Spread (1 SD) | 95% interval |
 | --- | --- | --- | --- |

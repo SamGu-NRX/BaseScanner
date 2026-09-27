@@ -12,13 +12,12 @@ neighbouring pixels. A keep-policy is scored by pooling the errors of the photos
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
 
 from evals.eth3d import SCENES
-from evals.pairs import evaluate_fixed, pool
+from evals.pairs import evaluate_fixed, pool, results_json
 from evals.recon import (
     PREDICTIONS,
     WIDTH,
@@ -142,9 +141,7 @@ def main() -> None:
         for r in rows
     ]
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "frames.json").write_text(
-        json.dumps({"policies": summary, "photos": per}, indent=1)
-    )
+    (args.out / "frames.json").write_text(results_json({"policies": summary, "photos": per}))
     md = "\n".join(lines) + "\n"
     (args.out / "frames.md").write_text(md)
     print(md)

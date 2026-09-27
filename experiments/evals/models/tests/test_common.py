@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -119,17 +120,71 @@ def test_intrinsics_json_must_cover_every_image(tmp_path):
         read_intrinsics(path, images)
 
 
-def test_fingerprint_changes_with_poses_members_and_resolution(tmp_path):
+def test_fingerprint_changes_with_every_input(tmp_path):
     from models.common import fingerprint
 
     a, b = tmp_path / "a.jpg", tmp_path / "b.jpg"
     a.write_bytes(b"a")
     b.write_bytes(b"b")
     pose = np.eye(4)
-    base = fingerprint(["a", "b"], [a, b], None, 392)
-    assert base == fingerprint(["a", "b"], [a, b], None, 392)
-    assert base != fingerprint(["a", "b"], [a, b], [pose, pose], 392)  # poses added
-    assert base != fingerprint(["a"], [a], None, 392)  # members changed
-    assert base != fingerprint(["a", "b"], [a, b], None, 518)  # resolution changed
+    k = [np.array([500.0, 500, 320, 240])] * 2
+
+    def key(members=("a", "b"), intrinsics=k, poses=None, max_side=392, ckpt="c1"):
+        images = [tmp_path / f"{m}.jpg" for m in members]
+        return fingerprint(list(members), images, intrinsics, poses, max_side, ckpt)
+
+    base = key()
+    assert base == key()
+    assert base != key(poses=[pose, pose])  # poses added
+    assert base != key(members=("a",), intrinsics=k[:1])  # members changed
+    assert base != key(max_side=518)  # resolution changed
+    assert base != key(ckpt="c2")  # checkpoint changed
+    focal = [np.array([510.0, 500, 320, 240]), k[1]]
+    assert base != key(intrinsics=focal)  # only one focal length changed
     b.write_bytes(b"B")
-    assert base != fingerprint(["a", "b"], [a, b], None, 392)  # an image changed
+    assert base != key()  # an image changed
+
+
+def test_free_space_is_measured_where_the_download_lands(tmp_path, monkeypatch):
+    import shutil
+    from collections import namedtuple
+
+    from models import common
+
+    Usage = namedtuple("Usage", "total used free")
+    measured = []
+
+    def fake_usage(path):
+        measured.append(Path(path))
+        free = 100 * 1024**3 if Path(path) == tmp_path / "big" else 1024**3
+        return Usage(0, 0, free)
+
+    monkeypatch.setattr(shutil, "disk_usage", fake_usage)
+    (tmp_path / "big").mkdir()
+    # The cache folder does not exist yet: its nearest existing parent is on the roomy volume.
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "big" / "hf-cache"))
+    common.require_free_space(common.hf_cache_dir(), "ckpt")
+    assert measured == [tmp_path / "big"]
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "small"))
+    with pytest.raises(RuntimeError, match=r"only 1\.0 GB is free"):
+        common.require_free_space(common.hf_cache_dir(), "ckpt")
+
+
+def test_checkpoint_record_rejects_a_replaced_checkpoint(tmp_path, monkeypatch):
+    import hashlib
+    import sys
+    import types
+
+    from models.common import checkpoint_record
+
+    weights = tmp_path / "model.safetensors"
+    weights.write_bytes(b"pinned weights")
+    hub = types.ModuleType("huggingface_hub")
+    hub.try_to_load_from_cache = lambda repo, name, revision: str(weights)
+    monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
+    pinned = hashlib.sha256(b"pinned weights").hexdigest()
+    record = checkpoint_record("org/model", "model.safetensors", "rev", pinned)
+    assert record["sha256"] == pinned and record["bytes"] == 14
+    weights.write_bytes(b"other weights")
+    with pytest.raises(RuntimeError, match="is not the pinned"):
+        checkpoint_record("org/model", "model.safetensors", "rev", pinned)

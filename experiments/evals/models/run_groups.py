@@ -22,7 +22,16 @@ from pathlib import Path
 
 import numpy as np
 
-from models.common import RunInputs, fingerprint, read_intrinsics, set_cache_dirs, write_npz
+from models import map_anything
+from models.common import (
+    RunInputs,
+    checkpoint_record,
+    fingerprint,
+    read_intrinsics,
+    require_free_space_for_download,
+    set_cache_dirs,
+    write_npz,
+)
 from models.map_anything import load, run
 from models.run import pick_device
 
@@ -60,8 +69,11 @@ def main() -> None:
     images_dir = args.scene_dir / "images_1024"
     intr_file = args.scene_dir / "model_inputs" / "intrinsics.json"
     device = pick_device(args.device)
+    ckpt = (map_anything.REPO, map_anything.FILENAME, map_anything.REVISION)
+    require_free_space_for_download(*ckpt)
     t0 = time.perf_counter()
     model = load(device)
+    checkpoint = checkpoint_record(*ckpt, map_anything.SHA256)
     if device == "mps":
         torch.mps.empty_cache()  # loading leaves about 0.6 GB of freed blocks cached
         torch.mps.set_per_process_memory_fraction(
@@ -76,14 +88,17 @@ def main() -> None:
             if pose_sets is not None:
                 poses = [np.array(pose_sets[gid]["poses"][m]) for m in members]
             images = [images_dir / f"{m}.jpg" for m in members]
-            key = fingerprint(members, images, poses, args.max_side)
+            intrinsics = read_intrinsics(intr_file, images)
+            key = fingerprint(
+                members, images, intrinsics, poses, args.max_side, checkpoint["sha256"]
+            )
             done = out / "run.json"
-            # Reuse only an output made from these members, images, poses and resolution.
+            # Reuse only an output made from these exact inputs and this checkpoint.
             if done.exists() and json.loads(done.read_text()).get("fingerprint") == key:
                 continue
             inputs = RunInputs(
                 images=images,
-                intrinsics=read_intrinsics(intr_file, images),
+                intrinsics=intrinsics,
                 intrinsics_mode="known",
                 poses=poses,
                 max_side=args.max_side,
@@ -104,6 +119,7 @@ def main() -> None:
                 )
             summary = {
                 "fingerprint": key,
+                "checkpoint": checkpoint,
                 "members": members,
                 "seconds_per_view": round(results[0].seconds, 3),
                 "network_wh": list(results[0].network_wh),

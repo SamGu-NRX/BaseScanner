@@ -37,6 +37,7 @@ from evals.eth3d import (
     scan_points,
     up_direction,
 )
+from evals.pairs import results_json
 from evals.paths import ETH3D_DIR, EVALS_DIR
 
 KIT_COMMIT = "beede15f568b3a4d694fb275caf9eaaa882c546b"
@@ -868,7 +869,7 @@ def main() -> None:
     runs = [evaluate_scene(scene) for scene in RUNS]
     bad = [r["scene"] for r in runs if r["wall"] and r["replica_mismatches"]]
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "coverage.json").write_text(json.dumps(runs, indent=1))
+    (RESULTS / "coverage.json").write_text(results_json(runs))
     if bad:
         raise SystemExit(f"cause replica disagrees with the app on {bad}; causes would be wrong")
     md = markdown(runs)

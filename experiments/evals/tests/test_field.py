@@ -296,7 +296,7 @@ def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
     survey["measurements"][1]["value_ft"] = "32 9 3/4"
     paths["truth"].write_text(json.dumps(survey))
     mapping = json.loads(paths["map"].read_text())
-    mapping["session"] = "placeholder"
+    mapping["session"] = field.MAP_SESSION_PLACEHOLDER
     paths["map"].write_text(json.dumps(mapping))
     stamped = field.stamp(archive, paths["truth"], paths["map"], out)
     survey = json.loads(paths["truth"].read_text())
@@ -306,6 +306,18 @@ def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
     # Idempotent: a second stamp adds nothing.
     field.stamp(archive, paths["truth"], paths["map"], out)
     assert json.loads(paths["truth"].read_text())["captures"] == [capture]
+
+
+def test_stamp_refuses_a_map_bound_to_another_session_before_writing(case):
+    archive, paths, _, out = case
+    survey_before = paths["truth"].read_text()
+    mapping = json.loads(paths["map"].read_text())
+    mapping["session"] = "some-other-session"
+    paths["map"].write_text(json.dumps(mapping))
+    with pytest.raises(ValueError, match="is the map for session 'some-other-session'"):
+        field.stamp(archive, paths["truth"], paths["map"], out)
+    assert paths["truth"].read_text() == survey_before
+    assert not (out / "inputs" / "map.json").exists()
 
 
 @pytest.mark.parametrize("text", ["30 2 5", "30 1/4 2", "1 1/0", "1/2", "30 -2"])

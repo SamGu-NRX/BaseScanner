@@ -12,7 +12,7 @@ uv sync --project models
 uv run --project models pytest -q models/tests
 ```
 
-Checkpoints download on first use into `$HOUSE_SCANNING_DATA/evals/hf-cache` (`HF_HOME`) and `evals/torch-cache` (`TORCH_HOME`) unless those variables are already set. A run refuses to start a download with less than 6 GB free, and checks each checkpoint's sha256 against the pinned value.
+Checkpoints download on first use into `$HOUSE_SCANNING_DATA/evals/hf-cache` (`HF_HOME`) and `evals/torch-cache` (`TORCH_HOME`) unless those variables are already set. A run refuses to start a download with less than 6 GB free on the volume holding `HF_HOME`, and checks each checkpoint's sha256 against the pinned value. The grouped MapAnything runner (`models.run_groups`) does both too, records the checkpoint in each group's `run.json`, and reuses a group's output only when a fingerprint of its members, image bytes, intrinsics, poses, input size and checkpoint matches.
 
 ## Run
 

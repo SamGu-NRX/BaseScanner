@@ -9,7 +9,7 @@ import pytest
 from evals import coverage_options, replay
 from evals.coverage import PhotoTruth, photo_truth
 from evals.eth3d import View, read_ply_xyz
-from evals.map3d import column_weights
+from evals.map3d import span_columns, within_bar
 from evals.recon import comparable_groups
 
 
@@ -83,11 +83,29 @@ def test_the_depth_test_option_rejects_rows_without_depth(monkeypatch):
     assert hidden and hidden[0]["rows"] == [0]
 
 
-def test_column_weights_cover_exactly_the_span():
-    lo, hi = 0.0, 0.1524  # one 0.5 ft cell: eight 2 cm columns would count 0.16 m
-    cols = np.arange(lo + 0.01, hi, 0.02)
-    assert len(cols) == 8
-    assert column_weights(cols, lo, hi).sum() == pytest.approx(hi)
+@pytest.mark.parametrize("cells", [1, 2, 4])
+def test_span_columns_tile_whole_half_foot_cells(cells):
+    # 0.1524 m cells leave a partial 2 cm strip at the end (0.0024 m for 1 cell, 0.0048 m for 2);
+    # the widths must still add up to the span, and every centre must lie inside it.
+    hi = cells * 0.1524
+    cols, w = span_columns(0.0, hi)
+    assert w.sum() == pytest.approx(hi, abs=1e-12)
+    assert (w > 0).all() and (w <= 0.02 + 1e-12).all()
+    assert cols[0] > 0 and cols[-1] < hi
+
+
+def test_span_columns_on_a_foot_keep_the_last_strip():
+    cols, w = span_columns(0.0, 0.3048)
+    assert len(cols) == 16 and w[-1] == pytest.approx(0.0048)
+    cols, w = span_columns(0.0, 0.30)  # a whole number of columns gets no sliver
+    assert len(cols) == 15 and w[-1] == pytest.approx(0.02)
+
+
+def test_a_claim_of_exactly_the_bar_passes():
+    _, w = span_columns(0.0, 0.1524)  # one 0.5 ft cell, all of it unseen
+    assert within_bar(w.sum() / 0.3048)
+    _, w = span_columns(0.0, 0.1544)
+    assert not within_bar(w.sum() / 0.3048)
 
 
 def test_comparable_groups_keep_one_seed_population():
@@ -102,3 +120,95 @@ def test_comparable_groups_keep_one_seed_population():
         "2": ["a", "b"],
         "8": ["a", "b"],
     }
+
+
+def test_fit_key_changes_with_each_image_and_depth_file(tmp_path: Path):
+    import os
+
+    from evals.pose_priors import fit_inputs
+
+    T = {"a": np.eye(4), "b": np.eye(4)}
+    K = {"a": np.eye(3), "b": np.eye(3)}
+    files = {}
+    for kind in ("image", "depth"):
+        for m in "ab":
+            files[kind, m] = tmp_path / f"{kind}-{m}"
+            files[kind, m].write_bytes(f"{kind} {m}".encode())
+
+    def key():
+        return fit_inputs(
+            T, K, 2.0, {m: files["image", m] for m in "ab"}, {m: files["depth", m] for m in "ab"}
+        )
+
+    base = key()
+    assert key() == base
+    seen = {base}
+    for kind in ("image", "depth"):
+        path = files[kind, "b"]
+        path.write_bytes(path.read_bytes() + b" changed")
+        # A new size is enough on its own, but move the clock too, as a rewrite would.
+        st = path.stat()
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
+        changed = key()
+        assert changed not in seen  # each file changing alone gives a new key
+        seen.add(changed)
+
+
+def _strict_loads(text: str):
+    def refuse(token):
+        raise ValueError(f"{token} is not JSON")
+
+    return json.loads(text, parse_constant=refuse)
+
+
+def test_failed_percentiles_serialise_as_strict_json():
+    from evals.pairs import results_json, summarize
+
+    errors = np.r_[np.full(8, 0.01), np.full(2, np.inf)]  # 20% failed: the p90 is a failure
+    row = summarize(errors)
+    assert row["p90_in"] == float("inf")
+    doc = _strict_loads(results_json({"row": row, "empty": float("nan"), "ok": [1.5]}))
+    assert doc["row"]["p90_in"] == "failed"
+    assert doc["row"]["failed_pct"] == 20.0
+    assert doc["empty"] is None and doc["ok"] == [1.5]
+    with pytest.raises(ValueError, match="-inf"):
+        results_json({"x": float("-inf")})
+
+
+@pytest.mark.parametrize(
+    "path", sorted((Path(__file__).parents[1] / "results").glob("*.json")), ids=lambda p: p.name
+)
+def test_committed_results_are_strict_json(path: Path):
+    _strict_loads(path.read_text())
+
+
+def test_marvin_scores_only_pinned_walks_with_pinned_content(tmp_path: Path):
+    import hashlib
+
+    from evals import modern_arkit
+
+    files = {"bar/seq2/ARkitPose.txt": b"two", "bar/seq10/ARkitPose.txt": b"ten"}
+    for rel, data in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(data)
+    stale = tmp_path / "bar/seq3/ARkitPose.txt"  # on disk but not pinned: never read
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"stale")
+    pinned = {rel: hashlib.sha256(data).hexdigest() for rel, data in files.items()}
+    assert modern_arkit.pinned_walks(pinned, "bar") == ["seq2", "seq10"]
+    modern_arkit.verify(pinned, tmp_path)
+    (tmp_path / "bar/seq10/ARkitPose.txt").write_bytes(b"edited")
+    with pytest.raises(RuntimeError, match="missing or differ"):
+        modern_arkit.verify(pinned, tmp_path)
+    (tmp_path / "bar/seq10/ARkitPose.txt").unlink()
+    with pytest.raises(RuntimeError, match="missing or differ"):
+        modern_arkit.verify(pinned, tmp_path)
+
+
+def test_marvin_manifest_covers_every_scored_scene():
+    from evals import modern_arkit
+
+    pinned = modern_arkit.manifest()
+    for scene in modern_arkit.SCENES:
+        assert {f"{scene}/train.txt", f"{scene}/test.txt"} <= set(pinned)
+        assert modern_arkit.pinned_walks(pinned, scene)
