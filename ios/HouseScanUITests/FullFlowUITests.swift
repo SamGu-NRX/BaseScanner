@@ -36,7 +36,50 @@ final class FullFlowUITests: XCTestCase {
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        try runFlow(replay: replay, onScene: { _, gate in try Self.checkGroundPatch(gate: gate, test: self) })
+    }
+
+    /// What the spot check sent about the ground, in the scene the last upload sent. The autopilot
+    /// answers "It's clear" and mulch when a kept photo shows the whole area; then the scene carries
+    /// only mulch, only over the answer's footprint plus the margin (the tapped wall's 0.3 ft plus
+    /// 0.16 ft per foot to the far edge, and 0.984 ft more when the ground was guessed, which the
+    /// scene shows as the meter's error), and only where it reports ground seen. Otherwise the
+    /// area was left out (`spot-refusal.json`) and no patch is sent. The scene is attached as
+    /// `uploaded-scene` for the schema check.
+    @MainActor
+    static func checkGroundPatch(gate: URL, test: XCTestCase) throws {
+        let uploaded = try Data(contentsOf: gate.appending(path: "uploaded-scene.json"))
+        let attachment = XCTAttachment(data: uploaded, uniformTypeIdentifier: "public.json")
+        attachment.name = "uploaded-scene"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+        let scene = try XCTUnwrap(JSONSerialization.jsonObject(with: uploaded) as? [String: Any])
+        let patches = (scene["ground"] as? [[String: Any]] ?? []).filter { $0["type"] as? String != "drive" }
+        guard !patches.isEmpty else {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: gate.appending(path: "spot-refusal.json").path),
+                          "no ground patch, yet the spot check didn't leave the area out")
+            return
+        }
+        let answer = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: gate.appending(path: "answer.json"))) as? [String: Any])
+        let spot = try XCTUnwrap(answer["spot"] as? [String: Any])
+        let span = try XCTUnwrap(spot["span_ft"] as? [Double]).sorted()
+        let depth = try XCTUnwrap(spot["depth_ft"] as? Double)
+        let guessed = (scene["meter"] as? [String: Any])?["plus_minus_ft"] != nil
+        let margin = 0.3 + 0.16 * max(abs(span[0]), abs(span[1])) + (guessed ? 0.3 / 0.3048 : 0)
+        // The synthetic wall runs along x with the house at z < 0, so s is x and out is z.
+        let observed = ((scene["coverage"] as? [String: Any])?["observed"] as? [[String: Any]] ?? []).filter { $0["band"] as? String == "ground" }
+        for patch in patches {
+            XCTAssertEqual(patch["type"] as? String, "mulch")
+            for point in try XCTUnwrap(patch["polygon"] as? [[Double]]) {
+                XCTAssertTrue(point[0] >= span[0] - margin - 1e-3 && point[0] <= span[1] + margin + 1e-3, "\(point) past the margin along the wall")
+                XCTAssertTrue(point[1] <= depth + margin + 1e-3, "\(point) past the margin out from the wall")
+                let seen = observed.contains { entry in
+                    let s = entry["span_ft"] as? [Double] ?? [0, 0]
+                    return s[0] - 1e-3 <= point[0] && point[0] <= s[1] + 1e-3 && point[1] <= (entry["out_ft"] as? Double ?? 0) + 1e-3
+                }
+                XCTAssertTrue(seen, "\(point) is not over ground the scene reports seen")
+            }
+        }
     }
 
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map
@@ -63,11 +106,13 @@ final class FullFlowUITests: XCTestCase {
     /// farthest, 5 m left and right of the meter (16 ft 5 in). The old rule put the ends at the
     /// unbroken covered reach, 2.5 ft here, and the export left out everything past it. The ends
     /// must land within a keyframe's spacing (0.5 m, 1.6 ft) of the phone, and the scene must
-    /// report the wall and the ground the walk saw, the ground by the meter included.
+    /// report the wall and the ground the walk saw, the ground by the meter included unless the
+    /// spot check left that stretch out (`spot-refusal.json`).
     @MainActor
     func testCantGetThereEndsWhereThePhoneIs() throws {
         var tape = ""
         var scene: [String: Any] = [:]
+        var withdrawn: [Double]?
         try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere"], beforeLeaving: { app, phase in
             guard phase == "wallWalk" else { return }
             // The value that matched, from one read: the map's element is rebuilt as the walk
@@ -77,7 +122,12 @@ final class FullFlowUITests: XCTestCase {
             }
             XCTAssertNotNil(ended, "the walk never ended both sides")
             tape = ended ?? ""
-        }, onScene: { data, _ in
+        }, onScene: { data, gate in
+            // The stretch the spot check left out, if it left one out: the scene reports nothing there.
+            let refusal = gate.appending(path: "spot-refusal.json")
+            if let bytes = try? Data(contentsOf: refusal) {
+                withdrawn = (try JSONSerialization.jsonObject(with: bytes) as? [String: Any])?["withdrawn_span_ft"] as? [Double]
+            }
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         })
         // The wall map says where each end is, in words VoiceOver reads.
@@ -102,7 +152,9 @@ final class FullFlowUITests: XCTestCase {
         func spans(_ band: String) -> [[Double]] { observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] } }
         let wall = spans("wall"), ground = spans("ground")
         XCTAssertFalse(wall.isEmpty, "no wall observed: \(observed)")
-        XCTAssertTrue(ground.contains { $0[0] <= 0 && $0[1] >= 0 }, "no ground observed by the meter: \(ground)")
+        // By the meter, unless the spot check left that stretch out.
+        let meterWithdrawn = withdrawn.map { $0[0] <= 0 && $0[1] >= 0 } ?? false
+        XCTAssertTrue(meterWithdrawn || ground.contains { $0[0] <= 0 && $0[1] >= 0 }, "no ground observed by the meter: \(ground), withdrawn \(withdrawn ?? [])")
         XCTAssertTrue(ground.contains { $0[0] < -10 }, "no ground observed past 10 ft left: \(ground)")
         XCTAssertTrue(ground.contains { $0[1] > 10 }, "no ground observed past 10 ft right: \(ground)")
         let attachment = XCTAttachment(string: "wall map: \(tape)\nends: \(along(first)) ft, \(along(last)) ft\nobserved: \(observed)")
@@ -111,9 +163,9 @@ final class FullFlowUITests: XCTestCase {
         add(attachment)
     }
 
-    /// "Something's there" on the spot check (`-autopilotSomethingThere`): the scan stops claiming
-    /// the spot's clearance area and goes to the server again, and the flow still ends on the
-    /// result, which says what the homeowner answered. The scene the last upload sent, and the one
+    /// "Something's in the way" on the spot check (`-autopilotSomethingThere`), or Continue when no
+    /// kept photo shows the whole area: the scan stops claiming the area and goes to the server
+    /// again, and the flow still ends on the result, which says the area was left out. The scene the last upload sent, and the one
     /// the app exports at the result, list no wall, ground or facing entry over the stretch the
     /// refusal withdrew (whole cells, as the autopilot reports them in `spot-refusal.json`), and
     /// still list both bands elsewhere. The uploaded scene is attached as

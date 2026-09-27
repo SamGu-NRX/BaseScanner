@@ -187,14 +187,6 @@ extension ScanEngine: ScanActions {
         resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
     }
 
-    /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no
-    /// patch (`sceneJSON`). Every upload reads the latest answer.
-    func answerGround(_ answer: GroundAnswer) {
-        guard state.phase == .markFeatures else { return }
-        state.groundAnswer = answer
-        RuntimeLog.engine.info("ground answered: \(String(describing: answer), privacy: .public)")
-    }
-
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
     /// porch or stairs" records nothing, so the server treats the stretch as unseen. During an
     /// overhead gap request the answer settles the request either way (`settleOverheadGap`).
@@ -251,6 +243,13 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
+        // A fence's feet on two pieces of the wall would be sent as one depth that misses how
+        // close its line comes to the wall by the corner: refused, and asked for per side.
+        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(wall.world(first), wall.world(hit)) {
+            marking.refusal = .fenceAcrossCorner
+            state.marking = marking
+            return
+        }
         pendingTaps.append(hit)
         marking.refusal = nil
         marking.step += 1
@@ -264,6 +263,7 @@ extension ScanEngine: ScanActions {
         publishFeaturesPastEnds()
         state.marking = nil
         pendingTaps = []
+        spotMarkPlaced()
     }
 
     private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
@@ -299,6 +299,7 @@ extension ScanEngine: ScanActions {
     func cancelMarking() {
         state.marking = nil
         pendingTaps = []
+        spotMarkCancelled()
     }
 
     func deleteFeature(_ id: UUID) {

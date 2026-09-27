@@ -242,16 +242,17 @@ public struct SceneInput: Sendable {
     /// Headroom measured on the LiDAR mesh (`TriangleMesh.overheadSpans`), as `meshFacing`;
     /// written as `overheads` entries.
     public var meshOverheads: [ObservedSpan]
-    /// What the homeowner said the ground along the wall is. With a type, the ground the ground
-    /// coverage saw is sent as patches of it (`SceneWall.groundPatchPolygons`); nil sends none,
-    /// and the server treats the surface as unknown.
-    public var groundType: SceneGroundType?
+    /// What the homeowner said the ground is, each over its own area (`SceneGroundPatch`). Each
+    /// is sent as patches over the part of its area the ground coverage saw
+    /// (`SceneWall.groundPatchPolygons`); none sends none, and the server treats the surface as
+    /// unknown.
+    public var groundPatches: [SceneGroundPatch]
 
     public init(
         wall: SceneWall, wallID: String = "wall", baselineS: ClosedRange<Float>, wallHeight: Float? = nil,
         meterPlusMinus: Float? = nil, meterPlane: MeterPlaneSource = .detectedPlane, objectPlusMinus: Float? = nil,
         features: [SceneFeature] = [], coverage: SceneCoverage, keyframes: [SceneKeyframe] = [], stills: [String: String] = [:],
-        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundType: SceneGroundType? = nil
+        meshFacing: [ObservedSpan] = [], meshOverheads: [ObservedSpan] = [], groundPatches: [SceneGroundPatch] = []
     ) {
         self.wall = wall
         self.wallID = wallID
@@ -266,7 +267,7 @@ public struct SceneInput: Sendable {
         self.stills = stills
         self.meshFacing = meshFacing
         self.meshOverheads = meshOverheads
-        self.groundType = groundType
+        self.groundPatches = groundPatches
     }
 }
 
@@ -284,6 +285,10 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     case nonFiniteNumber(String)
     /// Left corners must run from the meter leftward (s falling below 0), right corners rightward.
     case cornersOutOfOrder([Float])
+    /// A fence whose two feet lie in front of different pieces of the wall. Its one facing depth
+    /// would be its feet's distance out, while by the corner the fence's straight line runs much
+    /// closer to the wall; each side of the corner has to be its own fence.
+    case fenceAcrossCorner(feature: String)
 
     public var description: String {
         switch self {
@@ -299,6 +304,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .invalidKeyframe(let id, let r): "keyframe \(id): \(r)"
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
+        case .fenceAcrossCorner(let f): "\(f): its feet are on different pieces of the wall"
         }
     }
 }
@@ -461,6 +467,11 @@ public enum SceneExport {
                 }
                 let a = wall.wallCoordinates(of: foot[0])
                 let b = wall.wallCoordinates(of: foot[1])
+                // Refused, not sent: across a corner the feet's distances say nothing about how
+                // close the fence's line comes to the wall by the corner (`fenceAcrossCorner`).
+                guard WallSegment.index(in: chain.segments, atS: a.s) == WallSegment.index(in: chain.segments, atS: b.s) else {
+                    throw SceneExportError.fenceAcrossCorner(feature: name)
+                }
                 // The nearer tap: a fence that angles toward the wall must not read as farther out
                 // at its narrow end than it is. The mean overstated that end by half the difference.
                 let depth = min(a.out, b.out)
@@ -508,16 +519,16 @@ public enum SceneExport {
                 observed += pieces.map { .init(band: band, span_ft: $0, out_ft: feetDown(item.out)) }
             }
         }
-        if let type = input.groundType {
-            // Patches from the ground entries as written, not the meters before rounding.
-            let written = observed.filter { $0.band == "ground" }.compactMap { entry in
-                entry.out_ft.map { out in
-                    ObservedSpan(
-                        span: Float(entry.span_ft[0] / SceneUnits.feetPerMeter)...Float(entry.span_ft[1] / SceneUnits.feetPerMeter),
-                        out: Float(out / SceneUnits.feetPerMeter))
-                }
+        // Patches from the ground entries as written, not the meters before rounding.
+        let written = observed.filter { $0.band == "ground" }.compactMap { entry in
+            entry.out_ft.map { out in
+                ObservedSpan(
+                    span: Float(entry.span_ft[0] / SceneUnits.feetPerMeter)...Float(entry.span_ft[1] / SceneUnits.feetPerMeter),
+                    out: Float(out / SceneUnits.feetPerMeter))
             }
-            ground += groundPatches(type, over: written, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
+        }
+        for patch in input.groundPatches {
+            ground += groundPatches(patch, over: written, wall: wall, extent: input.baselineS, room: maxGround - ground.count)
         }
 
         // Mesh measurements, split where the chain turns a corner so each entry names the wall it
@@ -646,17 +657,19 @@ public enum SceneExport {
     /// rounding steps; behind the line is the house, where the server models no ground.
     static let patchBehindWallFeet: Double = 0.001
 
-    /// Patches of `type` over the ground entries as written (`SceneWall.groundPatchPolygons`), at
-    /// most `room` of them, without `plus_minus_ft` (the server's tap default). The entries are
-    /// already split at corners and joined to their budget, so there is at most one patch per
-    /// entry.
+    /// Patches of `patch.type` over the part of `patch`'s area the ground entries as written show
+    /// seen (`SceneGroundPatch.seen`, `SceneWall.groundPatchPolygons`), at most `room` of them,
+    /// without `plus_minus_ft` (the server's tap default). The entries are already split at
+    /// corners and joined to their budget, so there is at most one patch per entry.
     private static func groundPatches(
-        _ type: SceneGroundType, over spans: [ObservedSpan], wall: SceneWall, extent: ClosedRange<Float>, room: Int
+        _ patch: SceneGroundPatch, over spans: [ObservedSpan], wall: SceneWall, extent: ClosedRange<Float>, room: Int
     ) -> [SceneDocument.Ground] {
-        guard room >= 1 else { return [] }
+        guard room >= 1, let within = patch.span.clamped(overlapping: extent) else { return [] }
+        let type = patch.type
         let meters = { (feet: Double) in Float(feet / SceneUnits.feetPerMeter) }
         let polygons = wall.groundPatchPolygons(
-            over: spans, within: extent, joinGap: meters(patchJoinGapFeet), inset: meters(patchInsetFeet), behind: meters(patchBehindWallFeet))
+            over: patch.seen(spans), within: within, joinGap: meters(patchJoinGapFeet), inset: meters(patchInsetFeet),
+            behind: meters(patchBehindWallFeet))
         let patches = polygons.compactMap { polygon -> SceneDocument.Ground? in
             var points: [[Double]] = []
             for p in polygon.map({ [feet($0.x), feet($0.y)] }) where p != points.last { points.append(p) }

@@ -224,6 +224,7 @@ enum ScanCopy {
         case .wrongSide: "That spot is behind the wall. Tap something on this side."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
+        case .fenceAcrossCorner: "That's round the corner. Mark the fence on each side of the corner as its own fence."
         }
     }
 
@@ -239,12 +240,6 @@ enum ScanCopy {
 
     // MARK: Ground
 
-    /// Asked on the feature review. The camera can't tell mulch from soil, so without this answer
-    /// the server's check of the ground under the battery always ends unsure.
-    static let groundQuestion = Instruction(
-        title: "What's on the ground along this wall?",
-        detail: "The battery can only stand on some kinds of ground."
-    )
     /// Names the homeowner would use: "Grass", not the schema's "lawn".
     static func groundName(_ type: GroundType) -> String {
         switch type {
@@ -263,9 +258,6 @@ enum ScanCopy {
         case .notSure: groundNotSure
         }
     }
-    /// The label over the answer once the question has folded into a row.
-    static let groundAnsweredLabel = "Ground along the wall"
-    static let groundChange = "Change"
 
     // MARK: Gap
 
