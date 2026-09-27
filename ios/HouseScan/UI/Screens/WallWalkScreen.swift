@@ -79,7 +79,7 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
-        if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
+        if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let coaching { return ScanCopy.coaching(coaching) }
         if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }

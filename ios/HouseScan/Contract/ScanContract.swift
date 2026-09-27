@@ -342,7 +342,9 @@ struct EndPreview: Equatable, Sendable {
     var atReticle: Bool
     /// Meters of walked path past `s` on this side, set when the homeowner walked back toward the
     /// meter by at least a keyframe's spacing: what the walk saw from there is left out if the wall
-    /// ends at `s`.
+    /// ends at `s`. Only while the walk asks to walk this side or mark its end, and not with the
+    /// phone far out from the wall (`WalkedEnd.leavesOut`, issue #66); "Wall ends here" pressed at
+    /// other times says it on the end question (`ScanViewState.endQuestionLeavesOut`).
     var leavesOutWalked: Float?
 }
 
@@ -661,6 +663,11 @@ final class ScanViewState {
     /// the wall turns a corner (it continues, unexplored) or something blocks it (a fence, gate
     /// or property line: a real limit). Nil when nothing is being asked.
     var endQuestion: WallSide?
+    /// Meters of the walk the end being asked about leaves out, when "Wall ends here" put it at
+    /// least a keyframe's spacing short of the farthest kept view on that side
+    /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
+    /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
+    var endQuestionLeavesOut: Float?
     /// Where the wall end on the side being walked would land now; nil while ending it isn't on
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.

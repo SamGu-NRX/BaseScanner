@@ -117,12 +117,14 @@ extension ScanEngine: ScanActions {
         // Unexplored until the homeowner says something blocks the wall there: an unanswered
         // question must not tell the server the usable wall stops at this point.
         state.endQuestion = side
+        state.endQuestionLeavesOut = nil
         setEnd(side, at: hit.s, kind: .unexplored)
     }
 
     func answerWallEnd(turnsCorner: Bool) {
         guard let side = state.endQuestion else { return }
         state.endQuestion = nil
+        state.endQuestionLeavesOut = nil
         if wallEndKinds[side] != nil { setEndKind(side, turnsCorner ? .unexplored : .limit) }
         // During the walk a corner is followed: the next wall is marked, and the walk goes on
         // along it. Until then the end stays marked, as an unexplored corner.
