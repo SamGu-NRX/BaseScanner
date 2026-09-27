@@ -32,6 +32,10 @@ struct ResultScreen: View {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
                     AnswerCard(result: result, canShowAR: state.spatialResultAvailable, revealed: revealed, actions: actions)
+                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
+                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                            .accessibilityIdentifier("result.spotRefused")
+                    }
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -136,12 +140,13 @@ struct ResultScreen: View {
                     if let scan = state.shareableScan {
                         ShareScanButton(url: scan)
                     }
-                    // Last, so the one action that throws the scan away is the farthest. The card's
-                    // button already starts over after a reject.
-                    if result.answer != .notHere {
+                    // Keep starting another scan after the current scan's review and export.
+                    // Completed scans stay on disk under ScanFolderCleanup's retention policy.
+                    // The card's button already starts over after a reject or a wall not measured.
+                    if result.answer != .notHere, !result.wallNotMeasured {
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(TextActionStyle())
-                            .accessibilityHint("Deletes this scan and its photos.")
+                            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
                             .accessibilityIdentifier("action.startOver")
                     }
                 }
@@ -155,6 +160,26 @@ struct ResultScreen: View {
                 .accessibilityIdentifier("result.details")
         }
         .tint(Palette.signalText)
+    }
+}
+
+private struct Notice: View {
+    var symbol: String
+    var text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(Palette.reviewInk)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.caution.opacity(0.18), in: .rect(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -183,9 +208,49 @@ private struct AnswerCard: View {
     let actions: any ScanActions
 
     var body: some View {
+        if result.wallNotMeasured {
+            notMeasured
+        } else {
+            answerCard
+        }
+    }
+
+    /// Neither side of the meter was walked (#76): no spot, no route, no checks, and the one
+    /// next step is a new scan.
+    private var notMeasured: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(ScanCopy.wallNotMeasured)
+                    .font(Typeface.screenTitle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("result.headline")
+                Text(ScanCopy.wallNotMeasuredDetail)
+                    .font(Typeface.hint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("result.wallNotMeasured")
+            }
+            .modifier(Reveal(revealed: revealed, order: 0))
+
+            Button {
+                actions.startOver()
+            } label: {
+                Label(ScanCopy.scanAgain, systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(.primary)
+            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
+            .accessibilityIdentifier("action.startOver")
+            .padding(.top, 18)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+    }
+
+    private var answerCard: some View {
         let answer = result.answer
         let lines = result.cardChecks
-        VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(ScanCopy.headline(answer))
                     .font(Typeface.screenTitle)
@@ -266,7 +331,7 @@ private struct AnswerCard: View {
                 Label(ScanCopy.scanAnotherWall, systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(.primary)
-            .accessibilityHint("Deletes this scan and its photos.")
+            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
             .accessibilityIdentifier("action.startOver")
         }
     }

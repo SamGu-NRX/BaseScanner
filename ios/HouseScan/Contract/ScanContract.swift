@@ -29,6 +29,8 @@ enum ScanPhase: String, Sendable, CaseIterable {
     case markFeatures
     case gapRequest
     case uploading
+    /// Before the result: is anything standing where the answer's spot would go (`SpotCheck`)?
+    case spotConfirm
     case result
     case resultAR
     case unsupported
@@ -504,6 +506,15 @@ enum GroundAnswer: Equatable, Sendable {
     case notSure
 }
 
+/// The next wall round a corner, marked and waiting for the homeowner to confirm it
+/// (`ScanViewState.nextWallConfirm`).
+struct NextWallConfirm: Equatable, Sendable {
+    var side: WallSide
+    /// Meters from the end marked on that side to where the marked wall meets this one
+    /// (`CoverageMap.CornerProposal.fromEnd`).
+    var fromEnd: Float
+}
+
 enum NextWallRefusal: Equatable, Sendable {
     /// No wall under the circle.
     case noSurface
@@ -677,9 +688,58 @@ struct ResultPresentation: Equatable, Sendable {
     /// Where the scan stopped on a side it didn't finish, nearer the meter than the spot, so a
     /// closer spot may lie past it (`PlacementResult.closerUnseenEnd`).
     var unseenEnd: UnseenEnd? = nil
+    /// True when neither side of the meter was walked: "Can't get there" ended both before the
+    /// homeowner walked either (`WalkRefusals`, #76). The wall line then comes from the meter tap
+    /// alone, so the screen says the wall couldn't be measured and shows no spot, no route and no
+    /// "See it on your wall" (`withWallNotMeasured`).
+    var wallNotMeasured = false
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
+    /// The answer's `policy.rules_sha256`: which rules judged the scan, for matching a screenshot
+    /// to the scan stamp (`ScanStamp`).
+    var rulesSHA256: String? = nil
+}
+
+// MARK: - Spot check
+
+/// The homeowner's answer to the spot check.
+enum SpotCheckAnswer: Equatable, Sendable {
+    /// Nothing stands in the area: the result is shown.
+    case clear
+    /// Something stands there: the scan stops claiming that area and is checked again.
+    case somethingThere
+}
+
+/// The one question asked before an answer's spot is shown as the result: is anything standing
+/// in front of the wall, or on the ground, in the area around the spot? A photo can claim wall
+/// and ground behind a bush, and a walked path can pass over something low, so the scan's claims
+/// there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
+/// "Bounded exceptions"). Meters of s along the wall and out from it, like `BatterySpot`.
+struct SpotCheck: Equatable {
+    /// Counts the checks of a scan.
+    let id: Int
+    /// The spot's footprint along the wall and out from it.
+    var spot: ClosedRange<Float>
+    var spotOut: ClosedRange<Float>
+    var spotHeight: Float
+    /// The whole area asked about: the footprint and the clearance zone around it.
+    var area: ClosedRange<Float>
+    var areaDepth: Float
+    /// The kept photo that shows the area best; nil when none does, and the question is asked
+    /// about the place itself.
+    var photo: Photo?
+    /// Nil until answered. The answer stays up a moment before the flow moves on.
+    var answer: SpotCheckAnswer?
+    /// The spot is the bundled sample's, not a server's (`ResultPresentation.isSample`).
+    var isSample: Bool
+
+    struct Photo: Equatable {
+        /// The unrotated landscape sensor image. Draw it rotated 90° clockwise, as `CameraFeed.still`.
+        var image: CGImage
+        /// Where it was taken, for drawing the area over it.
+        var projection: CameraProjection
+    }
 }
 
 // MARK: - State and intents
@@ -746,10 +806,21 @@ final class ScanViewState {
     /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
     /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
     var endQuestionLeavesOut: Float?
+    /// A wall marked during `GuidanceStep.markNextWall` whose corner passed the checks, waiting
+    /// for "Is this the next wall?" (`ScanActions.confirmNextWall`, #70). Nil otherwise.
+    var nextWallConfirm: NextWallConfirm?
     /// Where the wall end on the side being walked would land now; nil while ending it isn't on
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// "Can't get there" came again on a walk card within `WalkRefusals.repeatWindow` of the one
+    /// that last ended a side: the walk asks "End the scan here?" instead of ending this side too
+    /// (#82). Answered by `answerEndScan`.
+    var endScanQuestion = false
+    /// Set with `endScanQuestion` when ending the open sides now would leave ends closer than a
+    /// battery is wide (`WalkRefusals.endsTooClose`): "Done with this wall" would refuse them and
+    /// the walk would go on, so the question offers "Start over" instead of "Yes, end here".
+    var endScanTooShort = false
     /// True after "Done with this wall" was refused because the ends were closer together than
     /// `WallFrame.minWallLength`; the ends were cleared. False again once an end is marked.
     var wallTooShort = false
@@ -764,6 +835,8 @@ final class ScanViewState {
     /// server request on screen: what "One more view to finish" and "2 more views to finish" promise.
     var followUps = 0
     var result: ResultPresentation?
+    /// The homeowner's check of the proposed spot, retained beside the result.
+    var spotCheck: SpotCheck?
     /// True while the engine sees the AR scene drawing the result in the live camera
     /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
     /// draws `BatteryOverlay`.
@@ -776,6 +849,10 @@ final class ScanViewState {
     var isReplay = false
     /// True when the autopilot is driving the intents (UI tests, demos). Show a small badge.
     var isAutopilot = false
+    /// True for a practice scan (HouseScanKit `PracticeMeter`): a drawn sample meter stands in
+    /// for the electric meter and its close-up photo. Every screen that could pass for a real scan
+    /// shows a "Practice meter" badge. Set when the scan starts, from the developer options.
+    var isPracticeScan = false
     /// True when no server is configured and the result will be the bundled sample: nothing is
     /// sent, and every screen that talks about the upload or shows the spot must say so.
     var usesSampleResult = false
@@ -823,6 +900,12 @@ protocol ScanActions: AnyObject {
     /// `GuidanceStep.markNextWall`. The walk then goes on along it; "I can't get there"
     /// (`cannotAccessArea`) leaves the end as an unexplored corner instead.
     func markNextWall(at point: CGPoint?, viewSize: CGSize)
+    /// "Back" during `GuidanceStep.markNextWall`: stops looking for the next wall and asks
+    /// `ScanViewState.endQuestion` about that end again (#70).
+    func cancelNextWall()
+    /// The answer to `ScanViewState.nextWallConfirm`: true follows the corner to the marked wall,
+    /// false drops it and goes on looking for the next wall (#70).
+    func confirmNextWall(_ isNextWall: Bool)
     /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
     func answerOverhead(clear: Bool)
     /// The answer to the ground question during `.markFeatures`; can be changed until upload.
@@ -836,6 +919,11 @@ protocol ScanActions: AnyObject {
     /// Leave the walk for the feature review (allowed once both ends are marked). Ends closer
     /// together than `WallFrame.minWallLength` are cleared instead, and `wallTooShort` is set.
     func finishWalk()
+    /// The answer to `ScanViewState.endScanQuestion`. "Yes, end here" (`end`) ends every side
+    /// without an end where "Can't get there" would (`ScanViewState.endPreview`, unexplored) and
+    /// finishes the walk with what was walked, as `finishWalk` does. "Keep walking" dismisses the
+    /// question, and the next "Can't get there" ends its side without asking.
+    func answerEndScan(_ end: Bool)
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()
     /// "I can't get there": the gap is recorded for installer review. On a request the finished
@@ -853,11 +941,16 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
+    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
+    func answerSpotCheck(clear: Bool)
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()
     func closeAR()
     func startOver()
+    /// The app came back to the foreground on the camera-access failure: if access is now on,
+    /// the scan goes on without Start over. Does nothing otherwise.
+    func recheckCameraAccess()
     /// The live AR camera view. Only called while `feed == .live`.
     func liveCameraView() -> AnyView
 }

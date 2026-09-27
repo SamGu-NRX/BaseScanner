@@ -14,13 +14,17 @@ struct WallWalkScreen: View {
     @State private var cameraSize: CGSize = .zero
     @State private var trayOpen = false
     @State private var taps: [TapRipple.Ripple] = []
+    /// The camera area between the card and the controls, for the aim ring's legend.
+    @State private var openArea: OpenCameraArea? = nil
+    /// The aim ring's legend while it doesn't fit beside the ring: drawn under the card (#81).
+    @State private var cardLegend: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: nil)
+            CameraOverlays(state: state, highlight: nil, openArea: openArea, cardLegend: $cardLegend)
             if state.coaching == .relocalizing, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up shows what to aim at.
                 SavedMeterPhoto(image: meterPhoto)
@@ -28,7 +32,7 @@ struct WallWalkScreen: View {
             }
             // The mark (a feature, the next wall round a corner, or the wall's end when the walk
             // asks for it) lands under the circle.
-            if state.marking != nil || isMarkingNextWall || controlsKey == .markEnd {
+            if state.marking != nil || controlsKey == .nextWall || controlsKey == .markEnd {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -45,7 +49,9 @@ struct WallWalkScreen: View {
                 onCameraTap: state.marking == nil ? nil : { point in
                     taps.append(.init(point: point))
                     actions.markFeaturePoint(at: point, viewSize: cameraSize)
-                }
+                },
+                legend: cardLegend,
+                openArea: $openArea
             ) {
                 VStack(spacing: 10) {
                     controls
@@ -80,8 +86,10 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
+        if state.endScanQuestion { return state.endScanTooShort ? ScanCopy.endScanTooShort : ScanCopy.endScanQuestion }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
+        if let confirm = state.nextWallConfirm { return ScanCopy.nextWallConfirm(confirm) }
         if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
         // Coaching about how the photos come out (the capture gate's, and too little texture)
         // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
@@ -106,7 +114,7 @@ struct WallWalkScreen: View {
     /// that only rides along: the refusal's words are on the card, so its tone should match.
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
+        let coachingShows = state.marking == nil && !state.endScanQuestion && state.endQuestion == nil && !state.overheadQuestion && state.nextWallConfirm == nil
         if coachingShows, let coaching, ScanCopy.coachingReplacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
@@ -119,13 +127,15 @@ struct WallWalkScreen: View {
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
-        case marking, endQuestion, overheadQuestion, tray, nextWall, markEnd, finish, walking
+        case marking, endScanQuestion, endQuestion, overheadQuestion, nextWallConfirm, tray, nextWall, markEnd, finish, walking
     }
 
     private var controlsKey: ControlsKey {
         if state.marking != nil { return .marking }
+        if state.endScanQuestion { return .endScanQuestion }
         if state.endQuestion != nil { return .endQuestion }
         if state.overheadQuestion { return .overheadQuestion }
+        if state.nextWallConfirm != nil { return .nextWallConfirm }
         if trayOpen { return .tray }
         if isMarkingNextWall { return .nextWall }
         if case .markEnd = state.guidance { return .markEnd }
@@ -173,6 +183,43 @@ struct WallWalkScreen: View {
                 .accessibilityIdentifier("action.markPoint")
             }
             .transition(.opacity)
+        case .endScanQuestion:
+            // "Can't get there" again soon after it ended a side (#82): two equal full-width
+            // answers, like the end question's.
+            // With too little walked to finish, "Start over" takes the place of "Yes, end here",
+            // which would only put the homeowner back on the walk.
+            VStack(spacing: 8) {
+                if state.endScanTooShort {
+                    Button {
+                        actions.startOver()
+                    } label: {
+                        Label(ScanCopy.endScanStartOver, systemImage: "arrow.counterclockwise")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
+                    .accessibilityIdentifier("action.endScanStartOver")
+                } else {
+                    Button {
+                        actions.answerEndScan(true)
+                    } label: {
+                        Label(ScanCopy.endScanYes, systemImage: "checkmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Finishes the walk with the part of the wall you've walked")
+                    .accessibilityIdentifier("action.endScan")
+                }
+                Button {
+                    actions.answerEndScan(false)
+                } label: {
+                    Label(ScanCopy.keepWalking, systemImage: "figure.walk")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.keepWalking")
+            }
+            .transition(.opacity)
         case .endQuestion:
             // One question, three equal full-width answers that say what they mean (checklist I4).
             VStack(spacing: 8) {
@@ -210,13 +257,59 @@ struct WallWalkScreen: View {
         case .overheadQuestion:
             OverheadAnswers(actions: actions)
                 .transition(.opacity)
+        case .nextWallConfirm:
+            // "Is this the next wall?" before the walk follows the corner (#70).
+            VStack(spacing: 8) {
+                Button {
+                    actions.confirmNextWall(true)
+                } label: {
+                    Label("Yes, this is the next wall", systemImage: "checkmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.primary)
+                .accessibilityIdentifier("action.nextWallYes")
+                Button {
+                    actions.confirmNextWall(false)
+                } label: {
+                    Label("No, keep looking", systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("Aim at another wall and mark it")
+                .accessibilityIdentifier("action.nextWallNo")
+            }
+            .transition(.opacity)
+        case .nextWall:
+            // Back asks about the end again (#70); marking something waits for the walk.
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
+            layout {
+                Button {
+                    actions.cancelNextWall()
+                } label: {
+                    Label("Back", systemImage: "chevron.backward")
+                        .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("Asks again what's at this end of the wall")
+                .accessibilityIdentifier("action.nextWallBack")
+                Button {
+                    actions.markNextWall(at: nil, viewSize: cameraSize)
+                } label: {
+                    Label("Mark next wall", systemImage: nextWallSymbol)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.primary)
+                .accessibilityHint("Marks the wall under the circle in the middle of the screen as the wall round the corner")
+                .accessibilityIdentifier("action.markNextWall")
+            }
+            .transition(.opacity)
         case .tray:
             FeatureTray(
                 onPick: { kind in actions.beginMarking(kind) },
                 onClose: { trayOpen = false }
             )
             .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
-        case .nextWall, .markEnd, .finish, .walking:
+        case .markEnd, .finish, .walking:
             // One row for all three, so "Mark something" stays the same view while the button
             // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the
             // accessibility audit reported as not following Dynamic Type.
@@ -229,16 +322,6 @@ struct WallWalkScreen: View {
                     .allowsHitTesting(!isSeeingBehind)
                     .accessibilityHidden(isSeeingBehind)
                 switch controlsKey {
-                case .nextWall:
-                    Button {
-                        actions.markNextWall(at: nil, viewSize: cameraSize)
-                    } label: {
-                        Label("Mark next wall", systemImage: nextWallSymbol)
-                    }
-                    .buttonStyle(.primary)
-                    .accessibilityHint("Marks the wall under the circle in the middle of the screen as the wall round the corner")
-                    .accessibilityIdentifier("action.markNextWall")
-                    .transition(.opacity)
                 case .markEnd:
                     Button {
                         actions.markWallEnd(at: nil, viewSize: cameraSize)
@@ -295,7 +378,7 @@ struct WallWalkScreen: View {
     /// aim step, "Can't get there" on the walk). Its identifier is `action.cannotAccess` on
     /// every step.
     private var reply: InstructionCard.Reply? {
-        guard state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, !coachingHidesReply, !trayOpen,
+        guard state.marking == nil, !state.endScanQuestion, state.endQuestion == nil, !state.overheadQuestion, state.nextWallConfirm == nil, !coachingHidesReply, !trayOpen,
               let copy = ScanCopy.reply(for: state.guidance) else { return nil }
         return InstructionCard.Reply(
             title: copy.title,

@@ -39,11 +39,29 @@ struct PhotoCounter: View {
 /// quiet pill rather than an amber one: amber means "look at this" on the camera screens, and a
 /// test mode shouldn't compete with the instruction. Ink at 0.7 keeps Chalk text about 6.9:1 on
 /// the light Canvas; at 0.55 it measured about 4.2:1, under the 4.5:1 small text needs.
+/// The separate practice badge identifies the synthetic meter throughout the scan.
 struct ModeBadge: View {
     var isReplay: Bool
     var isAutopilot: Bool
+    /// Set once for every screen by `ScanRootView`, so each badge says a practice scan is one.
+    @Environment(\.isPracticeScan) private var isPracticeScan
 
     var body: some View {
+        // Side by side, or stacked when the largest text sizes leave no room for both.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { capsules }
+            VStack(alignment: .leading, spacing: 4) { capsules }
+        }
+    }
+
+    @ViewBuilder
+    private var capsules: some View {
+        if isPracticeScan {
+            // Its own capsule, first: of everything on the screen, this is what says the meter
+            // and its number aren't real.
+            capsule("Practice meter")
+                .accessibilityIdentifier("practiceBadge")
+        }
         if let text {
             Text(text)
                 .font(.caption2.weight(.medium))
@@ -54,6 +72,18 @@ struct ModeBadge: View {
                 .accessibilityLabel(text)
                 .accessibilityIdentifier("modeBadge")
         }
+    }
+
+    private func capsule(_ text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .textCase(.uppercase)
+            .tracking(0.6)
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Palette.caution, in: .capsule)
+            .accessibilityLabel(text)
     }
 
     private var text: String? {

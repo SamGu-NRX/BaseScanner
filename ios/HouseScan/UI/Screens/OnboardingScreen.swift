@@ -30,9 +30,10 @@ struct OnboardingScreen: View {
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
             // The ring and the arrows carry most of the walk's guidance, and nothing said what
-            // they were for (#81).
-            guide: "A blue ring marks a spot to show. It fills and turns green once captured. When the spot is off screen, an arrow at the edge points to it.",
-            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
+            // they were for (#81). Most rings only mark where to go or look; only a spot to show
+            // fills, so the line covers both.
+            guide: "A blue ring shows where to go or look. When it asks you to show a spot, it fills as your phone captures it and turns green when done. If it's off screen, an arrow at the edge points to it.",
+            note: "Only the wall's measurements are sent. Completed scans and their photos stay on this phone until newer scans replace them.",
             art: .fog
         ),
         OnboardingPage(
@@ -46,6 +47,7 @@ struct OnboardingScreen: View {
         VStack(spacing: 0) {
             HStack {
                 ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                DeveloperOptionsButton()
                 Spacer()
                 if page < pages.count - 1 {
                     Button("Skip") {
