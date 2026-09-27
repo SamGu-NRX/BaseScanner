@@ -78,6 +78,9 @@ class RuleSet:
     errors: dict[str, float]
     # the height up the wall the cable route must be seen, from the meter to the battery
     route_height_ft: float = 0.0
+    # the distance between the battery starts the server evaluates (sweep.step_ft); a sweep run
+    # lists evaluated starts from its first one at this step
+    step_ft: float | None = None
 
     @classmethod
     def from_yaml(cls, text: str) -> RuleSet:
@@ -126,7 +129,14 @@ class RuleSet:
             for name in ("tap", "vlm", "tape", "wall", "mesh", "plane", "meter")
         }
         errors["drift_per_ft"] = value("errors", "drift_per_ft")
-        return cls(value("battery", "width_ft"), depth, needs, errors, value("route", "height_ft"))
+        return cls(
+            value("battery", "width_ft"),
+            depth,
+            needs,
+            errors,
+            value("route", "height_ft"),
+            value("sweep", "step_ft"),
+        )
 
 
 def schema_errors(instance: Any, schema: dict) -> list[str]:
@@ -368,10 +378,21 @@ def measured_band_gap(
     return None
 
 
+def run_starts(span: list[float], step_ft: float | None) -> list[float]:
+    """The starts a sweep run stands for: its first, then every step to its last."""
+    if step_ft is None or step_ft <= 0:
+        raise ValueError("checking a sweep run needs the rules' sweep.step_ft")
+    a, b = span
+    count = max(0, round((b - a) / step_ft))
+    return [a + k * step_ft for k in range(count)] + [b]
+
+
 def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     """Missing coverage is never a pass (C5), to the reach each check's rule looks out to (see
-    reach_gaps). A sweep run that passes needs every check's area for every start in it, and the
-    wall and cable route back to the meter. No slack: runs list exactly the starts that were
+    reach_gaps). A sweep run that passes needs, for each start in it, every check's area around
+    that start's battery with that battery's own position error, and the wall and cable route
+    back to the meter. Checking the whole run as one battery at its farthest start's error would
+    ask for more than any single start needs. No slack: runs list exactly the starts that were
     evaluated."""
     problems: list[str] = []
     route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft, beyond=True)
@@ -393,8 +414,16 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
                 f"{rules.route_height_ft} ft"
             )
         for check in sorted(set(rules.needs) & evaluated):
-            for _, gap in reach_gaps(scene, rules, check, run["wall_id"], lo, hi):
-                problems.append(f"sweep pass for starts {run['start_ft']} but {check} needs {gap}")
+            gaps = {}  # each gap once, at the first start that needs it
+            for start in run_starts(run["start_ft"], rules.step_ft):
+                battery = (start, start + rules.width_ft)
+                for _, gap in reach_gaps(scene, rules, check, run["wall_id"], *battery):
+                    gaps.setdefault(gap, start)
+            problems += [
+                f"sweep pass for starts {run['start_ft']} but at start {start:.2f} {check} "
+                f"needs {gap}"
+                for gap, start in gaps.items()
+            ]
 
     spot = result.get("spot")
     if spot is not None:

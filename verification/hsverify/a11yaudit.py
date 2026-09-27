@@ -229,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         simrun.prepare_display(udid, args.appearance, args.content_size)
         subprocess.run(["xcrun", "simctl", "uninstall", udid, bundle_id], capture_output=True)
         simrun.simctl("install", udid, str(app))
+        simrun.discard_app(app)
         subprocess.run(
             ["xcrun", "simctl", "privacy", udid, "grant", "camera", bundle_id], capture_output=True
         )

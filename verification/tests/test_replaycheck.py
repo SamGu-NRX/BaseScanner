@@ -107,6 +107,18 @@ def test_format_errors_are_specific(tmp_path):
     assert "1 motion keyframes closer than the declared spacing gate" in joined
 
 
+def test_malformed_fields_are_format_errors_not_crashes(tmp_path):
+    s = session_with(tmp_path, [[0, 0, -0.6 * i] for i in range(4)])
+    del s["gates"]["keyframeSpacingDegrees"]
+    s["keyframes"][1]["intrinsics"] = [500, 500, 320]
+    s["keyframes"][2]["pose"] = s["keyframes"][2]["pose"][:15]
+    s["keyframes"][3]["intrinsics"] = [500, "500", 320, 240]
+    errors, _ = check_format(tmp_path, s)
+    assert "gates set keyframeSpacingMeters without keyframeSpacingDegrees" in errors
+    for name in ("k2", "k3", "k4"):
+        assert f"{name}: intrinsics must be 4 finite numbers and pose 16" in errors
+
+
 @pytest.mark.parametrize("scale", [1.0, 0.64])
 def test_accuracy_separates_scale_from_alignment(tmp_path, scale):
     truth_pos = [[0.0, 0.0, -float(i)] for i in range(40)]  # straight walk along -z

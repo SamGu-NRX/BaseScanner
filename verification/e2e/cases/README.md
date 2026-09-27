@@ -8,8 +8,9 @@ at origin/t3/server 2c9348f, which is public configuration. Nobody read the serv
 or fixtures to write them, so a passing server has been checked against the spec, not against its
 own tests.
 
-`generate.py` writes every JSON file in this folder. Edit it, not the JSON, then run from
-`verification/`:
+`generate.py` writes the files marked `"generated_by": "e2e/cases/generate.py"`. Edit it, not
+those files, then run from `verification/`. A hand-written case without that marker survives
+regeneration, but it must not use a generated case's id:
 
 ```sh
 uv run python e2e/cases/generate.py

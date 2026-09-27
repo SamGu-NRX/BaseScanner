@@ -13,9 +13,10 @@ endpoint takes it, a zip only for the compressed-scene hostile input. Bundles re
 stay within fixed entry and size limits, checked before reading.
 
 Each scene is first validated against the scene schema published at the same ref, so a bad
-input is reported as an input problem, not a server bug. Each response must validate against
-the result schema and pass the invariants in `resultcheck`, with rules read from the ref's
-`rules.yaml`. Case files add the outcomes their geometry forces. Every scene is also resent
+input is reported as an input problem, not a server bug. Each response must be a JSON object
+that validates against the result schema (anything else is a failure in the report, not a
+crash) and passes the invariants in `resultcheck`, with rules read from the ref's `rules.yaml`.
+Case files add the outcomes their geometry forces. Every scene is also resent
 changed, and the answers must stay ordered: again (identical apart from timing), mirrored (same
 decision and outcome lengths), without or with less coverage, with ground trimmed just short
 of the largest clearance, with more error or tape re-measured by tap (nothing improves), and
@@ -397,6 +398,16 @@ def variant(item: SceneInput, name: str, scene: dict) -> SceneInput:
     )
 
 
+def parse_result(payload: bytes) -> dict | None:
+    """The body as a JSON object, or None: a server's malformed answer is a failure to report,
+    not a reason to stop the run before the report is written."""
+    try:
+        body = json.loads(payload)
+    except ValueError:
+        return None
+    return body if isinstance(body, dict) else None
+
+
 def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None, str | None]:
     """The server's result for a scene, or why there is none."""
     status, payload, _ = post(url, endpoint, item)
@@ -404,7 +415,10 @@ def answer(url: str, endpoint: Endpoint, item: SceneInput) -> tuple[dict | None,
         return None, f"no answer: {payload.decode(errors='replace')[:200]}"
     if status != 200:
         return None, f"HTTP {status}: {payload[:300]!r}"
-    return json.loads(payload), None
+    result = parse_result(payload)
+    if result is None:
+        return None, f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"
+    return result, None
 
 
 def judge(
@@ -439,7 +453,10 @@ def judge(
             else f"no answer within 60 s: {payload[:200]!r}"
         ]
         return record | {"status": "fail", "problems": failure, "contract_problems": failure}
-    result = json.loads(payload)
+    result = parse_result(payload)
+    if result is None:
+        failure = [f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"]
+        return record | {"status": "fail", "problems": failure, "contract_problems": failure}
     record["result"] = result
     problems = [f"result schema: {e}" for e in schema_errors(result, schemas["result"])]
     if problems:
@@ -487,7 +504,8 @@ def property_problems(
 
     # 1. Same input, same answer.
     status, payload, _ = post(url, endpoint, item)
-    if status != 200 or comparable(json.loads(payload)) != comparable(result):
+    again = parse_result(payload) if status == 200 else None
+    if again is None or comparable(again) != comparable(result):
         problems.append("sending the same scene twice gave different results")
 
     # 2. Mirrored left to right: same decision, same amount of each outcome along the wall.
@@ -661,8 +679,12 @@ def judge_hostile(
     elif status in (400, 413, 422):
         failure = None
     elif status == 200:
-        errors = schema_errors(json.loads(payload), schemas["result"])
-        failure = f"result schema: {errors[0]}" if errors else None
+        result = parse_result(payload)
+        if result is None:
+            failure = f"HTTP 200 with a body that is not a JSON object: {payload[:200]!r}"
+        else:
+            errors = schema_errors(result, schemas["result"])
+            failure = f"result schema: {errors[0]}" if errors else None
     else:
         failure = f"HTTP {status}: {payload[:200]!r}"
     problems = [failure] if failure else []

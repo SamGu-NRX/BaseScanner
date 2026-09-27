@@ -39,6 +39,7 @@ RULES = RuleSet(
         "meter": 0.3,
         "drift_per_ft": 0.16,
     },
+    step_ft=1 / 6,  # the server's 2 in
 )
 
 SCENE = {
@@ -441,3 +442,14 @@ def test_a_bundle_with_too_many_entries_is_refused(tmp_path, monkeypatch):
             z.writestr(f"k{i}.jpg", b"x")
     with pytest.raises(SystemExit, match="4 entries, limit 3"):
         load_input(archive)
+
+
+def test_a_200_that_is_not_a_json_object_is_a_failure_not_a_crash(monkeypatch):
+    for body in (b"<html>oops</html>", b"[1, 2]"):
+        monkeypatch.setattr(e2e, "post", lambda *args, body=body, **kwargs: (200, body, 5.0))
+        endpoint = Endpoint("/place", "application/json")
+        record = judge("http://unused", endpoint, item(), SCHEMAS, RULES)
+        assert record["status"] == "fail"
+        assert "not a JSON object" in record["contract_problems"][0]
+        hostile = judge_hostile("http://unused", endpoint, hostile_inputs()[3], SCHEMAS)
+        assert hostile["status"] == "fail" and "not a JSON object" in hostile["problems"][0]

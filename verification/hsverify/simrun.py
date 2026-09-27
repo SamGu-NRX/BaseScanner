@@ -52,6 +52,7 @@ DEVICE_TYPE = "com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 DEFAULT_REPORTS = Path.home() / "house-scanning-data" / "reports" / "sim"
 DERIVED_DATA = Path("/tmp/hs-verify-derived-data")
 BUILD_LOCK = Path("/tmp/hs-verify-xcodebuild.lock")
+BUILT_APP_DIR = "built-app"  # in the report folder, until the Simulator has installed it
 
 
 @dataclass
@@ -205,6 +206,14 @@ def build_app(
         with log_path.open("w") as log:
             code = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT).returncode
         seconds = time.monotonic() - start
+        # DerivedData is shared: once the lock is released another run may rebuild over this
+        # app before it is installed, so this run installs its own copy.
+        built = DERIVED_DATA / "Build" / "Products" / "Debug-iphonesimulator" / f"{scheme}.app"
+        app = None
+        if code == 0 and built.exists():
+            app = out / BUILT_APP_DIR / built.name
+            shutil.rmtree(app.parent, ignore_errors=True)
+            shutil.copytree(built, app, symlinks=True)
     text = log_path.read_text(errors="replace")
     warnings = sorted(set(re.findall(r"^.*: warning: .*$", text, re.M)))
     errors = sorted(set(re.findall(r"^.*: error: .*$", text, re.M)))
@@ -217,8 +226,13 @@ def build_app(
         "errors": [shorten(e, tree) for e in errors],
         "log": log_path.name,
     }
-    app = DERIVED_DATA / "Build" / "Products" / "Debug-iphonesimulator" / f"{scheme}.app"
-    return result, (app if code == 0 and app.exists() else None)
+    return result, app
+
+
+def discard_app(app: Path) -> None:
+    """Remove this run's copy of the app once the Simulator has installed its own."""
+    if app.parent.name == BUILT_APP_DIR:
+        shutil.rmtree(app.parent, ignore_errors=True)
 
 
 def bundle_id_of(app: Path) -> str:
@@ -615,6 +629,7 @@ def main(argv: list[str] | None = None) -> int:
             prepare_display(udid, args.appearance, args.content_size)
             subprocess.run(["xcrun", "simctl", "uninstall", udid, bundle_id], capture_output=True)
             simctl("install", udid, str(app))
+            discard_app(app)
             # The Simulator has no camera, but granting access keeps the permission prompt from
             # hiding the replay flow. The prompt itself is reviewed on a device.
             subprocess.run(

@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -11,6 +12,7 @@ from hsverify.resultcheck import (
     battery_error,
     chain_ends_s,
     comparable,
+    coverage_problems,
     expectation_problems,
     invariant_problems,
     less_coverage_problems,
@@ -21,6 +23,7 @@ from hsverify.resultcheck import (
     observed,
     outcome_at,
     outcome_lengths,
+    run_starts,
     tape_to_tap,
     with_ground_short_of,
     with_less_coverage,
@@ -47,6 +50,7 @@ RULES = RuleSet(
         "meter": 0.3,
         "drift_per_ft": 0.16,
     },
+    step_ft=1 / 6,  # the server's 2 in
 )
 
 SCENE = {
@@ -344,11 +348,9 @@ def test_the_reach_widens_by_the_battery_position_error():
 
 
 def test_a_clearance_is_named_under_each_band_it_lacks():
-    two_band = RuleSet(
-        RULES.width_ft,
-        RULES.depth_ft,
-        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 1.0, height=6.5))},
-        RULES.errors,
+    two_band = replace(
+        RULES,
+        needs=RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 1.0, height=6.5))},
     )
     scene = copy.deepcopy(SCENE)
     scene["coverage"]["observed"] = []  # nothing seen: both bands missing around the spot
@@ -376,6 +378,7 @@ openings: {exempt_bottom_above_ft: null}
 facing: {min_ft: {value: 3}}
 headroom: {min_ft: {value: 6.5}}
 route: {height_ft: {value: 1}}
+sweep: {step_ft: {value: 0.166666666667}}
 """
     rules = RuleSet.from_yaml(text)
     assert rules.needs["pool_clearance"] == (Need("ground", 10.0),)
@@ -664,16 +667,14 @@ def test_a_request_to_see_higher_than_the_view_reached_is_not_redundant():
     assert any("lists as observed" in m for m in full)
 
 
-BAND_RULES = RuleSet(
-    RULES.width_ft,
-    RULES.depth_ft,
-    RULES.needs
+BAND_RULES = replace(
+    RULES,
+    needs=RULES.needs
     | {
         "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0, widen=False),),
         "headroom": (Need("overhead", 0.0, 6.5, widen=False),),
         "battery_clearance": (Need("ground", 100.0),),
     },
-    RULES.errors,
 )
 
 
@@ -735,11 +736,9 @@ def test_the_wall_source_sets_the_default_error(wall, error):
 
 
 def test_a_request_to_walk_past_the_real_end_covers_what_lies_beyond_it():
-    wide = RuleSet(
-        RULES.width_ft,
-        RULES.depth_ft,
-        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 3.0, height=6.5))},
-        RULES.errors,
+    wide = replace(
+        RULES,
+        needs=RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 3.0, height=6.5))},
     )
     scene = copy.deepcopy(SCENE)
     scene["walls"][0]["baseline"] = [[-1.0, 0.0], [12.0, 0.0]]  # the chain's left end is s = -1
@@ -796,3 +795,38 @@ def test_a_facing_view_that_only_reaches_the_needed_depth_is_not_beyond():
     assert any("facing [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
     scene["coverage"]["observed"][-1]["out_ft"] = need + 0.01
     assert invariant_problems(scene, r, rules=BAND_RULES) == []
+
+
+def test_each_start_in_a_sweep_run_needs_only_its_own_reach():
+    # A pool radius of 10 ft with the default wall error. Start 1's battery [1, 3.58] is 0.87 ft
+    # uncertain, so it needs ground out to 1.83 + 10 + 0.87 = 12.71 ft; start 10's is 2.31 ft
+    # uncertain. As one battery at start 10's error, the run would ask 14.15 ft in front of start 1.
+    pool = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
+    scene = {
+        "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"},
+        "walls": [{"id": "w1", "baseline": [[-40.0, 0.0], [40.0, 0.0]]}],
+        "objects": [],
+        "coverage": {
+            "ends": {"left": {"kind": "limit"}, "right": {"kind": "limit"}},
+            "observed": [
+                {"band": "wall", "span_ft": [-40.0, 40.0]},
+                {"band": "ground", "span_ft": [-40.0, 2.0], "out_ft": 13.5},
+                {"band": "ground", "span_ft": [2.0, 40.0], "out_ft": 25.0},
+            ],
+        },
+    }
+    run = {"wall_id": "w1", "start_ft": [1.0, 10.0], "outcome": "pass", "failing": [], "unsure": []}
+    r = result(spot=False, checks=[check() | {"id": "pool_clearance"}], sweep=[run])
+    assert coverage_problems(scene, r, pool) == []
+    scene["coverage"]["observed"][1]["out_ft"] = 12.5
+    assert any(
+        "at start 1.00 pool_clearance needs ground [1.00, 2.00] observed out to 12.71 ft" in m
+        for m in coverage_problems(scene, r, pool)
+    )
+
+
+def test_a_sweep_run_stands_for_its_starts_at_the_rules_step():
+    assert run_starts([1.0, 1.5], 1 / 6) == pytest.approx([1.0, 7 / 6, 8 / 6, 1.5])
+    assert run_starts([2.0, 2.0], 1 / 6) == [2.0]
+    with pytest.raises(ValueError, match=r"sweep\.step_ft"):
+        run_starts([1.0, 2.0], None)
