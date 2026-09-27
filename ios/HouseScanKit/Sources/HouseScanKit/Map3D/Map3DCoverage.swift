@@ -132,7 +132,7 @@ extension Map3D {
     /// from a vertical plane through it (half a voxel's diagonal), so 7.5 cm keeps every voxel
     /// the face runs through and turns away the next layer out. Something standing closer to
     /// the wall than about that is part of the facade.
-    private var faceTolerance: Float { config.voxelSize * 0.75 }
+    var faceTolerance: Float { config.voxelSize * 0.75 }
 
     /// Where the facade runs near a cell, meters out from the chain's line: the mode (2 cm bins)
     /// of the offsets of well-seen, outward-facing surface voxels within `faceBehind` of the
@@ -289,7 +289,7 @@ extension Map3D {
 
     /// Where the space in front of the facade starts, meters out from the chain's line: the
     /// middle of the first voxel past the facade's face. Ground is judged from here.
-    private func nearStart(_ facade: Float) -> Float { facade + faceTolerance + config.voxelSize / 2 }
+    func nearStart(_ facade: Float) -> Float { facade + faceTolerance + config.voxelSize / 2 }
 
     private func groundReach(cell index: Int, along wall: WallFrame, facade: Float) -> Float? {
         let ss = samples(in: cellRange(index))
