@@ -533,6 +533,7 @@ final class ScanEngine {
         }
         RuntimeLog.engine.info("meter number: \(readout.candidates.count) candidates to choose from")
         meterReadout = readout
+        state.meterBrand = readout.brand
         state.meterNumber = .choose(readout.candidates)
     }
 

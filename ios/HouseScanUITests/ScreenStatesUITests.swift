@@ -102,6 +102,20 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
+    /// The brand read on the close-up is only offered: "Not <brand>" removes it and leaves the
+    /// number candidates to answer.
+    @MainActor
+    func testRejectingTheMeterBrandKeepsTheNumbers() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"]
+        app.launch()
+        XCTAssertTrue(element(app, "meter.brand").waitForExistence(timeout: 15))
+        tap(app, "action.rejectMeterBrand")
+        XCTAssertTrue(element(app, "meter.brand").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(element(app, "meter.candidate.0").exists)
+    }
+
     /// The homeowner's path through the real buttons and camera taps, not the autopilot.
     @MainActor
     func testWholeFlowThroughTheButtons() throws {
