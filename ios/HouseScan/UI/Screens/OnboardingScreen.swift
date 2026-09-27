@@ -20,6 +20,9 @@ struct OnboardingScreen: View {
         OnboardingPage(
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
+            // The ring and the arrows carry most of the walk's guidance, and nothing said what
+            // they were for (#81).
+            guide: "A blue ring marks a spot to show. It fills and turns green once captured. When the spot is off screen, an arrow at the edge points to it.",
             note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
             art: .fog
         ),
@@ -95,8 +98,10 @@ private struct OnboardingPage {
     enum Art { case walk, fog, safety }
     var title: String
     var body: String?
+    /// A line about what the walk draws over the camera, set apart with the ring's icon.
+    var guide: String? = nil
     /// A quieter line under the body, set apart with an icon.
-    var note: String?
+    var note: String? = nil
     var art: Art
 }
 
@@ -143,6 +148,14 @@ private struct OnboardingPageView: View {
                     .font(.system(.title3, design: .rounded, weight: .regular))
                     .foregroundStyle(Palette.muted)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if let guide = page.guide {
+                Label(guide, systemImage: "scope")
+                    .font(Typeface.hint)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("onboarding.ring")
             }
             if let note = page.note {
                 Label(note, systemImage: "lock.fill")

@@ -32,6 +32,10 @@ import SwiftUI
 /// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
 /// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
 /// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoAim`: with `-uiDemoPhase wallWalk`, the walk asks to tilt down at the ground right of
+///   the meter, and the ring is half full with its legend beside it. Unfrozen, it fills and the
+///   walk goes on.
+/// - `-uiDemoAimOffScreen`: as `-uiDemoAim`, for ground left of the view: the edge arrow shows.
 /// - `-uiDemoCorner`: the wall turns an outside corner 1.8 m right of the meter and the walk
 ///   followed it, so the window and part of its clearance zone are round the corner. For the
 ///   result model: `-uiDemoPhase result -uiDemoCorner`.

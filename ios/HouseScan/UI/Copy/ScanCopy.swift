@@ -64,6 +64,12 @@ enum ScanCopy {
         }
     }
 
+    /// The line beside the walk's first aim ring, which fills as its stretch is captured (#81).
+    /// A stretch counts only once it is seen from two places a step apart
+    /// (`CoverageConfig.coveringBaseline`), so holding still never fills the ring: the line asks
+    /// for a step.
+    static let aimRingLegend = "Keep the ring in view and take a small step to one side. It fills as your phone captures this spot."
+
     // MARK: Coaching
 
     static func coaching(_ coaching: Coaching) -> Instruction {

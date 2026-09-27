@@ -135,6 +135,9 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if arguments.contains("-uiDemoAim") || arguments.contains("-uiDemoAimOffScreen") {
+            enterAim(offScreen: arguments.contains("-uiDemoAimOffScreen"))
+        }
         if arguments.contains("-uiDemoCorner") {
             // The walk followed an outside corner right of the meter, between the battery spot and
             // the window, and went on 1.6 m along the next wall: that wall runs away from the
@@ -276,6 +279,18 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.walkScript() }
     }
 
+    /// `-uiDemoAim`: the ground lags the wall right of the meter, so the walk asks to tilt down
+    /// there, and the ring is half full: 2 of the 5 ground cells within 0.3 m of it are covered,
+    /// and 80 % completes it. `-uiDemoAimOffScreen`: the same ask for ground left of the view, so
+    /// the edge arrow stands in for the ring.
+    private func enterAim(offScreen: Bool) {
+        let s: Float = offScreen ? -2.4 : 0.4
+        state.guidance = .aimAtGround(s: s)
+        state.target = DemoScene.wall.world(s: s, height: 0, out: state.coverage.groundBandDepth / 2)
+        state.path = DemoScene.path(toward: s)
+        state.endPreview = nil
+    }
+
     /// A gap request: the phone's own by default, or `serverItem` from the check's answer.
     private func enterGap(serverItem: MissingEvidence? = nil) {
         // Leave a hole in the ground right of the likely spot, as the phone's planner would find.
@@ -412,6 +427,17 @@ final class DemoEngine: ScanActions {
                 capture(.walk)
                 refreshCoverage()
                 refreshGuidance()
+            }
+            if case .aimAtGround(let s) = state.guidance {
+                // A step to the side at a time: one more ground cell by the ring is covered each
+                // tick, from its middle out, and the walk goes on once the ring is full.
+                if (state.aimProgress ?? 0) >= 1 {
+                    capture(.walk)
+                    refreshCoverage()
+                    refreshGuidance()
+                } else {
+                    coverGroundCell(nearest: s)
+                }
             }
         }
     }
@@ -559,6 +585,21 @@ final class DemoEngine: ScanActions {
         for index in coverage.ground.indices where span.contains(coverage.cellRange(index).lowerBound + Self.cellWidth / 2) {
             coverage.ground[index] = cell
         }
+        coverage.revision += 1
+        state.coverage = coverage
+    }
+
+    /// Covers the ground cell nearest `s` that isn't covered yet.
+    private func coverGroundCell(nearest s: Float) {
+        let strip = state.coverage
+        let center = { (index: Int) -> Float in
+            let range = strip.cellRange(index)
+            return (range.lowerBound + range.upperBound) / 2
+        }
+        let open = strip.ground.indices.filter { strip.ground[$0] != .covered }
+        guard let index = open.min(by: { abs(center($0) - s) < abs(center($1) - s) }) else { return }
+        var coverage = strip
+        coverage.ground[index] = .covered
         coverage.revision += 1
         state.coverage = coverage
     }
