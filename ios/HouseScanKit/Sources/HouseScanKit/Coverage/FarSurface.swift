@@ -50,11 +50,12 @@ public enum FarSurface {
     /// reaches the point it is met at. The smaller of the two, rounded down to `quantum`, with
     /// touching cells of equal distance merged. Cells with no such plane are left out.
     ///
-    /// A plane whose outline comes within `minOut` of the wall's line, or crosses it, at either
-    /// end is the wall's own, or runs into it, and never counts (`Candidate.clearsWall`): replayed
-    /// on the build 7.1 corridor, the corridor wall's own plane, turned about 11 degrees off the
-    /// chain's piece, passed `minOut` two thirds of the way along and came out as a far surface
-    /// under 3 ft out. So is the plane the meter's wall was refit to (`excluding`, by id).
+    /// A plane whose outline comes within `minOut` of the line of the nearest piece parallel to
+    /// it, or crosses it, at either end is the wall's own, or runs into it, and never counts
+    /// (`Candidate.clearsWall`): replayed on the build 7.1 corridor, the corridor wall's own
+    /// plane, turned about 11 degrees off the chain's piece, passed `minOut` two thirds of the
+    /// way along and came out as a far surface under 3 ft out. Nor does the plane the meter's
+    /// wall was refit to (`excluding`, by id).
     ///
     /// A plane is ARKit's fit to a surface, not a measurement of what stands between it and the
     /// wall: it says where the space ends, never that the space before it is clear.
@@ -119,8 +120,8 @@ public enum FarSurface {
             let heights = plane.boundary.map(\.y)
             guard let first = offsets.min(), let last = offsets.max(), let bottom = heights.min(), let top = heights.max(),
                   last - first >= config.minWidth, top - bottom >= config.minHeight else { return nil }
-            guard Self.clearsWall(plane.center + along * first, wall: wall, config: config),
-                  Self.clearsWall(plane.center + along * last, wall: wall, config: config) else { return nil }
+            guard Self.clearsWall(plane.center + along * first, normal: normal, wall: wall, config: config),
+                  Self.clearsWall(plane.center + along * last, normal: normal, wall: wall, config: config) else { return nil }
             self.center = plane.center
             self.normal = normal
             self.along = along
@@ -129,16 +130,23 @@ public enum FarSurface {
         }
 
         /// Whether one horizontal end of a plane's outline stands at least `minOut` in front of
-        /// every piece of the wall whose stretch it lies along. A plane is straight, so with both
-        /// ends clear of a piece's line all of it is. An end along no piece (round a corner, past
-        /// where the chain turns) is not held to any: measured against the piece before the
-        /// corner, a corridor's far wall ending at the corridor's mouth would read as touching
-        /// the wall it only lines up with.
-        static func clearsWall(_ end: SIMD3<Float>, wall: WallFrame, config: FarSurfaceConfig) -> Bool {
-            wall.segments.allSatisfy { piece in
-                let at = piece.coordinates(ofOffset: end - wall.origin)
-                return !piece.span.contains(at.s) || at.out >= config.minOut
-            }
+        /// the wall it could be the wall's own plane of: the piece nearest the end in plan among
+        /// those within `maxAngle` of parallel to the plane, measured against that piece's whole
+        /// line, however far along it the end lies. A plane is straight, so with both ends clear
+        /// of the line all of it is. Pieces turned further from the plane are left out, as they
+        /// are when a cell meets it: a corridor's far wall is never held to the wall across the
+        /// corridor's mouth, nor a fence parallel to the meter's wall to a side wall it runs up
+        /// to. Holding an end to whichever piece's stretch it lay along let the corridor wall's
+        /// own plane, running past the corner, be judged against the meter's wall instead
+        /// (review of #168). With no piece near parallel the plane faces no cell anyway.
+        static func clearsWall(_ end: SIMD3<Float>, normal: SIMD3<Float>, wall: WallFrame, config: FarSurfaceConfig) -> Bool {
+            let offset = end - wall.origin
+            let cosLimit = cos(config.maxAngle)
+            let nearest = wall.segments
+                .filter { abs(simd_dot($0.outward, normal)) >= cosLimit }
+                .min { $0.planDistance(toOffset: offset) < $1.planDistance(toOffset: offset) }
+            guard let nearest else { return true }
+            return nearest.coordinates(ofOffset: offset).out >= config.minOut
         }
     }
 }

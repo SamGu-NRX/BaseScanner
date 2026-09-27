@@ -79,6 +79,42 @@ import Testing
         #expect(nearlyEqual(spans.first?.span.lowerBound ?? 0, 1) && nearlyEqual(spans.last?.span.upperBound ?? 0, 6))
     }
 
+    /// The corridor wall's own plane, 10 degrees off its piece as above, reaching 0.52 m past the
+    /// corner into the space in front of the meter's wall: its near end, at (0.51, 0, 0.52), lies
+    /// along the meter's piece and 0.52 m in front of it, past `minOut`. It is held to the
+    /// corridor's piece, the only one near parallel to it, whose line it stands 0.09 m behind
+    /// there, so it still never counts (review of #168).
+    @Test func aWallsOwnPlaneRunningPastTheCornerIsNotAFarSurface() throws {
+        var wall = standardWall()
+        let corner = try Self.corner(on: wall, at: SIMD3(0.6, 0, -2), outward: SIMD3(1, 0, 0))
+        wall.turn(.right, at: corner)
+        let turn = Float.pi / 18
+        let near = SIMD3<Float>(0.6 - 0.52 * tan(turn), 0, 0.52)
+        let own = Self.plane("own", from: near, to: SIMD3(0.6 + 6 * tan(turn), 0, -6), normal: SIMD3(cos(turn), 0, sin(turn)))
+        #expect(FarSurface.spans(planes: [own], wall: wall, over: 1...6).isEmpty)
+    }
+
+    /// A fence 2 m in front of the meter's wall, parallel to it, runs from s = -2 up to 0.2 m short
+    /// of a side wall that comes forward at a corner 3 m right of the meter (the next piece runs
+    /// along +z from (3, 0, 0), facing -x). Its end at (2.8, 0, 2) lies along that side piece and
+    /// 0.2 m in front of it, but the side piece is turned 90 degrees from the fence: the fence is
+    /// held to the meter's piece, 2 m in front, and ends the space (1.9812 m, 2 rounded down to
+    /// 0.1 ft) over s -1 to 2.
+    @Test func aFenceRunningUpToASideWallStillEndsTheSpace() throws {
+        var wall = standardWall()
+        let corner = try Self.corner(on: wall, at: SIMD3(3, 0, 2), outward: SIMD3(-1, 0, 0))
+        wall.turn(.right, at: corner)
+        #expect(nearlyEqual(corner.s, 3))
+        let fence = Self.plane("fence", from: SIMD3(-2, 0, 2), to: SIMD3(2.8, 0, 2), normal: SIMD3(0, 0, -1))
+        let spans = FarSurface.spans(planes: [fence], wall: wall, over: -1...2)
+        #expect(spans.count == 1)
+        #expect(spans.allSatisfy { nearlyEqual($0.out, 65 * 0.03048) })
+    }
+
+    static func corner(on wall: WallFrame, at point: SIMD3<Float>, outward: SIMD3<Float>) throws -> WallCorner {
+        try wall.corner(on: .right, meeting: point, outward: outward)
+    }
+
     /// A far wall found turned 11 degrees off the piece still ends the space: a 7.6 m wide plane
     /// along z = 1.8 + x tan 11 degrees, from x = -0.5 (1.70 m out) to 6.96 (3.15 m out), meets
     /// the cells over s 0 to 2 between 1.8 and 2.19 m out. A plane 0.75 m wide, 1.5 m out, is
