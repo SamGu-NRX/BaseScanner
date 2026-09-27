@@ -657,13 +657,15 @@ final class ScanEngine {
         guard let map = coverage, state.endQuestion == nil, !state.overheadQuestion else { return }
         if let side = nextWallSide {
             state.guidance = .markNextWall(side: side, refusal: nextWallRefusal)
+            state.guidanceHint = nil
             state.target = nil
             state.path = []
             logGuidance()
             return
         }
-        if let span = tiltUpSpanIfDue(map) {
+        if let span = tiltUpSpanIfDue(map, camera: camera) {
             state.guidance = .tiltUp(span: span)
+            state.guidanceHint = nil
             state.target = map.wall.world(s: (span.lowerBound + span.upperBound) / 2, height: Self.tiltUpHeight(map))
             state.path = []
             logGuidance()
@@ -671,9 +673,11 @@ final class ScanEngine {
         }
         let screenTime = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
         let output = planner.update(coverage: map, camera: camera, time: screenTime)
+        logPlannerSwitch(output)
         if let hidden = hiddenBlock(output.task, map, camera: camera) {
             seeBehindBands = hidden.bands
             state.guidance = .seeBehind(s: hidden.s)
+            state.guidanceHint = nil
             state.target = hidden.bands.contains(.wall)
                 ? map.wall.world(s: hidden.s, height: 1)
                 : map.wall.world(s: hidden.s, height: 0, out: map.config.groundBandDepth / 2)
@@ -683,10 +687,36 @@ final class ScanEngine {
         } else {
             seeBehindBands = []
             state.guidance = Self.step(output.task)
+            state.guidanceHint = Self.hint(output, camera: camera)
             state.target = output.target
             state.path = output.path
         }
         logGuidance()
+    }
+
+    /// What the card of an aim step says beside the step (`GuidanceHint`); nil for other steps.
+    static func hint(_ output: GuidanceOutput, camera: CameraFrame) -> GuidanceHint? {
+        switch output.task {
+        case .aimAtGround, .aimAtWall:
+            return GuidanceHint(
+                aim: output.target.map { direction(AimHint.classify(target: $0, camera: camera)) },
+                needsSecondPosition: output.needsSecondPosition,
+                stepBack: output.stepBack
+            )
+        case .walk, .markEnd, .stepBack, .seeBehind, .complete:
+            return nil
+        }
+    }
+
+    /// Why the planner changed the walk's task, and a stalled request, in the guidance log
+    /// channel: the build 4.1 logs couldn't say why a card changed (#84). The packet's guidance
+    /// entries keep their outcome only (`closingOutcome`).
+    private func logPlannerSwitch(_ output: GuidanceOutput) {
+        if let stalled = output.stalled {
+            RuntimeLog.guidance.info("stalled: \(String(describing: stalled), privacy: .public) gained nothing for \(self.planner.config.stallTimeout) s; deferred until both ends are marked")
+        }
+        guard let reason = output.switched else { return }
+        RuntimeLog.guidance.info("switch (\(reason.rawValue, privacy: .public)) to \(String(describing: output.task), privacy: .public)")
     }
 
     // MARK: See-behind step (LiDAR)
@@ -762,6 +792,11 @@ final class ScanEngine {
         let output = planner.cues(for: task, coverage: map, camera: camera)
         state.target = output.target
         state.path = output.path
+        // The card follows the target on the frame shown, as the ring does.
+        if var hint = state.guidanceHint {
+            hint.aim = output.target.map { Self.direction(AimHint.classify(target: $0, camera: camera)) }
+            state.guidanceHint = hint
+        }
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next
@@ -780,13 +815,26 @@ final class ScanEngine {
     /// farther along gets its own `.overhead` request from the server.
     static let tiltUpReach: Float = 1.5
 
-    /// The stretch to ask about, once both ends are marked and answered and the step hasn't been
-    /// answered or skipped; nil otherwise, and when the marked ends leave no stretch.
-    private func tiltUpSpanIfDue(_ map: CoverageMap) -> ClosedRange<Float>? {
+    /// The stretch to ask about, once both ends are marked and answered, the step hasn't been
+    /// answered or skipped, and the phone is within reach of the stretch (`tiltUpInReach`) or the
+    /// step is already showing; nil otherwise, and when the marked ends leave no stretch. Out of
+    /// reach the walk's own tasks go on, and the step comes up when the phone comes back; still
+    /// unsettled when the walk ends, it is settled with nothing recorded (`finishWalk`).
+    private func tiltUpSpanIfDue(_ map: CoverageMap, camera: CameraFrame) -> ClosedRange<Float>? {
         guard !tiltUpSettled, let left = map.leftEnd, let right = map.rightEnd else { return nil }
         let low = max(left, -Self.tiltUpReach)
         let high = min(right, Self.tiltUpReach)
-        return low < high ? low...high : nil
+        guard low < high else { return nil }
+        if case .tiltUp = state.guidance { return low...high }
+        return Self.tiltUpInReach(low...high, cameraS: map.wall.wallPoint(camera.position).s) ? low...high : nil
+    }
+
+    /// Whether a phone at `cameraS` along the wall is near enough the tilt-up stretch to be asked
+    /// about it: within `tiltUpReach` plus 1 m of its middle, so within about 1 m of the stretch
+    /// when it is the full 3 m. On build 4.1 the step came up the moment both ends were marked,
+    /// at the right end, 19 ft from the meter (#64). The 1 m is a guess, not measured.
+    static func tiltUpInReach(_ span: ClosedRange<Float>, cameraS: Float) -> Bool {
+        abs(cameraS - (span.lowerBound + span.upperBound) / 2) <= tiltUpReach + 1
     }
 
     /// How far above the top wall row (`CoverageConfig.wallCaptureHeight`, 7.5 ft) a view must
@@ -1563,6 +1611,7 @@ final class ScanEngine {
         state.path = []
         state.coaching = nil
         state.guidance = .findMeter
+        state.guidanceHint = nil
         state.closeUp = .aiming(hold: 0, problem: nil)
         state.closeUpFailedAttempts = 0
         state.meterNumber = nil
@@ -1641,6 +1690,17 @@ extension ScanEngine {
         case .stepBack: .stepBack
         case .seeBehind(let s): .seeBehind(s: s)
         case .complete: .walkComplete
+        }
+    }
+
+    static func direction(_ hint: AimHint) -> AimDirection {
+        switch hint {
+        case .onScreen: .onScreen
+        case .above: .above
+        case .below: .below
+        case .left: .left
+        case .right: .right
+        case .behind: .behind
         }
     }
 

@@ -13,7 +13,8 @@ struct Instruction: Hashable {
 enum ScanCopy {
     // MARK: Guidance
 
-    static func guidance(_ step: GuidanceStep) -> Instruction {
+    /// `hint` changes the words of an aim step only (`aim(_:ground:hint:)`).
+    static func guidance(_ step: GuidanceStep, hint: GuidanceHint? = nil) -> Instruction {
         switch step {
         case .findMeter:
             Instruction(
@@ -38,10 +39,16 @@ enum ScanCopy {
         case .aimAtGround(let s):
             // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
             // so tilting down without moving never clears it.
-            Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)). Take a small step sideways as you look.")
+            aim(
+                Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)). Take a small step sideways as you look."),
+                ground: true, hint: hint
+            )
         case .aimAtWall(let s):
             // "Around at your meter" read wrong once the walk starts at the meter.
-            Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s)).")
+            aim(
+                Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s))."),
+                ground: false, hint: hint
+            )
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
         case .tiltUp(let span):
@@ -64,6 +71,33 @@ enum ScanCopy {
         case .gap:
             Instruction(title: "One more view", detail: nil)
         }
+    }
+
+    /// An aim step's card with what the hint adds. The title follows the target: on build 4.1 the
+    /// chevron pointed up while the card said "Tilt down" (#81). Seen once from here, the step to
+    /// the side is the whole instruction (#77). Too close, "step back" joins the same card
+    /// instead of replacing it with another (#77).
+    private static func aim(_ base: Instruction, ground: Bool, hint: GuidanceHint?) -> Instruction {
+        guard let hint else { return base }
+        var copy = base
+        if hint.needsSecondPosition {
+            copy.title = "Now take one step to the side and look again"
+        } else {
+            switch hint.aim {
+            case .above? where ground:
+                copy.title = "Tilt up a little"
+            case .below? where !ground:
+                copy.title = "Tilt down a little"
+            case .onScreen? where ground:
+                copy.title = "Put the ring on the strip"
+            default:
+                break
+            }
+        }
+        if hint.stepBack {
+            copy.detail = [copy.detail, "Step back a little."].compactMap { $0 }.joined(separator: " ")
+        }
+        return copy
     }
 
     // MARK: Coaching
