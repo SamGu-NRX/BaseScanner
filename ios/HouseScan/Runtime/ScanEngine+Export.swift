@@ -277,9 +277,10 @@ extension ScanEngine {
                 // Only when a gap request can be built from it: a band item needs its span (and
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
-                // or answered with something overhead stays with the installer.
+                // or answered with something overhead stays with the installer, and so does one
+                // over a stretch the homeowner said something stands on (`captureCanSettle`).
                 capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
-                    .map { !skippedGaps.contains($0) } ?? false
+                    .map { !skippedGaps.contains($0) && captureCanSettle($0) } ?? false
             )
         }
 

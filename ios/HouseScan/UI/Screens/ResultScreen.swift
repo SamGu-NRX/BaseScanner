@@ -45,6 +45,10 @@ struct ResultScreen: View {
                         .buttonStyle(.primary)
                         .accessibilityIdentifier("action.showAR")
                     }
+                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
+                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                            .accessibilityIdentifier("result.spotRefused")
+                    }
                     if !result.policyApproved {
                         Notice(symbol: "info.circle.fill", text: ScanCopy.rulesNotFinal)
                             .accessibilityIdentifier("result.rulesNotFinal")

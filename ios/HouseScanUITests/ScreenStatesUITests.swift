@@ -46,6 +46,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
+        ("spotConfirm", ["-uiDemoPhase", "spotConfirm"], "spotConfirm"),
+        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
@@ -63,6 +65,7 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
+        "spotConfirm", "spotConfirm-answered",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -75,6 +78,9 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+        // The spot check asks one question over a photo VoiceOver describes, then says the answer.
+        "spotConfirm": ("spot.question", "Is anything standing in the marked area?"),
+        "spotConfirm-answered": ("spot.answered", "Thanks, it's clear"),
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
     ]
@@ -141,6 +147,10 @@ final class ScreenStatesUITests: XCTestCase {
         let followUp = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
         XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        // Before the result, the spot is checked on a photo.
+        XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 30))
+        XCTAssertEqual(element(app, "spot.photo").label, "Photo of your wall")
+        tap(app, "action.spotClear")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
@@ -250,7 +260,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.backToReview")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
         tap(app, "action.confirmFeatures")
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+        tap(app, "action.spotClear", timeout: 40)
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
     }
 
     /// "Share scan" opens the system share sheet with the scan file.

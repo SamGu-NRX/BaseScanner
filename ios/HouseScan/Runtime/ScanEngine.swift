@@ -135,6 +135,8 @@ final class ScanEngine {
     private let motion = MotionSource()
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
+    /// The spot check (`ScanEngine+Confirm.swift`).
+    var spotConfirm = SpotConfirmState()
     /// When each mark was made, on the capture clock (`MarkKey`).
     var markTimes: [String: Double] = [:]
     /// The packet's clock for guidance and marks: the latest frame's time, ARFrame.timestamp
@@ -255,7 +257,7 @@ final class ScanEngine {
                     replay.play(range: range, speed: replaySpeed)
                 }
             }
-        case .markFeatures, .uploading, .result:
+        case .markFeatures, .uploading, .spotConfirm, .result:
             live?.setMode(.idle)
             replay?.stop()
         case .resultAR:
@@ -321,11 +323,11 @@ final class ScanEngine {
             case .failed, .rejected: false
             case .idle, .packaging, .uploading, .analyzing, .done: true
             }
-        case .onboarding, .result, .resultAR, .unsupported: false
+        case .onboarding, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         let depthFrames = switch state.phase {
         case .meterCloseUp, .wallWalk, .gapRequest: true
-        case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported: false
+        case .onboarding, .findMeter, .markFeatures, .uploading, .spotConfirm, .result, .resultAR, .unsupported: false
         }
         recorder.setRecording(capturing, depthFrames: depthFrames)
         guard live != nil else { return }
@@ -1035,7 +1037,7 @@ final class ScanEngine {
             // "Add something", which taps into the world frame, waits for tracking to return
             // (`beginMarking`). Nothing is thrown away.
             break
-        case .uploading, .result, .resultAR, .onboarding, .unsupported:
+        case .uploading, .spotConfirm, .result, .resultAR, .onboarding, .unsupported:
             // The bundle is already packed and the server's answer does not depend on the live
             // world frame, so the scan and the result stay. The AR result hides its overlay while
             // tracking is not normal and shows it again if ARKit does relocalize.
@@ -1116,6 +1118,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
         placement = nil
@@ -1410,6 +1413,7 @@ final class ScanEngine {
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
             placement = result
+            noteExchange(scene: scene, answer: data)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.upload = .done
             await waitForGate(.uploading)
@@ -1425,8 +1429,9 @@ final class ScanEngine {
                 beginServerGap(next.item, plan: next.plan)
                 return
             }
-            // The result appears only after the server answered (checklist R6).
-            go(.result)
+            // The result appears only after the server answered (checklist R6), and after the
+            // homeowner checked its spot (`presentAnswer`).
+            presentAnswer()
         } catch is CancellationError {
             return
         } catch {
@@ -1446,7 +1451,7 @@ final class ScanEngine {
               let map = coverage else { return nil }
         for item in result.missingEvidence {
             guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
-                  !skippedGaps.contains(plan), !automaticGaps.contains(plan) else { continue }
+                  !skippedGaps.contains(plan), !automaticGaps.contains(plan), captureCanSettle(plan) else { continue }
             return (item, plan)
         }
         return nil
@@ -1495,7 +1500,7 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
@@ -1562,6 +1567,7 @@ final class ScanEngine {
         nextWallSide = nil
         nextWallRefusal = nil
         resetTiltUp()
+        resetSpotChecks()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
