@@ -4,8 +4,9 @@ import SwiftUI
 ///
 /// Over the camera: haze on what the phone hasn't seen, a blue dotted path on the ground, a
 /// ring on the next thing to aim at, pins on what's been marked. At the bottom: the tape map
-/// and at most two actions. At the top: one instruction, replaced by coaching while there is a
-/// problem, or by the marking prompt while marking.
+/// and at most two actions. At the top: one instruction, with coaching on a line of its own
+/// under it while the photos have a problem, replaced while tracking has one, or by the marking
+/// prompt while marking.
 struct WallWalkScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -81,26 +82,37 @@ struct WallWalkScreen: View {
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching { return ScanCopy.coaching(coaching) }
-        if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
-        return ScanCopy.guidance(state.guidance)
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        // Coaching about how the photos come out (the capture gate's, and too little texture)
+        // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
+        if state.wallTooShort {
+            return ScanCopy.withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title), coaching)
+        }
+        return ScanCopy.withCoaching(ScanCopy.guidance(state.guidance), coaching)
     }
 
-    /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark
-    /// and is only turning the phone, which the gate also reads as moving (field test run 1).
-    /// Tracking problems still show.
+    /// "Slow down", "Turn more slowly" and "Hold steady" are for walking and aiming. With the tray
+    /// open the homeowner has stopped to pick a mark and is only turning the phone, which the gate
+    /// also reads as moving or turning (field test run 1). Tracking problems still show.
     private var coaching: Coaching? {
-        if trayOpen, state.coaching == .slowDown { return nil }
-        return state.coaching
+        switch state.coaching {
+        case .slowDown?, .turnSlowly?, .holdSteady?: trayOpen ? nil : state.coaching
+        default: state.coaching
+        }
     }
 
+    /// Coaching that replaces the task marks the card with its symbol. A refusal on the task
+    /// (the next wall wasn't marked, the wall is too short) keeps its red triangle over coaching
+    /// that only rides along: the refusal's words are on the card, so its tone should match.
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching {
+        let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
+        if coachingShows, let coaching, ScanCopy.coachingReplacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.wallTooShort { return .refusal }
+        if coachingShows, state.wallTooShort { return .refusal }
+        if coachingShows, let coaching { return .coaching(symbol: ScanCopy.coachingSymbol(coaching)) }
         return .normal
     }
 
@@ -269,7 +281,7 @@ struct WallWalkScreen: View {
     /// place, as does being past an end.
     private var coachingHidesReply: Bool {
         switch state.coaching {
-        case nil, .slowDown?, .needsTexture?, .tooDark?, .holdSteady?: false
+        case nil, .slowDown?, .needsTexture?, .tooDark?, .tooDarkToMeasure?, .holdSteady?, .turnSlowly?: false
         case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
         }
     }

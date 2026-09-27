@@ -76,9 +76,13 @@ enum ScanCopy {
         case .needsTexture:
             Instruction(title: "Aim at a corner or somewhere with more texture", detail: "A plain wall or the sky gives your phone nothing to follow.")
         case .tooDark:
-            Instruction(title: "It's too dark to see the wall", detail: "Turn on a porch light, or try again in daylight.")
+            Instruction(title: "It's dark here", detail: "Some photos won't count. Try your phone's flashlight, or come back in daylight.")
+        case .tooDarkToMeasure:
+            Instruction(title: "It's too dark to measure here", detail: "Try in daylight.")
         case .holdSteady:
             Instruction(title: "Hold steady", detail: nil)
+        case .turnSlowly:
+            Instruction(title: "Turn more slowly", detail: "Photos taken while turning come out blurred.")
         case .relocalizing:
             Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
@@ -94,11 +98,47 @@ enum ScanCopy {
         case .initializing: "iphone.gen3.radiowaves.left.and.right"
         case .slowDown: "tortoise.fill"
         case .needsTexture: "square.grid.3x3.middle.filled"
-        case .tooDark: "moon.fill"
+        case .tooDark, .tooDarkToMeasure: "moon.fill"
         case .holdSteady: "hand.raised.fill"
+        case .turnSlowly: "arrow.clockwise"
         case .relocalizing, .trackingLost: "location.slash.fill"
         case .pastWallEnd: "arrow.uturn.backward"
         }
+    }
+
+    /// One short line for coaching that rides along with the task instead of replacing it (the
+    /// walk's capture-gate coaching): the task's title and second line stay, and this goes under
+    /// them. Mostly only the coaching's title, so the task's own words stay the bigger part of the
+    /// card. The dark coaching keeps what to do about it: it can stay up for a whole night walk, and
+    /// "It's dark here" alone doesn't say what would help.
+    static func coachingNote(_ coaching: Coaching) -> String {
+        switch coaching {
+        case .tooDark: return "It's dark here. Try your phone's flashlight, or come back in daylight."
+        case .tooDarkToMeasure: return "It's too dark to measure here. Try in daylight."
+        default:
+            let title = ScanCopy.coaching(coaching).title
+            return title.hasSuffix(".") ? title : "\(title)."
+        }
+    }
+
+    /// Tracking problems and standing past the end replace the task on the card: nothing the task
+    /// asks for counts until they clear. The capture gate's coaching and too little texture ride
+    /// along with it instead (`withCoaching`). No `default`, so a new case has to pick a side.
+    static func coachingReplacesTask(_ coaching: Coaching) -> Bool {
+        switch coaching {
+        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: true
+        case .slowDown, .needsTexture, .tooDark, .tooDarkToMeasure, .holdSteady, .turnSlowly: false
+        }
+    }
+
+    /// The task with ride-along coaching under it: the task's title and second line both stay (on
+    /// an aim step the second line is the only thing that says where to aim), and the coaching adds
+    /// its own short line (`coachingNote`). Replacing the whole card hid the task each time the
+    /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
+    static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
+        guard let coaching else { return task }
+        let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
+        return Instruction(title: task.title, detail: detail)
     }
 
     // MARK: Wall ends

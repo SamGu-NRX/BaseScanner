@@ -7,7 +7,7 @@ import SwiftUI
 /// - `-uiDemoFreeze`: don't run the timed scripts, so the screen holds still.
 /// - `-uiDemoMarking <FeatureKind raw value>`: open the walk in marking mode.
 /// - `-uiDemoRefusal`: the marking shows a refusal.
-/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost|pastWallEnd>`.
+/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|tooDarkToMeasure|holdSteady|turnSlowly|relocalizing|trackingLost|pastWallEnd>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
 /// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
 /// - `-uiDemoOffline`: uploads fail offline.

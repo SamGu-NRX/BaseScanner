@@ -317,13 +317,21 @@ enum GuidanceStep: Equatable, Sendable {
     case seeBehind(s: Float)
 }
 
-/// A problem that overrides guidance until it clears. UI/ owns the words.
+/// A problem to fix while it lasts. Tracking problems and `pastWallEnd` override guidance; the
+/// capture gate's (`slowDown`, `turnSlowly`, `holdSteady`, `tooDark`, `tooDarkToMeasure`) and
+/// `needsTexture` ride along with it on the walk. UI/ owns the words.
 enum Coaching: Equatable, Sendable {
     case initializing
     case slowDown
     case needsTexture
     case tooDark
+    /// Frames have been mostly too dark for a long while: waiting won't help, daylight will
+    /// (`CoachingDebouncer.GateProblem.persistentlyDark`).
+    case tooDarkToMeasure
     case holdSteady
+    /// Turning or tilting the phone faster than the capture gate keeps photos at, as opposed to
+    /// walking too fast (#26).
+    case turnSlowly
     case relocalizing
     case trackingLost
     /// The phone stands past an end it can't see back from, so the walk keeps no photos: nothing
