@@ -1,0 +1,208 @@
+import assert from "node:assert/strict";
+import { describe, test } from "node:test";
+import { connectionView, initialState, looksLikePlaceholderStages, reduce, resultExpected, stageRows } from "../public/model.js";
+
+const source = { key: "t", label: "test", kind: "synthetic" };
+
+function selected(captureId = "cap_TEST_1") {
+  return reduce(initialState(), { type: "select", mode: "live", source, captureId });
+}
+
+function run(state, ...actions) {
+  return actions.reduce((s, a) => reduce(s, { session: s.session, ...a }), state);
+}
+
+const committed = (seq, paths) => ({ seq, type: "files_committed", at: "2026-09-27T00:00:00Z", data: { paths, committed: paths.length } });
+const stage = (seq, name, status, extra = {}) => ({ seq, type: "stage", at: "2026-09-27T00:00:00Z", data: { stage: name, status, attempt: 1, runId: "run_a", ...extra } });
+const events = (list, next = list.at(-1)?.seq ?? 0, status = "uploading") => ({ type: "events", at: 1000, body: { status, next, events: list } });
+
+describe("events", () => {
+  test("the same events delivered twice add no files and no arrivals", () => {
+    const batch = events([committed(1, ["stills/a.jpg", "stills/b.jpg"])]);
+    const once = run(selected(), events([]), batch);
+    const twice = run(once, batch);
+    assert.equal(twice.counts.acknowledged, 2);
+    assert.equal(twice.arrivals.length, 1);
+    assert.equal(twice.arrivalSerial, once.arrivalSerial);
+    assert.equal(twice.log.length, once.log.length);
+  });
+
+  test("a path acknowledged again under a new seq counts once and animates nothing", () => {
+    const s = run(selected(), events([]), events([committed(1, ["depth/k1.bin"])]), events([committed(2, ["depth/k1.bin"])]));
+    assert.equal(s.counts.acknowledged, 1);
+    assert.equal(s.arrivals.length, 1);
+  });
+
+  test("events apply in seq order and the cursor never moves backwards", () => {
+    const s = run(selected(), events([stage(3, "validate", "done"), stage(2, "validate", "running")], 3));
+    assert.equal(stageRows(s).find((r) => r.id === "validate").status, "done");
+    assert.equal(s.cursor, 3);
+    const older = run(s, events([], 1));
+    assert.equal(older.cursor, 3);
+    const ahead = run(older, events([], 9));
+    assert.equal(ahead.cursor, 9);
+  });
+
+  test("an older stage update does not overwrite a newer one", () => {
+    const s = run(selected(), events([stage(5, "dense", "done", { durationS: 2 })]), events([stage(4, "dense", "running")], 5));
+    assert.equal(stageRows(s).find((r) => r.id === "dense").status, "done");
+  });
+
+  test("the first batch after connecting is backlog; later arrivals are not", () => {
+    const s = run(selected(), events([committed(1, ["stills/a.jpg"])]), events([committed(2, ["stills/b.jpg"])]));
+    assert.deepEqual(s.arrivals.map((a) => a.backlog), [true, false]);
+  });
+
+  test("unknown event types and malformed rows do not throw or change the pipeline", () => {
+    const weird = [
+      { seq: 1, type: "retry_finalize", at: "x", data: {} },
+      { seq: 2, type: "stage", data: "not an object" },
+      { seq: "3", type: "files_committed", data: { paths: ["x"] } },
+      { type: "hint" },
+      null,
+      { seq: 4, type: "files_committed", data: { paths: [7, "stills/ok.jpg", null] } },
+    ];
+    const s = run(selected(), { type: "events", at: 1, body: { status: "brand_new_status", next: 4, events: weird } });
+    assert.deepEqual(s.unknownTypes, ["retry_finalize"]);
+    assert.equal(s.counts.acknowledged, 1);
+    assert.equal(s.status, "brand_new_status");
+    assert.ok(stageRows(s).every((r) => r.status === "unreported"));
+    const nonsense = run(s, { type: "events", body: "garbage" }, { type: "events", body: { events: "nope" } }, { type: "status", body: null });
+    assert.equal(nonsense.counts.acknowledged, 1);
+  });
+
+  test("a stage this viewer does not know is shown after the known ones", () => {
+    const s = run(selected(), events([stage(1, "denoise_v2", "running")]));
+    assert.equal(stageRows(s).at(-1).id, "denoise_v2");
+  });
+
+  test("a new run clears the earlier run's verdict, result and model", () => {
+    const a = run(
+      selected(),
+      events([stage(1, "result", "done"), { seq: 2, type: "verdict_ready", at: "x", data: { runId: "run_a", kind: "eligible" } }]),
+      { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
+      { type: "preview", runId: "run_a", cloud: { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } } },
+    );
+    assert.equal(a.preview.phase, "ready");
+    const b = run(a, events([{ ...stage(3, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]));
+    assert.equal(b.currentRunId, "run_b");
+    assert.equal(b.verdict, null);
+    assert.equal(b.result.phase, "none");
+    assert.equal(b.preview.phase, "none");
+  });
+
+  test("a late event from an earlier run does not switch the view back", () => {
+    const s = run(
+      selected(),
+      events([stage(1, "validate", "done"), { ...stage(3, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
+      events([stage(2, "poses", "running")], 3),
+    );
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(stageRows(s).find((r) => r.id === "poses").status, "unreported");
+  });
+
+  test("history read while catching up counts as backlog on every page", () => {
+    const s = run(selected(), { ...events([committed(1, ["stills/a.jpg"])]), catchUp: true }, { ...events([committed(2, ["stills/b.jpg"])]), catchUp: true }, { ...events([committed(3, ["stills/c.jpg"])]), catchUp: false });
+    assert.deepEqual(s.arrivals.map((a) => a.backlog), [true, true, false]);
+  });
+
+  test("a new run id switches the stages shown", () => {
+    const s = run(selected(), events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]));
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(stageRows(s).find((r) => r.id === "validate").status, "running");
+  });
+});
+
+describe("sessions", () => {
+  test("callbacks from an earlier selection are ignored", () => {
+    const first = selected("cap_FIRST_1");
+    const oldSession = first.session;
+    const second = reduce(first, { type: "select", mode: "live", source, captureId: "cap_SECOND_1" });
+    const after = reduce(second, { session: oldSession, ...events([committed(1, ["stills/a.jpg"])]) });
+    assert.equal(after, second);
+    const stale = reduce(second, { session: oldSession, type: "result", body: { status: "complete", outcome: { kind: "eligible" } } });
+    assert.equal(stale.result.phase, "none");
+  });
+
+  test("a status body for another capture is ignored", () => {
+    const s = run(selected("cap_MINE_1"), { type: "status", body: { captureId: "cap_OTHER_1", status: "complete", filesRegistered: 9 } });
+    assert.equal(s.status, null);
+    assert.equal(s.counts.registered, null);
+  });
+});
+
+describe("connection", () => {
+  test("a failed contact keeps the evidence and reports reconnecting or offline", () => {
+    const withData = run(selected(), events([committed(1, ["stills/a.jpg"]), stage(2, "validate", "done")]));
+    const failed = run(withData, { type: "contact-failed", error: "network error", offline: false });
+    assert.equal(failed.counts.acknowledged, 1);
+    assert.equal(stageRows(failed)[0].status, "done");
+    assert.equal(connectionView(failed, 2000).phase, "reconnecting");
+    const offline = run(withData, { type: "contact-failed", error: "network error", offline: true });
+    assert.equal(connectionView(offline, 2000).phase, "offline");
+  });
+
+  test("a live connection with no reply for too long reads as stale", () => {
+    const s = run(selected(), { type: "contact-ok", at: 10_000 });
+    assert.equal(connectionView(s, 20_000).phase, "live");
+    assert.equal(connectionView(s, 60_000).phase, "stale");
+  });
+
+  test("gone and stopped keep what was already seen", () => {
+    const s = run(selected(), events([committed(1, ["stills/a.jpg"])]), { type: "gone", error: "404" });
+    assert.equal(s.connection.phase, "gone");
+    assert.equal(s.counts.acknowledged, 1);
+  });
+});
+
+describe("results", () => {
+  test("verdict_ready alone claims no outcome and no model", () => {
+    const s = run(selected(), events([{ seq: 1, type: "verdict_ready", at: "x", data: { runId: "run_a", kind: "eligible" } }]));
+    assert.ok(resultExpected(s));
+    assert.equal(s.result.phase, "none");
+    assert.equal(s.preview.phase, "none");
+  });
+
+  test("a minimal result while processing stays pending", () => {
+    const s = run(selected(), { type: "result", body: { runId: "run_a", status: "processing", outcome: null, viewsNeeded: [], memberActions: [] } });
+    assert.equal(s.result.phase, "pending");
+  });
+
+  test("a model with zero points is empty, not ready", () => {
+    const withResult = run(selected(), { type: "result", body: { runId: "run_a", status: "manual_review", outcome: { kind: "manual_review" } } });
+    const s = run(withResult, { type: "preview", runId: "run_a", cloud: { count: 0, kept: 0, positions: new Float32Array(), generated: null, bounds: null } });
+    assert.equal(s.preview.phase, "empty");
+  });
+
+  test("a complete status without an outcome is still pending", () => {
+    const s = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: null } });
+    assert.equal(s.result.phase, "pending");
+    const failed = run(selected(), { type: "result", body: { runId: "run_a", status: "failed", outcome: null } });
+    assert.equal(failed.result.phase, "ready");
+  });
+
+  test("a model for a run other than the result's is dropped", () => {
+    const withResult = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
+    const s = run(withResult, { type: "preview", runId: "run_b", cloud: { count: 5, kept: 5, positions: new Float32Array(15), generated: null, bounds: null } });
+    assert.equal(s.preview.phase, "none");
+  });
+
+  test("an unreadable model is unsupported", () => {
+    const s = run(selected(), { type: "preview-error", runId: "run_a", unsupported: true, error: "not a PLY file" });
+    assert.equal(s.preview.phase, "unsupported");
+  });
+});
+
+test("a stage left running when the capture settles shows no reported end", () => {
+  const s = run(selected(), events([stage(1, "validate", "running")], 1, "failed"));
+  assert.equal(stageRows(s)[0].status, "unended");
+  const open = run(selected(), events([stage(1, "validate", "running")], 1, "processing"));
+  assert.equal(stageRows(open)[0].status, "running");
+});
+
+test("near-zero stage durations are flagged as placeholders", () => {
+  const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
+  assert.ok(looksLikePlaceholderStages(run(selected(), events(quick))));
+  const real = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 3 }));
+  assert.ok(!looksLikePlaceholderStages(run(selected(), events(real))));
+});

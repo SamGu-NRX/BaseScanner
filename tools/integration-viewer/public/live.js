@@ -1,0 +1,167 @@
+// Follows one capture through the loopback relay: health once, then an events long-poll loop,
+// with status refreshes and the result and preview fetched when the events say they exist.
+// Every dispatch carries the session it started under; the reducer ignores it after a switch,
+// and stop() aborts whatever request is in flight.
+
+import { resultExpected, resultKey } from "./model.js";
+import { PlyError, parsePly } from "./ply.js";
+
+const WAIT_S = 20;
+// While a result is expected but not yet readable, poll quickly so it appears soon after it is written.
+const WAIT_EXPECTING_S = 2;
+const STATUS_EVERY_MS = 5_000;
+const RESULT_RETRY_MS = 4_000;
+// After this many quick reads, keep reading the result, but only every RESULT_SLOW_MS.
+const RESULT_QUICK_TRIES = 8;
+const RESULT_SLOW_MS = 30_000;
+const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+// A long-poll that comes back empty sooner than this waits out the rest, so an API that ignores
+// `wait` cannot turn the loop into a request storm.
+const MIN_EMPTY_POLL_MS = 1_000;
+const RETRY_AFTER_CAP_MS = 120_000;
+// The API returns at most this many events per read; a full page means more history is waiting.
+const PAGE_SIZE = 100;
+
+export class HttpError extends Error {
+  constructor(status, code, message, retryAfterS = null) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.retryAfterS = retryAfterS;
+  }
+}
+
+/**
+ * @param {{ sourceKey: string, captureId: string, session: number, dispatch: (a: object) => void,
+ *           getState: () => any, fetchImpl?: typeof fetch, now?: () => number, sleep?: (ms: number, signal: AbortSignal) => Promise<void>,
+ *           online?: () => boolean }} options
+ */
+export function followCapture({ sourceKey, captureId, session, dispatch, getState, fetchImpl = fetch, now = Date.now, sleep = abortableSleep, online = () => navigator.onLine }) {
+  const abort = new AbortController();
+  const { signal } = abort;
+  const base = `/relay/${sourceKey}`;
+  const send = (action) => {
+    if (!signal.aborted) dispatch({ ...action, session });
+  };
+
+  async function get(path, as = "json") {
+    const reply = await fetchImpl(base + path, { signal, headers: { accept: as === "json" ? "application/json" : "*/*" } });
+    if (!reply.ok) {
+      const body = await reply.json().catch(() => null);
+      const error = body?.errors?.[0];
+      const retryAfter = Number(reply.headers.get("retry-after"));
+      throw new HttpError(reply.status, error?.code ?? `http_${reply.status}`, error?.message ?? `HTTP ${reply.status}`, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null);
+    }
+    return as === "json" ? reply.json() : reply.arrayBuffer();
+  }
+
+  async function run() {
+    get("/healthz").then((body) => send({ type: "health", body }), () => {});
+    let failures = 0;
+    let statusAt = -Infinity;
+    let triesKey = null;
+    let readyKey = null;
+    let resultTries = 0;
+    let resultAt = -Infinity;
+    let previewKey = null;
+    // Reads start without waiting and repeat while pages come back full. They return what happened
+    // before the viewer connected, which the reducer marks as backlog so it does not animate.
+    let catchUp = true;
+    let waitS = 0;
+
+    while (!signal.aborted) {
+      try {
+        if (now() - statusAt >= STATUS_EVERY_MS) {
+          send({ type: "status", body: await get(`/captures/${captureId}`) });
+          statusAt = now();
+          send({ type: "contact-ok", at: now() });
+        }
+        const cursor = getState().cursor;
+        const asked = now();
+        const body = await get(`/captures/${captureId}/events?after=${cursor}&wait=${catchUp ? 0 : waitS}`);
+        const count = Array.isArray(body?.events) ? body.events.length : 0;
+        send({ type: "events", body, at: now(), catchUp });
+        failures = 0;
+        if (catchUp && count >= PAGE_SIZE) continue;
+        catchUp = false;
+        if (count === 0 && now() - asked < MIN_EMPTY_POLL_MS) await sleep(MIN_EMPTY_POLL_MS - (now() - asked), signal).catch(() => {});
+      } catch (error) {
+        if (signal.aborted) return;
+        if (error instanceof HttpError && (error.status === 404 || error.status === 410)) {
+          send({ type: "gone", error: error.status === 410 ? "The capture was deleted (410)." : "The API has no capture with this id (404)." });
+          return;
+        }
+        const detail = error instanceof HttpError ? `${error.code} (${error.status})` : "network error";
+        send({ type: "contact-failed", error: detail, offline: !online() });
+        const backoff = BACKOFF_MS[Math.min(failures, BACKOFF_MS.length - 1)];
+        const asked = error instanceof HttpError && error.retryAfterS ? Math.min(error.retryAfterS * 1000, RETRY_AFTER_CAP_MS) : 0;
+        await sleep(Math.max(backoff, asked), signal).catch(() => {});
+        failures += 1;
+        continue;
+      }
+
+      const state = getState();
+      if (state.session !== session) return;
+      const key = resultKey(state);
+      if (key !== triesKey) {
+        triesKey = key;
+        resultTries = 0;
+      }
+      const pending = resultExpected(state) && readyKey !== key;
+      const interval = resultTries < RESULT_QUICK_TRIES ? RESULT_RETRY_MS : RESULT_SLOW_MS;
+      if (pending && now() - resultAt >= interval) {
+        resultTries += 1;
+        resultAt = now();
+        send({ type: "result-loading" });
+        try {
+          send({ type: "result", body: await get(`/captures/${captureId}/result`) });
+          if (getState().result.phase === "ready") readyKey = key;
+        } catch (error) {
+          if (signal.aborted) return;
+          send({ type: "result-error", error: error instanceof HttpError ? `${error.code} (${error.status})` : "network error" });
+        }
+      }
+      waitS = resultExpected(getState()) && readyKey !== key && resultTries < RESULT_QUICK_TRIES ? WAIT_EXPECTING_S : WAIT_S;
+
+      const result = getState().result;
+      const runId = result.body?.runId ?? null;
+      if (result.phase === "ready" && typeof result.body?.previewUrl === "string" && typeof runId === "string" && previewKey !== runId) {
+        previewKey = runId;
+        send({ type: "preview-loading", runId });
+        try {
+          // The relay refuses with 409 if the latest result is no longer this run's.
+          const cloud = parsePly(await get(`/captures/${captureId}/preview?run=${encodeURIComponent(runId)}`, "bytes"));
+          send({ type: "preview", runId, cloud });
+        } catch (error) {
+          if (signal.aborted) return;
+          if (error instanceof HttpError && error.status === 409) {
+            previewKey = null; // the run moved on; the next result read decides what to show
+            readyKey = null;
+            continue;
+          }
+          if (error instanceof PlyError) send({ type: "preview-error", runId, unsupported: true, error: error.message });
+          else send({ type: "preview-error", runId, error: error instanceof HttpError ? error.message : "network error" });
+        }
+      }
+    }
+  }
+
+  const done = run();
+  return {
+    done,
+    stop() {
+      abort.abort();
+      dispatch({ type: "stopped", session });
+    },
+  };
+}
+
+function abortableSleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
+}

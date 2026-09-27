@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Scan to server</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-mode="replay" data-motion="on">
+  <header class="bar">
+    <h1 class="title">Scan <span aria-hidden="true">→</span><span class="sr-only">to</span> server</h1>
+
+    <div class="modes" role="group" aria-label="What the viewer shows">
+      <button type="button" class="mode" data-set-mode="replay" aria-pressed="true">Illustrative replay</button>
+      <button type="button" class="mode" data-set-mode="live" aria-pressed="false">Live capture</button>
+    </div>
+
+    <form class="controls controls-replay" id="replay-form">
+      <label class="field">
+        <span class="field-label">Scenario</span>
+        <select id="scenario"></select>
+      </label>
+      <button type="button" class="btn" id="replay-toggle">Pause</button>
+      <button type="button" class="btn btn-quiet" id="replay-restart">Restart</button>
+    </form>
+
+    <form class="controls controls-live" id="live-form" autocomplete="off">
+      <label class="field">
+        <span class="field-label">Source</span>
+        <select id="source"></select>
+      </label>
+      <label class="field field-grow">
+        <span class="field-label">Capture id</span>
+        <input id="capture" name="capture" spellcheck="false" placeholder="cap_…" pattern="cap_[A-Za-z0-9_]{4,64}" required>
+      </label>
+      <button type="submit" class="btn" id="live-connect">Connect</button>
+      <button type="button" class="btn btn-quiet" id="live-stop" hidden>Disconnect</button>
+    </form>
+
+    <button type="button" class="btn btn-quiet motion" id="motion" aria-pressed="false">Pause motion</button>
+  </header>
+
+  <div class="band" id="band" role="status">
+    <span class="band-text" id="band-text">Illustrative replay · synthetic events, not a real capture</span>
+  </div>
+
+  <div class="identity" id="identity">
+    <span class="id-item"><span class="id-key">Source</span> <span id="id-source">—</span></span>
+    <span class="id-item"><span class="id-key">Server build</span> <span id="id-build" class="mono">—</span></span>
+    <span class="id-item"><span class="id-key">Capture</span> <span id="id-capture" class="mono">—</span></span>
+    <span class="id-item conn" id="conn" data-phase="idle"><span class="conn-dot" aria-hidden="true"></span> <span id="conn-text">Not connected</span></span>
+  </div>
+
+  <main class="stage" id="stage">
+    <section class="col col-phone" aria-labelledby="phone-h">
+      <h2 id="phone-h" class="col-h">Phone</h2>
+      <div class="phone" aria-hidden="true">
+        <svg viewBox="0 0 120 220" class="phone-svg">
+          <rect x="4" y="4" width="112" height="212" rx="20" class="phone-body"/>
+          <rect x="11" y="16" width="98" height="188" rx="12" class="phone-screen"/>
+          <rect x="11" y="16" width="98" height="120" class="wall"/>
+          <g class="siding"><path d="M11 34h98M11 52h98M11 70h98M11 88h98M11 106h98M11 124h98"/></g>
+          <rect x="11" y="136" width="98" height="68" class="ground"/>
+          <rect x="44" y="70" width="26" height="36" rx="3" class="meterbox"/>
+          <circle cx="57" cy="84" r="8" class="meter"/>
+          <path d="M22 26h16M22 26v16M98 26h-16M98 26v16M22 188h16M22 188v-16M98 188h-16M98 188v-16" class="frame"/>
+          <rect x="46" y="8" width="28" height="5" rx="2.5" class="notch"/>
+        </svg>
+      </div>
+      <p class="caption" id="phone-status">Waiting for a capture</p>
+      <dl class="kinds" id="kinds">
+        <div><dt>Photos</dt><dd id="k-photo">0</dd></div>
+        <div><dt>Depth</dt><dd id="k-depth">0</dd></div>
+        <div><dt>Other</dt><dd id="k-other">0</dd></div>
+      </dl>
+      <ol class="hints" id="hints" aria-label="Hints from the server"></ol>
+    </section>
+
+    <section class="col col-conduit" aria-label="Files the server has acknowledged">
+      <div class="conduit" id="conduit">
+        <svg class="conduit-svg" id="conduit-svg" aria-hidden="true">
+          <path class="line-base" id="line-base"/>
+          <path class="line-ticks" id="line-ticks"/>
+          <circle class="port port-phone" id="port-phone" r="5"/>
+          <circle class="port port-server" id="port-server" r="5"/>
+        </svg>
+        <div class="chips" id="chips" aria-hidden="true"></div>
+      </div>
+      <div class="inbox">
+        <p class="inbox-count"><span id="ack" class="num">0</span> <span class="inbox-unit">files received</span></p>
+        <p class="inbox-sub" id="ack-sub">No files acknowledged yet</p>
+        <p class="inbox-note">A mark moves when the server acknowledges a file. It is not a transfer measurement.</p>
+      </div>
+    </section>
+
+    <section class="col col-server" aria-labelledby="server-h">
+      <h2 id="server-h" class="col-h">Server <span class="col-state" id="server-state">idle</span></h2>
+      <ol class="stages" id="stages"></ol>
+      <p class="caution" id="placeholder-caution" hidden>Every finished stage reported under 0.05 s. These look like placeholder stages, not real analysis.</p>
+      <p class="caution" id="unknown-caution" hidden></p>
+      <ol class="failures" id="failures" aria-label="Failures the server reported"></ol>
+    </section>
+
+    <section class="col col-result" aria-labelledby="result-h">
+      <h2 id="result-h" class="col-h">Result</h2>
+      <figure class="model" id="model" data-phase="none">
+        <canvas id="cloud" tabindex="0" aria-label="3D model preview. Use the arrow keys to turn it." role="img"></canvas>
+        <figcaption class="model-caption" id="model-caption">No model yet. The server's model appears here if it returns one.</figcaption>
+      </figure>
+      <div class="legend" id="legend" hidden>
+        <span><i class="swatch swatch-seen"></i>Observed</span>
+        <span><i class="swatch swatch-gen"></i>Filled in by the server</span>
+      </div>
+      <div class="outcome" id="outcome" hidden>
+        <p class="outcome-kind" id="outcome-kind"></p>
+        <p class="outcome-msg" id="outcome-msg"></p>
+        <ul class="criteria" id="criteria"></ul>
+        <a class="review-link" id="review-link" target="_blank" rel="noopener noreferrer" hidden>Open the server's review page</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="ticker">
+    <h2 class="sr-only">What the server reported</h2>
+    <ol class="log" id="log" aria-live="polite"></ol>
+  </footer>
+</body>
+</html>
