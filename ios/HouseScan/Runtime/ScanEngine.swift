@@ -138,6 +138,13 @@ final class ScanEngine {
     // Tracking recovery
     private var relocalizingSince: Double?
 
+    // AR result
+    /// Watches whether the AR scene draws the result (`watchResultInCamera`) while "See it on
+    /// your wall" is up on the live camera.
+    private var resultWatch: Task<Void, Never>?
+    /// The wall the model in the AR scene was built from; nil when none is in it.
+    private var resultBuiltFor: WallGeometry?
+
     // Upload
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
@@ -1283,22 +1290,89 @@ final class ScanEngine {
         publishFeaturesPastEnds()
     }
 
-    /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
-    /// anchor, where people and objects in front of it hide it. A replay, or a meter without an
-    /// anchor, leaves it to the screen's overlay.
+    /// "See it on your wall" on the live camera. The screen draws the result over the camera
+    /// itself (`BatteryOverlay`) unless the AR scene is seen drawing it (`watchResultInCamera`).
+    /// Build 4.1 trusted the AR scene as soon as it had the model and showed no battery at all
+    /// (#67). Only a phone with LiDAR tries the AR scene, where the mesh can hide the result
+    /// behind things in front of it; without LiDAR the screen draws it, as build 3.1 did. A
+    /// replay, or a meter without an anchor, leaves it to the screen too.
     private func showResultInCamera(rising: Bool) {
-        guard let live, let wall = state.wall, let result = state.result, let pose = meterTracking?.pose,
-              state.spatialResultAvailable else { return }
+        guard LiveCapture.supportsMesh, let live, let wall = state.wall, let result = state.result,
+              let pose = meterTracking?.pose, state.spatialResultAvailable else { return }
+        if rising || resultWatch == nil { watchResultInCamera() }
+        // Each rebuild takes the model out of the scene and puts a new one in, so a wall that
+        // moved by a centimeter or two (the ground or the meter's anchor refined) keeps the one
+        // it has. It hangs on the meter's anchor, so it follows the anchor's corrections anyway.
+        if !rising, let built = resultBuiltFor, Self.movedLittle(from: built, to: wall) { return }
         let model = ResultARModel.build(wall: wall, result: result)
-        state.resultInCamera = live.showResult(model, builtFor: pose)
-        guard state.resultInCamera else { return }
+        // The battery's middle, or the meter without a spot, in the model's coordinates.
+        let focus = (result.spotCenter(on: wall) ?? wall.meter) - wall.meter
+        guard live.showResult(model, builtFor: pose, focus: focus) else {
+            resultBuiltFor = nil
+            return
+        }
+        resultBuiltFor = wall
         live.setResultVisible(state.tracking == .normal)
         if rising { ResultARModel.rise(model) }
     }
 
+    /// Looks at the AR scene about ten times a second while "See it on your wall" is up, and
+    /// lets the screen's drawing step aside only while the scene is seen drawing the result
+    /// (`ResultOverlayPolicy`). On its own clock, not in `ingest`: it has to notice a scene that
+    /// stopped drawing whether frames arrive or not.
+    private func watchResultInCamera() {
+        resultWatch?.cancel()
+        resultWatch = Task { [weak self] in
+            var policy = ResultOverlayPolicy()
+            while !Task.isCancelled {
+                guard let self, self.state.phase == .resultAR, let live = self.live else { return }
+                let usesRealityKit = policy.update(drawn: live.resultIsDrawn(), time: self.screenTime)
+                if self.state.resultInCamera != usesRealityKit {
+                    RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
+                    self.state.resultInCamera = usesRealityKit
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
     private func hideResultInCamera() {
+        resultWatch?.cancel()
+        resultWatch = nil
+        resultBuiltFor = nil
         live?.hideResult()
         state.resultInCamera = false
+    }
+
+    /// A wall change under these leaves the AR result's model as built: a few centimeters is
+    /// within what the ground and the meter's anchor are known to. Display choices, not measured.
+    private static let resultRebuildDistance: Float = 0.05
+    private static let resultRebuildTurnCosine: Float = cos(2 * Float.pi / 180)
+
+    /// True when `new` is `old` moved by less than `resultRebuildDistance` and turned by less
+    /// than 2° in every part the model is built from: the meter, the ground, the ends and each
+    /// piece of wall.
+    private static func movedLittle(from old: WallGeometry, to new: WallGeometry) -> Bool {
+        func closePoints(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Bool {
+            simd_distance(a, b) < Self.resultRebuildDistance
+        }
+        func closeValues(_ a: Float?, _ b: Float?) -> Bool {
+            guard let a, let b else { return a == nil && b == nil }
+            // Equal first: a corner piece's span is infinite toward its open end.
+            return a == b || abs(a - b) < Self.resultRebuildDistance
+        }
+        func closeDirections(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Bool {
+            simd_dot(simd_normalize(a), simd_normalize(b)) > Self.resultRebuildTurnCosine
+        }
+        guard closePoints(old.meter, new.meter), closeValues(old.groundY, new.groundY),
+              closeValues(old.leftEnd, new.leftEnd), closeValues(old.rightEnd, new.rightEnd),
+              closeDirections(old.along, new.along), closeDirections(old.outward, new.outward),
+              old.cornerSegments.count == new.cornerSegments.count else { return false }
+        return zip(old.cornerSegments, new.cornerSegments).allSatisfy { a, b in
+            closeValues(a.span.lowerBound, b.span.lowerBound) && closeValues(a.span.upperBound, b.span.upperBound)
+                && closePoints(a.anchor, b.anchor) && closeValues(a.anchorS, b.anchorS)
+                && closeDirections(a.along, b.along) && closeDirections(a.outward, b.outward)
+        }
     }
 
     func publishCoverage() {

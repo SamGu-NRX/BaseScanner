@@ -2,9 +2,10 @@ import simd
 import SwiftUI
 
 /// "See it on your wall": the battery drawn onto the live camera at the chosen spot, with the
-/// cable run from the meter and the clearance footprint tinted by outcome. On the live camera the
-/// engine draws it into the AR scene (`state.resultInCamera`); over a replay this screen projects
-/// it from the meter-anchored wall frame. Either way it stays put as the homeowner moves.
+/// cable run from the meter and the clearance footprint tinted by outcome. This screen projects
+/// it from the meter-anchored wall frame (`BatteryOverlay`) unless the engine has seen the AR
+/// scene drawing it (`state.resultInCamera`). Either way it stays put as the homeowner moves.
+/// While the spot is off screen a chevron at the edge points toward it.
 struct ResultARScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -14,10 +15,27 @@ struct ResultARScreen: View {
 
     var body: some View {
         ZStack {
-            if !state.resultInCamera, state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
-                BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
-                    .ignoresSafeArea()
-                    .accessibilityHidden(true)
+            if state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
+                if state.resultInCamera {
+                    // The AR scene draws the result in the camera view; this only names it for
+                    // VoiceOver and the UI tests, as the overlay below does.
+                    Color.clear
+                        .allowsHitTesting(false)
+                        .accessibilityElement()
+                        .accessibilityLabel(Self.overlayLabel(result))
+                        .accessibilityAddTraits(.isImage)
+                        .accessibilityIdentifier("ar.overlay")
+                } else {
+                    BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
+                        .ignoresSafeArea()
+                        .accessibilityElement()
+                        .accessibilityLabel(Self.overlayLabel(result))
+                        .accessibilityAddTraits(.isImage)
+                        .accessibilityIdentifier("ar.overlay")
+                }
+                if let spot = result.spotCenter(on: wall) {
+                    SpotDirection(projection: projection, spot: spot)
+                }
             }
             CameraChrome(
                 instruction: instruction,
@@ -32,6 +50,10 @@ struct ResultARScreen: View {
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.7, bounce: 0.15)) { appeared = true }
         }
+    }
+
+    private static func overlayLabel(_ result: ResultPresentation) -> String {
+        result.spot == nil ? "The cable run and clearances, drawn on your wall" : "The battery, drawn on your wall at its spot"
     }
 
     private var instruction: Instruction {
@@ -52,6 +74,66 @@ struct ResultARScreen: View {
             return Instruction(title: "Example spot, not your result", detail: ["No server checked this scan.", placement].compactMap { $0 }.joined(separator: " "))
         }
         return Instruction(title: title, detail: placement)
+    }
+}
+
+extension ResultPresentation {
+    /// The middle of the battery on `wall`, in world meters; nil without a spot. The point
+    /// "See it on your wall" has to get on screen: the edge chevron points to it while it is off
+    /// screen, and the engine checks the AR scene puts it in view (`LiveCapture.resultIsDrawn`).
+    func spotCenter(on wall: WallGeometry) -> SIMD3<Float>? {
+        guard let spot else { return nil }
+        let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
+        return wall.world(s: middle, height: spot.height / 2, out: spot.offsetFromWall + spot.depth / 2)
+    }
+}
+
+/// An edge chevron toward the battery spot while its middle is off screen, with words saying
+/// what it points at. Nothing while the spot is on screen.
+private struct SpotDirection: View {
+    var projection: CameraProjection
+    var spot: SIMD3<Float>
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            if let chevron = chevronPlacement(in: size) {
+                ZStack {
+                    TargetMarker(placement: .offScreen(chevron.point, angle: chevron.angle))
+                    Text("Your battery spot is this way")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.65), in: .capsule)
+                        .frame(maxWidth: 220)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .position(x: min(max(chevron.point.x, 120), max(size.width - 120, 120)), y: chevron.point.y + 50)
+                }
+                .frame(width: size.width, height: size.height)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Your battery spot is off screen. Turn the phone toward the arrow.")
+                .accessibilityIdentifier("ar.spotDirection")
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    /// Where the chevron goes and which way it points, or nil while the spot is on screen. The
+    /// same lane as the walk's aim chevron (`WayfindingOverlay`), clear of the instruction card
+    /// above and the buttons below.
+    private func chevronPlacement(in size: CGSize) -> (point: CGPoint, angle: Angle)? {
+        let view = CGRect(origin: .zero, size: size).insetBy(dx: 24, dy: 24)
+        if let point = projection.viewPoint(for: spot, in: size), view.contains(point) { return nil }
+        guard let direction = projection.screenDirection(toward: spot) else { return nil }
+        let lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 260 - 300, 80))
+        let tx = direction.dx == 0 ? CGFloat.infinity : lane.width / 2 / abs(direction.dx)
+        let ty = direction.dy == 0 ? CGFloat.infinity : lane.height / 2 / abs(direction.dy)
+        let t = min(tx, ty)
+        let point = CGPoint(x: lane.midX + direction.dx * t, y: lane.midY + direction.dy * t)
+        return (point, .radians(atan2(direction.dy, direction.dx)))
     }
 }
 

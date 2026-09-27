@@ -28,10 +28,11 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
-        ("wallWalk-aim", ["-uiDemoPhase", "wallWalk", "-uiDemoAim"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
         ("wallWalk-seeBehind", ["-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"], "wallWalk"),
+        ("wallWalk-aim", ["-uiDemoPhase", "wallWalk", "-uiDemoAim"], "wallWalk"),
+        ("wallWalk-aimOffScreen", ["-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"], "wallWalk"),
         ("markFeatures", ["-uiDemoPhase", "markFeatures"], "markFeatures"),
         ("markFeatures-marking", ["-uiDemoPhase", "markFeatures", "-uiDemoMarking", "door"], "markFeatures"),
         ("markFeatures-lostPlace", ["-uiDemoPhase", "markFeatures", "-uiDemoCoaching", "relocalizing"], "markFeatures"),
@@ -99,6 +100,10 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-endQuestionLeavesOut": [("instruction", "This leaves out 5 ft you walked")],
         // A reject names the closest spot and the check it fails.
         "result-reject": [("result.nearest", "The closest spot")],
+        // #67: the demo has no AR scene, so the screen must draw the result itself.
+        "resultAR": [("ar.overlay", "drawn on your wall")],
+        // #81: the aim ring fills as its stretch is captured.
+        "wallWalk-aim": [("aim.ring", "50 percent captured")],
     ]
 
     /// Controls a state must offer, by identifier.
@@ -360,6 +365,30 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+    }
+
+    /// #81: the first aim ring comes with a line saying what it is for, and reads its progress to
+    /// VoiceOver. Off screen, the edge arrow stands in for it, and neither shows.
+    @MainActor
+    func testAimRingShowsProgressAndItsLegend() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let ring = element(app, "aim.ring")
+        XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show its progress")
+        XCTAssertEqual(ring.value as? String, "50 percent captured")
+        let legend = element(app, "aim.legend")
+        XCTAssertTrue(legend.exists, "the first aim ring must come with its legend")
+        XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        app.terminate()
+
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "aim.ring").exists, "off screen, the arrow stands in for the ring")
+        XCTAssertFalse(element(app, "aim.legend").exists, "the legend goes with the ring")
     }
 
     /// "Share scan" opens the system share sheet with the scan file.

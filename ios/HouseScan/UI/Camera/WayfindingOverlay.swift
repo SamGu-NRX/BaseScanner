@@ -2,12 +2,19 @@ import simd
 import SwiftUI
 
 /// Where to stand and where to aim: a blue dotted path on the ground toward the next place to
-/// stand, and a ring on the point to aim at (or an edge chevron when it is off screen).
+/// stand, and a ring on the point to aim at (or an edge arrow when it is off screen).
 struct WayfindingOverlay: View {
     var projection: CameraProjection
     var wall: WallGeometry?
     var path: [SIMD3<Float>]
     var target: SIMD3<Float>?
+    /// How far the aim task is toward done, 0...1 (`ScanViewState.aimProgress`): the ring fills
+    /// with it. Nil when the target only marks a place.
+    var progress: Double? = nil
+    /// One line saying what the ring is for, drawn beside it while it is on screen.
+    var legend: String? = nil
+    /// Called when the legend is drawn.
+    var onLegendShown: (() -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -16,15 +23,48 @@ struct WayfindingOverlay: View {
                 Canvas { context, size in
                     drawPath(in: &context, size: size)
                 }
+                .accessibilityHidden(true)
                 if let target {
-                    TargetMarker(placement: placement(for: target, in: size))
+                    let marker = placement(for: target, in: size)
+                    TargetMarker(placement: marker, progress: progress)
+                    if let legend, case .onScreen(let point, let radius) = marker {
+                        legendView(legend, beside: point, radius: radius, in: size)
+                    }
                 }
             }
             .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
+    }
+
+    // MARK: Legend
+
+    /// The legend goes above or below the ring, whichever has more room between the instruction
+    /// card and the controls (the band the off-screen arrows keep to), and moves with the ring
+    /// without covering it.
+    private func legendView(_ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize) -> some View {
+        let width = max(120, min(300, size.width - 48))
+        let x = min(max(point.x, 24 + width / 2), size.width - 24 - width / 2)
+        let roomAbove = point.y - radius - 260
+        let roomBelow = size.height - 300 - (point.y + radius)
+        let below = roomBelow >= roomAbove
+        // A tall frame pinned at the edge nearer the ring, so the text's height (it wraps, and
+        // grows with Dynamic Type) never moves its near edge onto the ring.
+        let reach: CGFloat = 400
+        return Text(text)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.7), in: .rect(cornerRadius: 14, style: .continuous))
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("aim.legend")
+            .onAppear { onLegendShown?() }
+            .frame(width: width, height: reach, alignment: below ? .top : .bottom)
+            .position(x: x, y: below ? point.y + radius + 12 + reach / 2 : point.y - radius - 12 - reach / 2)
+            .transition(.opacity)
     }
 
     // MARK: Path
@@ -90,8 +130,9 @@ struct WayfindingOverlay: View {
     }
 }
 
-/// The aim ring, or a chevron at the screen edge pointing toward it.
-private struct TargetMarker: View {
+/// The aim ring, or an arrow at the screen edge pointing toward it. Also the arrow toward the
+/// battery spot on "See it on your wall" (`ResultARScreen`).
+struct TargetMarker: View {
     enum Placement: Equatable {
         case onScreen(CGPoint, radius: CGFloat)
         case offScreen(CGPoint, angle: Angle)
@@ -99,31 +140,29 @@ private struct TargetMarker: View {
     }
 
     var placement: Placement
+    /// 0...1 toward the aim task being done. The ring fills with it, then turns green with a tick
+    /// at 1, like the meter photo's ring; nil draws the plain pulsing ring. A ring that never
+    /// changed while it was held on target gave no sign of what it wanted (#81).
+    var progress: Double? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         switch placement {
         case .onScreen(let point, let radius):
-            ZStack {
-                Circle()
-                    .strokeBorder(.white.opacity(0.9), lineWidth: 7)
-                Circle()
-                    .strokeBorder(Palette.signal, lineWidth: 4)
-                Circle()
-                    .fill(Palette.signal)
-                    .frame(width: 8, height: 8)
-            }
-            .frame(width: radius * 2, height: radius * 2)
-            .phaseAnimator(reduceMotion ? [1.0] : [1.0, 1.08]) { ring, scale in
-                ring.scaleEffect(scale)
-            } animation: { _ in
-                .easeInOut(duration: 0.9)
+            Group {
+                if let progress {
+                    progressRing(min(max(progress, 0), 1), radius: radius)
+                } else {
+                    plainRing(radius: radius)
+                }
             }
             .position(point)
             .transition(.opacity)
         case .offScreen(let point, let angle):
-            Image(systemName: "chevron.right")
-                .font(.system(size: 22, weight: .black))
+            // An arrow with a shaft: a bare chevron in a blue disc, turned to point down, can
+            // read as a tick (#81).
+            Image(systemName: "arrow.right")
+                .font(.system(size: 22, weight: .heavy))
                 .foregroundStyle(.white)
                 .rotationEffect(angle)
                 .frame(width: 52, height: 52)
@@ -132,8 +171,63 @@ private struct TargetMarker: View {
                 .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
                 .position(point)
                 .transition(.opacity)
+                .accessibilityHidden(true)
         case .hidden:
             EmptyView()
         }
+    }
+
+    private func plainRing(radius: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .strokeBorder(.white.opacity(0.9), lineWidth: 7)
+            Circle()
+                .strokeBorder(Palette.signal, lineWidth: 4)
+            Circle()
+                .fill(Palette.signal)
+                .frame(width: 8, height: 8)
+        }
+        .frame(width: radius * 2, height: radius * 2)
+        .phaseAnimator(reduceMotion ? [1.0] : [1.0, 1.08]) { ring, scale in
+            ring.scaleEffect(scale)
+        } animation: { _ in
+            .easeInOut(duration: 0.9)
+        }
+        .accessibilityHidden(true)
+    }
+
+    /// No pulse: the fill is what moves. VoiceOver (and the UI tests) read its percent.
+    private func progressRing(_ progress: Double, radius: CGFloat) -> some View {
+        let done = progress >= 1
+        return ZStack {
+            Circle()
+                .strokeBorder(.black.opacity(0.3), lineWidth: 11)
+            Circle()
+                .strokeBorder(.white.opacity(0.85), lineWidth: 7)
+            Circle()
+                .inset(by: 3.5)
+                .trim(from: 0, to: done ? 1 : progress)
+                .stroke(done ? Palette.covered : Palette.signal, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(reduceMotion ? nil : .linear(duration: 0.2), value: progress)
+            if done {
+                Image(systemName: "checkmark")
+                    .font(.system(size: max(14, radius * 0.5), weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(radius * 0.2)
+                    .background(Palette.covered, in: .circle)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
+            } else {
+                Circle()
+                    .fill(Palette.signal)
+                    .frame(width: 8, height: 8)
+            }
+        }
+        .frame(width: radius * 2, height: radius * 2)
+        .animation(Motion.pin, value: done)
+        .accessibilityElement()
+        .accessibilityLabel("Spot to show")
+        .accessibilityValue(done ? "Captured" : "\(Int((progress * 100).rounded())) percent captured")
+        .accessibilityIdentifier("aim.ring")
     }
 }

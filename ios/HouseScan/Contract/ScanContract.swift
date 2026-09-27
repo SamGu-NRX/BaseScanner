@@ -725,8 +725,9 @@ final class ScanViewState {
     /// server request on screen: what "One more view to finish" and "2 more views to finish" promise.
     var followUps = 0
     var result: ResultPresentation?
-    /// True while the AR result is drawn into the live camera, where people and objects in front
-    /// of it hide it. The AR screen then draws no overlay of its own.
+    /// True while the engine sees the AR scene drawing the result in the live camera
+    /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
+    /// draws `BatteryOverlay`.
     var resultInCamera = false
     /// False once the camera failed after the scan was sent: the answer stays, but "See it on
     /// your wall" is neither shown nor offered until a new scan starts the camera again.
