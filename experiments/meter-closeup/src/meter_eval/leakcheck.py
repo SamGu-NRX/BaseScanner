@@ -1,4 +1,4 @@
-"""Fail if a transcribed meter identifier appears in any tracked file of this experiment.
+"""Fail if a transcribed meter identifier appears in any tracked file of the repository.
 
 identifier_digests.txt holds the keyed digest (match.digest) of every identifier either
 reader transcribed, with and without a letter prefix. Every run of 4 to 24 letters and digits
@@ -16,6 +16,7 @@ import io
 import re
 import subprocess
 from collections.abc import Iterator
+from pathlib import Path
 
 from meter_eval.labels import SHORTEST_IDENTIFIER
 from meter_eval.match import digest, normalize
@@ -88,26 +89,52 @@ def find_leaks(files: dict[str, str], known: set[str]) -> list[tuple[str, int]]:
     return sorted(leaks)
 
 
-def main() -> None:
-    known = set(DIGESTS.read_text().split())
-    tracked = subprocess.run(
-        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "."],
-        cwd=EXPERIMENT_DIR,
+def repository_root(start: Path) -> Path:
+    found = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=start,
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split()
-    files = {
-        name: (EXPERIMENT_DIR / name).read_text(errors="ignore")
-        for name in tracked
-        if not name.endswith(".lock") and name != DIGESTS.name
-    }
+    )
+    return Path(found.stdout.strip())
+
+
+def repository_files(root: Path) -> dict[str, str]:
+    """Every tracked or new untracked text file in the repository, by path from the root.
+
+    A copied meter number can land anywhere (docs, READMEs, the app), so the whole repository
+    is scanned. Skipped: lockfiles, which hold generated hashes; the digest list itself; paths
+    that are not regular files, such as a submodule; and binary files.
+    """
+    listed = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+    files = {}
+    for name in filter(None, listed):
+        path = root / name
+        if name.endswith((".lock", "-lock.yaml")) or path == DIGESTS or not path.is_file():
+            continue
+        data = path.read_bytes()
+        if b"\0" in data:
+            continue
+        files[name] = data.decode(errors="ignore")
+    return files
+
+
+def main() -> None:
+    known = set(DIGESTS.read_text().split())
+    files = repository_files(repository_root(EXPERIMENT_DIR))
     leaks = find_leaks(files, known)
     for name, length in leaks:
         print(f"{name}: a transcribed identifier ({length} characters)")
     if leaks:
         raise SystemExit(f"{len(leaks)} meter identifiers in tracked files; use synthetic ones")
-    print(f"no transcribed identifier in {len(files)} files")
+    print(f"no transcribed identifier in {len(files)} files across the repository")
 
 
 if __name__ == "__main__":

@@ -144,6 +144,7 @@ def find(args: argparse.Namespace) -> None:
         if REUSABLE.match(row["license"]) and min(row["width"], row["height"]) >= args.min_side
     ]
     out = DATA_DIR / "candidates.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
         writer.writeheader()

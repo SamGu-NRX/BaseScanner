@@ -299,18 +299,23 @@ def rule_table(rows: list[dict], names: list[str]) -> str:
         subset = [r for r in rows if "read" in r and keep(r)]
         read = [r for r in subset if r["read"]]
         out.append(f"**{title}: {len(subset)} with an agreed number, {len(read)} read**\n")
-        out.append("| Rule | Picks | Precision | Recall over read photos |")
+        # Every agreed photo counts, read or not: a rule can still pick a wrong candidate on a
+        # photo where Vision missed the number, and that pick is a false positive.
+        out.append("| Rule | Picks | Precision | Recall over every agreed photo |")
         out.append("|---|---|---|---|")
         for name in names:
-            fired = [r for r in read if r[name] != ""]
+            fired = [r for r in subset if r[name] != ""]
             right = sum(r[name] for r in fired)
             out.append(
                 f"| {name} | {len(fired)} | {share(right, len(fired))} | "
-                f"{share(right, len(read))} |"
+                f"{share(right, len(subset))} |"
             )
         for k in (1, 3):
             hit = sum(1 for r in read if r["rank"] != "" and r["rank"] <= k)
-            out.append(f"| ranking, top {k} | {len(read)} | – | {share(hit, len(read))} |")
+            out.append(
+                f"| ranking, top {k}, over read photos only | {len(read)} | – | "
+                f"{share(hit, len(read))} |"
+            )
         # End to end: a photo Vision did not read cannot offer the number, so it is a miss.
         for k in (1, 3):
             hit = sum(1 for r in subset if r["rank"] != "" and r["rank"] <= k)
@@ -320,7 +325,7 @@ def rule_table(rows: list[dict], names: list[str]) -> str:
             )
         present = sum(1 for r in read if r["rank"] != "")
         out.append(
-            f"| number is any candidate (ceiling) | {len(read)} | – | "
+            f"| number is any candidate, over read photos (ceiling) | {len(read)} | – | "
             f"{share(present, len(read))} |\n"
         )
     return "\n".join(out)

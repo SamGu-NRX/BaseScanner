@@ -57,3 +57,27 @@ def test_identifier_is_caught_across_every_separator_normalize_drops():
     for sep in (" ", ".", "-", "/", "_", ":", ";", "|", ",", "\\", "\t", "\n", "#", "*"):
         text = f"see 123{sep}4567 here"
         assert find_leaks({"notes.md": text}, known()) == [("notes.md", 7)], repr(sep)
+
+
+def test_the_scan_covers_tracked_files_outside_the_experiment(tmp_path):
+    import subprocess
+
+    from meter_eval.leakcheck import repository_files
+
+    root = tmp_path / "repo"
+    (root / "docs").mkdir(parents=True)
+    (root / "experiments" / "meter-closeup").mkdir(parents=True)
+    (root / "docs" / "how-it-works.html").write_text("<p>plate 123 4567</p>\n")
+    (root / "experiments" / "meter-closeup" / "README.md").write_text("clean\n")
+    (root / "web").mkdir()
+    (root / "web" / "pnpm-lock.yaml").write_text("integrity: 1234567\n")  # lockfiles are skipped
+    for args in (["init", "-q"], ["add", "."]):
+        subprocess.run(["git", *args], cwd=root, check=True)
+    (root / "notes.md").write_text("draft 1234567\n")  # untracked but not ignored: scanned
+    files = repository_files(root)
+    assert set(files) == {
+        "docs/how-it-works.html",
+        "experiments/meter-closeup/README.md",
+        "notes.md",
+    }
+    assert find_leaks(files, known()) == [("docs/how-it-works.html", 7), ("notes.md", 7)]

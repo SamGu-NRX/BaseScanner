@@ -7,11 +7,10 @@ name: Meter close-up experiment
 # Before asking for review, run `make leakcheck` locally.
 on:
   workflow_dispatch:
+  # Every push to main, not only experiment changes: the keyed leak check scans the whole
+  # repository, and a copied meter number can land in any file.
   push:
     branches: [main]
-    paths:
-      - "experiments/meter-closeup/**"
-      - ".github/workflows/meter-closeup.yml"
   pull_request:
     paths:
       - "experiments/meter-closeup/**"
