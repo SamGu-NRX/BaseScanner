@@ -2,14 +2,9 @@
 
 ## Question
 
-The server allows 0.16 ft of error per foot along the wall. That allowance dominates a check's error bar beyond a few feet, so which part of ARKit's error is worth attacking? The data is MARViN (iPhone 14 Pro Max, bar and church, walks within 10% of the reference's scale) and ADVIO 20–22 (iPhone 6s), using the evals' windows.
+The server allows 0.16 ft of error per foot along the wall, which dominates a check's error bar beyond a few feet. Which part of ARKit's error is worth attacking? A1 asks whether returning to the meter bounds it, A2 whether scale is one number per walk, A3 how much runs across travel, where a wall plane would help, and A4 what a UWB range to the meter leaves. The data is MARViN (iPhone 14 Pro Max) and ADVIO (iPhone 6s); [METHODS.md](METHODS.md) has the details.
 
-- **A1, return to the meter.** When a walk comes back within 0.3 m of an earlier point more than 30 s later, ARKit's closure residual r is the error in the displacement between the two visits. Does r bound the largest error between the visits?
-- **A2, scale.** Is ARKit's scale one number per walk? This measures the spread of scale over sliding 5 m windows within a walk.
-- **A3, the wall plane.** What share of the error runs across the direction of travel, which a wall plane would remove, compared with along it?
-- **A4, a range to the meter.** A second phone left at the meter ranges the walking phone by UWB (σ 10 cm, simulated) at every window end. What is the p90 left over?
-
-## Pass criteria, fixed before the run
+## Pass criteria, fixed before the run (397507f)
 
 - **A1.** Across loops, the largest error between visits is at most max(2r, 2 in) in at least 90% of loops, so r can set a per-session error bar. Needs at least 8 loops.
 - **A2.** One reference object near the meter is enough if the within-walk spread is under 1% (1 SD). Drop that idea if it is over 3%.
@@ -18,13 +13,13 @@ The server allows 0.16 ft of error per foot along the wall. That allowance domin
 
 ## Result
 
-All four fail. Tables: [results/drift_anatomy.md](results/drift_anatomy.md).
+All four fail ([tables](results/drift_anatomy.md)).
 
-- **A1.** 30 of 56 MARViN loops (54%). ADVIO has no revisit under 0.3 m while ARKit tracks. Scale and heading error cancel on return, so r misses them.
-- **A2.** 5.7% SD on MARViN, 19% on ADVIO: drop. A few outlier windows inflate MARViN's SD; its robust SD is 1.8%.
-- **A3.** At 20 ft, along is 0.92 of the p90 on MARViN and 0.76 on ADVIO.
-- **A4.** MARViN goes from 10.4 and 13.6 in to 7.7 and 8.5 in. At σ 10 cm the range's own p90 is 6.5 in, so the bar was nearly out of reach. At 5 cm: 4.9 and 6.1 in.
+- **A1.** The closure residual bounds the peak error in 30 of 56 loops. Scale and heading error cancel on return.
+- **A2.** Scale spread within a walk is 1.8% robust SD (5.7% SD) on MARViN.
+- **A3.** At 20 ft, the along-travel p90 is 9.6 of 10.4 in.
+- **A4.** UWB cuts 20 ft from 10.4 to 7.7 in at σ 10 cm, and to 4.9 in at σ 5 cm.
 
-**Run:** `uv run python run.py`. Needs the evals checkout at 190ed33 (`EVALS_HARNESS`) and MARViN and ADVIO in `~/house-scanning-data`.
+**Run:** `uv run python run.py`: 20 s. Needs the evals checkout at 190ed33 and MARViN and ADVIO in `~/house-scanning-data`.
 
-**What it changes:** the error worth attacking runs along travel. A range to the meter reduces it, a wall plane wouldn't, and r can't bound a session.
+**What it changes:** the error worth attacking runs along travel. Measuring a span inside one photo avoids it. A wall plane, a return to the meter or one ruler at the meter don't.
