@@ -83,6 +83,9 @@ final class ScanEngine {
         didSet { if nextWallSide == nil { pendingNextWall = nil } }
     }
     var nextWallRefusal: NextWallRefusal?
+    /// "Can't get there" on the walk's card: when it last ended a side, and which ends it set
+    /// before the homeowner walked that side (#82, #76). Reset with the wall.
+    var walkRefusals = WalkRefusals()
     /// The wall marked as the next one, waiting for "Is this the next wall?" (#70); cleared with
     /// `nextWallSide`. Published as `ScanViewState.nextWallConfirm`.
     var pendingNextWall: PendingNextWall? {
@@ -274,6 +277,9 @@ final class ScanEngine {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
         if state.phase == .resultAR { hideResultInCamera() }
+        // "End the scan here?" belongs to the walk it was asked on.
+        state.endScanQuestion = false
+        state.endScanTooShort = false
         let previous = state.phase
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
@@ -375,6 +381,27 @@ final class ScanEngine {
             await motion.requestPermission()
             askingForPermissions = false
             if state.phase == .onboarding { go(.findMeter) }
+        }
+    }
+
+    /// Camera access may have been turned on in Settings while the failure screen said it was
+    /// off: the screen asks again each time the app comes back to the foreground. With access
+    /// granted the failed source is let go and the scan goes on without Start over. Before the
+    /// meter is marked nothing is lost: the onboarding's permission step runs again (Motion &
+    /// Fitness, if it was never asked) and the meter search follows. After it, a new camera
+    /// session is a new world frame, so the flow goes back to the meter as after a lost
+    /// relocalization (`resetSpatialState`), keeping what describes the house. Still denied,
+    /// nothing changes.
+    func recheckCameraAccess() {
+        guard state.phase == .unsupported, state.failure == .cameraDenied, options.replayFolder == nil else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
+        RuntimeLog.engine.info("camera access granted: resuming the scan")
+        releaseFailedSource()
+        if coverage != nil {
+            resetSpatialState(reason: "camera access granted after a camera failure")
+        } else {
+            go(.onboarding)
+            leaveOnboarding()
         }
     }
 
@@ -1350,7 +1377,15 @@ final class ScanEngine {
             RuntimeLog.capture.info("session interruption ended")
             state.coaching = .relocalizing
         case .cameraDenied:
-            fail(.cameraDenied)
+            // As for a failed session: once the scan is sent, the answer stays on screen.
+            switch state.phase {
+            case .uploading, .result, .resultAR:
+                RuntimeLog.engine.error("camera access lost after capture")
+                _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
+                loseSpatialResult()
+            default:
+                fail(.cameraDenied)
+            }
         case .failed(let message):
             // Once the scan is sent, the upload and its result no longer need the camera: keep
             // them on screen. Only the AR view needs it, and it already hides the battery while
@@ -1413,6 +1448,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
@@ -1448,6 +1484,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         publishWall()
         publishCoverage()
@@ -1969,6 +2006,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         resetSpotChecks()
         placement = nil

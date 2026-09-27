@@ -466,6 +466,22 @@ enum ScanCopy {
         return Instruction(title: "What's at the \(side.rawValue) end?", detail: detail)
     }
 
+    /// Asked when "Can't get there" comes again soon after it ended a side
+    /// (`ScanViewState.endScanQuestion`, #82): the homeowner may be trying to stop.
+    static let endScanQuestion = Instruction(
+        title: "End the scan here?",
+        detail: "We'll check the part of the wall you've walked."
+    )
+    /// The same question when too little of the wall was walked to check it
+    /// (`ScanViewState.endScanTooShort`): the way out is a new scan.
+    static let endScanTooShort = Instruction(
+        title: "End the scan here?",
+        detail: "You haven't walked enough of the wall to check it yet. Start over, or keep walking along the wall."
+    )
+    static let endScanYes = "Yes, end here"
+    static let endScanStartOver = "Start over"
+    static let keepWalking = "Keep walking"
+
     /// With no server connected nothing is sent, and the words must not say it is.
     /// `followUps` is how many views the finished check still wants from the camera.
     static func upload(_ upload: UploadState, sample: Bool, followUps: Int = 0) -> Instruction {
@@ -573,6 +589,12 @@ enum ScanCopy {
     static let showMe = "Show me"
     static let scanAnotherWall = "Scan another wall"
     static let details = "Details"
+
+    /// A result for a wall neither side of which was walked (`ResultPresentation.wallNotMeasured`,
+    /// #76): the spot would stand on the meter tap alone, so none is shown.
+    static let wallNotMeasured = "We couldn't measure your wall"
+    static let wallNotMeasuredDetail = "The scan stopped before you walked along the wall on either side of your meter, so we can't tell where a battery would fit. Scan again and walk a few steps each way."
+    static let scanAgain = "Scan again"
 
     static let installerConfirms = "An installer confirms this on site."
     static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."

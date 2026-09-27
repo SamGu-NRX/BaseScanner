@@ -688,6 +688,11 @@ struct ResultPresentation: Equatable, Sendable {
     /// Where the scan stopped on a side it didn't finish, nearer the meter than the spot, so a
     /// closer spot may lie past it (`PlacementResult.closerUnseenEnd`).
     var unseenEnd: UnseenEnd? = nil
+    /// True when neither side of the meter was walked: "Can't get there" ended both before the
+    /// homeowner walked either (`WalkRefusals`, #76). The wall line then comes from the meter tap
+    /// alone, so the screen says the wall couldn't be measured and shows no spot, no route and no
+    /// "See it on your wall" (`withWallNotMeasured`).
+    var wallNotMeasured = false
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
@@ -808,6 +813,14 @@ final class ScanViewState {
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
     var endPreview: EndPreview?
+    /// "Can't get there" came again on a walk card within `WalkRefusals.repeatWindow` of the one
+    /// that last ended a side: the walk asks "End the scan here?" instead of ending this side too
+    /// (#82). Answered by `answerEndScan`.
+    var endScanQuestion = false
+    /// Set with `endScanQuestion` when ending the open sides now would leave ends closer than a
+    /// battery is wide (`WalkRefusals.endsTooClose`): "Done with this wall" would refuse them and
+    /// the walk would go on, so the question offers "Start over" instead of "Yes, end here".
+    var endScanTooShort = false
     /// True after "Done with this wall" was refused because the ends were closer together than
     /// `WallFrame.minWallLength`; the ends were cleared. False again once an end is marked.
     var wallTooShort = false
@@ -906,6 +919,11 @@ protocol ScanActions: AnyObject {
     /// Leave the walk for the feature review (allowed once both ends are marked). Ends closer
     /// together than `WallFrame.minWallLength` are cleared instead, and `wallTooShort` is set.
     func finishWalk()
+    /// The answer to `ScanViewState.endScanQuestion`. "Yes, end here" (`end`) ends every side
+    /// without an end where "Can't get there" would (`ScanViewState.endPreview`, unexplored) and
+    /// finishes the walk with what was walked, as `finishWalk` does. "Keep walking" dismisses the
+    /// question, and the next "Can't get there" ends its side without asking.
+    func answerEndScan(_ end: Bool)
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()
     /// "I can't get there": the gap is recorded for installer review. On a request the finished
@@ -930,6 +948,9 @@ protocol ScanActions: AnyObject {
     func showAR()
     func closeAR()
     func startOver()
+    /// The app came back to the foreground on the camera-access failure: if access is now on,
+    /// the scan goes on without Start over. Does nothing otherwise.
+    func recheckCameraAccess()
     /// The live AR camera view. Only called while `feed == .live`.
     func liveCameraView() -> AnyView
 }

@@ -115,12 +115,22 @@ extension ScanEngine {
     }
 
     /// "Can't get there" while the walk asks to walk `side` or to mark its end: the end goes where
-    /// the preview showed, as an unexplored end.
+    /// the preview showed, as an unexplored end. `walkRefusals` notes when, and whether the side
+    /// had been walked (#82, #76).
     func endWalkCannotGoOn(_ side: WallSide) {
-        guard let s = walkedEnd(side) else { return }
+        guard let s = walkedEnd(side), let map = coverage else { return }
         logEnd("can't get there", side: side, at: s)
+        let walked = map.walkedFarthest(side.walk)
         setEnd(side, at: s, kind: .unexplored)
+        walkRefusals.ended(side.walk, at: s, walked: walked, time: ScanEngine.refusalClock)
+        if walkRefusals.wasRefused(side.walk, end: s) {
+            RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m walked, end at s=\(s))")
+        }
     }
+
+    /// Seconds for `WalkRefusals`: the time since boot, which a replay's frame clock doesn't
+    /// hold back while its playback is paused.
+    static var refusalClock: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     /// Where the end went, and why (#71): the phone's place, the kept-photo cap, whether the cap
     /// decided it, tracking, how many meters of cells the strip showed past the end, and what the

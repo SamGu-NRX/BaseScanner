@@ -14,6 +14,9 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
+    /// `-uiDemoWallNotMeasured`: neither side of the meter was walked, so the result shows no
+    /// spot (#76).
+    private let wallNotMeasured: Bool
     /// `-uiDemoResultFile <path>` (debug builds only): a server answer in a JSON file, read
     /// through the engine's own mapping, in place of the hand-made samples.
     private let resultFile: String?
@@ -66,6 +69,7 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
+        wallNotMeasured = arguments.contains("-uiDemoWallNotMeasured")
         #if DEBUG
         resultFile = value("-uiDemoResultFile")
         #else
@@ -118,6 +122,12 @@ final class DemoEngine: ScanActions {
             } else {
                 state.endQuestion = .left
             }
+        }
+        if arguments.contains("-uiDemoEndScanQuestion") {
+            // "Can't get there" again soon after it ended the right side (#82).
+            state.endScanQuestion = true
+            // `-uiDemoEndScanTooShort`: too little walked to finish, so it offers "Start over".
+            state.endScanTooShort = arguments.contains("-uiDemoEndScanTooShort")
         }
         if arguments.contains("-uiDemoNextWall") {
             state.wall?.rightEnd = demoRightEnd
@@ -553,6 +563,7 @@ final class DemoEngine: ScanActions {
 
     /// The check's answer, before or after its follow-up view.
     private var sample: ResultPresentation {
+        if wallNotMeasured { return Self.reviewSample.withWallNotMeasured() }
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
         if let fileResult { return fileResult }
@@ -909,6 +920,18 @@ final class DemoEngine: ScanActions {
         state.phase = .markFeatures
     }
 
+    /// The demo never asks on its own (its "Can't get there" ends the side at once); the question
+    /// shows only with `-uiDemoEndScanQuestion`. "Yes, end here" finishes the walk with the demo's
+    /// ends.
+    func answerEndScan(_ end: Bool) {
+        guard state.endScanQuestion else { return }
+        state.endScanQuestion = false
+        state.endScanTooShort = false
+        guard end else { return }
+        finishedWalkState()
+        finishWalk()
+    }
+
     func confirmFeatures() {
         enterGap()
     }
@@ -980,12 +1003,16 @@ final class DemoEngine: ScanActions {
     }
 
     func showAR() {
+        guard state.result?.wallNotMeasured != true else { return }
         state.phase = .resultAR
     }
 
     func closeAR() {
         state.phase = .result
     }
+
+    /// The demo has no camera, so there is no access to recheck: its failure screen stays.
+    func recheckCameraAccess() {}
 
     func startOver() {
         script?.cancel()
@@ -1016,6 +1043,8 @@ final class DemoEngine: ScanActions {
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
+        state.endScanQuestion = false
+        state.endScanTooShort = false
         state.groundAnswer = nil
     }
 

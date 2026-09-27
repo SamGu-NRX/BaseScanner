@@ -27,6 +27,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
+        ("wallWalk-endScanQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion"], "wallWalk"),
+        ("wallWalk-endScanTooShort", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion", "-uiDemoEndScanTooShort"], "wallWalk"),
         ("wallWalk-endQuestionLeavesOut", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
@@ -62,6 +64,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
+        ("result-wallNotMeasured", ["-uiDemoPhase", "result", "-uiDemoWallNotMeasured"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -121,12 +124,21 @@ final class ScreenStatesUITests: XCTestCase {
         "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
+        // #82: a second "Can't get there" soon after the first asks before ending the scan.
+        "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
+        "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
+        // #76: a wall never walked shows no spot.
+        "result-wallNotMeasured": [("result.headline", "We couldn't measure your wall")],
     ]
 
     /// Controls a state must offer, by identifier.
     private static let controls: [String: [String]] = [
         // #39: stopping is available even when just one requested view remains.
         "gapRequest-followUp": ["action.skipGap", "action.showResult"],
+        "wallWalk-endScanQuestion": ["action.endScan", "action.keepWalking"],
+        // Too little walked to finish: a new scan, not a loop back to the walk.
+        "wallWalk-endScanTooShort": ["action.endScanStartOver", "action.keepWalking"],
+        "result-wallNotMeasured": ["action.startOver"],
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -301,6 +313,39 @@ final class ScreenStatesUITests: XCTestCase {
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'to your left'")).firstMatch
         XCTAssertTrue(walkLeft.waitForExistence(timeout: 5), "the walk must go on to the left once the right end is answered")
         XCTAssertTrue(reply(app, "Can't get there").waitForExistence(timeout: 5), "the walk's reply must come back")
+    }
+
+    /// #82: "End the scan here?" holds the card's reply back until it is answered. "Keep walking"
+    /// goes back to the walk; "Yes, end here" finishes it for the feature review.
+    @MainActor
+    func testEndScanQuestionKeepsWalkingOrEnds() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion"]
+        app.launch()
+        XCTAssertTrue(element(app, "action.keepWalking").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "action.cannotAccess").exists, "the card's reply must wait for the answer")
+        tap(app, "action.keepWalking", timeout: 5)
+        XCTAssertTrue(element(app, "action.keepWalking").waitForNonExistence(timeout: 5), "the answer must close the question")
+        XCTAssertTrue(element(app, "screen.wallWalk").exists, "Keep walking must stay on the walk")
+        app.terminate()
+
+        app.launch()
+        tap(app, "action.endScan", timeout: 15)
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 5), "Yes, end here must finish the walk")
+    }
+
+    /// #76: a wall neither side of which was walked offers a new scan, not the spot on the wall.
+    @MainActor
+    func testWallNotMeasuredShowsNoSpot() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result", "-uiDemoWallNotMeasured"]
+        app.launch()
+        XCTAssertTrue(element(app, "result.wallNotMeasured").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "action.showAR").exists, "no spot, so no See it on your wall")
+        XCTAssertFalse(element(app, "result.placement").exists)
+        XCTAssertFalse(element(app, "result.nearest").exists)
     }
 
     /// #80: the capture gate's coaching keeps the walk's task on the card and adds its own line,

@@ -210,6 +210,19 @@ import Testing
         #expect(state.spatialAvailable)
     }
 
+    /// Camera access refused on the onboarding, before any source ran, then turned on in
+    /// Settings: letting the failed source go (`ScanEngine.recheckCameraAccess`) clears the
+    /// failure, and a new source may start without Start over (#112).
+    @Test func cameraRefusedBeforeASourceCanStartOnceReleased() {
+        var state = CaptureSourceState()
+        let response = state.sourceFailed(.recoverable, afterCapture: false)
+        #expect(response == .showFailure)
+        #expect(!state.mayStartSource)
+        let discard = state.startOver()
+        #expect(discard)
+        #expect(state.failure == nil && state.mayStartSource)
+    }
+
     /// A device that can't run world tracking stays failed through Start over.
     @Test func anUnsupportedDeviceStaysFailed() {
         var state = CaptureSourceState()
