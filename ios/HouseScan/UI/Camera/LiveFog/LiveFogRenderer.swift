@@ -251,9 +251,9 @@ final class LiveFogRenderer {
         return true
     }
 
-    /// The mask keeps the view's aspect at 64 texels across, about 6 points a texel on a phone,
-    /// so the blur's sigma is about 15 points: the prototype's 96 texels left cell columns reading
-    /// as strips in the offscreen preview. The noise-warped lookup (`fogFragment`) ragged the rest.
+    /// The mask keeps the view's aspect at 64 texels across, about 6 points a texel on a phone;
+    /// the blur's 1.4-texel sigma, about 8 points, is the feather, and the noise-warped lookup
+    /// (`fogFragment`) rags the edges.
     private struct MaskTextures {
         /// Where the cells are drawn, three times the coarse size, with its depth buffer.
         var fine: MTLTexture

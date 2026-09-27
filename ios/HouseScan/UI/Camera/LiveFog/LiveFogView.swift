@@ -35,6 +35,7 @@ final class LiveFogSupport {
             await MainActor.run {
                 switch result {
                 case let .success(gpu):
+                    RuntimeLog.engine.info("live fog ready")
                     LiveFogSupport.shared.status = .ready(gpu)
                 case let .failure(error):
                     // Logged as an error, not trapped: a trap in a Debug build would stop every UI
