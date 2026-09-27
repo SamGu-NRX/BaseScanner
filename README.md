@@ -239,7 +239,6 @@ You don't need any API keys, and the server runs the public rules with nothing s
 # "strict" sends every would-be pass or fail to manual review instead of deciding.
 # HOUSESCAN_POLICY=strict
 
-# Base's rules, merged over the public ones. Set one of these two, never both.
 # HOUSESCAN_PRIVATE_RULES=../private/rules.yaml
 # HOUSESCAN_PRIVATE_RULES_B64=<the same YAML, base64-encoded, for Vercel>
 
