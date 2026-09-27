@@ -5,7 +5,8 @@ import SwiftUI
 /// cable run from the meter and the clearance footprint tinted by outcome. This screen projects
 /// it from the meter-anchored wall frame (`BatteryOverlay`) unless the engine has seen the AR
 /// scene drawing it (`state.resultInCamera`). Either way it stays put as the homeowner moves.
-/// While the spot is off screen a chevron at the edge points toward it.
+/// While the spot can't be seen, a chevron at the edge points toward it and a caption above Done
+/// says which way.
 struct ResultARScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -13,6 +14,9 @@ struct ResultARScreen: View {
     @State private var appeared = false
     /// Where the card and the Done button cover the camera (`CameraChrome`), for the chevron.
     @State private var cover = ChromeCover()
+    /// Which way the spot is while it can't be seen, in eighths of a turn from "right",
+    /// clockwise (`SpotDirection`); nil while it is in view.
+    @State private var spotOctant: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -36,7 +40,7 @@ struct ResultARScreen: View {
                         .accessibilityIdentifier("ar.overlay")
                 }
                 if let spot = result.spotCenter(on: wall) {
-                    SpotDirection(projection: projection, spot: spot, cover: cover)
+                    SpotDirection(projection: projection, spot: spot, cover: cover, octant: $spotOctant)
                 }
             }
             CameraChrome(
@@ -45,9 +49,14 @@ struct ResultARScreen: View {
                 isAutopilot: state.isAutopilot,
                 cover: $cover
             ) {
-                Button("Done") { actions.closeAR() }
-                    .buttonStyle(.primary)
-                    .accessibilityIdentifier("action.closeAR")
+                VStack(spacing: 10) {
+                    if state.tracking == .normal, let spotOctant {
+                        SpotDirectionCaption(octant: spotOctant)
+                    }
+                    Button("Done") { actions.closeAR() }
+                        .buttonStyle(.primary)
+                        .accessibilityIdentifier("action.closeAR")
+                }
             }
         }
         .onAppear {
@@ -91,16 +100,18 @@ extension ResultPresentation {
     }
 }
 
-/// An edge chevron toward the battery spot while its middle is off screen, with words saying
-/// what it points at. Nothing while the spot is on screen.
+/// While the battery spot can't be seen, an edge chevron toward it in the clear part of the
+/// camera, and which way it is (`octant`) for the caption above the Done button
+/// (`SpotDirectionCaption`). The caption sits in the chrome's own stack rather than over the
+/// camera: at the largest text sizes the card and the button leave no camera clear, and a
+/// caption drawn there went under them (review of #100). The chevron shows only where it fits.
 private struct SpotDirection: View {
     var projection: CameraProjection
     var spot: SIMD3<Float>
     /// Where the card and the Done button cover the camera, as `CameraChrome` measured them.
     var cover: ChromeCover
-
-    /// The caption's height as laid out at the current text size, to keep it off the chevron.
-    @State private var captionHeight: CGFloat = 30
+    /// Which way the spot is, in eighths of a turn clockwise from "right"; nil while in view.
+    @Binding var octant: Int?
 
     /// Half the chevron's disc (52 pt) and a gap.
     private static let chevronReach: CGFloat = 34
@@ -109,37 +120,26 @@ private struct SpotDirection: View {
         GeometryReader { proxy in
             let size = proxy.size
             let clear = clearArea(in: size)
-            if let chevron = chevronPlacement(in: size, clear: clear) {
-                // The caption goes on the side of the chevron with more of the clear area left.
-                let below = chevron.point.y <= clear.midY
-                let offset = Self.chevronReach + captionHeight / 2
-                ZStack {
+            let chevron = chevronPlacement(in: size, clear: clear)
+            ZStack {
+                Color.clear
+                if let chevron, clear.height >= 2 * Self.chevronReach {
                     TargetMarker(placement: .offScreen(chevron.point, angle: chevron.angle))
-                    Text("Your battery spot is this way")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.chalk)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        // Solid, as the other camera captions: see-through black over a bright
-                        // wall can fail the accessibility audit's contrast check.
-                        .background(ScrimShape.capsule)
-                        .frame(maxWidth: 220)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { captionHeight = $0 }
-                        .position(
-                            x: min(max(chevron.point.x, 120), max(size.width - 120, 120)),
-                            y: chevron.point.y + (below ? offset : -offset)
-                        )
+                        .accessibilityHidden(true)
                 }
-                .frame(width: size.width, height: size.height)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Your battery spot is off screen. Turn the phone toward the arrow.")
-                .accessibilityIdentifier("ar.spotDirection")
             }
+            .frame(width: size.width, height: size.height)
+            .onChange(of: chevron.map { Self.octant($0.angle) }, initial: true) { _, new in octant = new }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .onDisappear { octant = nil }
+    }
+
+    /// `angle` (screen axes, y down) in eighths of a turn clockwise from "right", 0...7.
+    private static func octant(_ angle: Angle) -> Int {
+        let eighths = Int((angle.radians / (.pi / 4)).rounded())
+        return ((eighths % 8) + 8) % 8
     }
 
     /// The part of the screen the chrome leaves clear, as `CameraChrome` measured it: between the
@@ -166,6 +166,37 @@ private struct SpotDirection: View {
         let t = min(tx, ty)
         let point = CGPoint(x: lane.midX + direction.dx * t, y: lane.midY + direction.dy * t)
         return (point, .radians(atan2(direction.dy, direction.dx)))
+    }
+}
+
+/// "Your battery spot is this way" with an arrow toward it, above the Done button while the
+/// spot can't be seen (`SpotDirection`). VoiceOver hears which way.
+private struct SpotDirectionCaption: View {
+    /// Eighths of a turn clockwise from "right", 0...7.
+    var octant: Int
+
+    private static let words = ["to the right", "down and to the right", "down", "down and to the left",
+                                "to the left", "up and to the left", "up", "up and to the right"]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.right")
+                .font(.body.weight(.heavy))
+                .rotationEffect(.degrees(Double(octant) * 45))
+            Text("Your battery spot is this way")
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Palette.chalk)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        // Solid, as the other camera captions: see-through black over a bright wall can fail
+        // the accessibility audit's contrast check.
+        .background(ScrimShape.rounded(20))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your battery spot is off screen, \(Self.words[octant % 8]). Turn the phone that way.")
+        .accessibilityIdentifier("ar.spotDirection")
     }
 }
 
