@@ -16,11 +16,11 @@ struct OnboardingScreen: View {
             art: .walk
         ),
         // What leaves the phone is said before the camera is asked for: uploads carry the wall's
-        // measurements; the photos stay in the app until the scan is started over.
+        // measurements; the photos stay in the app unless the homeowner sends them from the result.
         OnboardingPage(
             title: "Your phone takes the photos",
             body: "Just walk slowly. The haze on the wall clears as your phone sees it.",
-            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
+            note: "Only the wall's measurements are sent. Your photos stay on this phone unless you choose to send them.",
             art: .fog
         ),
         OnboardingPage(

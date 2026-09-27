@@ -1474,8 +1474,9 @@ final class ScanEngine {
 
     /// Writes the capture packet (`ScanEngine+Packet.swift`) with this scene.json inside, zipped
     /// into the scan folder's `scan.zip`: the bundle "Share scan" offers (`state.shareableScan`)
-    /// whatever the upload then does: it fails, is refused or answers. Nothing uploads the
-    /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
+    /// whatever the upload then does: it fails, is refused or answers. The packet goes out only if
+    /// the homeowner sends it (`packetBundleReady`), and the upload never waits for it or fails
+    /// because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
     private func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
@@ -1496,6 +1497,7 @@ final class ScanEngine {
                 RuntimeLog.engine.info("bundle \(written.url.path, privacy: .public): packet \(PacketManifest.version, privacy: .public) with \(written.summary, privacy: .public) (kept on the phone)")
                 guard scan == generation, serial == bundleSerial else { return }
                 state.shareableScan = written.url
+                packetBundleReady()
             } catch {
                 RuntimeLog.engine.error("scan bundle not written: \(String(describing: error), privacy: .public)")
             }
@@ -1516,6 +1518,7 @@ final class ScanEngine {
     // MARK: Start over
 
     func resetAll() {
+        cancelPacketUpload()
         generation += 1
         uploadTask?.cancel()
         replay?.stop()

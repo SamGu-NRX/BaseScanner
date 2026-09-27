@@ -35,6 +35,9 @@ struct StoredDepth: Sendable {
 
 /// Keyframe JPEGs and close-up stills of one scan, in Caches/Scans/<id>/. File work runs off the
 /// main actor; the list of what was stored lives here on the main actor.
+///
+/// A scan whose packet the homeowner chose to send keeps its folder until the upload is done
+/// (`PacketUploadService`), even across launches.
 @MainActor
 final class KeyframeStore {
     let directory: URL
@@ -47,12 +50,17 @@ final class KeyframeStore {
     /// Bumped by `discardKeyframes`, so a write that started before it doesn't land in the list.
     private var epoch = 0
 
-    /// Makes a new, empty scan folder and deletes every other one: only the current scan is kept
-    /// on the phone. Covers both a start over (the previous scan's folder) and launch (folders a
-    /// quit or crashed run left behind), since both make a new store.
+    /// Where every scan's folder is.
+    nonisolated static var scansDirectory: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "Scans", directoryHint: .isDirectory)
+    }
+
+    /// Makes a new, empty scan folder and deletes every other one, except those with a packet
+    /// upload under way: only the current scan is kept on the phone. Covers both a start over
+    /// (the previous scan's folder) and launch (folders a quit or crashed run left behind), since
+    /// both make a new store.
     init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let scans = caches.appending(path: "Scans", directoryHint: .isDirectory)
+        let scans = Self.scansDirectory
         directory = scans.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         Self.deleteScans(in: scans, except: directory.lastPathComponent)
@@ -206,13 +214,14 @@ final class KeyframeStore {
     var packetFolder: URL { directory.appending(path: "packet", directoryHint: .isDirectory) }
     var bundleURL: URL { directory.appending(path: "scan.zip") }
 
-    /// Zips the packet folder into `scan.zip`, manifest.json at the zip's root, and removes the
-    /// folder. The zip is what "Share scan" offers; the upload sends scene.json alone. It stays on
-    /// the phone until the next scan unless the homeowner shares it.
+    /// Zips the packet folder into `scan.zip`, manifest.json at the zip's root. The zip is what
+    /// "Share scan" offers; the placement upload sends scene.json alone. It stays on the phone
+    /// until the next scan unless the homeowner shares it. The folder is removed unless
+    /// `keepFolder`: with a packet upload configured, the homeowner may send its files.
     ///
     /// Streamed to disk one file at a time: a long walk's JPEGs held in memory twice (the entries
     /// and the archive) is what an in-memory build cost.
-    nonisolated static func zipPacket(_ folder: URL, to url: URL) throws {
+    nonisolated static func zipPacket(_ folder: URL, to url: URL, keepFolder: Bool) throws {
         let files = FileManager.default
         guard let walker = files.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey]) else {
             throw CocoaError(.fileReadNoSuchFile, userInfo: [NSFilePathErrorKey: folder.path])
@@ -226,7 +235,7 @@ final class KeyframeStore {
         names.sort { ($0 == "manifest.json" ? 0 : 1, $0) < ($1 == "manifest.json" ? 0 : 1, $1) }
         let entries = names.map { name in (name: name, load: { () throws -> Data in try Data(contentsOf: folder.appending(path: name)) }) }
         try ZipWriter.write(entries, to: url, modified: Date())
-        try? files.removeItem(at: folder)
+        if !keepFolder { try? files.removeItem(at: folder) }
     }
 
     /// Off the main actor. A write still in flight for a deleted folder fails, because its
@@ -236,6 +245,8 @@ final class KeyframeStore {
             let files = FileManager.default
             guard let names = try? files.contentsOfDirectory(atPath: scans.path) else { return }
             for name in names where name != kept {
+                // An upload under way; `PacketUploadService` deletes the folder when it ends.
+                guard !files.fileExists(atPath: scans.appending(path: name).appending(path: PacketUploadState.fileName).path) else { continue }
                 do {
                     try files.removeItem(at: scans.appending(path: name))
                 } catch {

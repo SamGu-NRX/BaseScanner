@@ -40,6 +40,8 @@ final class DemoEngine: ScanActions {
     private var followUpSkipped = false
     private var failedUploads = 0
     private var rejectedUploads = 0
+    /// The packet upload's fake transfer (`DemoEngine+PacketUpload.swift`).
+    var packetScript: Task<Void, Never>?
 
     private static let cellWidth: Float = 0.1524
     /// Where the demo wall ends on each side, meters of s. Following a corner moves the end on.

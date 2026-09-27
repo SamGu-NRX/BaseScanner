@@ -6,8 +6,8 @@ import UIKit
 
 /// The capture packet (packet/README.md on t3/packet, version 1.1): what Share scan hands over.
 /// Everything in it is in meters, seconds of device uptime and the meter frame, except
-/// scene.json, which travels inside unchanged. Nothing uploads it: photos leave the phone only
-/// when the homeowner shares the scan.
+/// scene.json, which travels inside unchanged. Photos leave the phone only when the homeowner
+/// shares the scan or chooses to send the packet (`ScanEngine+PacketUpload.swift`).
 extension ScanEngine {
     /// Everything the packet needs from the main actor, read in one turn so it describes one
     /// moment of the scan. The files are written from it off the main actor (`writePacket`).
@@ -36,6 +36,8 @@ extension ScanEngine {
         /// The camera's frame rate live; nil on a replay, whose rate comes from its frames.
         var trajectoryRate: Double?
         var motionStreams: Set<CaptureRecorder.Stream>
+        /// Keep the packet folder beside the zip, for the packet upload to send.
+        var keepFolder: Bool
     }
 
     struct ReplayPose: Sendable {
@@ -95,7 +97,8 @@ extension ScanEngine {
             guidance: guidanceLog.entries.map { Self.packetEntry($0, wall: sceneWall, frame: frame) },
             scene: scene,
             trajectoryRate: settings.map { Double($0.framesPerSecond) },
-            motionStreams: motionRunsLive ? motionAvailable : []
+            motionStreams: motionRunsLive ? motionAvailable : [],
+            keepFolder: PacketUploadService.shared.isEnabled
         )
     }
 
@@ -174,9 +177,9 @@ extension ScanEngine {
 
     // MARK: Writing
 
-    /// Writes the packet folder, zips it to `inputs.zip` and removes the folder. Returns the zip
-    /// and a one-line summary for the log. Off the main actor: it copies every photo and hashes
-    /// every file.
+    /// Writes the packet folder and zips it to `inputs.zip`, keeping the folder only when
+    /// `inputs.keepFolder`. Returns the zip and a one-line summary for the log. Off the main
+    /// actor: it copies every photo and hashes every file.
     ///
     /// A photo, a depth map, a trajectory row, a plane or a section the writer refuses is left
     /// out and logged, so one bad input doesn't cost the homeowner the whole packet; the writer's
@@ -284,7 +287,7 @@ extension ScanEngine {
         } catch { Self.logLeftOut("guidance", error) }
         try writer.setScene(inputs.scene)
         let folder = try writer.finish()
-        try KeyframeStore.zipPacket(folder, to: inputs.zip)
+        try KeyframeStore.zipPacket(folder, to: inputs.zip, keepFolder: inputs.keepFolder)
         let summary = "\(added) photos (\(photoDepthTimes.count) with depth), \(depthFrames) depth frames, "
             + "\(trajectory.rows.count) trajectory rows over \(String(format: "%.1f", ended - started)) s, "
             + "\(inputs.motionStreams.count) motion streams, \(inputs.mesh == nil ? "no mesh" : "mesh"), \(planes) planes, "

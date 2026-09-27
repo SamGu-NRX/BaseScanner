@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// "Share scan": hands the scan bundle (`ScanViewState.shareableScan`) to the share sheet, so a
-/// scan can get off the phone by AirDrop, Mail or Files. The keyframe photos leave the phone only
-/// this way, so the line under the button says what goes. Always a quiet button: the screen's
-/// one prominent action stays the way on.
+/// scan can get off the phone by AirDrop, Mail or Files. Besides the packet upload the homeowner
+/// opts into, this is the only way the keyframe photos leave the phone, so the line under the
+/// button says what goes. Always a quiet button: the screen's one prominent action stays the way on.
 struct ShareScanButton: View {
     let url: URL
 

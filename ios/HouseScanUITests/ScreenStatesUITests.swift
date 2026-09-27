@@ -288,6 +288,8 @@ final class ScreenStatesUITests: XCTestCase {
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
             XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
         }
+        // No state here configures a packet upload endpoint, so nothing may offer to send the scan.
+        XCTAssertFalse(element(app, "packet.card").exists, "\(name): packet upload offered with no endpoint")
         if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
             let found: Bool
             if let identifier = expected.identifier {

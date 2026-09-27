@@ -329,7 +329,7 @@ enum ScanCopy {
 
     static func upload(_ upload: UploadState) -> Instruction {
         switch upload {
-        // The upload carries the wall's measurements; the photos stay on the phone.
+        // The upload carries the wall's measurements; photos go only if the homeowner sends them.
         case .idle, .packaging:
             Instruction(title: "Getting your measurements ready", detail: nil)
         case .uploading:

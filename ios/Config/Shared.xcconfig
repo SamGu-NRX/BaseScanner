@@ -12,4 +12,13 @@ BUNDLE_ID_PREFIX = dev.housescanning
 // Set it empty in Local.xcconfig to fall back to the bundled sample result.
 HOUSESCAN_SERVER_URL = https:/$()/house-scanning-server.vercel.app
 
+// Where the homeowner can choose to send the capture packet (ios/README.md, "Sending the
+// packet"); Info.plist carries these as HouseScanPacketUploadURL and HouseScanPacketUploadKey.
+// Empty turns the feature off: no consent screen, nothing sent, no background session. Set, it
+// turns on the consent screen, but nothing is sent until an adapter for the server's API is
+// selected (HouseScan/Runtime/PacketUpload/PacketIntakes.swift). The key is optional, for that
+// adapter's API calls only, and readable by anyone with the app, so it is not a secret.
+HOUSESCAN_PACKET_UPLOAD_URL =
+HOUSESCAN_PACKET_UPLOAD_KEY =
+
 #include? "Local.xcconfig"

@@ -34,6 +34,10 @@ import SwiftUI
 /// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
+/// - `-packetUploadURL <url>`: a packet upload endpoint is configured, so the result offers to
+///   send the scan (nothing is sent: the demo fakes the transfer).
+/// - `-uiDemoPacket <sending|waiting|sent|failed|skipped>`: with `-packetUploadURL`, the result's
+///   packet card starts in that state.
 ///
 /// Unfrozen, the demo goes back to the camera once after the first answer, as the engine does
 /// when the answer lists a view the camera can take.
@@ -45,7 +49,7 @@ enum UIDemo {
 }
 
 private struct DemoHost: View {
-    @State private var engine = DemoEngine(arguments: ProcessInfo.processInfo.arguments)
+    @State private var engine = DemoEngine.withPacketUpload(arguments: ProcessInfo.processInfo.arguments)
 
     var body: some View {
         ScanRootView(state: engine.state, actions: engine)

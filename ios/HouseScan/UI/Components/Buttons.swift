@@ -2,17 +2,19 @@ import SwiftUI
 
 /// The one big action on a screen: solid blue, white bold text, full width. Solid rather than
 /// glass because it has to stay legible over a sunlit wall; white on the fill is about 6:1.
+/// Disabled, it turns gray with muted text: a faded blue left white text near 2:1, and gray
+/// reads as "not yet" where a paler blue reads as "loading".
 struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(Typeface.button)
-            .foregroundStyle(.white)
+            .foregroundStyle(isEnabled ? Color.white : Palette.muted)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity, minHeight: Metrics.primaryButtonHeight)
             .padding(.horizontal, 20)
-            .background(Palette.signalFill.opacity(isEnabled ? 1 : 0.45), in: .capsule)
+            .background(isEnabled ? Palette.signalFill : Palette.muted.opacity(0.14), in: .capsule)
             .contentShape(.capsule)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)

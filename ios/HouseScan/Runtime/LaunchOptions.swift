@@ -1,4 +1,5 @@
 import Foundation
+import HouseScanKit
 import OSLog
 
 /// Verification hooks from the launch arguments (contract C4).
@@ -18,6 +19,12 @@ import OSLog
 ///   also writes the scan's scene.json there, for the test to check.
 /// - `-autopilotCantGetThere`: the autopilot ends the walk with "Can't get there" instead of
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
+/// - `-packetUploadURL <url>`: turns on the packet upload's screens, for testing. Without it the
+///   app uses Info.plist `HouseScanPacketUploadURL` (`HOUSESCAN_PACKET_UPLOAD_URL`, empty by
+///   default); with neither, the result offers no upload. Nothing is sent to it: no server API is
+///   selected yet (`PacketIntakes`), so Send reports that it couldn't send.
+/// - `-packetIntake localTest`: Debug builds only. Sends to `-packetUploadURL` through
+///   `LocalTestIntake`, for ios/Tools/packet-intake-test-stub.py; no real server speaks it.
 struct LaunchOptions: Equatable {
     var replayFolder: URL?
     var autopilot = false
@@ -26,10 +33,15 @@ struct LaunchOptions: Equatable {
     var autopilotHold: Double = 1.2
     var autopilotGate: URL?
     var autopilotCantGetThere = false
+    var packetUpload: PacketUploadEndpoint?
+    /// `-packetIntake <name>`: a test adapter to send through (`PacketIntakes.make`).
+    var packetIntake: String?
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
-        defaultServerURL: String? = Bundle.main.object(forInfoDictionaryKey: "HouseScanServerURL") as? String
+        defaultServerURL: String? = Bundle.main.object(forInfoDictionaryKey: "HouseScanServerURL") as? String,
+        defaultPacketUploadURL: String? = Bundle.main.object(forInfoDictionaryKey: "HouseScanPacketUploadURL") as? String,
+        packetUploadKey: String? = Bundle.main.object(forInfoDictionaryKey: "HouseScanPacketUploadKey") as? String
     ) {
         func value(after flag: String) -> String? {
             guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
@@ -44,6 +56,8 @@ struct LaunchOptions: Equatable {
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+        packetUpload = PacketUploadEndpoint(baseURL: value(after: "-packetUploadURL") ?? defaultPacketUploadURL, bearerKey: packetUploadKey)
+        packetIntake = value(after: "-packetIntake")
     }
 
     /// An http(s) URL with a host, or nil. An empty build setting leaves the plist value empty,

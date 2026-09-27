@@ -62,6 +62,9 @@ struct ResultScreen: View {
                     if !result.missing.isEmpty {
                         MissingList(missing: result.missing, actions: actions)
                     }
+                    if state.packetUpload != .unavailable {
+                        PacketUploadCard(status: state.packetUpload, actions: actions)
+                    }
                     VStack(spacing: 16) {
                         if let scan = state.shareableScan {
                             ShareScanButton(url: scan)

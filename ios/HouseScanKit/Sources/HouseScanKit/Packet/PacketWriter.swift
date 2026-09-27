@@ -137,7 +137,7 @@ public struct DepthPacket: Sendable {
 ///
 /// Each input is checked against the rules packet/validate.py applies to it, and refused with a
 /// `PacketError` naming the field, so a finished packet validates. Nothing here sends the packet
-/// anywhere: photos leave the phone only when the homeowner shares the folder.
+/// anywhere: `PacketUploader` does, once the homeowner agrees.
 public struct PacketWriter: Sendable {
     public let folder: URL
     public let session: PacketSessionInfo

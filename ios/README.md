@@ -14,7 +14,9 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 | --- | --- |
 | `-replay <folder>` | Plays a measure-lab-session v2 folder instead of the camera. A replay without wall taps gets a wall assumed from its trajectory, logged as an assumption. Keyframes with a `depth` entry (`{file, confidenceFile, w, h}`, Float32 meters) play their LiDAR depth into coverage as a LiDAR phone would. |
 | `-autopilot` | Drives every step on a replay, answering the ground question with mulch. It holds some walk frames back to close one gap request before the upload. After each upload it also drives the requests the server's answer raises, closing each with the replay's frames, until the result shows. A request the frames don't close gets "I can't get there", as a homeowner would answer. |
-| `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Photos stay on the phone unless someone uses Share scan, which shares the scan as a capture packet (see "Scan bundle"). |
+| `-serverURL <url>` | Uploads the scan to this server: `POST <url>/v1/placements` with scene.json as `application/json`. Without it the app uses `HOUSESCAN_SERVER_URL` from `Config/Shared.xcconfig` (https://house-scanning-server.vercel.app), carried in Info.plist as `HouseScanServerURL`. Photos stay on the phone unless someone uses Share scan, which shares the scan as a capture packet (see "Scan bundle"), or the homeowner sends the packet (see "Sending the packet"). |
+| `-packetUploadURL <url>` | Turns on the packet upload's consent screen and progress card, for testing only: no server API is selected, so nothing is sent (see "Sending the packet"). Without it the app uses `HOUSESCAN_PACKET_UPLOAD_URL` from `Config/Shared.xcconfig`, empty by default, carried in Info.plist as `HouseScanPacketUploadURL`, with an optional key in `HOUSESCAN_PACKET_UPLOAD_KEY`. With no URL the result offers nothing. With `-uiDemo` the demo fakes the transfer, and `-uiDemoPacket <state>` opens the card in a given state. |
+| `-packetIntake localTest` | Debug builds only: with `-packetUploadURL`, sends through the test-only adapter to `Tools/packet-intake-test-stub.py`. |
 | `-sampleResult` | Answers with the bundled sample result, which the result screen must label as a sample, even when a server is configured. The UI tests pass it so they run offline. It is also the fallback when `HOUSESCAN_SERVER_URL` is empty. |
 | `-autopilotHold <s>` | How long the autopilot leaves each screen up (default 1.2 s). |
 | `-autopilotCantGetThere` | With `-autopilot`, ends the walk the way device run 1 did. It answers "Can't get there" to the walk's first request, the ground in front of the meter, before the replay has shown it. Then, instead of marking the ends, it plays again the frame where the walk went farthest on each side and answers "Can't get there" when the walk asks to go on that way, so the end lands where the phone stands. `FullFlowUITests.testCantGetThereEndsWhereThePhoneIs` runs it. |
@@ -37,6 +39,7 @@ Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescann
 | `HouseScanUITests/` | Full-flow UI tests on a replay, and an accessibility audit of every screen state in demo mode. `Fixtures/` holds two synthetic replays, one with LiDAR depth; the tests read them from the source tree, and `project.yml` keeps them out of the test bundle. |
 | `Tools/make-synthetic-replay.swift` | Renders the synthetic fixture |
 | `Tools/check-app-scene.sh` | Checks a scan bundle's scene.json against the server schema |
+| `Tools/packet-intake-test-stub.py` | A local, test-only stand-in for a packet intake, for the end-to-end upload test |
 
 ## Requirements
 
@@ -90,7 +93,7 @@ Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabili
 
 ## Scan bundle
 
-`scan.zip` in the scan's folder is what Share scan sends: a capture packet, version 1.1, with `manifest.json` at the zip's root. The packet's specification is `packet/README.md` on the `t3/packet` branch, with `packet/manifest.schema.json` and a validator (`uv run python -m packet validate <scan.zip>`). The upload sends only scene.json; nothing uploads the packet.
+`scan.zip` in the scan's folder is what Share scan sends: a capture packet, version 1.1, with `manifest.json` at the zip's root. The packet's specification is `packet/README.md` on the `t3/packet` branch, with `packet/manifest.schema.json` and a validator (`uv run python -m packet validate <scan.zip>`). The placement upload sends only scene.json. The packet leaves the phone only through Share scan or when the homeowner sends it (next section).
 
 Everything in the packet is in meters, seconds of device uptime (`ARFrame.timestamp`) and the meter frame (origin at the meter, +y up, +z out of the wall, +x along the wall to the right), except scene.json.
 
@@ -112,6 +115,21 @@ Everything in the packet is in meters, seconds of device uptime (`ARFrame.timest
 The app does not record location or heading, and leaves `session.consent` out. A replay's photos keep the recording's times; their depth is left out because it is not ARKit's own, and its capture has no wall-clock start. On a replay the guidance times follow the latest frame played, which stands still while the gap loop replays earlier frames.
 
 `HouseScan/Runtime/ScanEngine+Packet.swift` assembles the packet, `Runtime/CaptureRecorder.swift` records the streams and depth frames, and `Runtime/GuidanceLog.swift` the requests.
+
+## Sending the packet
+
+After the result, the homeowner can send the capture packet to Base's survey team. It is opt-in: a card on the result opens a consent screen that says what is sent and who gets it, with a toggle that starts off; Send works only once it is on, and Skip is always there. The result never waits for it.
+
+**No server API is selected yet.** Which API the phone sends to is still being decided between teams, so the app talks to the server only through `PacketIntake` (begin or resume a session with a target per file, commit uploaded files, finish), and no adapter for a real server exists. `HOUSESCAN_PACKET_UPLOAD_URL` or `-packetUploadURL` turns on the consent screen and the progress card for testing; Send then logs that no intake is selected and shows that the scan didn't send. Nothing leaves the phone.
+
+- `HouseScanKit/Sources/HouseScanKit/Upload/` holds `PacketIntake`, the file list read from `manifest.json` (every file hashed and checked against it before anything is sent), the saved state, the retry policy, the consent wording and `PacketUploader`, which runs a packet through any intake. Its tests use a mock intake that signs URLs to a `URLProtocol` mock.
+- `HouseScan/Runtime/PacketUpload/` uploads each file with `uploadTask(with:fromFile:)` on a background session, so files keep going while the app is suspended. Every file is handed to the session at once, since a suspended app can't start new transfers. `PacketIntakes.swift` is where an adapter for the chosen API goes.
+- On Send, the scan folder's `packet/` moves to `packet-sending/`, so a later bundle can't change what is being sent, and `packet-upload.json` beside it records the session, which files are stored and the tries per file, after every change. A scan folder holding that file outlives launches.
+- At launch the app picks up every unfinished upload: it begins again with the saved session id, joins transfers the background session is still running, and sends only what the intake doesn't list as stored. When the system wakes the app for finished transfers, `application(_:handleEventsForBackgroundURLSession:completionHandler:)` reconnects the session.
+- A failed call or upload is retried after 2 s, doubling to at most 60 s, 6 tries each; 401, 403 or an expired target begin again for fresh targets, 4 times in a row at most; the server can say files are missing 3 times. These numbers are guesses, not measured.
+- The consent's `textID` names the exact words on the consent screen (`PacketConsentWording`); a test fails if the words change and the id doesn't.
+- Start over cancels the scan's transfers and deletes it. Once the intake says the packet is complete, the copy and the state file go.
+- For an end-to-end check in the Simulator, Debug builds have a test-only adapter, `-packetIntake localTest`, for `python3 ios/Tools/packet-intake-test-stub.py --port 8791 --put-delay 0.4`. It mirrors `PacketIntake` and stands for no real server. `PacketUploadUITests.testSendsToTheStubAndResumesAfterRelaunch` runs it when `TEST_RUNNER_HOUSESCAN_PACKET_STUB_URL=http://127.0.0.1:8791` is set.
 
 ## Conventions
 

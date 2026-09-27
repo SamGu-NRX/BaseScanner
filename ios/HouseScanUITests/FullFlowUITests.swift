@@ -216,6 +216,10 @@ final class FullFlowUITests: XCTestCase {
             add(shot)
             try audit(app, screen: phase)
             beforeLeaving(app, phase)
+            if phase == "result" {
+                // The flow runs with no packet upload endpoint: nothing offers to send the scan.
+                XCTAssertFalse(app.descendants(matching: .any)["packet.card"].exists, "packet upload offered with no endpoint")
+            }
             if phase == "result", let onScene {
                 let file = gate.appending(path: "scene.json")
                 let deadline = Date().addingTimeInterval(20)

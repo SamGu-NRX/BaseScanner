@@ -686,8 +686,11 @@ final class ScanViewState {
     /// True when the phone has LiDAR and coverage counts only what depth confirms.
     var depthAvailable = false
     /// The scan's bundle (scene.json, keyframe photos and their poses) once it is packaged, for
-    /// "Share scan". Photos leave the phone only if the homeowner shares this.
+    /// "Share scan". Photos leave the phone only if the homeowner shares this or sends it
+    /// (`packetUpload`).
     var shareableScan: URL?
+    /// Sending the capture packet to Base's survey team, which the homeowner opts into.
+    var packetUpload: PacketUploadStatus = .unavailable
     /// A camera permission or session failure the homeowner can act on.
     var failure: ScanFailure?
 
@@ -704,7 +707,7 @@ enum ScanFailure: Equatable, Sendable {
 /// The homeowner's intents. View points are in the coordinate space of the full-screen camera
 /// view of `viewSize`; nil means the reticle at the view's center.
 @MainActor
-protocol ScanActions: AnyObject {
+protocol ScanActions: PacketUploadActions {
     func finishOnboarding()
     func markMeter(at point: CGPoint?, viewSize: CGSize)
     func skipCloseUp()
