@@ -58,6 +58,8 @@ export function initialState() {
     runs: new Map(), // runId -> Map(stage -> { status, attempt, durationS, errorCode, seq })
     runFirstSeq: new Map(), // runId -> seq of the first event that named it
     declaredRun: null, // the latest run id the status or result named
+    declaredRank: -1, // its rank while no event has named it; see runRank
+    caughtUp: false, // true once history before the connection has been read
     currentRunId: null,
     hints: [],
     captureCheck: null,
@@ -130,6 +132,10 @@ export function reduce(state, action) {
       // Readiness counts drawable points, not the file's declared count.
       return { ...state, preview: { phase: action.cloud.kept > 0 ? "ready" : "empty", runId: action.runId, cloud: action.cloud, error: null } };
     case "preview-error":
+      // A failed reload keeps a model already shown for this run; an unreadable file does not.
+      if (!action.unsupported && state.preview.phase === "ready" && state.preview.runId === action.runId) {
+        return { ...state, preview: { ...state.preview, error: action.error } };
+      }
       return {
         ...state,
         preview: { phase: action.unsupported ? "unsupported" : "error", runId: action.runId, cloud: null, error: action.error },
@@ -164,12 +170,13 @@ function applyStatus(state, body) {
 
 /**
  * How recent a run is. Runs start one after another, so a run whose first event has a higher seq
- * is newer. A run the status or result named but no event has mentioned yet ranks above all:
- * those endpoints report the latest run, and history read later must not displace it.
+ * is newer. A run the status or result named but no event has mentioned yet was the latest when
+ * it was named: while history is still being read that outranks every event, and once history is
+ * read it ranks just after the events seen so far, so a run first named by a later event wins.
  */
 function runRank(state, runId) {
   if (state.runFirstSeq.has(runId)) return state.runFirstSeq.get(runId);
-  return runId === state.declaredRun ? Infinity : -1;
+  return runId === state.declaredRun ? state.declaredRank : -1;
 }
 
 /**
@@ -181,20 +188,25 @@ function runRank(state, runId) {
 function noteRun(state, runId, seq = null) {
   let next = state;
   if (seq == null) {
-    if (state.declaredRun !== runId) next = { ...next, declaredRun: runId };
+    if (state.declaredRun !== runId) next = { ...next, declaredRun: runId, declaredRank: state.caughtUp ? state.cursor + 0.5 : Infinity };
   } else if (!state.runFirstSeq.has(runId)) {
     next = { ...next, runFirstSeq: new Map(state.runFirstSeq).set(runId, seq) };
   }
+  return chooseRun(next, state.currentRunId);
+}
+
+/** Makes the most recent known run current, clearing another run's evidence if that changes it. */
+function chooseRun(next, previous) {
   const known = new Set([...next.runFirstSeq.keys(), ...(next.declaredRun ? [next.declaredRun] : [])]);
   let current = null;
   for (const id of known) if (current == null || runRank(next, id) > runRank(next, current)) current = id;
-  if (current === state.currentRunId) return next;
+  if (current === previous) return next;
   next = { ...next, currentRunId: current };
-  if (state.currentRunId == null) return next;
+  if (previous == null) return next;
   if (next.verdict && next.verdict.runId !== current) next.verdict = null;
   if (next.retake && next.retake.runId !== current) next.retake = null;
   // A result read with no body yet (loading or failed) belonged to the previous run too.
-  if (next.result.body ? next.result.body.runId !== current : next.result.phase !== "none") next.result = { phase: "none", body: null, error: null };
+  if (next.result.body ? next.result.body.runId !== current : next.result.phase !== "none") next.result = { phase: "none", body: null, error: null, revision: next.result.revision };
   if (next.preview.runId && next.preview.runId !== current) next.preview = { phase: "none", runId: null, cloud: null, error: null };
   return log(next, { seq: null, at: null, kind: "run", text: `Showing run ${current}` });
 }
@@ -223,6 +235,11 @@ function applyEvents(state, body, at, catchUp) {
   const reported = Number.isInteger(body.next) ? body.next : 0;
   next.cursor = Math.max(state.cursor, reported, maxSeq);
   if (at != null) next.connection = { phase: "live", lastContactAt: at, lastError: null, failures: 0 };
+  // The first read after history pins a run the status named to the events seen so far.
+  if (catchUp !== true && !next.caughtUp) {
+    next = { ...next, caughtUp: true };
+    if (next.declaredRank === Infinity) next = chooseRun({ ...next, declaredRank: next.cursor + 0.5 }, next.currentRunId);
+  }
   return next;
 }
 
@@ -329,7 +346,7 @@ function stage(state, data, base) {
 const NO_OUTCOME_STATUSES = new Set(["failed", "expired"]);
 
 function applyResult(state, body) {
-  if (!isObject(body)) return { ...state, result: { phase: "error", body: null, error: "Result was not a JSON object" } };
+  if (!isObject(body)) return { ...state, result: { ...state.result, phase: "error", body: null, error: "Result was not a JSON object" } };
   // A result for a run the view is not showing is held back; the next read will match.
   const knownRun = typeof body.runId === "string" && (state.runFirstSeq.has(body.runId) || state.declaredRun === body.runId);
   if (knownRun && state.currentRunId && body.runId !== state.currentRunId && runRank(state, body.runId) < runRank(state, state.currentRunId)) {

@@ -65,6 +65,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
     let readyKey = null;
     let resultTries = 0;
     let resultAt = -Infinity;
+    let resultNotBefore = -Infinity;
     let previewKey = null;
     let previewRetryAt = -Infinity;
     // Reads start without waiting and repeat while pages come back full. They return what happened
@@ -116,7 +117,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
       }
       const pending = resultExpected(state) && readyKey !== key;
       const interval = resultTries < RESULT_QUICK_TRIES ? RESULT_RETRY_MS : RESULT_SLOW_MS;
-      if (pending && now() - resultAt >= interval) {
+      if (pending && now() - resultAt >= interval && now() >= resultNotBefore) {
         resultTries += 1;
         resultAt = now();
         send({ type: "result-loading" });
@@ -127,6 +128,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
           if (getState().result.body === body && getState().result.phase === "ready") readyKey = key;
         } catch (error) {
           if (signal.aborted) return;
+          if (error instanceof HttpError && error.retryAfterS) resultNotBefore = now() + Math.min(error.retryAfterS * 1000, RETRY_AFTER_CAP_MS);
           send({ type: "result-error", error: error instanceof HttpError ? `${error.code} (${error.status})` : "network error" });
         }
       }

@@ -279,6 +279,36 @@ test("discarding an older run's result keeps the current run's pending result pe
   assert.equal(s.result.body.runId, "run_b");
 });
 
+test("after history is read, a run first named by a later event supersedes the one the status named", () => {
+  const runB = { seq: 3, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["vn1"], memberActions: [] } };
+  const s = run(
+    selected(),
+    { type: "status", body: { captureId: "cap_TEST_1", status: "complete", runId: "run_a" } },
+    { ...events([stage(1, "result", "done"), stage(2, "criteria", "done")], 2), catchUp: true },
+    { ...events([], 2), catchUp: false },
+    { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
+    { ...events([runB], 3), catchUp: false },
+  );
+  assert.equal(s.currentRunId, "run_b");
+  assert.equal(s.result.phase, "none");
+  assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
+});
+
+test("the result revision stays a number across a run switch", () => {
+  const a = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
+  const b = run(a, events([{ ...stage(5, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }], 5));
+  const c = run(b, { type: "result", body: { runId: "run_b", status: "complete", outcome: { kind: "eligible" } } });
+  assert.ok(Number.isInteger(c.result.revision));
+});
+
+test("a failed model reload keeps the model already shown", () => {
+  const cloud = { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+  const shown = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "withheld-by-viewer-relay" } }, { type: "preview", runId: "run_a", cloud });
+  const failed = run(shown, { type: "preview-loading", runId: "run_a" }, { type: "preview-error", runId: "run_a", error: "network error" });
+  assert.equal(failed.preview.phase, "ready");
+  assert.equal(failed.preview.cloud, cloud);
+});
+
 test("a late retake from a superseded run asks nothing of the current run", () => {
   const s = run(
     selected(),
