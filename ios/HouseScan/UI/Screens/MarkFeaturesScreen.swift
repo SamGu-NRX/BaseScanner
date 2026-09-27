@@ -4,6 +4,10 @@ import SwiftUI
 /// marked, answer the one question a camera can't (does this window open?), add anything
 /// missed, then confirm.
 ///
+/// "Looks complete" is a soft gate (#65): with a question still unanswered, the first tap
+/// scrolls to the first one and outlines it, and the next tap sends anyway. The ground question
+/// and every window's question count; "Not sure" is an answer to both.
+///
 /// A panel over the dimmed camera rather than a new page: the homeowner is still standing at
 /// the wall, and the list refers to things they can see.
 ///
@@ -16,6 +20,8 @@ struct MarkFeaturesScreen: View {
     let actions: any ScanActions
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The unanswered question the first "Looks complete" pointed to; set, the next tap sends.
+    @State private var nudged: ReviewQuestion? = nil
 
     var body: some View {
         ZStack {
@@ -47,30 +53,60 @@ struct MarkFeaturesScreen: View {
         }
     }
 
-    private var panel: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // First, so it is seen before "Looks complete"; skipping it counts as not sure.
-                    GroundQuestion(answer: state.groundAnswer, actions: actions)
-                    heading
-                    featureList
-                    addSomething
-                }
-                .padding(20)
-            }
-            .scrollBounceBehavior(.basedOnSize)
+    /// The first question still without an answer, in the order the panel lists them.
+    private var firstUnanswered: ReviewQuestion? {
+        if state.groundAnswer == nil { return .ground }
+        return state.features.first(where: \.awaitsOpensAnswer).map { .window($0.id) }
+    }
 
-            Button {
-                actions.confirmFeatures()
-            } label: {
-                Text("Looks complete")
+    private func isUnanswered(_ question: ReviewQuestion) -> Bool {
+        switch question {
+        case .ground: state.groundAnswer == nil
+        case .window(let id): state.features.first { $0.id == id }?.awaitsOpensAnswer ?? false
+        }
+    }
+
+    private var panel: some View {
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // First, so it is seen before "Looks complete"; skipping it counts as not sure.
+                        GroundQuestion(answer: state.groundAnswer, actions: actions,
+                                       highlighted: nudged == .ground && isUnanswered(.ground))
+                            .id(ReviewQuestion.ground)
+                        heading
+                        featureList
+                        addSomething
+                    }
+                    .padding(20)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+
+                if nudged != nil, firstUnanswered != nil {
+                    Text(ScanCopy.reviewUnanswered)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+                        .accessibilityIdentifier("review.unanswered")
+                        .transition(.opacity)
+                }
+
+                Button {
+                    confirm(proxy)
+                } label: {
+                    Text("Looks complete")
+                }
+                .buttonStyle(.primary)
+                .accessibilityIdentifier("action.confirmFeatures")
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
             }
-            .buttonStyle(.primary)
-            .accessibilityIdentifier("action.confirmFeatures")
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            .animation(Motion.text, value: nudged)
         }
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
@@ -78,6 +114,21 @@ struct MarkFeaturesScreen: View {
                 .ignoresSafeArea(edges: .bottom)
         }
         .environment(\.colorScheme, .light)
+    }
+
+    /// Sends, unless a question is unanswered and none has been pointed to yet: then scrolls to
+    /// the first and outlines it, once. The phone having lost its place changes nothing here, so
+    /// the second tap still sends the scan.
+    private func confirm(_ proxy: ScrollViewProxy) {
+        guard nudged == nil, let question = firstUnanswered else {
+            actions.confirmFeatures()
+            return
+        }
+        nudged = question
+        withAnimation(reduceMotion ? nil : Motion.settle) {
+            proxy.scrollTo(question, anchor: .top)
+        }
+        AccessibilityNotification.Announcement(ScanCopy.reviewUnanswered).post()
     }
 
     private var heading: some View {
@@ -104,7 +155,9 @@ struct MarkFeaturesScreen: View {
         } else {
             VStack(spacing: 10) {
                 ForEach(state.features) { feature in
-                    FeatureRow(feature: feature, pastEnd: state.featuresPastEnds.contains(feature.id), actions: actions)
+                    FeatureRow(feature: feature, pastEnd: state.featuresPastEnds.contains(feature.id),
+                               highlighted: nudged == .window(feature.id) && feature.awaitsOpensAnswer, actions: actions)
+                        .id(ReviewQuestion.window(feature.id))
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
@@ -146,9 +199,17 @@ struct MarkFeaturesScreen: View {
     }
 }
 
+/// A question on the review "Looks complete" can point to.
+private enum ReviewQuestion: Hashable {
+    case ground
+    case window(UUID)
+}
+
 private struct FeatureRow: View {
     var feature: MarkedFeature
     var pastEnd: Bool
+    /// "Looks complete" pointed here: the window's question is unanswered.
+    var highlighted = false
     var actions: any ScanActions
 
     var body: some View {
@@ -166,6 +227,12 @@ private struct FeatureRow: View {
                     Text(Distance.aroundFromMeter(feature.span).prefix(1).uppercased() + Distance.aroundFromMeter(feature.span).dropFirst())
                         .font(.subheadline)
                         .foregroundStyle(Palette.muted)
+                    if feature.kind == .acUnit {
+                        Text(ScanCopy.acAssumedSize)
+                            .font(.subheadline)
+                            .foregroundStyle(Palette.muted)
+                            .accessibilityLabel(ScanCopy.acAssumedSizeSpoken)
+                    }
                     if pastEnd {
                         Label {
                             Text(ScanCopy.featurePastEnd)
@@ -201,12 +268,15 @@ private struct FeatureRow: View {
                             .accessibilityIdentifier("window.opens.yes")
                         AnswerButton(title: "It stays shut", selected: feature.opens == false) { actions.setWindowOpens(feature.id, opens: false) }
                             .accessibilityIdentifier("window.opens.no")
+                        AnswerButton(title: ScanCopy.windowNotSure, selected: feature.opensNotSure) { actions.setWindowOpens(feature.id, opens: nil) }
+                            .accessibilityIdentifier("window.opens.notSure")
                     }
                 }
             }
         }
         .padding(14)
         .background(Palette.canvas, in: .rect(cornerRadius: 18, style: .continuous))
+        .overlay { UnansweredOutline(shown: highlighted) }
     }
 }
 

@@ -851,9 +851,10 @@ final class DemoEngine: ScanActions {
         state.features.removeAll { $0.id == id }
     }
 
-    func setWindowOpens(_ id: UUID, opens: Bool) {
+    func setWindowOpens(_ id: UUID, opens: Bool?) {
         guard let index = state.features.firstIndex(where: { $0.id == id }) else { return }
         state.features[index].opens = opens
+        state.features[index].opensNotSure = opens == nil
     }
 
     func finishWalk() {

@@ -91,9 +91,9 @@ public struct MeterAnchorTracking: Sendable, Equatable {
 
     /// All the corrections applied since the meter was anchored, as one: how far ARKit has moved
     /// the meter (world x, y, z, in meters) and turned the wall about gravity (radians). What
-    /// hasn't reached `minimumMove` or `minimumTurn` yet isn't in it. A device log of it tells a
-    /// map ARKit corrected from drift it never corrected (#73): the marks and the result follow
-    /// the first, and nothing on the phone can follow the second.
+    /// hasn't reached `minimumMove` or `minimumTurn` yet isn't in it. A device log of it, with
+    /// `MeterAnchorPresence`, tells a map ARKit corrected from drift it never corrected (#73): the
+    /// marks and the result follow the first, and nothing on the phone can follow the second.
     public var sinceAnchored: (moved: SIMD3<Float>, yaw: Float) {
         (Self.origin(pose) - Self.origin(anchoredPose), YawCorrection(from: anchoredPose, to: pose).yaw)
     }
@@ -112,6 +112,43 @@ public struct MeterAnchorTracking: Sendable, Equatable {
 
     private static func origin(_ m: simd_float4x4) -> SIMD3<Float> {
         SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z)
+    }
+}
+
+/// Whether the frames since the meter was anchored carried its anchor, for the drift log (#73).
+/// A correction can only reach the marks from a frame that carries the anchor, so a walk with no
+/// corrections logged is read against this: frames that had the anchor and never moved it
+/// (drift ARKit never corrected), or frames that lost it (nothing could follow it).
+public struct MeterAnchorPresence: Sendable, Equatable {
+    public enum Sighting: String, Sendable, CaseIterable {
+        /// The frame carries the anchor's pose.
+        case present
+        /// The frame names the anchor, but ARKit no longer lists it among the frame's anchors.
+        case missing
+        /// The frame names another anchor or none: made before the meter was anchored again, or
+        /// after the session let the anchor go.
+        case otherAnchor = "other anchor"
+    }
+
+    /// What the latest frame showed; nil before the first frame since the meter was anchored.
+    public private(set) var last: Sighting?
+    public private(set) var present = 0
+    public private(set) var missing = 0
+    public private(set) var otherAnchor = 0
+
+    public init() {}
+
+    /// Counts a frame. Returns `sighting` when it differs from the frame before's (the first
+    /// frame included), nil when it is the same.
+    public mutating func observe(_ sighting: Sighting) -> Sighting? {
+        switch sighting {
+        case .present: present += 1
+        case .missing: missing += 1
+        case .otherAnchor: otherAnchor += 1
+        }
+        let changed = sighting != last
+        last = sighting
+        return changed ? sighting : nil
     }
 }
 

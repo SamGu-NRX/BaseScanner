@@ -447,8 +447,41 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "action.startOver").exists)
         tap(app, "action.backToReview")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
+        // #65: the ground is unanswered, so the first tap points to it and the second sends.
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+    }
+
+    /// #65 soft gate: with the ground or a window's question unanswered, the first "Looks
+    /// complete" stays on the review and says so; answering ("Not sure" counts) clears the line,
+    /// and the next tap sends. Unanswered, the second tap sends anyway.
+    @MainActor
+    func testLooksCompleteFirstPointsToAnUnansweredQuestion() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoPhase", "markFeatures"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        XCTAssertTrue(element(app, "window.opens.notSure").exists, "the window question must offer Not sure")
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5), "the first tap must say a question is unanswered")
+        XCTAssertFalse(element(app, "screen.gapRequest").exists, "the first tap must not send")
+        tap(app, "ground.answer.gravel")
+        tap(app, "window.opens.notSure")
+        XCTAssertTrue(element(app, "review.unanswered").waitForNonExistence(timeout: 5), "the line must go once all are answered")
+        XCTAssertTrue(ElementRead.snapshot(element(app, "window.opens.notSure"))?.isSelected == true, "Not sure must show as the answer")
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "answered, the tap must send")
+        app.terminate()
+
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "the second tap must send anyway")
     }
 
     /// #81: the first aim ring comes with a line saying what it is for, and reads its progress to
