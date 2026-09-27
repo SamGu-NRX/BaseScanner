@@ -40,11 +40,13 @@ final class SessionDelegate: NSObject, ARSessionDelegate {
     }
 
     func sessionWasInterrupted(_ arSession: ARSession) {
-        Task { @MainActor [session] in session.interruptionChanged(isInterrupted: true) }
+        let time = ProcessInfo.processInfo.systemUptime
+        Task { @MainActor [session] in session.interruptionChanged(isInterrupted: true, at: time) }
     }
 
     func sessionInterruptionEnded(_ arSession: ARSession) {
-        Task { @MainActor [session] in session.interruptionChanged(isInterrupted: false) }
+        let time = ProcessInfo.processInfo.systemUptime
+        Task { @MainActor [session] in session.interruptionChanged(isInterrupted: false, at: time) }
     }
 
     func session(_ arSession: ARSession, didFailWithError error: any Error) {
