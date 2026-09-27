@@ -170,9 +170,12 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
     /// A server enum the app doesn't read, kept as raw strings (see the top of this file).
     public var sources: [String]
     public var rulesSHA256: String
+    /// Whose rules decided, to show with the answer ("Demo rules: ... not Base's."). The solver
+    /// also appends it to `summary`. Optional in the schema and absent from older answers.
+    public var notice: String?
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case id, version, sources
+        case id, version, sources, notice
         case autoApprove = "auto_approve"
         case rulesSHA256 = "rules_sha256"
     }
@@ -184,6 +187,7 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
         autoApprove = try c.decode(Bool.self, forKey: .autoApprove)
         sources = try c.decode([String].self, forKey: .sources)
         rulesSHA256 = try c.decode(String.self, forKey: .rulesSHA256)
+        notice = try c.decodeIfPresent(String.self, forKey: .notice)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -193,6 +197,7 @@ public struct PlacementPolicy: Codable, Sendable, Equatable {
         try c.encode(autoApprove, forKey: .autoApprove)
         try c.encode(sources, forKey: .sources)
         try c.encode(rulesSHA256, forKey: .rulesSHA256)
+        try c.encodeIfPresent(notice, forKey: .notice)
     }
 }
 

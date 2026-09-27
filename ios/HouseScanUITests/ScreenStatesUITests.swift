@@ -52,6 +52,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
+        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -59,9 +60,14 @@ final class ScreenStatesUITests: XCTestCase {
         ("replayUnreadable", ["-uiDemoFailure", "replayUnreadable"], "unsupported"),
     ]
 
+    /// A server answer in Fixtures/results, which the demo reads in debug builds.
+    private static func resultFile(_ name: String, file: String = #filePath) -> String {
+        URL(fileURLWithPath: file).deletingLastPathComponent().appending(path: "Fixtures/results/\(name).json").path
+    }
+
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -71,27 +77,33 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
     /// in any text on screen.
-    private static let expectations: [String: (identifier: String?, text: String)] = [
-        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
-        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
-        "gapRequest-followUp": ("instruction", "One more view to finish"),
+    private static let expectations: [String: [(identifier: String?, text: String)]] = [
+        "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
-        "gapRequest-groundOut": ("instruction", "From 4 ft to 7 ft right of your meter."),
-        "uploading-followUp": (nil, "One more view to finish"),
-        "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
-        "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
-        "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+        "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
+        "uploading-followUp": [(nil, "One more view to finish")],
+        "markFeatures-groundQuestion": [(nil, "What's on the ground along this wall?")],
+        "markFeatures-groundAnswered": [("ground.answered", "Mulch")],
+        "markFeatures-lostPlace": [("review.lostPlace", "Your phone lost its place")],
         // #40: an overlap reads as one, not as clearance.
-        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
-        // #66: "Wall ends here" short of the farthest view says on the question what it leaves out.
-        "wallWalk-endQuestionLeavesOut": ("instruction", "This leaves out 5 ft you walked"),
-        // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
-        "result-review": ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
+        // The answer comes from the checks: an unsure ground check a view settles.
+        "result-review": [
+            ("result.headline", "One more look"),
+            // #83: keep the exact stopped end beside the redesigned answer.
+            ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        ],
+        // #66: the end question names the captured stretch it leaves out.
+        "wallWalk-endQuestionLeavesOut": [("instruction", "This leaves out 5 ft you walked")],
+        // A reject names the closest spot and the check it fails.
+        "result-reject": [("result.nearest", "The closest spot")],
     ]
 
     /// Controls a state must offer, by identifier.
     private static let controls: [String: [String]] = [
-        // #39: "Show my result" on every request the check sent back, with one view left too.
+        // #39: stopping is available even when just one requested view remains.
         "gapRequest-followUp": ["action.skipGap", "action.showResult"],
     ]
 
@@ -193,6 +205,8 @@ final class ScreenStatesUITests: XCTestCase {
         showAR.tap()
         XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 10))
         tap(app, "action.closeAR")
+        // Start over sits under Details, last.
+        tap(app, "result.details", timeout: 10)
         let startOver = element(app, "action.startOver")
         XCTAssertTrue(startOver.waitForExistence(timeout: 10))
         app.swipeUp()
@@ -383,9 +397,11 @@ final class ScreenStatesUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
-            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+            // The result keeps Share scan under Details.
+            if screen == "result" { tap(app, "result.details") }
+            XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
                 let target = ElementRead.snapshot(element(app, identifier))

@@ -1,3 +1,4 @@
+import HouseScanKit
 import SwiftUI
 
 /// A fake engine for the UI demo: implements `ScanActions` by scripting `ScanViewState` over
@@ -13,6 +14,9 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
+    /// `-uiDemoResultFile <path>` (debug builds only): a server answer in a JSON file, read
+    /// through the engine's own mapping, in place of the hand-made samples.
+    private let resultFile: String?
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -58,6 +62,11 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
+        #if DEBUG
+        resultFile = value("-uiDemoResultFile")
+        #else
+        resultFile = nil
+        #endif
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -499,8 +508,26 @@ final class DemoEngine: ScanActions {
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
+        if let fileResult { return fileResult }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
+    }
+
+    /// The answer in `-uiDemoResultFile`, mapped as `ScanEngine` maps a server's. A file that
+    /// doesn't decode stops the demo with the decoding error rather than showing a sample.
+    private var fileResult: ResultPresentation? {
+        guard let resultFile else { return nil }
+        let result: PlacementResult
+        do {
+            result = try PlacementResult.decode(Data(contentsOf: URL(fileURLWithPath: resultFile)))
+        } catch {
+            fatalError("-uiDemoResultFile \(resultFile): \(error)")
+        }
+        let planner = GapPlanner()
+        let wall = state.wall
+        return ScanEngine.presentation(of: result, isSample: true, wall: nil) { item in
+            planner.plan(for: item, leftEnd: wall?.leftEnd, rightEnd: wall?.rightEnd) != nil
+        }
     }
 
     /// `-uiDemoFollowUp`: the check has answered and asked for a view. On the upload screen,
@@ -996,7 +1023,7 @@ final class DemoEngine: ScanActions {
                      reason: "The window is close to the spot's right edge.",
                      needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
-                     reason: "Part of the ground was only seen from one place.", needsPerson: false),
+                     reason: "Part of the ground was only seen from one place.", needsPerson: false, settledBy: "ground-right"),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
                      reason: "The AC unit is far enough to the right."),
         ],
@@ -1005,8 +1032,10 @@ final class DemoEngine: ScanActions {
             ClearanceZone(id: "window", label: "Window", outcome: .unsure, span: 1.3...2.2, depth: 0.9),
         ],
         missing: [
-            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true),
-            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false),
+            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true,
+                            checkIDs: ["ground"]),
+            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false,
+                            checkIDs: ["window"]),
         ],
         // The walk stopped short on the left, nearer the meter than the spot (#83).
         unseenEnd: UnseenEnd(side: .left, s: -0.4),
