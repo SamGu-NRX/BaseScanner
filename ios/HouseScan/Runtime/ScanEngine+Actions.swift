@@ -324,28 +324,44 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
-        let hit = onGround ? wall.intersectGround(ray) : wall.intersectWall(ray)
-        guard let hit else {
-            marking.refusal = .noSurface
-            state.marking = marking
-            return
-        }
-        // A wall hit under the floor, or far along the wall from the phone, is where a ray aimed at
-        // the ground or nearly along the wall met the wall's plane: nothing the homeowner pointed
-        // at (#140).
-        if !onGround, let refused = ObjectTap.refusal(
-            hit, camera: frame.camera.position, wall: wall,
-            reach: coverage?.config.maxDistance ?? CoverageConfig().maxDistance, groundError: coverage?.heightError ?? 0) {
-            RuntimeLog.engine.info("object tap refused: \(refused.description, privacy: .public)")
-            marking.refusal = .noSurface
-            state.marking = marking
-            return
-        }
-        // Past 8 m out a ground tap is not about this wall any more.
-        if onGround, hit.out > 8 || hit.out < 0 {
-            marking.refusal = .tooFarFromWall
-            state.marking = marking
-            return
+        let hit: WallPoint
+        if onGround {
+            guard let ground = wall.intersectGround(ray) else {
+                marking.refusal = .noSurface
+                state.marking = marking
+                return
+            }
+            // Past 8 m out a ground tap is not about this wall any more.
+            if ground.out > ObjectTap.maxGroundOut || ground.out < 0 {
+                marking.refusal = .tooFarFromWall
+                state.marking = marking
+                return
+            }
+            hit = ground
+        } else {
+            // A wall hit under the floor, or far along the wall from the phone, is where a ray aimed
+            // at the ground or nearly along the wall met the wall's plane: nothing the homeowner
+            // pointed at (#140). An AC unit stands on the ground in front of the wall, so a ray
+            // aimed at it meets the ground first: that's where it lands (#163).
+            let placement = ObjectTap.place(
+                ray, standsOnGround: marking.kind == .acUnit, camera: frame.camera.position, wall: wall,
+                reach: coverage?.config.maxDistance ?? CoverageConfig().maxDistance, groundError: coverage?.heightError ?? 0)
+            switch placement {
+            case .wall(let point):
+                hit = point
+            case .ground(let point):
+                RuntimeLog.engine.info("object tap on the ground: s=\(point.s) out=\(point.out)")
+                hit = point
+            case .refused(let refused):
+                RuntimeLog.engine.info("object tap refused: \(refused.description, privacy: .public)")
+                if case .tooFarOut = refused {
+                    marking.refusal = .tooFarFromWall
+                } else {
+                    marking.refusal = .noSurface
+                }
+                state.marking = marking
+                return
+            }
         }
         pendingTaps.append(hit)
         marking.refusal = nil

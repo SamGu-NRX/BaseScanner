@@ -90,4 +90,104 @@ import Testing
         #expect(Self.refusal(hit, camera: camera) == nil)
         #expect(Self.refusal(hit) != nil)
     }
+
+    // MARK: Objects standing on the ground (#163)
+
+    static func place(toward target: SIMD3<Float>, from camera: SIMD3<Float> = phone, standsOnGround: Bool) -> ObjectTap.Placement {
+        let ray = Ray(origin: camera, direction: simd_normalize(target - camera))
+        return ObjectTap.place(ray, standsOnGround: standsOnGround, camera: camera, wall: wall, reach: reach, groundError: 0)
+    }
+
+    /// The point a placement landed on, or nil when it was refused or landed on the wall.
+    static func groundPoint(_ placement: ObjectTap.Placement) -> WallPoint? {
+        guard case .ground(let point) = placement else { return nil }
+        return point
+    }
+
+    @Test func acAimedAtTheGroundInFrontOfTheWallLandsUnderTheAim() throws {
+        // A phone 1.47 m up and 2 m out, aimed down at the foot of something standing 0.45 m out
+        // from the wall, 0.3 m right of the phone. The ray meets the wall's plane 0.43 m below
+        // the ground, as the refused taps of #163 did.
+        let camera = SIMD3<Float>(0, 1.47, 2)
+        let aim = SIMD3<Float>(0.3, 0, 0.45)
+        let direction = simd_normalize(aim - camera)
+        let pitch = asin(-direction.y) * 180 / .pi
+        #expect(pitch > 41 && pitch < 45)
+        let wallHit = try Self.hit(toward: aim, from: camera)
+        guard case .belowGround(let meters) = Self.refusal(wallHit, camera: camera) else {
+            Issue.record("expected the wall hit below the ground")
+            return
+        }
+        #expect(meters > 0.35 && meters < 0.55)
+
+        let ac = try #require(Self.groundPoint(Self.place(toward: aim, from: camera, standsOnGround: true)))
+        #expect(nearlyEqual(ac.s, 0.3, 1e-3))
+        #expect(nearlyEqual(ac.out, 0.45, 1e-3))
+        #expect(nearlyEqual(ac.height, 0, 1e-3))
+        // A window hangs on the wall: the same ray is still refused.
+        #expect(Self.place(toward: aim, from: camera, standsOnGround: false) == .refused(.belowGround(meters: meters)))
+    }
+
+    @Test func acFartherOutThanThePhoneLandsOnTheGround() throws {
+        // Aimed down and away from the wall, at something 2.5 m out: the ray never meets the wall.
+        let camera = SIMD3<Float>(0, 1.47, 2)
+        let aim = SIMD3<Float>(1, 0, 2.5)
+        let ac = try #require(Self.groundPoint(Self.place(toward: aim, from: camera, standsOnGround: true)))
+        #expect(nearlyEqual(ac.s, 1, 1e-3))
+        #expect(nearlyEqual(ac.out, 2.5, 1e-3))
+        #expect(Self.place(toward: aim, from: camera, standsOnGround: false) == .refused(.noSurface))
+    }
+
+    @Test func acAimedAtTheWallStillLandsOnTheWall() {
+        // On the wall above the ground, and at its foot: the wall hit wins, as before.
+        for target in [SIMD3<Float>(0.5, 0.3, 0), SIMD3<Float>(0.25, 0.02, 0)] {
+            guard case .wall(let point) = Self.place(toward: target, standsOnGround: true) else {
+                Issue.record("expected a wall hit toward \(target)")
+                continue
+            }
+            #expect(nearlyEqual(point.s, target.x, 1e-3))
+            #expect(nearlyEqual(point.height, target.y, 1e-3))
+        }
+    }
+
+    @Test func grazingAcTap30MetersAlongIsStillRefused() {
+        // #140's grazing ray: a plausible height, out of reach. The ground is no nearer.
+        guard case .refused(.tooFarAlong(let meters)) = Self.place(toward: SIMD3(30, 1, 0), standsOnGround: true) else {
+            Issue.record("expected tooFarAlong")
+            return
+        }
+        #expect(nearlyEqual(meters, 30, 1e-3))
+    }
+
+    @Test func deepUnderGroundAcTapNeverPinsFarAlongTheWall() throws {
+        // #140's steep ray meets the wall's plane 20 m along and 8.5 m under the ground. Refused
+        // for a window. For an AC it lands where it crosses the ground, 3.4 m along and 1.7 m out,
+        // within a camera's reach: never at the far wall hit.
+        let target = Self.wall.meter + SIMD3(-20, -10, 0)
+        guard case .refused(.belowGround) = Self.place(toward: target, standsOnGround: false) else {
+            Issue.record("expected belowGround for a window")
+            return
+        }
+        let ac = try #require(Self.groundPoint(Self.place(toward: target, standsOnGround: true)))
+        #expect(nearlyEqual(ac.s, -20 * 1.75 / 10.25, 1e-3))
+        #expect(nearlyEqual(ac.out, 2 - 2 * 1.75 / 10.25, 1e-3))
+    }
+
+    @Test func acGroundHitOutOfReachIsRefused() {
+        // Aimed at the ground 10 m along the wall: the wall hit is below the ground, and the
+        // ground hit is past the camera's reach.
+        guard case .refused(.tooFarAlong(let along)) = Self.place(toward: SIMD3(-10, 0, 1), standsOnGround: true) else {
+            Issue.record("expected tooFarAlong")
+            return
+        }
+        #expect(nearlyEqual(along, 10, 1e-3))
+        // 11 m out from the wall: no wall hit, and past the ground-tap bound.
+        guard case .refused(.tooFarOut(let out)) = Self.place(toward: SIMD3(0, 0, 11), standsOnGround: true) else {
+            Issue.record("expected tooFarOut")
+            return
+        }
+        #expect(nearlyEqual(out, 11, 1e-3))
+        // Aimed up and away from the wall: neither surface.
+        #expect(Self.place(toward: SIMD3(0, 3, 6), standsOnGround: true) == .refused(.noSurface))
+    }
 }
