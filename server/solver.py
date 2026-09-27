@@ -552,7 +552,16 @@ class Solver:
             if extents:
                 a, b = min(a for a, _ in extents), max(b for _, b in extents)
                 if view == "ground":
-                    a, b, depth = self.scene.view_to_cover(region, a, b)
+                    coverable = self.scene.coverable("ground")
+
+                    # The check's own test: nothing it reads here, that a view can show, is
+                    # left strictly within its radius.
+                    def settled(
+                        after: Geometry, unseen: Geometry = unseen, coverable: Geometry = coverable
+                    ) -> bool:
+                        return self._covered(fp, _meet(_meet(after, unseen), coverable), radius)
+
+                    a, b, depth = self.scene.view_to_cover(region, a, b, settled)
                     depth = _up(depth)
                 else:
                     depth = None if up_to is None else _above(up_to)

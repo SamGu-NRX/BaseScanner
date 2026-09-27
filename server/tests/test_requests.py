@@ -18,11 +18,14 @@ from helpers import (
 )
 
 from rules import deep_merge, public_rules_dict, rules_from_dict
-from scene import COVERAGE_TOLERANCE_FT
+from scene import SEAM_FT, SEEN_GROWTH_FT
 from solver import _LOOKS_FOR, UNSURE, _either
 
 # Test settings, not Base policy.
 END = 12.0  # the wall's right end, a limit ("Something blocks it")
+# Seen ground grows this far each side, so a ground request asks for this much less than the
+# depth a check needs (scene.SEEN_GROWTH_FT and SEAM_FT).
+GROWTH = SEEN_GROWTH_FT + SEAM_FT
 
 
 def spot_beside_a_limit_end() -> dict:
@@ -214,11 +217,11 @@ def test_a_band_only_placeholder_checks_need_raises_no_request() -> None:
 
 def test_a_real_rules_depth_is_kept() -> None:
     # Ground seen 4 ft out: the gas and AC clearances still ask for theirs, 3 ft past the
-    # battery's front (less the seen ground's tolerance, as the request is the smallest depth
+    # battery's front (less the seen ground's growth, as the request is the smallest depth
     # that covers the region), and nothing deeper.
     result = run(ground_seen_out_to(4))
     (ground,) = band_requests(result, "ground")
-    assert D + 3 - COVERAGE_TOLERANCE_FT <= ground["out_ft"] <= D + 3 + 0.05, ground
+    assert D + 3 - GROWTH <= ground["out_ft"] <= D + 3 + 0.05, ground
     assert {"ac_clearance", "gas_clearance"} <= set(ground["checks"])
     assert not {"drive_clearance", "pool_clearance"} & set(ground["checks"]), ground
 
@@ -242,5 +245,5 @@ def test_a_real_pool_rule_brings_its_request_back(private: bool) -> None:
     result = run(ground_seen_out_to(6), loaded)
     (ground,) = band_requests(result, "ground")
     assert ground["checks"] == ["pool_clearance"]
-    assert ground["out_ft"] >= D + 10 - 1e-6
+    assert ground["out_ft"] >= D + 10 - GROWTH
     assert result["summary"].startswith("More views are needed"), result["summary"]
