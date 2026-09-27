@@ -277,14 +277,20 @@ import Testing
     }
 
     /// The next answer works a refused view out again from the new scene, so it can come back with
-    /// its span or reach moved by a few hundredths of a foot. It is still the view the homeowner
-    /// said they can't get to, and isn't raised again; another stretch of the band is a new view.
+    /// its span moved by a few hundredths of a foot, or a reach no farther out. It is still the
+    /// view the homeowner said they can't get to, and isn't raised again; another stretch of the
+    /// band is a new view, and so is any reach farther out, which the refused view couldn't meet.
     @Test func aRefusedViewWithSlightlyDifferentNumbersIsNotRaisedAgain() throws {
         let planner = GapPlanner()
         let refused = try item(#"{"kind":"band","band":"ground","span_ft":[2.4,7.9],"out_ft":4.833334,"message":"m"}"#)
         let plan = try #require(planner.plan(for: refused, leftEnd: -3, rightEnd: 4))
-        let moved = try item(#"{"kind":"band","band":"ground","span_ft":[2.41,7.9],"out_ft":4.9,"message":"m"}"#)
+        let moved = try item(#"{"kind":"band","band":"ground","span_ft":[2.41,7.9],"out_ft":4.833334,"message":"m"}"#)
         #expect(planner.nextServerRequest(in: [moved], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == nil)
+        let nearer = try item(#"{"kind":"band","band":"ground","span_ft":[2.41,7.93],"out_ft":4.8,"message":"m"}"#)
+        #expect(planner.nextServerRequest(in: [nearer], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == nil)
+        let fartherOut = try item(#"{"kind":"band","band":"ground","span_ft":[2.41,7.9],"out_ft":4.9,"message":"m"}"#)
+        #expect(planner.nextServerRequest(
+            in: [fartherOut], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == fartherOut)
         let elsewhere = try item(#"{"kind":"band","band":"ground","span_ft":[-7.9,-2.4],"out_ft":4.833334,"message":"m"}"#)
         #expect(planner.nextServerRequest(
             in: [moved, elsewhere], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [plan], skipped: [plan])?.item == elsewhere)
@@ -314,14 +320,15 @@ import Testing
 
     /// A request that asks for more than one already raised is a new view, even when it mostly
     /// overlaps: a longer stretch (2 to 9 ft after 2 to 8 ft, 6/7 of it already asked for) or
-    /// ground farther out (5.10 ft after 4.83 ft, 0.08 m more). Only jitter within 0.1 ft is the
-    /// same view. This holds for earlier requests, skipped ones and items in the same answer.
+    /// ground farther out (5.10 ft after 4.83 ft, 0.08 m more). Only span jitter within 0.1 ft,
+    /// with a reach no farther out, is the same view. This holds for earlier requests, skipped
+    /// ones and items in the same answer.
     @Test func aRequestAskingForMoreIsANewView() throws {
         let planner = GapPlanner()
         let first = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":4.83,"message":"m"}"#)
         let longer = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,9.0],"out_ft":4.83,"message":"m"}"#)
         let farther = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":5.10,"message":"m"}"#)
-        let jitter = try item(#"{"kind":"band","band":"ground","span_ft":[1.95,8.05],"out_ft":4.88,"message":"m"}"#)
+        let jitter = try item(#"{"kind":"band","band":"ground","span_ft":[1.95,8.05],"out_ft":4.8,"message":"m"}"#)
         let asked = try #require(planner.plan(for: first, leftEnd: -3, rightEnd: 4))
 
         // After the first was raised, or skipped.
@@ -340,6 +347,31 @@ import Testing
             in: [longer, first, jitter], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [longer])
         #expect(planner.serverRequests(
             in: [farther, first], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [farther])
+    }
+
+    /// A reach only a little farther out is still more than was asked: ground out to 6.59 ft after
+    /// the same span out to 6.50 ft. `progress` needs the requested out_ft itself, so a view out
+    /// to 6.50 ft leaves it unmet, and it must be raised (Sam's review of e576190). A reach equal
+    /// to the earlier one is the same view.
+    @Test func aSlightlyFartherReachIsANewView() throws {
+        let planner = GapPlanner()
+        let first = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":6.50,"message":"m"}"#)
+        let farther = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":6.59,"message":"m"}"#)
+        let same = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":6.50,"message":"again"}"#)
+        let asked = try #require(planner.plan(for: first, leftEnd: -3, rightEnd: 4))
+        let fartherPlan = try #require(planner.plan(for: farther, leftEnd: -3, rightEnd: 4))
+        #expect(!fartherPlan.asksForSameView(as: asked))
+        #expect(asked.asksForSameView(as: fartherPlan))
+
+        // After the first was raised, or raised and skipped.
+        for (raised, skipped) in [([asked], [GapPlan]()), ([asked], [asked])] {
+            let next = planner.serverRequests(
+                in: [same, farther], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: raised, skipped: skipped, limit: 5)
+            #expect(next.map { $0.item } == [farther])
+        }
+        // Two items in one answer.
+        #expect(planner.serverRequests(
+            in: [first, farther], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [first, farther])
     }
 
     /// An overhead request without a height takes any tilt-up view, so it asks for no more than
