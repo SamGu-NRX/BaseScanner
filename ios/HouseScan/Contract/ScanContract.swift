@@ -317,6 +317,29 @@ enum GuidanceStep: Equatable, Sendable {
     case seeBehind(s: Float)
 }
 
+/// Where the aim target of the step on screen lies from the view, in the terms of a portrait
+/// screen, so the card can agree with the ring and the edge chevron (#81).
+enum AimDirection: Equatable, Sendable {
+    case onScreen
+    case above
+    case below
+    case left
+    case right
+    case behind
+}
+
+/// What the card of an aim step (`GuidanceStep.aimAtGround`, `.aimAtWall`) should say beside the
+/// step itself. UI/ owns the words.
+struct GuidanceHint: Equatable, Sendable {
+    /// Where the target lies from the view now; nil when unknown.
+    var aim: AimDirection?
+    /// Every part of the stretch still open has been seen once, from about here: looking again
+    /// adds nothing, a step to the side does (#77).
+    var needsSecondPosition = false
+    /// Too close to the wall to see the band: step back as well, without leaving the step (#77).
+    var stepBack = false
+}
+
 /// A problem that overrides guidance until it clears. UI/ owns the words.
 enum Coaching: Equatable, Sendable {
     case initializing
@@ -731,6 +754,8 @@ final class ScanViewState {
     var tracking: TrackingQuality = .notAvailable
     var coaching: Coaching?
     var guidance: GuidanceStep = .findMeter
+    /// Set with an aim step (`GuidanceStep.aimAtGround`, `.aimAtWall`); nil with any other.
+    var guidanceHint: GuidanceHint?
     /// A world point to aim at (ring when on screen, edge chevron when not).
     var target: SIMD3<Float>?
     /// A walking path on the ground from the homeowner toward the next place to stand, world points.

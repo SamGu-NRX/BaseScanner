@@ -9,7 +9,7 @@ public enum GuidanceTask: Sendable, Equatable {
     /// the wall ends.
     case markEnd(WalkSide)
     /// The ground around `s` is missing: tilt down. The first request of the walk is this at
-    /// s = 0, the ground in front of the meter.
+    /// s = 0, the ground in front of the meter, while the phone is near the meter.
     case aimAtGround(s: Float)
     /// The wall band lags around `s`: tilt up or step back.
     case aimAtWall(s: Float)
@@ -50,8 +50,28 @@ public struct GuidanceConfig: Sendable, Equatable {
     public var standOff: Float = 2.0
     /// The ground path is drawn at most this long, so it never leads far into unseen ground.
     public var maxPathLength: Float = 3
+    /// An aim task whose stretch has gained no covered cell for this long stalls: its stretch is
+    /// deferred, the walk goes on, and it is asked for again once both ends are marked
+    /// (`GuidancePlanner.firstHole`), where "Can't get there" settles it. 20 s is a guess, not
+    /// measured: on build 4.1's field runs the first ground task held the start for 70 to 151 s
+    /// (#77), and 20 s leaves time for a few tilts and a step to the side.
+    public var stallTimeout: Double = 20
 
     public init() {}
+}
+
+/// Why the walk's task changed on an update (`GuidanceOutput.switched`), for the log.
+public enum GuidanceSwitch: String, Sendable, Equatable {
+    /// The task was met.
+    case satisfied
+    /// A task other than an aim was held for `minDwell`, or something hidden near the camera
+    /// took over from an aim task.
+    case dwell
+    /// An aim task's stretch left the camera's window (`GuidancePlanner.lagWindow`) or lies past
+    /// a marked end.
+    case leftWindow
+    /// An aim task gained nothing for `GuidanceConfig.stallTimeout`; its stretch is deferred.
+    case stalled
 }
 
 public struct GuidanceOutput: Sendable, Equatable {
@@ -60,6 +80,18 @@ public struct GuidanceOutput: Sendable, Equatable {
     public var target: SIMD3<Float>?
     /// A ground path from the homeowner toward where to stand next, world points.
     public var path: [SIMD3<Float>]
+    /// The aim task that stalled on this update and was deferred (`GuidanceConfig.stallTimeout`).
+    public var stalled: GuidanceTask? = nil
+    /// Why the task changed on this update; nil when it didn't, and for the first task.
+    public var switched: GuidanceSwitch? = nil
+    /// An aim task while the camera is closer to the wall than `GuidanceConfig.tooClose`: the
+    /// task stays, and the card asks to step back as well, instead of a separate "Take a step
+    /// back" card that read as a different request (#77).
+    public var stepBack = false
+    /// An aim task whose open rows have each been seen once, from about where the camera is now
+    /// (`CoverageMap.needsSecondPosition`): looking again from here adds nothing, a step to the
+    /// side does.
+    public var needsSecondPosition = false
 }
 
 /// Chooses the next walk task from coverage and the camera, with hysteresis.
@@ -67,40 +99,119 @@ public struct GuidancePlanner: Sendable {
     public let config: GuidanceConfig
     public private(set) var current: GuidanceTask?
     private var since: Double = 0
+    /// The current aim task's covered share when it last grew, and when: the stall clock.
+    private var lastFraction: Double = 0
+    private var lastProgressAt: Double = 0
+    /// The time of the update before, for pausing the stall clock (`update`'s `stallClockPaused`).
+    private var lastUpdateAt: Double?
+    /// Aim stretches that stalled. The requests chosen from the camera (the ground by the meter
+    /// and a lagging band) leave them out until `reset()`; `firstHole` still asks for them once
+    /// both ends are marked.
+    private var deferred: [DeferredStretch] = []
+
+    private struct DeferredStretch: Sendable {
+        var band: SurfaceBand
+        var range: ClosedRange<Float>
+    }
 
     public init(config: GuidanceConfig = GuidanceConfig()) {
         self.config = config
     }
 
+    /// Forgets the current task and the deferred stretches. The engine calls it when an action
+    /// settled the task ("Can't get there", an answered end question).
     public mutating func reset() {
         current = nil
+        deferred = []
     }
 
-    /// The task for this moment. Switches away from the current task only when it is satisfied or
-    /// has been held for `minDwell` seconds and the preferred task differs. An unsatisfied aim
-    /// task between the marked ends is kept while the preferred one asks for the same stretch
-    /// (`sameStretch`), or for the same band while its own stretch is still in the camera's window
-    /// (`stillInView`): see `holds`.
-    public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double) -> GuidanceOutput {
-        let preferred = preferredTask(coverage: coverage, camera: camera)
-        if let current, current != preferred {
-            let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
-            if satisfied || (time - since >= config.minDwell && !Self.holds(current, preferred, coverage: coverage, camera: camera)) {
-                self.current = preferred
-                since = time
-            }
-        } else if current == nil {
-            current = preferred
-            since = time
+    /// The task for this moment.
+    ///
+    /// - A satisfied task gives way at once.
+    /// - An unsatisfied aim task is held while its stretch is still in the camera's window and
+    ///   between the ends (`holds`), however long that takes, unless it stalls: no covered cell
+    ///   gained for `stallTimeout`. A stalled stretch is deferred and the walk goes on. On build
+    ///   4.1 the 3 s dwell was also the most any card was held, so the card changed 22 times in
+    ///   86 s (#84). Only a hidden stretch near the camera takes over from a held aim task; when
+    ///   the camera comes closer than `tooClose`, the aim task stays and `stepBack` is set.
+    /// - Any other task gives way to the preferred one once held for `minDwell`.
+    ///
+    /// With `stallClockPaused` (coaching covers the card, so the aim can't be acted on), the time
+    /// since the update before doesn't count toward a stall. Without it, 20 s of "Slow down" or
+    /// lost tracking stalled the aim task the card never showed (review of #120).
+    ///
+    /// Deterministic in `time`.
+    public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double, stallClockPaused: Bool = false) -> GuidanceOutput {
+        if stallClockPaused, let last = lastUpdateAt, time > last {
+            lastProgressAt += time - last
         }
-        return cues(for: current ?? preferred, coverage: coverage, camera: camera)
+        lastUpdateAt = time
+        var preferred = preferredTask(coverage: coverage, camera: camera)
+        var switched: GuidanceSwitch?
+        var stalled: GuidanceTask?
+        if let current {
+            let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
+            let aim = Self.aim(current)
+            if let aim, !satisfied {
+                let fraction = aimCoveredFraction(aim.band, at: aim.s, coverage: coverage)
+                // A clock that went back (a replay restarted) restarts the stall clock too.
+                if fraction > lastFraction || time < lastProgressAt {
+                    lastFraction = fraction
+                    lastProgressAt = time
+                }
+            }
+            if let aim, !satisfied, time - lastProgressAt >= config.stallTimeout {
+                let range = Self.stretch(around: aim.s)
+                if !deferred.contains(where: { $0.band == aim.band && $0.range == range }) {
+                    deferred.append(DeferredStretch(band: aim.band, range: range))
+                }
+                stalled = current
+                preferred = preferredTask(coverage: coverage, camera: camera)
+                // `firstHole` asks for a deferred stretch again once both ends are marked, so the
+                // same task can come back here; the log then shows the stall but no switch.
+                switched = preferred == current ? nil : .stalled
+                begin(preferred, coverage: coverage, time: time)
+            } else if current != preferred {
+                if satisfied {
+                    switched = .satisfied
+                    begin(preferred, coverage: coverage, time: time)
+                } else if aim != nil, Self.holds(current, preferred, coverage: coverage, camera: camera) {
+                    // Held: see above.
+                } else if time - since >= config.minDwell {
+                    switched = aim != nil && !Self.stillInView(current, coverage: coverage, camera: camera) ? GuidanceSwitch.leftWindow : .dwell
+                    begin(preferred, coverage: coverage, time: time)
+                }
+            }
+        } else {
+            begin(preferred, coverage: coverage, time: time)
+        }
+        var output = cues(for: current ?? preferred, coverage: coverage, camera: camera)
+        output.switched = switched
+        output.stalled = stalled
+        return output
     }
 
-    /// The target and path of `task` seen from `camera`, without choosing a task. The engine calls
-    /// this for frames that must not move the task (a replay frame shown for a tap) so the cues
-    /// never lag behind the camera the screen shows.
+    /// Makes `task` the current one from `time`, with a fresh stall clock.
+    private mutating func begin(_ task: GuidanceTask, coverage: CoverageMap, time: Double) {
+        current = task
+        since = time
+        lastFraction = Self.aim(task).map { aimCoveredFraction($0.band, at: $0.s, coverage: coverage) } ?? 0
+        lastProgressAt = time
+    }
+
+    /// The target and path of `task` seen from `camera`, and for an aim task whether to step back
+    /// and whether a second position is needed from there, without choosing a task. The engine
+    /// calls this for frames that must not move the task (a replay frame shown for a tap) so the
+    /// cues and the card never lag behind the camera the screen shows.
     public func cues(for task: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> GuidanceOutput {
-        GuidanceOutput(task: task, target: target(for: task, coverage: coverage, camera: camera), path: path(for: task, coverage: coverage, camera: camera))
+        var output = GuidanceOutput(
+            task: task, target: target(for: task, coverage: coverage, camera: camera), path: path(for: task, coverage: coverage, camera: camera)
+        )
+        if let aim = Self.aim(task), let camera {
+            output.stepBack = coverage.wall.wallPoint(camera.position).out < config.tooClose
+            output.needsSecondPosition = coverage.needsSecondPosition(band: aim.band, range: Self.stretch(around: aim.s), from: camera.position)
+        }
+        return output
     }
 
     // MARK: Choosing
@@ -133,7 +244,13 @@ public struct GuidancePlanner: Sendable {
         if let camera, let blocked = hiddenNearCamera(coverage: coverage, camera: camera) {
             return blocked
         }
-        if !groundByMeterDone(coverage) {
+        // Only while the camera is near the meter (or its place is unknown). On build 4.1 this
+        // request came before the walk wherever the phone was, and blocked the start of every run
+        // for 70 to 151 s; 20 ft into a walk the card still said "at your meter" (#77). Away from
+        // the meter the walk goes on, and `firstHole` asks for the stretch once both ends are
+        // marked.
+        let nearMeter = camera.map { abs(coverage.wall.wallPoint($0.position).s) <= Self.lagWindow } ?? true
+        if nearMeter, !groundByMeterDone(coverage), !isDeferred(.ground, at: 0) {
             return .aimAtGround(s: 0)
         }
         if let camera, let lag = laggingBand(coverage: coverage, camera: camera) {
@@ -160,7 +277,8 @@ public struct GuidancePlanner: Sendable {
     /// for, with skipped cells counting, so "Can't get there" on it moves the walk on. Every check
     /// the server runs starts beside the meter, and on device run 1 nothing asked for this stretch:
     /// the tilt prompts all asked for ground from 2 ft 9 in right of the meter outward. So it is
-    /// the walk's first request, before either side. Done when no cell of it is between the ends.
+    /// the walk's first request while the phone is near the meter (`preferredTask`), before either
+    /// side. Done when no cell of it is between the ends.
     func groundByMeterDone(_ coverage: CoverageMap) -> Bool {
         let window = -Self.aimHalfWidth...Self.aimHalfWidth
         let cells = coverage.indices(overlapping: window).filter(coverage.isWithinEnds)
@@ -172,72 +290,134 @@ public struct GuidancePlanner: Sendable {
         return Double(done.count) >= Self.aimSatisfied * Double(cells.count)
     }
 
-    /// Two aim tasks for the same band whose stretches overlap by more than half: the lag window
-    /// slides with the camera, so its middle drifts by a cell or two between updates. Switching on
-    /// that drift made the card go from "3 ft 3 in" to "2 ft 9 in right of your meter" on device
-    /// run 1 while it still asked for the same ground.
+    /// Two aim tasks that ask for the same stretch. For the same band, stretches overlapping by
+    /// more than half: the lag window slides with the camera, so its middle drifts by a cell or
+    /// two between updates. Switching on that drift made the card go from "3 ft 3 in" to
+    /// "2 ft 9 in right of your meter" on device run 1 while it still asked for the same ground.
+    /// For the ground and the wall, stretches that overlap at all: on build 4.1 "tilt up" and
+    /// "tilt down" alternated over the same few feet of wall (#84). Until one card asks for both,
+    /// the one on screen stays.
     static func sameStretch(_ a: GuidanceTask, _ b: GuidanceTask) -> Bool {
         switch (a, b) {
         case (.aimAtGround(let x), .aimAtGround(let y)), (.aimAtWall(let x), .aimAtWall(let y)):
             abs(x - y) < aimHalfWidth
+        case (.aimAtGround(let x), .aimAtWall(let y)), (.aimAtWall(let x), .aimAtGround(let y)):
+            abs(x - y) < 2 * aimHalfWidth
         default:
             false
         }
     }
 
-    /// Meters either side of the camera that `laggingBand` and `hiddenNearCamera` look at.
+    /// Meters either side of the camera within which an aim task is held (`stillInView`), and
+    /// that `hiddenNearCamera` looks at; ahead of the camera, how far `laggingBand` looks.
     static let lagWindow: Float = 1
 
-    /// Two aim tasks for the same band while the current one's stretch is still within
-    /// `lagWindow` of the camera. `sameStretch` compares with the preferred task at each update,
-    /// so small drifts added up: on device run 2 the card went 5 ft 3 in, 4 ft 9 in, 4 ft 6 in,
-    /// 4 ft, each step under half the stretch but 0.38 m in all, while the same ground was still
-    /// in front of the homeowner. Not past a marked end, where nothing is recorded and the request
-    /// could never be met.
-    static func stillInView(_ current: GuidanceTask, _ preferred: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> Bool {
-        guard let camera else { return false }
-        let cameraS = coverage.wall.wallPoint(camera.position).s
-        switch (current, preferred) {
-        case (.aimAtGround(let s), .aimAtGround), (.aimAtWall(let s), .aimAtWall):
-            return abs(s - cameraS) <= lagWindow && isWithinEnds(s, coverage)
-        default:
-            return false
+    /// How far behind the camera, against the walk, `laggingBand` still looks: 0.3 m, two cells,
+    /// so ground under the phone counts. It looked 1 m back, so on build 4.1 aim targets landed up
+    /// to about 3 ft behind the phone (#84).
+    static let lagBehind: Float = 0.3
+
+    /// The band and s of an aim task; nil for any other task.
+    static func aim(_ task: GuidanceTask) -> (band: SurfaceBand, s: Float)? {
+        switch task {
+        case .aimAtGround(let s): return (band: .ground, s: s)
+        case .aimAtWall(let s): return (band: .wall, s: s)
+        case .walk, .markEnd, .stepBack, .seeBehind, .complete: return nil
         }
     }
 
-    /// Whether an unsatisfied aim task stays on screen although `preferred` differs: never when
-    /// its stretch is past a marked end, by either rule (review of #56: `sameStretch` alone held
-    /// an aim at 1.22 m past a right end at 1.2 m, because the preferred one inside was at
-    /// 0.99 m), and otherwise while `preferred` asks for the same stretch (`sameStretch`) or the
-    /// task's own stretch is still in view (`stillInView`).
+    /// The stretch an aim task at `s` asks for.
+    static func stretch(around s: Float) -> ClosedRange<Float> {
+        (s - aimHalfWidth)...(s + aimHalfWidth)
+    }
+
+    /// An aim task whose stretch is still within `lagWindow` of the camera and between the marked
+    /// ends. The preferred task is compared at each update, so small drifts added up: on device
+    /// run 2 the card went 5 ft 3 in, 4 ft 9 in, 4 ft 6 in, 4 ft, each step under half the
+    /// stretch but 0.38 m in all, while the same ground was still in front of the homeowner. Past
+    /// a marked end nothing is recorded, so the request could never be met.
+    static func stillInView(_ task: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> Bool {
+        guard let aim = Self.aim(task), let camera, isWithinEnds(aim.s, coverage) else { return false }
+        return abs(aim.s - coverage.wall.wallPoint(camera.position).s) <= lagWindow
+    }
+
+    /// Whether an unsatisfied aim task stays on screen although `preferred` differs: never past a
+    /// marked end (by either rule below: review of #56), never over a hidden stretch near the
+    /// camera, and otherwise while `preferred` asks for the same stretch (`sameStretch`) or the
+    /// task's own stretch is still in view (`stillInView`). A preferred "step back" doesn't
+    /// replace it: `update` sets `GuidanceOutput.stepBack` instead.
     static func holds(_ current: GuidanceTask, _ preferred: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> Bool {
-        switch current {
-        case .aimAtGround(let s), .aimAtWall(let s):
-            guard isWithinEnds(s, coverage) else { return false }
-            return sameStretch(current, preferred) || stillInView(current, preferred, coverage: coverage, camera: camera)
-        default:
-            return false
-        }
+        guard let aim = Self.aim(current), isWithinEnds(aim.s, coverage) else { return false }
+        if case .seeBehind = preferred { return false }
+        return sameStretch(current, preferred) || stillInView(current, coverage: coverage, camera: camera)
     }
 
     static func isWithinEnds(_ s: Float, _ coverage: CoverageMap) -> Bool {
         s >= (coverage.leftEnd ?? -.infinity) && s <= (coverage.rightEnd ?? .infinity)
     }
 
-    /// A band that lags the other around the camera: the other band is covered there but this one
-    /// isn't, over at least `lagRun`. Only cells between the ends count: cells seen before an end
-    /// was set stay in the map, but past it nothing is observed or skipped, so a task there could
-    /// never be met or refused (issue #38).
+    /// The side the walk is asked to go: the first without a marked end, left first, as
+    /// `preferredTask` picks it; nil once both ends are marked.
+    static func walkingSide(_ coverage: CoverageMap) -> WalkSide? {
+        [WalkSide.left, .right].first { ($0 == .left ? coverage.leftEnd : coverage.rightEnd) == nil }
+    }
+
+    /// The stretch `laggingBand` looks at from a camera at `s`: `lagWindow` ahead in the walk's
+    /// direction and `lagBehind` back. Both ways once both ends are marked, when the walk has no
+    /// direction.
+    static func lagSpan(at s: Float, walking side: WalkSide?) -> ClosedRange<Float> {
+        switch side {
+        case .right?: (s - lagBehind)...(s + lagWindow)
+        case .left?: (s - lagWindow)...(s + lagBehind)
+        case nil: (s - lagWindow)...(s + lagWindow)
+        }
+    }
+
+    /// Whether a stalled stretch of `band` holds `s`.
+    private func isDeferred(_ band: SurfaceBand, at s: Float) -> Bool {
+        deferred.contains { $0.band == band && $0.range.contains(s) }
+    }
+
+    /// A band that lags the other ahead of the camera (`lagSpan`): the other band is covered there
+    /// but this one isn't, over at least `lagRun`. Only cells between the ends count: cells seen
+    /// before an end was set stay in the map, but past it nothing is observed or skipped, so a
+    /// task there could never be met or refused (issue #38).
+    ///
+    /// Cells of deferred stretches don't count, and they split the lagging cells into runs: the
+    /// request is for the run nearest the camera that is long enough. Taking the middle of all
+    /// the cells left asked for a stalled stretch again whenever the band lagged on both sides of
+    /// it, since the first and last cell, and so the middle, were unchanged (review of #120).
     private func laggingBand(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
-        let window = (s - Self.lagWindow)...(s + Self.lagWindow)
+        let window = Self.lagSpan(at: s, walking: Self.walkingSide(coverage))
         let indices = coverage.indices(overlapping: window).filter(coverage.isWithinEnds)
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
         func done(_ level: CoverageLevel) -> Bool { level == .covered || level == .skipped }
-        let groundLag = indices.filter { done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) }
-        let wallLag = indices.filter { done(coverage.level(.ground, $0)) && !done(coverage.level(.wall, $0)) }
-        if groundLag.count >= needed, let mid = middle(groundLag, coverage) { return .aimAtGround(s: mid) }
-        if wallLag.count >= needed, let mid = middle(wallLag, coverage) { return .aimAtWall(s: mid) }
+        func middleOf(_ index: Int) -> Float {
+            let range = coverage.cellRange(index)
+            return (range.lowerBound + range.upperBound) / 2
+        }
+        /// The middle of the run of `band`'s lagging cells nearest the camera, among those of at
+        /// least `needed` cells between deferred stretches.
+        func nearestRun(_ band: SurfaceBand, lags: (Int) -> Bool) -> Float? {
+            var runs: [[Int]] = [[]]
+            for index in indices {
+                if isDeferred(band, at: middleOf(index)) {
+                    if !runs[runs.count - 1].isEmpty { runs.append([]) }
+                } else if lags(index) {
+                    runs[runs.count - 1].append(index)
+                }
+            }
+            return runs.filter { $0.count >= needed }
+                .compactMap { middle($0, coverage) }
+                .min { abs($0 - s) < abs($1 - s) }
+        }
+        if let mid = nearestRun(.ground, lags: { done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) }) {
+            return .aimAtGround(s: mid)
+        }
+        if let mid = nearestRun(.wall, lags: { done(coverage.level(.ground, $0)) && !done(coverage.level(.wall, $0)) }) {
+            return .aimAtWall(s: mid)
+        }
         return nil
     }
 
@@ -255,6 +435,8 @@ public struct GuidancePlanner: Sendable {
     }
 
     /// After both ends are marked: the first stretch between them where a band is not done.
+    /// Deferred stretches count: this is where a stalled request, or the ground by the meter left
+    /// while the walk went on, comes back.
     private func firstHole(coverage: CoverageMap) -> GuidanceTask? {
         guard let left = coverage.leftEnd, let right = coverage.rightEnd, left < right else { return nil }
         let needed = Int((config.lagRun / coverage.config.cellWidth).rounded(.up))
@@ -276,6 +458,24 @@ public struct GuidancePlanner: Sendable {
         return nil
     }
 
+    /// The covered share of the stretch an aim task for `band` at `s` asks for, between the ends:
+    /// what `isSatisfied` compares with `aimSatisfied`, and what the stall clock watches. Cells
+    /// whose middle lies in another stretch that stalled (deferred, not holding `s`) don't count.
+    /// A request beside a stalled stretch reaches a cell into it, and a three-cell run between two
+    /// could at best cover 3 of its 5 cells: it could only end by stalling again (review of #120).
+    /// With no other cell left, the whole stretch counts.
+    public func aimCoveredFraction(_ band: SurfaceBand, at s: Float, coverage: CoverageMap) -> Double {
+        let stretch = Self.stretch(around: s)
+        let others = deferred.filter { $0.band == band && !$0.range.contains(s) }
+        let counted = coverage.indices(overlapping: stretch).filter { index in
+            let range = coverage.cellRange(index)
+            let middle = (range.lowerBound + range.upperBound) / 2
+            return coverage.isWithinEnds(index) && !others.contains { $0.range.contains(middle) }
+        }
+        guard !counted.isEmpty else { return coverage.coveredFraction(band, in: stretch) }
+        return Double(counted.filter { coverage.level(band, $0) == .covered }.count) / Double(counted.count)
+    }
+
     private func middle(_ indices: [Int], _ coverage: CoverageMap) -> Float? {
         guard let first = indices.first, let last = indices.last else { return nil }
         return (coverage.cellRange(first).lowerBound + coverage.cellRange(last).upperBound) / 2
@@ -286,9 +486,9 @@ public struct GuidancePlanner: Sendable {
         case .walk(let side), .markEnd(let side):
             return (side == .left ? coverage.leftEnd : coverage.rightEnd) != nil
         case .aimAtGround(let s):
-            return coverage.coveredFraction(.ground, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
+            return aimCoveredFraction(.ground, at: s, coverage: coverage) >= Self.aimSatisfied
         case .aimAtWall(let s):
-            return coverage.coveredFraction(.wall, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
+            return aimCoveredFraction(.wall, at: s, coverage: coverage) >= Self.aimSatisfied
         case .stepBack:
             guard let camera else { return false }
             return coverage.wall.wallPoint(camera.position).out >= config.tooClose + 0.2

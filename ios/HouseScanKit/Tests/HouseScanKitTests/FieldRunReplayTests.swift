@@ -78,28 +78,36 @@ import Testing
         return map
     }
 
-    /// #28: run 2's tilt prompts asked only for ground 4 to 5 ft right while the ground by the
-    /// meter was amber. That request now comes first wherever the homeowner stands, and clears
-    /// from a second spot a step away.
-    @Test func run2GroundByTheMeterComesBeforeTheStretchToTheRight() {
+    /// #28 asked for the ground by the meter before the stretch to the right; build 4.1 then asked
+    /// for it before anything else wherever the phone was, and it blocked the start of every run
+    /// (#77, which supersedes #28). Changed deliberately: from 5 ft 3 in right of the meter the
+    /// walk isn't held for it, and the card asks for the ground in front of the homeowner. Within
+    /// 1 m of the meter it is asked for, and clears from a second spot a step away.
+    @Test func run2GroundByTheMeterIsAskedForNearTheMeter() {
         var map = Self.wallCoveredRight()
         map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
         var planner = GuidancePlanner()
-        let away = GuidancePlannerTests.homeowner(x: 1.6)
-        #expect(planner.update(coverage: map, camera: away, time: 0).task == .aimAtGround(s: 0))
-        #expect(planner.update(coverage: map, camera: away, time: 5).task == .aimAtGround(s: 0))
-        map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
-        let next = planner.update(coverage: map, camera: away, time: 5.2).task
-        guard case .aimAtGround(let s) = next, s > 1 else {
-            Issue.record("expected the ground right of the meter next, got \(next)")
+        let away = planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 1.6), time: 0).task
+        guard case .aimAtGround(let s) = away, s > 1 else {
+            Issue.record("expected the ground in front of the homeowner, got \(away)")
             return
         }
+        var near = GuidancePlanner()
+        let close = GuidancePlannerTests.homeowner(x: 0.5)
+        #expect(near.update(coverage: map, camera: close, time: 0).task == .aimAtGround(s: 0))
+        #expect(near.update(coverage: map, camera: close, time: 5).task == .aimAtGround(s: 0))
+        map.observe(CoverageMapTests.frontCamera(x: 0.3), trackingNormal: true)
+        let next = near.update(coverage: map, camera: close, time: 5.2)
+        #expect(next.task != .aimAtGround(s: 0))
+        #expect(next.switched == .satisfied)
     }
 
     /// #28: run 2's card went 5 ft 3 in, 4 ft 9 in, 4 ft 6 in, 4 ft, 4 ft 3 in right of the meter
     /// as the homeowner drifted toward it. Each step was under half the stretch, but 5 ft 3 in to
-    /// 4 ft is 0.38 m. The card now keeps 5 ft 3 in while that ground is within the planner's
-    /// window, and moves on once the homeowner walks away from it.
+    /// 4 ft is 0.38 m. The card now keeps its first distance while that ground is within the
+    /// planner's window, and moves on once the homeowner walks away from it. With no end marked
+    /// the walk goes left, so from s = 1.6 the window is [0.6, 1.9], cells 3 ... 12, whose middle
+    /// is 1.2192 (it was the middle of [0.6, 2.6], 1.6002, before the window looked only ahead).
     @Test func run2AimDistanceDoesNotWalkBack() {
         let map = GuidancePlannerTests.meterGroundSkipped(Self.wallCoveredRight())
         var planner = GuidancePlanner()
@@ -108,7 +116,7 @@ import Testing
             Issue.record("expected aimAtGround, got \(first)")
             return
         }
-        #expect(abs(s0 - 1.6) < 0.05)
+        #expect(abs(s0 - 1.2192) < 0.01)
         var fresh = GuidancePlanner()
         guard case .aimAtGround(let drifted) = fresh.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 1.1), time: 0).task else {
             Issue.record("expected aimAtGround at s = 1.1")
@@ -131,15 +139,14 @@ import Testing
     }
 
     /// Review of #56: an aim task past a marked end must not be kept by either rule that holds
-    /// one. Here the task asks for s = 1.2192 (from s = 1.1), then the right end is marked at 1.2
-    /// and the homeowner steps to s = 1.8, where the ground lags over cells 5 ... 7 between the
-    /// ends: the preferred task asks for s = 0.9906, 0.23 m away, the same stretch by
-    /// `sameStretch`, while `stillInView` already refuses the task past the end. It still gives
-    /// way once its dwell is up.
+    /// one. Here the task asks for s = 1.2192 (from s = 1.6, as above), then the right end is
+    /// marked at 1.2 and the homeowner steps to s = 1.8, where the ground lags over cells 5 ... 7
+    /// between the ends: the preferred task asks for s = 0.9906, 0.23 m away, the same stretch by
+    /// `sameStretch`. The task past the end still gives way once its dwell is up.
     @Test func anAimPastAMarkedEndGivesWayToTheSameStretchInside() {
         let map = GuidancePlannerTests.meterGroundSkipped(Self.wallCoveredRight())
         var planner = GuidancePlanner()
-        let first = planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 1.1), time: 0).task
+        let first = planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 1.6), time: 0).task
         guard case .aimAtGround(let s0) = first, abs(s0 - 1.2192) < 0.01 else {
             Issue.record("expected aimAtGround at 1.2192, got \(first)")
             return
@@ -154,6 +161,8 @@ import Testing
         }
         #expect(abs(inside - s0) < GuidancePlanner.aimHalfWidth)
         #expect(planner.update(coverage: ended, camera: camera, time: 2.9).task == first)
-        #expect(planner.update(coverage: ended, camera: camera, time: 3).task == .aimAtGround(s: inside))
+        let next = planner.update(coverage: ended, camera: camera, time: 3)
+        #expect(next.task == .aimAtGround(s: inside))
+        #expect(next.switched == .leftWindow)
     }
 }
