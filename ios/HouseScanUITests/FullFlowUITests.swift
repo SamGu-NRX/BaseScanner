@@ -295,13 +295,17 @@ final class FullFlowUITests: XCTestCase {
         let row = app.switches["developer.practiceMeter"]
         XCTAssertTrue(row.waitForExistence(timeout: 10), "the developer options have no practice meter switch")
         let wanted = on ? "1" : "0"
-        if row.value as? String != wanted {
-            // A Form row's switch is the row; the control inside it takes the tap.
-            let control = row.switches.firstMatch
-            (control.exists ? control : row).tap()
-        }
         let set = NSPredicate(format: "value == %@", wanted)
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 5), .completed, "the switch didn't turn \(on ? "on" : "off")")
+        // The sheet slides up first; a tap while it moves can miss. The row's own center is its
+        // label, which doesn't flip it, so the tap goes to the switch at the row's trailing end,
+        // and once more if the first didn't take (run 36315397676 missed one).
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: row)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, "the practice meter switch never became tappable")
+        for _ in 0..<2 where row.value as? String != wanted {
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 3)
+        }
+        XCTAssertEqual(row.value as? String, wanted, "the switch didn't turn \(on ? "on" : "off")")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "developerOptions-\(on ? "on" : "off")"
         shot.lifetime = .keepAlways
