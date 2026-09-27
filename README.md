@@ -35,46 +35,9 @@ curl -s https://house-scanning-server.vercel.app/health
 
 ## How it fits together
 
-```mermaid
-%%{init: {"theme": "base", "fontFamily": "system-ui", "flowchart": {"wrappingWidth": 480, "nodeSpacing": 40, "rankSpacing": 54, "curve": "basis"}, "themeVariables": {"fontFamily": "system-ui", "fontSize": "15px", "lineColor": "#8b949e", "edgeLabelBackground": "#30363d", "textColor": "#e6edf3", "titleColor": "#8b949e"}}}%%
-flowchart TB
-  subgraph phone["IPHONE APP · ios/ · Swift, ARKit, RealityKit"]
-    direction TB
-    walk("<b>Guided walk</b><br/>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen.")
-    packet("<b>Capture packet</b><br/>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and scene.json")
-    walk --> packet
-  end
-
-  subgraph srv["SERVER · Python"]
-    direction TB
-    recon("<b>Reconstruction worker</b> · recon/<br/>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen.")
-    api("<b>Placement API</b> · server/ · FastAPI<br/>POST /v1/placements")
-    rules("<b>Rules engine</b><br/>Plain code tries every spot along the wall against<br/>rules.yaml, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE.")
-    recon -- "rebuilt scene.json" --> api
-    api --> rules
-  end
-
-  result("<b>Result in AR</b> · back on the phone<br/>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result.")
-
-  packet -- "scene.json" --> api
-  packet -. "photos and poses" .-> recon
-  rules -- "spot, or views needed" --> result
-  result -. "UNSURE: one more view" .-> walk
-
-  classDef phoneNode fill:#1f6feb,stroke:#58a6ff,stroke-width:1px,color:#ffffff
-  classDef serverNode fill:#bd561d,stroke:#f0883e,stroke-width:1px,color:#ffffff
-  classDef rulesNode fill:#8250df,stroke:#bc8cff,stroke-width:1px,color:#ffffff
-  classDef resultNode fill:#1a7f37,stroke:#3fb950,stroke-width:1px,color:#ffffff
-  class walk,packet phoneNode
-  class recon,api serverNode
-  class rules rulesNode
-  class result resultNode
-  style phone fill:#1f6feb14,stroke:#388bfd,stroke-width:1.5px,stroke-dasharray:6 4,color:#388bfd
-  style srv fill:#db6d2814,stroke:#db6d28,stroke-width:1.5px,stroke-dasharray:6 4,color:#db6d28
-  linkStyle default stroke:#8b949e,stroke-width:1.6px,color:#e6edf3
-  linkStyle 5 stroke:#3fb950,stroke-width:2px,color:#e6edf3
-  linkStyle 6 stroke:#d29922,stroke-width:2px,color:#e6edf3
-```
+<p align="center">
+  <img alt="Architecture. The iPhone app guides a walk and builds a capture packet. It posts scene.json to the placement API, and sends photos and poses to the reconstruction worker, which posts a rebuilt scene.json to the same API. The rules engine checks every spot along the wall and returns PASS, FAIL or UNSURE. The result shows in AR, pinned to the meter, and an UNSURE check sends the homeowner back for one more view." src="docs/readme/architecture.svg" width="100%">
+</p>
 
 Models build the geometry and recognize things. Plain code passes or fails each check, so every answer points back to a rule and a measurement. The clearance numbers live in a rules file with their sources, never in code.
 
@@ -96,6 +59,97 @@ Models build the geometry and recognize things. Plain code passes or fails each 
 This is the rule we care about most. A gap in the scan could hide a gas meter, so ground nobody saw never counts as clear. Here the walk went right and never saw the left side. The closer spot stays "Not seen yet" until the view sweeps across. Then there isn't enough clear space in front of it, so it's out.
 
 The same idea covers error. The phone tracks itself by dead reckoning, so its error grows the farther you walk. A check passes only when the margin beats the error, and fails only when it misses by more. Everything in between is UNSURE, and the app names the view that would settle it. The values in the animation are illustrative.
+
+## What the server checks
+
+The battery is 31 × 22 × 39.5 in and stands flush against the wall near the meter. The server slides it along every stretch of wall the scan saw and runs these checks at each spot:
+
+| Check | Rule | Source |
+| --- | --- | --- |
+| Wall behind it | The whole footprint backs onto one straight wall the camera saw | Base Core's size |
+| Ground under it | A surface the rules allow | Demo choice |
+| Meter's working space | Stays clear of the 30 × 36 in space in front of the meter | NEC 110.26 |
+| Gas meter or pipe | At least 3 ft away | [Base's help page](https://help.basepowercompany.com/en/articles/10280705), Austin Energy §1.9, Texas Gas Service |
+| AC units | At least 3 ft away | Base's help page |
+| Doors and windows | At least 3 ft away | IRC R328.4 |
+| Open space in front | At least 3 ft | Base's help page, for fences |
+| Headroom | At least 6.5 ft | NEC 110.26, applied to the battery as a demo choice |
+| Wall equipment | Nothing mounted on the wall above it | Demo choice |
+| Cable run | At most 20 ft, and a person reviews anything past 15 ft | Base's help page. The 15 ft has no public source |
+| Cable route | Can't cross a door, a garage or a gap in the wall | Demo choice |
+| Driveway | At least 5 ft away | Placeholder, no public value |
+| Pool | At least 10 ft away | Placeholder, no public value |
+
+Each check comes back PASS, FAIL or UNSURE, with the measurement, its error and the reason in words. The values live in `server/rules.yaml` (PR #11) next to their sources, and [docs/04](docs/04-prior-art-and-codes.md) has the full citations. Base's own values load only on the private deployment.
+
+### What goes in and what comes out
+
+Here is the example scene from the server's tests (PR #11), sent to the demo server. The scene is synthetic. The reply is real, trimmed to the parts worth reading.
+
+The server wouldn't place the battery on its own. Its best spot is 9 ft 11 in left of the meter, where an AC unit measures 4 ft 1 in away against a 3 ft rule. The error on that is ± 3 ft 10 in, which is too close to call. So the answer is a manual review, plus a request to keep walking past the left end of the wall.
+
+<details>
+<summary><code>scene.json</code>, what the phone sends (abridged)</summary>
+
+```json
+{
+  "schema_version": "1.0",
+  "meter": { "pos": [0.0, 5.0, 0.0], "wall_id": "side", "plus_minus_ft": 0.3 },
+  "walls": [
+    { "id": "back", "baseline": [[-14.0, -18.0], [-14.0, 0.0]], "height_ft": 9 },
+    { "id": "side", "baseline": [[-14.0, 0.0], [22.0, 0.0]], "height_ft": 9 }
+  ],
+  "objects": [
+    { "type": "gas_meter", "wall_id": "side", "span_ft": [-5.0, -4.0], "source": "tap" },
+    { "type": "window", "wall_id": "side", "span_ft": [3.0, 6.0],
+      "attrs": { "operable": true }, "source": "vlm", "conf": 0.86 },
+    { "type": "ac", "wall_id": "back", "span_ft": [-20.0, -17.0], "source": "tap" }
+  ],
+  "coverage": {
+    "ends": { "left": { "kind": "unexplored" }, "right": { "kind": "limit" } },
+    "observed": [
+      { "band": "wall", "span_ft": [-26.0, 22.0] },
+      { "band": "ground", "span_ft": [-26.0, 26.0], "out_ft": 14.0 }
+    ]
+  },
+  "keyframes": [
+    { "id": "k1", "img": "k1.jpg", "intrinsics": [1450.0, 1450.0, 960.0, 720.0],
+      "pose": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.0, 4.5, 9.0, 1] }
+  ]
+}
+```
+
+</details>
+
+<details>
+<summary><code>result.json</code>, what the server sends back (abridged)</summary>
+
+```json
+{
+  "decision": "manual_review",
+  "summary": "A person needs to check the best spot, 9 ft 11 in left of the meter: distance from ac units. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+  "spot": { "outcome": "unsure", "wall_id": "side", "span_ft": [-11.24, -8.65], "route_length_ft": 9.65 },
+  "checks": [
+    {
+      "id": "gas_clearance", "outcome": "pass",
+      "measured_ft": 3.65, "plus_minus_ft": 0.6, "threshold_ft": 3.0, "comparison": "at_least",
+      "reason": "Nearest gas meter or pipe is 3 ft 8 in (± 0 ft 7 in) away, clear of the 3 ft 0 in rule, and the area around the battery was seen."
+    },
+    {
+      "id": "ac_clearance", "outcome": "unsure",
+      "measured_ft": 4.08, "plus_minus_ft": 3.8, "threshold_ft": 3.0, "comparison": "at_least",
+      "reason": "objects[3] ac is 4 ft 1 in (± 3 ft 10 in) from the battery against a 3 ft 0 in rule: too close to call."
+    }
+  ],
+  "missing_evidence": [
+    { "kind": "past_end", "side": "left",
+      "message": "Keep walking past the left end of the scan (32 ft 0 in left of the meter): a spot within reach may be there." }
+  ],
+  "stats": { "candidates": 948, "pass": 0, "unsure": 423, "fail": 525, "elapsed_ms": 541.8 }
+}
+```
+
+</details>
 
 ## Reproduce the demo
 
@@ -121,7 +175,13 @@ uv sync --locked
 uv run uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-**Run the app.** Guided capture is in PR #10. In the Simulator, build `ios/HouseScan.xcodeproj` and pass the launch arguments `-replay <capture folder> -autopilot -serverURL https://house-scanning-server.vercel.app`. On an iPhone, set up signing first:
+**Run the app.** Guided capture is in PR #10, a different branch from the server's, so check it out first:
+
+```bash
+gh pr checkout 10
+```
+
+In the Simulator, build `ios/HouseScan.xcodeproj` and pass the launch arguments `-replay <capture folder> -autopilot -serverURL https://house-scanning-server.vercel.app`. On an iPhone, set up signing first:
 
 ```bash
 cp ios/Config/Local.xcconfig.example ios/Config/Local.xcconfig
@@ -143,7 +203,7 @@ There are no third-party API keys. The server runs the public rules with nothing
 # HOUSESCAN_PRIVATE_RULES=../private/rules.yaml
 # HOUSESCAN_PRIVATE_RULES_B64=<the same YAML, base64-encoded, for Vercel>
 
-# Required once private rules load. Every route but /health then asks for it.
+# Required once private rules load. Every request then needs it, except /health and CORS preflight (OPTIONS).
 # HOUSESCAN_API_KEY=<a long random string you choose>
 ```
 
@@ -162,7 +222,21 @@ The reconstruction worker in PR #20 reads `HOUSE_SCANNING_DATA` (default `~/hous
 | Test fixtures | Server and packet tests | Synthetic, written by hand | Yes |
 | Drawings and animations | This README, the site, the walkthrough | Illustrations with example values, not a real house | Yes |
 
-The public datasets are used only to measure accuracy and are never redistributed. Base's own rules and materials stay in the git-ignored `private/` folder. Photos of real homes never enter git.
+The public datasets are used only to measure accuracy and are never redistributed. ADVIO and ETH3D are licensed for noncommercial use, so anyone relying on these results for commercial work needs permission from their authors first. Base's own rules and materials stay in the git-ignored `private/` folder. Photos of real homes never enter git.
+
+## What we've measured
+
+Most of these numbers come from public datasets with laser-scanned or surveyed ground truth. Only the meter photos and the first phone run are ours.
+
+| What | Result | Source |
+| --- | --- | --- |
+| Tracking drift, current iPhone | 8.6, 13.4 and 18.5 in (p90) after 10, 20 and 30 ft, inside the server's allowance of 19.2, 38.4 and 57.6 in | MARViN, iPhone 14 Pro Max, PR #12 |
+| Tracking drift, 2018 iPhone | Two to three times over that allowance | ADVIO, iPhone 6s, PR #12 |
+| Learned depth on its own | Scale 4 to 12% off, which puts walls about 20 in out (p90) | ETH3D, PR #12 |
+| Learned depth, rescaled with the phone's poses | Walls within about 5 in (p90), or 2.8 in with exact poses. Edges stay at 8 in or worse | ETH3D, PR #12 |
+| Reconstruction worker | Walls within 2.1 in (p90) with a laser scan standing in for LiDAR, and 2.8 in from photos only | ETH3D, PR #20 |
+| Reading the meter number | Read in full on 71 of 73 photos, but the right line on only 21 of 75. A list of three candidates held it on 27 of 34 held-out photos | Photos of real meters, PR #16 |
+| First run on our phone | Both wall ends landed at the meter, so the server placed no spot. Two of five features came within 4 in of the tape | TestFlight build, PR #23 |
 
 ## Known limitations
 
