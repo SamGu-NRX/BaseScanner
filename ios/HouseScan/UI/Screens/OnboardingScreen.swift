@@ -69,11 +69,14 @@ struct OnboardingScreen: View {
                             Label("Allow camera", systemImage: "camera.fill")
                         }
                         .buttonStyle(.primary)
-                        .accessibilityHint("Your phone will ask to use the camera")
+                        .accessibilityHint("Your phone may ask to use the camera, then Motion & Fitness")
                         .accessibilityIdentifier("action.finishOnboarding")
-                        Text("Your phone will ask to use the camera.")
+                        Text("Your phone may ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
                             .font(.footnote)
                             .foregroundStyle(Palette.muted)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("onboarding.permissions")
                     }
                     .transition(.opacity)
                 } else {

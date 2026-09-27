@@ -36,7 +36,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>House Scan uses the camera to measure the outside wall around your electric meter.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>House Scan records your phone's motion and air pressure during the scan, so it can be measured more accurately. It stays on this phone unless you share the scan.</string>
+	<string>House Scan records your phone's motion and air pressure while you scan and saves them with the scan. The readings stay on this phone unless you share the scan.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
