@@ -83,7 +83,7 @@ struct WallWalkScreen: View {
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let coaching { return ScanCopy.coaching(coaching) }
         if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
-        return ScanCopy.guidance(state.guidance)
+        return ScanCopy.guidance(state.guidance, hint: state.guidanceHint)
     }
 
     /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark

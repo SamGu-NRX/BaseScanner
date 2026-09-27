@@ -46,6 +46,9 @@ extension ScanEngine {
         }
     }
 
+    /// The request's message is the step's copy without `ScanViewState.guidanceHint`: the hint
+    /// follows the camera frame by frame, and one request stays one entry. The title on screen
+    /// can differ from the logged message while a hint is showing.
     private func walkRequest(_ step: GuidanceStep) -> GuidanceLog.Request? {
         let copy = ScanCopy.guidance(step)
         let cell = { (s: Float) in self.coverage?.cellIndex(forS: s) ?? 0 }
@@ -111,9 +114,11 @@ extension ScanEngine {
             guard let camera = currentFrame?.camera, let wall = coverage?.wall else { return .superseded }
             return wall.wallPoint(camera.position).out > GuidancePlanner().config.tooClose ? .met : .superseded
         case .aimAtGround, .aimAtWall:
-            guard let s, let map = coverage else { return .superseded }
+            // Met as the planner meets it (`GuidancePlanner.isSatisfied`): enough of the stretch
+            // covered. The cell at s alone could be covered while the stretch wasn't.
+            guard let span = old.span, let map = coverage else { return .superseded }
             let band: SurfaceBand = old.band == .ground ? .ground : .wall
-            return map.level(band, map.cellIndex(forS: s)) == .covered ? .met : .superseded
+            return map.coveredFraction(band, in: span) >= GuidancePlanner.aimSatisfied ? .met : .superseded
         case .seeBehind:
             guard let s, let map = coverage else { return .superseded }
             let band: SurfaceBand = old.band == .wall ? .wall : .ground
