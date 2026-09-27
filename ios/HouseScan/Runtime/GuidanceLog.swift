@@ -34,8 +34,9 @@ struct GuidanceLog {
         case seeBehind(cell: Int)
         /// `GapRequest.id`.
         case gap(id: Int)
-        /// `SpotCheck.id`.
+        /// `SpotCheck.id`: the first question, then the ground question.
         case spotCheck(id: Int)
+        case spotGround(id: Int)
     }
 
     struct Request: Equatable, Sendable {

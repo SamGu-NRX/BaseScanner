@@ -177,6 +177,7 @@ extension ScanEngine: ScanActions {
         case .failure(.notAWall): return refuse(.noSurface, "not a wall")
         case .failure(.implausible(let s)): return refuse(.notAtCorner, "the walls meet at s=\(s)")
         }
+        spatialRevision += 1
         // The end moves on with the walk; `clearEnd` also publishes the chain for the overlays.
         clearEnd(side)
         nextWallSide = nil
@@ -185,14 +186,6 @@ extension ScanEngine: ScanActions {
         // Features tapped past the corner were placed on the old wall's line.
         reprojectFeatures()
         resetGuidanceAfterSkip(camera: frame.camera, time: frame.timestamp)
-    }
-
-    /// The export sends a type as patches over the ground the coverage saw, and "Not sure" as no
-    /// patch (`sceneJSON`). Every upload reads the latest answer.
-    func answerGround(_ answer: GroundAnswer) {
-        guard state.phase == .markFeatures else { return }
-        state.groundAnswer = answer
-        RuntimeLog.engine.info("ground answered: \(String(describing: answer), privacy: .public)")
     }
 
     /// "Open sky or nothing overhead" records the tilt-up view for the export; "A roof edge,
@@ -251,7 +244,16 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
-        pendingTaps.append(hit)
+        // A fence's feet on two pieces of the wall would be sent as one depth that misses how
+        // close its line comes to the wall by the corner: refused, and asked for per side.
+        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(first, wall.world(hit)) {
+            marking.refusal = .fenceAcrossCorner
+            state.marking = marking
+            return
+        }
+        // The world point, not its wall coordinates: a ground refined before the next tap would
+        // otherwise move this one's height with it.
+        pendingTaps.append(wall.world(hit))
         marking.refusal = nil
         marking.step += 1
         if marking.step < marking.kind.tapCount {
@@ -264,12 +266,20 @@ extension ScanEngine: ScanActions {
         publishFeaturesPastEnds()
         state.marking = nil
         pendingTaps = []
+        spotMarkPlaced()
     }
 
-    private func feature(_ kind: FeatureKind, taps: [WallPoint], wall: WallFrame) -> MarkedFeature {
-        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps.map { wall.world($0) }, opens: nil)
+    private func feature(_ kind: FeatureKind, taps: [SIMD3<Float>], wall: WallFrame) -> MarkedFeature {
+        var marked = MarkedFeature(id: UUID(), kind: kind, span: 0...0, bottom: nil, top: nil, out: nil, points: taps, opens: nil)
         Self.project(&marked, onto: wall)
         return marked
+    }
+
+    /// `feature` with its wall coordinates worked out on `wall`.
+    static func projected(_ feature: MarkedFeature, onto wall: WallFrame) -> MarkedFeature {
+        var copy = feature
+        project(&copy, onto: wall)
+        return copy
     }
 
     /// Sets a feature's wall coordinates from its tapped world points. Run again whenever the
@@ -299,6 +309,7 @@ extension ScanEngine: ScanActions {
     func cancelMarking() {
         state.marking = nil
         pendingTaps = []
+        spotMarkCancelled()
     }
 
     func deleteFeature(_ id: UUID) {

@@ -10,9 +10,6 @@ import SwiftUI
 /// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost|pastWallEnd>`.
 /// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
 /// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
-/// - `-uiDemoGroundQuestion`: open the feature review with the ground question unanswered.
-/// - `-uiDemoGroundAnswer <GroundType raw value|notSure>`: open the feature review with the ground
-///   question answered, so it shows as the folded row with Change.
 /// - `-uiDemoOffline`: uploads fail offline.
 /// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
 /// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
@@ -38,8 +35,11 @@ import SwiftUI
 ///   followed it, so the window and part of its clearance zone are round the corner. For the
 ///   result model: `-uiDemoPhase result -uiDemoCorner`.
 /// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
-/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
-///   answered and says what happens next.
+/// - `-uiDemoSpotStep <which|ground>`: with `-uiDemoPhase spotConfirm`, the check asks which
+///   unmarked thing is in the area, or what the ground is.
+/// - `-uiDemoSpotAnswered <clear|notSure|somethingThere|cantMark|unconfirmed>`: with
+///   `-uiDemoPhase spotConfirm`, the check is answered and says what happens next.
+/// - `-uiDemoSpotUnconfirmable`: with `-uiDemoPhase spotConfirm`, no photo shows the whole area.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///
