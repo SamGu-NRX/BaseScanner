@@ -37,6 +37,17 @@ public enum SpatialUpdate {
     /// Ground moves under 1 cm are plane jitter and republish nothing.
     public static let groundJitter: Float = 0.01
 
+    /// The height a later plane may not raise the ground by more than
+    /// `GroundPlaneChoice.maximumRaise`: the measured ground, once coverage has kept a view. A
+    /// raise re-projects every row, so cells the homeowner was told were done would go back to
+    /// unseen (#62). Before any view is kept (the meter mark and its close-up) there are no such
+    /// cells, so a plane found later may still raise it: the one under where the phone stood,
+    /// arriving after a lower one reached the foot line first, or the ground at the foot of a wall
+    /// a re-fit moved. Nil while the ground is a guess, or no view is kept.
+    public static func raiseLimit(map: CoverageMap, ground: GroundEvidence) -> Float? {
+        ground.measured && !map.observedCameras.isEmpty ? map.wall.groundY : nil
+    }
+
     /// `apply` without where the phone stood when the meter was marked.
     public static func apply(
         anchor: simd_float4x4?, planes: [GroundPlaneEvidence]?, time: Double,
@@ -52,8 +63,8 @@ public enum SpatialUpdate {
     /// stood when the meter was marked, which the ground choice prefers the plane under; a
     /// correction moves it with everything else, since it was recorded in the old frame. A
     /// measured ground whose supporting plane is gone, or no longer qualifies (reclassified as
-    /// furniture, shrunk away from the wall, or more than `GroundPlaneChoice.maximumRaise` above
-    /// it), goes back to a guess: the height stays where it was, and the
+    /// furniture, shrunk away from the wall, or more than `GroundPlaneChoice.maximumRaise` above it
+    /// once `raiseLimit` holds), goes back to a guess: the height stays where it was, and the
     /// guess's error comes back on every height.
     public static func apply(
         anchor: simd_float4x4?, planes: [GroundPlaneEvidence]?, time: Double, phone: inout SIMD3<Float>?,
@@ -68,7 +79,7 @@ public enum SpatialUpdate {
         guard let planes else { return outcome }
         let wall = map.wall
         if let choice = GroundPlaneChoice.choose(
-            meter: wall.meter, along: wall.along, phone: phone, current: ground.measured ? wall.groundY : nil, planes: planes
+            meter: wall.meter, along: wall.along, phone: phone, current: raiseLimit(map: map, ground: ground), planes: planes
         ) {
             let y = choice.plane.y
             guard !ground.measured || abs(y - wall.groundY) > groundJitter else { return outcome }

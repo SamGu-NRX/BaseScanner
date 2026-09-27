@@ -397,8 +397,8 @@ final class ScanEngine {
     /// wall and corners, the kept cameras, where the phone stood to mark the meter, and here the
     /// tapped marks) as one body into the frame ARKit reports now, and the ground is then read in
     /// that same frame. A plane that stops supporting the ground (reclassified, removed) puts it
-    /// back to a guess, and a measured ground is never raised by more than
-    /// `GroundPlaneChoice.maximumRaise`.
+    /// back to a guess, and once the walk has kept a view the ground is never raised by more than
+    /// `GroundPlaneChoice.maximumRaise` (`SpatialUpdate.raiseLimit`).
     private func applySpatialUpdate(_ frame: SourceFrame) {
         guard var map = coverage else { return }
         let before = (y: map.wall.groundY, measured: groundEvidence.measured)
@@ -441,7 +441,11 @@ final class ScanEngine {
               let refit = MeterTap.refit(meter: map.wall.meter, outward: map.wall.outward, tapCamera: tapCamera, planes: wallPlanes) else { return }
         let wall = map.wall
         let along = simd_normalize(simd_cross(-refit.outward, SIMD3(0, 1, 0)))
-        let choice = groundBelow(refit.meter, along: along, current: nil)
+        // The same raise limit as every other ground update. No view is kept during the close-up,
+        // so it is nil here: the ground at the moved wall's foot may be higher than at the old one.
+        let choice = groundBelow(refit.meter, along: along, current: SpatialUpdate.raiseLimit(map: map, ground: groundEvidence))
+        // No plane qualifies at the moved wall: the old ground stays for now, and the next frame's
+        // planes measure it again for the new wall or put it back to a guess (`SpatialUpdate`).
         let measured = choice != nil || groundMeasured
         guard setWall(meter: refit.meter, outward: refit.outward, groundY: choice?.plane.y ?? wall.groundY, groundMeasured: measured) else { return }
         meterPlaneSource = .detectedPlane

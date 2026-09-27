@@ -95,8 +95,8 @@ import Testing
     }
 }
 
-/// The ground as frames update it (`SpatialUpdate`): the phone's position at the tap moves with an
-/// anchor correction.
+/// The ground as frames update it (`SpatialUpdate`): the raise limit holds only once the walk has
+/// kept a view, and the phone's position at the tap moves with an anchor correction.
 @Suite struct GroundUpdateTests {
     /// Two floors where the ground steps down, as in `theFloorUnderThePhoneWinsOverALowerOne`.
     static let upper = GroundPlaneEvidence(y: 0, kind: .floor, boundary: GroundPlaneTests.rectangle(x: -2...2, z: 0.05...2), id: "upper")
@@ -107,6 +107,35 @@ import Testing
         var map = CoverageMap(wall: standardWall())
         map.heightError = 0.3
         return (map, nil, GroundEvidence(measured: false, guessError: 0.3))
+    }
+
+    /// The lower floor is detected first and measures the ground. The floor under the phone
+    /// arrives during the close-up, 0.3 m higher: nothing has been kept yet, so it replaces the
+    /// lower one. Without this the choice depended on which plane ARKit found first.
+    @Test func theFloorUnderThePhoneRaisesTheGroundBeforeTheWalk() {
+        var (map, tracking, ground) = Self.setUp()
+        var phone: SIMD3<Float>? = Self.phone
+        let first = SpatialUpdate.apply(anchor: nil, planes: [Self.lower], time: 1, phone: &phone, map: &map, tracking: &tracking, ground: &ground)
+        #expect(first.groundChoice?.plane.id == "lower" && first.groundChoice?.reason == .lowest)
+        #expect(ground.measured && nearlyEqual(map.wall.groundY, -0.3))
+        #expect(SpatialUpdate.raiseLimit(map: map, ground: ground) == nil)
+        let second = SpatialUpdate.apply(anchor: nil, planes: [Self.lower, Self.upper], time: 2, phone: &phone, map: &map, tracking: &tracking, ground: &ground)
+        #expect(second.groundChanged)
+        #expect(second.groundChoice?.plane.id == "upper" && second.groundChoice?.reason == .underThePhone)
+        #expect(nearlyEqual(map.wall.groundY, 0))
+    }
+
+    /// Once the walk has kept a view, the same higher floor is refused (#62): the ground stays
+    /// measured on the lower one.
+    @Test func onceAViewIsKeptTheGroundIsNotRaised() {
+        var (map, tracking, ground) = Self.setUp()
+        var phone: SIMD3<Float>? = Self.phone
+        _ = SpatialUpdate.apply(anchor: nil, planes: [Self.lower], time: 1, phone: &phone, map: &map, tracking: &tracking, ground: &ground)
+        map.observe(wallCamera(s: 0), trackingNormal: true)
+        #expect(SpatialUpdate.raiseLimit(map: map, ground: ground).map { nearlyEqual($0, -0.3) } == true)
+        let outcome = SpatialUpdate.apply(anchor: nil, planes: [Self.lower, Self.upper], time: 2, phone: &phone, map: &map, tracking: &tracking, ground: &ground)
+        #expect(!outcome.groundChanged)
+        #expect(ground.measured && nearlyEqual(map.wall.groundY, -0.3))
     }
 
     /// Where the phone stood is a point in the old frame: a correction moves it with the wall, so

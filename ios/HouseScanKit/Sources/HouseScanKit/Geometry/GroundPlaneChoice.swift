@@ -42,10 +42,11 @@ public enum GroundPlaneChoice {
     /// replaces the old 0.3 m minimum drop, which let a folding table 0.5 m under the meter pass
     /// (#62).
     public static let meterHeight: ClosedRange<Float> = 0.9...2.0
-    /// Once the ground is measured, a later plane may not raise it by more than this, meters. A
-    /// raise re-projects every coverage row, so cells the homeowner was just told were done go
-    /// back to unseen (#62); a real floor ARKit refines moves by a few centimetres, not 10. A
-    /// lower plane may still replace the current one. A guess, not measured.
+    /// Once the ground is measured and the walk has kept a view (`SpatialUpdate.raiseLimit`), a
+    /// later plane may not raise it by more than this, meters. A raise re-projects every coverage
+    /// row, so cells the homeowner was just told were done go back to unseen (#62); a real floor
+    /// ARKit refines moves by a few centimetres, not 10. A lower plane may still replace the
+    /// current one. A guess, not measured.
     public static let maximumRaise: Float = 0.1
     /// How far along the wall either side of the meter the plane's edge is looked for, meters: the
     /// stretch where batteries are tried first, and where the meter's own foot is.
