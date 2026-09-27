@@ -14,15 +14,18 @@ final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
     static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm", "result", "resultAR"]
 
-    /// Screens audited only once the autopilot has finished with them and holds them still
-    /// (`<phase>.held` in the gate folder). On the walk the autopilot marks features, sets the
-    /// ends and tilts up while the replay plays, so the screen changes several times a second:
-    /// an audit started when the walk appeared read cards and buttons mid-crossfade, each pass a
-    /// different transition, and a copy fading out has no identifier, so two passes' transient
-    /// issues matched on the label or the "no element" key and failed as one lasting issue (CI
-    /// runs 36304552823, 36305050676, 36307476187). Held, the walk stays in its last state, both
-    /// ends set and "Done with this wall" on offer, and the states it passed through are audited
-    /// frozen by ScreenStatesUITests.
+    /// Screens audited strictly only once the autopilot has finished with them and holds them
+    /// still (`<phase>.held` in the gate folder). On the walk the autopilot marks features, sets
+    /// the ends and tilts up while the replay plays, so the screen changes several times a second
+    /// and two audit passes read two different moments. A finding that isn't the same element in
+    /// both passes can still match: a view fading out has no identifier, so it is keyed by its
+    /// label, or by "no element". The walk is therefore also audited on its first appearance, in
+    /// motion, in report-only mode (`audit-wallWalk-moving` attachments, and `AUDIT` lines in the
+    /// log), because that audit is what caught real bugs that only show mid-transition: the map's
+    /// legend entries drawn over each other (1faa79b, run 36307476187), "Can't get there" and
+    /// "Can't see past it" half-drawn over each other (b1a2444), and the reply's translucent fill
+    /// (397b6d6). Read those attachments when the walk's chrome or its animations change. The
+    /// strict audit then checks the held walk: both ends set and "Done with this wall" on offer.
     static let auditedOnceHeld: Set<String> = ["wallWalk"]
 
     override func setUp() {
@@ -102,8 +105,9 @@ final class FullFlowUITests: XCTestCase {
         try runFlow(replay: Self.lidarFixture) { app, phase in
             guard !showedHidden else { return }
             switch phase {
-            // At the autopilot's 3x the walk plays in about 6 s. No other frame sees the wall
-            // behind the bin, so its cells stay hidden once the bin has been in view.
+            // Read once the autopilot holds the walk, after the whole replay has played. No
+            // other frame sees the wall behind the bin, so its cells stay hidden once the bin has
+            // been in view.
             case "wallWalk": showedHidden = Self.wallTapeShowsHidden(app, timeout: 60)
             case "gapRequest": showedHidden = Self.wallTapeShowsHidden(app, timeout: 30)
             default: break
@@ -251,12 +255,14 @@ final class FullFlowUITests: XCTestCase {
     /// Replay screens can still be taking photos while they are audited, so the photo count's
     /// number is often mid-roll, and the result's text is still fading in when the screen appears.
     /// A single audit reports those passing frames as contrast failures; a real contrast or
-    /// clipping problem is still there later. The walk is audited once the autopilot holds it
-    /// (`auditedOnceHeld`). A screen that rebuilds parts of itself while it is audited can lose
-    /// an issue's element before it is read: that one is attached, not failed on. Every screen
-    /// state is also audited frozen by ScreenStatesUITests.
+    /// clipping problem is still there later. The walk is audited strictly once the autopilot
+    /// holds it, and in motion only to report (`auditedOnceHeld`). With `reportOnly`, or
+    /// HOUSESCAN_AUDIT_REPORT_ONLY=1, the issues found twice are attached as `audit-<screen>`
+    /// and printed, not failed on. A screen that rebuilds parts of itself while it is audited can
+    /// lose an issue's element before it is read: that one is attached, not failed on. Every
+    /// screen state is also audited frozen by ScreenStatesUITests.
     @MainActor
-    private func audit(_ app: XCUIApplication, screen: String) throws {
+    private func audit(_ app: XCUIApplication, screen: String, reportOnly: Bool = false) throws {
         // Six seconds: long enough for a system notification banner to leave. On CI one slid in
         // over the find-meter screen and failed its contrast check twice a second apart (run
         // 36264789032), as ScreenStatesUITests' audit also allows for.
@@ -269,7 +275,7 @@ final class FullFlowUITests: XCTestCase {
         }
         for (_, finding) in outcome.persistent {
             let text = "screen.\(screen): \(finding.message)"
-            if Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
+            if reportOnly || Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
                 let note = XCTAttachment(string: text)
                 note.name = "audit-\(screen)"
                 note.lifetime = .keepAlways
@@ -311,6 +317,20 @@ final class FullFlowUITests: XCTestCase {
             let timeout: TimeInterval = phase == "markFeatures" || phase == "result" ? 150 : 60
             XCTAssertTrue(screen.waitForExistence(timeout: timeout), "screen.\(phase) never appeared")
             if Self.auditedOnceHeld.contains(phase) {
+                // In motion, report-only: see `auditedOnceHeld`.
+                Thread.sleep(forTimeInterval: 1.0)
+                let moving = XCTAttachment(screenshot: app.screenshot())
+                moving.name = "\(phase)-moving"
+                moving.lifetime = .keepAlways
+                add(moving)
+                do {
+                    try audit(app, screen: "\(phase)-moving", reportOnly: true)
+                } catch {
+                    let note = XCTAttachment(string: "the audit couldn't read the screen in motion: \(error)")
+                    note.name = "audit-\(phase)-moving-unread"
+                    note.lifetime = .keepAlways
+                    add(note)
+                }
                 let held = gate.appending(path: "\(phase).held")
                 let deadline = Date().addingTimeInterval(150)
                 while !FileManager.default.fileExists(atPath: held.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
