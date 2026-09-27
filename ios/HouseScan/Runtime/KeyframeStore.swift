@@ -49,13 +49,15 @@ final class KeyframeStore {
 
     /// Makes a new, empty scan folder and deletes every other one: only the current scan is kept
     /// on the phone. Covers both a start over (the previous scan's folder) and launch (folders a
-    /// quit or crashed run left behind), since both make a new store.
+    /// quit or crashed run left behind), since both make a new store. The folders to delete are
+    /// listed here, before a newer store can exist, and deleted later off the main actor
+    /// (`ScanFolderCleanup`), so a deletion that runs late can't take a newer scan's folder.
     init() {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         let scans = caches.appending(path: "Scans", directoryHint: .isDirectory)
         directory = scans.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        Self.deleteScans(in: scans, except: directory.lastPathComponent)
+        Self.delete(ScanFolderCleanup(root: scans, keeping: directory.lastPathComponent))
     }
 
     func nextKeyframeIndex() -> Int {
@@ -231,16 +233,10 @@ final class KeyframeStore {
 
     /// Off the main actor. A write still in flight for a deleted folder fails, because its
     /// directory is gone, and is dropped like any failed write.
-    nonisolated private static func deleteScans(in scans: URL, except kept: String) {
+    nonisolated private static func delete(_ cleanup: ScanFolderCleanup) {
         Task.detached(priority: .utility) {
-            let files = FileManager.default
-            guard let names = try? files.contentsOfDirectory(atPath: scans.path) else { return }
-            for name in names where name != kept {
-                do {
-                    try files.removeItem(at: scans.appending(path: name))
-                } catch {
-                    RuntimeLog.engine.error("could not delete old scan \(name, privacy: .public): \(String(describing: error), privacy: .public)")
-                }
+            for (url, error) in cleanup.run() {
+                RuntimeLog.engine.error("could not delete old scan \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
             }
         }
     }

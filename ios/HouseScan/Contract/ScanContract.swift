@@ -679,6 +679,9 @@ final class ScanViewState {
     /// True while the AR result is drawn into the live camera, where people and objects in front
     /// of it hide it. The AR screen then draws no overlay of its own.
     var resultInCamera = false
+    /// False once the camera failed after the scan was sent: the answer stays, but "See it on
+    /// your wall" is neither shown nor offered until a new scan starts the camera again.
+    var spatialResultAvailable = true
 
     /// True when frames come from a recorded session instead of the camera.
     var isReplay = false
