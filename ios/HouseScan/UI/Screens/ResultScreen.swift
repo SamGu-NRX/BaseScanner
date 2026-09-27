@@ -31,7 +31,7 @@ struct ResultScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
-                    AnswerCard(result: result, canShowAR: state.spatialResultAvailable, revealed: revealed, actions: actions)
+                    AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -130,7 +130,7 @@ struct ResultScreen: View {
                     ChecksList(checks: result.checks)
                 }
                 if !result.missing.isEmpty {
-                    MissingList(missing: result.missing, checks: result.checks, actions: actions)
+                    MissingList(missing: result.missing, checks: result.checks, sourceAvailable: state.spatialResultAvailable, actions: actions)
                 }
                 VStack(spacing: 16) {
                     if let scan = state.shareableScan {
@@ -176,9 +176,9 @@ private struct TextActionStyle: ButtonStyle {
 /// the one next step.
 private struct AnswerCard: View {
     let result: ResultPresentation
-    /// False once the camera failed after the scan was sent: the AR buttons are neither shown nor
-    /// offered (`ScanViewState.spatialResultAvailable`).
-    let canShowAR: Bool
+    /// False once the camera failed after the scan was sent: neither the AR button nor any
+    /// "Show me" is shown (`ScanViewState.spatialResultAvailable`, `ResultCardActions`).
+    let sourceAvailable: Bool
     let revealed: Bool
     let actions: any ScanActions
 
@@ -232,7 +232,9 @@ private struct AnswerCard: View {
     private func line(_ row: CheckRow) -> some View {
         // After a reject, the line above already gave the nearest spot's failing measurement.
         let repeatsNearest = row.id == result.nearestFailingCheck && result.nearestSpot != nil
-        let view = result.viewToTake(for: row)
+        let view = result.viewToTake(for: row).flatMap { view in
+            ResultCardActions.offersView(capturable: view.capturable, sourceAvailable: sourceAvailable) ? view : nil
+        }
         return CardCheckLine(
             row: row,
             sentence: repeatsNearest ? nil : ScanCopy.cardLine(row),
@@ -243,11 +245,13 @@ private struct AnswerCard: View {
 
     @ViewBuilder
     private func primaryButton(_ answer: ResultReading.Answer) -> some View {
-        switch answer {
-        case .fits:
-            if result.spot != nil, canShowAR { showAR(ScanCopy.seeOnWall) }
-        case .oneMoreLook:
-            if let view = result.firstViewToTake {
+        let view = result.firstViewToTake
+        switch ResultCardActions.primary(answer: answer, hasSpot: result.spot != nil, spotIsClean: result.spotIsClean,
+                                         hasViewToTake: view != nil, sourceAvailable: sourceAvailable) {
+        case .showAR(let clean):
+            showAR(clean ? ScanCopy.seeOnWall : ScanCopy.seeClosest)
+        case .takeView:
+            if let view {
                 Button {
                     actions.captureMissing(view.id)
                 } label: {
@@ -257,9 +261,7 @@ private struct AnswerCard: View {
                 .accessibilityHint(view.text)
                 .accessibilityIdentifier("action.showMe")
             }
-        case .installer:
-            if result.spot != nil, canShowAR { showAR(result.spotIsClean ? ScanCopy.seeOnWall : ScanCopy.seeClosest) }
-        case .notHere:
+        case .startOver:
             Button {
                 actions.startOver()
             } label: {
@@ -268,6 +270,8 @@ private struct AnswerCard: View {
             .buttonStyle(.primary)
             .accessibilityHint("Deletes this scan and its photos.")
             .accessibilityIdentifier("action.startOver")
+        case nil:
+            EmptyView()
         }
     }
 
@@ -439,6 +443,8 @@ private struct CheckRowView: View {
 private struct MissingList: View {
     var missing: [MissingEvidence]
     var checks: [CheckRow]
+    /// False once the camera failed after the scan was sent: no view is offered to capture.
+    var sourceAvailable: Bool
     var actions: any ScanActions
 
     var body: some View {
@@ -460,7 +466,7 @@ private struct MissingList: View {
                                 .accessibilityIdentifier("missing.settles")
                         }
                     }
-                    if item.capturable {
+                    if ResultCardActions.offersView(capturable: item.capturable, sourceAvailable: sourceAvailable) {
                         Button {
                             actions.captureMissing(item.id)
                         } label: {
