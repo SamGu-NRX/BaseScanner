@@ -82,16 +82,15 @@ jobs:
           fi
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
 
-      # The package's drift tests compare the vendored schemas with the server's and the capture
-      # packet's own copies: the checkout's server/ and packet/ once merged, else the t3/server and
-      # t3/packet branches, which the shallow checkout leaves out. Either source is required here:
-      # a failed fetch fails the run, and HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather
-      # than skip, so CI can't go green without comparing.
+      # The package's drift tests compare the vendored scene and result schemas with the server's:
+      # the checkout's server/schemas once merged, else the t3/server branch, which the shallow
+      # checkout leaves out. One of the two is required: a failed fetch fails the run, and
+      # HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather than skip.
       - name: Fetch the contract branches
         run: |
           # Check for a file the tests read, not the folder: t3/ios-mvf has a server/ from the
           # toolchain setup with no schemas in it.
-          for pair in server/schemas/scene.schema.json:t3/server packet/manifest.schema.json:t3/packet; do
+          for pair in server/schemas/scene.schema.json:t3/server; do
             file="${pair%%:*}" branch="${pair#*:}"
             if [ -f "$file" ]; then
               echo "$file is in the checkout; the drift tests read it."

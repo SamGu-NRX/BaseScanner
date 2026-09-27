@@ -8,12 +8,10 @@ import Testing
 
 /// The capture packet's manifest schema, version 1.1, byte for byte from t3/packet at d5439cf
 /// (packet/manifest.schema.json). `vendoredManifestSchemaIsTheRecordedRevision` fails if the copy
-/// is edited by hand; `vendoredManifestSchemaMatchesThePacketTree` compares it with the repo's
-/// packet/ folder once that branch is merged, and with origin/t3/packet through git until then.
+/// is edited by hand. t3/packet no longer carries the schema (6a12700: the team adopted the
+/// server's capture packet 0.4), so there is no upstream copy to compare against.
 enum PacketSchema {
     static let name = "manifest.schema.json"
-    static let repoPath = "packet/manifest.schema.json"
-    static let branch = "origin/t3/packet"
     static let sha256 = "44c9c9beb1a95b85d069d9abc52c193008a50aa75e1dff52f5d47431f10c5c75"
 
     static func validator() throws -> JSONSchemaValidator { try JSONSchemaValidator(schema: SceneSchemas.data(name)) }
@@ -799,16 +797,6 @@ private func photoJPEG() throws -> URL {
     @Test func vendoredManifestSchemaIsTheRecordedRevision() throws {
         let digest = SHA256.hash(data: try SceneSchemas.data(PacketSchema.name)).map { String(format: "%02x", $0) }.joined()
         #expect(digest == PacketSchema.sha256, "Schemas/\(PacketSchema.name) is not the copy taken from t3/packet d5439cf")
-    }
-
-    /// Skipped, not passed, where neither packet/ nor origin/t3/packet can be read, except under
-    /// `SceneSchemas.requireUpstream` (CI), where that fails.
-    @Test(.enabled(
-        if: SceneSchemas.requireUpstream || SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch) != nil,
-        "neither packet/ nor \(PacketSchema.branch) is available to compare against"))
-    func vendoredManifestSchemaMatchesThePacketTree() throws {
-        let upstream = try #require(SceneSchemas.upstream(PacketSchema.repoPath, branch: PacketSchema.branch))
-        #expect(upstream == (try SceneSchemas.data(PacketSchema.name)), "copy \(PacketSchema.repoPath) over Tests/HouseScanKitTests/Schemas/\(PacketSchema.name)")
     }
 
     /// The schema is not a rubber stamp: a manifest missing required fields or breaking a pattern
