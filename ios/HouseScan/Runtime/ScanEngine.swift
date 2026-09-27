@@ -1068,10 +1068,12 @@ final class ScanEngine {
         // An event from a source that failed or was replaced says nothing about the running one.
         guard sourceState.accepts(source) else { return }
         switch event {
-        case .interrupted:
+        case .interrupted(let lastFrameTime):
             // The phase, captures and strip stay as they are; ARKit relocalizes into the same
-            // world frame when the session resumes (checklist R4).
+            // world frame when the session resumes (checklist R4). The break is placed after the
+            // last frame the session delivered, which may still be on its way here.
             RuntimeLog.capture.info("session interrupted")
+            if let lastFrameTime { coverage?.breakWalkedPath(at: lastFrameTime) }
             breakWalkedPath(because: "session interrupted")
             state.coaching = .relocalizing
         case .interruptionEnded:
