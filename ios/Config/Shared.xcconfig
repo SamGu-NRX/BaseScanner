@@ -13,3 +13,9 @@ BUNDLE_ID_PREFIX = dev.housescanning
 HOUSESCAN_SERVER_URL = https:/$()/house-scanning-server.vercel.app
 
 #include? "Local.xcconfig"
+
+// The commit the app was built from, for the scan stamp (HouseScanGitCommit in Info.plist). A
+// build setting, not a build script: the TestFlight job refuses scripts in the build while the
+// signing key exists. CI and `make ios` pass the real commit (HOUSESCAN_GIT_COMMIT=<sha>); a build
+// that doesn't, such as one from Xcode's Run button, says "unknown".
+HOUSESCAN_GIT_COMMIT = unknown

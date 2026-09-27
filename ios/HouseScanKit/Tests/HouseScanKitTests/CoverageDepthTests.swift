@@ -6,6 +6,12 @@ import Testing
 // s [0, 0.1524]; its samples sit at s = 0.0381 and 0.1143. Wall rows are every 0.1524 m from 0 to
 // 2.286; ground rows at 0, 0.6 and 1.2 out. Depth images are rendered from the scene mesh
 // (`renderDepth`), 128 x 96, so a pixel is 0.01 rad: every margin below is several pixels wide.
+//
+// Without depth nothing but the wall is modelled in front of a sample, so a cell behind a box is
+// claimed from views that never saw it. That claim is one of `CoverageMap`'s bounded exceptions:
+// the spot check backs it where the battery would stand, and "Something's there" withdraws it
+// (`CoverageMap.withdrawClaims(over:)`). The tests without depth below assert the claim and its
+// withdrawal, never that the wall was seen.
 @Suite struct CoverageDepthTests {
     /// A box standing in front of the wall: s in [-0.5, 0.5], 0.5 to 1.0 m out, 1.5 m tall.
     static let box = (SIMD3<Float>(-0.5, 0, 0.5), SIMD3<Float>(0.5, 1.5, 1.0))
@@ -44,12 +50,20 @@ import Testing
         #expect(map.level(.wall, 0) == .covered)
     }
 
-    /// The same two straight-on views without depth cover the cell: the box is not modelled.
-    @Test func withoutDepthTheBoxIsNotModelled() {
+    /// The same two straight-on views without depth claim the cell covered, though the box stands
+    /// in front of it: the box is not modelled. Only the spot check's "Something's there" takes
+    /// the claim back; the cell then exports no wall at all.
+    @Test func withoutDepthTheBoxIsClaimedUntilTheSpotCheckWithdrawsIt() {
         var map = CoverageMap(wall: standardWall())
         map.observe(wallCamera(s: 0), trackingNormal: true)
         map.observe(wallCamera(s: 0.3), trackingNormal: true)
         #expect(map.level(.wall, 0) == .covered)
+        #expect(map.wallSeenHeight(at: 0) != nil)
+
+        map.withdrawClaims(over: -0.5...0.5)
+        #expect(map.level(.wall, 0) == .skipped)
+        #expect(map.wallSeenHeight(at: 0) == nil)
+        #expect(map.wallSeenSpans().allSatisfy { $0.span.upperBound <= -0.5 + 1e-4 || $0.span.lowerBound >= 0.5 - 1e-4 })
     }
 
     /// A bin 1.5 to 1.9 m out, s in [-0.3, 0.3], 0.75 m tall, between the front cameras
@@ -61,8 +75,9 @@ import Testing
     ///   o = 0 (the wall's foot): 0.81 at z = 1.5, still above the top when it leaves the bin: seen.
     /// The wall rows' sight lines are higher still, so the wall is seen and the ground hidden.
     /// The ground depth rows stop at the bin as well: every row from 0.3048 m out is hidden
-    /// (0.73 m high at z = 1.5), where without depth both views reach row 8, 1.2192 m (row 9 is
-    /// 32.7 degrees below the view axis, past the image's 31).
+    /// (0.73 m high at z = 1.5), where without depth both views claim rows out to row 8, 1.2192 m
+    /// (row 9 is 32.7 degrees below the view axis, past the image's 31), behind the bin: the
+    /// bounded exception the spot check backs.
     ///
     /// Cameras at (1.2, 1.4, 1.4) and (1.5, 1.4, 1.4) stand nearer the wall than the bin, so their
     /// sight lines to the band (out <= 1.2) never reach z = 1.5; the steepest is 55 degrees off
@@ -78,6 +93,7 @@ import Testing
         #expect(map.level(.ground, 0) == .hidden)
         // The front views never reach the top wall rows, but every row up to 1.9812 m is seen.
         #expect(nearlyEqual(map.wallSeenHeight(at: 0) ?? .nan, 1.9812))
+        // Claimed, not seen: nothing but the wall is modelled without depth.
         #expect(noDepth.level(.ground, 0) == .covered)
         // Row 1 (0.1524 m) clears the bin's top by 2 cm, too close to call at this resolution:
         // the reach is row 1 or nothing.
