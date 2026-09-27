@@ -126,9 +126,12 @@ import Testing
         #expect(low.overheadHeight(at: 0).map { $0 > 4.98 } == true)
     }
 
-    /// A guessed ground's error comes off the overhead height as off the wall's.
+    /// A guessed ground's error comes off the overhead height as off the wall's. The front views
+    /// (16 degrees down) show the wall's foot rows below the guessed ground, which a seen height,
+    /// and so the overhead evidence above it, needs while the ground is a guess.
     @Test func aGuessedGroundComesOffTheOverheadHeight() throws {
         var map = Self.walkedWall()
+        for x: Float in [0, 0.3] { map.observe(CoverageMapTests.frontCamera(x: x), trackingNormal: true) }
         map.recordOverhead(Self.tiltUp(pitch: 30), trackingNormal: true)
         let measured = try #require(map.overheadHeight(at: 0))
         map.heightError = 0.3

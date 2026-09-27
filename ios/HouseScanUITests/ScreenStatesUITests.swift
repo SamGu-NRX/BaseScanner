@@ -22,6 +22,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-relocalizing", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "relocalizing"], "wallWalk"),
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
+        ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
+        ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
@@ -46,6 +48,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
+        ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -55,7 +58,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -71,6 +74,8 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+        // #40: an overlap reads as one, not as clearance.
+        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot 3 inches. The rule is no overlap"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -138,6 +143,12 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
+        // B-14: a limit says whether it is a minimum or a maximum. The unit is left off: VoiceOver
+        // text spells lengths out ("3 feet") once B-16 lands, the screen text says "3 ft".
+        let window = element(app, "check.window")
+        XCTAssertTrue(window.exists, "missing check.window")
+        XCTAssertTrue((window.value as? String)?.contains("The rule is at least 3") == true,
+                      "the window rule must read as a minimum, got \(String(describing: window.value))")
         // The result reveal slides its content in; a tap while it moves can miss (one failure in
         // three local runs), so wait until the button takes taps.
         let showAR = element(app, "action.showAR")

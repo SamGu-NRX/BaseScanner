@@ -25,8 +25,9 @@ struct WallWalkScreen: View {
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
             }
-            // The mark (a feature, or the next wall round a corner) lands under the circle.
-            if state.marking != nil || isMarkingNextWall {
+            // The mark (a feature, the next wall round a corner, or the wall's end when the walk
+            // asks for it) lands under the circle.
+            if state.marking != nil || isMarkingNextWall || controlsKey == .markEnd {
                 Reticle(diameter: 56)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
@@ -54,7 +55,8 @@ struct WallWalkScreen: View {
                             features: state.features,
                             cameraS: cameraS,
                             highlight: nil,
-                            depthChecked: state.depthAvailable
+                            depthChecked: state.depthAvailable,
+                            endPreview: showsEndPreview ? state.endPreview : nil
                         )
                     }
                 }
@@ -79,16 +81,26 @@ struct WallWalkScreen: View {
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
+        if let coaching { return ScanCopy.coaching(coaching) }
+        if state.wallTooShort { return Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title) }
         return ScanCopy.guidance(state.guidance)
+    }
+
+    /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark
+    /// and is only turning the phone, which the gate also reads as moving (field test run 1).
+    /// Tracking problems still show.
+    private var coaching: Coaching? {
+        if trayOpen, state.coaching == .slowDown { return nil }
+        return state.coaching
     }
 
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching = state.coaching {
+        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
+        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.wallTooShort { return .refusal }
         return .normal
     }
 
@@ -115,6 +127,18 @@ struct WallWalkScreen: View {
         case .walk, .aimAtGround, .aimAtWall, .tiltUp, .markNextWall, .seeBehind: true
         default: false
         }
+    }
+
+    /// The end preview shows only with the buttons that set it: not over a question, a mark or
+    /// the feature tray.
+    private var showsEndPreview: Bool {
+        controlsKey == .walking || controlsKey == .markEnd
+    }
+
+    /// "Wall ends here" at the phone's place, offered whenever the walk is on a side whose end
+    /// isn't marked (B-06), not only once it asks for the end.
+    private var offersEndHere: Bool {
+        controlsKey == .walking && state.endPreview?.atReticle == false
     }
 
     private var isMarkingNextWall: Bool {
@@ -209,6 +233,17 @@ struct WallWalkScreen: View {
                     .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
                     .accessibilityIdentifier("action.markEnd")
                     .transition(.opacity)
+                case .walking where offersEndHere:
+                    Button {
+                        actions.endWallHere()
+                    } label: {
+                        Label("Wall ends here", systemImage: "flag")
+                            .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                    }
+                    .buttonStyle(.secondaryProminent)
+                    .accessibilityHint("Ends the wall where you're standing, at the dashed line on the map")
+                    .accessibilityIdentifier("action.endHere")
+                    .transition(.opacity)
                 case .finish:
                     Button {
                         actions.finishWalk()
@@ -233,6 +268,14 @@ struct WallWalkScreen: View {
                 title: ScanCopy.cannotSeeBehind,
                 identifier: "action.cannotAccess",
                 hint: "Skips the part behind it. An installer will look at it instead.",
+                perform: { actions.cannotAccessArea() }
+            )
+        }
+        if case .walk = state.guidance {
+            return InstructionCard.Reply(
+                title: "Can't get there",
+                identifier: "action.cannotAccess",
+                hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.",
                 perform: { actions.cannotAccessArea() }
             )
         }
@@ -327,7 +370,7 @@ struct FeatureTray: View {
                         .contentShape(.rect(cornerRadius: 14))
                     }
                     .buttonStyle(PressableStyle())
-                    .accessibilityLabel("Mark \(ScanCopy.name(kind).lowercased())")
+                    .accessibilityLabel("Mark \(ScanCopy.noun(kind))")
                     .accessibilityIdentifier("feature.\(kind.rawValue)")
                 }
             }

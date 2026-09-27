@@ -11,6 +11,8 @@ final class DemoEngine: ScanActions {
     private let noFeed: Bool
     private let offline: Bool
     private let passResult: Bool
+    /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
+    private let overlapResult: Bool
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -24,6 +26,9 @@ final class DemoEngine: ScanActions {
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
     private var skippedSpan: ClosedRange<Float>?
+    /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
+    /// of the walk out.
+    private var walkedBack: Float?
     /// Things standing in front of the wall, as depth would find them: a looked-at cell in the
     /// span is hidden, or skipped once the homeowner said they can't see past it.
     private var obstructions: [(span: ClosedRange<Float>, skipped: Bool)] = []
@@ -52,6 +57,7 @@ final class DemoEngine: ScanActions {
         noFeed = arguments.contains("-uiDemoNoFeed")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
+        overlapResult = arguments.contains("-uiDemoOverlap")
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -86,6 +92,10 @@ final class DemoEngine: ScanActions {
             case .trackingLost: state.tracking = .notAvailable
             default: break
             }
+        }
+        if arguments.contains("-uiDemoEndPreview") {
+            walkedBack = 1.5
+            refreshGuidance()
         }
         if arguments.contains("-uiDemoEndQuestion") {
             state.endQuestion = .left
@@ -456,6 +466,7 @@ final class DemoEngine: ScanActions {
     /// The check's answer, before or after its follow-up view.
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
+        if overlapResult { return Self.overlapSample }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
     }
@@ -544,6 +555,7 @@ final class DemoEngine: ScanActions {
 
     private func refreshGuidance() {
         guard let wall = state.wall else { return }
+        defer { refreshEndPreview() }
         if wall.rightEnd == nil {
             if reachedRight >= demoRightEnd - 0.01 {
                 state.guidance = .markEnd(side: .right)
@@ -574,6 +586,19 @@ final class DemoEngine: ScanActions {
             state.guidance = .walkComplete
             state.target = nil
             state.path = []
+        }
+    }
+
+    /// Like the real engine: during the walk the end goes where the walk has reached on that
+    /// side; while the walk asks for the end, at the demo wall's end, which the reticle is on.
+    private func refreshEndPreview() {
+        state.endPreview = switch state.guidance {
+        case .walk(let side, _):
+            EndPreview(side: side, s: side == .right ? reachedRight : -reachedLeft, atReticle: false, leavesOutWalked: walkedBack)
+        case .markEnd(let side):
+            EndPreview(side: side, s: side == .right ? demoRightEnd : demoLeftEnd, atReticle: true, leavesOutWalked: nil)
+        default:
+            nil
         }
     }
 
@@ -631,6 +656,20 @@ final class DemoEngine: ScanActions {
             state.wall?.rightEnd = demoRightEnd
         } else {
             state.wall?.leftEnd = demoLeftEnd
+        }
+        state.endQuestion = side
+        refreshCoverage()
+        refreshGuidance()
+    }
+
+    func endWallHere() {
+        guard case .walk(let side, _) = state.guidance, let preview = state.endPreview, !preview.atReticle else { return }
+        if side == .right {
+            demoRightEnd = preview.s
+            state.wall?.rightEnd = preview.s
+        } else {
+            demoLeftEnd = preview.s
+            state.wall?.leftEnd = preview.s
         }
         state.endQuestion = side
         refreshCoverage()
@@ -851,6 +890,7 @@ final class DemoEngine: ScanActions {
         case "holdSteady": .holdSteady
         case "relocalizing": .relocalizing
         case "trackingLost": .trackingLost
+        case "pastWallEnd": .pastWallEnd
         default: nil
         }
     }
@@ -895,7 +935,7 @@ final class DemoEngine: ScanActions {
                      reason: "The gas meter is well to the left of the spot."),
             CheckRow(id: "window", title: "Distance from the window", outcome: .unsure,
                      reason: "The window is close to the spot's right edge.",
-                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1),
+                     needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
                      reason: "Part of the ground was only seen from one place.", needsPerson: false),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
@@ -911,6 +951,19 @@ final class DemoEngine: ScanActions {
         ],
         isSample: true
     )
+
+    /// Field test run 2's working-space line: the spot overlaps the meter's working space by
+    /// 1 ft 3 in (measured_ft -1.25), within the measurement's 1 ft 6 in error (#40).
+    static let overlapSample: ResultPresentation = {
+        var sample = reviewSample
+        sample.checks.insert(
+            CheckRow(id: "meter_working_space", title: "Clear of the meter's working space", outcome: .unsure,
+                     reason: "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
+                     needsPerson: true, measured: -0.381, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
+            at: 0
+        )
+        return sample
+    }()
 
     static let passSample: ResultPresentation = {
         var sample = reviewSample

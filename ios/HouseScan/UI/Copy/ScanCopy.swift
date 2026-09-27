@@ -38,7 +38,8 @@ enum ScanCopy {
         case .aimAtGround(let s):
             Instruction(title: "Tilt down to show the ground", detail: "The strip along the wall, \(Distance.fromMeter(s)).")
         case .aimAtWall(let s):
-            Instruction(title: "Tilt up to show more wall", detail: "Around \(Distance.fromMeter(s)).")
+            // "Around at your meter" read wrong once the walk starts at the meter.
+            Instruction(title: "Tilt up to show more wall", detail: abs(s) < Distance.metersPerInch * 3 ? "At your meter." : "Around \(Distance.fromMeter(s)).")
         case .stepBack:
             Instruction(title: "Take a step back", detail: "Your phone needs to see more of the wall at once.")
         case .tiltUp(let span):
@@ -81,6 +82,8 @@ enum ScanCopy {
             Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
             Instruction(title: "Your phone lost its place", detail: "Aim back at your meter and move slowly.")
+        case .pastWallEnd:
+            Instruction(title: "You're past the end of the wall", detail: "Photos here aren't kept. Walk back toward your meter.")
         }
     }
 
@@ -93,8 +96,20 @@ enum ScanCopy {
         case .tooDark: "moon.fill"
         case .holdSteady: "hand.raised.fill"
         case .relocalizing, .trackingLost: "location.slash.fill"
+        case .pastWallEnd: "arrow.uturn.backward"
         }
     }
+
+    // MARK: Wall ends
+
+    /// Under the wall map when ending the wall at the dashed line would cut off part of the walk.
+    static func endLeavesOut(_ meters: Float) -> String {
+        "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
+    }
+
+    /// Over the walk's own prompt after "Done with this wall" was refused and the ends cleared
+    /// (`ScanViewState.wallTooShort`).
+    static let wallTooShort = "The ends were too close. Walk along the wall first."
 
     // MARK: Close-up
 
@@ -142,6 +157,15 @@ enum ScanCopy {
         }
     }
 
+    /// The name mid-sentence: "Tap the gas meter", "Mark AC unit". Lowercasing `name` read
+    /// "ac unit" (B-16).
+    static func noun(_ kind: FeatureKind) -> String {
+        switch kind {
+        case .acUnit: "AC unit"
+        default: name(kind).lowercased()
+        }
+    }
+
     static func symbol(_ kind: FeatureKind) -> String {
         switch kind {
         case .gasMeter: "flame.fill"
@@ -154,10 +178,10 @@ enum ScanCopy {
     }
 
     static func markingPrompt(_ marking: MarkingState) -> Instruction {
-        let noun = name(marking.kind).lowercased()
+        let item = noun(marking.kind)
         switch (marking.kind, marking.step) {
         case (.door, 0), (.window, 0):
-            return Instruction(title: "Tap the \(noun)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+            return Instruction(title: "Tap the \(item)'s bottom-left corner", detail: "Put the circle on it and tap Mark, or tap it on screen.")
         case (.door, _), (.window, _):
             return Instruction(title: "Now tap its top-right corner", detail: nil)
         case (.driveway, 0):
@@ -169,7 +193,7 @@ enum ScanCopy {
         case (.fence, _):
             return Instruction(title: "Now tap the bottom at the other end", detail: nil)
         case (.gasMeter, _), (.acUnit, _):
-            return Instruction(title: "Tap the \(noun)", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+            return Instruction(title: "Tap the \(item)", detail: "Put the circle on it and tap Mark, or tap it on screen.")
         }
     }
 
@@ -354,18 +378,45 @@ enum ScanCopy {
         row.needsPerson ? "An installer will check this" : "One more photo would settle this"
     }
 
-    /// "Measured 3 ft 2 in. The rule is 3 ft, and the measurement can be off by about 4 in."
-    static func measurement(_ row: CheckRow) -> String? {
+    /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."
+    /// The limit says whether it is a minimum or a maximum: without it, the 20 ft cable limit read
+    /// like a minimum under "Measured 3 ft".
+    /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
+    static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
-        var parts = ["Measured \(Distance.feetAndInches(measured))."]
+        let length = spoken ? Distance.spoken : Distance.feetAndInches
+        var parts = [measuredLine(measured, length: length)]
         if let threshold = row.threshold {
+            let limit = ruleLimit(threshold, row.comparison, length: length)
             if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)), and the measurement can be off by about \(Distance.feetAndInches(plusMinus)).")
+                parts.append("The rule is \(limit), and the measurement can be off by about \(length(plusMinus)).")
             } else {
-                parts.append("The rule is \(Distance.feetAndInches(threshold)).")
+                parts.append("The rule is \(limit).")
             }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// "Measured 3 ft 2 in.", or "Overlaps by 1 ft 3 in." below zero. A clearance the server
+    /// measures to an area (the meter's working space, a box on the wall above) goes negative
+    /// once the battery is inside it, and the bare magnitude read as clearance (#40). Less than
+    /// half an inch of overlap stays "Measured 0 in.", not "Overlaps by 0 in.".
+    static func measuredLine(_ measured: Float, length: (Float) -> String = Distance.feetAndInches) -> String {
+        if measured <= -Distance.metersPerInch / 2 {
+            return "Overlaps by \(length(measured))."
+        }
+        return "Measured \(length(measured))."
+    }
+
+    /// "at least 3 ft", "at most 20 ft", or the bare distance when the server didn't say which.
+    /// A minimum of 0 reads "no overlap": "at least 0 in" says the same thing less plainly.
+    static func ruleLimit(_ threshold: Float, _ comparison: RuleComparison?, length: (Float) -> String = Distance.feetAndInches) -> String {
+        let distance = length(threshold)
+        guard let comparison else { return distance }
+        switch comparison {
+        case .atLeast: return threshold < Distance.metersPerInch / 2 ? "no overlap" : "at least \(distance)"
+        case .atMost: return "at most \(distance)"
+        }
     }
 
     static func outcomeWord(_ outcome: CheckOutcome) -> String {

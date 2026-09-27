@@ -54,7 +54,7 @@
         "additionalProperties": false,
         "required": ["type", "wall_id", "span_ft", "source"],
         "properties": {
-          "type": {"enum": ["window", "door", "garage_door", "ac", "gas_meter", "elec_box", "vent", "downspout", "pool"]},
+          "type": {"enum": ["window", "door", "garage_door", "ac", "gas_meter", "elec_box", "vent", "downspout", "pool", "battery"], "description": "battery: a battery already installed, which a new one keeps clearances.battery_ft from. Disconnects, sub-panels, EV chargers and solar equipment are elec_box."},
           "wall_id": {"type": "string", "minLength": 1},
           "span_ft": {"$ref": "#/$defs/span", "description": "Stretch of the wall the object covers, in s."},
           "bottom_ft": {"type": "number", "minimum": 0, "description": "Height of the object's lowest edge above the ground."},
