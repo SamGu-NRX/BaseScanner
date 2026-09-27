@@ -86,4 +86,20 @@ import Testing
         #expect(nearlyEqual(tracking.sinceAnchored.yaw, 3 * .pi / 180, 1e-5))
         #expect(tracking.anchoredPose == pose)
     }
+
+    /// The drift log's anchor lines: one for the first frame, one per change, none while the
+    /// frames go on the same, and a count of every frame.
+    @Test func anchorPresenceReportsOnlyChanges() {
+        var presence = MeterAnchorPresence()
+        #expect(presence.last == nil)
+        let frames: [MeterAnchorPresence.Sighting] = [.missing, .present, .present, .present, .missing, .missing, .otherAnchor, .present]
+        var lines: [MeterAnchorPresence.Sighting?] = []
+        for sighting in frames { lines.append(presence.observe(sighting)) }
+        #expect(lines == [.missing, .present, nil, nil, .missing, nil, .otherAnchor, .present])
+        #expect(presence.last == .present)
+        #expect(presence.present == 4)
+        #expect(presence.missing == 3)
+        #expect(presence.otherAnchor == 1)
+        #expect(MeterAnchorPresence.Sighting.otherAnchor.rawValue == "other anchor")
+    }
 }

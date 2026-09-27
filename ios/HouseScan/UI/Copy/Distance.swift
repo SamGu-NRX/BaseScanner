@@ -68,18 +68,23 @@ enum Distance {
 
     /// "from 4 ft to 19 ft right of your meter", or "from 3 ft left to 2 ft right of your meter":
     /// a stretch by its two ends in whole feet, nearer end first, for a request that can run
-    /// along much of the wall (issue #75). It is clipped to the wall's marked ends, so a request
-    /// running past one names only the wall there is; one lying wholly past an end is named as
-    /// it is. Ends that round to the same foot read "about 5 ft right of your meter".
-    static func range(_ span: ClosedRange<Float>, clippedTo ends: (left: Float?, right: Float?) = (nil, nil)) -> String {
-        var low = max(span.lowerBound, ends.left ?? -.infinity)
-        var high = min(span.upperBound, ends.right ?? .infinity)
-        if low > high {
-            low = span.lowerBound
-            high = span.upperBound
-        }
+    /// along much of the wall (issue #75). Ends on the same foot read "about 5 ft right of your
+    /// meter".
+    ///
+    /// The whole stretch is named, as asked: a server request is met only over its whole span
+    /// (`GapPlanner.progress`), and the one kind raised past a marked end, ground past a limit
+    /// end, asks for the ground there too (#47). Clipped to the ends, a request for 4 to 33 ft
+    /// with a limit end at 20 ft read "from 4 ft to 20 ft right", and showing that much left the
+    /// bar near half way. For the same reason the ends round outward, the lower one down and the
+    /// upper one up: "from 2 ft to 7 ft" for 2.4...7.4 ft left the last 0.4 ft unasked. An end
+    /// within 0.001 ft of a whole foot counts as on it, so float noise (0.6096 m is 2.0000001 ft)
+    /// doesn't add a foot. 2.4...7.4 ft reads "from 2 ft to 8 ft right", -7.4...-2.4 ft "from 2 ft
+    /// to 8 ft left", and -2.6...1.2 ft "from 3 ft left to 2 ft right".
+    static func range(_ span: ClosedRange<Float>) -> String {
         let foot = metersPerInch * 12
-        let lowFeet = Int((low / foot).rounded()), highFeet = Int((high / foot).rounded())
+        let slack: Float = 0.001
+        let lowFeet = Int((span.lowerBound / foot + slack).rounded(.down))
+        let highFeet = max(lowFeet, Int((span.upperBound / foot - slack).rounded(.up)))
         switch (lowFeet, highFeet) {
         case (0, 0):
             return "around your meter"
