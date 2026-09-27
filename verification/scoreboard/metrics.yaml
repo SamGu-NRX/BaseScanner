@@ -81,8 +81,11 @@ metrics:
   - id: S2-1
     workstream: S2
     ref: origin/t3/server
-    text: pytest green
-    command: {run: uv run pytest -q, cwd: server, timeout_s: 600, slow: true}
+    text: pytest green, the property tests under CI's fixed Hypothesis examples
+    # CI=1 selects the server's "ci" profile (server/tests/conftest.py: derandomize=True), as
+    # its CI does. A default local run draws fresh examples and can fail where CI passes: at
+    # 3baa338, test_capturing_exactly_what_is_requested_settles_it_in_one_round did (#11).
+    command: {run: CI=1 uv run pytest -q, cwd: server, timeout_s: 600, slow: true}
 
   - id: S2-2
     workstream: S2

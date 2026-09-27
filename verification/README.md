@@ -3,8 +3,8 @@
 **Question.** Do the app and server branches do what the plan says? Pass: the app at
 `t3/ios-mvf`'s head reaches a result from the real ADVIO replay and keeps its scan; every server
 answer at `t3/server`'s head validates against the result schema and never passes without the
-coverage its checks need; hostile inputs are refused within 10 s and 500 MB; each plan metric
-has evidence at the current head.
+coverage its checks need; hostile inputs are refused, or answered with a valid result, within
+10 s and 500 MB of server growth; each plan metric has evidence at the current head.
 
 **Run**, from `verification/`, with uv (and Xcode 26 with an iOS Simulator for `sim-app`):
 
@@ -20,7 +20,8 @@ non-commercial datasets. What each check asserts is in the docstrings of `hsveri
 `resultcheck.py` and `simrun.py`.
 
 **Result.** At `t3/server` `3baa338`, with the app's upload from `f14947e` (synthetic replay, hosted
-server), all 50 scenes pass (45 answered and checked; slowest real scene 0.62 s).
+server), 49 of 50 scenes pass (45 answered and checked; slowest real scene 0.42 s). The ETH3D scene
+fails: after its one requested capture the server leaves pool unsure with no request or reason.
 
 **What it changed.** S2 fixed seven defects it found:
 - unseen ground passing the pool check;

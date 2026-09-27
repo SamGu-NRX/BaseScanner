@@ -29,6 +29,7 @@ import copy
 import hashlib
 import itertools
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -59,6 +60,9 @@ class Need:
     radius: float = 0.0
     height: float = 0.0
     widen: bool = True
+    # Widened by the battery's error along the walls only (along_error), not in plan: spans
+    # measured in s move with the meter as the battery does (server 3baa338, along_err).
+    along: bool = False
 
 
 # Scene lists whose entries settle facing_gap and headroom where they cover the battery.
@@ -126,9 +130,10 @@ class RuleSet:
             "drive_clearance": (reach("drive_ft"),),
             "pool_clearance": (reach("pool_ft"),),
             "opening_clearance": (Need("wall", r("opening_ft"), opening_height),),
-            "wall_equipment_above": (Need("wall", r("wall_equipment_ft"), headroom, widen=False),),
-            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft")),),
-            "headroom": (Need("overhead", 0.0, headroom),),
+            # Widened by the battery's error from 3baa338 (server README, wall_equipment_above).
+            "wall_equipment_above": (Need("wall", r("wall_equipment_ft"), headroom, along=True),),
+            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft"), along=True),),
+            "headroom": (Need("overhead", 0.0, headroom, along=True),),
         }
         errors = {
             name: value("errors", f"{name}_ft")
@@ -338,8 +343,13 @@ def invariant_problems(
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
         problems += declared_height_problems(scene, result, rules)
+        problems += dropped_check_problems(scene, result, rules)
     return problems
 
+
+# Seen ground grows by this in every direction before it is compared, closing gaps under the
+# 0.01 ft coverage tolerance (server/scene.py SEEN_GROWTH_FT at 3baa338).
+SEEN_GROWTH_FT = 0.005 - 1e-4
 
 # Walls and baseline points within this of one straight line are one straight stretch
 # (server/scene.py COLLINEAR_FT and _join_straight_walls at a726199). Also the slack on a
@@ -375,7 +385,7 @@ def footprint_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     if not pieces:
         return []
 
-    def off_wall(lo: float, hi: float) -> str | None:
+    def off_wall(lo: float, hi: float, outcome: str, wall_id: str) -> str | None:
         # The stretch it starts on, or else ends on: the one it would back onto. A start on a
         # boundary belongs to the stretch it runs onto, an end to the one it runs off.
         piece = next((p for p in pieces if p[0] - EPS <= lo < p[1] - EPS), None) or next(
@@ -385,19 +395,28 @@ def footprint_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
             return "is not on any scanned wall"
         if lo < piece[0] - COLLINEAR_FT or hi > piece[1] + COLLINEAR_FT:
             return f"runs past its straight wall [{piece[0]:.2f}, {piece[1]:.2f}]"
+        if outcome != "pass":
+            return None
+        # A pass also keeps its position error clear of the stretch's ends: within it the
+        # battery may not sit flush, and the server leaves it unsure (check_backing).
+        e = battery_error(scene, rules, wall_id, lo, hi)
+        for end, clear in ((piece[0], lo - e - piece[0]), (piece[1], piece[1] - hi - e)):
+            if clear < -COLLINEAR_FT:
+                return f"ends within its error ({e:.2f} ft) of its straight wall's end at {end:.2f}"
         return None
 
     problems = []
     spot = result.get("spot")
     if spot is not None and spot["outcome"] in ("pass", "unsure"):
         lo, hi = spot["span_ft"]
-        if (why := off_wall(lo, hi)) is not None:
+        if (why := off_wall(lo, hi, spot["outcome"], spot["wall_id"])) is not None:
             problems.append(f"spot [{lo:.2f}, {hi:.2f}] {why}")
     for run in result.get("sweep", []):
         if run["outcome"] not in ("pass", "unsure"):
             continue
         for start in dict.fromkeys(run["start_ft"]):  # a run's two ends bound all its starts
-            if (why := off_wall(start, start + rules.width_ft)) is not None:
+            battery = (start, start + rules.width_ft)
+            if (why := off_wall(*battery, run["outcome"], run["wall_id"])) is not None:
                 problems.append(f"sweep {run['outcome']} start {start:.2f} {why}")
     return problems
 
@@ -431,15 +450,75 @@ def required_span(lo: float, hi: float, radius: float) -> tuple[float, float]:
 
 
 def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: float) -> float:
-    """Position error of a battery over [lo, hi] on `wall_id`: the wall's explicit error, or the
-    default for its `source` (tap, mesh, plane) plus drift at the battery's edge further from the
-    meter (S2 70ab0b0)."""
+    """Position error of a battery over [lo, hi] on `wall_id`, as server 3baa338 takes it for
+    its checks (solver.py _errors): its wall's error at its far edge from the meter, plus the
+    larger of the meter's error in plan and the battery's slide along the walls (slide)."""
     wall = next((w for w in scene["walls"] if w["id"] == wall_id), None)
     if wall is None:
         raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
+    return wall_error_at(wall, rules, max(abs(lo), abs(hi))) + max(
+        meter_error(scene, rules), slide(scene, rules, lo, hi)
+    )
+
+
+def along_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: float) -> float:
+    """The battery's error against spans measured along the walls: its wall's at its far edge
+    plus its slide, without the meter's plan error (server 3baa338 _errors, along_err)."""
+    wall = next(w for w in scene["walls"] if w["id"] == wall_id)
+    return wall_error_at(wall, rules, max(abs(lo), abs(hi))) + slide(scene, rules, lo, hi)
+
+
+def wall_error_at(wall: dict, rules: RuleSet, s: float) -> float:
+    """A wall's error at distance |s| along the walls from the meter: its explicit one, or its
+    source's default plus drift."""
     if "plus_minus_ft" in wall:
         return wall["plus_minus_ft"]
-    return wall_error(wall, rules) + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+    return wall_error(wall, rules) + rules.errors["drift_per_ft"] * abs(s)
+
+
+def meter_error(scene: dict, rules: RuleSet) -> float:
+    """The meter's position error: its explicit one or rules.yaml's errors.meter_ft (no drift)."""
+    return scene.get("meter", {}).get("plus_minus_ft", rules.errors["meter"])
+
+
+def slide(scene: dict, rules: RuleSet, lo: float, hi: float) -> float:
+    """How far a battery over [lo, hi] can move along the walls against spans measured in s when
+    the meter or a corner between them moves within its error (server 3baa338 _slide): the
+    meter's error times the difference between its wall's direction and the battery's, plus each
+    other wall between the meter and the battery's near edge, at its far end, times the same
+    difference for that wall. 0 on the meter's own wall."""
+    segments = segments_s(scene, rules)
+    if not segments:
+        return 0.0
+    walls = {w["id"]: w for w in scene["walls"]}
+
+    def along(seg) -> Point:
+        _, _, _, p, q = seg
+        n = math.dist(p, q)
+        return ((q[0] - p[0]) / n, (q[1] - p[1]) / n)
+
+    def under(s: float):
+        return min(segments, key=lambda g: max(g[1] - s, s - g[2], 0.0))
+
+    battery = along(under((lo + hi) / 2))
+
+    def turn(seg) -> float:
+        a = along(seg)
+        return math.hypot(battery[0] - a[0], battery[1] - a[1])
+
+    meter_wall = scene["meter"]["wall_id"]
+    meter_seg = min(
+        (g for g in segments if g[0] == meter_wall), key=lambda g: max(g[1], -g[2], 0.0)
+    )
+    near = lo if lo > 0 else min(hi, 0.0)
+    a0, b0 = min(0.0, near), max(0.0, near)
+    total = meter_error(scene, rules) * turn(meter_seg)
+    for seg in segments:
+        a, b = max(seg[1], a0), min(seg[2], b0)
+        if b - a <= EPS:
+            continue
+        total += wall_error_at(walls[seg[0]], rules, max(abs(a), abs(b))) * turn(seg)
+    return total
 
 
 def wall_error(wall: dict, rules: RuleSet) -> float:
@@ -460,14 +539,20 @@ def reach_gaps(
     - wall band: [lo - R - e, hi + R + e] along the wall, since distance along the wall is
       never shorter than straight-line distance, seen up to the check's height;
     - ground band: out to depth + R + e in front of the battery (a battery sits flush on one
-      straight segment), and at distance d past either end out to R + e - d. The ground point
-      there is at most d along the wall plus R + e - d out from the battery's end;
+      straight segment), and at distance d past either end out to depth + sqrt((R + e)^2 - d^2),
+      the straight-line reach from the footprint's corner;
     - facing and overhead bands: over [lo - e, hi + e], every place the battery may sit, beyond
       the check's distance unless measured.
     """
     gaps = []
     for need in rules.needs[check]:
-        reach = need.radius + (battery_error(scene, rules, wall_id, lo, hi) if need.widen else 0.0)
+        if not need.widen:
+            error = 0.0
+        elif need.along:
+            error = along_error(scene, rules, wall_id, lo, hi)
+        else:
+            error = battery_error(scene, rules, wall_id, lo, hi)
+        reach = need.radius + error
         if need.band == "ground":
             plan = GroundPlan(scene, rules) if rules.wall_join_ft is not None else None
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach, plan)
@@ -530,6 +615,33 @@ def run_starts(span: list[float], step_ft: float | None) -> list[float]:
     return [a + k * step_ft for k in range(count)] + [b]
 
 
+# Checks every result lists besides those with coverage needs (server README, "What settles
+# each check", at 3baa338).
+ALWAYS_CHECKS = frozenset({"meter_working_space", "route_path", "route_length"})
+
+
+def expected_checks(scene: dict, rules: RuleSet) -> set[str]:
+    """The checks the rules define for this scene. battery_clearance only when the scene marks
+    an existing battery or the rules set its clearance above gas's (server 3baa338)."""
+    ids = set(rules.needs)
+    battery = rules.needs.get("battery_clearance")
+    gas = rules.needs.get("gas_clearance")
+    marked = any(o.get("type") == "battery" for o in scene.get("objects", []))
+    if battery and not marked and not (gas and battery[0].radius > gas[0].radius):
+        ids.discard("battery_clearance")
+    return ids
+
+
+def dropped_check_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    listed = {c["id"] for c in result.get("checks", [])}
+    if not listed:
+        return []
+    wanted = expected_checks(scene, rules) | ALWAYS_CHECKS
+    return [
+        f"the result leaves out check {c}, which the rules define" for c in sorted(wanted - listed)
+    ]
+
+
 def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     """Missing coverage is never a pass (C5), to the reach each check's rule looks out to (see
     reach_gaps). A sweep run that passes needs, at each start sampled from it (run_starts), every
@@ -540,9 +652,9 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     route_wall = observed(
         scene, "wall", rules.route_height_ft, beyond=True, wall_default_ft=rules.headroom_ft
     )
-    # A passing run passes every check the server evaluated; a check it did not evaluate (a
-    # battery clearance with no battery in the scene, say) needs nothing.
-    evaluated = {c["id"] for c in result.get("checks", [])} or set(rules.needs)
+    # Coverage is needed for every check the rules define for this scene, whether or not the
+    # result lists it: a result that drops a check must not skip its coverage.
+    evaluated = expected_checks(scene, rules)
     if "coverage" not in scene and result["decision"] == "pass":
         problems.append("decision pass for a scene with no coverage at all")
 
@@ -550,7 +662,12 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         if run["outcome"] != "pass":
             continue
         lo, hi = run["start_ft"][0], run["start_ft"][1] + rules.width_ft
-        route_lo, route_hi = min(0.0, lo), max(0.0, hi)
+        # The route starts at the meter, which may stand its error either side of s = 0
+        # (server README, route_path), within the scanned chain.
+        m = meter_error(scene, rules)
+        ends = chain_ends_s(scene, rules) or (-math.inf, math.inf)
+        route_lo = max(min(lo, -m), ends[0])
+        route_hi = min(max(hi, m), ends[1])
         if not covers(route_wall, route_lo, route_hi):
             problems.append(
                 f"sweep pass for starts {run['start_ft']} but the wall and cable route "
@@ -618,11 +735,17 @@ def ground_gap(
     for p, q in itertools.pairwise(cuts):
         if q - p <= EPS:
             continue
-        inside = lo - EPS <= p and q <= hi + EPS
-        need = depth + radius if inside else radius - min(abs(lo - q), abs(p - hi))
+
+        # Past an end, a point d along the wall from the battery is within the radius of its
+        # footprint (depth D out from the wall) out to D + sqrt(R^2 - d^2).
+        def need_at(s: float) -> float:
+            d = max(lo - s, s - hi, 0.0)
+            return depth + math.sqrt(max(0.0, radius**2 - d**2))
+
+        need = need_at(q if q <= lo else p if p >= hi else (lo + hi) / 2)
         seen = max((out for x, y, out in entries if x <= p + EPS and q - EPS <= y), default=None)
-        if seen is None or seen + EPS < need:
-            if plan is not None and plan.covers((lo + hi) / 2, p, q, seen or 0.0, need):
+        if seen is None or seen + SEEN_GROWTH_FT < need:
+            if plan is not None and plan.covers((lo + hi) / 2, p, q, seen or 0.0, need_at):
                 continue
             where = f"ground [{p:.2f}, {q:.2f}] observed"
             if seen is None:
@@ -792,13 +915,33 @@ class GroundPlan:
             dx, dz = x[0] - origin[0], x[1] - origin[1]
             t = dx * along[0] + dz * along[1]
             n = dx * outward[0] + dz * outward[1]
-            if t0 - EPS <= t <= t1 + EPS and -EPS <= n <= out + SERVER_EPS:
+            grow = SEEN_GROWTH_FT
+            if t0 - grow <= t <= t1 + grow and -grow <= n <= out + grow:
                 return True
         return False
 
-    def covers(self, s_mid: float, p: float, q: float, out_lo: float, out_hi: float) -> bool:
-        """Every sampled point from s = p to q, out_lo to out_hi in front of the battery's
-        segment, lies in some observed ground band.
+    def required(self, x: Point) -> bool:
+        """Whether ground at x is yard a view must show (server 3baa338 unobserved_ground): in
+        front of some wall segment, or past either end of the chain. Past a corner, behind the
+        next wall, is neither: the house."""
+        for i, (_, _, _, p, q) in enumerate(self.segments):
+            along, outward = self._frame(p, q)
+            dx, dz = x[0] - p[0], x[1] - p[1]
+            t = dx * along[0] + dz * along[1]
+            n = dx * outward[0] + dz * outward[1]
+            length = math.dist(p, q)
+            if -EPS <= t <= length + EPS and n >= -EPS:
+                return True
+            if (i == 0 and t < 0) or (i == len(self.segments) - 1 and t > length):
+                return True
+        return False
+
+    def covers(
+        self, s_mid: float, p: float, q: float, out_lo: float, need: Callable[[float], float]
+    ) -> bool:
+        """Every sampled point from s = p to q, deeper than out_lo (seen by the stretch's own
+        band) and out to need(s) in front of the battery's segment, lies in some observed ground
+        band.
 
         Samples are each cell's edges and its centre, in s and out. Edges alone missed a gap
         narrower than a cell between two bands (0.019 ft at 5a4b4f4): both its edges lie on a
@@ -806,9 +949,11 @@ class GroundPlan:
         if not self.strips:
             return False
         for s in self._samples(p, q):
-            for out in self._samples(out_lo, out_hi):
+            # Up to out_lo the stretch's own band already saw the ground.
+            deeper = [o for o in self._samples(out_lo, need(s)) if o > out_lo + SERVER_EPS]
+            for out in deeper:
                 x = self.point(s_mid, s, out)
-                if x is None or not self.seen(x):
+                if x is None or (self.required(x) and not self.seen(x)):
                     return False
         return True
 

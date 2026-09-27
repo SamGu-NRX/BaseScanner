@@ -16,6 +16,7 @@ from hsverify.resultcheck import (
     coverage_problems,
     declared_height_problems,
     expectation_problems,
+    expected_checks,
     footprint_problems,
     invariant_problems,
     less_coverage_problems,
@@ -26,6 +27,7 @@ from hsverify.resultcheck import (
     observed,
     outcome_at,
     outcome_lengths,
+    reach_gaps,
     run_starts,
     straight_pieces,
     tape_to_tap,
@@ -61,7 +63,7 @@ RULES = RuleSet(
 )
 
 SCENE = {
-    "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"},
+    "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1", "plus_minus_ft": 0.0},
     # An explicit zero error keeps the reach arithmetic in these tests to the radii alone.
     "walls": [{"id": "w1", "baseline": [[-12.0, 0.0], [12.0, 0.0]], "plus_minus_ft": 0.0}],
     "objects": [
@@ -101,7 +103,31 @@ def check(outcome="pass", measured=5.0, error=0.3, threshold=3.0, cmp="at_least"
     return c
 
 
-def result(decision="manual_review", spot=True, checks=None, sweep=None, sent=b"{}"):
+# Every check a 3baa338 result lists (battery_clearance only when the scene or rules call for it).
+SERVER_CHECKS = (
+    "wall_backing",
+    "ground_surface",
+    "meter_working_space",
+    "gas_clearance",
+    "ac_clearance",
+    "drive_clearance",
+    "pool_clearance",
+    "opening_clearance",
+    "wall_equipment_above",
+    "facing_gap",
+    "headroom",
+    "route_path",
+    "route_length",
+)
+
+
+def result(decision="manual_review", spot=True, checks=None, sweep=None, sent=b"{}", complete=True):
+    """A result listing `checks` (default: gas passing); with `complete`, every other check a
+    server lists is added as a pass with no numbers, so a test is about the checks it names."""
+    checks = [check()] if checks is None else list(checks)
+    if complete:
+        named = {c["id"] for c in checks}
+        checks += [passing(i) for i in SERVER_CHECKS if i not in named]
     s = None
     if spot:
         s = {
@@ -133,7 +159,7 @@ def result(decision="manual_review", spot=True, checks=None, sweep=None, sent=b"
         },
         "spot": s,
         "route": None if s is None else {"outcome": "pass"},
-        "checks": [check()] if checks is None else checks,
+        "checks": checks,
         "missing_evidence": [],
         "ends": {},
         "sweep": sweep
@@ -255,24 +281,26 @@ def with_ground(out_ft: float, span: list[float]) -> dict:
 
 
 def test_a_pass_needs_ground_out_to_depth_plus_each_radius():
-    # Start 1 covers [1, 3.58]. Gas (radius 1) needs ground out to 1.83 + 1 = 2.83 ft.
+    # Start 1 covers [1, 3.58]. Gas (radius 1) needs ground out to 1.83 + 1 = 2.83 ft, in front
+    # and just past its ends; the first stretch short of it is [0, 1].
     msgs = invariant_problems(with_ground(2.5, [-12.0, 10.0]), result(), rules=RULES)
-    needs = "gas_clearance needs ground [1.00, 3.58] observed out to 2.83 ft, seen 2.50 ft"
+    needs = "gas_clearance needs ground [0.00, 1.00] observed out to 2.83 ft, seen 2.50 ft"
     assert any(needs in m for m in msgs)
     assert invariant_problems(with_ground(2.84, [-12.0, 10.0]), result(), rules=RULES) == []
 
 
 def test_past_the_battery_the_ground_needed_shrinks_with_distance():
-    # d past the battery's left end at 1, gas needs ground out to 1 - d: 0.5 for [0, 0.5].
+    # d past the battery's left end at 1, gas (radius 1) needs ground out to D + sqrt(1 - d^2):
+    # 1.83 + 0.87 = 2.70 for [0, 0.5], and D + 1 = 2.83 for [0.5, 1].
     scene = with_ground(2.84, [1.0, 10.0])
     scene["coverage"]["observed"] += [
-        {"band": "ground", "span_ft": [0.0, 0.5], "out_ft": 0.55},
-        {"band": "ground", "span_ft": [0.5, 1.0], "out_ft": 1.0},
+        {"band": "ground", "span_ft": [0.0, 0.5], "out_ft": 2.71},
+        {"band": "ground", "span_ft": [0.5, 1.0], "out_ft": 2.84},
     ]
     assert invariant_problems(scene, result(), rules=RULES) == []
-    scene["coverage"]["observed"][-1]["out_ft"] = 0.9
+    scene["coverage"]["observed"][-1]["out_ft"] = 2.8
     msgs = invariant_problems(scene, result(), rules=RULES)
-    assert any("ground [0.50, 1.00] observed out to 1.00 ft, seen 0.90 ft" in m for m in msgs)
+    assert any("ground [0.50, 1.00] observed out to 2.83 ft, seen 2.80 ft" in m for m in msgs)
 
 
 def test_a_pass_needs_ground_along_the_wall_to_each_radius_without_slack():
@@ -348,7 +376,7 @@ def test_the_reach_widens_by_the_battery_position_error():
     scene = with_ground(3.6, [-12.0, 10.0])
     del scene["walls"][0]["plus_minus_ft"]
     msgs = invariant_problems(scene, result(), rules=RULES)
-    assert any("gas_clearance needs ground [1.00, 3.58] observed out to 3.71 ft" in m for m in msgs)
+    assert any("gas_clearance needs ground" in m and "out to 3.71 ft" in m for m in msgs)
     scene["coverage"]["observed"][1]["out_ft"] = 3.72
     assert invariant_problems(scene, result(), rules=RULES) == []
 
@@ -392,8 +420,8 @@ sweep: {step_ft: {value: 0.166666666667}, wall_join_ft: {value: 0.6}}
     assert rules.needs["battery_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
     assert rules.needs["opening_clearance"] == (Need("wall", 3.0, 6.5),)
     assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25),)
-    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5),)
-    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5),)
+    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5, along=True),)
+    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5, along=True),)
     assert (rules.wall_join_ft, rules.battery_height_ft, rules.headroom_ft) == (0.6, 3.25, 6.5)
     assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
     lower = RuleSet.from_yaml(
@@ -406,6 +434,7 @@ sweep: {step_ft: {value: 0.166666666667}, wall_join_ft: {value: 0.6}}
 
 def test_expectations():
     r = result(
+        complete=False,  # no route check, which `bad` below expects
         sweep=[
             {
                 "wall_id": "w1",
@@ -421,7 +450,7 @@ def test_expectations():
                 "failing": [],
                 "unsure": [],
             },
-        ]
+        ],
     )
     ok = {
         "decision_not": ["pass"],
@@ -600,7 +629,7 @@ def test_transforms():
     default_wall = copy.deepcopy(scene)
     del default_wall["walls"][0]["plus_minus_ft"]
     assert with_more_error(default_wall, RULES)["walls"][0]["plus_minus_ft"] == pytest.approx(4.64)
-    assert more["meter"]["plus_minus_ft"] == 0.8
+    assert more["meter"]["plus_minus_ft"] == 0.5  # SCENE's meter is exact
     assert [o["source"] for o in tape_to_tap(scene)["objects"]] == ["tap", "tap"]
     assert tape_to_tap(SCENE) is None
     less = with_less_coverage(scene)
@@ -683,9 +712,10 @@ BAND_RULES = replace(
     | {
         "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0),),
         "headroom": (Need("overhead", 0.0, 6.5),),
-        "battery_clearance": (Need("ground", 100.0),),
     },
 )
+FACING_RULES = replace(RULES, needs=RULES.needs | {"facing_gap": BAND_RULES.needs["facing_gap"]})
+HEADROOM_RULES = replace(RULES, needs=RULES.needs | {"headroom": BAND_RULES.needs["headroom"]})
 
 
 def test_facing_and_headroom_passes_need_their_bands():
@@ -703,30 +733,37 @@ def test_a_short_facing_view_needs_a_measurement():
     r = result(checks=[check(), passing("facing_gap")])
     scene = copy.deepcopy(SCENE)
     scene["coverage"]["observed"].append({"band": "facing", "span_ft": [0.0, 5.0], "out_ft": 3.0})
-    msgs = invariant_problems(scene, r, rules=BAND_RULES)
+    msgs = invariant_problems(scene, r, rules=FACING_RULES)
     assert any("out to 4.83 ft or measured, seen 3.00 ft" in m for m in msgs)
     scene["facing"] = [{"wall_id": "w1", "span_ft": [0.0, 5.0], "depth_ft": 8.0}]
-    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+    assert invariant_problems(scene, r, rules=FACING_RULES) == []
 
 
 def test_an_overhead_seen_clear_all_the_way_up_settles_headroom():
     r = result(checks=[check(), passing("headroom")])
     scene = copy.deepcopy(SCENE)
     scene["coverage"]["observed"].append({"band": "overhead", "span_ft": [0.0, 5.0]})
-    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+    assert invariant_problems(scene, r, rules=HEADROOM_RULES) == []
     scene["coverage"]["observed"][-1]["out_ft"] = 5.0  # clear only to 5 ft, under 6.5
-    assert any("overhead [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
-
-
-def test_a_check_the_server_did_not_evaluate_needs_nothing():
-    evaluated = result(checks=[check()], sweep=[PASS_RUN])
-    assert not any(
-        "battery_clearance" in m for m in invariant_problems(SCENE, evaluated, rules=BAND_RULES)
-    )
-    with_battery = result(checks=[check(), passing("battery_clearance")], sweep=[PASS_RUN])
     assert any(
-        "battery_clearance" in m for m in invariant_problems(SCENE, with_battery, rules=BAND_RULES)
+        "overhead [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=HEADROOM_RULES)
     )
+
+
+def test_battery_clearance_is_needed_when_its_rule_reaches_past_gas_or_a_battery_is_marked():
+    # BAND_RULES set battery_clearance's radius (100) above gas's (1): the server evaluates it,
+    # so a result that leaves it out is flagged and its coverage is needed anyway.
+    wide = replace(RULES, needs=RULES.needs | {"battery_clearance": (Need("ground", 100.0),)})
+    r = result(checks=[check()], sweep=[PASS_RUN])
+    msgs = invariant_problems(SCENE, r, rules=wide)
+    assert "the result leaves out check battery_clearance, which the rules define" in msgs
+    assert any("battery_clearance needs ground" in m for m in msgs)
+    # With its radius at gas's and no battery marked, the server doesn't evaluate it.
+    level = replace(RULES, needs=RULES.needs | {"battery_clearance": (Need("ground", 1.0),)})
+    assert expected_checks(SCENE, level) == set(level.needs) - {"battery_clearance"}
+    marked = copy.deepcopy(SCENE)
+    marked["objects"].append({"type": "battery", "wall_id": "w1", "span_ft": [8.0, 9.0]})
+    assert "battery_clearance" in expected_checks(marked, level)
 
 
 @pytest.mark.parametrize(
@@ -740,7 +777,8 @@ def test_a_check_the_server_did_not_evaluate_needs_nothing():
     ],
 )
 def test_the_wall_source_sets_the_default_error(wall, error):
-    scene = {"walls": [{"id": "w1", "baseline": [[0, 0], [9, 0]], **wall}]}
+    meter = {"pos": [0.0, 4.0, 0.0], "wall_id": "w1", "plus_minus_ft": 0.0}
+    scene = {"meter": meter, "walls": [{"id": "w1", "baseline": [[0, 0], [9, 0]], **wall}]}
     drift = 0.0 if "plus_minus_ft" in wall else 0.16 * 1.0  # far edge 1 ft from the meter
     assert battery_error(scene, RULES, "w1", 0.0, 1.0) == pytest.approx(error + drift)
 
@@ -802,9 +840,9 @@ def test_a_facing_view_that_only_reaches_the_needed_depth_is_not_beyond():
     scene = copy.deepcopy(SCENE)
     need = 22 / 12 + 3.0
     scene["coverage"]["observed"].append({"band": "facing", "span_ft": [0.0, 5.0], "out_ft": need})
-    assert any("facing [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
+    assert any("facing [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=FACING_RULES))
     scene["coverage"]["observed"][-1]["out_ft"] = need + 0.01
-    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+    assert invariant_problems(scene, r, rules=FACING_RULES) == []
 
 
 def test_each_start_in_a_sweep_run_needs_only_its_own_reach():
@@ -813,7 +851,7 @@ def test_each_start_in_a_sweep_run_needs_only_its_own_reach():
     # uncertain. As one battery at start 10's error, the run would ask 14.15 ft in front of start 1.
     pool = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
     scene = {
-        "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"},
+        "meter": {"pos": [0.0, 4.0, 0.0], "wall_id": "w1", "plus_minus_ft": 0.0},
         "walls": [{"id": "w1", "baseline": [[-40.0, 0.0], [40.0, 0.0]]}],
         "objects": [],
         "coverage": {
@@ -830,7 +868,7 @@ def test_each_start_in_a_sweep_run_needs_only_its_own_reach():
     assert coverage_problems(scene, r, pool) == []
     scene["coverage"]["observed"][1]["out_ft"] = 12.5
     assert any(
-        "at start 1.00 pool_clearance needs ground [1.00, 2.00] observed out to 12.71 ft" in m
+        "at start 1.00 pool_clearance needs ground" in m and "out to 12.71 ft" in m
         for m in coverage_problems(scene, r, pool)
     )
 
@@ -847,10 +885,11 @@ def test_facing_and_headroom_need_the_band_past_the_battery_by_the_wall_error():
     r = result(checks=[passing("facing_gap")])
     scene = copy.deepcopy(SCENE)
     scene["walls"][0]["plus_minus_ft"] = 0.3
+    scene["coverage"]["observed"][1]["out_ft"] = 3.2  # gas: 1.83 + 1.3 in front and past ends
     scene["coverage"]["observed"].append({"band": "facing", "span_ft": [1.0, 3.6]})
-    assert any("facing [0.70, 1.00]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
+    assert any("facing [0.70, 1.00]" in m for m in invariant_problems(scene, r, rules=FACING_RULES))
     scene["coverage"]["observed"][-1]["span_ft"] = [0.7, 3.9]
-    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+    assert invariant_problems(scene, r, rules=FACING_RULES) == []
 
 
 def test_facing_and_headroom_widen_by_the_default_error_with_drift():
@@ -1078,7 +1117,7 @@ def test_wall_backing_needs_the_wall_seen_past_the_battery_by_its_error():
 def inside_corner(w2_out: float) -> dict:
     # g05: w1 runs +x with its outside at +z; w2 turns up +z from its end, facing back over w1.
     return {
-        "meter": {"pos": [-6.0, 4.0, 0.0], "wall_id": "w1"},
+        "meter": {"pos": [-6.0, 4.0, 0.0], "wall_id": "w1", "plus_minus_ft": 0.0},
         "walls": [
             {"id": "w1", "baseline": [[-7.0, 0.0], [4.0, 0.0]], "plus_minus_ft": 0.0},
             {"id": "w2", "baseline": [[4.0, 0.0], [4.0, 12.0]], "plus_minus_ft": 0.0},
@@ -1097,7 +1136,8 @@ def inside_corner(w2_out: float) -> dict:
 
 def test_ground_in_front_of_one_wall_may_be_seen_from_the_next_in_an_inside_corner():
     # The battery at s 4.04 (x -1.96 to 0.62) needs a 10 ft pool radius, ground out to 11.83 in
-    # front; w1's band reaches 10.5. From x = 4, w2's band reaching 10.66 or more covers it.
+    # front and within 10 ft of its corners; w1's band reaches 10.5. From x = 4, w2's band
+    # reaching 12 covers the rest.
     pool = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
     run = {
         "wall_id": "w1",
@@ -1107,9 +1147,9 @@ def test_ground_in_front_of_one_wall_may_be_seen_from_the_next_in_an_inside_corn
         "unsure": [],
     }
     r = result(spot=False, checks=[check() | {"id": "pool_clearance"}], sweep=[run])
-    assert coverage_problems(inside_corner(10.7), r, pool) == []
+    assert coverage_problems(inside_corner(12.0), r, pool) == []
     short = coverage_problems(inside_corner(4.0), r, pool)  # w2's band stops at x = 0
-    assert any("pool_clearance needs ground [4.04, 6.62] observed out to 11.83" in m for m in short)
+    assert any("pool_clearance needs ground" in m and "out to 11.83" in m for m in short)
 
 
 def test_a_ground_gap_narrower_than_the_sampling_step_is_not_counted_seen():
@@ -1215,3 +1255,174 @@ def test_a_pass_by_the_smallest_reported_margin_is_a_pass():
     at_most = check("pass", 19.999999, 0.0, 20.0, cmp="at_most")
     assert margin_problem(at_most) is None
     assert "should be unsure" in margin_problem(at_most | {"measured_ft": 20.0})
+
+
+# Final Opus review of 255bc84 (.local/final-opus-review-probes/pr13), findings 1 to 5.
+
+D_FT = 22 / 12
+POOL = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
+
+
+def open_wall(ground_out: float, meter_pm: float | None = None) -> dict:
+    """The probes' scene: one 60 ft wall, error 0.3, everything but the ground seen."""
+    meter = {"pos": [0.0, 4.0, 0.0], "wall_id": "w1"}
+    if meter_pm is not None:
+        meter["plus_minus_ft"] = meter_pm
+    return {
+        "meter": meter,
+        "walls": [{"id": "w1", "baseline": [[-30.0, 0.0], [30.0, 0.0]], "plus_minus_ft": 0.3}],
+        "objects": [],
+        "coverage": {
+            "ends": {"left": {"kind": "limit"}, "right": {"kind": "limit"}},
+            "observed": [
+                {"band": "wall", "span_ft": [-30.0, 30.0]},
+                {"band": "ground", "span_ft": [-30.0, 30.0], "out_ft": ground_out},
+            ],
+        },
+    }
+
+
+def pass_run(a: float, b: float, wall_id: str = "w1") -> dict:
+    return {"wall_id": wall_id, "start_ft": [a, b], "outcome": "pass", "failing": [], "unsure": []}
+
+
+def test_the_battery_error_includes_the_meters_error_in_plan():
+    # meter_gap.py: ground seen to D + 10 + 0.3 + 0.15. With the meter's default 0.3 the pool
+    # needs D + 10 + 0.6 (server 3baa338 _errors: wall at the far edge plus the meter's).
+    scene = open_wall(D_FT + 10.45)
+    r = result(spot=False, checks=[check() | {"id": "pool_clearance"}], sweep=[pass_run(2.0, 2.0)])
+    assert any(
+        "observed out to 12.43 ft, seen 12.28 ft" in m for m in coverage_problems(scene, r, POOL)
+    )
+    assert battery_error(scene, RULES, "w1", 2.0, 2.0 + 31 / 12) == pytest.approx(0.6)
+
+
+def test_the_battery_error_includes_the_slide_round_a_corner():
+    # Round a right angle from the meter, the meter's 0.3 slides the battery by 0.3 x sqrt(2),
+    # more than its 0.3 in plan (server 3baa338 _slide).
+    scene = open_wall(20.0, meter_pm=0.3)
+    scene["walls"] = [
+        {"id": "w1", "baseline": [[-30.0, 0.0], [10.0, 0.0]], "plus_minus_ft": 0.3},
+        {"id": "w2", "baseline": [[10.0, 0.0], [10.0, -20.0]], "plus_minus_ft": 0.3},
+    ]
+    assert battery_error(scene, RULES, "w2", 15.0, 17.58) == pytest.approx(
+        0.3 + 0.3 * 2**0.5 + 0.3 * 2**0.5
+    )
+
+
+def test_ground_just_past_the_battery_is_needed_out_to_the_straight_line_reach():
+    # ends.py: ground in front seen to 12.5, just past the ends only to 10.4. A point d past an
+    # end is within R of the footprint out to D + sqrt(R^2 - d^2), not R - d.
+    lo, hi = 5.0, 5.0 + 31 / 12
+    scene = open_wall(10.4, meter_pm=0.0)
+    scene["coverage"]["observed"][1:] = [
+        {"band": "ground", "span_ft": [-30.0, lo], "out_ft": 10.4},
+        {"band": "ground", "span_ft": [lo, hi], "out_ft": 12.5},
+        {"band": "ground", "span_ft": [hi, 30.0], "out_ft": 10.4},
+    ]
+    gaps = reach_gaps(scene, POOL, "pool_clearance", "w1", lo, hi)
+    assert gaps and gaps[0][1].startswith("ground [-5.30, 5.00] observed out to 12.13 ft")
+
+
+def test_a_passing_footprint_keeps_the_wall_error_clear_of_its_stretch_end():
+    # corner.py: a run whose last footprint ends at the corner s = 10 is unsure at 3baa338
+    # (check_backing: within e of the segment's end); relabelled pass, it must be flagged.
+    scene = open_wall(20.0)
+    scene["walls"] = [
+        {"id": "w1", "baseline": [[-30.0, 0.0], [10.0, 0.0]], "plus_minus_ft": 0.3},
+        {"id": "w2", "baseline": [[10.0, 0.0], [10.0, -20.0]], "plus_minus_ft": 0.3},
+    ]
+    r = result(spot=False, sweep=[pass_run(6.846, 10.0 - 31 / 12)])
+    assert footprint_problems(scene, r, RULES) == [
+        "sweep pass start 7.42 ends within its error (0.60 ft) of its straight wall's end at 10.00"
+    ]
+    r["sweep"][0]["outcome"] = "unsure"  # unsure may stand that close
+    assert footprint_problems(scene, r, RULES) == []
+
+
+def test_a_footprint_past_its_stretch_by_more_than_the_slack_is_flagged():
+    # With no error, a pass ending 0.2 ft past its wall's end: beyond the 0.05 ft slack.
+    scene = open_wall(20.0, meter_pm=0.0)
+    scene["walls"][0]["plus_minus_ft"] = 0.0
+    r = result(spot=False, sweep=[pass_run(30.2 - 31 / 12, 30.2 - 31 / 12)])
+    assert footprint_problems(scene, r, RULES) == [
+        "sweep pass start 27.62 runs past its straight wall [-30.00, 30.00]"
+    ]
+
+
+def test_a_result_that_drops_a_check_is_flagged_and_its_coverage_still_needed():
+    # dropped.py: a PASS judged on a scene whose ground reaches drive's 5 ft but not pool's 10.
+    rules = replace(
+        RULES,
+        needs={
+            "pool_clearance": (Need("ground", 10.0),),
+            "drive_clearance": (Need("ground", 5.0),),
+        },
+    )
+    scene = open_wall(D_FT + 5 + 0.6 + 0.1)
+    full = result(spot=False, sweep=[pass_run(2.0, 2.0)])
+    dropped = full | {"checks": [c for c in full["checks"] if c["id"] != "pool_clearance"]}
+    msgs = invariant_problems(scene, dropped, rules=rules)
+    assert any("pool_clearance needs ground" in m for m in msgs)
+    assert "the result leaves out check pool_clearance, which the rules define" in msgs
+
+
+def test_the_route_wall_is_needed_past_the_meter_by_its_error():
+    # route_end.py: the wall seen from s = 0 only. The route starts at the meter, which may
+    # stand 0.3 ft either side, so the wall is needed from -0.3 (server README route_path).
+    scene = open_wall(20.0)
+    scene["coverage"]["observed"][0]["span_ft"] = [0.0, 30.0]
+    r = result(spot=False, checks=[], sweep=[pass_run(3.7, 14.3875)])
+    assert any(
+        "the wall and cable route [-0.30, 16.97] were not all observed" in m
+        for m in coverage_problems(scene, r, RULES)
+    )
+
+
+# Flags at server 3baa338 after the review fixes, each the checker's (see the commit message).
+
+
+def test_spans_along_the_walls_widen_by_the_along_error_not_the_meters():
+    # The app scan: headroom needs the overhead band over [s0 - e, s1 + e] with e the wall's
+    # error plus the slide (0 on the meter's wall), not the meter's 0.3 in plan.
+    headroom = replace(RULES, needs={"headroom": (Need("overhead", 0.0, 6.5, along=True),)})
+    scene = open_wall(20.0)  # wall 0.3, meter default 0.3
+    scene["coverage"]["observed"].append({"band": "overhead", "span_ft": [1.7, 4.9]})
+    r = result(spot=False, sweep=[pass_run(2.0, 2.0)])
+    assert coverage_problems(scene, r, headroom) == []  # needs [1.7, 4.88]
+    scene["coverage"]["observed"][-1]["span_ft"] = [1.8, 4.9]
+    assert any("overhead [1.70, 1.80]" in m for m in coverage_problems(scene, r, headroom))
+
+
+def test_ground_short_of_the_reach_by_less_than_the_seen_growth_is_seen():
+    # d-gas-drift: ground seen to 14.50 where 14.5007 is needed. The server grows what was seen
+    # by 0.0049 ft before comparing (SEEN_GROWTH_FT), so a 0.0007 ft shortfall is seen.
+    scene = open_wall(D_FT + 10.6 - 0.0007)
+    r = result(spot=False, sweep=[pass_run(2.0, 2.0)])
+    assert coverage_problems(scene, r, POOL) == []
+    scene["coverage"]["observed"][1]["out_ft"] = D_FT + 10.6 - 0.01
+    assert coverage_problems(scene, r, POOL) != []
+
+
+def test_ground_past_an_inside_corner_behind_the_next_wall_is_the_house():
+    # g05 after a capture: past the battery's right end, the straight-line reach runs past the
+    # corner at x = 4 to ground behind w2, which the server's yard model leaves out.
+    pool = replace(RULES, needs={"pool_clearance": (Need("ground", 10.0),)})
+    scene = inside_corner(10.66)
+    scene["coverage"]["observed"][1:] = [
+        {"band": "ground", "span_ft": [-7.0, 10.0], "out_ft": 10.66},
+        {"band": "ground", "span_ft": [10.0, 22.0], "out_ft": 12.0},
+    ]
+    run = {
+        "wall_id": "w1",
+        "start_ft": [4.04, 4.04],
+        "outcome": "pass",
+        "failing": [],
+        "unsure": [],
+    }
+    r = result(spot=False, checks=[check() | {"id": "pool_clearance"}], sweep=[run])
+    assert coverage_problems(scene, r, pool) == []
+    plan = GroundPlan(scene, pool)
+    assert not plan.required((6.0, 5.0))  # behind w2, in front of no wall
+    assert plan.required((1.0, 11.5))  # in the corner's yard, in front of w1
+    assert plan.required((-9.0, 3.0))  # past the chain's left end
