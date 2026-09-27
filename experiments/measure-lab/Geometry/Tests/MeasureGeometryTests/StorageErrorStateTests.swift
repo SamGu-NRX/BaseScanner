@@ -2,6 +2,33 @@ import Testing
 @testable import MeasureGeometry
 
 struct StorageErrorStateTests {
+    @Test func `successful current manifest retry clears its failure`() {
+        var errors = StorageErrorState<String>()
+        errors.currentManifestFailed("Current write failed")
+        errors.closedSessionSaved("S1")
+        #expect(errors.message == "Current write failed")
+        errors.currentManifestSaved()
+        #expect(errors.message == nil)
+    }
+
+    @Test func `current manifest retry preserves unrelated keyframe loss`() {
+        var errors = StorageErrorState<String>()
+        errors.currentManifestFailed("Current write failed")
+        errors.report("Keyframe lost")
+        errors.currentManifestSaved()
+        #expect(errors.message == "Keyframe lost")
+        errors.currentManifestFailed("Another write failed")
+        errors.currentManifestSaved()
+        #expect(errors.message == "Keyframe lost")
+    }
+
+    @Test func `current manifest success preserves a closed manifest failure`() {
+        var errors = StorageErrorState<String>()
+        errors.report("Closed write failed", closedSession: "S1")
+        errors.currentManifestSaved()
+        #expect(errors.message == "Closed write failed")
+    }
+
     @Test func `successful retry clears only its closed manifest error`() {
         var errors = StorageErrorState<String>()
         errors.report("S1 write failed", closedSession: "S1")

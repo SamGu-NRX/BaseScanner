@@ -5,6 +5,41 @@ import Testing
 struct TrackingStabilityTests {
     var stability = TrackingStability(requiredSeconds: 1)
 
+    @Test mutating func `older normal report cannot overwrite a newer limited report`() {
+        stability.trackingChanged(isNormal: false, at: 11)
+        let accepted = stability.trackingChanged(isNormal: true, at: 10)
+        #expect(!accepted)
+        #expect(!stability.isStable(at: 12))
+        stability.trackingChanged(isNormal: true, at: 13)
+        #expect(!stability.isStable(at: 13.999))
+        #expect(stability.isStable(at: 14))
+    }
+
+    @Test mutating func `interruption ending before its queued start still restarts stability`() {
+        stability.trackingChanged(isNormal: true, at: 10)
+        stability.interruptionChanged(isInterrupted: false, at: 12)
+        let accepted = stability.interruptionChanged(isInterrupted: true, at: 11)
+        #expect(!accepted)
+        #expect(!stability.isStable(at: 12.999))
+        #expect(stability.isStable(at: 13))
+    }
+
+    @Test mutating func `late tracking uses the end of the interruption as its earliest start`() {
+        stability.interruptionChanged(isInterrupted: false, at: 12)
+        stability.trackingChanged(isNormal: true, at: 10)
+        #expect(stability.stableAt == 13)
+        // A newer interruption report cannot hide a limited tracking report from the other stream.
+        stability.trackingChanged(isNormal: false, at: 11)
+        #expect(!stability.isStable(at: 20))
+    }
+
+    @Test mutating func `late interruption end cannot move a newer normal start backward`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.trackingChanged(isNormal: true, at: 15)
+        stability.interruptionChanged(isInterrupted: false, at: 12)
+        #expect(stability.stableAt == 16)
+    }
+
     @Test mutating func `normal tracking becomes stable after the full interval`() {
         stability.trackingChanged(isNormal: true, at: 10)
         #expect(stability.stableAt == 11)
@@ -54,10 +89,20 @@ struct TrackingStabilityTests {
         #expect(stability.isStable(at: 15))
     }
 
-    @Test mutating func `a repeated normal report does not restart the interval`() {
+    @Test mutating func `each normal callback starts a fresh conservative interval`() {
         stability.trackingChanged(isNormal: true, at: 10)
         stability.trackingChanged(isNormal: true, at: 10.8)
-        #expect(stability.isStable(at: 11))
+        #expect(!stability.isStable(at: 11))
+        #expect(stability.isStable(at: 11.8))
+    }
+
+    @Test mutating func `a late limited callback cannot hide a break between normal callbacks`() {
+        stability.trackingChanged(isNormal: true, at: 10)
+        stability.trackingChanged(isNormal: true, at: 12)
+        let accepted = stability.trackingChanged(isNormal: false, at: 11)
+        #expect(!accepted)
+        #expect(!stability.isStable(at: 12))
+        #expect(stability.isStable(at: 13))
     }
 
     @Test mutating func `leaving normal tracking revokes stability`() {

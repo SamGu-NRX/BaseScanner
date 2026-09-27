@@ -41,6 +41,10 @@ A tap counts only after tracking has been normal for 1 s. Interruptions restart 
 
 These limits are the research note's gates. Each one is a hypothesis this run tests, not a calibrated value. Every session records the limits it used.
 
+The operator must see the wall-ground contacts and tap the same physical feature in both two-view images. A ground-plane hit cannot prove that a shrub did not hide the intended contact. Different features can also satisfy the ray-angle and ray-gap checks. The app does not detect either mistake reliably, so an accepted measurement does not prove visibility or correspondence. Keep both required-abstention cases in the test. Either can fail the method's criteria. This experiment cannot establish production clearance safety.
+
+A validation contact must lie on the base of the same visible, straight wall. It may lie outside the two initial contacts because it checks the wall's plane, not the supported span for later measurements.
+
 ## Run the hour
 
 Bring an iPhone without LiDAR running this app, a 50 ft tape, a spirit level, chalk or painter's tape, and two people. One of them is the uncoached operator, who has not seen the tape values and gets no coaching. Stay on the ground. Use no ladders, and keep clear of gas fittings.

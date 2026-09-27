@@ -12,7 +12,7 @@ make build     # unsigned app build
 make project   # regenerate the Xcode project after editing project.yml
 ```
 
-**Result.** No phone run or accuracy result. `swift test -j 2` passes 106 tests in 17 suites locally. CI run 36289322024 at d103de4 passed the 105-test suite, project drift check, and unsigned build. The additional test checks the protocol's exact 30 ft span.
+**Result.** No phone run or accuracy result. `swift test -j 2` passes 114 tests in 17 suites locally. CI run 36290127699 at 7b3ddcc passed the earlier 106-test suite, project drift check, and unsigned build. Visibility and matching the same feature remain operator responsibilities, not verified properties of accepted measurements.
 
 **What changed.** Nothing yet.
 

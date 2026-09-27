@@ -192,10 +192,11 @@ final class LabSession {
         guard let folder else { return false }
         do {
             try SessionStore.write(manifest, to: folder)
+            storageErrors.currentManifestSaved()
             keyframesSinceSave = 0
             return true
         } catch {
-            storageErrors.report("Couldn't save session.json: \(error.localizedDescription)")
+            storageErrors.currentManifestFailed("Couldn't save session.json: \(error.localizedDescription)")
             return false
         }
     }

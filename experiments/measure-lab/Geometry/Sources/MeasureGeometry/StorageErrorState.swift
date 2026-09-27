@@ -1,9 +1,10 @@
-/// The one storage error the app shows, and which closed session's manifest write caused it, if
-/// any. A later successful retry of that write clears the error. It never clears an error from
-/// anything else, such as a failed save of the current session.
+/// The one storage error the app shows and the manifest write that can clear it on retry.
+/// A successful current or closed manifest retry clears only its own displayed error.
+/// Unrecoverable errors, such as a lost keyframe, survive all manifest retries.
 public struct StorageErrorState<Session: Hashable & Sendable>: Sendable, Equatable {
     public private(set) var message: String?
     private var closedSession: Session?
+    private var currentManifest = false
 
     public init() {}
 
@@ -11,6 +12,19 @@ public struct StorageErrorState<Session: Hashable & Sendable>: Sendable, Equatab
     public mutating func report(_ message: String) {
         self.message = message
         closedSession = nil
+        currentManifest = false
+    }
+
+    public mutating func currentManifestFailed(_ message: String) {
+        // A later manifest retry cannot recover an earlier lost keyframe.
+        guard self.message == nil || currentManifest || closedSession != nil else { return }
+        report(message)
+        currentManifest = true
+    }
+
+    public mutating func currentManifestSaved() {
+        guard currentManifest else { return }
+        clear()
     }
 
     /// A failed write of a closed session's manifest, which a later retry can clear.
@@ -31,5 +45,6 @@ public struct StorageErrorState<Session: Hashable & Sendable>: Sendable, Equatab
     public mutating func clear() {
         message = nil
         closedSession = nil
+        currentManifest = false
     }
 }

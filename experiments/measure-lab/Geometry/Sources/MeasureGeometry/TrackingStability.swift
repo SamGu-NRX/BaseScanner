@@ -6,7 +6,7 @@
 /// uptime, the clock of `ARFrame.timestamp`, stamped when ARKit called back. A caller's timer only
 /// prompts a fresh `isStable(at:)`; it never decides stability itself.
 ///
-/// Callbacks reach the main actor through posted tasks, so a report from the AR run before a
+/// Callbacks reach the main actor through the main queue, so a report from the AR run before a
 /// reset can arrive after it. `reset(at:)` sets a cutoff: reports stamped at or before it are
 /// refused, and after it a normal report counts only once a limited or unavailable one has
 /// arrived, the fresh tracking cycle a reset run starts with (as in `FrameResetGate`).
@@ -17,6 +17,10 @@ public struct TrackingStability: Sendable, Equatable {
     /// Reports stamped at or before this belong to the run before the last reset.
     private var resetUptime: Double?
     private var awaitingFreshCycle = false
+    // Each callback stream keeps its own clock: a newer interruption must not hide a tracking
+    // change, or vice versa, when their main-actor tasks arrive out of order.
+    private var trackingTime: Double?
+    private var interruptionTime: Double?
     /// Start of the current run of normal, uninterrupted tracking.
     public private(set) var normalSince: Double?
 
@@ -24,21 +28,21 @@ public struct TrackingStability: Sendable, Equatable {
         self.requiredSeconds = requiredSeconds
     }
 
-    /// Returns false, changing nothing, for a report from before the last reset. A repeated
-    /// normal report keeps the run going; only a change into normal starts one.
+    /// Refuses stale reports. Each accepted normal callback starts a fresh interval because a
+    /// delayed limited callback may describe a break between two delivered normal callbacks.
     @discardableResult
     public mutating func trackingChanged(isNormal: Bool, at time: Double) -> Bool {
-        guard isAfterReset(time) else { return false }
+        guard isAfterReset(time), trackingTime.map({ time > $0 }) ?? true else { return false }
         if awaitingFreshCycle {
             if isNormal { return false }
             awaitingFreshCycle = false
         }
-        let wasNormal = self.isNormal
+        trackingTime = time
         self.isNormal = isNormal
         if !isNormal {
             normalSince = nil
-        } else if !wasNormal, !isInterrupted {
-            normalSince = time
+        } else if !isInterrupted {
+            normalSince = max(time, interruptionTime ?? time)
         }
         return true
     }
@@ -47,13 +51,14 @@ public struct TrackingStability: Sendable, Equatable {
     /// interruption starts a fresh run if tracking reads normal.
     @discardableResult
     public mutating func interruptionChanged(isInterrupted: Bool, at time: Double) -> Bool {
-        guard isAfterReset(time) else { return false }
-        let wasInterrupted = self.isInterrupted
+        guard isAfterReset(time), interruptionTime.map({ time > $0 }) ?? true else { return false }
+        interruptionTime = time
         self.isInterrupted = isInterrupted
         if isInterrupted {
             normalSince = nil
-        } else if wasInterrupted, isNormal {
-            normalSince = time
+        } else if isNormal {
+            // The end callback may arrive before its start, or after a later normal report.
+            normalSince = max(time, normalSince ?? trackingTime ?? time)
         }
         return true
     }
@@ -62,6 +67,7 @@ public struct TrackingStability: Sendable, Equatable {
     public mutating func reset(at uptime: Double) {
         resetUptime = uptime
         awaitingFreshCycle = true
+        trackingTime = nil
         isNormal = false
         normalSince = nil
     }
