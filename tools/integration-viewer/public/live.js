@@ -14,7 +14,9 @@ const RESULT_RETRY_MS = 4_000;
 // After this many quick reads, keep reading the result, but only every RESULT_SLOW_MS.
 const RESULT_QUICK_TRIES = 8;
 const RESULT_SLOW_MS = 30_000;
-const BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 15_000];
+// Short on purpose: a viewer being filmed should pick up within a few seconds of the API
+// returning. An API that wants callers to wait longer says so with Retry-After.
+const BACKOFF_MS = [1_000, 2_000, 3_000, 5_000];
 // A long-poll that comes back empty sooner than this waits out the rest, so an API that ignores
 // `wait` cannot turn the loop into a request storm.
 const MIN_EMPTY_POLL_MS = 1_000;
