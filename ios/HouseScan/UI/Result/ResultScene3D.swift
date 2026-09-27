@@ -197,8 +197,27 @@ struct ResultScene3D: View {
         dial.position = SIMD3(0, wall.meterHeight + 0.04, 0.155)
         root.addChild(dial)
 
-        // A mark goes on the piece its middle is on.
-        for feature in features { addFeature(feature, to: holder(atS: (feature.span.lowerBound + feature.span.upperBound) / 2)) }
+        // A mark goes on the piece its middle is on. A fence or driveway is a run along the wall,
+        // and one that crosses a corner is drawn in parts, one on each piece it covers, as the
+        // clearance zones are: drawn whole on its middle's piece it ran straight on past the
+        // corner (#129). The end pieces reach on past the drawn wall, so no part is lost there.
+        for feature in features {
+            guard feature.kind == .fence || feature.kind == .driveway else {
+                addFeature(feature, to: holder(atS: (feature.span.lowerBound + feature.span.upperBound) / 2))
+                continue
+            }
+            var parts = 0
+            for (index, (piece, holder)) in zip(pieces, holders).enumerated() {
+                let low = max(feature.span.lowerBound, index == 0 ? -.infinity : piece.span.lowerBound)
+                let high = min(feature.span.upperBound, index == pieces.count - 1 ? .infinity : piece.span.upperBound)
+                guard high > low else { continue }
+                var part = feature
+                part.span = low...high
+                addFeature(part, to: holder)
+                parts += 1
+            }
+            if parts == 0 { addFeature(feature, to: holder(atS: (feature.span.lowerBound + feature.span.upperBound) / 2)) }
+        }
 
         for (index, zone) in result.clearances.enumerated() {
             var material = UnlitMaterial(color: SceneColor.outcome(zone.outcome))

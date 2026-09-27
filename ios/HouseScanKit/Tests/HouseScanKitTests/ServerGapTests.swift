@@ -380,3 +380,44 @@ import Testing
         #expect(map.visibleRange.upperBound == 2.5)
     }
 }
+
+/// #129: at the entry cap on a chain with corners the export joins the ground to one entry fewer
+/// per corner (`SceneExport.observedBudget`), and the planner must read the ground the same way.
+/// It read it at the full share, so a reach the export joined down still met the request locally.
+@Suite struct CorneredCapSettlementTests {
+    /// 125 touching ground spans (the full share) 0.05 m wide from s = -3, reaching 1 m and 1.5 m
+    /// in turn, on `ChainExportTests.wall` (corners at -2 and 3).
+    @Test func theGroundIsReadAsTheCorneredExportWritesIt() throws {
+        let spans = (0..<SceneExport.bandBudget).map { i in
+            let low = -3 + Float(i) * 0.05
+            return ObservedSpan(span: low...(low + 0.05), out: i.isMultiple(of: 2) ? 1 : 1.5)
+        }
+        var input = ChainExportTests.input()
+        input.coverage.ground = spans
+        let data = try SceneExport.jsonData(input)
+        #expect(try SceneSchemas.scene().validate(data) == [])
+        let written = try ServerRequestSettlementTests.entries(data, band: "ground")
+        let corners = input.wall.chain.segments.count - 1
+        #expect(corners == 2)
+        let planned = GapPlanner.exported(spans, "ground", corners: corners)
+        #expect(planned.count == SceneExport.bandBudget - corners)
+        let fullShare = ObservedSpan.coarsened(spans, toAtMost: SceneExport.bandBudget)
+
+        let needed = SceneExport.feetDown(1.5)
+        func planner(_ spans: [ObservedSpan], _ requested: ClosedRange<Double>) -> Bool {
+            GapPlanner.fraction(of: requested, coveredBy: spans.filter { SceneExport.feetDown($0.out) >= needed }.map(\.span)) >= 1
+        }
+        // A request for 1.5 m over each 1.5 m cell, 1 mm inside it, away from the corners' cuts.
+        var shrunk = 0
+        for i in stride(from: 1, to: spans.count, by: 2) {
+            let span = spans[i].span
+            guard abs(span.lowerBound + 2) > 0.2, abs(span.upperBound - 3) > 0.2, abs(span.lowerBound - 3) > 0.2 else { continue }
+            let requested = (Double(span.lowerBound) + 0.001) * SceneUnits.feetPerMeter...(Double(span.upperBound) - 0.001) * SceneUnits.feetPerMeter
+            let settles = ServerRequestSettlementTests.seenTo(written, requested.lowerBound, requested.upperBound) >= needed
+            #expect(planner(planned, requested) == settles, "cell at s = \(span.lowerBound)")
+            if planner(fullShare, requested) && !settles { shrunk += 1 }
+        }
+        // The full share met requests the export no longer does.
+        #expect(shrunk > 0)
+    }
+}
