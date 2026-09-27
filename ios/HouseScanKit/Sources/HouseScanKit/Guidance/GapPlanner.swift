@@ -106,7 +106,7 @@ public struct GapPlanner: Sendable {
     /// It asks for nothing above the walking band. The server's answer to the first upload names
     /// the wall above it where a check needs that, over the stretch the check reads and to the
     /// height it needs (a wall request with `out_ft`, `GapPlan.Need.wallUp`), and the engine
-    /// raises it at once as the next view (`ScanEngine.nextAutomaticGap`). A request from here
+    /// raises it at once as the next view (`ScanEngine.automaticGapQueue`). A request from here
     /// would have to guess both the stretch and the height (7.5 ft where the public rules need
     /// just over 6.5), and when the guess missed the spot the server chose, the homeowner would
     /// be asked for the wall twice.
@@ -321,5 +321,64 @@ extension GapPlanner {
     /// the meter (issue #35).
     public func endAfterPastEnd(_ plan: GapPlan, side: WalkSide, clearedAt old: Float) -> Float {
         side == .left ? min(plan.span.lowerBound, old) : max(plan.span.upperBound, old)
+    }
+
+    /// The items of the server's missing evidence still to ask for without a tap, in order, with
+    /// their requests, at most `limit` of them: each one a capture can settle whose request asks
+    /// for no view already raised in this pass (`asked`), skipped, or earlier in the list
+    /// (`GapPlan.asksForSameView(as:)`). A request the homeowner couldn't get to is in both, so
+    /// the answer that follows moves on to the next item rather than raising it again (issue #39).
+    public func serverRequests(
+        in missing: [PlacementMissingEvidence], leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>,
+        asked: [GapPlan], skipped: [GapPlan], limit: Int
+    ) -> [(item: PlacementMissingEvidence, plan: GapPlan)] {
+        var requests: [(item: PlacementMissingEvidence, plan: GapPlan)] = []
+        for item in missing where requests.count < limit {
+            guard let plan = self.plan(for: item, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds) else { continue }
+            let seen = asked + skipped + requests.map { $0.plan }
+            guard !seen.contains(where: { plan.asksForSameView(as: $0) }) else { continue }
+            requests.append((item, plan))
+        }
+        return requests
+    }
+
+    /// The first of `serverRequests`: the next item to ask for without a tap. Nil when none is left.
+    public func nextServerRequest(
+        in missing: [PlacementMissingEvidence], leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>,
+        asked: [GapPlan], skipped: [GapPlan]
+    ) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+        serverRequests(in: missing, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds, asked: asked, skipped: skipped, limit: 1).first
+    }
+}
+
+extension GapPlan {
+    /// Whether this request asks for the same view as `other`, allowing for the server working it
+    /// out again from the next upload: the same band and kind of need, a reach within 0.1 m (4 in)
+    /// of the other's, and at least 80 % of this span inside the other's. After "I can't get
+    /// there" the skipped stretch goes to review and the spot or its error margins can move, so the
+    /// same view comes back as, say, 2.41...7.9 ft instead of 2.4...7.9 ft. A met past_end request
+    /// moves its end on 2 m, so the next one asks for new ground and is a different view.
+    public func asksForSameView(as other: GapPlan) -> Bool {
+        guard band == other.band, need.isNear(other.need, within: 0.1) else { return false }
+        let overlap = min(span.upperBound, other.span.upperBound) - max(span.lowerBound, other.span.lowerBound)
+        let length = span.upperBound - span.lowerBound
+        return length > 0 ? overlap >= 0.8 * length : overlap >= 0
+    }
+}
+
+extension GapPlan.Need {
+    /// The same kind of need, with any reach within `tolerance` meters of the other's.
+    func isNear(_ other: GapPlan.Need, within tolerance: Float) -> Bool {
+        switch (self, other) {
+        case (.cells, .cells):
+            return true
+        case let (.groundOut(a), .groundOut(b)), let (.walkOut(a), .walkOut(b)), let (.wallUp(a), .wallUp(b)):
+            return abs(a - b) <= tolerance
+        case let (.overhead(a), .overhead(b)):
+            guard let a, let b else { return a == nil && b == nil }
+            return abs(a - b) <= tolerance
+        default:
+            return false
+        }
     }
 }

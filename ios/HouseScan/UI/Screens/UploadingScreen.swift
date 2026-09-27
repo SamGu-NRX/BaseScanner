@@ -16,8 +16,7 @@ struct UploadingScreen: View {
 
     /// Views the finished check wants from the camera before the result.
     private var followUps: Int {
-        guard state.upload == .done else { return 0 }
-        return state.result?.missing.filter(\.capturable).count ?? 0
+        state.upload == .done ? state.followUps : 0
     }
 
     var body: some View {

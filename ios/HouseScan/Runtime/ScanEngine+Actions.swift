@@ -335,6 +335,11 @@ extension ScanEngine: ScanActions {
         skipCurrentGap()
     }
 
+    func showResultNow() {
+        guard state.phase == .gapRequest else { return }
+        stopGapRequests()
+    }
+
     func cannotAccessArea() {
         switch state.phase {
         case .gapRequest:

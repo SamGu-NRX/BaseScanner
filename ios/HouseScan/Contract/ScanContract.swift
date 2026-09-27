@@ -675,6 +675,9 @@ final class ScanViewState {
     /// an unanswered question exports like `.notSure`.
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
+    /// How many views the finished check's answer will still ask for without a tap, counting a
+    /// server request on screen: what "One more view to finish" and "2 more views to finish" promise.
+    var followUps = 0
     var result: ResultPresentation?
     /// True while the AR result is drawn into the live camera, where people and objects in front
     /// of it hide it. The AR screen then draws no overlay of its own.
@@ -746,8 +749,13 @@ protocol ScanActions: AnyObject {
     func finishWalk()
     /// Features confirmed; the engine runs the gap check, then uploads.
     func confirmFeatures()
-    /// "I can't get there": the gap is recorded for installer review.
+    /// "I can't get there": the gap is recorded for installer review. On a request the finished
+    /// check sent back, the check's next request follows; the result shows once none is left.
     func skipGap()
+    /// "Show my result" on a request the finished check sent back: the view is recorded for
+    /// installer review like a skipped one, and after one more upload the result shows instead
+    /// of the check's next request.
+    func showResultNow()
     /// "I can't get to this part of the wall", during the walk: the cells the guidance is asking
     /// for become `.skipped` and the guidance moves on to the next task. While the walk asks to
     /// walk a side, that side's end goes where `ScanViewState.endPreview` shows, as an unexplored
