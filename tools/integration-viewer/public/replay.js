@@ -2,7 +2,7 @@
 // the network. The `dropout` scenario withholds events during its outage window and then delivers
 // them in one batch, which is what a reconnecting long-poll sees.
 
-import { DROPOUT, encodePly, resultBody, syntheticCloud, timeline } from "./scenario.js";
+import { DROPOUT, RUN_ID, encodePly, resultBody, syntheticCloud, timeline } from "./scenario.js";
 import { parsePly } from "./ply.js";
 
 export const REPLAY_CAPTURE_ID = "cap_ILLUSTRATIVE";
@@ -70,7 +70,9 @@ export class ReplayPlayer {
         batch.push({ seq: step.seq, type: step.event.type, at: new Date(Date.now() - (now - step.t)).toISOString(), data: step.event.data });
       }
       if (step.status || step.registered != null) {
-        this.dispatch({ type: "status", body: { captureId: REPLAY_CAPTURE_ID, status: this.status, filesRegistered: this.registered } });
+        // Like the API, the replay's status names the run once processing starts.
+        const runId = this.status === "uploading" ? null : RUN_ID;
+        this.dispatch({ type: "status", body: { captureId: REPLAY_CAPTURE_ID, status: this.status, filesRegistered: this.registered, runId } });
       }
     }
 

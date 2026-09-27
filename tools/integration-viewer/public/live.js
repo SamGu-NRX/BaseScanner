@@ -75,6 +75,8 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
 
     while (!signal.aborted) {
       try {
+        // An event or result named a run the status has not named yet: ask the status now.
+        if (getState().statusRefreshWanted) statusAt = -Infinity;
         if (now() - statusAt >= STATUS_EVERY_MS) {
           // Health is read until it answers once, so the build shown survives a failed first read.
           if (!getState().identity) get("/healthz").then((body) => send({ type: "health", body }), () => {});

@@ -76,31 +76,6 @@ describe("events", () => {
     assert.equal(stageRows(s).at(-1).id, "denoise_v2");
   });
 
-  test("a new run clears the earlier run's verdict, result and model", () => {
-    const a = run(
-      selected(),
-      events([stage(1, "result", "done"), { seq: 2, type: "verdict_ready", at: "x", data: { runId: "run_a", kind: "eligible" } }]),
-      { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
-      { type: "preview", runId: "run_a", cloud: { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } } },
-    );
-    assert.equal(a.preview.phase, "ready");
-    const b = run(a, events([{ ...stage(3, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]));
-    assert.equal(b.currentRunId, "run_b");
-    assert.equal(b.verdict, null);
-    assert.equal(b.result.phase, "none");
-    assert.equal(b.preview.phase, "none");
-  });
-
-  test("a late event from an earlier run does not switch the view back", () => {
-    const s = run(
-      selected(),
-      events([stage(1, "validate", "done"), { ...stage(3, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
-      events([stage(2, "poses", "running")], 3),
-    );
-    assert.equal(s.currentRunId, "run_b");
-    assert.equal(stageRows(s).find((r) => r.id === "poses").status, "unreported");
-  });
-
   test("joining a capture with two runs keeps the latest run the status named", () => {
     const runB = (seq, name, status) => ({ ...stage(seq, name, status), data: { stage: name, status, attempt: 1, runId: "run_b" } });
     const s = run(
@@ -115,32 +90,6 @@ describe("events", () => {
     assert.equal(withResult.result.phase, "ready");
   });
 
-  test("a run that first appears after the declared one is newer", () => {
-    const runC = { seq: 9, type: "stage", at: "x", data: { stage: "validate", status: "running", attempt: 1, runId: "run_c" } };
-    const s = run(selected(), { type: "status", body: { captureId: "cap_TEST_1", status: "processing", runId: "run_b" } }, events([{ ...stage(8, "validate", "done"), data: { stage: "validate", status: "done", attempt: 1, runId: "run_b" } }, runC]));
-    assert.equal(s.currentRunId, "run_c");
-  });
-
-  test("a result from a run not seen yet is accepted as the latest", () => {
-    const s = run(selected(), events([stage(1, "validate", "done")]), { type: "result", body: { runId: "run_z", status: "manual_review", outcome: { kind: "manual_review" } } });
-    assert.equal(s.currentRunId, "run_z");
-    assert.equal(s.result.phase, "ready");
-  });
-
-  test("a retake that names a new run clears the earlier run's answer at once", () => {
-    const a = run(selected(), events([stage(1, "result", "done")]), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
-    assert.equal(a.result.phase, "ready");
-    const b = run(a, events([{ seq: 2, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["v1"], memberActions: [] } }], 2));
-    assert.equal(b.currentRunId, "run_b");
-    assert.equal(b.result.phase, "none");
-  });
-
-  test("a new run changes the result key even when the status does not", () => {
-    const a = run(selected(), events([stage(1, "validate", "failed")], 1, "failed"));
-    const b = run(a, events([{ ...stage(2, "validate", "failed"), data: { stage: "validate", status: "failed", attempt: 1, runId: "run_b" } }], 2, "failed"));
-    assert.notEqual(resultKey(a), resultKey(b));
-  });
-
   test("the before-you-connected total survives more batches than the arrival queue keeps", () => {
     const batches = Array.from({ length: 30 }, (_, i) => committed(i + 1, [`keyframes/k${i}.jpg`]));
     const s = run(selected(), { ...events(batches), catchUp: true });
@@ -153,11 +102,6 @@ describe("events", () => {
     assert.deepEqual(s.arrivals.map((a) => a.backlog), [true, true, false]);
   });
 
-  test("a new run id switches the stages shown", () => {
-    const s = run(selected(), events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]));
-    assert.equal(s.currentRunId, "run_b");
-    assert.equal(stageRows(s).find((r) => r.id === "validate").status, "running");
-  });
 });
 
 describe("sessions", () => {
@@ -259,52 +203,6 @@ test("requested views show before any result exists, and the result's own list w
   assert.deepEqual(viewsToShow(withResult), [{ id: "vn3", title: "Show the ground left of the meter" }]);
 });
 
-test("a new run clears the previous run's retake and any result read without a body", () => {
-  const a = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn3"], memberActions: [] } }]), { type: "result-loading" });
-  assert.equal(a.result.phase, "loading");
-  const b = run(a, events([{ ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }], 2));
-  assert.equal(b.retake, null);
-  assert.deepEqual(viewsToShow(b), []);
-  assert.equal(b.result.phase, "none");
-});
-
-test("discarding an older run's result keeps the current run's pending result pending", () => {
-  const s = run(
-    selected(),
-    events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
-    { type: "result", body: { runId: "run_b", status: "processing", outcome: null } },
-    { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
-  );
-  assert.equal(s.result.phase, "pending");
-  assert.equal(s.result.body.runId, "run_b");
-});
-
-test("after history is read, a run first named by a later event supersedes the one the status named", () => {
-  const runB = { seq: 3, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["vn1"], memberActions: [] } };
-  const s = run(
-    selected(),
-    { type: "status", body: { captureId: "cap_TEST_1", status: "complete", runId: "run_a" } },
-    { ...events([stage(1, "result", "done"), stage(2, "criteria", "done")], 2), catchUp: true },
-    { ...events([], 2), catchUp: false },
-    { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } },
-    { ...events([runB], 3), catchUp: false },
-  );
-  assert.equal(s.currentRunId, "run_b");
-  assert.equal(s.result.phase, "none");
-  assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
-});
-
-test("a run first named in the first live batch outranks a run the status named without events", () => {
-  const s = run(
-    selected(),
-    { type: "status", body: { captureId: "cap_TEST_1", status: "complete", runId: "run_a" } },
-    { ...events([committed(1, ["stills/a.jpg"])], 1), catchUp: true },
-    { ...events([{ seq: 2, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["vn1"], memberActions: [] } }], 2), catchUp: false },
-  );
-  assert.equal(s.currentRunId, "run_b");
-  assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
-});
-
 test("a ready result's empty views list replaces an earlier retake for the same run", () => {
   const s = run(
     selected(),
@@ -316,29 +214,12 @@ test("a ready result's empty views list replaces an earlier retake for the same 
   assert.deepEqual(viewsToShow(pending), [{ id: "vn1", title: null }]);
 });
 
-test("the result revision stays a number across a run switch", () => {
-  const a = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
-  const b = run(a, events([{ ...stage(5, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }], 5));
-  const c = run(b, { type: "result", body: { runId: "run_b", status: "complete", outcome: { kind: "eligible" } } });
-  assert.ok(Number.isInteger(c.result.revision));
-});
-
 test("a failed model reload keeps the model already shown", () => {
   const cloud = { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
   const shown = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "withheld-by-viewer-relay" } }, { type: "preview", runId: "run_a", cloud });
   const failed = run(shown, { type: "preview-loading", runId: "run_a" }, { type: "preview-error", runId: "run_a", error: "network error" });
   assert.equal(failed.preview.phase, "ready");
   assert.equal(failed.preview.cloud, cloud);
-});
-
-test("a late retake from a superseded run asks nothing of the current run", () => {
-  const s = run(
-    selected(),
-    events([stage(1, "validate", "done"), { ...stage(2, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }]),
-    events([{ seq: 3, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn_old"], memberActions: [] } }], 3),
-  );
-  assert.equal(s.currentRunId, "run_b");
-  assert.deepEqual(viewsToShow(s), []);
 });
 
 test("each accepted result is a new revision, and a same-run model stays up while it reloads", () => {
@@ -400,4 +281,92 @@ test("the illustration states no clearance thresholds of its own", async () => {
   const criteria = resultBody("complete", "complete").criteria;
   assert.ok(criteria.length > 0);
   assert.ok(criteria.every((c) => !("thresholdFt" in c)), "thresholds belong in sourced rules files");
+});
+
+describe("run identity: the status names the run shown", () => {
+  const status = (runId, st = "processing") => ({ type: "status", body: { captureId: "cap_TEST_1", status: st, runId } });
+  const runEvent = (seq, runId, type = "stage", data = {}) => ({ seq, type, at: "x", data: type === "stage" ? { stage: "validate", status: "running", attempt: 1, runId, ...data } : { runId, ...data } });
+  const eligible = (runId) => ({ type: "result", body: { runId, status: "complete", outcome: { kind: "eligible" } } });
+
+  test("new run: a status naming a new run switches to it and clears the old run's verdict, retake, result and model", () => {
+    const cloud = { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+    const a = run(selected(), status("run_a"), events([runEvent(1, "run_a", "verdict_ready", { kind: "eligible" })]), eligible("run_a"), { type: "preview", runId: "run_a", cloud });
+    assert.equal(a.preview.phase, "ready");
+    const b = run(a, status("run_b"));
+    assert.equal(b.currentRunId, "run_b");
+    assert.equal(b.verdict, null);
+    assert.equal(b.result.phase, "none");
+    assert.equal(b.preview.phase, "none");
+    assert.ok(Number.isInteger(b.result.revision));
+    assert.notEqual(resultKey(a), resultKey(b));
+  });
+
+  test("an event naming a run the status has not named asks for a status refresh and switches nothing", () => {
+    const a = run(selected(), status("run_a"), eligible("run_a"));
+    const b = run(a, events([runEvent(2, "run_b", "retake_request", { viewsNeeded: ["vn1"], memberActions: [] })], 2));
+    assert.equal(b.currentRunId, "run_a");
+    assert.equal(b.result.phase, "ready");
+    assert.equal(b.statusRefreshWanted, true);
+    const c = run(b, status("run_b"));
+    assert.equal(c.statusRefreshWanted, false);
+    assert.equal(c.currentRunId, "run_b");
+    assert.deepEqual(viewsToShow(c), [{ id: "vn1", title: null }], "run_b's retake, recorded earlier, shows once run_b is current");
+  });
+
+  test("no events: a run the status named without events switches when the status names the next run", () => {
+    const s = run(
+      selected(),
+      status("run_a", "complete"),
+      { ...events([committed(1, ["stills/a.jpg"])], 1), catchUp: true },
+      { ...events([runEvent(2, "run_b", "retake_request", { viewsNeeded: ["vn1"], memberActions: [] })], 2), catchUp: false },
+      status("run_b", "needs_views"),
+    );
+    assert.equal(s.currentRunId, "run_b");
+    assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
+  });
+
+  test("old retake: a late retake or result from a superseded run changes nothing shown", () => {
+    const s = run(selected(), status("run_a"), status("run_b"), eligible("run_b"), events([runEvent(3, "run_a", "retake_request", { viewsNeeded: ["vn_old"], memberActions: [] })], 3), eligible("run_a"));
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(s.result.body.runId, "run_b");
+    assert.deepEqual(viewsToShow(s), []);
+    assert.equal(s.statusRefreshWanted, false);
+  });
+
+  test("a delayed status naming a retired run does not bring it back", () => {
+    const s = run(selected(), status("run_a"), status("run_b"), eligible("run_b"), status("run_a"));
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(s.result.phase, "ready");
+  });
+
+  test("reproduced: a run the status named without events, then retired, cannot return through a late event", () => {
+    // Codex 4114623680: status named A (no events), then B; a delayed event for A made A current again.
+    const s = run(selected(), status("run_a"), status("run_b"), eligible("run_b"), events([runEvent(9, "run_a", "retake_request", { viewsNeeded: ["vn_old"], memberActions: [] })], 9));
+    assert.equal(s.currentRunId, "run_b");
+    assert.equal(s.result.phase, "ready");
+    assert.equal(s.result.body.runId, "run_b");
+    assert.deepEqual(viewsToShow(s), []);
+  });
+
+  test("a result for a run not yet named is held until the status names that run", () => {
+    const a = run(selected(), status("run_a"), { type: "result", body: { runId: "run_z", status: "complete", outcome: { kind: "eligible" } } });
+    assert.equal(a.currentRunId, "run_a");
+    assert.equal(a.result.phase, "none");
+    assert.equal(a.statusRefreshWanted, true);
+    const b = run(a, status("run_z"), { type: "result", body: { runId: "run_z", status: "complete", outcome: { kind: "eligible" } } });
+    assert.equal(b.result.phase, "ready");
+  });
+
+  test("an older run's result does not disturb the current run's pending result", () => {
+    const s = run(selected(), status("run_a"), status("run_b"), { type: "result", body: { runId: "run_b", status: "processing", outcome: null } }, eligible("run_a"));
+    assert.equal(s.result.phase, "pending");
+    assert.equal(s.result.body.runId, "run_b");
+  });
+
+  test("the status's run decides which stages show", () => {
+    const s = run(selected(), status("run_a"), events([runEvent(1, "run_a", "stage", { status: "done" }), runEvent(2, "run_b", "stage", { status: "running" })]));
+    assert.equal(stageRows(s).find((r) => r.id === "validate").status, "done");
+    const t = run(s, status("run_b"));
+    assert.equal(stageRows(t).find((r) => r.id === "validate").status, "running");
+  });
 });

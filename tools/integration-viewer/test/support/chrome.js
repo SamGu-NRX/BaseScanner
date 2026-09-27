@@ -15,19 +15,35 @@ export function findChrome() {
 export async function launchChrome(path) {
   const profile = mkdtempSync(join(tmpdir(), "viewer-chrome-"));
   const child = spawn(path, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars", "about:blank"], { stdio: "ignore" });
-  const portFile = join(profile, "DevToolsActivePort");
-  let port = null;
-  for (let i = 0; i < 100 && port == null; i += 1) {
-    if (existsSync(portFile)) port = Number(readFileSync(portFile, "utf8").split("\n")[0]);
-    else await new Promise((r) => setTimeout(r, 100));
+  const exited = new Promise((r) => child.once("exit", r));
+  // Stops Chrome and removes its profile. Used on every exit path, so a failed launch on this
+  // shared machine does not leave a headless Chrome running.
+  const shutdown = async () => {
+    child.kill();
+    await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
+    // Chrome can still be flushing its profile for a moment after exit.
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  };
+  let ws;
+  try {
+    const portFile = join(profile, "DevToolsActivePort");
+    let port = null;
+    for (let i = 0; i < 100 && port == null; i += 1) {
+      if (existsSync(portFile)) port = Number(readFileSync(portFile, "utf8").split("\n")[0]);
+      else await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!port) throw new Error("Chrome did not open a DevTools port");
+    const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+    ws = new WebSocket(pages.find((p) => p.type === "page").webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => {
+      ws.addEventListener("open", resolve, { once: true });
+      ws.addEventListener("error", reject, { once: true });
+    });
+  } catch (error) {
+    ws?.close();
+    await shutdown();
+    throw error;
   }
-  if (!port) throw new Error("Chrome did not open a DevTools port");
-  const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  const ws = new WebSocket(pages.find((p) => p.type === "page").webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    ws.addEventListener("open", resolve, { once: true });
-    ws.addEventListener("error", reject, { once: true });
-  });
   let id = 0;
   const pending = new Map();
   ws.addEventListener("message", (m) => {
@@ -52,11 +68,7 @@ export async function launchChrome(path) {
     },
     async close() {
       ws.close();
-      const exited = new Promise((r) => child.once("exit", r));
-      child.kill();
-      await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
-      // Chrome can still be flushing its profile for a moment after exit.
-      rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      await shutdown();
     },
   };
 }

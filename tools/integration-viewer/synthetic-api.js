@@ -9,7 +9,7 @@
 //   cap_SYNTH_DROPOUT_<anything>    full run; the API drops connections between 11 s and 19 s
 
 import { createServer } from "node:http";
-import { DROPOUT, encodePly, resultBody, syntheticCloud, timeline } from "./public/scenario.js";
+import { DROPOUT, RUN_ID, encodePly, resultBody, syntheticCloud, timeline } from "./public/scenario.js";
 
 const ID = /^cap_SYNTH_(COMPLETE|FAILED|DROPOUT)_[A-Za-z0-9_]{1,40}$/;
 
@@ -112,7 +112,7 @@ export function createSyntheticApi({ speed = 1 } = {}) {
       finalizeBy: new Date(entry.startedAt + 86_400_000).toISOString(),
       filesRegistered: state.registered,
       filesCommitted: state.committed,
-      runId: state.status === "uploading" ? null : "run_synthetic",
+      runId: state.status === "uploading" ? null : RUN_ID,
     });
   });
 

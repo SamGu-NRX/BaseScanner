@@ -11,7 +11,7 @@ export const SCENARIOS = {
 /** The outage window, in ms from the start, for the `dropout` scenario. */
 export const DROPOUT = { from: 11_000, to: 19_000 };
 
-const RUN_ID = "run_synthetic";
+export const RUN_ID = "run_synthetic";
 
 /**
  * The scenario as a list of steps sorted by `t` (ms from start). A step sets the capture status,
