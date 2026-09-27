@@ -387,7 +387,8 @@ public struct GuidancePlanner: Sendable {
             return (range.lowerBound + range.upperBound) / 2
         }
         /// The middle of the run of `band`'s lagging cells nearest the camera, among those of at
-        /// least `needed` cells between deferred stretches and cells where `band` is done.
+        /// least `needed` cells between deferred stretches and cells where `band` is done, whose
+        /// aim task can be met (`canSatisfy`).
         func nearestRun(_ band: SurfaceBand, lags: (Int) -> Bool) -> Float? {
             var runs: [[Int]] = [[]]
             for index in indices {
@@ -399,6 +400,7 @@ public struct GuidancePlanner: Sendable {
             }
             return runs.filter { $0.count >= needed }
                 .compactMap { middle($0, coverage) }
+                .filter { canSatisfy(band, at: $0, coverage) }
                 .min { abs($0 - s) < abs($1 - s) }
         }
         if let mid = nearestRun(.ground, lags: { done(coverage.level(.wall, $0)) && !done(coverage.level(.ground, $0)) }) {
@@ -445,6 +447,16 @@ public struct GuidancePlanner: Sendable {
             }
         }
         return nil
+    }
+
+    /// Whether an aim task for `band` at `s` can be met: skipped cells are never covered, so the
+    /// rest of its stretch must reach `aimSatisfied`. A run of three missing cells between two
+    /// skipped ones is centred on a stretch of five, of which only 3/5 can be covered: the
+    /// request could only end by stalling (review of #154).
+    private func canSatisfy(_ band: SurfaceBand, at s: Float, _ coverage: CoverageMap) -> Bool {
+        let cells = coverage.indices(overlapping: Self.stretch(around: s)).filter(coverage.isWithinEnds)
+        let open = cells.filter { coverage.level(band, $0) != .skipped }
+        return !cells.isEmpty && Double(open.count) >= Self.aimSatisfied * Double(cells.count)
     }
 
     private func middle(_ indices: [Int], _ coverage: CoverageMap) -> Float? {

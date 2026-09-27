@@ -128,6 +128,37 @@ import Testing
         #expect(nearlyEqual(output.target ?? .zero, SIMD3(0.6096, 0, 0.6)))
     }
 
+    /// A run of exactly three missing ground cells between two skipped ones is never asked for
+    /// (review of #154). Wall cameras from s = 1.8 to 2.7 cover the wall around cells 12 ... 18;
+    /// the ground is skipped over cells 6 ... 12 and 18 ... 23, so from s = 2.4 (window [1.4, 2.7],
+    /// cells 9 ... 17) the ground lags over 13 ... 17 only, and the aim is at its middle,
+    /// 15.5 * 0.1524 = 2.3622. With 13 and 17 skipped too the run is 14 ... 16, whose middle is
+    /// the same, but the stretch there, [2.0622, 2.6622], still spans 13 ... 17: covering all
+    /// three cells reaches only 3/5 < 0.8, so the aim could never be met and is not asked for.
+    @Test func threeMissingCellsBetweenSkippedOnesAreNotAskedFor() {
+        let width = CoverageConfig().cellWidth
+        var map = Self.wallOnlyCoverage()
+        for s: Float in [1.8, 2.1, 2.4, 2.7] {
+            map.observe(wallCamera(s: s), trackingNormal: true)
+        }
+        map.markSkipped(.ground, 1.0...(12.5 * width))
+        map.markSkipped(.ground, (18.5 * width)...3.6)
+        var open = GuidancePlanner()
+        let aim = open.update(coverage: map, camera: Self.homeowner(x: 2.4), time: 0).task
+        guard case .aimAtGround(let s) = aim, nearlyEqual(s, 15.5 * width) else {
+            Issue.record("expected aimAtGround at 2.3622, got \(aim)")
+            return
+        }
+
+        map.markSkipped(.ground, (13.5 * width)...(13.5 * width))
+        map.markSkipped(.ground, (17.5 * width)...(17.5 * width))
+        var planner = GuidancePlanner()
+        let task = planner.update(coverage: map, camera: Self.homeowner(x: 2.4), time: 0).task
+        if case .aimAtGround = task {
+            Issue.record("expected no aim at the ground, got \(task)")
+        }
+    }
+
     /// A task other than an aim task is held for 3 s, then gives way. Changed deliberately for
     /// #84: an unmet aim task whose stretch is still in view is not released at 3 s. On build 4.1
     /// the 3 s dwell was also the longest any card stayed, and the card changed 22 times in 86 s.
