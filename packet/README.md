@@ -60,7 +60,6 @@ guess. All are additive, so 0.4 readers keep working.
    and `rotationOnYAxis`, and packet 1.1 found that mixing the two is an easy mistake. Proposal:
    state that `boundary` is `[x, z]` in the anchor's frame, and have the validator check it lies
    within `planeExtent` once the centre and rotation are applied.
-
 8. **Photos that frame one span.** An along-wall edge is 0.9 in p90 when seen within 15° of
    face-on and 24 in beyond 45° (#59, `experiments/edge-geometry`), so a distance measured inside
    one face-on photo is far better than one chained across the walk. Proposal: a still or
@@ -72,14 +71,15 @@ guess. All are additive, so 0.4 readers keep working.
    Hand-held references ask the homeowner to hold something; #59 rates them worth a device test
    (`experiments/sensor-budget`), and whether the flow may ask is Sam's and Hunter's call.
 10. **The meter anchor's pose over time.** ARKit re-estimates an anchor as tracking corrects, so
-   the anchor pose at tap time goes stale. Proposal: an optional stream of the meter anchor's
-   world pose at each ARKit update, so the server can see how far the meter frame moved. There
-   is no measurement of that movement yet.
+    the anchor pose at tap time goes stale. Proposal: an optional stream of the meter anchor's
+    world pose at each ARKit update, so the server can see how far the meter frame moved. There
+    is no measurement of that movement yet.
 11. **Distances from a second phone (low priority).** When a second phone with UWB is present,
-   an optional stream of phone-to-phone distances. #59 (`experiments/drift-anatomy`) finds it
-   cuts the p90 error at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at
-   5 cm.
+    an optional stream of phone-to-phone distances. #59 (`experiments/drift-anatomy`) finds it
+    cuts the p90 error at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at
+    5 cm.
 
 Already in 0.4, so not proposed: the kind and distance of each tap's hit, a keyframe for every
-tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked and a location-consent flag. They are
-left out: 0.4's exposure and EXIF, `arkitPoses` and `locationAuthorization` cover them.
+tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked
+and a location-consent flag; 0.4's exposure and EXIF, `arkitPoses` and `locationAuthorization`
+cover them.
