@@ -18,4 +18,11 @@ The wall, its samples, the app's view gates and the truth are those of evals §7
 
 ## Result
 
-Not run yet.
+Both fail ([results](results/plane_consistency.md)). Unfiltered, the setup reproduces §7: 19.3, 1.1, 0.0 ft.
+
+- **False-observed.** Worst draw 1.1 ft, exact 0.7. Pairs with 12 to 43 px of parallax agree on the footings at δ = 0.3 or 0.4 m, so the relief that keeps the pilasters keeps the footings too.
+- **Missed.** Worst draw 9.2 ft: 5.1 too plain, 4.1 disagreed, 0 without a pair. At 1024 px most of the wall is nearly featureless. Too plain means a standard deviation under 0.91 grey levels, where noise of 0.57 holds even a perfect match below NCC 0.6.
+
+**Run:** `uv run python run.py`, 2 min, 0.9 GB. Needs the evals checkout at 190ed33 (`EVALS_DIR`) and ETH3D electro. `modern_assumed` is redrawn over all 45 photos, since `ar_poses/*.json` holds only groups of 2 to 8.
+
+**What it changes:** photo agreement doesn't replace a depth test on phones without LiDAR. Claims from those phones stay unconfirmed, as §7b recommends.

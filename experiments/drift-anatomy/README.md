@@ -18,4 +18,13 @@ The server allows 0.16 ft of error per foot along the wall. That allowance domin
 
 ## Result
 
-Not run yet.
+All four fail. Tables: [results/drift_anatomy.md](results/drift_anatomy.md).
+
+- **A1.** 30 of 56 MARViN loops (54%). ADVIO has no revisit under 0.3 m while ARKit tracks. Scale and heading error cancel on return, so r misses them.
+- **A2.** 5.7% SD on MARViN, 19% on ADVIO: drop. A few outlier windows inflate MARViN's SD; its robust SD is 1.8%.
+- **A3.** At 20 ft, along is 0.92 of the p90 on MARViN and 0.76 on ADVIO.
+- **A4.** MARViN goes from 10.4 and 13.6 in to 7.7 and 8.5 in. At σ 10 cm the range's own p90 is 6.5 in, so the bar was nearly out of reach. At 5 cm: 4.9 and 6.1 in.
+
+**Run:** `uv run python run.py`. Needs the evals checkout at 190ed33 (`EVALS_HARNESS`) and MARViN and ADVIO in `~/house-scanning-data`.
+
+**What it changes:** the error worth attacking runs along travel. A range to the meter reduces it, a wall plane wouldn't, and r can't bound a session.

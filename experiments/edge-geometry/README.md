@@ -25,4 +25,16 @@ M2 and M3 run with `exact` and `modern_assumed` poses.
 
 ## Result
 
-Not run yet.
+Electro: 3,000 edge points on 21 laser wall planes, 2,258 in-plane and 742 proud. Numbers are p90 in inches, from `results/edge_geometry.md`. M0 to M2 use the oracle scale and take wall pixels from the laser planes.
+
+- **P1 passes.** M0 along the wall is 1.4 at 0–15° and 19.8 beyond 30°.
+- **P2 fails.** M1 is 6.7: 0.5 at 0–15°, 15.0 beyond 45°. M1-anchor is 10.4. Its yaw error ψ has a median of 2.2° and a p90 of 6.7°. The error's median ratio to s·ψ·tan(angle) is 0.94, and the signs agree 74% of the time, but the signed fit explains only 2% of the variance.
+- **P3 fails.** M2 is 12.6 (95% CI 11.7–13.8).
+- **P4 fails.** 41% of points match, and the anchor-to-edge span's 3-D p90 is 155.
+- **Kill** is not triggered: 1.4, 4.6, 8.9 and 24.4 by angle bin.
+
+Added after the run: M2 with the true pixel still gives 11.5. The MoGe-2 wall plane misses the edge point by 10.0 at p90, where the laser plane misses it by 1.4. A snap started at the true pixel moves 8.8 px on vertical edges, so the snap's pixel error is ill-posed for these points. M3 matches within 2 px give 2.9 with exact poses and 8.9 with `modern_assumed`. Facade has 866 points but no wall within 6 m, so only M0 runs there.
+
+Run: `uv run python run.py`. It takes 2 minutes and 0.9 GB. It needs the evals checkout at `190ed33` (`EDGE_EVALS_DIR`) and its ETH3D, MoGe-2 and pose caches.
+
+What it changes: the wall plane's depth error times tan(view angle) sets the edge error, so get the edge photo within 30° of head-on. A snapped tap can't beat the plane's error, and patch matching at edges fails on more than half the points.

@@ -16,7 +16,8 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
-ignore = ["E501"]
+# Formulas in result tables use Greek letters on purpose.
+ignore = ["E501", "RUF001"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
