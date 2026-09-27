@@ -16,10 +16,11 @@ struct OnboardingScreen: View {
             art: .walk
         ),
         // Testers met each move first as a card they couldn't decode (#85, #77, #81): this page
-        // names them before the camera opens, in the order the walk asks for them.
+        // names them before the camera opens. The first two come first (`GuidancePlanner`); after
+        // that the card asks for whatever the walk still needs, so no fixed order is promised.
         OnboardingPage(
             title: "What the walk asks for",
-            body: "A card at the top of the screen asks for one of these at a time.",
+            body: "A card at the top of the screen asks for one of these at a time. After the first two, it asks for whatever the walk still needs.",
             moves: OnboardingScreen.moves,
             art: .moves
         ),
@@ -119,16 +120,17 @@ struct OnboardingScreen: View {
         }
         return [
             Instruction(title: "Aim at your meter", detail: meter.detail),
-            Instruction(
-                title: "Walk along the wall",
-                detail: sentences(walk.detail, "If you're too close, the card says \"\(stepBack.title).\"")
-            ),
+            // The ground by the meter comes before the walk (`GuidancePlanner.preferredTask`).
             // A ground cell counts only once it is seen from two places a step apart
             // (`coveringBaseline`); nothing said so, and the first tilt card blocked every run
             // of the field test (#77).
             Instruction(
-                title: "Tilt down or up when asked",
-                detail: "\"\(ground.title)\" or \"\(wall.title).\" Some spots need a second look from a step to the side."
+                title: "Tilt down at your meter",
+                detail: "\"\(ground.title).\" Later the card may ask for this again, or say \"\(wall.title).\" Some spots need a second look from a step to the side."
+            ),
+            Instruction(
+                title: "Walk along the wall",
+                detail: sentences(walk.detail, "If you're too close, the card says \"\(stepBack.title).\"")
             ),
             // The ring and the edge arrow in the picture are `TargetMarker` itself (`MovesArt`).
             Instruction(

@@ -116,8 +116,8 @@ final class ScreenStatesUITests: XCTestCase {
         // #85: each move in the cards' own words, one element per move.
         "onboarding-moves": [
             ("onboarding.move.1", "Aim at your meter"),
-            ("onboarding.move.2", "Take a step back"),
-            ("onboarding.move.3", "Tilt down to show the ground"),
+            ("onboarding.move.2", "Tilt down to show the ground"),
+            ("onboarding.move.3", "Take a step back"),
             ("onboarding.move.4", "An arrow at the screen edge means the spot is off screen"),
             ("onboarding.move.5", "Wall ends here"),
         ],
