@@ -650,6 +650,10 @@ final class ScanViewState {
     var lastCapture: CaptureEvent?
 
     var features: [MarkedFeature] = []
+    /// Marks lying wholly past a marked end, where the scan doesn't cover them. The review says
+    /// so; they are still exported, since a hazard just past an end can be within clearance of a
+    /// spot at it.
+    var featuresPastEnds: Set<UUID> = []
     var marking: MarkingState?
 
     var gap: GapRequest?

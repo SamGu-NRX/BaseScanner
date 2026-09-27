@@ -178,4 +178,22 @@ import Testing
         #expect(groundSeen.contains { $0.span.upperBound < -3 || $0.span.lowerBound < -3 })
         #expect(groundSeen.contains { $0.span.upperBound > 3 })
     }
+
+    /// Field run 2: the wall ran from 7 ft 6 in left of the meter (-2.29 m) to 6 in right
+    /// (0.15 m), and the review still listed an AC unit about 16 ft right and a window about 7 ft
+    /// right as if they were on it (issue #42).
+    @Test func marksWhollyPastAnEndLiePastIt() {
+        let left: Float = -2.29
+        let right: Float = 0.15
+        #expect(WalkedEnd.liesPastAnEnd(4.8...5.0, leftEnd: left, rightEnd: right))
+        #expect(WalkedEnd.liesPastAnEnd(1.8...2.4, leftEnd: left, rightEnd: right))
+        #expect(WalkedEnd.liesPastAnEnd(-3.5 ... -2.5, leftEnd: left, rightEnd: right))
+        // Reaching an end, straddling one, or between them: on the scanned wall.
+        #expect(!WalkedEnd.liesPastAnEnd(0.15...0.6, leftEnd: left, rightEnd: right))
+        #expect(!WalkedEnd.liesPastAnEnd(-2.6 ... -2.0, leftEnd: left, rightEnd: right))
+        #expect(!WalkedEnd.liesPastAnEnd(-0.5...0.1, leftEnd: left, rightEnd: right))
+        // A side without an end has nothing to lie past.
+        #expect(!WalkedEnd.liesPastAnEnd(4.8...5.0, leftEnd: left, rightEnd: nil))
+        #expect(!WalkedEnd.liesPastAnEnd(-3.5 ... -2.5, leftEnd: nil, rightEnd: nil))
+    }
 }
