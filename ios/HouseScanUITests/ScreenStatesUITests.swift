@@ -576,12 +576,12 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
-    /// Drags the screen up, at most `drags` times, until the control can be tapped. The same slow
+    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
     /// drag as `revealCutOff`, so it scrolls without momentum.
     @MainActor
-    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication, drags: Int = 4) -> Bool {
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
         let step = app.windows.firstMatch.frame.height * 0.4
-        for _ in 0..<drags {
+        for _ in 0..<4 {
             if target.isHittable { return true }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
@@ -616,16 +616,17 @@ final class ScreenStatesUITests: XCTestCase {
     /// tray).
     ///
     /// A control below the bottom edge of a scrolling screen (the review's "Add something" chips,
-    /// the result's Details) is never hittable where it is: `tap()` scrolls to it, the wait
-    /// doesn't. Once it has had a moment to settle, the screen is scrolled to it.
+    /// the result's Details) is never hittable where it is. `tap()` scrolls to it and the wait
+    /// doesn't, so once it has had a moment to settle it is tapped where it is.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
         let deadline = Date().addingTimeInterval(timeout)
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
-        if !waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow))),
-           target.frame.maxY > app.windows.firstMatch.frame.maxY {
-            _ = scrollUntilHittable(target, in: app, drags: 8)
+        let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
+        if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
+            target.tap()
+            return
         }
         XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
