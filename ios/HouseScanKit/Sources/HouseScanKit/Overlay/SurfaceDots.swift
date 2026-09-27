@@ -133,15 +133,6 @@ struct ViewSet: Sendable, Equatable {
         count += 1
         return true
     }
-
-    func rotated(_ rotate: (SIMD3<Float>) -> SIMD3<Float>) -> ViewSet {
-        var copy = self
-        copy.d0 = rotate(d0)
-        copy.d1 = rotate(d1)
-        copy.d2 = rotate(d2)
-        copy.d3 = rotate(d3)
-        return copy
-    }
 }
 
 struct Voxel: Sendable, Equatable {
@@ -163,8 +154,16 @@ struct Voxel: Sendable, Equatable {
 
 /// The LiDAR dot field. A value type confined to one owner; `integrate` is the hot path and
 /// touches only the voxels this keyframe saw and their face neighbours.
+///
+/// Voxels live in the field's own frame, fixed at the first keyframe; `toWorld` carries them into
+/// ARKit's world. An anchor correction changes only `toWorld`, so it is exact and costs nothing:
+/// moving the voxels would snap them back to the 5 cm grid, and a run of 2 cm corrections would
+/// leave the dots where they were while the wall moved.
 public struct SurfaceDots: Sendable {
     public let config: SurfaceDotConfig
+    /// Field frame to world. Identity until the first correction.
+    private var toWorld = matrix_identity_float4x4
+    private var toField = matrix_identity_float4x4
     private(set) var voxels: [VoxelKey: Voxel] = [:]
     /// Voxels a confident depth reading passed with room to spare. Only in-plane neighbours of
     /// occupied voxels are tested, which is all the boundary rule needs.
@@ -196,8 +195,9 @@ public struct SurfaceDots: Sendable {
 
     /// Fuses one keyframe's depth. `depth` is ARKit's scene depth for `camera`, in the landscape
     /// sensor orientation, with intrinsics for its own grid (`DepthImage.intrinsics(scaling:)`).
-    public mutating func integrate(camera: CameraFrame, depth: DepthImage) {
+    public mutating func integrate(camera world: CameraFrame, depth: DepthImage) {
         let step = max(config.sampleStride, 1)
+        let camera = CameraFrame(cameraToWorld: toField * world.cameraToWorld, intrinsics: world.intrinsics, imageSize: world.imageSize)
         let pose = camera.cameraToWorld
         let eye = camera.position
 
@@ -345,24 +345,11 @@ public struct SurfaceDots: Sendable {
         }
     }
 
-    /// ARKit's correction to the meter's anchor (`YawCorrection`), applied to every voxel, so the
-    /// dots move with the wall the scan measured.
+    /// ARKit's correction to the meter's anchor (`YawCorrection`): the dots move with the wall the
+    /// scan measured. Composes into `toWorld`; no voxel moves.
     public mutating func apply(_ correction: YawCorrection) {
-        var moved: [VoxelKey: Voxel] = [:]
-        moved.reserveCapacity(voxels.count)
-        for (key, voxel) in voxels {
-            var copy = voxel
-            copy.normalSum = correction.direction(voxel.normalSum)
-            copy.views = voxel.views.rotated(correction.direction)
-            copy.jitter = correction.direction(voxel.jitter)
-            let newKey = self.key(for: correction.point(centre(of: key)))
-            if let existing = moved[newKey], existing.views.count >= copy.views.count { continue }
-            moved[newKey] = copy
-        }
-        voxels = moved
-        free = Set(free.map { key(for: correction.point(centre(of: $0))) }.filter { moved[$0] == nil })
-        representatives = [:]
-        classify(Set(voxels.keys))
+        toWorld = correction.pose(toWorld)
+        toField = toWorld.inverse
     }
 
     // MARK: Dots
@@ -370,7 +357,8 @@ public struct SurfaceDots: Sendable {
     /// Every edge voxel and each group's flat representative within `dotRadius` of `eye`, at
     /// most `maxDots`: past it, flat dots drop in hash order, then the farthest edges. `wall`
     /// decides which dots stand on an occluder; without one, none do. Sorted by id.
-    public func dots(near eye: SIMD3<Float>, wall: WallFrame?) -> [SurfaceDot] {
+    public func dots(near worldEye: SIMD3<Float>, wall: WallFrame?) -> [SurfaceDot] {
+        let eye = Self.transform(toField, worldEye)
         let radius2 = config.dotRadius * config.dotRadius
         var edges: [(VoxelKey, Voxel, Float)] = []
         var flats: [(VoxelKey, Voxel)] = []
@@ -397,7 +385,9 @@ public struct SurfaceDots: Sendable {
     }
 
     private func dot(_ key: VoxelKey, _ voxel: Voxel, wall: WallFrame?) -> SurfaceDot {
-        let centre = centre(of: key)
+        let centre = Self.transform(toWorld, centre(of: key))
+        let jitter = Self.rotate(toWorld, voxel.jitter)
+        // Corrections turn only about the vertical, so a normal's y is the same in both frames.
         let wallLike = voxel.normal.map { abs($0.y) < config.cappedNormalMaxY } ?? false
         let faceOn = !voxel.isEdge || !wallLike || voxel.faceOnCosine >= cos(config.faceOnDegrees * .pi / 180)
         let views = Int(voxel.views.count)
@@ -407,12 +397,22 @@ public struct SurfaceDots: Sendable {
             onOccluder = p.out > config.occluderMinOut && p.height > config.groundBand
         }
         return SurfaceDot(
-            id: Self.id(for: key), position: centre + voxel.jitter, isEdge: voxel.isEdge, views: views,
+            id: Self.id(for: key), position: centre + jitter, isEdge: voxel.isEdge, views: views,
             faceOn: faceOn, onOccluder: onOccluder,
             opacity: SurfaceDot.opacity(views: views, faceOn: faceOn, cap: config.obliqueEdgeOpacityCap))
     }
 
     // MARK: Depth helpers
+
+    static func transform(_ m: simd_float4x4, _ p: SIMD3<Float>) -> SIMD3<Float> {
+        let q = m * SIMD4(p, 1)
+        return SIMD3(q.x, q.y, q.z)
+    }
+
+    static func rotate(_ m: simd_float4x4, _ v: SIMD3<Float>) -> SIMD3<Float> {
+        let q = m * SIMD4(v, 0)
+        return SIMD3(q.x, q.y, q.z)
+    }
 
     /// Meters at a depth pixel, or nil without a confident reading in range. `ignoringRange` keeps
     /// far readings, which the free-space test needs.

@@ -3,9 +3,9 @@
 /// `Shaders.swift`). Struct layouts match the Swift structs in `LiveFogRenderer.swift`.
 ///
 /// Fog. Coverage decides where it lifts: `LiveFogScene` draws every wall column and ground
-/// stretch of the coverage strip into a 64-texel-wide mask (red: fog, green: hidden behind
-/// something, blue: requested by a gap), clearing to full fog, and a radius-5 Gaussian blur
-/// feathers it. The composite is the prototype's: Chalk mixed toward a cool grey, textured by
+/// stretch of the coverage strip into a mask three times 64 texels wide (red: fog, green: hidden
+/// behind something, blue: requested by a gap), clearing to full fog; a max-pool takes it to 64
+/// texels and a radius-5 Gaussian blur feathers it. The composite is the prototype's: Chalk mixed toward a cool grey, textured by
 /// slow domain-warped fbm and breathing slightly. Two changes: the noise is pinned to the meter
 /// on screen and scaled by its distance, so the texture sits on the wall instead of on the lens
 /// while the phone moves (the prototype cut between keyframes, where that never showed); and
@@ -72,6 +72,22 @@ enum LiveFogShaders {
         return in.value;
     }
 
+    // Each texel takes the largest value of the 3 x 3 block under it in the mask drawn at three
+    // times the size, per channel: a cell as narrow as one fine texel (about 2 points) still
+    // reaches the coarse mask, where sampling alone could step over it.
+    fragment float4 poolFragment(FullOut in [[stage_in]],
+                                 texture2d<float> fine [[texture(0)]]) {
+        uint2 base = uint2(in.position.xy) * 3u;
+        uint2 limit = uint2(fine.get_width() - 1, fine.get_height() - 1);
+        float4 m = float4(0.0f);
+        for (uint y = 0; y < 3; y++) {
+            for (uint x = 0; x < 3; x++) {
+                m = max(m, fine.read(min(base + uint2(x, y), limit)));
+            }
+        }
+        return m;
+    }
+
     // Separable Gaussian, radius 5 texels (sigma 2.5), all four channels.
     fragment float4 blurFragment(FullOut in [[stage_in]],
                                  texture2d<float> source [[texture(0)]],
@@ -125,7 +141,8 @@ enum LiveFogShaders {
 
     fragment float4 fogFragment(FullOut in [[stage_in]],
                                 constant FogUniforms& u [[buffer(0)]],
-                                texture2d<float> mask [[texture(0)]]) {
+                                texture2d<float> mask [[texture(0)]],
+                                texture2d<float> pooled [[texture(1)]]) {
         constexpr sampler linear(filter::linear, address::clamp_to_edge);
         float2 screen = in.position.xy;
         // Wrapped so the offsets stay small where Float precision is fine.
@@ -137,7 +154,12 @@ enum LiveFogShaders {
         // noise-edged fog of war the prototype borrowed from Civilization VI).
         float2 edgeNoise = float2(valueNoise(q * 1.7f + float2(7.3f, 2.1f)), valueNoise(q * 1.7f + float2(-4.1f, 8.6f)));
         float2 look = screen + (edgeNoise - 0.5f) * 0.14f * u.viewSize.x;
-        float4 m = mask.sample(linear, look / u.viewSize);
+        // The blur and the noise shape the fog; neither may erase it. The unblurred pooled mask,
+        // read through a fifth of the offset, sets a floor: a cell coverage has not counted keeps
+        // 30% of its fog within 3% of the screen's width of where it is, however narrow. Read
+        // unwarped, the floor drew a straight step along every wide edge.
+        float2 near = screen + (edgeNoise - 0.5f) * 0.03f * u.viewSize.x;
+        float4 m = max(mask.sample(linear, look / u.viewSize), 0.3f * pooled.sample(linear, near / u.viewSize));
         float fog = saturate(m.r), hidden = saturate(m.g), requested = saturate(m.b);
         if (fog < 0.002f && requested < 0.002f) { return float4(0.0f); }
 

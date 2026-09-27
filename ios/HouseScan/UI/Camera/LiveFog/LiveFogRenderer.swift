@@ -27,6 +27,7 @@ final class LiveFogGPU: @unchecked Sendable {
     let device: MTLDevice
     let queue: MTLCommandQueue
     let mask: MTLRenderPipelineState
+    let pool: MTLRenderPipelineState
     let blur: MTLRenderPipelineState
     let fog: MTLRenderPipelineState
     let dots: MTLRenderPipelineState
@@ -56,6 +57,7 @@ final class LiveFogGPU: @unchecked Sendable {
             return try device.makeRenderPipelineState(descriptor: descriptor)
         }
         mask = try pipeline("maskVertex", "maskFragment", format: Self.maskFormat, depth: true)
+        pool = try pipeline("fullVertex", "poolFragment", format: Self.maskFormat)
         blur = try pipeline("fullVertex", "blurFragment", format: Self.maskFormat)
         // The fog is the first thing drawn on a cleared target: premultiplied, written as is.
         fog = try pipeline("fullVertex", "fogFragment", format: Self.drawableFormat)
@@ -89,12 +91,13 @@ struct LiveFogInput {
 /// Draws the fog and dots into a transparent Metal layer over the camera (`LiveFogMTKView`),
 /// every display frame while the walk is on screen.
 ///
-/// Per frame: the mask pass draws the coverage cells (`FogMaskGeometry`) into a 64-texel-wide
-/// texture with a depth test, two passes blur it, then the drawable gets the fog and the dots.
+/// Per frame: the mask pass draws the coverage cells (`FogMaskGeometry`) into a texture 192
+/// texels wide with a depth test, a max-pool takes it to 64, two passes blur it, then the
+/// drawable gets the fog and the dots.
 /// Bounds: three frames in flight; the mask vertex ring holds 16,384 vertices a frame (a 60 m
 /// strip of unmerged cells, two bands in two parts, needs about 9,600); the dot buffers hold `DotTimeline.capacity` dots
 /// and are rewritten only when the field changes or a fading dot ends, at most once a frame.
-/// Nothing grows with time: about 4.5 MB of buffers and 0.1 MB of textures, allocated once.
+/// Nothing grows with time: about 4.5 MB of buffers and 1 MB of textures, allocated once.
 @MainActor
 final class LiveFogRenderer {
     private let gpu: LiveFogGPU
@@ -118,21 +121,22 @@ final class LiveFogRenderer {
     private var frame = 0
     private var spriteBuffer = 0
     private var spriteCount = 0
-    private var maskTextures: (mask: MTLTexture, horizontal: MTLTexture, final: MTLTexture, depth: MTLTexture)?
+    private var maskTextures: MaskTextures?
     private var anchor: (point: SIMD2<Float>, scale: Float)?
 
-    init(gpu: LiveFogGPU) {
+    /// Called once if the mask textures can't be allocated, so the view can hand back to the
+    /// frosted strip instead of showing a clear layer.
+    var onFailure: (() -> Void)?
+
+    /// Nil when Metal won't allocate the buffers.
+    init?(gpu: LiveFogGPU) {
         self.gpu = gpu
         for _ in 0..<Self.framesInFlight {
-            if let buffer = gpu.device.makeBuffer(length: Self.maskVertexCapacity * MemoryLayout<FogMaskGeometry.Vertex>.stride, options: .storageModeShared) {
-                maskBuffers.append(buffer)
-            }
-            if let buffer = gpu.device.makeBuffer(length: Self.spriteCapacity * MemoryLayout<DotTimeline.Sprite>.stride, options: .storageModeShared) {
-                spriteBuffers.append(buffer)
-            }
-        }
-        if maskBuffers.count < Self.framesInFlight || spriteBuffers.count < Self.framesInFlight {
-            RuntimeLog.engine.error("live fog: Metal would not allocate its buffers; nothing will draw")
+            guard let masks = gpu.device.makeBuffer(length: Self.maskVertexCapacity * MemoryLayout<FogMaskGeometry.Vertex>.stride, options: .storageModeShared),
+                  let sprites = gpu.device.makeBuffer(length: Self.spriteCapacity * MemoryLayout<DotTimeline.Sprite>.stride, options: .storageModeShared)
+            else { return nil }
+            maskBuffers.append(masks)
+            spriteBuffers.append(sprites)
         }
     }
 
@@ -141,11 +145,12 @@ final class LiveFogRenderer {
     /// caller skips the frame rather than block the main thread on the GPU. `LiveFogMTKView`
     /// calls this each display frame.
     func encode(into commandBuffer: MTLCommandBuffer, pass: MTLRenderPassDescriptor, size: CGSize, pixels: SIMD2<Float>, pixelsPerPoint scale: Float) -> Bool {
-        guard let input, maskBuffers.count == Self.framesInFlight, spriteBuffers.count == Self.framesInFlight,
-              size.width > 1, size.height > 1 else { return false }
+        guard let input, size.width > 1, size.height > 1 else { return false }
         guard inFlight.wait(timeout: .now()) == .success else { return false }
         guard let textures = textures(for: size) else {
             inFlight.signal()
+            onFailure?()
+            onFailure = nil
             return false
         }
         let semaphore = inFlight
@@ -176,7 +181,7 @@ final class LiveFogRenderer {
 
         // Mask: full fog wherever no cell reaches.
         let maskPass = MTLRenderPassDescriptor()
-        maskPass.colorAttachments[0].texture = textures.mask
+        maskPass.colorAttachments[0].texture = textures.fine
         maskPass.colorAttachments[0].loadAction = .clear
         maskPass.colorAttachments[0].clearColor = MTLClearColor(red: 1, green: 0, blue: 0, alpha: 0)
         maskPass.colorAttachments[0].storeAction = .store
@@ -194,7 +199,17 @@ final class LiveFogRenderer {
             }
             encoder.endEncoding()
         }
-        for (source, target, direction) in [(textures.mask, textures.horizontal, SIMD2<Int32>(1, 0)), (textures.horizontal, textures.final, SIMD2<Int32>(0, 1))] {
+        let poolPass = MTLRenderPassDescriptor()
+        poolPass.colorAttachments[0].texture = textures.pooled
+        poolPass.colorAttachments[0].loadAction = .dontCare
+        poolPass.colorAttachments[0].storeAction = .store
+        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: poolPass) {
+            encoder.setRenderPipelineState(gpu.pool)
+            encoder.setFragmentTexture(textures.fine, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encoder.endEncoding()
+        }
+        for (source, target, direction) in [(textures.pooled, textures.horizontal, SIMD2<Int32>(1, 0)), (textures.horizontal, textures.final, SIMD2<Int32>(0, 1))] {
             let blurPass = MTLRenderPassDescriptor()
             blurPass.colorAttachments[0].texture = target
             blurPass.colorAttachments[0].loadAction = .dontCare
@@ -218,6 +233,7 @@ final class LiveFogRenderer {
             encoder.setRenderPipelineState(gpu.fog)
             encoder.setFragmentBytes(&fog, length: MemoryLayout<FogUniforms>.stride, index: 0)
             encoder.setFragmentTexture(textures.final, index: 0)
+            encoder.setFragmentTexture(textures.pooled, index: 1)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
 
             if spriteCount > 0 {
@@ -238,24 +254,35 @@ final class LiveFogRenderer {
     /// The mask keeps the view's aspect at 64 texels across, about 6 points a texel on a phone,
     /// so the blur's sigma is about 15 points: the prototype's 96 texels left cell columns reading
     /// as strips in the offscreen preview. The noise-warped lookup (`fogFragment`) ragged the rest.
-    private func textures(for size: CGSize) -> (mask: MTLTexture, horizontal: MTLTexture, final: MTLTexture, depth: MTLTexture)? {
+    private struct MaskTextures {
+        /// Where the cells are drawn, three times the coarse size, with its depth buffer.
+        var fine: MTLTexture
+        var depth: MTLTexture
+        /// The fine mask max-pooled to the coarse size, then the two blur passes.
+        var pooled: MTLTexture
+        var horizontal: MTLTexture
+        var final: MTLTexture
+    }
+
+    private func textures(for size: CGSize) -> MaskTextures? {
         let width = Self.maskWidth
         let height = max(1, Int((Double(width) * size.height / size.width).rounded()))
-        if let maskTextures, maskTextures.mask.width == width, maskTextures.mask.height == height { return maskTextures }
-        func texture(_ format: MTLPixelFormat, _ usage: MTLTextureUsage) -> MTLTexture? {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: width, height: height, mipmapped: false)
+        if let maskTextures, maskTextures.pooled.width == width, maskTextures.pooled.height == height { return maskTextures }
+        func texture(_ format: MTLPixelFormat, _ usage: MTLTextureUsage, scale: Int = 1) -> MTLTexture? {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: width * scale, height: height * scale, mipmapped: false)
             descriptor.usage = usage
             descriptor.storageMode = .private
             return gpu.device.makeTexture(descriptor: descriptor)
         }
-        guard let mask = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead]),
+        guard let fine = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead], scale: 3),
+              let depth = texture(LiveFogGPU.depthFormat, [.renderTarget], scale: 3),
+              let pooled = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead]),
               let horizontal = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead]),
-              let final = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead]),
-              let depth = texture(LiveFogGPU.depthFormat, [.renderTarget]) else {
-            RuntimeLog.engine.error("live fog: Metal would not allocate the mask textures")
+              let final = texture(LiveFogGPU.maskFormat, [.renderTarget, .shaderRead]) else {
+            RuntimeLog.engine.error("live fog: Metal would not allocate the mask textures; drawing the frosted strip instead")
             return nil
         }
-        maskTextures = (mask, horizontal, final, depth)
+        maskTextures = MaskTextures(fine: fine, depth: depth, pooled: pooled, horizontal: horizontal, final: final)
         return maskTextures
     }
 

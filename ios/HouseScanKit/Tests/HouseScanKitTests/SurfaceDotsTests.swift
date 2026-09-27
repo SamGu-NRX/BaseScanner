@@ -100,16 +100,22 @@ import Testing
         #expect(dots.filter { $0.isEdge }.count == min(20, all.filter { $0.isEdge }.count))
     }
 
-    /// An anchor correction moves the field with the wall: a 0.5 m shift moves every dot 0.5 m.
-    @Test func aCorrectionMovesTheDots() {
+    /// An anchor correction moves the field with the wall, exactly, however small the steps:
+    /// ten 2.1 cm corrections, each under half a voxel, move every dot 21 cm, and a turn turns
+    /// them about the vertical.
+    @Test func correctionsMoveTheDotsExactly() {
         let camera = wallCamera(s: 0)
         var field = Self.field(standardScene(), cameras: [camera])
         let before = field.dots(near: camera.position, wall: nil)
-        field.apply(YawCorrection(yaw: 0, translation: SIMD3(0.5, 0, 0)))
-        let after = field.dots(near: camera.position + SIMD3(0.5, 0, 0), wall: nil)
-        func meanX(_ dots: [SurfaceDot]) -> Float { dots.map(\.position.x).reduce(0, +) / Float(dots.count) }
-        #expect(abs(after.count - before.count) <= before.count / 20)
-        #expect(nearlyEqual(meanX(after) - meanX(before), 0.5, 0.03))
+        for _ in 0..<10 { field.apply(YawCorrection(yaw: 0, translation: SIMD3(0.021, 0, 0))) }
+        let turn = YawCorrection(yaw: 0.1, translation: .zero)
+        field.apply(turn)
+        let after = field.dots(near: turn.point(camera.position + SIMD3(0.21, 0, 0)), wall: nil)
+        #expect(after.count == before.count)
+        for (a, b) in zip(before, after) {
+            #expect(a.id == b.id)
+            #expect(nearlyEqual(b.position, turn.point(a.position + SIMD3(0.21, 0, 0)), 1e-4))
+        }
     }
 
     /// The same keyframes give the same dots: jitter, thinning and order come from stable hashes.

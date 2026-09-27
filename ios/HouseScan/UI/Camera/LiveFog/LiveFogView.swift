@@ -19,6 +19,13 @@ final class LiveFogSupport {
     private(set) var status: Status = .preparing
     @ObservationIgnored private var started = false
 
+    /// The renderer could not get its buffers or textures: back to the frosted strip for the
+    /// rest of the launch.
+    func fail(_ reason: String) {
+        RuntimeLog.engine.error("live fog unavailable, drawing the frosted strip instead: \(reason, privacy: .public)")
+        status = .failed
+    }
+
     func prepare() {
         guard !started else { return }
         started = true
@@ -32,8 +39,7 @@ final class LiveFogSupport {
                 case let .failure(error):
                     // Logged as an error, not trapped: a trap in a Debug build would stop every UI
                     // test, while the frosted strip in their screenshots already shows the failure.
-                    RuntimeLog.engine.error("live fog unavailable, drawing the frosted strip instead: \(String(describing: error), privacy: .public)")
-                    LiveFogSupport.shared.status = .failed
+                    LiveFogSupport.shared.fail(String(describing: error))
                 }
             }
         }
@@ -61,8 +67,16 @@ struct LiveFogView: UIViewRepresentable {
         view.preferredFramesPerSecond = 60
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
-        view.renderer = LiveFogRenderer(gpu: gpu)
-        view.renderer?.input = input
+        guard let renderer = LiveFogRenderer(gpu: gpu) else {
+            // Not during this view update: the status change swaps this view out.
+            DispatchQueue.main.async { LiveFogSupport.shared.fail("Metal would not allocate the fog's buffers") }
+            return view
+        }
+        renderer.input = input
+        renderer.onFailure = {
+            DispatchQueue.main.async { LiveFogSupport.shared.fail("Metal would not allocate the fog's mask textures") }
+        }
+        view.renderer = renderer
         return view
     }
 

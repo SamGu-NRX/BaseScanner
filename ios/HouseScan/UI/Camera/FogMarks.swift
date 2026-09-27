@@ -38,7 +38,8 @@ struct FogMarks: View {
                 }
                 hatched.stroke(lines, with: .color(.white.opacity(0.55)), lineWidth: 1.5)
             }
-            if let requested = runs.requested, let outline = outline(requested.band, requested.edges, geometry) {
+            for run in runs.requested {
+                guard let outline = outline(run.band, run.edges, geometry) else { continue }
                 context.stroke(outline, with: .color(.black.opacity(0.3)), style: StrokeStyle(lineWidth: 4, lineJoin: .round))
                 context.stroke(outline, with: .color(Palette.caution), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
             }
@@ -47,24 +48,30 @@ struct FogMarks: View {
         .accessibilityHidden(true)
     }
 
+    private enum Kind { case hidden, skipped, requested }
+
     private struct Run {
         var band: CoverageBand
         /// The s of every cell edge along the run, clipped to the visible range.
         var edges: [Float]
     }
 
-    /// Runs of hidden and of skipped cells in each band, and the requested cells not yet covered.
-    private func runs() -> (hidden: [Run], skipped: [Run], requested: Run?) {
-        var hidden: [Run] = [], skipped: [Run] = []
-        var requested: Run?
+    /// Runs of hidden, of skipped, and of requested-but-not-covered cells in each band. Coverage
+    /// filling the middle of a request splits it, and each piece keeps its outline.
+    private func runs() -> (hidden: [Run], skipped: [Run], requested: [Run]) {
+        var hidden: [Run] = [], skipped: [Run] = [], requested: [Run] = []
         let visible = coverage.visibleRange
-        guard visible.upperBound > visible.lowerBound else { return ([], [], nil) }
+        guard visible.upperBound > visible.lowerBound else { return ([], [], []) }
         for band in CoverageBand.allCases {
             let states = coverage.cells(band)
-            var current: (state: CellState, run: Run)?
+            var current: (kind: Kind, run: Run)?
             func close() {
                 if let current {
-                    if current.state == .hidden { hidden.append(current.run) } else { skipped.append(current.run) }
+                    switch current.kind {
+                    case .hidden: hidden.append(current.run)
+                    case .skipped: skipped.append(current.run)
+                    case .requested: requested.append(current.run)
+                    }
                 }
                 current = nil
             }
@@ -74,23 +81,17 @@ struct FogMarks: View {
                 let s0 = max(range.lowerBound, visible.lowerBound), s1 = min(range.upperBound, visible.upperBound)
                 let state = states[index]
                 let isRequested = highlight.map { $0.band == band && $0.span.lowerBound < range.upperBound && range.lowerBound < $0.span.upperBound } ?? false
-                if isRequested, state != .covered {
-                    close()
-                    if var run = requested, run.band == band, let last = run.edges.last, abs(last - s0) < 1e-4 {
-                        run.edges.append(s1)
-                        requested = run
-                    } else if requested == nil {
-                        requested = Run(band: band, edges: [s0, s1])
-                    }
-                    continue
-                }
-                guard state == .hidden || state == .skipped else { close(); continue }
-                if var open = current, open.state == state {
+                let kind: Kind? = if isRequested, state != .covered { .requested }
+                    else if state == .hidden { .hidden }
+                    else if state == .skipped { .skipped }
+                    else { nil }
+                guard let kind else { close(); continue }
+                if var open = current, open.kind == kind {
                     open.run.edges.append(s1)
                     current = open
                 } else {
                     close()
-                    current = (state, Run(band: band, edges: [s0, s1]))
+                    current = (kind, Run(band: band, edges: [s0, s1]))
                 }
             }
             close()

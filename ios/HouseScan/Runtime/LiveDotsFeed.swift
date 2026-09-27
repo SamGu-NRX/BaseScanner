@@ -6,9 +6,11 @@ import os
 /// camera overlay (`ScanViewState.liveDots`).
 ///
 /// The engine hands it each kept keyframe that has depth, the same frames coverage observes, so
-/// the dots and the fog move together. Fusing a 256 x 192 map takes milliseconds, not a frame
-/// budget, so it runs on its own serial queue. A keyframe arriving while two are still waiting
-/// is dropped: the next one covers the same wall, and the queue can never grow.
+/// the dots and the fog move together. Fusing a 256 x 192 map takes a few milliseconds (3.4 ms
+/// median on an M4 Pro in a Release build; not measured on a phone), so it runs on its own
+/// serial queue. A keyframe arriving while two are still waiting is dropped: the next one covers
+/// the same wall. An anchor correction is a matrix product (`SurfaceDots.apply`) and republishes
+/// only when no keyframe is waiting to publish anyway, so neither kind of work can pile up.
 final class LiveDotsFeed: @unchecked Sendable {
     // `@unchecked Sendable`: everything below `queue` is read and written only on it; `pending`
     // is a lock.
@@ -49,10 +51,9 @@ final class LiveDotsFeed: @unchecked Sendable {
     /// ARKit's correction to the meter's anchor, applied as coverage applies it.
     func apply(_ correction: YawCorrection, wall: WallFrame, generation: Int) {
         queue.async { [self] in
-            guard !field.isEmpty else { return }
             field.apply(correction)
             if let eye = last?.eye { last = (correction.point(eye), wall) }
-            send(generation)
+            if pending.withLock({ $0 }) == 0 { send(generation) }
         }
     }
 
