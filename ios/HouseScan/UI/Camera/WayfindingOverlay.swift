@@ -83,11 +83,13 @@ struct WayfindingOverlay: View {
         let reach: CGFloat = 400
         return Text(text)
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Palette.chalk)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color.black.opacity(0.7), in: .rect(cornerRadius: 14, style: .continuous))
+            // The instruction card's solid scrim. A see-through black let the camera image show
+            // through and failed the accessibility audit's contrast check over a bright wall.
+            .background(ScrimShape.rounded(14))
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("aim.legend")
             .onAppear {
