@@ -456,8 +456,9 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "the second tap must send anyway")
     }
 
-    /// #81: the first aim ring comes with a line saying what it is for, and reads its progress to
-    /// VoiceOver. Off screen, the edge arrow stands in for it, and neither shows.
+    /// #81: the first aim ring comes with a line under the card saying what it is for, clear of
+    /// the card at every text size, and reads its progress to VoiceOver. Off screen, the edge
+    /// arrow stands in for the ring, and neither shows.
     @MainActor
     func testAimRingShowsProgressAndItsLegend() throws {
         continueAfterFailure = false
@@ -475,8 +476,8 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
         app.terminate()
 
-        // At the largest text size the card and the controls fill the screen, so there is no
-        // room beside the ring: the legend moves under the card instead of going behind it or
+        // At the largest text size the card fills most of the screen. The legend sits under it in
+        // the same stack, so it grows and scrolls with the card instead of going behind it or
         // disappearing.
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()
@@ -575,12 +576,12 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
-    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
+    /// Drags the screen up, at most `drags` times, until the control can be tapped. The same slow
     /// drag as `revealCutOff`, so it scrolls without momentum.
     @MainActor
-    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication, drags: Int = 4) -> Bool {
         let step = app.windows.firstMatch.frame.height * 0.4
-        for _ in 0..<4 {
+        for _ in 0..<drags {
             if target.isHittable { return true }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
@@ -613,12 +614,27 @@ final class ScreenStatesUITests: XCTestCase {
     /// appeared can still be moving into place (the walk's controls settle after the close-up),
     /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
     /// tray).
+    ///
+    /// A control below the bottom edge of a scrolling screen (the review's "Add something" chips,
+    /// the result's Details) is never hittable where it is: `tap()` scrolls to it, the wait
+    /// doesn't. Once it has had a moment to settle, the screen is scrolled to it.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
-        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
-        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: timeout), .completed, "missing or not tappable: \(identifier)")
+        let deadline = Date().addingTimeInterval(timeout)
+        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        if !waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow))),
+           target.frame.maxY > app.windows.firstMatch.frame.maxY {
+            _ = scrollUntilHittable(target, in: app, drags: 8)
+        }
+        XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
+    }
+
+    @MainActor
+    private func waitUntilHittable(_ target: XCUIElement, timeout: TimeInterval) -> Bool {
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
+        return XCTWaiter().wait(for: [hittable], timeout: timeout) == .completed
     }
 
     /// The card's reply with these words.
