@@ -1201,6 +1201,7 @@ final class ScanEngine {
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
         publishFeaturesPastEnds()
+        refreshSpotPhoto()
     }
 
     /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's

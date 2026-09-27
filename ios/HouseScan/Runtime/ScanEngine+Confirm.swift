@@ -17,6 +17,10 @@ struct SpotConfirmState {
     /// The check on screen: its area, the photo shown and the exchange it came from. Its answer
     /// is filled in when the homeowner gives one.
     var pending: SpotConfirmation?
+    /// The photo on screen, raw as stored, with the image decoded from it: judged again, and its
+    /// outline's camera corrected again, whenever the wall moves while the question is up
+    /// (`refreshSpotPhoto`).
+    var shown: (candidate: SpotPhotoCandidate, image: CGImage)?
     /// The unmarked thing the homeowner is marking on the camera, with the check it came from.
     var marking: (check: SpotConfirmation, kind: FeatureKind)?
     /// The entry in the guidance log for the question on screen.
@@ -103,23 +107,33 @@ extension ScanEngine {
             go(.result)
             return
         }
-        let candidates = store.keyframes.map { SpotPhotoCandidate(id: $0.id, camera: $0.camera, trackingNormal: $0.tracking == .normal) }
-        let choice = SpotPhoto.best(candidates, area: area, wall: wall)
-        let stored = choice.flatMap { choice in store.keyframes.first { $0.id == choice.id } }
-        let file = stored.map { store.directory.appending(path: $0.fileName) }
+        // Raw cameras with their capture times: each is judged, and drawn, corrected into the frame
+        // the wall is in now (`SpotPhotoCandidate.camera(correctedBy:)`).
+        let candidates = store.keyframes.map {
+            SpotPhotoCandidate(id: $0.id, camera: $0.camera, trackingNormal: $0.tracking == .normal, capturedAt: $0.t)
+        }
+        let choice = SpotPhoto.best(candidates, area: area, wall: wall, corrections: poseCorrections)
+        let candidate = choice.flatMap { choice in candidates.first { $0.id == choice.id } }
+        let file = choice.flatMap { choice in store.keyframes.first { $0.id == choice.id } }.map { store.directory.appending(path: $0.fileName) }
         RuntimeLog.engine.info("spot check \(id): area s=\(area.span.lowerBound)...\(area.span.upperBound) out to \(area.depth) m; photo \(choice?.id ?? "none", privacy: .public) shows \(Int((choice?.footprintInView ?? 0) * 100))% of the spot and \(Int((choice?.areaInView ?? 0) * 100))% of the area")
         Task {
             let image = await Self.loadPhoto(file)
             guard state.phase == .uploading, spotConfirm.asked == id, state.result == result else { return }
+            // The photo and its outline's camera are fixed together here, after the decode: an
+            // anchor correction during it moved the wall, so the photo is judged again against
+            // the wall as it is now.
             var photo: SpotCheck.Photo?
-            if let image, let camera = stored?.camera {
-                photo = SpotCheck.Photo(image: image, projection: CameraProjection(
-                    cameraToWorld: camera.cameraToWorld, intrinsics: camera.intrinsics, imageSize: camera.imageSize))
+            var shown: SpotPhotoChoice?
+            spotConfirm.shown = nil
+            if let image, let candidate, let wall = coverage?.wall {
+                shown = SpotPhoto.best([candidate], area: area, wall: wall, corrections: poseCorrections)
+                let camera = shown?.camera ?? candidate.camera(correctedBy: poseCorrections)
+                photo = SpotCheck.Photo(image: image, projection: Self.projection(camera))
+                spotConfirm.shown = (candidate, image)
             } else if choice != nil {
                 RuntimeLog.engine.error("spot check \(id): photo \(choice?.id ?? "", privacy: .public) could not be decoded; nothing can be confirmed")
             }
             // Only a photo on screen that shows the whole area can back "It's clear".
-            let shown = photo == nil ? nil : choice
             let confirmable = shown?.showsWholeArea == true
             // The answer is filled in when the homeowner gives one.
             spotConfirm.pending = SpotConfirmation(area: area, exchange: exchange, photo: shown, answer: .unconfirmed)
@@ -128,6 +142,31 @@ extension ScanEngine {
             state.spotCheck = Self.spotCheck(id: id, area: area, photo: photo, confirmable: confirmable, isSample: result.isSample)
             go(.spotConfirm)
         }
+    }
+
+    /// The wall moved while the question is up (an anchor correction, a new ground): the photo's
+    /// outline is drawn through its camera corrected again, and the photo is judged again. One that
+    /// no longer shows the whole area can't back "It's clear": the question gives way to leaving
+    /// the area out. `publishWall` calls it.
+    func refreshSpotPhoto() {
+        guard state.phase == .spotConfirm, var check = state.spotCheck, check.answer == nil, let shown = spotConfirm.shown,
+              var pending = spotConfirm.pending, let wall = coverage?.wall else { return }
+        let view = SpotPhoto.best([shown.candidate], area: pending.area, wall: wall, corrections: poseCorrections)
+        let camera = view?.camera ?? shown.candidate.camera(correctedBy: poseCorrections)
+        check.photo = SpotCheck.Photo(image: shown.image, projection: Self.projection(camera))
+        pending.photo = view
+        spotConfirm.pending = pending
+        let confirmable = view?.showsWholeArea == true
+        if confirmable != check.confirmable {
+            RuntimeLog.engine.info("spot check \(check.id): the wall moved and photo \(shown.candidate.id, privacy: .public) \(confirmable ? "now shows" : "no longer shows", privacy: .public) the whole area")
+            check.confirmable = confirmable
+            check.step = .area
+        }
+        state.spotCheck = check
+    }
+
+    private static func projection(_ camera: CameraFrame) -> CameraProjection {
+        CameraProjection(cameraToWorld: camera.cameraToWorld, intrinsics: camera.intrinsics, imageSize: camera.imageSize)
     }
 
     // MARK: Answers
