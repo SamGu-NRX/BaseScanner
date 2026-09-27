@@ -40,7 +40,7 @@ extension ScanEngine {
             }
             return GuidanceLog.Request(
                 topic: .gap(id: gap.id), kind: pastEndSide == nil ? .gapBand : .gapPastEnd, origin: gap.origin == .server ? .server : .phone,
-                message: Self.text(ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd))), band: pastEndSide == nil ? band : nil, span: plan.span
+                message: Self.text(ScanCopy.gap(gap)), band: pastEndSide == nil ? band : nil, span: plan.span
             )
         case .spotConfirm:
             return spotCheckGuidance
