@@ -29,6 +29,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
         ("wallWalk-nextWallRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoRefusal"], "wallWalk"),
+        ("wallWalk-nextWallConfirm", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall", "-uiDemoNextWallConfirm"], "wallWalk"),
         ("wallWalk-tiltUp", ["-uiDemoPhase", "wallWalk", "-uiDemoTiltUp"], "wallWalk"),
         ("wallWalk-overheadQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoOverheadQuestion"], "wallWalk"),
         ("wallWalk-hidden", ["-uiDemoPhase", "wallWalk", "-uiDemoHidden"], "wallWalk"),
@@ -187,6 +188,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endCorner")
         tap(app, "action.markNextWall")
+        // "Is this the next wall?" before the walk follows it (#70).
+        tap(app, "action.nextWallYes")
         tap(app, "action.markEnd", timeout: 30)
         tap(app, "action.endBlocked")
         tap(app, "action.markEnd", timeout: 30)

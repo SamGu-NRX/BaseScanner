@@ -1187,6 +1187,31 @@ public struct CoverageMap: Sendable {
     /// away means the marked wall is some other wall.
     public static let maxCornerFromEnd: Float = 3
 
+    /// A corner `turnCorner` would follow, and how far it lies from the marked end on its side
+    /// (or the reference `turnCorner` bounds it by), before anything changes. The walk shows it
+    /// and asks "Is this the next wall?" before following it (#70, team decision 2026-09-27):
+    /// on build 4.1 a surface behind the end post passed the 3 m bound, and the distance is
+    /// logged so the bound can be set from real corners.
+    public struct CornerProposal: Sendable, Equatable {
+        public var corner: WallCorner
+        /// Meters from the end (or reference) to the corner, along the chain; never negative.
+        public var fromEnd: Float
+    }
+
+    /// The corner `turnCorner(side, meeting:outward:source:)` would follow, without following it.
+    /// Throws what `turnCorner` would.
+    public func proposeCorner(
+        _ side: WalkSide, meeting point: SIMD3<Float>, outward: SIMD3<Float>, source: WallLineSource
+    ) throws(CornerRefusal) -> CornerProposal {
+        var corner = try wall.corner(on: side, meeting: point, outward: outward)
+        corner.source = source
+        let seenEdge = seenExtent.map { side == .left ? $0.lowerBound : $0.upperBound }
+        let reference = (side == .left ? leftEnd : rightEnd) ?? seenEdge ?? 0
+        let fromEnd = abs(corner.s - reference)
+        guard fromEnd <= Self.maxCornerFromEnd else { throw .implausible(s: corner.s) }
+        return CornerProposal(corner: corner, fromEnd: fromEnd)
+    }
+
     /// Follows the wall round a corner on `side`, to the wall the homeowner marked at `point`
     /// facing `outward` (toward the homeowner). The corner is where the two walls' lines meet on
     /// the ground (`WallFrame.corner(on:meeting:outward:)`). The end on that side is cleared, so
@@ -1198,11 +1223,7 @@ public struct CoverageMap: Sendable {
     public mutating func turnCorner(
         _ side: WalkSide, meeting point: SIMD3<Float>, outward: SIMD3<Float>, source: WallLineSource
     ) throws(CornerRefusal) -> WallCorner {
-        var corner = try wall.corner(on: side, meeting: point, outward: outward)
-        corner.source = source
-        let seenEdge = seenExtent.map { side == .left ? $0.lowerBound : $0.upperBound }
-        let reference = (side == .left ? leftEnd : rightEnd) ?? seenEdge ?? 0
-        guard abs(corner.s - reference) <= Self.maxCornerFromEnd else { throw .implausible(s: corner.s) }
+        let corner = try proposeCorner(side, meeting: point, outward: outward, source: source).corner
         wall.turn(side, at: corner)
         switch side {
         case .left: leftEnd = nil

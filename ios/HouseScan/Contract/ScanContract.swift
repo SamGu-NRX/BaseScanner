@@ -506,6 +506,15 @@ enum GroundAnswer: Equatable, Sendable {
     case notSure
 }
 
+/// The next wall round a corner, marked and waiting for the homeowner to confirm it
+/// (`ScanViewState.nextWallConfirm`).
+struct NextWallConfirm: Equatable, Sendable {
+    var side: WallSide
+    /// Meters from the end marked on that side to where the marked wall meets this one
+    /// (`CoverageMap.CornerProposal.fromEnd`).
+    var fromEnd: Float
+}
+
 enum NextWallRefusal: Equatable, Sendable {
     /// No wall under the circle.
     case noSurface
@@ -792,6 +801,9 @@ final class ScanViewState {
     /// (`WalkedEnd.walkedPast`); the question says so. Nil for an end marked at the reticle. Only
     /// meaningful while `endQuestion` is set: whatever sets `endQuestion` sets this too.
     var endQuestionLeavesOut: Float?
+    /// A wall marked during `GuidanceStep.markNextWall` whose corner passed the checks, waiting
+    /// for "Is this the next wall?" (`ScanActions.confirmNextWall`, #70). Nil otherwise.
+    var nextWallConfirm: NextWallConfirm?
     /// Where the wall end on the side being walked would land now; nil while ending it isn't on
     /// offer (a question or a mark is up, both ends are marked, or the walk is doing something
     /// else). "Wall ends here" shows only while it is set.
@@ -871,6 +883,12 @@ protocol ScanActions: AnyObject {
     /// `GuidanceStep.markNextWall`. The walk then goes on along it; "I can't get there"
     /// (`cannotAccessArea`) leaves the end as an unexplored corner instead.
     func markNextWall(at point: CGPoint?, viewSize: CGSize)
+    /// "Back" during `GuidanceStep.markNextWall`: stops looking for the next wall and asks
+    /// `ScanViewState.endQuestion` about that end again (#70).
+    func cancelNextWall()
+    /// The answer to `ScanViewState.nextWallConfirm`: true follows the corner to the marked wall,
+    /// false drops it and goes on looking for the next wall (#70).
+    func confirmNextWall(_ isNextWall: Bool)
     /// The answer to `ScanViewState.overheadQuestion`: true when nothing is overhead.
     func answerOverhead(clear: Bool)
     /// The answer to the ground question during `.markFeatures`; can be changed until upload.
