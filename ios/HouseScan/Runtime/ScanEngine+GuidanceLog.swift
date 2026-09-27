@@ -118,10 +118,11 @@ extension ScanEngine {
             return wall.wallPoint(camera.position).out > GuidancePlanner().config.tooClose ? .met : .superseded
         case .aimAtGround, .aimAtWall:
             // Met as the planner meets it (`GuidancePlanner.isSatisfied`): enough of the stretch
-            // covered. The cell at s alone could be covered while the stretch wasn't.
-            guard let span = old.span, let map = coverage else { return .superseded }
+            // covered, leaving out cells of stretches that stalled. The cell at s alone could be
+            // covered while the stretch wasn't.
+            guard let s, let map = coverage else { return .superseded }
             let band: SurfaceBand = old.band == .ground ? .ground : .wall
-            return map.coveredFraction(band, in: span) >= GuidancePlanner.aimSatisfied ? .met : .superseded
+            return planner.aimCoveredFraction(band, at: s, coverage: map) >= GuidancePlanner.aimSatisfied ? .met : .superseded
         case .seeBehind:
             guard let s, let map = coverage else { return .superseded }
             let band: SurfaceBand = old.band == .wall ? .wall : .ground

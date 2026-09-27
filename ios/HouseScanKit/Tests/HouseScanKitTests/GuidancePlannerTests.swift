@@ -518,4 +518,77 @@ import Testing
         #expect(!map.needsSecondPosition(band: .ground, range: -0.3...0.3, from: CoverageMapTests.frontCamera(x: 0.3).position))
         #expect(map.coveredFraction(.ground, in: -0.3...0.3) == 1)
     }
+
+    /// Review of #120: a request beside stalled stretches is met by its own cells. Walking right,
+    /// the ground lags the (skipped) wall in cells 7 ... 10 from s = 1.3, and that request
+    /// (s = 1.3716) stalls; then the wall is skipped out to 4 and, from s = 2, the request for
+    /// cells 11 ... 19 (s = 2.3622) stalls too. The next is the nearer run, cells 11 ... 13
+    /// (s = 1.905), whose stretch reaches into both stalled ones: cells 10 and 14. With those
+    /// counted, covering all three cells of the run was 3 of 5, under `aimSatisfied`, and the
+    /// request could only end by stalling again.
+    @Test func aRequestBesideStalledStretchesIsMetByItsOwnCells() {
+        var map = Self.meterGroundSkipped()
+        map.setEnd(.left, at: -0.5)
+        map.markSkipped(.wall, 1.07...1.67)
+        var planner = GuidancePlanner()
+        let first = planner.update(coverage: map, camera: Self.homeowner(x: 1.3), time: 0).task
+        guard case .aimAtGround(let s0) = first, nearlyEqual(s0, 1.3716) else {
+            Issue.record("expected the ground at 1.3716, got \(first)")
+            return
+        }
+        #expect(planner.update(coverage: map, camera: Self.homeowner(x: 1.3), time: 20).task == .walk(.right))
+        map.markSkipped(.wall, 1.68...4)
+        let camera = Self.homeowner(x: 2)
+        let second = planner.update(coverage: map, camera: camera, time: 23).task
+        guard case .aimAtGround(let s1) = second, nearlyEqual(s1, 2.3622) else {
+            Issue.record("expected the ground at 2.3622, got \(second)")
+            return
+        }
+        let replacement = planner.update(coverage: map, camera: camera, time: 43)
+        #expect(replacement.stalled == second)
+        guard case .aimAtGround(let s) = replacement.task, nearlyEqual(s, 1.905) else {
+            Issue.record("expected the ground at 1.905, got \(replacement.task)")
+            return
+        }
+        // Two ground views 0.4 m apart cover cells 11 ... 13; cells 10 and 14 are seen once.
+        map.observe(groundCamera(s: 1.7), trackingNormal: true)
+        map.observe(groundCamera(s: 2.1), trackingNormal: true)
+        for index in 11...13 { #expect(map.level(.ground, index) == .covered, "cell \(index)") }
+        for index in [10, 14] { #expect(map.level(.ground, index) != .covered, "cell \(index)") }
+        #expect(map.coveredFraction(.ground, in: (s - GuidancePlanner.aimHalfWidth)...(s + GuidancePlanner.aimHalfWidth)) < GuidancePlanner.aimSatisfied)
+        let next = planner.update(coverage: map, camera: camera, time: 44)
+        #expect(next.switched == .satisfied)
+        #expect(next.task != replacement.task)
+    }
+
+    /// Review of #120: while coaching covers the card (`stallClockPaused`), an aim task's stall
+    /// clock stands still. 25 s with the card covered, then 19.9 s with it showing, doesn't stall
+    /// the ground by the meter; 20 s showing does.
+    @Test func theStallClockWaitsWhileCoachingCoversTheCard() {
+        let map = CoverageMap(wall: standardWall())
+        var planner = GuidancePlanner()
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 0).task == .aimAtGround(s: 0))
+        for time in [5.0, 25] {
+            let covered = planner.update(coverage: map, camera: Self.homeowner(), time: time, stallClockPaused: true)
+            #expect(covered.task == .aimAtGround(s: 0) && covered.stalled == nil, "at \(time) s")
+        }
+        let held = planner.update(coverage: map, camera: Self.homeowner(), time: 44.9)
+        #expect(held.task == .aimAtGround(s: 0) && held.stalled == nil)
+        #expect(planner.update(coverage: map, camera: Self.homeowner(), time: 45).stalled == .aimAtGround(s: 0))
+    }
+
+    /// Greptile on #120: `cues` gives the aim card's flags for the camera it is given, so a replay
+    /// frame shown for a tap says to step back or aside from where that frame was taken.
+    @Test func cuesGiveTheCardsFlagsForTheirCamera() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
+        let planner = GuidancePlanner()
+        let task = GuidanceTask.aimAtGround(s: 0)
+        let here = planner.cues(for: task, coverage: map, camera: Self.homeowner())
+        #expect(here.needsSecondPosition && !here.stepBack)
+        #expect(!planner.cues(for: task, coverage: map, camera: CoverageMapTests.frontCamera(x: 0.3)).needsSecondPosition)
+        #expect(planner.cues(for: task, coverage: map, camera: Self.homeowner(out: 1)).stepBack)
+        #expect(!planner.cues(for: .walk(.left), coverage: map, camera: Self.homeowner(out: 1)).stepBack)
+    }
 }

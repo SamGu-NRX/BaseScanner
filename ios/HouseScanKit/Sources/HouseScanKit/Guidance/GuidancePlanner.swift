@@ -102,6 +102,8 @@ public struct GuidancePlanner: Sendable {
     /// The current aim task's covered share when it last grew, and when: the stall clock.
     private var lastFraction: Double = 0
     private var lastProgressAt: Double = 0
+    /// The time of the update before, for pausing the stall clock (`update`'s `stallClockPaused`).
+    private var lastUpdateAt: Double?
     /// Aim stretches that stalled. The requests chosen from the camera (the ground by the meter
     /// and a lagging band) leave them out until `reset()`; `firstHole` still asks for them once
     /// both ends are marked.
@@ -134,8 +136,16 @@ public struct GuidancePlanner: Sendable {
     ///   the camera comes closer than `tooClose`, the aim task stays and `stepBack` is set.
     /// - Any other task gives way to the preferred one once held for `minDwell`.
     ///
+    /// With `stallClockPaused` (coaching covers the card, so the aim can't be acted on), the time
+    /// since the update before doesn't count toward a stall. Without it, 20 s of "Slow down" or
+    /// lost tracking stalled the aim task the card never showed (review of #120).
+    ///
     /// Deterministic in `time`.
-    public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double) -> GuidanceOutput {
+    public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double, stallClockPaused: Bool = false) -> GuidanceOutput {
+        if stallClockPaused, let last = lastUpdateAt, time > last {
+            lastProgressAt += time - last
+        }
+        lastUpdateAt = time
         var preferred = preferredTask(coverage: coverage, camera: camera)
         var switched: GuidanceSwitch?
         var stalled: GuidanceTask?
@@ -143,7 +153,7 @@ public struct GuidancePlanner: Sendable {
             let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
             let aim = Self.aim(current)
             if let aim, !satisfied {
-                let fraction = coverage.coveredFraction(aim.band, in: Self.stretch(around: aim.s))
+                let fraction = aimCoveredFraction(aim.band, at: aim.s, coverage: coverage)
                 // A clock that went back (a replay restarted) restarts the stall clock too.
                 if fraction > lastFraction || time < lastProgressAt {
                     lastFraction = fraction
@@ -175,14 +185,9 @@ public struct GuidancePlanner: Sendable {
         } else {
             begin(preferred, coverage: coverage, time: time)
         }
-        let task = current ?? preferred
-        var output = cues(for: task, coverage: coverage, camera: camera)
+        var output = cues(for: current ?? preferred, coverage: coverage, camera: camera)
         output.switched = switched
         output.stalled = stalled
-        if let aim = Self.aim(task), let camera {
-            output.stepBack = coverage.wall.wallPoint(camera.position).out < config.tooClose
-            output.needsSecondPosition = coverage.needsSecondPosition(band: aim.band, range: Self.stretch(around: aim.s), from: camera.position)
-        }
         return output
     }
 
@@ -190,15 +195,23 @@ public struct GuidancePlanner: Sendable {
     private mutating func begin(_ task: GuidanceTask, coverage: CoverageMap, time: Double) {
         current = task
         since = time
-        lastFraction = Self.aim(task).map { coverage.coveredFraction($0.band, in: Self.stretch(around: $0.s)) } ?? 0
+        lastFraction = Self.aim(task).map { aimCoveredFraction($0.band, at: $0.s, coverage: coverage) } ?? 0
         lastProgressAt = time
     }
 
-    /// The target and path of `task` seen from `camera`, without choosing a task. The engine calls
-    /// this for frames that must not move the task (a replay frame shown for a tap) so the cues
-    /// never lag behind the camera the screen shows.
+    /// The target and path of `task` seen from `camera`, and for an aim task whether to step back
+    /// and whether a second position is needed from there, without choosing a task. The engine
+    /// calls this for frames that must not move the task (a replay frame shown for a tap) so the
+    /// cues and the card never lag behind the camera the screen shows.
     public func cues(for task: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> GuidanceOutput {
-        GuidanceOutput(task: task, target: target(for: task, coverage: coverage, camera: camera), path: path(for: task, coverage: coverage, camera: camera))
+        var output = GuidanceOutput(
+            task: task, target: target(for: task, coverage: coverage, camera: camera), path: path(for: task, coverage: coverage, camera: camera)
+        )
+        if let aim = Self.aim(task), let camera {
+            output.stepBack = coverage.wall.wallPoint(camera.position).out < config.tooClose
+            output.needsSecondPosition = coverage.needsSecondPosition(band: aim.band, range: Self.stretch(around: aim.s), from: camera.position)
+        }
+        return output
     }
 
     // MARK: Choosing
@@ -445,6 +458,24 @@ public struct GuidancePlanner: Sendable {
         return nil
     }
 
+    /// The covered share of the stretch an aim task for `band` at `s` asks for, between the ends:
+    /// what `isSatisfied` compares with `aimSatisfied`, and what the stall clock watches. Cells
+    /// whose middle lies in another stretch that stalled (deferred, not holding `s`) don't count.
+    /// A request beside a stalled stretch reaches a cell into it, and a three-cell run between two
+    /// could at best cover 3 of its 5 cells: it could only end by stalling again (review of #120).
+    /// With no other cell left, the whole stretch counts.
+    public func aimCoveredFraction(_ band: SurfaceBand, at s: Float, coverage: CoverageMap) -> Double {
+        let stretch = Self.stretch(around: s)
+        let others = deferred.filter { $0.band == band && !$0.range.contains(s) }
+        let counted = coverage.indices(overlapping: stretch).filter { index in
+            let range = coverage.cellRange(index)
+            let middle = (range.lowerBound + range.upperBound) / 2
+            return coverage.isWithinEnds(index) && !others.contains { $0.range.contains(middle) }
+        }
+        guard !counted.isEmpty else { return coverage.coveredFraction(band, in: stretch) }
+        return Double(counted.filter { coverage.level(band, $0) == .covered }.count) / Double(counted.count)
+    }
+
     private func middle(_ indices: [Int], _ coverage: CoverageMap) -> Float? {
         guard let first = indices.first, let last = indices.last else { return nil }
         return (coverage.cellRange(first).lowerBound + coverage.cellRange(last).upperBound) / 2
@@ -455,9 +486,9 @@ public struct GuidancePlanner: Sendable {
         case .walk(let side), .markEnd(let side):
             return (side == .left ? coverage.leftEnd : coverage.rightEnd) != nil
         case .aimAtGround(let s):
-            return coverage.coveredFraction(.ground, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
+            return aimCoveredFraction(.ground, at: s, coverage: coverage) >= Self.aimSatisfied
         case .aimAtWall(let s):
-            return coverage.coveredFraction(.wall, in: (s - Self.aimHalfWidth)...(s + Self.aimHalfWidth)) >= Self.aimSatisfied
+            return aimCoveredFraction(.wall, at: s, coverage: coverage) >= Self.aimSatisfied
         case .stepBack:
             guard let camera else { return false }
             return coverage.wall.wallPoint(camera.position).out >= config.tooClose + 0.2

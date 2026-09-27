@@ -25,7 +25,7 @@ final class ScanEngine {
     private(set) var coverage: CoverageMap?
     private var autoCapture = AutoCapture()
     private var closeUpGate = CloseUpGate()
-    private var planner = GuidancePlanner()
+    private(set) var planner = GuidancePlanner()
     let gapPlanner = GapPlanner()
 
     // Stored evidence
@@ -705,7 +705,8 @@ final class ScanEngine {
             return
         }
         let screenTime = Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000
-        let output = planner.update(coverage: map, camera: camera, time: screenTime)
+        // Coaching replaces the card, so an aim task's stall clock waits while it shows.
+        let output = planner.update(coverage: map, camera: camera, time: screenTime, stallClockPaused: state.coaching != nil)
         logPlannerSwitch(output)
         if let hidden = hiddenBlock(output.task, map, camera: camera) {
             seeBehindBands = hidden.bands
@@ -830,10 +831,13 @@ final class ScanEngine {
         let output = planner.cues(for: task, coverage: map, camera: camera)
         state.target = output.target
         state.path = output.path
-        // The card follows the target on the frame shown, as the ring does.
+        // The card follows the frame shown, as the ring does: the target's direction, and whether
+        // to step back or to the side from where that frame was taken.
         if var hint = state.guidanceHint {
             let previous = hint.aim.map(Self.aimHint)
             hint.aim = output.target.map { Self.direction(AimHint.classify(target: $0, camera: camera, previous: previous)) }
+            hint.stepBack = output.stepBack
+            hint.needsSecondPosition = output.needsSecondPosition
             state.guidanceHint = hint
         }
     }
