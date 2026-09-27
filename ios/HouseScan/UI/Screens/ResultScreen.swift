@@ -49,8 +49,8 @@ struct ResultScreen: View {
                         Notice(symbol: "info.circle.fill", text: ScanCopy.rulesNotFinal)
                             .accessibilityIdentifier("result.rulesNotFinal")
                     }
-                    if let side = result.unseenSide {
-                        Notice(symbol: "arrow.left.and.right", text: "A closer spot may exist on the \(side.rawValue) of your meter. The scan didn't reach that side.")
+                    if let end = result.unseenEnd {
+                        Notice(symbol: "arrow.left.and.right", text: ScanCopy.unseenEnd(end, hasSpot: result.spot != nil))
                             .accessibilityIdentifier("result.unseenSide")
                     }
                     // The server's result covers where the battery goes, not the panel itself.

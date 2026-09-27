@@ -374,6 +374,12 @@ enum ScanCopy {
 
     static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
 
+    /// The note on an unexplored end nearer the meter than the spot (issue #83): where the scan
+    /// stopped, so the homeowner knows which end is meant. Without a spot, any spot past it.
+    static func unseenEnd(_ end: UnseenEnd, hasSpot: Bool) -> String {
+        "The scan stopped \(Distance.fromMeter(end.s)). \(hasSpot ? "A closer spot" : "A spot") may be past there."
+    }
+
     static let shareScan = "Share scan"
     static let shareScanContents = "Your photos and measurements, for the House Scan team"
 

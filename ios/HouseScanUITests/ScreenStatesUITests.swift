@@ -77,6 +77,8 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
+        // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
+        "result-review": ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
     ]
 
     /// Controls a state must offer, by identifier.

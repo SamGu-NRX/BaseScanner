@@ -628,6 +628,43 @@ public struct PlacementResult: Codable, Sendable, Equatable {
     }
 }
 
+/// An unexplored wall end past which a spot nearer the meter could lie
+/// (`PlacementResult.closerUnseenEnd()`).
+public struct PlacementUnseenEnd: Sendable, Equatable {
+    public var side: PlacementSide
+    /// Where the scan stopped, in s feet from the meter.
+    public var sFt: Double
+
+    public init(side: PlacementSide, sFt: Double) {
+        self.side = side
+        self.sFt = sFt
+    }
+}
+
+extension PlacementResult {
+    /// The end to name in "the scan stopped here, a closer spot may be past there", or nil when
+    /// no end calls for it (issue #83).
+    ///
+    /// Only an unexplored end within cable reach counts: a limit end has no wall past it, and
+    /// wall past an end beyond reach can't hold the battery. With a spot, the end must be nearer
+    /// the meter than the spot's near edge, so a spot past it could be closer; a spot over the
+    /// meter leaves none. Of the ends left, the one nearest the meter, whichever side it is on:
+    /// the server lists its past_end requests left first, which says nothing about distance.
+    public func closerUnseenEnd() -> PlacementUnseenEnd? {
+        let nearEdge: Double? = spot.map { spot in
+            let low = min(spot.spanFt.x, spot.spanFt.y), high = max(spot.spanFt.x, spot.spanFt.y)
+            return low <= 0 && high >= 0 ? 0 : min(abs(low), abs(high))
+        }
+        var candidates: [PlacementUnseenEnd] = []
+        for (side, end) in [(PlacementSide.left, ends.left), (PlacementSide.right, ends.right)]
+        where end.kind == .unexplored && end.beyondReach != true {
+            if let nearEdge, abs(end.sFt) >= nearEdge { continue }
+            candidates.append(PlacementUnseenEnd(side: side, sFt: end.sFt))
+        }
+        return candidates.min { abs($0.sFt) < abs($1.sFt) }
+    }
+}
+
 // MARK: - Strict decoding helpers
 
 /// "checks[2].rule.key" style path for error messages.

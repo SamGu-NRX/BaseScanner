@@ -283,14 +283,11 @@ extension ScanEngine {
             )
         }
 
-        var unseen: WallSide?
-        if let pastEnd = result.missingEvidence.first(where: { $0.kind == .pastEnd })?.side {
-            unseen = pastEnd == .left ? .left : .right
-        } else if result.ends.left.kind == .unexplored, result.ends.left.beyondReach != true {
-            // An end beyond cable reach can't hold the battery whatever lies past it.
-            unseen = .left
-        } else if result.ends.right.kind == .unexplored, result.ends.right.beyondReach != true {
-            unseen = .right
+        // The unexplored end nearer the meter than the spot, if any, not the first past_end
+        // request: the server lists those left first, whether or not a spot past the end could
+        // beat the one it chose (issue #83).
+        let unseen = result.closerUnseenEnd().map { end in
+            UnseenEnd(side: end.side == .left ? .left : .right, s: meters(end.sFt))
         }
 
         return ResultPresentation(
@@ -303,7 +300,7 @@ extension ScanEngine {
             checks: checks,
             clearances: clearances,
             missing: missing,
-            unseenSide: unseen,
+            unseenEnd: unseen,
             isSample: isSample
         )
     }

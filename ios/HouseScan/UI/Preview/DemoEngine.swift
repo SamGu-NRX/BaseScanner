@@ -972,6 +972,8 @@ final class DemoEngine: ScanActions {
             MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true),
             MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false),
         ],
+        // The walk stopped short on the left, nearer the meter than the spot (#83).
+        unseenEnd: UnseenEnd(side: .left, s: -0.4),
         isSample: true
     )
 
@@ -993,6 +995,7 @@ final class DemoEngine: ScanActions {
         sample.decision = .pass
         sample.policyApproved = true
         sample.summary = "The spot fits every check we could measure."
+        sample.unseenEnd = nil
         sample.checks = sample.checks.map { row in
             var row = row
             row.outcome = .pass
