@@ -150,8 +150,12 @@ extension ScanEngine {
                     operable: feature.kind == .window ? feature.opens : nil, wall: wall, frame: frame, t: t
                 ))
             case .gasMeter, .acUnit:
-                guard let point = points.first else { continue }
-                marks.append(.pointObject(feature.kind == .gasMeter ? .gasMeter : .ac, id: id, point: point, t: t))
+                // The manifest gives these one point: the middle of the two corners.
+                guard points.count == 2 else {
+                    RuntimeLog.engine.error("packet: \(feature.kind.rawValue, privacy: .public) mark has \(points.count) taps, not 2; left out")
+                    continue
+                }
+                marks.append(.pointObject(feature.kind == .gasMeter ? .gasMeter : .ac, id: id, point: (points[0] + points[1]) / 2, t: t))
             case .driveway, .fence:
                 guard points.count == 2 else {
                     RuntimeLog.engine.error("packet: \(feature.kind.rawValue, privacy: .public) mark has \(points.count) taps, not 2; left out")

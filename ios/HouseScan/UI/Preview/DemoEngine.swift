@@ -1012,8 +1012,9 @@ final class DemoEngine: ScanActions {
         let wall = DemoScene.wall
         switch kind {
         case .gasMeter:
-            return MarkedFeature(id: UUID(), kind: kind, span: DemoScene.gasMeterSpan, bottom: 0.35, top: 0.72, out: 0.15,
-                                 points: [wall.world(s: -1.4, height: 0.55, out: 0.15)], opens: nil)
+            return MarkedFeature(id: UUID(), kind: kind, span: DemoScene.gasMeterSpan, bottom: 0.35, top: 0.72, out: nil,
+                                 points: [wall.world(s: DemoScene.gasMeterSpan.lowerBound, height: 0.35),
+                                          wall.world(s: DemoScene.gasMeterSpan.upperBound, height: 0.72)], opens: nil)
         case .window:
             return MarkedFeature(id: UUID(), kind: kind, span: DemoScene.windowSpan, bottom: DemoScene.windowHeights.lowerBound,
                                  top: DemoScene.windowHeights.upperBound, out: nil,
@@ -1022,8 +1023,10 @@ final class DemoEngine: ScanActions {
             return MarkedFeature(id: UUID(), kind: kind, span: -2.6 ... -1.8, bottom: 0, top: 2.03, out: nil,
                                  points: [wall.world(s: -2.6, height: 0), wall.world(s: -1.8, height: 2.03)], opens: nil)
         case .acUnit:
-            return MarkedFeature(id: UUID(), kind: kind, span: DemoScene.acSpan, bottom: 0, top: 0.8, out: 0.25,
-                                 points: [wall.world(s: 3.75, height: 0.8, out: 0.6)], opens: nil)
+            // Its front corners on the ground, as the app marks one (`FeatureKind.tapCount`).
+            return MarkedFeature(id: UUID(), kind: kind, span: DemoScene.acSpan, bottom: nil, top: nil, out: 0.95,
+                                 points: [wall.world(s: DemoScene.acSpan.lowerBound, height: 0, out: 0.95),
+                                          wall.world(s: DemoScene.acSpan.upperBound, height: 0, out: 0.95)], opens: nil)
         case .driveway:
             return MarkedFeature(id: UUID(), kind: kind, span: -1.0...1.0, bottom: nil, top: nil, out: 2.4,
                                  points: [wall.world(s: -1.0, height: 0, out: 2.4), wall.world(s: 1.0, height: 0, out: 2.4)], opens: nil)

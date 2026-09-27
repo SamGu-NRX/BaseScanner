@@ -36,19 +36,27 @@ extension ScanEngine {
         let features: [SceneFeature] = try snapshot.features.map { Self.projected($0, onto: wall) }.map { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
-            case .door, .window:
+            case .door, .window, .gasMeter:
                 let heights = [feature.bottom ?? 0, feature.top ?? 0]
                 let bottom = max(0, heights.min() ?? 0)
                 let top = max(bottom, heights.max() ?? 0)
                 if bottom != feature.bottom || top != feature.top {
                     RuntimeLog.engine.info("export: \(feature.kind.rawValue, privacy: .public) heights \(feature.bottom ?? .nan)...\(feature.top ?? .nan) clamped to \(bottom)...\(top)")
                 }
+                if feature.kind == .gasMeter {
+                    // Two taps on one spot give no size; the homeowner marks it again.
+                    guard feature.span.upperBound - feature.span.lowerBound >= SceneExport.minObjectSize,
+                          top - bottom >= SceneExport.minObjectSize else { throw ExportError.markCollapsed(.gasMeter) }
+                    return .wallObject(kind: .gasMeter, span: feature.span, bottom: bottom, top: top)
+                }
                 return .opening(kind: feature.kind == .door ? .door : .window, span: feature.span, bottom: bottom, top: top,
                                 operable: feature.kind == .window ? feature.opens : nil)
-            case .gasMeter:
-                return .pointObject(kind: .gasMeter, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
             case .acUnit:
-                return .pointObject(kind: .ac, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
+                let front = try Self.groundLine(feature, points, wall: sceneWall)
+                guard abs(sceneWall.wallCoordinates(of: front[0]).s - sceneWall.wallCoordinates(of: front[1]).s) >= SceneExport.minObjectSize else {
+                    throw ExportError.markCollapsed(.acUnit)
+                }
+                return .groundObject(kind: .ac, front: front)
             case .fence:
                 return .fence(foot: try Self.groundLine(feature, points, wall: sceneWall))
             case .driveway:
@@ -153,7 +161,8 @@ extension ScanEngine {
         return c.out >= 0.001 ? point : wall.world(s: c.s, height: c.height, out: 0.001)
     }
 
-    /// The two ground points of a driveway edge or a fence foot, each moved in front of the wall.
+    /// The two ground points of a driveway edge, a fence foot or an AC unit's front, each moved in
+    /// front of the wall.
     /// Throws `markCollapsed` when they are not two points 1 cm apart in plan: a wall line refined
     /// past both taps puts them on one point. SceneExport's own degenerate-edge tolerance is
     /// 1e-3 ft; 1 cm keeps well clear of it.

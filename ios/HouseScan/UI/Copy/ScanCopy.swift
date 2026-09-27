@@ -199,8 +199,14 @@ enum ScanCopy {
             return Instruction(title: "Tap the bottom of the fence at one end", detail: "Where it meets the ground.")
         case (.fence, _):
             return Instruction(title: "Now tap the bottom at the other end", detail: nil)
-        case (.gasMeter, _), (.acUnit, _):
-            return Instruction(title: "Tap the \(item)", detail: "Put the circle on it and tap Mark, or tap it on screen.")
+        case (.gasMeter, 0):
+            return Instruction(title: "Tap the gas meter's bottom-left corner", detail: "Where it meets the wall, behind the meter.")
+        case (.gasMeter, _):
+            return Instruction(title: "Now tap its top-right corner", detail: "Where it meets the wall.")
+        case (.acUnit, 0):
+            return Instruction(title: "Tap the AC unit's front-left corner", detail: "Where it meets the ground.")
+        case (.acUnit, _):
+            return Instruction(title: "Now tap its front-right corner", detail: "Where it meets the ground.")
         }
     }
 
@@ -211,6 +217,7 @@ enum ScanCopy {
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
         case .fenceAcrossCorner: "That's round the corner. Mark the fence on each side of the corner as its own fence."
+        case .unitAcrossCorner: "That's round the corner. Tap both front corners on the same side of the house."
         }
     }
 
