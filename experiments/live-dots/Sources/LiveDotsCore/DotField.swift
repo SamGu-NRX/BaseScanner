@@ -21,6 +21,9 @@
 //       (`LiveDots --gradient-report`) 100% of voxels on painted outlines and 1% of plain-brick
 //       voxels reach 0.2. A Sobel on the full-size JPEG gives 31% and 19%, because mortar joints
 //       are as sharp as paint.
+// The simulated no-LiDAR feature points use a lower gradient, 0.1, on purpose: ARKit's
+// rawFeaturePoints land on any high-contrast texture, brick joints included, while an edge dot
+// should mark only an outline.
 // Every edge voxel gets a dot. Flat voxels get one per 2 x 2 x 2 group (the lowest hash, then
 // kept), a quarter of the edge density on a wall. At most 6,000 dots draw in view; past that,
 // flat dots drop in hash order.

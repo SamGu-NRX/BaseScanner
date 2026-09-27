@@ -47,6 +47,10 @@ public enum Tuning {
     // MARK: Simulated no-LiDAR
 
     public static let featureTarget = 600
+    /// Gradient a depth sample needs to become a simulated feature point: half the edge
+    /// threshold, so brick texture counts, as it does for ARKit's rawFeaturePoints. At 0.2 only
+    /// painted outlines qualified and 34 to 84 points lived in view.
+    public static let featureGradientThreshold: Float = 0.1
     public static let featureMatchRadius: Float = 0.08
     /// A feature lives while re-observed in 2 of the last 6 keyframes and dies 4 s after it was
     /// last seen. The real app would use 3 of the last 10 frames at frame rate; the fixture's

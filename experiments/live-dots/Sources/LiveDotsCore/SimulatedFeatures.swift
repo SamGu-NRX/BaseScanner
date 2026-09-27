@@ -65,11 +65,10 @@ public struct FeatureField: Sendable {
         coverPlane(frame)
     }
 
-    /// Depth samples whose image gradient crosses the edge threshold, merged to one per 4 cm
-    /// cell and thinned to the `Tuning.featureTarget` lowest cell hashes. On the fixture's walk
-    /// that leaves 400 to 1,500 candidates a keyframe before thinning (`--field-report`).
+    /// Depth samples whose image gradient reaches `Tuning.featureGradientThreshold`, merged to
+    /// one per 4 cm cell and thinned to the `Tuning.featureTarget` lowest cell hashes.
     func strongGradientSamples(_ frame: FrameInput) -> [SIMD3<Float>] {
-        Array(Self.candidates(frame, threshold: Tuning.gradientThreshold).prefix(Tuning.featureTarget))
+        Array(Self.candidates(frame, threshold: Tuning.featureGradientThreshold).prefix(Tuning.featureTarget))
     }
 
     /// All candidate features before thinning, lowest cell hash first.
