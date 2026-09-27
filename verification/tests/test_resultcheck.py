@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 
 from hsverify.resultcheck import (
+    GroundPlan,
     Need,
     RuleSet,
     assumption_mismatches,
@@ -1107,3 +1108,23 @@ def test_ground_in_front_of_one_wall_may_be_seen_from_the_next_in_an_inside_corn
     assert coverage_problems(inside_corner(10.7), r, pool) == []
     short = coverage_problems(inside_corner(4.0), r, pool)  # w2's band stops at x = 0
     assert any("pool_clearance needs ground [4.04, 6.62] observed out to 11.83" in m for m in short)
+
+
+def test_a_ground_gap_narrower_than_the_sampling_step_is_not_counted_seen():
+    # 5a4b4f4 passed a spot over ground seen [-40, 7.5] and [7.519, 40], out 30 ft: both edges
+    # of the 0.019 ft gap lie on a band, but its middle, s = 7.5095, was never seen.
+    rules = replace(RULES, needs={"gas_clearance": (Need("ground", 1.0),)})
+    scene = copy.deepcopy(SCENE)
+    scene["walls"][0]["baseline"] = [[-40.0, 0.0], [40.0, 0.0]]
+    scene["coverage"]["observed"] = [
+        {"band": "wall", "span_ft": [-40.0, 40.0]},
+        {"band": "ground", "span_ft": [-40.0, 7.5], "out_ft": 30.0},
+        {"band": "ground", "span_ft": [7.519, 40.0], "out_ft": 30.0},
+    ]
+    r = result(checks=[check()], sweep=[])
+    r["spot"]["span_ft"] = [6.0, 6.0 + 31 / 12]
+    msgs = coverage_problems(scene, r, rules)
+    assert any("ground [7.50, 7.52] observed, none seen" in m for m in msgs)
+    assert GroundPlan(scene, rules).seen((7.5095, 1.0)) is False
+    scene["coverage"]["observed"][2]["span_ft"] = [7.5, 40.0]
+    assert coverage_problems(scene, r, rules) == []

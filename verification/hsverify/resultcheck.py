@@ -675,7 +675,9 @@ class GroundPlan:
     from above, scene.schema.json). A point in front of one wall can lie in a neighbouring
     wall's band, as in an inside corner, where the second wall faces back over the first."""
 
-    STEP_FT = 0.05  # sampling step for coverage tests; a sliver thinner than this can be missed
+    # Sampling step for coverage tests. Samples are finite, so they cannot prove that every
+    # point of a region was seen: a thin gap shaped to avoid them can still be missed.
+    STEP_FT = 0.05
 
     def __init__(self, scene: dict, rules: RuleSet) -> None:
         self.segments = segments_s(scene, rules) or []
@@ -717,17 +719,26 @@ class GroundPlan:
 
     def covers(self, s_mid: float, p: float, q: float, out_lo: float, out_hi: float) -> bool:
         """Every sampled point from s = p to q, out_lo to out_hi in front of the battery's
-        segment, lies in some observed ground band."""
+        segment, lies in some observed ground band.
+
+        Samples are each cell's edges and its centre, in s and out. Edges alone missed a gap
+        narrower than a cell between two bands (0.019 ft at 5a4b4f4): both its edges lie on a
+        band, its middle on none."""
         if not self.strips:
             return False
-        ns = max(1, math.ceil((q - p) / self.STEP_FT))
-        no = max(1, math.ceil((out_hi - out_lo) / self.STEP_FT))
-        for i in range(ns + 1):
-            for j in range(no + 1):
-                x = self.point(s_mid, p + (q - p) * i / ns, out_lo + (out_hi - out_lo) * j / no)
+        for s in self._samples(p, q):
+            for out in self._samples(out_lo, out_hi):
+                x = self.point(s_mid, s, out)
                 if x is None or not self.seen(x):
                     return False
         return True
+
+    @classmethod
+    def _samples(cls, a: float, b: float) -> list[float]:
+        n = max(1, math.ceil((b - a) / cls.STEP_FT))
+        edges = [a + (b - a) * i / n for i in range(n + 1)]
+        centres = [a + (b - a) * (i + 0.5) / n for i in range(n)]
+        return sorted(edges + centres)
 
 
 def chain_ends_s(scene: dict, rules: RuleSet) -> tuple[float, float] | None:
