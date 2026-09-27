@@ -14,8 +14,10 @@ import OSLog
 ///   UI tests raise it so each screen stays long enough to screenshot and audit.
 /// - `-autopilotGate <folder>`: before the flow leaves a screen, wait until a file named after
 ///   that phase exists in the folder. UI tests write it once they have screenshotted and audited
-///   the screen, so a slow audit can never miss a screen. After the result shows, the autopilot
-///   also writes the scan's scene.json there, for the test to check.
+///   the screen, so a slow audit can never miss a screen. While it waits, the app leaves
+///   `<phase>.held` there, so a test can tell when the autopilot has finished with a screen and
+///   holds it still. After the result shows, the autopilot also writes the scan's scene.json
+///   there, for the test to check.
 /// - `-autopilotCantGetThere`: the autopilot ends the walk with "Can't get there" instead of
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
