@@ -36,19 +36,30 @@ curl -s https://house-scanning-server.vercel.app/health
 ## How it fits together
 
 ```mermaid
-flowchart LR
-  subgraph phone["iPhone app · ios/"]
-    walk["Guided walk<br/>haze lifts where the phone has seen"]
-    packet["Capture packet<br/>photos, poses, lens data,<br/>LiDAR depth if present, marks"]
-    ar["AR result<br/>pinned to the meter"]
+%%{init: {"flowchart": {"wrappingWidth": 480, "nodeSpacing": 40, "rankSpacing": 50}}}%%
+flowchart TB
+  subgraph phone["iPhone app · ios/ · Swift, ARKit, RealityKit"]
+    direction TB
+    walk["<b>Guided walk</b><br/>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen."]
+    packet["<b>Capture packet</b><br/>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and <code>scene.json</code>"]
+    walk --> packet
   end
-  subgraph srv["Server · server/ and recon/"]
-    model["3D model at real scale"]
-    rules["Rules engine<br/>plain code and cited rules"]
+
+  subgraph srv["Server · Python"]
+    direction TB
+    recon["<b>Reconstruction worker</b> · recon/<br/>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen."]
+    api["<b>Placement API</b> · server/ · FastAPI<br/><code>POST /v1/placements</code>"]
+    rules["<b>Rules engine</b><br/>Plain code tries every spot along the wall against<br/><code>rules.yaml</code>, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE."]
+    recon -- "rebuilt scene.json" --> api
+    api --> rules
   end
-  walk --> packet --> model --> rules
-  rules -- "PASS, FAIL or UNSURE" --> ar
-  rules -. "UNSURE: asks for one more view" .-> walk
+
+  result["<b>Result in AR</b> · back on the phone<br/>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result."]
+
+  packet -- "scene.json" --> api
+  packet -. "photos and poses" .-> recon
+  rules -- "spot, or views needed" --> result
+  result -. "UNSURE: one more view" .-> walk
 ```
 
 Models build the geometry and recognize things. Plain code passes or fails each check, so every answer points back to a rule and a measurement. The clearance numbers live in a rules file with their sources, never in code.
@@ -57,7 +68,7 @@ Models build the geometry and recognize things. Plain code passes or fails each 
 | --- | --- | --- |
 | iPhone app | Swift 6, SwiftUI, ARKit, RealityKit, XcodeGen | `ios/` |
 | Rules engine and API | Python 3.12, FastAPI, uv, pytest, deployed on Vercel | `server/` |
-| 3D reconstruction | COLMAP, LiDAR depth, learned depth (MoGe-2, π³) | `recon/` (PR #20) |
+| 3D reconstruction | MoGe-2 learned depth scaled with the ARKit poses, LiDAR depth, Open3D, shapely | `recon/` (PR #20) |
 | Reviewer view | TypeScript, Vite, Vitest, Biome | `web/` |
 | Landing page | Static site on Vercel | `sites/landing` |
 
