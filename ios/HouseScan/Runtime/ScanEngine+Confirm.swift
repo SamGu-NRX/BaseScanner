@@ -27,6 +27,9 @@ struct SpotConfirmState {
     var request: GuidanceLog.Request?
     /// Checks asked in this scan, for their ids.
     var asked = 0
+    /// Times an accepted answer went stale before it was shown and the scan was sent again
+    /// (`acceptedAnswerIsCurrent`); back to 0 once an answer is shown as the result.
+    var staleResends = 0
 }
 
 /// The spot check: before an answer's spot is shown as the result, the homeowner is shown the
@@ -89,10 +92,11 @@ extension ScanEngine {
     /// Shows the answer once the gap loop is done with it: the spot check first when the answer
     /// names a spot no earlier check settles, otherwise the result.
     func presentAnswer() {
+        guard acceptedAnswerIsCurrent(at: "the spot check") else { return }
         guard let result = state.result, let placement, let wall = coverage?.wall, let area = SpotArea(result: placement, wall: wall),
               let sceneSHA256 = spotConfirm.sceneSHA256, let answerSHA256 = spotConfirm.answerSHA256 else {
             state.spotCheck = nil
-            go(.result)
+            showResult()
             return
         }
         let exchange = SpotExchange(sceneSHA256: sceneSHA256, answerSHA256: answerSHA256, rulesSHA256: placement.policy.rulesSHA256)
@@ -104,7 +108,7 @@ extension ScanEngine {
             check.answer = Self.answer(settled.answer)
             state.spotCheck = check
             RuntimeLog.engine.info("spot check: s=\(area.spot.lowerBound)...\(area.spot.upperBound) was answered before (\(settled.answer.name, privacy: .public)); showing the result")
-            go(.result)
+            showResult()
             return
         }
         // Raw cameras with their capture times: each is judged, and drawn, corrected into the frame
@@ -142,6 +146,47 @@ extension ScanEngine {
             state.spotCheck = Self.spotCheck(id: id, area: area, photo: photo, confirmable: confirmable, isSample: result.isSample)
             go(.spotConfirm)
         }
+    }
+
+    /// Whether the accepted answer may still be presented as current at `step` (the spot check,
+    /// the result, the AR view). The geometry can move after the answer was accepted: a ground
+    /// plane revoked or refined, an anchor correction, while the homeowner answers or looks. When
+    /// the revision has moved on since the answer's snapshot, the answer is dropped as at the POST
+    /// (`AnswerFreshness.step`): the scan is sent again from a fresh snapshot, or, when that
+    /// already happened, the stale-answer failure shows. False when it was dropped.
+    func acceptedAnswerIsCurrent(at step: String) -> Bool {
+        guard let sent = lastUploadSnapshot?.revision else { return true }
+        switch AnswerFreshness.step(changesScan: false, sent: sent, now: spatialRevision, resends: spotConfirm.staleResends) {
+        case .show, .upload:
+            return true
+        case .sendAgain:
+            spotConfirm.staleResends += 1
+            RuntimeLog.engine.info("answer went stale before \(step, privacy: .public) (sent at revision \(sent), now \(self.spatialRevision)): sending again")
+            dropStaleAnswer()
+            startUpload()
+        case .stillChanging:
+            RuntimeLog.engine.error("answer went stale again before \(step, privacy: .public) (sent at revision \(sent), now \(self.spatialRevision)): not shown")
+            dropStaleAnswer()
+            state.upload = UploadFailure.stillChanging
+            go(.uploading)
+        }
+        return false
+    }
+
+    /// The result once the answer is known to be current.
+    private func showResult() {
+        spotConfirm.staleResends = 0
+        go(.result)
+    }
+
+    /// A stale answer and the question about it leave the screen; what the homeowner answered
+    /// stays recorded, bound to the exchange it was about.
+    private func dropStaleAnswer() {
+        state.result = nil
+        state.spotCheck = nil
+        spotConfirm.pending = nil
+        spotConfirm.shown = nil
+        spotConfirm.request = nil
     }
 
     /// The wall moved while the question is up (an anchor correction, a new ground): the photo's
@@ -270,10 +315,12 @@ extension ScanEngine {
                 startUpload()
                 return
             }
+            // Nothing to send: the answer shows only if the geometry is still what it answered.
+            guard acceptedAnswerIsCurrent(at: "the result") else { return }
             // The bundle was written at the upload, before this answer: write it again so its
             // guidance log holds the answer.
             if let scene = spotConfirm.lastScene, let snapshot = lastUploadSnapshot { saveBundle(scene: scene, snapshot: snapshot) }
-            go(.result)
+            showResult()
         }
     }
 

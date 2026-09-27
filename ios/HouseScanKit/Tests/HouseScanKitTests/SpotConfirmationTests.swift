@@ -157,6 +157,39 @@ import Testing
         #expect(zip(Self.corners(frozen, wall), taken).allSatisfy { simd_distance($0, $1) > 30 })
     }
 
+    /// An answer accepted as current, then the ground plane is revoked while the photo question is
+    /// up. "It's clear" then "Not sure" adds no patch, so nothing would upload; the answer must
+    /// not be shown as current: it is sent again, and after a second change it is dropped. With
+    /// nothing changed it is shown, and an answer that adds a patch uploads either way.
+    @Test func aGroundRevokedDuringTheQuestionKeepsTheOldAnswerFromBeingShown() throws {
+        var (map, tracking, ground, _) = SpatialUpdateTests.setUp()
+        var revision = 0
+        func step(_ planes: [GroundPlaneEvidence]?, _ time: Double) {
+            if SpatialUpdate.apply(anchor: nil, planes: planes, time: time, map: &map, tracking: &tracking, ground: &ground).changed { revision += 1 }
+        }
+        step([SpatialUpdateTests.lawn], 1)
+        let sent = revision
+        // Accepted at the POST.
+        #expect(AnswerFreshness.of(sent: sent, now: revision, resends: 0) == .current)
+        #expect(AnswerFreshness.step(changesScan: false, sent: sent, now: revision, resends: 0) == .show)
+
+        // The question is up; the ground plane goes.
+        step([], 2)
+        #expect(!ground.measured)
+        var checks = SpotConfirmations()
+        let before = checks.groundPatches(wall: map.wall, groundGuessError: 0.3)
+        try checks.record(Self.confirmation(Self.area, .clear(ground: .notSure)))
+        let changesScan = checks.groundPatches(wall: map.wall, groundGuessError: 0.3) != before
+        #expect(!changesScan)
+        #expect(AnswerFreshness.step(changesScan: changesScan, sent: sent, now: revision, resends: 0) == .sendAgain)
+        // Sent again and accepted; the ground comes back before the result.
+        let resent = revision
+        step([SpatialUpdateTests.lawn], 3)
+        #expect(AnswerFreshness.step(changesScan: false, sent: resent, now: revision, resends: 1) == .stillChanging)
+        // Mulch adds a patch: the scan goes again whatever the revision.
+        #expect(AnswerFreshness.step(changesScan: true, sent: sent, now: revision, resends: 0) == .upload)
+    }
+
     /// "It's clear" counts only with a shown photo of the whole area: no photo, or one showing
     /// part of it, records nothing, and nothing then settles the spot. Answers that withdraw the
     /// area need no photo.

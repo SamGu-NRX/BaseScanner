@@ -24,3 +24,34 @@ public enum AnswerFreshness: Equatable, Sendable {
         return resends < resendLimit ? .sendAgain : .stillChanging
     }
 }
+
+/// What a step that would present an accepted answer as current does: the spot check's end, the
+/// result, the AR view. The answer was current when it arrived (`AnswerFreshness.of`), but the
+/// geometry can move while the homeowner answers the spot check or looks at the result (a ground
+/// plane revoked or refined, an anchor correction), and the answer then describes a wall the
+/// phone no longer has.
+public enum AcceptedAnswerStep: Equatable, Sendable {
+    /// The step itself changes the scan (an answer withdrew an area, or adds a ground patch): it
+    /// is sent again from a fresh snapshot anyway, and the new answer is checked when it arrives.
+    case upload
+    /// The geometry is as sent: show the answer.
+    case show
+    /// It changed: drop the answer and send the scan again from a fresh snapshot.
+    case sendAgain
+    /// It changed again after that: drop the answer and show the stale-answer failure.
+    case stillChanging
+}
+
+extension AnswerFreshness {
+    /// The step for an answer to a scene sent at revision `sent`, when the revision is now `now`
+    /// and a stale accepted answer has already been sent again `resends` times. The same limit
+    /// as at the POST (`resendLimit`).
+    public static func step(changesScan: Bool, sent: Int, now: Int, resends: Int) -> AcceptedAnswerStep {
+        if changesScan { return .upload }
+        switch of(sent: sent, now: now, resends: resends) {
+        case .current: return .show
+        case .sendAgain: return .sendAgain
+        case .stillChanging: return .stillChanging
+        }
+    }
+}
