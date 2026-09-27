@@ -105,7 +105,8 @@ import Testing
     /// seen drawing the first model.
     private static func confirmedPolicy() -> ResultOverlayPolicy {
         var policy = ResultOverlayPolicy()
-        #expect(policy.needsModel(for: shape(), rising: true))
+        let answer1 = policy.needsModel(for: shape(), rising: true)
+        #expect(answer1)
         let answers = Self.answers(Self.confirming, to: &policy)
         #expect(answers.last == true)
         return policy
@@ -113,7 +114,8 @@ import Testing
 
     @Test func theFirstModelIsBuiltAndStartsOnTheCanvas() {
         var policy = ResultOverlayPolicy()
-        #expect(policy.needsModel(for: Self.shape(), rising: false))
+        let answer2 = policy.needsModel(for: Self.shape(), rising: false)
+        #expect(answer2)
         #expect(policy.builtFor == Self.shape())
         #expect(!policy.usesRealityKit)
     }
@@ -123,9 +125,11 @@ import Testing
         // The ground refined by 2 cm, the meter's anchor by 3 cm, the wall turned 1°.
         let turned = SIMD3<Float>(cos(Float.pi / 180), 0, sin(Float.pi / 180))
         let moved = Self.shape(meter: SIMD3(0.03, 0, 0), groundY: -1.22, along: turned)
-        #expect(!policy.needsModel(for: moved, rising: false))
+        let answer3 = policy.needsModel(for: moved, rising: false)
+        #expect(!answer3)
         #expect(policy.usesRealityKit)
-        #expect(policy.update(drawn: false, held: true, time: 0.8))
+        let answer4 = policy.update(drawn: false, held: true, time: 0.8)
+        #expect(answer4)
     }
 
     /// Codex and Sam on #100: a model rebuilt for a moved wall kept the old one's confirmation,
@@ -133,7 +137,8 @@ import Testing
     @Test func aRebuiltModelGoesBackToTheCanvasAndIsConfirmedAgain() {
         var policy = Self.confirmedPolicy()
         // The ground moved 10 cm: a new model.
-        #expect(policy.needsModel(for: Self.shape(groundY: -1.3), rising: false))
+        let answer5 = policy.needsModel(for: Self.shape(groundY: -1.3), rising: false)
+        #expect(answer5)
         #expect(!policy.usesRealityKit)
 
         // The new model looks anchored and in view at the very next look. That alone isn't
@@ -147,7 +152,8 @@ import Testing
     /// see-through meanwhile, so only the Canvas shows.
     @Test func aModelRebuiltOutOfViewStaysOnTheCanvasUntilSeen() {
         var policy = Self.confirmedPolicy()
-        #expect(policy.needsModel(for: Self.shape(rightEnd: 3.5), rising: false))
+        let answer6 = policy.needsModel(for: Self.shape(rightEnd: 3.5), rising: false)
+        #expect(answer6)
         let heldOnly = Self.answers(Self.polled(drawn: false, held: true, from: 0.7, count: 30), to: &policy)
         #expect(heldOnly.allSatisfy { !$0 })
         let inView = Self.answers(Self.polled(drawn: true, held: true, from: 3.7, count: 6), to: &policy)
@@ -157,18 +163,21 @@ import Testing
     @Test func turningPastTwoDegreesOrAnotherPieceRebuilds() {
         var policy = Self.confirmedPolicy()
         let turned = SIMD3<Float>(cos(3 * Float.pi / 180), 0, sin(3 * Float.pi / 180))
-        #expect(policy.needsModel(for: Self.shape(along: turned), rising: false))
+        let answer7 = policy.needsModel(for: Self.shape(along: turned), rising: false)
+        #expect(answer7)
         #expect(!policy.usesRealityKit)
 
         var cornered = Self.confirmedPolicy()
         var withCorner = Self.shape()
         withCorner.points.append(SIMD3(3, 0, 0))
-        #expect(cornered.needsModel(for: withCorner, rising: false))
+        let answer8 = cornered.needsModel(for: withCorner, rising: false)
+        #expect(answer8)
     }
 
     @Test func reopeningTheScreenAlwaysRebuilds() {
         var policy = Self.confirmedPolicy()
-        #expect(policy.needsModel(for: Self.shape(), rising: true))
+        let answer9 = policy.needsModel(for: Self.shape(), rising: true)
+        #expect(answer9)
         #expect(!policy.usesRealityKit)
     }
 
@@ -178,7 +187,8 @@ import Testing
         #expect(policy.builtFor == nil)
         #expect(!policy.usesRealityKit)
         // The next wall update builds one, however little the wall moved.
-        #expect(policy.needsModel(for: Self.shape(), rising: false))
+        let answer10 = policy.needsModel(for: Self.shape(), rising: false)
+        #expect(answer10)
     }
 
     @Test func anOpenEndCountsAsTheSameOnlyIfBothAreOpen() {
