@@ -233,7 +233,7 @@ extension ScanEngine {
             }
             // The bundle was written at the upload, before this answer: write it again so its
             // guidance log holds the answer.
-            if let scene = spotConfirm.lastScene { saveBundle(scene: scene, mesh: liveCapture?.meshSnapshot()) }
+            if let scene = spotConfirm.lastScene, let snapshot = lastUploadSnapshot { saveBundle(scene: scene, snapshot: snapshot) }
             go(.result)
         }
     }

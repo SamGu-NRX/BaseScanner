@@ -293,7 +293,9 @@ final class Autopilot {
     private func writeSceneForTest() {
         guard let gate = engine.options.autopilotGate else { return }
         do {
-            try engine.sceneJSON().write(to: gate.appending(path: "scene.json"))
+            if let snapshot = engine.makeUploadSnapshot(spatial: nil) {
+                try engine.sceneJSON(snapshot).write(to: gate.appending(path: "scene.json"))
+            }
             try engine.spotConfirm.lastScene?.write(to: gate.appending(path: "uploaded-scene.json"))
             try engine.spotConfirm.lastAnswer?.write(to: gate.appending(path: "answer.json"))
             log("wrote scene.json to the gate folder")

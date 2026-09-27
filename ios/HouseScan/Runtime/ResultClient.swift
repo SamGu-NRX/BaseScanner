@@ -101,6 +101,11 @@ enum UploadFailure {
         return "The House Scan server is busy. Your scan is saved on this phone. \(when)"
     }
 
+    /// The answer came back about a wall or ground the phone had corrected since, twice
+    /// (`AnswerFreshness.stillChanging`): it isn't shown, and "Try again" sends a fresh scan.
+    static let stillChanging: UploadState = .failed(
+        message: "Your phone was still adjusting the scan when the answer came back. Hold it steady and try again.", offline: false)
+
     /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
     /// again says which, so the homeowner knows what to fix in the review.
     static func packaging(_ error: any Error) -> UploadState {
