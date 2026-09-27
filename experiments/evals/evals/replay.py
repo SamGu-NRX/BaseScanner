@@ -107,6 +107,28 @@ def read_frames(video: Path, wanted: list[int]) -> dict[int, np.ndarray]:
     return out
 
 
+def replay_identity(sequence: int, start: float, end: float) -> tuple[str, dict]:
+    """The replay's folder name and recorded inputs. Bounds must be whole seconds: the name keeps
+    only whole seconds, so 40.1 and 40.9 would otherwise share a folder."""
+    if start != int(start) or end != int(end):
+        raise ValueError(f"start {start} and end {end} must be whole seconds: they name the replay")
+    source = {"sequence": sequence, "start": int(start), "end": int(end)}
+    return f"advio-{sequence:02d}-{int(start):04d}-{int(end):04d}", source
+
+
+def clear_replay(folder: Path, source: dict) -> None:
+    """Removes an earlier build of the same replay; refuses a folder built from other inputs."""
+    if not folder.exists():
+        return
+    manifest = folder / "session.json"
+    found = json.loads(manifest.read_text()).get("replaySource") if manifest.exists() else None
+    if found != source:
+        raise ValueError(
+            f"{folder} exists and was not built from {source} (found {found}); move it first"
+        )
+    shutil.rmtree(folder)
+
+
 def build_session(seq: Sequence, start: float, end: float, out_dir: Path) -> dict:
     t = seq.frame_times
     ark = seq.arkit
@@ -124,10 +146,9 @@ def build_session(seq: Sequence, start: float, end: float, out_dir: Path) -> dic
 
     cal = seq.calibration
     fx, fy, cx, cy = landscape_intrinsics_from_portrait(cal.fx, cal.fy, cal.cx, cal.cy, cal.width)
-    session_id = f"advio-{seq.number:02d}-{int(start):04d}-{int(end):04d}"
+    session_id, source = replay_identity(seq.number, start, end)
     folder = out_dir / session_id
-    if folder.exists():
-        shutil.rmtree(folder)
+    clear_replay(folder, source)
     (folder / "keyframes").mkdir(parents=True)
 
     frames = read_frames(seq.video, picks)
@@ -182,6 +203,7 @@ def build_session(seq: Sequence, start: float, end: float, out_dir: Path) -> dic
             "pixel": "[u, v] continuous image coordinates: (0, 0) is the top-left corner of the JPEG, v grows down",
             "ray": "origin is the camera position; direction is a unit vector through the tapped pixel",
         },
+        "replaySource": source,
         "session": {
             "id": session_id,
             # ADVIO publishes no wall-clock capture time; this is the Zenodo record's publication date.
@@ -235,8 +257,8 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     ap.add_argument("--sequence", type=int, default=20)
-    ap.add_argument("--start", type=float, default=40.0, help="seconds into the sequence")
-    ap.add_argument("--end", type=float, default=75.0)
+    ap.add_argument("--start", type=int, default=40, help="whole seconds into the sequence")
+    ap.add_argument("--end", type=int, default=75)
     ap.add_argument("--out", type=Path, default=REPLAYS_DIR)
     args = ap.parse_args()
     seq = load_sequence(ADVIO_DIR / f"advio-{args.sequence:02d}")

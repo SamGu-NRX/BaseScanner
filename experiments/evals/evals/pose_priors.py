@@ -51,6 +51,7 @@ from evals.recon import (
     Method,
     Scene,
     cell,
+    comparable_groups,
     load_prediction,
     model_frame_method,
     predict,
@@ -271,9 +272,10 @@ def score_scene(scene: Scene, methods: dict[str, list[Method]], sizes=GROUP_SIZE
         out[range_name] = {}
         for method, draws in methods.items():
             res: dict = {}
+            groups = comparable_groups(scene.groups, sizes)
             for n in map(str, sizes):
                 units: dict[str, list[list[dict]]] = {c: [] for c in COHORTS}
-                for members in scene.groups.get(n, []):
+                for members in groups.get(n, []):
                     ev = sets[members[0]]
                     per_cohort: dict[str, list[dict]] = {c: [] for c in COHORTS}
                     for factory in draws:

@@ -119,6 +119,7 @@ def case(tmp_path, monkeypatch):
     work = tmp_path / "field" / "work" / "synthetic-field"
     (work / "moge2").mkdir(parents=True)
     (work / "turns.json").write_text(json.dumps(dict.fromkeys(CAMERAS, 0)))
+    (work / "capture.json").write_text(json.dumps({"capture": capture}))
     for kid in CAMERAS:
         np.savez(
             work / "moge2" / f"{kid}.npz",
@@ -319,3 +320,47 @@ def test_safe_id_refuses_path_components(bad):
     with pytest.raises(ValueError):
         field.safe_id(bad, "session id")
     assert field.safe_id("synthetic-field_1.2", "session id") == "synthetic-field_1.2"
+
+
+def test_session_file_stays_inside_the_session(tmp_path):
+    (tmp_path / "keyframes").mkdir()
+    (tmp_path / "keyframes" / "k.jpg").write_bytes(b"x")
+    assert (
+        field.session_file(tmp_path, "keyframes/k.jpg")
+        == (tmp_path / "keyframes" / "k.jpg").resolve()
+    )
+    for bad in ["/etc/hosts", "../outside.jpg", "keyframes/../../outside.jpg"]:
+        with pytest.raises(ValueError):
+            field.session_file(tmp_path, bad)
+
+
+def test_score_refuses_predictions_prepared_for_another_capture(case):
+    archive, paths, _, out = case
+    stamp = field.FIELD_DIR / "work" / "synthetic-field" / "capture.json"
+    stamp.write_text(json.dumps({"capture": "0" * 64}))  # same session id, different archive
+    with pytest.raises(ValueError, match="prepared for another capture"):
+        field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+
+
+def test_score_refuses_a_map_for_another_session(case):
+    archive, paths, _, out = case
+    mapping = json.loads(paths["map"].read_text())
+    mapping["session"] = "some-other-session"
+    paths["map"].write_text(json.dumps(mapping))
+    with pytest.raises(ValueError, match="map is for session"):
+        field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+
+
+def test_a_failed_tape_reference_fails_only_the_tape_row(case, monkeypatch):
+    archive, paths, _, out = case
+
+    def no_scale(*args, **kwargs):
+        raise ValueError("no model depth at a reference tap")
+
+    monkeypatch.setattr(field, "tape_scale", no_scale)
+    report = field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+    assert "every value failed" in report
+    tape_row = json.loads((out / "moge2-tape.json").read_text())
+    assert all(m["value_ft"] is None for m in tape_row["measurements"])
+    native = json.loads((out / "moge2.json").read_text())
+    assert any(m["value_ft"] is not None for m in native["measurements"])

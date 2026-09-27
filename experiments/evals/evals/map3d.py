@@ -1,4 +1,4 @@
-"""The app's 3D map (Map3D, t3/ios-map3d) against the same truth as CoverageMap (README section 7c).
+"""The app's 3D map (Map3D, t3/ios-map3d) against the same truth as CoverageMap (METHODS.md section 7c).
 
 The app's code runs unmodified through `map3d_driver/`, built against a read-only checkout of
 HouseScanKit at `KIT_COMMIT`. Its LiDAR path is fed one depth frame per ETH3D photo, 256 x 192,
@@ -151,6 +151,12 @@ def seen_empty(setup: Setup, points: np.ndarray, tol_abs: float = HIDE_ABS_M) ->
     return seen
 
 
+def column_weights(cols: np.ndarray, lo: float, hi: float) -> np.ndarray:
+    """Meters of [lo, hi] each 2 cm column (centred on `cols`) covers, so a span that is not a
+    whole number of columns is not rounded up to the next one."""
+    return np.clip(np.minimum(cols + 0.01, hi) - np.maximum(cols - 0.01, lo), 0.0, None)
+
+
 def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HIDE_ABS_M) -> dict:
     """False-observed length of Map3D's facing or overhead claims: claimed 2 cm columns where at
     least two 5 cm samples of the claimed space were never seen empty."""
@@ -173,12 +179,11 @@ def space_claims(setup: Setup, spans: list[dict], kind: str, tol_abs: float = HI
         pts = wall.world(grid_s, grid_h, grid_o).reshape(-1, 3)
         unseen = (~seen_empty(setup, pts, tol_abs)).reshape(len(cols), -1).sum(axis=1)
         bad = unseen >= 2
-        claimed_ft += len(cols) * 0.02 / FEET
-        bad_ft += bad.sum() * 0.02 / FEET
+        w = column_weights(cols, lo, hi)
+        claimed_ft += w.sum() / FEET
+        bad_ft += w[bad].sum() / FEET
         if bad.any():
-            runs.append(
-                [round(lo / FEET, 2), round(hi / FEET, 2), round(bad.sum() * 0.02 / FEET, 2)]
-            )
+            runs.append([round(lo / FEET, 2), round(hi / FEET, 2), round(w[bad].sum() / FEET, 2)])
     return {
         "claimed_ft": round(claimed_ft, 2),
         "false_observed_ft": round(bad_ft, 2),
@@ -210,15 +215,16 @@ def ground_claims(setup: Setup, spans: list[dict]) -> dict:
             )
             seen |= t.saw & ~t.no_scan
         bad = (~seen).reshape(len(cols), -1).sum(axis=1) >= 2
-        claimed_ft += len(cols) * 0.02 / FEET
-        bad_ft += bad.sum() * 0.02 / FEET
+        w = column_weights(cols, lo, hi)
+        claimed_ft += w.sum() / FEET
+        bad_ft += w[bad].sum() / FEET
         if bad.any():
             runs.append(
                 [
                     round(lo / FEET, 2),
                     round(hi / FEET, 2),
                     round(sp["out"] / FEET, 2),
-                    round(bad.sum() * 0.02 / FEET, 2),
+                    round(w[bad].sum() / FEET, 2),
                 ]
             )
     return {
@@ -332,7 +338,7 @@ def evaluate() -> dict:
         "false_observed_share",
         "missed_ft",
         "seen_two_view_ft",
-        "claimed_samples_seen_only_where_scan_is_empty",
+        "claimed_samples_unknown_for_lack_of_scan",
     )
     stretch = (setup.wall.left, setup.wall.right)
     s_cols = np.arange(stretch[0] + 0.01, stretch[1], 0.02)
@@ -371,7 +377,7 @@ def markdown(r: dict) -> str:
         "256 x 192 depth frame per ETH3D electro photo, rendered from the laser scan. Coverage read "
         f"along section 7's {r['wall_stretch_ft']} ft wall. Lengths in feet along the wall; "
         f"false-observed passes at {PASS_FT} ft or less. Ideal depth: exact, dense, no sensor "
-        "noise, so this is an upper bound on what real LiDAR gives. Definitions: README section 7c.",
+        "noise, so this is an upper bound on what real LiDAR gives. Definitions: METHODS.md section 7c.",
         "",
         "| Band | Claimed | False-observed (share) | Pass | Missed | Seen from 2 positions |",
         "| --- | --- | --- | --- | --- | --- |",

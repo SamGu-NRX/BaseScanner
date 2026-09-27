@@ -22,7 +22,7 @@ from pathlib import Path
 
 import numpy as np
 
-from models.common import RunInputs, read_intrinsics, set_cache_dirs, write_npz
+from models.common import RunInputs, fingerprint, read_intrinsics, set_cache_dirs, write_npz
 from models.map_anything import load, run
 from models.run import pick_device
 
@@ -72,12 +72,15 @@ def main() -> None:
         for members in members_list:
             gid = f"n{n}-{members[0]}"
             out = args.out / gid
-            if (out / "run.json").exists():
-                continue
             poses = None
             if pose_sets is not None:
                 poses = [np.array(pose_sets[gid]["poses"][m]) for m in members]
             images = [images_dir / f"{m}.jpg" for m in members]
+            key = fingerprint(members, images, poses, args.max_side)
+            done = out / "run.json"
+            # Reuse only an output made from these members, images, poses and resolution.
+            if done.exists() and json.loads(done.read_text()).get("fingerprint") == key:
+                continue
             inputs = RunInputs(
                 images=images,
                 intrinsics=read_intrinsics(intr_file, images),
@@ -100,6 +103,7 @@ def main() -> None:
                     res.arrays,
                 )
             summary = {
+                "fingerprint": key,
                 "members": members,
                 "seconds_per_view": round(results[0].seconds, 3),
                 "network_wh": list(results[0].network_wh),

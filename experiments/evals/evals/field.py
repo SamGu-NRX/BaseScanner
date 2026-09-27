@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import sys
 import time
 import zipfile
@@ -133,18 +134,47 @@ def safe_id(value: str, what: str) -> str:
     return value
 
 
+def session_file(folder: Path, relative: str) -> Path:
+    """A file the session names, which must lie inside the session folder: an absolute path or
+    `..` in session.json would otherwise read an unrelated local photo."""
+    root = folder.resolve()
+    path = (root / relative).resolve()
+    if Path(relative).is_absolute() or not path.is_relative_to(root):
+        raise ValueError(f"{folder}: session names {relative!r}, outside the session folder")
+    return path
+
+
+def capture_id(folder: Path, digest: str | None) -> str:
+    """The zip's sha256 (the scoring harness's capture id), or for a folder a sha256 over
+    session.json and every keyframe image, so predictions can be tied to the exact capture."""
+    if digest is not None:
+        return digest
+    h = hashlib.sha256((folder / "session.json").read_bytes())
+    for kf in sorted(load_session(folder)["keyframes"], key=lambda k: k["id"]):
+        h.update(session_file(folder, kf["img"]).read_bytes())
+    return h.hexdigest()
+
+
 def work_dir(folder: Path) -> Path:
     return FIELD_DIR / "work" / safe_id(load_session(folder)["session"]["id"], "session id")
 
 
-def prepare(folder: Path) -> Path:
-    """Upright copies of every keyframe plus the model runner's image list and intrinsics."""
+def prepare(folder: Path, digest: str | None = None) -> Path:
+    """Upright copies of every keyframe plus the model runner's image list and intrinsics, in a
+    work folder tied to this exact capture: a different capture with the same session id clears
+    it, so no earlier prediction survives under the new capture's name."""
     session = load_session(folder)
     out = work_dir(folder)
+    capture = capture_id(folder, digest)
+    stamp = out / "capture.json"
+    if out.exists() and (not stamp.exists() or json.loads(stamp.read_text())["capture"] != capture):
+        shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(json.dumps({"capture": capture}) + "\n")
     (out / "upright").mkdir(parents=True, exist_ok=True)
     listing, intrinsics, turns = [], {}, {}
     for kf in session["keyframes"]:
-        img = cv2.imread(str(folder / kf["img"]))
+        img = cv2.imread(str(session_file(folder, kf["img"])))
         if img is None:
             raise FileNotFoundError(folder / kf["img"])
         k = upright_turns(keyframe_pose_cv(kf))
@@ -187,7 +217,7 @@ def triangulated_scales(folder: Path, out: Path, session: dict, kids: list[str])
 
     def inputs(k):
         if k not in cache:
-            gray = cv2.imread(str(folder / kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
+            gray = cv2.imread(str(session_file(folder, kfs[k]["img"])), cv2.IMREAD_GRAYSCALE)
             cache[k] = (gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k]))
         return cache[k]
 
@@ -511,6 +541,14 @@ def score(
     folder, capture = unpack(session_path)
     session = load_session(folder)
     out = work_dir(folder)
+    stamp = out / "capture.json"
+    if not stamp.exists() or json.loads(stamp.read_text())["capture"] != capture_id(
+        folder, capture
+    ):
+        raise ValueError(
+            f"{out} was prepared for another capture (or not at all): run `prepare` on "
+            f"{session_path} and the model again before scoring it"
+        )
     turns = json.loads((out / "turns.json").read_text())
     started = time.perf_counter()
 
@@ -560,6 +598,13 @@ def score(
 
     truth = json.loads(Path(truth_path).read_text())
     mapping = json.loads(Path(map_path).read_text())
+    if mapping.get("session") != session["session"]["id"]:
+        raise ValueError(
+            f"{map_path}: map is for session {mapping.get('session')!r}, the capture is "
+            f"{session['session']['id']!r}; run `stamp` first"
+        )
+    if capture not in truth.get("captures", []):
+        raise ValueError(f"{truth_path}: survey does not list capture {capture}; run `stamp` first")
     rules_sha = hashlib.sha256(Path(rules_path).read_bytes()).hexdigest()
     ref = mapping["measurements"].get(truth["scale_reference"])
     tape = {m["id"]: m for m in truth["measurements"]}.get(truth["scale_reference"])
@@ -569,9 +614,16 @@ def score(
         and tape
         and tape["status"] == "measured"
     ):
-        s = tape_scale(
-            session, native, ref["session_measurement"], ref["key"], tape["value_ft"] * FEET
-        )
+        try:
+            s = tape_scale(
+                session, native, ref["session_measurement"], ref["key"], tape["value_ft"] * FEET
+            )
+        except ValueError as e:
+            # The tape row fails on its own; the native and triangulated rows still stand.
+            s = float("nan")
+            lines.append(
+                f"- `moge2-tape`: every value failed, because the scale reference did: {e}"
+            )
         rows["moge2-tape"] = ("scale_reference", learned_values(session, positions(native, s)))
     else:
         lines.append(
@@ -619,7 +671,7 @@ def main() -> None:
         print(stamp(args.session, args.truth, args.map, out_dir))
         return
     if args.step == "prepare":
-        print(prepare(unpack(args.session)[0]))
+        print(prepare(*unpack(args.session)))
         return
     report = score(args.session, args.truth, args.map, args.rules, out_dir, args.tap_error_in)
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -138,7 +138,10 @@ def read_ply_xyz(path: Path) -> np.ndarray:
     with path.open("rb") as fh:
         header = []
         while True:
-            line = fh.readline().decode("ascii").strip()
+            raw = fh.readline()
+            if not raw:
+                raise ValueError(f"{path}: file ends before the PLY header's end_header line")
+            line = raw.decode("ascii").strip()
             header.append(line)
             if line == "end_header":
                 break

@@ -377,3 +377,14 @@ def depth_summary(depth: np.ndarray, valid: np.ndarray) -> dict:
         "p5_m": round(float(np.percentile(d, 5)), 3),
         "p95_m": round(float(np.percentile(d, 95)), 3),
     }
+
+
+def fingerprint(members: list[str], images: list[Path], poses, max_side: int | None) -> str:
+    """sha256 over what an output depends on: members, image bytes, poses and input size."""
+    h = hashlib.sha256(json.dumps({"members": members, "max_side": max_side}).encode())
+    for path in images:
+        h.update(path.read_bytes())
+    if poses is not None:
+        for pose in poses:
+            h.update(np.asarray(pose, np.float64).tobytes())
+    return h.hexdigest()

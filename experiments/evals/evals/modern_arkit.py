@@ -210,7 +210,7 @@ def evaluate() -> dict:
 def site_spread(
     scales: np.ndarray, draws: int = 10_000, seed: int = 0
 ) -> tuple[float, float, float]:
-    """Walk-to-walk standard deviation of ARKit's scale within one site, and its 95% bootstrap
+    """Walk-to-walk standard deviation of the ARKit / reference scale ratio within one site, and its 95% bootstrap
     interval over walks. Walks off by more than `OUTLIER` are left out: their reference is in doubt.
     """
     s = scales[np.abs(scales - 1) <= OUTLIER]
@@ -253,13 +253,14 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         f"Walks within 2% of the ground truth's scale: {int(np.sum(np.abs(s_all - 1) <= 0.02))} of "
         f"{len(all_walks)}.",
         "",
-        "## Walk-to-walk spread of ARKit's scale within a site",
+        "## Walk-to-walk spread of the ARKit / reference scale ratio within a site",
         "",
         f"Standard deviation over each site's walks within {OUTLIER:.0%} of the reference, with a "
-        "95% bootstrap interval over walks. A reference scaled to ARKit would carry one scale per "
-        "site, which shifts every walk of that site alike, so this spread survives it: a single "
-        "walk's scale error is at least this large, unless the reference's own scale varies walk "
-        "to walk in step with ARKit's.",
+        "95% bootstrap interval over walks. It measures how much ARKit and the reference disagree "
+        "from walk to walk, not ARKit's error alone: a perfect ARKit paired with a reference whose "
+        "local scale varies would give the same spread. A single site scale for the reference "
+        "cannot remove its local reconstruction error, and no independent bound on that error "
+        "exists here.",
         "",
         "| Site | Walks used | Spread (1 SD) | 95% interval |",
         "| --- | --- | --- | --- |",

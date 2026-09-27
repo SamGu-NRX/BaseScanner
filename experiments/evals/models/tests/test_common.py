@@ -117,3 +117,19 @@ def test_intrinsics_json_must_cover_every_image(tmp_path):
     path.write_text(json.dumps([[1, 1, 0, 0]]))
     with pytest.raises(ValueError, match="1 intrinsics entries for 2 images"):
         read_intrinsics(path, images)
+
+
+def test_fingerprint_changes_with_poses_members_and_resolution(tmp_path):
+    from models.common import fingerprint
+
+    a, b = tmp_path / "a.jpg", tmp_path / "b.jpg"
+    a.write_bytes(b"a")
+    b.write_bytes(b"b")
+    pose = np.eye(4)
+    base = fingerprint(["a", "b"], [a, b], None, 392)
+    assert base == fingerprint(["a", "b"], [a, b], None, 392)
+    assert base != fingerprint(["a", "b"], [a, b], [pose, pose], 392)  # poses added
+    assert base != fingerprint(["a"], [a], None, 392)  # members changed
+    assert base != fingerprint(["a", "b"], [a, b], None, 518)  # resolution changed
+    b.write_bytes(b"B")
+    assert base != fingerprint(["a", "b"], [a, b], None, 392)  # an image changed

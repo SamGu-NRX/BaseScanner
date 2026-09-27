@@ -22,21 +22,21 @@ Surface interior, within 6 m. One taped distance, median / p90 inches, and the m
 | facade | MoGe-2 per photo + true poses | 2 | 8% | 0.7 / 6.1 | 1.3 / 10.4 | +9.8% |
 | facade | Depth Anything 3 metric per photo + true poses | 1 | 8% | 0.9 / 4.7 | 1.4 / 6.8 | -8.4% |
 | facade | Depth Anything 3 metric per photo + true poses | 2 | 8% | 1.1 / 6.9 | 1.6 / 10.8 | -9.1% |
-| electro | scan rendered as depth (evaluation floor) | 1 | 2% | 0.2 / 0.9 | 0.4 / 1.6 | -0.5% |
-| electro | scan rendered as depth (evaluation floor) | 2 | 2% | 0.2 / 0.9 | 0.4 / 1.5 | -0.4% |
-| electro | MoGe-2 per photo + true poses | 1 | 2% | 1.4 / 9.7 | 3.2 / 21.2 | +4.8% |
-| electro | MoGe-2 per photo + true poses | 2 | 2% | 1.9 / 11.0 | 3.5 / 22.8 | +3.3% |
-| electro | Depth Anything 3 metric per photo + true poses | 1 | 2% | 2.4 / 29.7 | 5.2 / 118.5 | -8.6% |
-| electro | Depth Anything 3 metric per photo + true poses | 2 | 2% | 2.6 / 25.5 | 4.8 / 77.3 | -8.3% |
-| electro | scan rendered as depth (evaluation floor) | 1 | 4% | 0.5 / 1.6 | 0.9 / 2.8 | -0.8% |
+| electro | scan rendered as depth (evaluation floor) | 1 | 2% | 0.3 / 0.9 | 0.4 / 1.6 | -0.5% |
+| electro | scan rendered as depth (evaluation floor) | 2 | 2% | 0.2 / 0.9 | 0.4 / 1.4 | -0.4% |
+| electro | MoGe-2 per photo + true poses | 1 | 2% | 1.5 / 10.1 | 3.2 / 21.8 | +4.8% |
+| electro | MoGe-2 per photo + true poses | 2 | 2% | 1.8 / 10.9 | 3.5 / 23.2 | +3.3% |
+| electro | Depth Anything 3 metric per photo + true poses | 1 | 2% | 2.5 / 31.7 | 5.2 / 119.5 | -8.6% |
+| electro | Depth Anything 3 metric per photo + true poses | 2 | 2% | 2.6 / 26.4 | 4.8 / 79.3 | -8.3% |
+| electro | scan rendered as depth (evaluation floor) | 1 | 4% | 0.5 / 1.5 | 0.9 / 2.7 | -0.8% |
 | electro | scan rendered as depth (evaluation floor) | 2 | 4% | 0.5 / 1.6 | 0.9 / 2.8 | -0.8% |
-| electro | MoGe-2 per photo + true poses | 1 | 4% | 1.8 / 8.7 | 3.5 / 17.5 | +4.8% |
-| electro | MoGe-2 per photo + true poses | 2 | 4% | 2.3 / 11.3 | 4.0 / 21.1 | +3.8% |
-| electro | Depth Anything 3 metric per photo + true poses | 1 | 4% | 3.3 / 24.8 | 7.4 / 52.2 | -7.6% |
-| electro | Depth Anything 3 metric per photo + true poses | 2 | 4% | 3.6 / 21.6 | 7.1 / 44.4 | -7.4% |
-| electro | scan rendered as depth (evaluation floor) | 1 | 8% | 0.6 / 1.7 | 1.0 / 2.9 | -0.8% |
-| electro | scan rendered as depth (evaluation floor) | 2 | 8% | 0.5 / 1.8 | 1.0 / 3.0 | -0.8% |
-| electro | MoGe-2 per photo + true poses | 1 | 8% | 1.8 / 10.0 | 3.3 / 19.7 | +4.8% |
-| electro | MoGe-2 per photo + true poses | 2 | 8% | 2.4 / 13.9 | 3.9 / 26.2 | +3.6% |
-| electro | Depth Anything 3 metric per photo + true poses | 1 | 8% | 3.3 / 29.7 | 7.0 / 69.1 | -7.5% |
-| electro | Depth Anything 3 metric per photo + true poses | 2 | 8% | 3.6 / 25.8 | 6.8 / 57.2 | -7.3% |
+| electro | MoGe-2 per photo + true poses | 1 | 4% | 1.7 / 8.3 | 3.4 / 16.6 | +4.8% |
+| electro | MoGe-2 per photo + true poses | 2 | 4% | 2.4 / 11.8 | 4.1 / 22.0 | +3.8% |
+| electro | Depth Anything 3 metric per photo + true poses | 1 | 4% | 3.4 / 24.8 | 7.1 / 52.2 | -7.6% |
+| electro | Depth Anything 3 metric per photo + true poses | 2 | 4% | 3.9 / 22.4 | 7.6 / 46.7 | -7.4% |
+| electro | scan rendered as depth (evaluation floor) | 1 | 8% | 0.5 / 1.6 | 1.0 / 2.7 | -0.8% |
+| electro | scan rendered as depth (evaluation floor) | 2 | 8% | 0.5 / 1.7 | 0.9 / 2.9 | -0.8% |
+| electro | MoGe-2 per photo + true poses | 1 | 8% | 1.8 / 9.7 | 3.4 / 18.8 | +4.8% |
+| electro | MoGe-2 per photo + true poses | 2 | 8% | 2.3 / 12.7 | 3.8 / 23.7 | +3.6% |
+| electro | Depth Anything 3 metric per photo + true poses | 1 | 8% | 3.2 / 28.3 | 7.0 / 62.6 | -7.5% |
+| electro | Depth Anything 3 metric per photo + true poses | 2 | 8% | 3.5 / 23.9 | 6.3 / 50.2 | -7.3% |

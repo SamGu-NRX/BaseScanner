@@ -1,4 +1,4 @@
-"""Options for occlusion in the app's coverage map, on section 7's wall and truth (README section 7b).
+"""Options for occlusion in the app's coverage map, on section 7's wall and truth (METHODS.md section 7b).
 
 Each option runs the app's CoverageMap (HouseScanKit at `coverage.KIT_COMMIT`, unedited) through
 `coverage_driver/`, which models the rule change around it:
@@ -64,7 +64,8 @@ def depth_hidden(
             setup.cfg["maxDistance"] if reach is None else reach,
             relief,
         )
-        bad = (t.hidden | ~t.in_range).any(axis=1)
+        # A depth test with no depth there (no scan return) cannot credit the row.
+        bad = (t.hidden | t.no_scan | ~t.in_range).any(axis=1)
         if bad.any():
             out.append({**x, "rows": [r for r, b in zip(x["rows"], bad, strict=True) if b]})
     return out
@@ -148,7 +149,7 @@ def markdown(res: dict) -> str:
         "## Options",
         "",
         "The last four rows allow that much wall relief in front of the tapped plane, a setting "
-        "chosen after seeing this wall; see README section 7b.",
+        "chosen after seeing this wall; see METHODS.md section 7b.",
         "",
         "| Option | Needs LiDAR | Claimed | False-observed | Pass | Missed | Ground claimed |",
         "| --- | --- | --- | --- | --- | --- | --- |",
