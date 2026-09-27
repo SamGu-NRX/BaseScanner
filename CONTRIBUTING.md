@@ -33,7 +33,7 @@ The `size:*` label describes the effective diff. It is a review signal, not a me
 | Label PR size | a pull request opens or updates | none |
 | TestFlight | someone runs it from the Actions tab | none |
 
-The iOS UI tests skip the every-state accessibility audit on pull requests, because it adds about 10 minutes and macOS runners are scarce. Add the `full-ui` label when a pull request changes screens or copy; pushes to `t3/ios-mvf` and `main` always run it.
+The iOS UI tests skip the every-state accessibility audit on pull requests, because it adds about 10 minutes and macOS runners are scarce. Add the `full-ui` label when a pull request changes screens or copy; pushes to `main` always run it, and PR #10 (`t3/ios-mvf` into `main`) carries the label, so every merge into `t3/ios-mvf` runs it once.
 
 `make check` runs the three local suites. They need uv, Node 24 with pnpm, and Xcode 26 or newer; each directory's README has details. No check is required by branch rules yet. Don't call one required until the rules require its status.
 

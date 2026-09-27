@@ -1,8 +1,10 @@
 name: iOS
 
 on:
+  # No push trigger for t3/ios-mvf: PR #10 (t3/ios-mvf -> main) already tests every merge into
+  # it, and carries full-ui so the audit runs there. A push run would take a second macOS slot.
   push:
-    branches: [main, t3/ios-mvf]
+    branches: [main]
     paths:
       - "ios/**"
       - "!ios/**/*.md"
@@ -65,9 +67,9 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Booting takes 2 to 3 minutes and needs nothing from the build, so it runs alongside the
-      # steps below; the UI test step waits for it.
-      - name: Boot the Simulator in the background
+      # Booting in the background was tried and dropped: on the runner's 3 cores it slowed
+      # swift test and the builds by about 6 minutes to save 2:40. xcodebuild boots it at test time.
+      - name: Find the Simulator
         run: |
           runtime="com.apple.CoreSimulator.SimRuntime.iOS-${SIM_OS//./-}"
           udid="$(xcrun simctl list devices available -j \
@@ -79,7 +81,6 @@ jobs:
             exit 1
           fi
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-          nohup xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &
 
       # The package's drift test compares the vendored server schemas with the server's own copies:
       # the checkout's files once that branch merges, else the t3/server branch, which the shallow
@@ -140,12 +141,6 @@ jobs:
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
           -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO
           HOUSESCAN_GIT_COMMIT="${GITHUB_SHA::12}" build
-
-      - name: Wait for the Simulator
-        timeout-minutes: 10
-        run: |
-          xcrun simctl bootstatus "$SIM_UDID" -b
-          echo "Booted $SIM_NAME on iOS $SIM_OS ($SIM_UDID)."
 
       - name: UI test the whole flow in the Simulator
         # Replays the committed synthetic wall (ios/HouseScanUITests/Fixtures/synthetic-wall) with
