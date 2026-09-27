@@ -162,6 +162,26 @@ struct ResultScreen: View {
     }
 }
 
+private struct Notice: View {
+    var symbol: String
+    var text: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol)
+                .foregroundStyle(Palette.reviewInk)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.caution.opacity(0.18), in: .rect(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
 /// A text-only action inside Details: the card's primary button stays the one filled button.
 private struct TextActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
