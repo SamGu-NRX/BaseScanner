@@ -164,7 +164,8 @@ import simd
                     try Self.sample(replacing: #""center": [4.25, 0.5]"#, with: #""center": [4.25]"#))
     }
 
-    // MARK: Closer unseen end (issue #83). Made-up numbers.
+    // MARK: Closer unseen end (issue #83). The first case uses run 3's figures as published in
+    // #83; the others are made up.
 
     /// The sample with its spot over `spotFt` (nil: no spot) and these ends, in s feet.
     private func result(
