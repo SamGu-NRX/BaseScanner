@@ -193,7 +193,9 @@ extension ScanEngine {
         let plans = result.missingEvidence.map { item in
             gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
         }
-        let settles = plans.map { plan in plan.map { !skippedGaps.contains($0) && captureCanSettle($0) } ?? false }
+        let settles = plans.map { plan in
+            plan.map { plan in !skippedGaps.contains { plan.asksForSameView(as: $0) } && captureCanSettle(plan) } ?? false
+        }
         return Self.presentation(of: result, isSample: isSample, wall: sceneWall) { item in
             result.missingEvidence.firstIndex(of: item).map { settles[$0] } ?? false
         }

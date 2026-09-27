@@ -20,6 +20,8 @@ import OSLog
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
+/// - `-autopilotShowResult`: the autopilot taps "Show my result" on the first request the
+///   server's answer raises, so no further request is raised (issue #39).
 struct LaunchOptions: Equatable {
     var replayFolder: URL?
     var autopilot = false
@@ -29,6 +31,7 @@ struct LaunchOptions: Equatable {
     var autopilotGate: URL?
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
+    var autopilotShowResult = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -44,6 +47,7 @@ struct LaunchOptions: Equatable {
         autopilot = arguments.contains("-autopilot")
         autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
+        autopilotShowResult = arguments.contains("-autopilotShowResult")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }

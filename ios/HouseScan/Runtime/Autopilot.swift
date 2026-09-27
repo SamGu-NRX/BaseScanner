@@ -434,16 +434,44 @@ final class Autopilot {
     /// for it; a replay shows only what it recorded, so when they don't settle the request the
     /// autopilot says "I can't get there", as a homeowner would. An overhead request is answered
     /// like the one before the upload.
+    /// With `-autopilotShowResult`, "Show my result" on the first one instead.
     private func driveServerRequest(_ replay: ReplayPlayer) async {
         guard let request = engine.state.gap else { return }
         log("server request \(request.id) over \(format(request.span))")
-        if request.reason == .overhead {
-            await answerOverheadGap()
+        let skippedBefore = engine.skippedGaps.count
+        let action: String
+        if engine.options.autopilotShowResult {
+            await pause(hold)
+            await engine.waitForGate(.gapRequest)
+            engine.showResultNow()
+            log("server request \(request.id): show my result")
+            action = "showResult"
         } else {
-            await playGapFrames(replay)
+            if request.reason == .overhead {
+                await answerOverheadGap()
+            } else {
+                await playGapFrames(replay)
+            }
+            action = engine.skippedGaps.count > skippedBefore ? "skipped" : "answered"
         }
+        recordServerRequestForTest(id: request.id, action: action)
         // A settled request stays on screen for a moment before the next upload.
         _ = await waitUntil(timeout: 10) { self.engine.state.phase != .gapRequest || self.engine.state.gap?.id != request.id }
+    }
+
+    /// The requests the server's answers raised, in order, with how each ended ("answered",
+    /// "skipped" or "showResult"): with `-autopilotGate`, written to the gate folder as
+    /// `server-requests.json` after each, for the UI test to check the follow-up loop (issue #39).
+    private var serverRequestsForTest: [[String: Any]] = []
+
+    private func recordServerRequestForTest(id: Int, action: String) {
+        serverRequestsForTest.append(["id": id, "action": action])
+        guard let gate = engine.options.autopilotGate else { return }
+        do {
+            try JSONSerialization.data(withJSONObject: serverRequestsForTest).write(to: gate.appending(path: "server-requests.json"))
+        } catch {
+            log("could not write server-requests.json to the gate folder: \(error)")
+        }
     }
 
     /// Waits while the engine plays the replay's frames for the current request. A replay shows

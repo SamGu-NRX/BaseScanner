@@ -115,7 +115,7 @@ public struct GapPlanner: Sendable {
     /// It asks for nothing above the walking band. The server's answer to the first upload names
     /// the wall above it where a check needs that, over the stretch the check reads and to the
     /// height it needs (a wall request with `out_ft`, `GapPlan.Need.wallUp`), and the engine
-    /// raises it at once as the next view (`ScanEngine.nextAutomaticGap`). A request from here
+    /// raises it at once as the next view (`ScanEngine.automaticGapQueue`). A request from here
     /// would have to guess both the stretch and the height (7.5 ft where the public rules need
     /// just over 6.5), and when the guess missed the spot the server chose, the homeowner would
     /// be asked for the wall twice.
@@ -341,5 +341,80 @@ extension GapPlanner {
     /// the meter (issue #35).
     public func endAfterPastEnd(_ plan: GapPlan, side: WalkSide, clearedAt old: Float) -> Float {
         side == .left ? min(plan.span.lowerBound, old) : max(plan.span.upperBound, old)
+    }
+
+    /// The items of the server's missing evidence still to ask for without a tap, in order, with
+    /// their requests, at most `limit` of them: each one a capture can settle whose request asks
+    /// for no view already raised in this pass (`asked`), skipped, or earlier in the list
+    /// (`GapPlan.asksForSameView(as:)`). A request the homeowner couldn't get to is in both, so
+    /// the answer that follows moves on to the next item rather than raising it again (issue #39).
+    public func serverRequests(
+        in missing: [PlacementMissingEvidence], leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>,
+        asked: [GapPlan], skipped: [GapPlan], limit: Int
+    ) -> [(item: PlacementMissingEvidence, plan: GapPlan)] {
+        var requests: [(item: PlacementMissingEvidence, plan: GapPlan)] = []
+        for item in missing where requests.count < limit {
+            guard let plan = self.plan(for: item, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds) else { continue }
+            let seen = asked + skipped + requests.map { $0.plan }
+            guard !seen.contains(where: { plan.asksForSameView(as: $0) }) else { continue }
+            requests.append((item, plan))
+        }
+        return requests
+    }
+
+    /// The first of `serverRequests`: the next item to ask for without a tap. Nil when none is left.
+    public func nextServerRequest(
+        in missing: [PlacementMissingEvidence], leftEnd: Float?, rightEnd: Float?, limitEnds: Set<WalkSide>,
+        asked: [GapPlan], skipped: [GapPlan]
+    ) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+        serverRequests(in: missing, leftEnd: leftEnd, rightEnd: rightEnd, limitEnds: limitEnds, asked: asked, skipped: skipped, limit: 1).first
+    }
+}
+
+extension GapPlan {
+    /// How far a request's span or reach may move and still ask for the same view: 0.1 ft
+    /// (0.03 m), meters. Numerical jitter from the server working the request out again is a few
+    /// hundredths of a foot; a guess, not measured. This applies to the span only: a reach gets
+    /// no allowance beyond float noise (`reachNoise`).
+    public static let sameViewTolerance: Float = 0.03048
+
+    /// Float noise only, meters. A reach is compared as strictly as the server compares it:
+    /// `GapPlanner.progress` needs the requested out_ft itself, so a view out to 6.50 ft does not
+    /// meet a request out to 6.59 ft.
+    static let reachNoise: Float = 1e-5
+
+    /// Whether this request asks for no view beyond `other`'s, allowing for the server working it
+    /// out again from the next upload: the same band and kind of need, a reach no farther than
+    /// the other's, and a span inside the other's give or take `sameViewTolerance`. After "I can't
+    /// get there" the skipped stretch goes to review and the spot or its error margins can move,
+    /// so the same view comes back as, say, 2.41...7.9 ft instead of 2.4...7.9 ft. A request that
+    /// asks for more is a new view, even when it mostly overlaps: a span of 2...9 ft after
+    /// 2...8 ft, or ground out to 6.59 ft after 6.50 ft (issue #39). A met past_end request moves
+    /// its end on 2 m, so the next one asks for new ground and is a different view.
+    public func asksForSameView(as other: GapPlan) -> Bool {
+        guard band == other.band, need.asksNoMore(than: other.need, within: Self.reachNoise) else { return false }
+        // The server's own numbers when both have them: what `progress` compares against.
+        if let reach = requestedOutFt, let otherReach = other.requestedOutFt, reach > otherReach { return false }
+        let tolerance = Self.sameViewTolerance
+        return span.lowerBound >= other.span.lowerBound - tolerance && span.upperBound <= other.span.upperBound + tolerance
+    }
+}
+
+extension GapPlan.Need {
+    /// The same kind of need, with any reach no more than `tolerance` meters past the other's. An
+    /// overhead need without a height (any recorded view) asks no more than one with a height.
+    func asksNoMore(than other: GapPlan.Need, within tolerance: Float) -> Bool {
+        switch (self, other) {
+        case (.cells, .cells):
+            return true
+        case let (.groundOut(a), .groundOut(b)), let (.walkOut(a), .walkOut(b)), let (.wallUp(a), .wallUp(b)):
+            return a <= b + tolerance
+        case let (.overhead(a), .overhead(b)):
+            guard let a else { return true }
+            guard let b else { return false }
+            return a <= b + tolerance
+        default:
+            return false
+        }
     }
 }

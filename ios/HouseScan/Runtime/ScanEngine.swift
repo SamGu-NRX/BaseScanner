@@ -101,11 +101,12 @@ final class ScanEngine {
     /// The end the past_end request cleared: where it was, its kind and when it was marked, put
     /// back or moved on when the request ends without it marked again (`settleClearedEnd`).
     private var clearedEnd: (s: Float, kind: EndKind, t: Double?)?
-    /// Server requests raised without a tap since the review was confirmed (`nextAutomaticGap`),
-    /// oldest first. Each is raised once; the result still offers it as a capture.
+    /// Server requests raised without a tap since the review was confirmed (`automaticGapQueue`),
+    /// oldest first. Each is raised once, whether its view was taken or the homeowner couldn't
+    /// get there; the result still offers it as a capture.
     private var automaticGaps: [GapPlan] = []
-    /// Set when the homeowner says they can't get to a server request's view: after the upload
-    /// that follows, the result shows instead of the next request.
+    /// Set when the homeowner taps "Show my result" on a server request (`stopGapRequests`):
+    /// after the upload that follows, the result shows instead of the next request.
     private var automaticGapsStopped = false
     /// At most this many server requests are raised without a tap per confirmed review, so a
     /// server that keeps finding new gaps can't hold the homeowner in the loop. A guess, not
@@ -1394,15 +1395,14 @@ final class ScanEngine {
         RuntimeLog.engine.info("overhead: kept a view reaching \(reach.map(\.out).min() ?? 0) m over s=\(reach.first?.span.lowerBound ?? 0)...\(reach.last?.span.upperBound ?? 0)")
     }
 
-    /// Ends the current request without the view it asked for ("I can't get there", or something
-    /// overhead): recorded for installer review, then on to the upload. "I can't get there" on a
-    /// server request also ends the requests raised without a tap: after that upload the result
-    /// shows. Something overhead is an answer, not a refusal, so the loop goes on.
+    /// Ends the current request without the view it asked for ("I can't get there", something
+    /// overhead, or "Show my result"): recorded for installer review, then on to the upload. The
+    /// answer that follows raises the next item it lists, never this one again
+    /// (`automaticGapQueue`); only "Show my result" (`stopGapRequests`) ends the requests.
     func skipCurrentGap(because reason: String = "the homeowner can't get there", refused: Bool = true) {
         guard let plan = gapPlan else { return }
         // Something overhead is an answer: the request goes to review without its view.
         resolveGuidance(refused ? .cannotReach : .skipped)
-        if refused, state.gap?.origin == .server { automaticGapsStopped = true }
         // Only a cell request marks cells: skipping a deeper, walked or overhead view says
         // nothing about the band the strip draws.
         if plan.need == .cells { coverage?.markSkipped(plan.band, plan.span) }
@@ -1410,6 +1410,15 @@ final class ScanEngine {
         publishCoverage()
         RuntimeLog.engine.info("gap \(self.gapCounter) left for installer review: \(reason, privacy: .public)")
         afterGapResolved()
+    }
+
+    /// "Show my result" on a server request: this view goes to installer review like one the
+    /// homeowner can't get to, and after the upload that follows the result shows instead of
+    /// the answer's next request.
+    func stopGapRequests() {
+        guard gapPlan != nil, state.gap?.origin == .server else { return }
+        automaticGapsStopped = true
+        skipCurrentGap(because: "the homeowner asked for the result", refused: false)
     }
 
     // MARK: Upload
@@ -1512,10 +1521,11 @@ final class ScanEngine {
         guard let result = placement else { return }
         writeScanStamp(answer: result)
         state.result = presentation(of: result, isSample: resultClient.isSample)
+        state.followUps = automaticGapQueue(result).count
         state.upload = .done
         await waitForGate(.uploading)
         guard scan == generation else { return }
-        if let next = nextAutomaticGap(result) {
+        if let next = automaticGapQueue(result).first {
             // The upload screen says "One more view to finish" once the answer is in
             // (`state.result` set, upload `.done`, both kept through the request): long
             // enough to read before the camera takes over.
@@ -1531,24 +1541,31 @@ final class ScanEngine {
         presentAnswer()
     }
 
-    /// The first item of the answer's missing evidence a capture can settle (the result's
-    /// "capturable"), not skipped and not yet raised in this pass; nil once the homeowner said
-    /// they can't get to one, or after `maxAutomaticGaps` requests.
-    private func nextAutomaticGap(_ result: PlacementResult) -> (item: PlacementMissingEvidence, plan: GapPlan)? {
+    /// The answer's items this pass will still raise without a tap, in order, with their
+    /// requests: those a capture can settle (the result's "capturable"), not skipped and not yet
+    /// raised in this pass (`GapPlanner.serverRequests`), up to `maxAutomaticGaps` requests.
+    /// Empty once the homeowner tapped "Show my result". `asking`, a request about to be raised,
+    /// counts as raised.
+    private func automaticGapQueue(_ result: PlacementResult, asking: GapPlan? = nil) -> [(item: PlacementMissingEvidence, plan: GapPlan)] {
         // A request raised while the phone has lost its place could only time out: show the result.
-        guard !automaticGapsStopped, automaticGaps.count < Self.maxAutomaticGaps, !state.tracking.hasLostItsPlace,
-              sourceState.mayCapture, let map = coverage else { return nil }
-        for item in result.missingEvidence {
-            guard let plan = gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds),
-                  !skippedGaps.contains(plan), !automaticGaps.contains(plan), captureCanSettle(plan) else { continue }
-            return (item, plan)
+        guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, sourceState.mayCapture, let map = coverage else { return [] }
+        let asked = automaticGaps + (asking.map { [$0] } ?? [])
+        // A new view cannot settle an area the homeowner has already said is obstructed.
+        // Filter before the request limit so refused areas do not consume the remaining slots.
+        let capturable = result.missingEvidence.filter { item in
+            gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
+                .map { captureCanSettle($0) } ?? false
         }
-        return nil
+        return gapPlanner.serverRequests(
+            in: capturable, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds,
+            asked: asked, skipped: skippedGaps, limit: Self.maxAutomaticGaps - automaticGaps.count)
     }
 
     /// Starts the capture for an item of the server's missing evidence, whether tapped on the
     /// result or raised after an upload.
     func beginServerGap(_ item: PlacementMissingEvidence, plan: GapPlan) {
+        // Counted before a past_end request clears its end, which would change the other requests.
+        state.followUps = 1 + (placement.map { automaticGapQueue($0, asking: plan).count } ?? 0)
         var pastEnd: WallSide?
         if item.kind == .pastEnd, let side = item.side {
             // The walk has to go past the end it stopped at; that end is no longer a limit. It

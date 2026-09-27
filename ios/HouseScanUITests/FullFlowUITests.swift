@@ -113,6 +113,7 @@ final class FullFlowUITests: XCTestCase {
         var tape = ""
         var scene: [String: Any] = [:]
         var withdrawn: [Double]?
+        var requests: [String] = []
         try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere"], beforeLeaving: { app, phase in
             guard phase == "wallWalk" else { return }
             // The value that matched, from one read: the map's element is rebuilt as the walk
@@ -129,7 +130,13 @@ final class FullFlowUITests: XCTestCase {
                 withdrawn = (try JSONSerialization.jsonObject(with: bytes) as? [String: Any])?["withdrawn_span_ft"] as? [Double]
             }
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            requests = try Self.serverRequests(gate: gate, test: self)
         })
+        // #39: "I can't get there" on a request the answer raised skips only that view. The
+        // sample answer lists more than one view, so the upload after the skip raises the next
+        // one instead of showing the result.
+        let skippedThenMore = requests.dropLast().contains { $0 == "skipped" }
+        XCTAssertTrue(skippedThenMore, "no request raised after a skipped one: \(requests)")
         // The wall map says where each end is, in words VoiceOver reads.
         XCTAssertTrue(tape.contains("Left end ") && tape.contains("left of your meter") && tape.contains("Right end "), "wall map: \(tape)")
 
@@ -161,6 +168,32 @@ final class FullFlowUITests: XCTestCase {
         attachment.name = "cantGetThere-scene"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// #39: "Show my result" on the first request the answer raises (`-autopilotShowResult`) ends
+    /// the requests. The same run as `testCantGetThereEndsWhereThePhoneIs`, whose answers raise a
+    /// second request after a skip, here reaches the result after that one request.
+    @MainActor
+    func testShowMyResultEndsTheRequests() throws {
+        var requests: [String] = []
+        try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere", "-autopilotShowResult"], onScene: { _, gate in
+            requests = try Self.serverRequests(gate: gate, test: self)
+        })
+        XCTAssertEqual(requests, ["showResult"], "requests raised after the answer: \(requests)")
+    }
+
+    /// How each request the server's answers raised ended, in order ("answered", "skipped",
+    /// "showResult"), from the autopilot's `server-requests.json` in the gate folder, attached
+    /// as `server-requests`. Empty when none was raised.
+    @MainActor
+    static func serverRequests(gate: URL, test: XCTestCase) throws -> [String] {
+        guard let bytes = try? Data(contentsOf: gate.appending(path: "server-requests.json")) else { return [] }
+        let attachment = XCTAttachment(data: bytes, uniformTypeIdentifier: "public.json")
+        attachment.name = "server-requests"
+        attachment.lifetime = .keepAlways
+        test.add(attachment)
+        let entries = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [[String: Any]])
+        return entries.compactMap { $0["action"] as? String }
     }
 
     /// "Something's in the way" on the spot check (`-autopilotSomethingThere`), or Continue when no

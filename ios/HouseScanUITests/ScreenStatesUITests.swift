@@ -103,6 +103,12 @@ final class ScreenStatesUITests: XCTestCase {
         "result-reject": ("result.nearest", "The closest spot"),
     ]
 
+    /// Controls a state must offer, by identifier.
+    private static let controls: [String: [String]] = [
+        // #39: "Show my result" on every request the check sent back, with one view left too.
+        "gapRequest-followUp": ["action.skipGap", "action.showResult"],
+    ]
+
     /// States where the scan is packaged, so "Share scan" must show.
     private static let shareStates: Set<String> = ["uploading-offline", "uploading-rejected", "result-review", "result-pass"]
 
@@ -356,6 +362,9 @@ final class ScreenStatesUITests: XCTestCase {
             }
             XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
         }
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            XCTAssertTrue(element(app, identifier).exists, "\(name): \(identifier) is missing")
+        }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
         // audit, after the banner's few seconds on screen, finds it again.
@@ -372,6 +381,29 @@ final class ScreenStatesUITests: XCTestCase {
         for (_, finding) in outcome.persistent {
             XCTFail("\(name): \(finding.message)")
         }
+        // After the audit, so its scrolling can't change what the audit saw: a control that
+        // exists can still sit past the bottom edge, out of the homeowner's reach. At the default
+        // size it must be tappable where it is; at AX5 the screen scrolls, so after scrolling to it
+        // (#39: "Show my result" sits below the tape there).
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            let target = element(app, identifier)
+            guard target.exists else { continue }
+            let reached = name.hasSuffix("-AX5") ? scrollUntilHittable(target, in: app) : target.isHittable
+            XCTAssertTrue(reached, "\(name): \(identifier) can't be tapped")
+        }
+    }
+
+    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
+    /// drag as `revealCutOff`, so it scrolls without momentum.
+    @MainActor
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<4 {
+            if target.isHittable { return true }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        return target.isHittable
     }
 
     /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge

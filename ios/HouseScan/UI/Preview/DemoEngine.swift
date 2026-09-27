@@ -313,6 +313,8 @@ final class DemoEngine: ScanActions {
         state.target = DemoScene.wall.world(s: 1.7, height: 0, out: 0.5)
         state.path = DemoScene.path(toward: 1.7)
         if let serverItem {
+            // The demo's check asks for one view at most.
+            state.followUps = 1
             state.gap?.origin = .server
             state.gap?.reason = .server(detail: serverItem.text)
             run { engine in await engine.gapScript(span: span) }
@@ -359,6 +361,7 @@ final class DemoEngine: ScanActions {
         state.path = []
         state.target = nil
         state.upload = .packaging
+        state.followUps = 0
         run { engine in await engine.uploadScript() }
     }
 
@@ -507,6 +510,7 @@ final class DemoEngine: ScanActions {
         if !followedUp, let item = sample.missing.first(where: \.capturable) {
             state.shareableScan = Self.demoScan
             state.result = sample
+            state.followUps = 1
             state.upload = .done
             followedUp = true
             guard await pause(1.6) else { return }
@@ -549,6 +553,7 @@ final class DemoEngine: ScanActions {
         script?.cancel()
         state.shareableScan = Self.demoScan
         state.result = Self.reviewSample
+        state.followUps = 1
         state.upload = .done
         followedUp = true
         if phase == .gapRequest {
@@ -836,6 +841,11 @@ final class DemoEngine: ScanActions {
         if let gap = state.gap { setGround(gap.span, to: .skipped) }
         if state.gap?.origin == .server, followedUp { followUpSkipped = true }
         enterUpload()
+    }
+
+    /// The demo's check asks for one view at most, so stopping early is skipping it.
+    func showResultNow() {
+        skipGap()
     }
 
     func cannotAccessArea() {
