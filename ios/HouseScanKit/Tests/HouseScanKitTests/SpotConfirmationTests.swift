@@ -113,6 +113,50 @@ import Testing
         #expect(try #require(SpotPhoto.best([front], area: tall, wall: standardWall())).areaInView < 1)
     }
 
+    /// An anchor pose at the meter, moved `shift` m along the wall.
+    static func anchor(_ shift: Float) -> simd_float4x4 {
+        var pose = matrix_identity_float4x4
+        pose.columns.3 = SIMD4(shift, 1.5, 0, 1)
+        return pose
+    }
+
+    /// Pixels of the footprint's corners through `camera` on `wall`.
+    static func corners(_ camera: CameraFrame, _ wall: WallFrame) -> [SIMD2<Float>] {
+        [(0.9, 0.0), (1.7, 0.0), (1.7, 0.3), (0.9, 0.3)].compactMap { camera.pixel(of: wall.world(s: $0.0, height: 0, out: $0.1)) }
+    }
+
+    /// A photo taken at t = 1, then ARKit moves the meter's anchor 0.30 m along the wall at t = 2,
+    /// before the question: the wall moves with it. Judged with its corrected camera the photo
+    /// shows the area as it did, and the outline lands on the footprint's pixels as taken; the raw
+    /// camera against the moved wall puts every corner over 40 px off (fx 500, the corners 2.3 to
+    /// 3.0 m away; 0.30 m at 2 m would be 75 px). A second
+    /// correction at t = 3, while the question is up: judging the same photo again gives the
+    /// camera for the moved wall, and the camera frozen at the question is off again.
+    @Test func anchorCorrectionsKeepTheOutlineOnTheFootprint() throws {
+        let raw = Self.camera(s: 1.75, out: 2.6)
+        let taken = Self.corners(raw, standardWall())
+        #expect(taken.count == 4)
+        let candidate = SpotPhotoCandidate(id: "k00007", camera: raw, trackingNormal: true, capturedAt: 1)
+        let asTaken = try #require(SpotPhoto.best([candidate], area: Self.area, wall: standardWall()))
+
+        var tracking = MeterAnchorTracking(pose: Self.anchor(0))
+        var wall = standardWall()
+        let first = tracking.update(to: Self.anchor(0.30), at: 2)
+        wall.apply(try #require(first))
+        let shown = try #require(SpotPhoto.best([candidate], area: Self.area, wall: wall, corrections: PoseCorrections(tracking)))
+        #expect(shown.footprintInView == asTaken.footprintInView && shown.areaInView == asTaken.areaInView)
+        let frozen = try #require(shown.camera)
+        #expect(zip(Self.corners(frozen, wall), taken).allSatisfy { simd_distance($0, $1) < 0.5 })
+        #expect(zip(Self.corners(raw, wall), taken).allSatisfy { simd_distance($0, $1) > 40 })
+
+        let second = tracking.update(to: Self.anchor(0.55), at: 3)
+        wall.apply(try #require(second))
+        let again = try #require(SpotPhoto.best([candidate], area: Self.area, wall: wall, corrections: PoseCorrections(tracking)))
+        #expect(again.showsWholeArea == shown.showsWholeArea)
+        #expect(zip(Self.corners(try #require(again.camera), wall), taken).allSatisfy { simd_distance($0, $1) < 0.5 })
+        #expect(zip(Self.corners(frozen, wall), taken).allSatisfy { simd_distance($0, $1) > 30 })
+    }
+
     /// "It's clear" counts only with a shown photo of the whole area: no photo, or one showing
     /// part of it, records nothing, and nothing then settles the spot. Answers that withdraw the
     /// area need no photo.

@@ -170,7 +170,7 @@ public struct GapPlanner: Sendable {
         switch gap.need {
         case .cells where gap.reason == .server: spans = Self.exportedSpans(gap.band, coverage)
         case .cells: return coverage.coveredFraction(gap.band, in: gap.span)
-        case .groundOut(let out): spans = reaching(Self.exported(coverage.groundDepthSpans()), out)
+        case .groundOut(let out): spans = reaching(Self.exportedGround(coverage), out)
         case .walkOut(let out): spans = reaching(Self.exported(coverage.facingSpans()), out)
         case .overhead(let height): spans = reaching(Self.exported(coverage.overheadSpans()), height)
         case .wallUp(let height): spans = reaching(Self.exported(coverage.wallSeenSpans()), height)
@@ -206,12 +206,23 @@ public struct GapPlanner: Sendable {
     static func exportedSpans(_ band: SurfaceBand, _ coverage: CoverageMap) -> [ClosedRange<Float>] {
         switch band {
         case .wall: exported(coverage.wallSeenSpans()).map(\.span)
-        case .ground: exported(coverage.groundDepthSpans()).map(\.span)
+        case .ground: exportedGround(coverage).map(\.span)
         }
     }
 
     /// A band's entries as the export writes them: joined or dropped to fit the schema's entry
     /// limit (`ObservedSpan.coarsened`), which only ever reports less.
+    /// The ground entries as the export writes them (`SceneExport.groundEntries`): joined to
+    /// leave one entry per corner of the chain. Joining to the other bands' budget kept two
+    /// neighbours the export joins, and settled a request on the deeper one of them.
+    static func exportedGround(_ coverage: CoverageMap) -> [ObservedSpan] {
+        exportedGround(coverage.groundDepthSpans(), corners: coverage.wall.segments.count - 1)
+    }
+
+    static func exportedGround(_ spans: [ObservedSpan], corners: Int) -> [ObservedSpan] {
+        SceneExport.groundEntries(spans, corners: corners)
+    }
+
     static func exported(_ spans: [ObservedSpan]) -> [ObservedSpan] {
         ObservedSpan.coarsened(spans, toAtMost: SceneExport.bandBudget)
     }
