@@ -1,8 +1,9 @@
 # Three arrival checks for the capture packet validator
 
-Three checks the server's validator does not make at 0.4, each catching a mistake that passes
-every other check. They are described here in our own words; nothing is copied from the server's
-private code. Each ran in the packet 1.1 validator (`t3/packet` `d5439cf`, `packet/validate.py`)
+Three checks we propose for the server's validator, each catching a mistake that each part of a
+packet can pass on its own. We read the server's spec and parts of its code but did not audit its
+whole validator, so some of these may already exist there. They are described here in our own
+words; nothing is copied from the server's private code. Each ran in the packet 1.1 validator (`t3/packet` `d5439cf`, `packet/validate.py`)
 with a test that breaks it on purpose. Whether they reach the server as a pull request or stay a
 proposal is Sam's and Hunter's call.
 
@@ -17,20 +18,29 @@ clocks: for example, keyframe poses converted to another frame while the stream 
 timestamps taken from `Date` on one side and uptime on the other. Every other check passes such a
 packet, because each part is valid on its own.
 
+**Limits.** It compares positions only: a keyframe with the right position and a wrong rotation
+(an inverted transform, other camera axes) passes. A rotation tolerance needs a measured basis
+first. Packet 1.1 had one world per packet, so matching within an epoch is part of the proposal,
+not something 1.1 tested.
+
 **Evidence.** On the ADVIO sample, 79 keyframes matched their stream rows exactly. Moving one
 keyframe 10 cm, or its timestamp past the stream's end, fails the check (1.1 tests
 `test_a_photo_off_its_trajectory` and `test_a_photo_between_trajectory_samples`).
 
-## 2. Depth is aligned to its keyframe
+## 2. Depth has its keyframe's shape
 
-A depth map covers its keyframe's field of view at lower resolution:
+A depth map covers its keyframe's field of view at lower resolution, so:
 - its `w / h` equals the image's within 1%, and it is no larger than the image;
 - values are finite and non-negative, with 0 for no measurement, and at least 1% are measured;
 - confidence values are at most 2.
 
-**What it catches.** A depth map from another orientation or crop (for example a portrait-rotated
-map with a landscape image), which the byte-count check passes because `w × h` is unchanged. It
+**What it catches.** A depth map rotated 90° or cropped to another aspect (for example a portrait
+map with a landscape image), which a byte-count check passes because `w × h` is unchanged. It
 also catches NaN written for "no reading", and an all-zero map.
+
+**Limits.** It checks shape, not alignment. A map flipped 180°, mirrored, or taken from another
+keyframe with the same size passes. Proving alignment would need orientation and capture-link
+fields the contract does not have.
 
 **Evidence.** On ETH3D electro with laser-rendered depth, ETH3D's own 3-D points reprojected
 through the packet's poses to a median 0.65 to 1.01 px, and the depth agreed with them to a median
@@ -44,12 +54,13 @@ this check proposes one layout as well:
 - `float x, y, z` per vertex, and per face a `uchar` count followed by that many `int` indices,
   then an optional `uchar classification`;
 - the body length equals exactly what the vertex and face counts imply;
-- every face is a triangle, and every index is below the vertex count;
+- vertex and face counts are non-negative, and every vertex coordinate is finite;
+- every face is a triangle, and every index satisfies `0 <= index < vertex_count`;
 - classification values are 0 to 7 (`ARMeshClassification`), and all 0 when `mesh.classified` is
   false.
 
-**What it catches.** A truncated upload that still hashes as sent, an index past the vertex list
-(which crashes or corrupts a reconstruction reader), `double` coordinates or `uint` counts from a
+**What it catches.** A truncated upload that still hashes as sent, a negative index or one past
+the vertex list (which crashes or corrupts a reconstruction reader), `NaN` or infinite vertices, `double` coordinates or `uint` counts from a
 different exporter, and classes written when classification was off, which cannot be told from
 ARKit's own 0 ("none").
 
@@ -71,7 +82,8 @@ any validator that reads packets the same way:
   look right on a truncated file. Decode the pixels (`Image.load()`) before accepting it.
 - **Malformed binaries.** Parsing a short mesh or depth body can raise before the length check
   runs. Report it as a problem, not an exception.
-- **Non-JSON numbers.** `json.loads` accepts `NaN` and `Infinity` by default. Parse with
-  `parse_constant` raising, so a pose or intrinsic cannot be `NaN`.
+- **Non-finite numbers.** `json.loads` accepts `NaN` and `Infinity` by default, and parses the
+  valid JSON number `1e400` as infinity without calling `parse_constant`. Check every parsed
+  number with `math.isfinite`, so no pose or intrinsic is `NaN` or infinite.
 - **Stream times outside the capture.** A stream with samples far outside the session's time span
   passed with only a warning. Decide whether that is an error.

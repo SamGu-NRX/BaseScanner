@@ -2,9 +2,9 @@
 
 The capture packet is how a scan leaves the phone. It is specified by the server team's capture
 packet spec, `formatVersion` 0.4, together with its intake API. The spec is
-`docs/capture-packet-spec.md` in the private repository `huntertcarver/house-scanning-server`;
-the API is its Appendix D (`/v1/captures`, `/files`, `/files:commit`, `/finalize`). That spec is
-the one contract; this folder does not define a format of its own.
+`docs/capture-packet-spec.md` in the private repository `huntertcarver/house-scanning-server`,
+and the intake API is its Appendix D. That spec is the one contract; this folder does not define
+a format of its own.
 
 This folder holds the app side's proposals for the next revision (0.5): what the app records
 that 0.4 has no field for, and three arrival checks for the server's validator
@@ -14,7 +14,10 @@ retired; it is still readable at `t3/packet` commit `d5439cf`.
 ## Proposals for 0.5
 
 Each item is something the app knows at capture time and the server would otherwise have to
-guess. All are additive, so 0.4 readers keep working.
+guess. All eleven are unapproved proposals. None is part of the current contract, and the app must
+not send them until the contract's owners adopt them in a version and with a compatibility rule
+of their choosing. The study numbers cited motivate device tests; none is measured phone
+performance.
 
 1. **The meter anchor's orientation.** 0.4 records the meter tap's point, not the wall it sits
    on. Every placement distance is measured along that wall from the meter (C1's `s = 0`), and
@@ -23,8 +26,10 @@ guess. All are additive, so 0.4 readers keep working.
    the meter, +y up, +z the wall's outward normal, +x along the wall to the right seen from
    outside) and `normalSource`: `single_raycast` (one plane hit at the tap), `fitted` (fitted
    across the walk), `mesh` or `estimated`. The source matters: the signals lab (#59,
-   `experiments/edge-geometry`) measured the yaw of the app's single-raycast plane at 2.2° median
-   and 6.7° p90, which at 10 ft along the wall moves a point about 1 ft.
+   `experiments/edge-geometry`) found a yaw error of 2.2° median and 6.7° p90 for a stand-in for
+   the app's plane, a 0.3 m plane fitted to depth on ETH3D photos, not a device raycast. At that
+   p90, 10 ft along the wall moves a point about 1 ft. A per-capture yaw uncertainty is worth
+   adding once a device study measures it.
 2. **The ground's height at the meter.** 0.4 notes that world y = 0 is the phone's height at
    session start, not the ground. The app measures the ground where it can: the horizontal plane
    below the meter. Proposal: `meterAnchor.groundY` (world meters) with `groundSource`
@@ -34,7 +39,8 @@ guess. All are additive, so 0.4 readers keep working.
    homeowner gave about it:
    - whether a wall end is a real end (something blocks it) or unexplored (it turns a corner,
      or no answer), which decides whether the server may reject for want of space;
-   - whether a window opens, which decides whether the opening clearance applies;
+   - whether a window opens, which the rules may use (whether a fixed window is exempt from the
+     opening clearance is the rules' choice, not the app's);
    - which corner taps belong to the same door or window.
 
    Proposal: `taps[].attrs` with `endKind` (`limit`, `unexplored`) and `operable`, and
@@ -58,15 +64,17 @@ guess. All are additive, so 0.4 readers keep working.
 7. **The frame of a plane's boundary.** 0.4 lists `planes[].boundary` without saying its frame.
    ARKit's `boundaryVertices` are relative to the anchor transform, not to `planeExtent`'s centre
    and `rotationOnYAxis`, and packet 1.1 found that mixing the two is an easy mistake. Proposal:
-   state that `boundary` is `[x, z]` in the anchor's frame, and have the validator check it lies
-   within `planeExtent` once the centre and rotation are applied.
-8. **Photos that frame one span.** An along-wall edge is 0.9 in p90 when seen within 15° of
-   face-on and 24 in beyond 45° (#59, `experiments/edge-geometry`), so a distance measured inside
-   one face-on photo is far better than one chained across the walk. Proposal: a still or
+   carry the anchor-frame boundary in a new field whose frame is stated, rather than giving the
+   existing `boundary` a meaning an existing reader might not share, and have the validator check
+   it lies within `planeExtent` once the centre and rotation are applied.
+8. **Photos that frame one span.** With learned depth on ETH3D photos, an along-wall edge came to
+   0.9 in p90 when seen within 15° of face-on and 24 in beyond 45° (#59,
+   `experiments/edge-geometry`), so a distance measured inside one face-on photo is likely far
+   better than one chained across the walk. Proposal: a still or
    keyframe purpose `span` that names the marks the photo frames.
-9. **Scale references in view.** One reference near the meter is not enough: ARKit's scale drifts
-   1.8% (robust SD) within a walk (#59, `experiments/drift-anatomy`), so a reference helps where
-   it appears. Proposal: `references[]` with `kind` (door, brick course, and hand-held ones such
+9. **Scale references in view.** One reference near the meter may not be enough: on MARViN's
+   walks ARKit's scale varied 1.8% (robust SD) within a walk (#59, `experiments/drift-anatomy`),
+   so a reference helps where it appears. Proposal: `references[]` with `kind` (door, brick course, and hand-held ones such
    as an ID card or a Letter sheet), nominal size, and its corners in each photo that shows it.
    Hand-held references ask the homeowner to hold something; #59 rates them worth a device test
    (`experiments/sensor-budget`), and whether the flow may ask is Sam's and Hunter's call.
@@ -75,11 +83,12 @@ guess. All are additive, so 0.4 readers keep working.
     world pose at each ARKit update, so the server can see how far the meter frame moved. There
     is no measurement of that movement yet.
 11. **Distances from a second phone (low priority).** When a second phone with UWB is present,
-    an optional stream of phone-to-phone distances. #59 (`experiments/drift-anatomy`) finds it
-    cuts the p90 error at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at
-    5 cm.
+    an optional stream of phone-to-phone distances. In #59's simulation on MARViN walks
+    (`experiments/drift-anatomy`), a simulated range cut the p90 error at 20 ft from 10.4 in to
+    7.7 in at 10 cm ranging noise, and to 4.9 in at 5 cm.
 
 Already in 0.4, so not proposed: the kind and distance of each tap's hit, a keyframe for every
 tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked
-and a location-consent flag; 0.4's exposure and EXIF, `arkitPoses` and `locationAuthorization`
-cover them.
+and a flag for consent to share location. They are not proposed here: distance walked can be
+derived from the pose stream, and whether a sharpness score or a sharing-consent record belongs
+in the contract is for its owners.
