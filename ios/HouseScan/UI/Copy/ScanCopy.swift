@@ -180,9 +180,13 @@ enum ScanCopy {
 
     /// Under the wall map when ending the wall at the dashed line would cut off part of the walk,
     /// only while the walk asks to walk that way or mark the end (`EndPreview.leavesOutWalked`).
-    static func endLeavesOut(_ meters: Float) -> String {
-        "Ending the wall here leaves out \(Distance.roughFeet(meters)) you walked"
+    /// `seen`: the stretch is cells the camera saw, not the walk (`EndPreview.leavesOutSeen`).
+    static func endLeavesOut(_ meters: Float, seen: Bool = false) -> String {
+        "Ending the wall here leaves out \(Distance.roughFeet(meters)) \(leftOutVerb(seen))"
     }
+
+    /// "you walked", or "you saw" when the stretch left out was seen but not walked.
+    static func leftOutVerb(_ seen: Bool) -> String { seen ? "you saw" : "you walked" }
 
     /// Over the walk's own prompt after "Done with this wall" was refused and the ends cleared
     /// (`ScanViewState.wallTooShort`).
@@ -448,9 +452,9 @@ enum ScanCopy {
     /// the result must not treat as the end of usable wall. `leavesOut` is how much of the walk
     /// the end just made leaves out (`ScanViewState.endQuestionLeavesOut`), said here since the
     /// strip says it only while the walk asks to walk that way (#66).
-    static func endQuestion(_ side: WallSide, leavesOut: Float? = nil) -> Instruction {
+    static func endQuestion(_ side: WallSide, leavesOut: Float? = nil, seen: Bool = false) -> Instruction {
         let why = "This tells the installer whether the wall keeps going."
-        let detail = leavesOut.map { "This leaves out \(Distance.roughFeet($0)) you walked. \(why)" } ?? why
+        let detail = leavesOut.map { "This leaves out \(Distance.roughFeet($0)) \(leftOutVerb(seen)). \(why)" } ?? why
         return Instruction(title: "What's at the \(side.rawValue) end?", detail: detail)
     }
 

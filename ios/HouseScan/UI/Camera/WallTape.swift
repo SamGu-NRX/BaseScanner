@@ -96,7 +96,7 @@ struct WallTape: View {
             : AnyLayout(HStackLayout(spacing: 12))
         return layout {
             if let leavesOutWalked {
-                LegendEntry(title: ScanCopy.endLeavesOut(leavesOutWalked)) { EndPreviewSwatch() }
+                LegendEntry(title: ScanCopy.endLeavesOut(leavesOutWalked, seen: endPreview?.leavesOutSeen == true)) { EndPreviewSwatch() }
             }
             if !hiddenSections.isEmpty {
                 LegendEntry(title: "Hidden behind something") { HiddenSwatch() }
@@ -330,7 +330,7 @@ struct WallTape: View {
                 ? "Wall ends here marks the \(preview.side.rawValue) end \(Self.spokenFromMeter(preview.s))"
                 : "If you end the wall now, the \(preview.side.rawValue) end goes \(Self.spokenFromMeter(preview.s))"
             if let leavesOutWalked {
-                sentence += ", leaving out \(Distance.spoken(leavesOutWalked)) you walked"
+                sentence += ", leaving out \(Distance.spoken(leavesOutWalked)) \(ScanCopy.leftOutVerb(endPreview?.leavesOutSeen == true))"
             }
             parts.append(sentence)
         }

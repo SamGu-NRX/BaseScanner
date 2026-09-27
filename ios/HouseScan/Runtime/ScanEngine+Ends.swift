@@ -36,8 +36,13 @@ extension ScanEngine {
     /// `walkedEnd` with why it landed there, for the preview and the log.
     private func walkedEndChoice(_ side: WallSide) -> WalkedEnd.Choice? {
         guard let map = coverage else { return nil }
+        // Normal for a moment only doesn't count: a pose can jump as tracking comes back.
         let trackingNormal = currentFrame?.tracking == .normal
-        return WalkedEnd.choose(side.walk, phone: phonePosition, trackingNormal: trackingNormal, walked: map.walkedPositions, wall: map.wall)
+            && WalkedEnd.trackingSteady(normalSince: trackingNormalSince, now: currentFrame?.timestamp ?? 0)
+        return WalkedEnd.choose(
+            side.walk, phone: phonePosition, trackingNormal: trackingNormal, walked: map.walkedPositions, wall: map.wall,
+            seen: map.seenExtent
+        )
     }
 
     /// The strip's seen cells, when the cap decided the end: what an end short of them leaves
@@ -90,7 +95,8 @@ extension ScanEngine {
             side: side.walk, s: s, walked: map.walkedPositions, wall: map.wall,
             phoneOut: phoneOut, onWalkTask: onWalkTask, seen: seen
         )
-        return EndPreview(side: side, s: s, atReticle: offer.atReticle, leavesOutWalked: leavesOut)
+        let isSeen = leavesOut != nil && WalkedEnd.leftOutIsSeen(side.walk, s: s, walked: map.walkedPositions, wall: map.wall, seen: seen)
+        return EndPreview(side: side, s: s, atReticle: offer.atReticle, leavesOutWalked: leavesOut, leavesOutSeen: isSeen)
     }
 
     /// Republishes the end preview; called with every guidance update, since the phone moves.
@@ -111,6 +117,8 @@ extension ScanEngine {
         // Unexplored until the homeowner says something blocks the wall there, as for a marked end.
         state.endQuestion = preview.side
         state.endQuestionLeavesOut = leavesOut
+        state.endQuestionLeavesOutSeen = leavesOut != nil
+            && WalkedEnd.leftOutIsSeen(preview.side.walk, s: preview.s, walked: map.walkedPositions, wall: map.wall, seen: seen)
         setEnd(preview.side, at: preview.s, kind: .unexplored)
     }
 

@@ -83,6 +83,9 @@ final class ScanEngine {
         didSet { if nextWallSide == nil { pendingNextWall = nil } }
     }
     var nextWallRefusal: NextWallRefusal?
+    /// When tracking last became normal (a frame's timestamp), nil while it isn't: an end goes
+    /// where the phone is only once it has settled (`WalkedEnd.trackingSteady`).
+    var trackingNormalSince: Double?
     /// The wall marked as the next one, waiting for "Is this the next wall?" (#70); cleared with
     /// `nextWallSide`. Published as `ScanViewState.nextWallConfirm`.
     var pendingNextWall: PendingNextWall? {
@@ -431,6 +434,12 @@ final class ScanEngine {
     func ingest(_ frame: SourceFrame) {
         captureClock = max(captureClock ?? frame.timestamp, frame.timestamp)
         if !frame.isPoseOnly { lastFrame = frame }
+        if frame.tracking != .normal {
+            trackingNormalSince = nil
+        } else if trackingNormalSince.map({ frame.timestamp < $0 }) ?? true {
+            // Newly normal, or a replay restarted with earlier timestamps.
+            trackingNormalSince = frame.timestamp
+        }
         if let still = frame.still { state.feed = .still(still) }
         state.projection = frame.projection
         if state.tracking != frame.tracking {
