@@ -25,9 +25,11 @@ import Testing
     /// search.
     @Test func anUnansweredMotionRequestHoldsTheBarometer() {
         var gate = BarometerGate(answer: .unanswered)
-        #expect(!gate.recordingStarted(undecided: true))
+        let started = gate.recordingStarted(undecided: true)
+        #expect(!started)
         #expect(gate.held)
-        #expect(!gate.permissionChecked(undecided: true))
+        let startsNow = gate.permissionChecked(undecided: true)
+        #expect(!startsNow)
         #expect(gate.held)
     }
 
@@ -35,9 +37,11 @@ import Testing
     @Test func aHeldBarometerStartsMidRecordingOnceDecided() {
         var gate = BarometerGate(answer: .unanswered)
         _ = gate.recordingStarted(undecided: true)
-        #expect(gate.permissionChecked(undecided: false))
+        let startsNow = gate.permissionChecked(undecided: false)
+        #expect(startsNow)
         #expect(gate.running && !gate.held)
-        #expect(!gate.permissionChecked(undecided: false))
+        let startsAgain = gate.permissionChecked(undecided: false)
+        #expect(!startsAgain)
     }
 
     /// Stopped while held, nothing starts; the next recording checks again.
@@ -46,19 +50,23 @@ import Testing
         _ = gate.recordingStarted(undecided: true)
         gate.recordingStopped()
         #expect(!gate.held)
-        #expect(!gate.permissionChecked(undecided: false))
-        #expect(gate.recordingStarted(undecided: false))
+        let startsNow = gate.permissionChecked(undecided: false)
+        #expect(!startsNow)
+        let started = gate.recordingStarted(undecided: false)
+        #expect(started)
     }
 
     @Test func otherAnswersStartTheBarometerWithTheRecording() {
         for answer: CapturePermissions.Motion in [.allowed, .denied, .notNeeded] {
             var gate = BarometerGate(answer: answer)
-            #expect(gate.recordingStarted(undecided: false))
+            let started = gate.recordingStarted(undecided: false)
+            #expect(started)
             #expect(!gate.held)
         }
         // Never asked (no activity support): the barometer's own prompt is the only one.
         var gate = BarometerGate()
-        #expect(gate.recordingStarted(undecided: true))
+        let started = gate.recordingStarted(undecided: true)
+        #expect(started)
         #expect(!gate.held)
     }
 }
