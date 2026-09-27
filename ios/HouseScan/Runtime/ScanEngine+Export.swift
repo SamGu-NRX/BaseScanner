@@ -304,7 +304,8 @@ extension ScanEngine {
             clearances: clearances,
             missing: missing,
             unseenSide: unseen,
-            isSample: isSample
+            isSample: isSample,
+            rulesSHA256: result.policy.rulesSHA256
         )
     }
 

@@ -70,6 +70,14 @@ struct ResultScreen: View {
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(.quiet)
                             .accessibilityIdentifier("action.startOver")
+                        if let rules = result.rulesSHA256 {
+                            // Which rules judged it, to match a screenshot to the scan's stamp.
+                            Text("Rules \(rules.prefix(12))")
+                                .font(Typeface.caption.monospaced())
+                                .foregroundStyle(Palette.muted)
+                                .accessibilityLabel("Rules version \(rules.prefix(12))")
+                                .accessibilityIdentifier("result.rules")
+                        }
                     }
                     .padding(.top, 8)
                 }

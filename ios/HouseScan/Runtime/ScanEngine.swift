@@ -1396,6 +1396,7 @@ final class ScanEngine {
             updateRecording()
             return
         }
+        writeScanStamp(answer: placement)
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1410,6 +1411,7 @@ final class ScanEngine {
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
             placement = result
+            writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.upload = .done
             await waitForGate(.uploading)

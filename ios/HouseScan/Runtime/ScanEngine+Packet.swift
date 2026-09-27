@@ -71,8 +71,8 @@ extension ScanEngine {
             producer: PacketManifest.Producer(
                 kind: .app, name: info["CFBundleName"] as? String ?? "HouseScan",
                 version: version.count == 2 ? "\(version[0]) (\(version[1]))" : version.first ?? "unknown",
-                // No build step records the git commit; the schema makes it optional.
-                commit: nil
+                // The "Stamp the git commit" build phase writes it (ios/project.yml).
+                commit: (info["HouseScanGitCommit"] as? String).flatMap { $0 == "unknown" ? nil : $0 }
             ),
             device: PacketManifest.Device(
                 model: Self.hardwareModel(), iosVersion: UIDevice.current.systemVersion, lidar: LiveCapture.supportsDepth,
