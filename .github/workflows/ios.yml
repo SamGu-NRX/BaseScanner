@@ -65,9 +65,9 @@ jobs:
           xcodebuild -version
           swift --version
 
-      # Booting takes 2 to 3 minutes and needs nothing from the build, so it runs alongside the
-      # steps below; the UI test step waits for it.
-      - name: Boot the Simulator in the background
+      # Booting in the background was tried and dropped: on the runner's 3 cores it slowed
+      # swift test and the builds by about 6 minutes to save 2:40. xcodebuild boots it at test time.
+      - name: Find the Simulator
         run: |
           runtime="com.apple.CoreSimulator.SimRuntime.iOS-${SIM_OS//./-}"
           udid="$(xcrun simctl list devices available -j \
@@ -79,7 +79,6 @@ jobs:
             exit 1
           fi
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-          nohup xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &
 
       # The package's drift tests compare the vendored schemas with the server's and the capture
       # packet's own copies. Before those branches merge they exist only as branches, which the
@@ -124,12 +123,6 @@ jobs:
         run: >-
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
           -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
-
-      - name: Wait for the Simulator
-        timeout-minutes: 10
-        run: |
-          xcrun simctl bootstatus "$SIM_UDID" -b
-          echo "Booted $SIM_NAME on iOS $SIM_OS ($SIM_UDID)."
 
       - name: UI test the whole flow in the Simulator
         # Replays the committed synthetic wall (ios/HouseScanUITests/Fixtures/synthetic-wall) with
