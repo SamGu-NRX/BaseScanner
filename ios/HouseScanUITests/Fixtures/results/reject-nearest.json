@@ -1,0 +1,172 @@
+{
+ "schema_version": "1.0",
+ "decision": "reject",
+ "summary": "Test answer: no spot within reach works: every spot fails opening clearance. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+ "reasons": [],
+ "policy": {
+  "id": "demo",
+  "version": "2026-09-26",
+  "auto_approve": true,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "5a1e0c7d00000000000000000000000000000000000000000000000000000000",
+  "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
+ },
+ "spot": null,
+ "route": null,
+ "checks": [
+  {
+   "id": "wall_backing",
+   "label": "Flush against one straight wall",
+   "outcome": "pass",
+   "reason": "Test: seen flat behind the whole spot.",
+   "measured_ft": null,
+   "plus_minus_ft": null,
+   "threshold_ft": null,
+   "comparison": null,
+   "subject": null,
+   "rule": {
+    "key": "wall_backing_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "opening_clearance",
+   "label": "Distance from doors and windows",
+   "outcome": "fail",
+   "reason": "Test: the window is 5 in from the spot.",
+   "measured_ft": 0.42,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 3.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "opening_clearance_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "meter_working_space",
+   "label": "Clear of the meter's working space",
+   "outcome": "pass",
+   "reason": "Test: clear of the working space.",
+   "measured_ft": 2.9,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 0.0,
+   "comparison": "at_least",
+   "subject": null,
+   "rule": {
+    "key": "meter_working_space_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  },
+  {
+   "id": "route_length",
+   "label": "Cable run length",
+   "outcome": "pass",
+   "reason": "Test: short run.",
+   "measured_ft": 5.2,
+   "plus_minus_ft": 0.3,
+   "threshold_ft": 20.0,
+   "comparison": "at_most",
+   "subject": null,
+   "rule": {
+    "key": "route_length_ft",
+    "source": "Made-up test value",
+    "placeholder": true
+   }
+  }
+ ],
+ "nearest_considered": {
+  "outcome": "fail",
+  "wall_id": "wall",
+  "segment": 0,
+  "span_ft": [
+   4.2,
+   6.783333333333
+  ],
+  "width_ft": 2.583333333333,
+  "depth_ft": 1.833333333333,
+  "height_ft": 3.291666666667,
+  "footprint": [
+   [
+    4.2,
+    0.0
+   ],
+   [
+    6.783333333333,
+    0.0
+   ],
+   [
+    6.783333333333,
+    1.833333333333
+   ],
+   [
+    4.2,
+    1.833333333333
+   ]
+  ],
+  "center": [
+   5.4916666666665,
+   0.9166666666665
+  ],
+  "along": [
+   1.0,
+   0.0
+  ],
+  "outward": [
+   0.0,
+   1.0
+  ],
+  "meter_offset_ft": [
+   5.4916666666665,
+   0.9166666666665
+  ],
+  "route_length_ft": 5.2
+ },
+ "missing_evidence": [],
+ "ends": {
+  "left": {
+   "kind": "limit",
+   "s_ft": -8.0,
+   "point": [
+    -8.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 12.0,
+   "point": [
+    12.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "start_ft": [
+    1.0,
+    6.0
+   ],
+   "outcome": "fail",
+   "failing": [
+    "opening_clearance"
+   ],
+   "unsure": []
+  }
+ ],
+ "stats": {
+  "candidates": 36,
+  "pass": 0,
+  "unsure": 0,
+  "fail": 36,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}

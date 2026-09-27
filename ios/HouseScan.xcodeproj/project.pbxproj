@@ -6,11 +6,291 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A08E1583C6EBA84CB5619CD2 /* HouseScanKit in Frameworks */ = {isa = PBXBuildFile; productRef = 19E9E07688F7D0E710D21D89 /* HouseScanKit */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A0652F9B03D0AB543FDB519D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0BC33671F32C9E42F1E3A643 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C5240AAFE2CE18E751FB21F9;
+			remoteInfo = HouseScan;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		0C4096780A5627C9A53A29B2 /* HouseScan.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HouseScan.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HouseScanUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5448723EC7099F74C7CCBEC /* HouseScanKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = HouseScanKit; path = HouseScanKit; sourceTree = SOURCE_ROOT; };
 		EEAA26E1BB7E90A7AD7923C7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		F30ACBC67A4159A449077AF5 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FE223665998D079375C59650 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Fixtures/results,
+				"Fixtures/results/no-clean-spot.json",
+				Fixtures/results/pass.json,
+				"Fixtures/results/reject-nearest.json",
+				"Fixtures/results/unsure-view.json",
+				"Fixtures/synthetic-wall",
+				"Fixtures/synthetic-wall-lidar",
+				"Fixtures/synthetic-wall-lidar/keyframes",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00001.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00001.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00001.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00002.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00002.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00002.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00003.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00003.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00003.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00004.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00004.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00004.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00005.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00005.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00005.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00006.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00006.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00006.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00007.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00007.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00007.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00008.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00008.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00008.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00009.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00009.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00009.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00010.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00010.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00010.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00011.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00011.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00011.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00012.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00012.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00012.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00013.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00013.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00013.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00014.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00014.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00014.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00015.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00015.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00015.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00016.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00016.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00016.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00017.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00017.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00017.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00018.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00018.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00018.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00019.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00019.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00019.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00020.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00020.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00020.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00021.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00021.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00021.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00022.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00022.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00022.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00023.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00023.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00023.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00024.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00024.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00024.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00025.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00025.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00025.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00026.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00026.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00026.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00027.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00027.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00027.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00028.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00028.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00028.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00029.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00029.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00029.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00030.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00030.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00030.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00031.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00031.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00031.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00032.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00032.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00032.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00033.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00033.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00033.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00034.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00034.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00034.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00035.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00035.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00035.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00036.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00036.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00036.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00037.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00037.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00037.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00038.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00038.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00038.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00039.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00039.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00039.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00040.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00040.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00040.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00041.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00041.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00041.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00042.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00043.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00044.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00045.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00046.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00047.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00048.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00049.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00050.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00051.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00052.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00053.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00054.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00055.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00056.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00057.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00058.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00059.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00060.jpg",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.confidence.u8",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.depth.f32",
+				"Fixtures/synthetic-wall-lidar/keyframes/k00061.jpg",
+				"Fixtures/synthetic-wall-lidar/session.json",
+				"Fixtures/synthetic-wall/keyframes",
+				"Fixtures/synthetic-wall/keyframes/k00001.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00002.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00003.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00004.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00005.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00006.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00007.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00008.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00009.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00010.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00011.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00012.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00013.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00014.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00015.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00016.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00017.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00018.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00019.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00020.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00021.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00022.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00023.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00024.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00025.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00026.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00027.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00028.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00029.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00030.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00031.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00032.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00033.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00034.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00035.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00036.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00037.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00038.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00039.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00040.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00041.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00042.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00043.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00044.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00045.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00046.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00047.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00048.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00049.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00050.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00051.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00052.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00053.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00054.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00055.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00056.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00057.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00058.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00059.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00060.jpg",
+				"Fixtures/synthetic-wall/keyframes/k00061.jpg",
+				"Fixtures/synthetic-wall/session.json",
+			);
+			target = EF941BB37D13A698579DF2A6 /* HouseScanUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		050A16F154C46B951098B8C8 /* HouseScan */ = {
@@ -22,15 +302,47 @@
 			path = HouseScan;
 			sourceTree = "<group>";
 		};
+		AA23F1E57E4893FBA0800AFF /* HouseScanUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FE223665998D079375C59650 /* PBXFileSystemSynchronizedBuildFileExceptionSet */,
+			);
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = HouseScanUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		52EF4397177795C26C0B600D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A08E1583C6EBA84CB5619CD2 /* HouseScanKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		15857B17057201C5A1934D04 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				0C4096780A5627C9A53A29B2 /* HouseScan.app */,
+				B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8885F681E8E6766935603C4F /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				E5448723EC7099F74C7CCBEC /* HouseScanKit */,
+			);
+			name = Packages;
 			sourceTree = "<group>";
 		};
 		8AD6B37B63CD5C86504E5E20 /* Config */ = {
@@ -47,6 +359,8 @@
 			children = (
 				8AD6B37B63CD5C86504E5E20 /* Config */,
 				050A16F154C46B951098B8C8 /* HouseScan */,
+				AA23F1E57E4893FBA0800AFF /* HouseScanUITests */,
+				8885F681E8E6766935603C4F /* Packages */,
 				15857B17057201C5A1934D04 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -60,6 +374,7 @@
 			buildPhases = (
 				535AA09D0DE15B25D4976AD1 /* Sources */,
 				E009F9206BA5E923B8F3E03B /* Resources */,
+				52EF4397177795C26C0B600D /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -70,10 +385,33 @@
 			);
 			name = HouseScan;
 			packageProductDependencies = (
+				19E9E07688F7D0E710D21D89 /* HouseScanKit */,
 			);
 			productName = HouseScan;
 			productReference = 0C4096780A5627C9A53A29B2 /* HouseScan.app */;
 			productType = "com.apple.product-type.application";
+		};
+		EF941BB37D13A698579DF2A6 /* HouseScanUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CA663DA741070E6AFABA7C13 /* Build configuration list for PBXNativeTarget "HouseScanUITests" */;
+			buildPhases = (
+				C0D00DE62C374481FAF457A5 /* Sources */,
+				1B7B501579D25B4A33756562 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				46583C8FA36D8988F43DBC2D /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AA23F1E57E4893FBA0800AFF /* HouseScanUITests */,
+			);
+			name = HouseScanUITests;
+			packageProductDependencies = (
+			);
+			productName = HouseScanUITests;
+			productReference = B959F2AE1DD15E7A99C500EF /* HouseScanUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
 
@@ -87,6 +425,10 @@
 					C5240AAFE2CE18E751FB21F9 = {
 						ProvisioningStyle = Automatic;
 					};
+					EF941BB37D13A698579DF2A6 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = C5240AAFE2CE18E751FB21F9;
+					};
 				};
 			};
 			buildConfigurationList = 0274DCB965114EB4DAAAAA8C /* Build configuration list for PBXProject "HouseScan" */;
@@ -98,17 +440,28 @@
 			);
 			mainGroup = F45504E255654984698A6926;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				996A72D2A0E3ADCC195F64F8 /* XCLocalSwiftPackageReference "HouseScanKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 15857B17057201C5A1934D04 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
 				C5240AAFE2CE18E751FB21F9 /* HouseScan */,
+				EF941BB37D13A698579DF2A6 /* HouseScanUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		1B7B501579D25B4A33756562 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		E009F9206BA5E923B8F3E03B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -126,9 +479,43 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0D00DE62C374481FAF457A5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		46583C8FA36D8988F43DBC2D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C5240AAFE2CE18E751FB21F9 /* HouseScan */;
+			targetProxy = A0652F9B03D0AB543FDB519D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		1D9A3F7F45102D23B342FD47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F30ACBC67A4159A449077AF5 /* Shared.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = HouseScan;
+			};
+			name = Release;
+		};
 		AC6CD8DF3FFE7F4BCC4D6275 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -242,6 +629,25 @@
 			};
 			name = Release;
 		};
+		EDBBEE1A17A6FC582D27DB71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = F30ACBC67A4159A449077AF5 /* Shared.xcconfig */;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID_PREFIX).housescan.uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = HouseScan;
+			};
+			name = Debug;
+		};
 		EE18EE856B3ACBECC802FAED /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -321,7 +727,30 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		CA663DA741070E6AFABA7C13 /* Build configuration list for PBXNativeTarget "HouseScanUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EDBBEE1A17A6FC582D27DB71 /* Debug */,
+				1D9A3F7F45102D23B342FD47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		996A72D2A0E3ADCC195F64F8 /* XCLocalSwiftPackageReference "HouseScanKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = HouseScanKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		19E9E07688F7D0E710D21D89 /* HouseScanKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = HouseScanKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 0BC33671F32C9E42F1E3A643 /* Project object */;
 }

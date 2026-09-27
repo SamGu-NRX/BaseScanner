@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "name": "Field test: one decision check, for scoring only",
+  "thresholds": {
+    "facing_gap_ft": {
+      "value_ft": 3,
+      "pass_when": "at_least",
+      "source": "The 3 ft fence clearance PR #7's pass criteria cite from Base's public help page"
+    }
+  }
+}

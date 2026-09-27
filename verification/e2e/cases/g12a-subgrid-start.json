@@ -1,0 +1,173 @@
+{
+  "id": "g12a-subgrid-start",
+  "source": "t3-lane-c-review.md golden 12 at origin/t3/research a7d91f1",
+  "description": "Windows at s = [3, 4] and [10.1 + 31/12, 11.1 + 31/12] with 3 ft opening clearance leave legal starts only in (7, 7.1). A 2 in grid from s = 0 samples 7 and 43/6 and misses them.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -1,
+            0.0
+          ],
+          [
+            16,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "window",
+        "wall_id": "w1",
+        "span_ft": [
+          3,
+          4
+        ],
+        "bottom_ft": 4.0,
+        "top_ft": 7.0,
+        "attrs": {
+          "operable": true
+        },
+        "source": "tape",
+        "plus_minus_ft": 0.0
+      },
+      {
+        "type": "window",
+        "wall_id": "w1",
+        "span_ft": [
+          12.683333333333334,
+          13.683333333333334
+        ],
+        "bottom_ft": 4.0,
+        "top_ft": 7.0,
+        "attrs": {
+          "operable": true
+        },
+        "source": "tape",
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -1,
+            0.0
+          ],
+          [
+            16,
+            0.0
+          ],
+          [
+            16,
+            10.0
+          ],
+          [
+            -1,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -1.0,
+          16.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -16.0,
+            31.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -16.0,
+            31.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -16.0,
+            31.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -16.0,
+            31.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "opening": 3.0
+  },
+  "expect": {
+    "spot": {
+      "wall_id": "w1",
+      "span_within": [
+        7,
+        9.683333333333334
+      ]
+    },
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -1,
+          6.95
+        ],
+        "outcome": "fail",
+        "failing_match": "opening"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          7.2,
+          13.4
+        ],
+        "outcome": "fail",
+        "failing_match": "opening"
+      }
+    ]
+  }
+}

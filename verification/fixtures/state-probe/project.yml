@@ -1,0 +1,21 @@
+# Test fixture for hsverify.simrun, not a product. It logs a fixed STATE sequence (contract C4)
+# so the runner's log following and screenshots can be checked without the real app.
+name: StateProbe
+options:
+  deploymentTarget:
+    iOS: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+targets:
+  StateProbe:
+    type: application
+    platform: iOS
+    sources: [StateProbe]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.housescanning.stateprobe
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        CODE_SIGNING_ALLOWED: NO

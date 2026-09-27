@@ -1,0 +1,2776 @@
+{
+ "policies": {
+  "every photo": {
+   "kept": 121,
+   "of": 121,
+   "1-3m": {
+    "pairs": 9075000,
+    "failed_pct": 0.4,
+    "median_in": 2.73,
+    "p90_in": 11.45,
+    "scale_error_pct": -0.0
+   },
+   "3-10m": {
+    "pairs": 9075000,
+    "failed_pct": 0.49,
+    "median_in": 7.62,
+    "p90_in": 38.97,
+    "scale_error_pct": -0.51
+   }
+  },
+  "wall within 6 m": {
+   "kept": 15,
+   "of": 121,
+   "1-3m": {
+    "pairs": 1125000,
+    "failed_pct": 0.39,
+    "median_in": 1.94,
+    "p90_in": 6.86,
+    "scale_error_pct": -0.09
+   },
+   "3-10m": {
+    "pairs": 1125000,
+    "failed_pct": 0.5,
+    "median_in": 4.29,
+    "p90_in": 14.82,
+    "scale_error_pct": -0.04
+   }
+  },
+  "wall within 8 m": {
+   "kept": 27,
+   "of": 121,
+   "1-3m": {
+    "pairs": 2025000,
+    "failed_pct": 0.22,
+    "median_in": 2.1,
+    "p90_in": 7.38,
+    "scale_error_pct": -0.14
+   },
+   "3-10m": {
+    "pairs": 2025000,
+    "failed_pct": 0.28,
+    "median_in": 4.8,
+    "p90_in": 17.03,
+    "scale_error_pct": -0.22
+   }
+  },
+  "wall within 12 m": {
+   "kept": 42,
+   "of": 121,
+   "1-3m": {
+    "pairs": 3150000,
+    "failed_pct": 0.19,
+    "median_in": 2.29,
+    "p90_in": 8.09,
+    "scale_error_pct": -0.11
+   },
+   "3-10m": {
+    "pairs": 3150000,
+    "failed_pct": 0.25,
+    "median_in": 5.41,
+    "p90_in": 20.42,
+    "scale_error_pct": -0.19
+   }
+  },
+  "wall seen within 40 degrees of head-on": {
+   "kept": 52,
+   "of": 121,
+   "1-3m": {
+    "pairs": 3900000,
+    "failed_pct": 0.28,
+    "median_in": 2.31,
+    "p90_in": 9.3,
+    "scale_error_pct": 0.06
+   },
+   "3-10m": {
+    "pairs": 3900000,
+    "failed_pct": 0.36,
+    "median_in": 7.07,
+    "p90_in": 35.2,
+    "scale_error_pct": -0.63
+   }
+  },
+  "wall seen more than 50 degrees off head-on": {
+   "kept": 40,
+   "of": 121,
+   "1-3m": {
+    "pairs": 3000000,
+    "failed_pct": 0.54,
+    "median_in": 2.83,
+    "p90_in": 11.67,
+    "scale_error_pct": -0.08
+   },
+   "3-10m": {
+    "pairs": 3000000,
+    "failed_pct": 0.64,
+    "median_in": 7.12,
+    "p90_in": 32.78,
+    "scale_error_pct": -0.25
+   }
+  }
+ },
+ "photos": [
+  {
+   "view": "DSC_0324",
+   "distance_m": 17.13,
+   "incidence_deg": 31.58,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 1.37,
+     "p90_in": 5.25,
+     "scale_error_pct": -0.06
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 4.53,
+     "p90_in": 24.68,
+     "scale_error_pct": -0.7
+    }
+   }
+  },
+  {
+   "view": "DSC_0325",
+   "distance_m": 16.58,
+   "incidence_deg": 31.64,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.31,
+     "p90_in": 5.58,
+     "scale_error_pct": 0.21
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 4.27,
+     "p90_in": 24.88,
+     "scale_error_pct": -0.18
+    }
+   }
+  },
+  {
+   "view": "DSC_0326",
+   "distance_m": 16.59,
+   "incidence_deg": 32.05,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 1.79,
+     "p90_in": 5.09,
+     "scale_error_pct": 0.41
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 5.05,
+     "p90_in": 14.17,
+     "scale_error_pct": 0.16
+    }
+   }
+  },
+  {
+   "view": "DSC_0327",
+   "distance_m": 16.13,
+   "incidence_deg": 34.98,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.48,
+     "p90_in": 4.26,
+     "scale_error_pct": 0.08
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 3.99,
+     "p90_in": 11.39,
+     "scale_error_pct": -0.0
+    }
+   }
+  },
+  {
+   "view": "DSC_0328",
+   "distance_m": 14.45,
+   "incidence_deg": 39.58,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.33,
+     "p90_in": 3.9,
+     "scale_error_pct": 0.08
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.51,
+     "p90_in": 9.27,
+     "scale_error_pct": 0.31
+    }
+   }
+  },
+  {
+   "view": "DSC_0329",
+   "distance_m": 13.3,
+   "incidence_deg": 40.13,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.45,
+     "p90_in": 6.45,
+     "scale_error_pct": -0.87
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.94,
+     "p90_in": 18.2,
+     "scale_error_pct": -1.57
+    }
+   }
+  },
+  {
+   "view": "DSC_0330",
+   "distance_m": 14.55,
+   "incidence_deg": 38.12,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.33,
+     "p90_in": 6.48,
+     "scale_error_pct": -0.1
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 7.01,
+     "p90_in": 18.68,
+     "scale_error_pct": -1.18
+    }
+   }
+  },
+  {
+   "view": "DSC_0331",
+   "distance_m": 16.22,
+   "incidence_deg": 36.64,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.47,
+     "p90_in": 4.24,
+     "scale_error_pct": 0.43
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 4.12,
+     "p90_in": 11.91,
+     "scale_error_pct": 0.3
+    }
+   }
+  },
+  {
+   "view": "DSC_0332",
+   "distance_m": 18.67,
+   "incidence_deg": 35.86,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.35,
+     "p90_in": 3.76,
+     "scale_error_pct": 0.65
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 3.6,
+     "p90_in": 9.86,
+     "scale_error_pct": 0.28
+    }
+   }
+  },
+  {
+   "view": "DSC_0333",
+   "distance_m": 19.43,
+   "incidence_deg": 36.41,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 1.94,
+     "p90_in": 5.4,
+     "scale_error_pct": -0.56
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 6.34,
+     "p90_in": 19.18,
+     "scale_error_pct": -1.33
+    }
+   }
+  },
+  {
+   "view": "DSC_0334",
+   "distance_m": 20.46,
+   "incidence_deg": 37.68,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.48,
+     "p90_in": 6.99,
+     "scale_error_pct": -0.25
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 8.16,
+     "p90_in": 22.56,
+     "scale_error_pct": -0.55
+    }
+   }
+  },
+  {
+   "view": "DSC_0335",
+   "distance_m": 21.12,
+   "incidence_deg": 36.95,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 2.99,
+     "p90_in": 8.91,
+     "scale_error_pct": -0.38
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 10.04,
+     "p90_in": 29.62,
+     "scale_error_pct": -1.19
+    }
+   }
+  },
+  {
+   "view": "DSC_0336",
+   "distance_m": 21.48,
+   "incidence_deg": 36.61,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 3.11,
+     "p90_in": 8.66,
+     "scale_error_pct": -0.1
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 11.12,
+     "p90_in": 33.73,
+     "scale_error_pct": -0.6
+    }
+   }
+  },
+  {
+   "view": "DSC_0337",
+   "distance_m": 21.5,
+   "incidence_deg": 37.0,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 2.71,
+     "p90_in": 7.17,
+     "scale_error_pct": 0.42
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.43,
+     "median_in": 9.67,
+     "p90_in": 29.81,
+     "scale_error_pct": -0.35
+    }
+   }
+  },
+  {
+   "view": "DSC_0338",
+   "distance_m": 21.36,
+   "incidence_deg": 36.59,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.26,
+     "median_in": 3.23,
+     "p90_in": 9.65,
+     "scale_error_pct": -0.01
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.38,
+     "median_in": 11.2,
+     "p90_in": 42.41,
+     "scale_error_pct": -1.51
+    }
+   }
+  },
+  {
+   "view": "DSC_0339",
+   "distance_m": 21.95,
+   "incidence_deg": 37.93,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 5.26,
+     "p90_in": 19.79,
+     "scale_error_pct": -1.44
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 20.6,
+     "p90_in": 75.26,
+     "scale_error_pct": -6.07
+    }
+   }
+  },
+  {
+   "view": "DSC_0340",
+   "distance_m": 21.76,
+   "incidence_deg": 37.82,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.29,
+     "p90_in": 10.53,
+     "scale_error_pct": 0.03
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 11.02,
+     "p90_in": 50.94,
+     "scale_error_pct": -0.85
+    }
+   }
+  },
+  {
+   "view": "DSC_0341",
+   "distance_m": 21.15,
+   "incidence_deg": 38.46,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 5.1,
+     "p90_in": 18.32,
+     "scale_error_pct": 0.36
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.7,
+     "median_in": 19.65,
+     "p90_in": 71.73,
+     "scale_error_pct": -0.39
+    }
+   }
+  },
+  {
+   "view": "DSC_0342",
+   "distance_m": 20.95,
+   "incidence_deg": 37.65,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.4,
+     "p90_in": 15.09,
+     "scale_error_pct": 0.49
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 12.21,
+     "p90_in": 51.18,
+     "scale_error_pct": -1.08
+    }
+   }
+  },
+  {
+   "view": "DSC_0343",
+   "distance_m": 21.98,
+   "incidence_deg": 38.14,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.09,
+     "p90_in": 12.33,
+     "scale_error_pct": 0.87
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 10.32,
+     "p90_in": 41.18,
+     "scale_error_pct": -0.38
+    }
+   }
+  },
+  {
+   "view": "DSC_0344",
+   "distance_m": 21.73,
+   "incidence_deg": 38.17,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 2.58,
+     "p90_in": 8.14,
+     "scale_error_pct": -0.55
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 8.69,
+     "p90_in": 39.71,
+     "scale_error_pct": -1.59
+    }
+   }
+  },
+  {
+   "view": "DSC_0345",
+   "distance_m": 21.33,
+   "incidence_deg": 37.98,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 3.48,
+     "p90_in": 10.15,
+     "scale_error_pct": 1.13
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.47,
+     "median_in": 11.8,
+     "p90_in": 40.31,
+     "scale_error_pct": -0.51
+    }
+   }
+  },
+  {
+   "view": "DSC_0346",
+   "distance_m": 21.14,
+   "incidence_deg": 37.9,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 2.93,
+     "p90_in": 9.41,
+     "scale_error_pct": -1.35
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 10.9,
+     "p90_in": 42.65,
+     "scale_error_pct": -3.03
+    }
+   }
+  },
+  {
+   "view": "DSC_0347",
+   "distance_m": 21.27,
+   "incidence_deg": 39.26,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.86,
+     "p90_in": 15.2,
+     "scale_error_pct": -1.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 13.96,
+     "p90_in": 58.96,
+     "scale_error_pct": -2.67
+    }
+   }
+  },
+  {
+   "view": "DSC_0348",
+   "distance_m": 20.97,
+   "incidence_deg": 41.58,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 4.56,
+     "p90_in": 13.12,
+     "scale_error_pct": 0.95
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.4,
+     "median_in": 14.8,
+     "p90_in": 44.47,
+     "scale_error_pct": -0.49
+    }
+   }
+  },
+  {
+   "view": "DSC_0349",
+   "distance_m": 20.25,
+   "incidence_deg": 40.51,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 4.41,
+     "p90_in": 12.86,
+     "scale_error_pct": 0.82
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 14.73,
+     "p90_in": 46.91,
+     "scale_error_pct": -0.2
+    }
+   }
+  },
+  {
+   "view": "DSC_0350",
+   "distance_m": 19.9,
+   "incidence_deg": 42.89,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 5.24,
+     "p90_in": 13.59,
+     "scale_error_pct": 1.13
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 18.2,
+     "p90_in": 50.65,
+     "scale_error_pct": -0.16
+    }
+   }
+  },
+  {
+   "view": "DSC_0351",
+   "distance_m": 19.73,
+   "incidence_deg": 45.31,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 6.74,
+     "p90_in": 17.45,
+     "scale_error_pct": 1.16
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 21.31,
+     "p90_in": 57.99,
+     "scale_error_pct": 0.22
+    }
+   }
+  },
+  {
+   "view": "DSC_0352",
+   "distance_m": 20.01,
+   "incidence_deg": 47.95,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 6.03,
+     "p90_in": 15.39,
+     "scale_error_pct": -0.79
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 20.41,
+     "p90_in": 53.02,
+     "scale_error_pct": -1.89
+    }
+   }
+  },
+  {
+   "view": "DSC_0353",
+   "distance_m": 17.77,
+   "incidence_deg": 42.15,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.88,
+     "p90_in": 13.52,
+     "scale_error_pct": 1.89
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 16.66,
+     "p90_in": 47.82,
+     "scale_error_pct": 0.6
+    }
+   }
+  },
+  {
+   "view": "DSC_0354",
+   "distance_m": 17.47,
+   "incidence_deg": 39.3,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 4.32,
+     "p90_in": 12.45,
+     "scale_error_pct": 0.56
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 13.91,
+     "p90_in": 38.48,
+     "scale_error_pct": -0.22
+    }
+   }
+  },
+  {
+   "view": "DSC_0355",
+   "distance_m": 17.41,
+   "incidence_deg": 40.77,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 3.59,
+     "p90_in": 9.92,
+     "scale_error_pct": -1.04
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 11.84,
+     "p90_in": 30.33,
+     "scale_error_pct": -1.88
+    }
+   }
+  },
+  {
+   "view": "DSC_0356",
+   "distance_m": 17.16,
+   "incidence_deg": 41.42,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 3.59,
+     "p90_in": 10.02,
+     "scale_error_pct": -2.07
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.5,
+     "median_in": 11.65,
+     "p90_in": 30.9,
+     "scale_error_pct": -2.94
+    }
+   }
+  },
+  {
+   "view": "DSC_0357",
+   "distance_m": 15.88,
+   "incidence_deg": 39.44,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.67,
+     "p90_in": 10.58,
+     "scale_error_pct": -0.92
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 10.54,
+     "p90_in": 31.28,
+     "scale_error_pct": -1.37
+    }
+   }
+  },
+  {
+   "view": "DSC_0358",
+   "distance_m": 16.72,
+   "incidence_deg": 38.08,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 2.17,
+     "p90_in": 8.24,
+     "scale_error_pct": 0.37
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 5.71,
+     "p90_in": 18.2,
+     "scale_error_pct": 0.29
+    }
+   }
+  },
+  {
+   "view": "DSC_0359",
+   "distance_m": 17.09,
+   "incidence_deg": 35.46,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.28,
+     "p90_in": 6.73,
+     "scale_error_pct": 0.42
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 6.1,
+     "p90_in": 17.94,
+     "scale_error_pct": 0.39
+    }
+   }
+  },
+  {
+   "view": "DSC_0360",
+   "distance_m": 16.18,
+   "incidence_deg": 32.93,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.61,
+     "p90_in": 4.53,
+     "scale_error_pct": -0.03
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 4.74,
+     "p90_in": 11.76,
+     "scale_error_pct": 0.21
+    }
+   }
+  },
+  {
+   "view": "DSC_0361",
+   "distance_m": 14.73,
+   "incidence_deg": 32.48,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.28,
+     "p90_in": 4.66,
+     "scale_error_pct": -0.16
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.97,
+     "p90_in": 17.5,
+     "scale_error_pct": -0.61
+    }
+   }
+  },
+  {
+   "view": "DSC_0362",
+   "distance_m": 14.63,
+   "incidence_deg": 32.72,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 1.31,
+     "p90_in": 3.83,
+     "scale_error_pct": -0.18
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.41,
+     "p90_in": 17.95,
+     "scale_error_pct": -0.99
+    }
+   }
+  },
+  {
+   "view": "DSC_0363",
+   "distance_m": 13.59,
+   "incidence_deg": 31.5,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 1.31,
+     "p90_in": 3.79,
+     "scale_error_pct": -0.06
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.62,
+     "p90_in": 17.2,
+     "scale_error_pct": -1.29
+    }
+   }
+  },
+  {
+   "view": "DSC_0364",
+   "distance_m": 15.65,
+   "incidence_deg": 38.08,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 2.59,
+     "p90_in": 7.43,
+     "scale_error_pct": 0.37
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 8.53,
+     "p90_in": 25.4,
+     "scale_error_pct": -1.72
+    }
+   }
+  },
+  {
+   "view": "DSC_0365",
+   "distance_m": 17.75,
+   "incidence_deg": 46.38,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 6.01,
+     "p90_in": 16.31,
+     "scale_error_pct": -0.53
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.51,
+     "p90_in": 67.77,
+     "scale_error_pct": -2.1
+    }
+   }
+  },
+  {
+   "view": "DSC_0366",
+   "distance_m": 10.65,
+   "incidence_deg": 70.81,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.75,
+     "p90_in": 18.74,
+     "scale_error_pct": -2.26
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 18.99,
+     "p90_in": 100.36,
+     "scale_error_pct": -2.71
+    }
+   }
+  },
+  {
+   "view": "DSC_0386",
+   "distance_m": 19.53,
+   "incidence_deg": 33.94,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 2.61,
+     "p90_in": 14.61,
+     "scale_error_pct": -0.83
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 9.2,
+     "p90_in": 48.06,
+     "scale_error_pct": -2.15
+    }
+   }
+  },
+  {
+   "view": "DSC_0387",
+   "distance_m": 17.23,
+   "incidence_deg": 25.92,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 1.98,
+     "p90_in": 6.11,
+     "scale_error_pct": -1.07
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.6,
+     "median_in": 9.33,
+     "p90_in": 27.21,
+     "scale_error_pct": -3.05
+    }
+   }
+  },
+  {
+   "view": "DSC_0388",
+   "distance_m": 18.06,
+   "incidence_deg": 34.96,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 3.06,
+     "p90_in": 11.4,
+     "scale_error_pct": 1.59
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.27,
+     "median_in": 7.8,
+     "p90_in": 32.47,
+     "scale_error_pct": 0.65
+    }
+   }
+  },
+  {
+   "view": "DSC_0389",
+   "distance_m": 17.54,
+   "incidence_deg": 35.93,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 2.16,
+     "p90_in": 5.93,
+     "scale_error_pct": -0.03
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 5.91,
+     "p90_in": 16.94,
+     "scale_error_pct": -0.36
+    }
+   }
+  },
+  {
+   "view": "DSC_0390",
+   "distance_m": 15.25,
+   "incidence_deg": 33.32,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.91,
+     "p90_in": 5.69,
+     "scale_error_pct": 0.45
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.71,
+     "p90_in": 14.25,
+     "scale_error_pct": 0.22
+    }
+   }
+  },
+  {
+   "view": "DSC_0391",
+   "distance_m": 17.39,
+   "incidence_deg": 33.38,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.15,
+     "p90_in": 5.83,
+     "scale_error_pct": 0.66
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 5.7,
+     "p90_in": 15.75,
+     "scale_error_pct": 0.16
+    }
+   }
+  },
+  {
+   "view": "DSC_0392",
+   "distance_m": 15.35,
+   "incidence_deg": 34.46,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.81,
+     "p90_in": 5.55,
+     "scale_error_pct": -0.2
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.96,
+     "p90_in": 11.56,
+     "scale_error_pct": -0.64
+    }
+   }
+  },
+  {
+   "view": "DSC_0393",
+   "distance_m": 14.52,
+   "incidence_deg": 33.01,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.43,
+     "p90_in": 7.49,
+     "scale_error_pct": 0.28
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.3,
+     "p90_in": 18.53,
+     "scale_error_pct": 0.19
+    }
+   }
+  },
+  {
+   "view": "DSC_0394",
+   "distance_m": 22.31,
+   "incidence_deg": 46.21,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.73,
+     "median_in": 5.12,
+     "p90_in": 13.81,
+     "scale_error_pct": -0.09
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.7,
+     "median_in": 14.61,
+     "p90_in": 41.25,
+     "scale_error_pct": -0.21
+    }
+   }
+  },
+  {
+   "view": "DSC_0395",
+   "distance_m": 19.73,
+   "incidence_deg": 47.2,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 7.16,
+     "p90_in": 21.87,
+     "scale_error_pct": 0.28
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.53,
+     "median_in": 19.45,
+     "p90_in": 70.52,
+     "scale_error_pct": 0.1
+    }
+   }
+  },
+  {
+   "view": "DSC_0396",
+   "distance_m": 17.55,
+   "incidence_deg": 50.04,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.13,
+     "median_in": 6.6,
+     "p90_in": 23.22,
+     "scale_error_pct": -1.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.29,
+     "median_in": 21.19,
+     "p90_in": 84.12,
+     "scale_error_pct": -1.91
+    }
+   }
+  },
+  {
+   "view": "DSC_0397",
+   "distance_m": 13.32,
+   "incidence_deg": 37.66,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.97,
+     "p90_in": 12.35,
+     "scale_error_pct": 0.47
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.82,
+     "p90_in": 85.5,
+     "scale_error_pct": -0.63
+    }
+   }
+  },
+  {
+   "view": "DSC_0398",
+   "distance_m": 14.85,
+   "incidence_deg": 39.76,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.65,
+     "p90_in": 15.75,
+     "scale_error_pct": -0.44
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.4,
+     "p90_in": 91.86,
+     "scale_error_pct": -2.02
+    }
+   }
+  },
+  {
+   "view": "DSC_0399",
+   "distance_m": 14.79,
+   "incidence_deg": 38.81,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.17,
+     "p90_in": 16.68,
+     "scale_error_pct": 0.32
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.63,
+     "p90_in": 79.9,
+     "scale_error_pct": -1.08
+    }
+   }
+  },
+  {
+   "view": "DSC_0400",
+   "distance_m": 14.73,
+   "incidence_deg": 39.28,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.88,
+     "p90_in": 18.13,
+     "scale_error_pct": 0.08
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 24.1,
+     "p90_in": 102.19,
+     "scale_error_pct": -1.34
+    }
+   }
+  },
+  {
+   "view": "DSC_0401",
+   "distance_m": 15.42,
+   "incidence_deg": 39.13,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.19,
+     "p90_in": 10.93,
+     "scale_error_pct": 0.6
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 15.66,
+     "p90_in": 44.8,
+     "scale_error_pct": -1.38
+    }
+   }
+  },
+  {
+   "view": "DSC_0402",
+   "distance_m": 13.99,
+   "incidence_deg": 41.22,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.43,
+     "p90_in": 19.56,
+     "scale_error_pct": -1.59
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 21.45,
+     "p90_in": 107.58,
+     "scale_error_pct": -3.34
+    }
+   }
+  },
+  {
+   "view": "DSC_0404",
+   "distance_m": 14.04,
+   "incidence_deg": 42.47,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.03,
+     "p90_in": 15.64,
+     "scale_error_pct": 0.98
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 9.56,
+     "p90_in": 105.21,
+     "scale_error_pct": 0.16
+    }
+   }
+  },
+  {
+   "view": "DSC_0405",
+   "distance_m": 12.51,
+   "incidence_deg": 44.78,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.86,
+     "p90_in": 11.64,
+     "scale_error_pct": -0.0
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.64,
+     "p90_in": 91.35,
+     "scale_error_pct": -1.02
+    }
+   }
+  },
+  {
+   "view": "DSC_0406",
+   "distance_m": 15.52,
+   "incidence_deg": 42.06,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.03,
+     "p90_in": 17.94,
+     "scale_error_pct": 0.7
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 17.68,
+     "p90_in": 90.0,
+     "scale_error_pct": -0.17
+    }
+   }
+  },
+  {
+   "view": "DSC_0407",
+   "distance_m": 17.29,
+   "incidence_deg": 41.52,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.15,
+     "p90_in": 13.7,
+     "scale_error_pct": -0.35
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 19.1,
+     "p90_in": 72.58,
+     "scale_error_pct": -1.68
+    }
+   }
+  },
+  {
+   "view": "DSC_0408",
+   "distance_m": 20.2,
+   "incidence_deg": 40.05,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 4.65,
+     "p90_in": 12.76,
+     "scale_error_pct": 0.66
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.2,
+     "median_in": 16.15,
+     "p90_in": 53.04,
+     "scale_error_pct": -1.65
+    }
+   }
+  },
+  {
+   "view": "DSC_0409",
+   "distance_m": 21.69,
+   "incidence_deg": 38.87,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.47,
+     "p90_in": 10.33,
+     "scale_error_pct": -0.43
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 11.93,
+     "p90_in": 46.85,
+     "scale_error_pct": -2.09
+    }
+   }
+  },
+  {
+   "view": "DSC_0410",
+   "distance_m": 22.72,
+   "incidence_deg": 37.37,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.3,
+     "median_in": 2.84,
+     "p90_in": 9.25,
+     "scale_error_pct": 0.26
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.67,
+     "median_in": 9.86,
+     "p90_in": 41.58,
+     "scale_error_pct": -1.07
+    }
+   }
+  },
+  {
+   "view": "DSC_0411",
+   "distance_m": 22.49,
+   "incidence_deg": 34.17,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 3.26,
+     "p90_in": 12.89,
+     "scale_error_pct": 0.74
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 11.35,
+     "p90_in": 43.41,
+     "scale_error_pct": -0.33
+    }
+   }
+  },
+  {
+   "view": "DSC_0412",
+   "distance_m": 23.29,
+   "incidence_deg": 32.16,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.13,
+     "median_in": 5.18,
+     "p90_in": 23.03,
+     "scale_error_pct": 1.66
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.35,
+     "median_in": 17.42,
+     "p90_in": 69.25,
+     "scale_error_pct": -0.02
+    }
+   }
+  },
+  {
+   "view": "DSC_0413",
+   "distance_m": 29.07,
+   "incidence_deg": 49.12,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 6.58,
+     "p90_in": 18.1,
+     "scale_error_pct": -0.24
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.33,
+     "median_in": 20.91,
+     "p90_in": 61.76,
+     "scale_error_pct": -2.05
+    }
+   }
+  },
+  {
+   "view": "DSC_0414",
+   "distance_m": 25.02,
+   "incidence_deg": 44.94,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 6.86,
+     "p90_in": 17.57,
+     "scale_error_pct": 0.2
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 20.66,
+     "p90_in": 56.75,
+     "scale_error_pct": -0.09
+    }
+   }
+  },
+  {
+   "view": "DSC_0415",
+   "distance_m": 23.5,
+   "incidence_deg": 46.37,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.22,
+     "median_in": 6.53,
+     "p90_in": 16.87,
+     "scale_error_pct": 0.55
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 20.18,
+     "p90_in": 48.17,
+     "scale_error_pct": -0.38
+    }
+   }
+  },
+  {
+   "view": "DSC_0419",
+   "distance_m": 13.89,
+   "incidence_deg": 32.03,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.37,
+     "p90_in": 4.65,
+     "scale_error_pct": 0.12
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 4.04,
+     "p90_in": 17.29,
+     "scale_error_pct": -0.27
+    }
+   }
+  },
+  {
+   "view": "DSC_0420",
+   "distance_m": 13.39,
+   "incidence_deg": 31.66,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.23,
+     "p90_in": 4.38,
+     "scale_error_pct": 0.04
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.34,
+     "p90_in": 20.41,
+     "scale_error_pct": -0.72
+    }
+   }
+  },
+  {
+   "view": "DSC_0421",
+   "distance_m": 38.9,
+   "incidence_deg": 58.92,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.58,
+     "median_in": 4.85,
+     "p90_in": 18.32,
+     "scale_error_pct": -1.05
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 5.44,
+     "median_in": 15.67,
+     "p90_in": 66.63,
+     "scale_error_pct": -2.3
+    }
+   }
+  },
+  {
+   "view": "DSC_0422",
+   "distance_m": 40.26,
+   "incidence_deg": 40.19,
+   "scene": "facade",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.67,
+     "median_in": 4.23,
+     "p90_in": 22.91,
+     "scale_error_pct": -0.19
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 14.88,
+     "p90_in": 64.78,
+     "scale_error_pct": -1.05
+    }
+   }
+  },
+  {
+   "view": "DSC_9257",
+   "distance_m": 7.12,
+   "incidence_deg": 60.78,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.8,
+     "p90_in": 9.46,
+     "scale_error_pct": -0.79
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.64,
+     "p90_in": 23.39,
+     "scale_error_pct": 0.02
+    }
+   }
+  },
+  {
+   "view": "DSC_9258",
+   "distance_m": 9.09,
+   "incidence_deg": 65.82,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.14,
+     "p90_in": 9.3,
+     "scale_error_pct": -1.58
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.65,
+     "p90_in": 24.37,
+     "scale_error_pct": -2.38
+    }
+   }
+  },
+  {
+   "view": "DSC_9259",
+   "distance_m": 8.74,
+   "incidence_deg": 66.94,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.19,
+     "p90_in": 8.42,
+     "scale_error_pct": 0.03
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.58,
+     "p90_in": 15.22,
+     "scale_error_pct": -0.37
+    }
+   }
+  },
+  {
+   "view": "DSC_9260",
+   "distance_m": 8.35,
+   "incidence_deg": 65.56,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.42,
+     "p90_in": 6.95,
+     "scale_error_pct": 0.83
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.6,
+     "p90_in": 14.53,
+     "scale_error_pct": 0.28
+    }
+   }
+  },
+  {
+   "view": "DSC_9261",
+   "distance_m": 8.3,
+   "incidence_deg": 63.14,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.94,
+     "p90_in": 4.91,
+     "scale_error_pct": -0.58
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.21,
+     "p90_in": 12.05,
+     "scale_error_pct": -0.86
+    }
+   }
+  },
+  {
+   "view": "DSC_9262",
+   "distance_m": 8.71,
+   "incidence_deg": 62.67,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.44,
+     "p90_in": 5.56,
+     "scale_error_pct": -0.22
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.47,
+     "p90_in": 12.75,
+     "scale_error_pct": -0.14
+    }
+   }
+  },
+  {
+   "view": "DSC_9263",
+   "distance_m": 9.88,
+   "incidence_deg": 65.33,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 3.08,
+     "p90_in": 10.06,
+     "scale_error_pct": 1.29
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 8.96,
+     "p90_in": 29.56,
+     "scale_error_pct": 1.59
+    }
+   }
+  },
+  {
+   "view": "DSC_9264",
+   "distance_m": 10.47,
+   "incidence_deg": 66.11,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.73,
+     "median_in": 4.0,
+     "p90_in": 13.46,
+     "scale_error_pct": -0.65
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.57,
+     "median_in": 11.0,
+     "p90_in": 38.6,
+     "scale_error_pct": -0.93
+    }
+   }
+  },
+  {
+   "view": "DSC_9265",
+   "distance_m": 5.12,
+   "incidence_deg": 59.52,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.97,
+     "median_in": 2.11,
+     "p90_in": 7.14,
+     "scale_error_pct": -0.28
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 1.93,
+     "median_in": 5.87,
+     "p90_in": 16.54,
+     "scale_error_pct": -0.41
+    }
+   }
+  },
+  {
+   "view": "DSC_9266",
+   "distance_m": 4.73,
+   "incidence_deg": 63.46,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.7,
+     "median_in": 2.33,
+     "p90_in": 6.68,
+     "scale_error_pct": -0.77
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 5.09,
+     "median_in": 4.32,
+     "p90_in": 11.78,
+     "scale_error_pct": -0.99
+    }
+   }
+  },
+  {
+   "view": "DSC_9267",
+   "distance_m": 4.77,
+   "incidence_deg": 71.07,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.82,
+     "p90_in": 7.06,
+     "scale_error_pct": -1.18
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 4.27,
+     "p90_in": 11.95,
+     "scale_error_pct": -0.65
+    }
+   }
+  },
+  {
+   "view": "DSC_9268",
+   "distance_m": 7.37,
+   "incidence_deg": 69.04,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.34,
+     "p90_in": 10.13,
+     "scale_error_pct": 0.67
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.99,
+     "p90_in": 22.68,
+     "scale_error_pct": -1.33
+    }
+   }
+  },
+  {
+   "view": "DSC_9269",
+   "distance_m": 7.6,
+   "incidence_deg": 43.81,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.02,
+     "p90_in": 6.54,
+     "scale_error_pct": 0.11
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.08,
+     "p90_in": 11.51,
+     "scale_error_pct": -0.02
+    }
+   }
+  },
+  {
+   "view": "DSC_9270",
+   "distance_m": 7.35,
+   "incidence_deg": 41.51,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.15,
+     "p90_in": 8.25,
+     "scale_error_pct": -0.43
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.14,
+     "p90_in": 15.08,
+     "scale_error_pct": -0.63
+    }
+   }
+  },
+  {
+   "view": "DSC_9271",
+   "distance_m": 6.77,
+   "incidence_deg": 59.67,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.04,
+     "p90_in": 6.2,
+     "scale_error_pct": -0.41
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.82,
+     "p90_in": 12.35,
+     "scale_error_pct": 0.11
+    }
+   }
+  },
+  {
+   "view": "DSC_9272",
+   "distance_m": 6.31,
+   "incidence_deg": 42.38,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.41,
+     "p90_in": 5.41,
+     "scale_error_pct": -0.21
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.89,
+     "p90_in": 11.69,
+     "scale_error_pct": -0.11
+    }
+   }
+  },
+  {
+   "view": "DSC_9273",
+   "distance_m": 9.06,
+   "incidence_deg": 66.36,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.03,
+     "p90_in": 7.36,
+     "scale_error_pct": 0.56
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.58,
+     "p90_in": 17.25,
+     "scale_error_pct": 1.26
+    }
+   }
+  },
+  {
+   "view": "DSC_9274",
+   "distance_m": 5.41,
+   "incidence_deg": 40.9,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.07,
+     "p90_in": 4.06,
+     "scale_error_pct": 0.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.74,
+     "p90_in": 7.79,
+     "scale_error_pct": 0.48
+    }
+   }
+  },
+  {
+   "view": "DSC_9275",
+   "distance_m": 6.48,
+   "incidence_deg": 74.88,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.17,
+     "p90_in": 6.72,
+     "scale_error_pct": -0.22
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 6.49,
+     "p90_in": 20.94,
+     "scale_error_pct": -0.61
+    }
+   }
+  },
+  {
+   "view": "DSC_9276",
+   "distance_m": 5.05,
+   "incidence_deg": 62.49,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 3.15,
+     "p90_in": 12.34,
+     "scale_error_pct": -0.11
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 8.83,
+     "p90_in": 32.97,
+     "scale_error_pct": -0.77
+    }
+   }
+  },
+  {
+   "view": "DSC_9277",
+   "distance_m": 10.74,
+   "incidence_deg": 57.2,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.61,
+     "p90_in": 5.02,
+     "scale_error_pct": 0.14
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.9,
+     "p90_in": 12.61,
+     "scale_error_pct": 0.15
+    }
+   }
+  },
+  {
+   "view": "DSC_9278",
+   "distance_m": 8.4,
+   "incidence_deg": 58.22,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.6,
+     "p90_in": 5.35,
+     "scale_error_pct": 0.27
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.49,
+     "p90_in": 12.7,
+     "scale_error_pct": 0.11
+    }
+   }
+  },
+  {
+   "view": "DSC_9279",
+   "distance_m": 5.48,
+   "incidence_deg": 42.46,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.66,
+     "p90_in": 5.4,
+     "scale_error_pct": -0.03
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.67,
+     "p90_in": 9.99,
+     "scale_error_pct": 0.3
+    }
+   }
+  },
+  {
+   "view": "DSC_9280",
+   "distance_m": 11.87,
+   "incidence_deg": 53.69,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.67,
+     "median_in": 3.58,
+     "p90_in": 10.02,
+     "scale_error_pct": 0.41
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.9,
+     "median_in": 12.1,
+     "p90_in": 34.76,
+     "scale_error_pct": 2.57
+    }
+   }
+  },
+  {
+   "view": "DSC_9281",
+   "distance_m": 6.79,
+   "incidence_deg": 72.57,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.08,
+     "p90_in": 12.52,
+     "scale_error_pct": -1.53
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 12.36,
+     "p90_in": 32.37,
+     "scale_error_pct": -3.85
+    }
+   }
+  },
+  {
+   "view": "DSC_9282",
+   "distance_m": 6.01,
+   "incidence_deg": 55.42,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.91,
+     "p90_in": 5.49,
+     "scale_error_pct": -0.06
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.73,
+     "p90_in": 12.85,
+     "scale_error_pct": 0.28
+    }
+   }
+  },
+  {
+   "view": "DSC_9283",
+   "distance_m": 5.26,
+   "incidence_deg": 39.52,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 0.75,
+     "p90_in": 2.29,
+     "scale_error_pct": -0.08
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.49,
+     "p90_in": 4.33,
+     "scale_error_pct": -0.29
+    }
+   }
+  },
+  {
+   "view": "DSC_9284",
+   "distance_m": 7.36,
+   "incidence_deg": 66.97,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.57,
+     "p90_in": 8.3,
+     "scale_error_pct": -0.46
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 6.24,
+     "p90_in": 18.59,
+     "scale_error_pct": -1.75
+    }
+   }
+  },
+  {
+   "view": "DSC_9285",
+   "distance_m": 10.36,
+   "incidence_deg": 65.16,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.6,
+     "median_in": 3.91,
+     "p90_in": 11.18,
+     "scale_error_pct": 0.25
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.8,
+     "median_in": 11.51,
+     "p90_in": 34.45,
+     "scale_error_pct": -0.62
+    }
+   }
+  },
+  {
+   "view": "DSC_9287",
+   "distance_m": 6.72,
+   "incidence_deg": 73.13,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.52,
+     "p90_in": 9.24,
+     "scale_error_pct": -0.27
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 9.47,
+     "p90_in": 23.74,
+     "scale_error_pct": -1.59
+    }
+   }
+  },
+  {
+   "view": "DSC_9289",
+   "distance_m": 16.22,
+   "incidence_deg": 67.64,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 10.72,
+     "p90_in": 53.41,
+     "scale_error_pct": 8.54
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.53,
+     "median_in": 33.27,
+     "p90_in": 117.69,
+     "scale_error_pct": -0.9
+    }
+   }
+  },
+  {
+   "view": "DSC_9290",
+   "distance_m": 17.26,
+   "incidence_deg": 62.95,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.37,
+     "median_in": 15.52,
+     "p90_in": 63.39,
+     "scale_error_pct": -0.13
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.17,
+     "median_in": 44.66,
+     "p90_in": 140.55,
+     "scale_error_pct": -7.02
+    }
+   }
+  },
+  {
+   "view": "DSC_9291",
+   "distance_m": 17.4,
+   "incidence_deg": 64.38,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 10.83,
+     "p90_in": 28.91,
+     "scale_error_pct": -0.77
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 29.74,
+     "p90_in": 78.38,
+     "scale_error_pct": -2.88
+    }
+   }
+  },
+  {
+   "view": "DSC_9292",
+   "distance_m": 15.5,
+   "incidence_deg": 62.24,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 4.45,
+     "median_in": 5.49,
+     "p90_in": 50.94,
+     "scale_error_pct": 0.1
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 4.32,
+     "median_in": 14.27,
+     "p90_in": 54.99,
+     "scale_error_pct": 2.07
+    }
+   }
+  },
+  {
+   "view": "DSC_9293",
+   "distance_m": 10.5,
+   "incidence_deg": 66.27,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 3.25,
+     "p90_in": 9.48,
+     "scale_error_pct": 0.66
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 8.11,
+     "p90_in": 22.55,
+     "scale_error_pct": -0.64
+    }
+   }
+  },
+  {
+   "view": "DSC_9294",
+   "distance_m": 6.42,
+   "incidence_deg": 54.85,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.95,
+     "p90_in": 5.85,
+     "scale_error_pct": 0.12
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.41,
+     "p90_in": 13.75,
+     "scale_error_pct": 0.22
+    }
+   }
+  },
+  {
+   "view": "DSC_9295",
+   "distance_m": 5.0,
+   "incidence_deg": 43.32,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.01,
+     "p90_in": 7.27,
+     "scale_error_pct": -0.33
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.74,
+     "p90_in": 12.45,
+     "scale_error_pct": -1.65
+    }
+   }
+  },
+  {
+   "view": "DSC_9296",
+   "distance_m": 5.27,
+   "incidence_deg": 51.77,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.45,
+     "p90_in": 4.91,
+     "scale_error_pct": -0.25
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.48,
+     "p90_in": 11.42,
+     "scale_error_pct": -1.94
+    }
+   }
+  },
+  {
+   "view": "DSC_9297",
+   "distance_m": 3.99,
+   "incidence_deg": 44.51,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.32,
+     "p90_in": 6.5,
+     "scale_error_pct": -0.38
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.72,
+     "p90_in": 10.61,
+     "scale_error_pct": -1.64
+    }
+   }
+  },
+  {
+   "view": "DSC_9298",
+   "distance_m": 11.63,
+   "incidence_deg": 66.89,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 4.01,
+     "p90_in": 10.55,
+     "scale_error_pct": -1.23
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.23,
+     "median_in": 10.83,
+     "p90_in": 26.94,
+     "scale_error_pct": -2.03
+    }
+   }
+  },
+  {
+   "view": "DSC_9299",
+   "distance_m": 5.87,
+   "incidence_deg": 63.81,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.49,
+     "p90_in": 7.69,
+     "scale_error_pct": 0.6
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 5.85,
+     "p90_in": 16.84,
+     "scale_error_pct": 1.5
+    }
+   }
+  },
+  {
+   "view": "DSC_9300",
+   "distance_m": 5.93,
+   "incidence_deg": 68.35,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 2.91,
+     "p90_in": 8.6,
+     "scale_error_pct": 0.49
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 7.05,
+     "p90_in": 20.73,
+     "scale_error_pct": 1.41
+    }
+   }
+  },
+  {
+   "view": "DSC_9301",
+   "distance_m": 5.9,
+   "incidence_deg": 69.5,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.1,
+     "p90_in": 5.91,
+     "scale_error_pct": 0.07
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.07,
+     "median_in": 5.26,
+     "p90_in": 13.81,
+     "scale_error_pct": 1.13
+    }
+   }
+  },
+  {
+   "view": "DSC_9302",
+   "distance_m": 5.72,
+   "incidence_deg": 69.95,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.0,
+     "median_in": 1.56,
+     "p90_in": 4.58,
+     "scale_error_pct": 0.22
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.1,
+     "median_in": 3.68,
+     "p90_in": 10.86,
+     "scale_error_pct": 1.1
+    }
+   }
+  },
+  {
+   "view": "DSC_9303",
+   "distance_m": 5.37,
+   "incidence_deg": 70.85,
+   "scene": "electro",
+   "one_known_distance": {
+    "1-3m": {
+     "pairs": 75000,
+     "failed_pct": 0.03,
+     "median_in": 2.71,
+     "p90_in": 10.48,
+     "scale_error_pct": 0.17
+    },
+    "3-10m": {
+     "pairs": 75000,
+     "failed_pct": 0.13,
+     "median_in": 6.62,
+     "p90_in": 30.32,
+     "scale_error_pct": 2.12
+    }
+   }
+  }
+ ]
+}
