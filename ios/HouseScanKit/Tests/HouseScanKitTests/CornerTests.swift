@@ -162,7 +162,7 @@ func rightCornerWall() throws -> WallFrame {
             wall: w, baselineS: -4...6, wallHeight: 2.7,
             features: [
                 .opening(kind: .window, span: 4...5, bottom: 0.9, top: 2.0, operable: false),
-                .pointObject(kind: .gasMeter, tap: w.world(s: -3, height: 0.5, out: 0.25), bottom: nil, top: nil),
+                .wallObject(kind: .gasMeter, span: -3.15 ... -2.85, bottom: 0.3, top: 0.7),
                 .fence(foot: [w.world(s: 0.5, height: 0, out: 2), w.world(s: 1.5, height: 0, out: 2)]),
             ],
             coverage: SceneCoverage(

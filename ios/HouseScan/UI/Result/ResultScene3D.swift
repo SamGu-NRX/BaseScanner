@@ -337,13 +337,16 @@ struct ResultScene3D: View {
             root.addChild(box(width: width, height: height, depth: 0.02,
                               center: SIMD3(centerX, bottom + height / 2, 0), material: matte(SceneColor.opening)))
         case .gasMeter:
+            // Its marked face on the wall; how far it stands out isn't measured, so drawn thin.
             let bottom = feature.bottom ?? 0.15
-            root.addChild(box(width: 0.3, height: 0.35, depth: 0.2,
-                              center: SIMD3(centerX, bottom + 0.175, 0.1), material: matte(SceneColor.gas)))
+            let height = max((feature.top ?? bottom + 0.35) - bottom, 0.05)
+            root.addChild(box(width: width, height: height, depth: 0.2,
+                              center: SIMD3(centerX, bottom + height / 2, 0.1), material: matte(SceneColor.gas)))
         case .acUnit:
-            let back = feature.out ?? 0.3
-            root.addChild(box(width: 0.8, height: 0.8, depth: 0.8,
-                              center: SIMD3(centerX, 0.4, back + 0.4), material: matte(SceneColor.meter)))
+            // From the wall to its tapped front edge; its height isn't measured, 0.8 m is drawn.
+            let depth = max(feature.out ?? 0.8, 0.05)
+            root.addChild(box(width: width, height: 0.8, depth: depth,
+                              center: SIMD3(centerX, 0.4, depth / 2), material: matte(SceneColor.meter)))
         case .driveway:
             root.addChild(plane(width: width, depth: Self.groundDepth,
                                 center: SIMD3(centerX, 0.003, Self.groundDepth / 2), material: matte(SceneColor.driveway)))

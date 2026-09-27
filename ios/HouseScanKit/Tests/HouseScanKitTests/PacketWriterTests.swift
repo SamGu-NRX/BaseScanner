@@ -170,7 +170,7 @@ struct SyntheticPacket {
             .wallEnd(id: "m2", side: .left, endKind: .unexplored, s: -3, wall: wall, frame: frame, t: 100.2),
             .wallEnd(id: "m3", side: .right, endKind: .limit, s: 3, wall: wall, frame: frame, t: 101.9),
             try .from(.opening(kind: .window, span: -2 ... -1.25, bottom: 1, top: 2, operable: true), id: "m4", wall: wall, frame: frame, t: 100.4),
-            try .from(.pointObject(kind: .gasMeter, tap: SIMD3(1.5, 1, 0.1), bottom: nil, top: nil), id: "m5", wall: wall, frame: frame),
+            try .from(.wallObject(kind: .gasMeter, span: 1.35...1.65, bottom: 0.8, top: 1.2), id: "m5", wall: wall, frame: frame),
             try .from(.driveway(edge: [SIMD3(2, 0, 0.5), SIMD3(2, 0, 4)]), id: "m6", wall: wall, frame: frame, t: 101.5),
         ])
         try writer.setGuidance([
@@ -762,8 +762,12 @@ private func photoJPEG() throws -> URL {
         let door = try PacketMark.from(.opening(kind: .door, span: 0.5 ... 1.4, bottom: 0, top: 2.25, operable: nil), id: "d", wall: wall, frame: frame)
         #expect(door.kind == .door && door.operable == nil)
         #expect(door.points == [SIMD3(0.5, -1.5, 0), SIMD3(1.4, 0.75, 0)])
-        let ac = try PacketMark.from(.pointObject(kind: .ac, tap: SIMD3(-2, 0.5, 0.6), bottom: nil, top: nil), id: "a", wall: wall, frame: frame)
-        #expect(ac.kind == .ac && ac.points == [SIMD3(-2, -1, 0.6)])
+        // A gas meter or AC unit: one point, the middle of its two corners.
+        let ac = try PacketMark.from(.groundObject(kind: .ac, front: [SIMD3(-2.3, 0, 0.6), SIMD3(-1.7, 0, 0.8)]), id: "a", wall: wall, frame: frame)
+        #expect(ac.kind == .ac && ac.points.count == 1 && nearlyEqual(ac.points[0], SIMD3(-2, -1.5, 0.7)))
+        let gas = try PacketMark.from(.wallObject(kind: .gasMeter, span: 1...1.4, bottom: 0.5, top: 0.9), id: "g", wall: wall, frame: frame)
+        #expect(gas.kind == .gasMeter && gas.points.count == 1 && nearlyEqual(gas.points[0], SIMD3(1.2, -0.8, 0)))
+        #expect(throws: PacketError.self) { try PacketMark.from(.groundObject(kind: .ac, front: [SIMD3(0, 0, 1)]), id: "y", wall: wall, frame: frame) }
         let fence = try PacketMark.from(.fence(foot: [SIMD3(-1, 0, 3), SIMD3(1, 0, 3)]), id: "f", wall: wall, frame: frame)
         #expect(fence.kind == .fence && fence.points == [SIMD3(-1, -1.5, 3), SIMD3(1, -1.5, 3)])
         #expect(throws: PacketError.self) { try PacketMark.from(.driveway(edge: [SIMD3(0, 0, 1)]), id: "x", wall: wall, frame: frame) }
