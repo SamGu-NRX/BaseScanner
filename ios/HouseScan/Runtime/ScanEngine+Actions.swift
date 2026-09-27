@@ -82,9 +82,15 @@ extension ScanEngine: ScanActions {
         }
         guard let chosen = candidates.first(where: { $0.id == candidate.id }) else { return }
         state.meterNumber = .confirmed(chosen.text)
-        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public))")
+        RuntimeLog.engine.info("meter number confirmed (\(chosen.barcodeConfirmed ? "barcode-confirmed" : "text only", privacy: .public)), brand \(self.state.meterBrand == nil ? "none" : "kept", privacy: .public)")
         observeCloseUpView()
         finishCloseUp()
+    }
+
+    func rejectMeterBrand() {
+        guard state.phase == .meterCloseUp, case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
+        RuntimeLog.engine.info("meter brand rejected")
     }
 
     /// Puts the close-up photo's view into coverage, under the same rules as a walk keyframe: a

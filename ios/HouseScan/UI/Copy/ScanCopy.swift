@@ -144,6 +144,9 @@ enum ScanCopy {
     }
 
     static let barcodeMatch = "Matches the barcode"
+    /// The maker read on the close-up, above the number candidates.
+    static func meterBrand(_ brand: String) -> String { "\(brand) meter" }
+    static func notMeterBrand(_ brand: String) -> String { "Not \(brand)" }
     static let noneOfThese = "None of these"
 
     // MARK: Features

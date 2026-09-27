@@ -645,6 +645,22 @@ final class ScanViewState {
     var closeUpFailedAttempts = 0
     /// Nil until the close-up photo is taken.
     var meterNumber: MeterNumberState?
+    /// The meter's maker as read from the close-up, shown above the number candidates. It exists
+    /// only beside those candidates or the number confirmed from them: while `meterNumber` is
+    /// nil, reading or skipped it is nil, so a brand from an earlier photo can't outlive its
+    /// number through a retake, a skip or a new close-up. The homeowner can reject it
+    /// (`rejectMeterBrand`). Like the number, it stays on the phone.
+    var meterBrand: String? {
+        get {
+            switch meterNumber {
+            case .choose, .confirmed: offeredMeterBrand
+            case .reading, .skipped, nil: nil
+            }
+        }
+        set { offeredMeterBrand = newValue }
+    }
+    /// Storage for `meterBrand`, set with the candidates it was read with. Read `meterBrand`.
+    private var offeredMeterBrand: String?
 
     var captureCount = 0
     var lastCapture: CaptureEvent?
@@ -721,6 +737,8 @@ protocol ScanActions: AnyObject {
     /// The homeowner's pick from `MeterNumberState.choose`; nil means "None of these", which
     /// asks for a retake.
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
+    /// "Not <brand>" beside the number candidates: drops `ScanViewState.meterBrand`.
+    func rejectMeterBrand()
     /// Marks a wall end where `point` meets the wall, on whichever side of the meter that is.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
     /// "Wall ends here" during the walk: ends the wall on the side being walked where
