@@ -434,7 +434,8 @@ final class ScanEngine {
     }
 
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
-    /// points stay put.
+    /// points stay put. An anchor correction moves the points and the wall together instead
+    /// (`refreshMeterFromAnchor`), so it needs no reprojection.
     func reprojectFeatures() {
         guard let wall = coverage?.wall, !state.features.isEmpty else { return }
         var features = state.features
@@ -450,12 +451,33 @@ final class ScanEngine {
     /// (`MeterAnchorTracking`).
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
         guard let anchor = frame.meterAnchor, coverage != nil, let correction = meterTracking?.update(to: anchor) else { return }
+        // How far this correction moves the meter (`WallFrame.apply`).
+        let step = coverage.map { simd_distance(correction.point($0.wall.meter), $0.wall.meter) } ?? 0
         coverage?.apply(correction)
         var features = state.features
         for index in features.indices { features[index].points = features[index].points.map(correction.point) }
         if features != state.features { state.features = features }
         publishWall()
         publishCoverage()
+        logAnchorCorrection(correction, step: step)
+    }
+
+    /// One line per correction applied, with the total since the meter was anchored, for telling
+    /// a map ARKit corrected (the marks and the meter move together) from drift it never
+    /// corrected (no line, and the marks sit off their objects) on a walk away and back (#73).
+    /// `MeterAnchorTracking` already limits the rate: a correction is applied only once the anchor
+    /// has moved 2 cm or turned 0.4 degrees since the last one.
+    private func logAnchorCorrection(_ correction: YawCorrection, step: Float) {
+        guard let tracking = meterTracking else { return }
+        let total = tracking.sinceAnchored
+        let turned = correction.yaw * 180 / .pi
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let marks = state.features.count
+        RuntimeLog.capture.info(
+            "meter anchor corrected: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(self.state.phase.rawValue, privacy: .public))"
+        )
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -1137,6 +1159,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
         meterPlaneSource = .detectedPlane
         state.wall = nil
         state.coverage = .empty
@@ -1584,6 +1607,7 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
         meterPlaneSource = .detectedPlane
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
