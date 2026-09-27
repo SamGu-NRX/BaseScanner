@@ -20,6 +20,9 @@ import OSLog
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
+/// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
+///   meter are unavailable whatever the stored switch says (`DeveloperSettings`). It can only take
+///   the switch away, never offer it.
 struct LaunchOptions: Equatable {
     var replayFolder: URL?
     var autopilot = false
@@ -29,6 +32,7 @@ struct LaunchOptions: Equatable {
     var autopilotGate: URL?
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
+    var simulateAppStore = false
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -44,6 +48,7 @@ struct LaunchOptions: Equatable {
         autopilot = arguments.contains("-autopilot")
         autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
+        simulateAppStore = arguments.contains("-simulateAppStore")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }

@@ -34,6 +34,7 @@ struct OnboardingScreen: View {
         VStack(spacing: 0) {
             HStack {
                 ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+                DeveloperOptionsButton()
                 Spacer()
                 if page < pages.count - 1 {
                     Button("Skip") {
