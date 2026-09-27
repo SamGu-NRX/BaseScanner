@@ -410,8 +410,9 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
     }
 
-    /// #81: the first aim ring comes with a line saying what it is for, and reads its progress to
-    /// VoiceOver. Off screen, the edge arrow stands in for it, and neither shows.
+    /// #81: the first aim ring comes with a line under the card saying what it is for, clear of
+    /// the card at every text size, and reads its progress to VoiceOver. Off screen, the edge
+    /// arrow stands in for the ring, and neither shows.
     @MainActor
     func testAimRingShowsProgressAndItsLegend() throws {
         continueAfterFailure = false
@@ -429,8 +430,8 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
         app.terminate()
 
-        // At the largest text size the card and the controls fill the screen, so there is no
-        // room beside the ring: the legend moves under the card instead of going behind it or
+        // At the largest text size the card fills most of the screen. The legend sits under it in
+        // the same stack, so it grows and scrolls with the card instead of going behind it or
         // disappearing.
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()

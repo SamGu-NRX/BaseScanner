@@ -15,14 +15,10 @@ struct CameraChrome<Bottom: View>: View {
     /// Taps on the open camera area, in the camera view's coordinates (full screen, which is
     /// the window's global space). Nil when the screen has nothing to tap.
     var onCameraTap: ((CGPoint) -> Void)?
-    /// A line under the card about something drawn on the camera: the aim ring's legend where
-    /// it doesn't fit beside the ring (`WayfindingOverlay.LegendPlacement.underCard`). It is
-    /// part of the chrome, so it scrolls with the card at the largest text sizes instead of
-    /// being covered or dropped.
+    /// A line under the card about something drawn on the camera: the aim ring's legend
+    /// (`CameraOverlays`). It is part of the chrome's stack, so it grows with the card and
+    /// scrolls with it at the largest text sizes, where the card covers most of the camera.
     var legend: String? = nil
-    /// Set to the camera area left open between the card (with `legend`) and `bottom`, for
-    /// overlays that draw beside a point on the camera and must keep clear of both.
-    var openArea: Binding<OpenCameraArea?>? = nil
     @ViewBuilder var bottom: Bottom
 
     var body: some View {
@@ -59,17 +55,14 @@ struct CameraChrome<Bottom: View>: View {
                 }
             }
             .frame(minHeight: 36)
-            VStack(spacing: 8) {
-                InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
-                if let legend {
-                    legendLine(legend)
-                }
+            InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
+            if let legend {
+                legendLine(legend)
             }
-            .background { edgeReader { area, frame in area.top = frame.maxY } }
             Spacer(minLength: 0)
             bottom
-                .background { edgeReader { area, frame in area.bottom = frame.minY } }
         }
+        .animation(.easeOut(duration: 0.2), value: legend)
         .padding(.horizontal, Metrics.edge)
         .padding(.top, 4)
         .padding(.bottom, 8)
@@ -88,35 +81,6 @@ struct CameraChrome<Bottom: View>: View {
             .accessibilityIdentifier("aim.legend")
             .transition(.opacity)
     }
-
-    /// Writes one edge of the open area from the frame of the view it is the background of, in
-    /// global coordinates (the camera layers fill the screen, as `CameraSizeReader` notes).
-    @ViewBuilder
-    private func edgeReader(_ write: @escaping (inout OpenCameraArea, CGRect) -> Void) -> some View {
-        if let openArea {
-            GeometryReader { proxy in
-                Color.clear
-                    .onAppear { update(openArea, write, proxy.frame(in: .global)) }
-                    .onChange(of: proxy.frame(in: .global)) { _, frame in update(openArea, write, frame) }
-            }
-            .accessibilityHidden(true)
-        }
-    }
-
-    private func update(
-        _ binding: Binding<OpenCameraArea?>, _ write: (inout OpenCameraArea, CGRect) -> Void, _ frame: CGRect
-    ) {
-        var area = binding.wrappedValue ?? OpenCameraArea(top: 0, bottom: .greatestFiniteMagnitude)
-        write(&area, frame)
-        if area != binding.wrappedValue { binding.wrappedValue = area }
-    }
-}
-
-/// The camera area between the chrome's card and its controls, in global coordinates. The
-/// top is below the bottom when the chrome fills the screen (the largest text sizes).
-struct OpenCameraArea: Equatable {
-    var top: CGFloat
-    var bottom: CGFloat
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)
