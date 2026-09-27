@@ -5,8 +5,8 @@ Walk one wall with an iPhone. Find out whether a home battery fits, and where.
 [Live site](https://house-scanning.vercel.app/) · [How it works](docs/how-it-works.html) · [Demo API](https://house-scanning-server.vercel.app/health)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/pipeline-dark.gif">
-  <img alt="Five steps arrive left to right: walk and mark, the capture packet, the placement rules, a spot or one more view, and the result in AR. A dashed loop runs from the fourth step back to the first." src="docs/readme/pipeline-light.gif" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/pipeline-dark.png">
+  <img alt="Five steps from left to right: walk and mark, the capture packet, the placement rules, a spot or one more view, and the result in AR. A dashed loop runs from the fourth step back to the first: needs a view? The app asks for it." src="docs/readme/pipeline-light.png" width="100%">
 </picture>
 
 Today a person at Base Power decides where a battery goes by looking at a homeowner's photos. Photos have no scale, and they miss whatever sits just out of frame, so the answer often waits on another round of pictures.
@@ -36,30 +36,44 @@ curl -s https://house-scanning-server.vercel.app/health
 ## How it fits together
 
 ```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 480, "nodeSpacing": 40, "rankSpacing": 50}}}%%
+%%{init: {"theme": "base", "fontFamily": "system-ui", "flowchart": {"wrappingWidth": 480, "nodeSpacing": 40, "rankSpacing": 54, "curve": "basis"}, "themeVariables": {"fontFamily": "system-ui", "fontSize": "15px", "lineColor": "#8b949e", "edgeLabelBackground": "#30363d", "textColor": "#e6edf3", "titleColor": "#8b949e"}}}%%
 flowchart TB
-  subgraph phone["iPhone app · ios/ · Swift, ARKit, RealityKit"]
+  subgraph phone["IPHONE APP · ios/ · Swift, ARKit, RealityKit"]
     direction TB
-    walk["<b>Guided walk</b><br/>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen."]
-    packet["<b>Capture packet</b><br/>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and <code>scene.json</code>"]
+    walk("<b>Guided walk</b><br/><small>ARKit tracks the phone. The homeowner taps the meter<br/>and marks gas meters, doors, windows and AC units.<br/>Haze lifts wherever the camera has seen.</small>")
+    packet("<b>Capture packet</b><br/><small>Keyframe photos, poses, intrinsics, motion data,<br/>LiDAR depth when the phone has it, and scene.json</small>")
     walk --> packet
   end
 
-  subgraph srv["Server · Python"]
+  subgraph srv["SERVER · Python"]
     direction TB
-    recon["<b>Reconstruction worker</b> · recon/<br/>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen."]
-    api["<b>Placement API</b> · server/ · FastAPI<br/><code>POST /v1/placements</code>"]
-    rules["<b>Rules engine</b><br/>Plain code tries every spot along the wall against<br/><code>rules.yaml</code>, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE."]
+    recon("<b>Reconstruction worker</b> · recon/<br/><small>MoGe-2 depth scaled with the ARKit poses, or LiDAR.<br/>Fits the wall and ground, and records what was seen.</small>")
+    api("<b>Placement API</b> · server/ · FastAPI<br/><small>POST /v1/placements</small>")
+    rules("<b>Rules engine</b><br/><small>Plain code tries every spot along the wall against<br/>rules.yaml, where every value cites its source.<br/>Each check returns PASS, FAIL or UNSURE.</small>")
     recon -- "rebuilt scene.json" --> api
     api --> rules
   end
 
-  result["<b>Result in AR</b> · back on the phone<br/>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result."]
+  result("<b>Result in AR</b> · back on the phone<br/><small>The spot, pinned to the meter's anchor, with each check's reason.<br/>An installer reviews every result.</small>")
 
   packet -- "scene.json" --> api
   packet -. "photos and poses" .-> recon
   rules -- "spot, or views needed" --> result
   result -. "UNSURE: one more view" .-> walk
+
+  classDef phoneNode fill:#1f6feb,stroke:#58a6ff,stroke-width:1px,color:#ffffff
+  classDef serverNode fill:#bd561d,stroke:#f0883e,stroke-width:1px,color:#ffffff
+  classDef rulesNode fill:#8250df,stroke:#bc8cff,stroke-width:1px,color:#ffffff
+  classDef resultNode fill:#1a7f37,stroke:#3fb950,stroke-width:1px,color:#ffffff
+  class walk,packet phoneNode
+  class recon,api serverNode
+  class rules rulesNode
+  class result resultNode
+  style phone fill:#1f6feb14,stroke:#388bfd,stroke-width:1.5px,stroke-dasharray:6 4,color:#388bfd
+  style srv fill:#db6d2814,stroke:#db6d28,stroke-width:1.5px,stroke-dasharray:6 4,color:#db6d28
+  linkStyle default stroke:#8b949e,stroke-width:1.6px,color:#e6edf3
+  linkStyle 5 stroke:#3fb950,stroke-width:2px,color:#e6edf3
+  linkStyle 6 stroke:#d29922,stroke-width:2px,color:#e6edf3
 ```
 
 Models build the geometry and recognize things. Plain code passes or fails each check, so every answer points back to a rule and a measurement. The clearance numbers live in a rules file with their sources, never in code.
@@ -75,8 +89,8 @@ Models build the geometry and recognize things. Plain code passes or fails each 
 ## Unseen means unsure
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/unseen-dark.gif">
-  <img alt="A wall with the left side hazed over. Three checks read Not seen. The haze sweeps away, the checks turn Unsure, then settle: wall and ground pass, clear space fails, and the spot reads Not here." src="docs/readme/unseen-light.gif" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/unseen-dark.webp">
+  <img alt="A wall with the left side hazed over. Three checks read Not seen. The haze sweeps away, the checks turn Unsure, then settle: wall and ground pass, clear space fails, and the spot reads Not here." src="docs/readme/unseen-light.webp" width="100%">
 </picture>
 
 This is the rule we care about most. A gap in the scan could hide a gas meter, so ground nobody saw never counts as clear. Here the walk went right and never saw the left side. The closer spot stays "Not seen yet" until the view sweeps across. Then there isn't enough clear space in front of it, so it's out.
@@ -186,4 +200,4 @@ Paths marked with a pull request exist only on that branch until it merges.
 
 To go deeper, start with [the walkthrough](docs/how-it-works.html), about fifteen minutes with pictures. [docs/00-overview.md](docs/00-overview.md) has the plan, the decisions and the evidence, [AGENTS.md](AGENTS.md) the rules for anyone changing this repository, and [CONTRIBUTING.md](CONTRIBUTING.md) branches, CI and TestFlight.
 
-This repository is public. The GIFs above were recorded from the [live site](https://house-scanning.vercel.app/).
+This repository is public. The pictures above come from the [live site](https://house-scanning.vercel.app/).
