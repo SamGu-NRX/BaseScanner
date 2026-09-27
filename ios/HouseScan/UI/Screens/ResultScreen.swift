@@ -86,13 +86,16 @@ struct ResultScreen: View {
 
     /// Plain small print, never boxes: none of it changes what the homeowner does next.
     private func footnotes(_ result: ResultPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             footnote(ScanCopy.installerConfirms, id: "result.installerConfirms")
             if let notice = result.rulesNotice {
                 footnote(notice, id: "result.rulesNotice")
             }
             if !result.policyApproved {
                 footnote(ScanCopy.rulesNotFinal, id: "result.rulesNotFinal")
+            }
+            if let hash = result.rulesHash {
+                footnote(ScanCopy.rulesHash(hash), id: "result.rulesHash")
             }
             if let side = result.unseenSide {
                 footnote(ScanCopy.unseenSide(side), id: "result.unseenSide")
@@ -133,7 +136,7 @@ struct ResultScreen: View {
                     // button already starts over after a reject.
                     if result.answer != .notHere {
                         Button("Start over") { actions.startOver() }
-                            .buttonStyle(.quiet)
+                            .buttonStyle(TextActionStyle())
                             .accessibilityHint("Deletes this scan and its photos.")
                             .accessibilityIdentifier("action.startOver")
                     }
@@ -143,40 +146,23 @@ struct ResultScreen: View {
         } label: {
             Text(ScanCopy.details)
                 .font(Typeface.sectionTitle)
+                .foregroundStyle(Color.primary)
+                .frame(minHeight: Metrics.minTarget)
+                .accessibilityIdentifier("result.details")
         }
-        .disclosureGroupStyle(DetailsDisclosureStyle())
+        .tint(Palette.signalText)
     }
 }
 
-/// The Details header as one plain button with the identifier on it. The system style put
-/// `result.details` on an element a tap didn't open. The content appears without animation:
-/// the card's reveal is the screen's only motion.
-private struct DetailsDisclosureStyle: DisclosureGroupStyle {
+/// A text-only action inside Details: the card's primary button stays the one filled button.
+private struct TextActionStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                configuration.isExpanded.toggle()
-            } label: {
-                HStack {
-                    configuration.label
-                        .foregroundStyle(Color.primary)
-                    Spacer()
-                    Image(systemName: configuration.isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Palette.signalText)
-                        .accessibilityHidden(true)
-                }
-                .frame(minHeight: Metrics.minTarget)
-                .contentShape(.rect)
-            }
-            .buttonStyle(.plain)
-            .accessibilityValue(configuration.isExpanded ? "Open" : "Closed")
-            .accessibilityHint(configuration.isExpanded ? "Hides every check and what's still needed." : "Shows every check and what's still needed.")
-            .accessibilityIdentifier("result.details")
-            if configuration.isExpanded {
-                configuration.content
-            }
-        }
+        configuration.label
+            .font(Typeface.hint.weight(.semibold))
+            .foregroundStyle(Palette.signalText)
+            .frame(minHeight: Metrics.minTarget)
+            .contentShape(.rect)
+            .opacity(configuration.isPressed ? 0.6 : 1)
     }
 }
 
@@ -473,7 +459,7 @@ private struct MissingList: View {
                         } label: {
                             Label("Capture it now", systemImage: "camera.fill")
                         }
-                        .buttonStyle(.quiet)
+                        .buttonStyle(TextActionStyle())
                         .accessibilityIdentifier("action.captureMissing")
                     } else {
                         Label("An installer will check this", systemImage: "person.fill")
