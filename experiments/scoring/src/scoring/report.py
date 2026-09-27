@@ -6,6 +6,7 @@ comparison was made on the exact values.
 """
 
 import csv
+import re
 from collections.abc import Iterable
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
@@ -235,9 +236,17 @@ def _write(path: Path, columns: tuple[str, ...], rows: Iterable[dict[str, str]])
         writer.writerows(rows)
 
 
+# The files write_csvs creates in the output directory, in the order it returns them.
+CSV_NAMES = ("measurements.csv", "checks.csv", "runs.csv")
+
+
+def csv_paths(out_dir: Path) -> list[Path]:
+    return [out_dir / name for name in CSV_NAMES]
+
+
 def write_csvs(runs: list[RunScore], out_dir: Path) -> list[Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = [out_dir / "measurements.csv", out_dir / "checks.csv", out_dir / "runs.csv"]
+    paths = csv_paths(out_dir)
     measurement_rows = (measurement_row(r, s) for r in runs for s in r.measurements)
     _write(paths[0], MEASUREMENT_COLUMNS, measurement_rows)
     _write(paths[1], CHECK_COLUMNS, (check_row(r, s) for r in runs for s in r.checks))
@@ -245,9 +254,42 @@ def write_csvs(runs: list[RunScore], out_dir: Path) -> list[Path]:
     return paths
 
 
+# Identifiers in the inputs may be any non-empty string, so every one is escaped where it lands in
+# the summary: a pipe would split a table cell, a line break would end a row, heading or list item,
+# and a backtick would close a code span early.
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
+_MARKDOWN_SPECIAL = re.compile(r"([\\`*_\[\]<>|#])")
+
+
+def _one_line(value: str) -> str:
+    return _LINE_BREAK.sub(" ", value)
+
+
+def _code(value: str) -> str:
+    """`value` as one inline code span. The fence is one backtick longer than any backtick run
+    inside, and a space pads a value that starts or ends with a backtick, or that starts and ends
+    with a space (CommonMark strips one such space from each side)."""
+    text = _one_line(value)
+    fence = "`" * (max((len(run) for run in re.findall("`+", text)), default=0) + 1)
+    edge_tick = text.startswith("`") or text.endswith("`")
+    edge_spaces = text.startswith(" ") and text.endswith(" ") and text.strip() != ""
+    pad = " " if edge_tick or edge_spaces else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+def _text(value: str) -> str:
+    """`value` as plain inline text, on one line, with Markdown punctuation escaped."""
+    return _MARKDOWN_SPECIAL.sub(r"\\\1", _one_line(value))
+
+
+def _cell(value: str) -> str:
+    # GitHub splits a table row at every unescaped pipe, even inside a code span.
+    return value.replace("|", "\\|")
+
+
 def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
-    lines += ["| " + " | ".join(cell or "n/a" for cell in row) + " |" for row in rows]
+    lines += ["| " + " | ".join(_cell(cell) or "n/a" for cell in row) + " |" for row in rows]
     return lines
 
 
@@ -262,7 +304,7 @@ def markdown(study: Study, runs: list[RunScore]) -> str:
     lines = [
         "# Capture pipeline scores",
         "",
-        f"Rules: `{rules.path.name}` ({rules.name}), sha256 `{rules.sha256}`.",
+        f"Rules: {_code(rules.path.name)} ({_text(rules.name)}), sha256 {_code(rules.sha256)}.",
         f"{_count(len(houses), 'house')}, {_count(spots, 'candidate spot')}, "
         f"{_count(len(runs), 'pipeline run')}.",
         "",
@@ -275,10 +317,11 @@ def markdown(study: Study, runs: list[RunScore]) -> str:
         reference = truth.measurements[truth.scale_reference]
         lines += [
             "",
-            f"## House {truth.house}",
+            f"## House {_text(truth.house)}",
             "",
-            f"Captures: {', '.join(truth.captures)}. Candidates: {', '.join(truth.candidates)}. "
-            f"Scale reference `{reference.id}` ({feet(reference.value_ft)} ft), excluded.",
+            f"Captures: {', '.join(map(_text, truth.captures))}. "
+            f"Candidates: {', '.join(map(_text, truth.candidates))}. "
+            f"Scale reference {_code(reference.id)} ({feet(reference.value_ft)} ft), excluded.",
         ]
         if not house_runs:
             lines += ["", "No pipeline runs for this house."]
@@ -300,7 +343,7 @@ def _distances(runs: list[RunScore]) -> list[str]:
         within, with_uncertainty = run.within_reported
         rows.append(
             [
-                f"`{run.results.pipeline}`",
+                _code(run.results.pipeline),
                 run.results.scale_source,
                 f"{run.count('scored')}/{denominator}",
                 inches(run.median_abs_error_in),
@@ -359,7 +402,7 @@ def _checks(runs: list[RunScore]) -> list[str]:
             ]
         else:
             decided = ["no decisions", "", "", "", "", "", "", ""]
-        rows.append([f"`{run.results.pipeline}`", *decided, str(run.could_flip)])
+        rows.append([_code(run.results.pipeline), *decided, str(run.could_flip)])
     header = [
         "Pipeline",
         "Agree",
@@ -397,7 +440,7 @@ def _checks(runs: list[RunScore]) -> list[str]:
 def _timing(runs: list[RunScore]) -> list[str]:
     rows = [
         [
-            f"`{run.results.pipeline}`",
+            _code(run.results.pipeline),
             seconds(run.results.capture_seconds) or "not recorded",
             seconds(run.results.processing_seconds) or "not recorded",
         ]
@@ -409,9 +452,9 @@ def _timing(runs: list[RunScore]) -> list[str]:
 def _survey_text(score: CheckScore) -> str:
     """The survey outcome and the lines it was judged against, for the named lists."""
     survey, threshold, review = score.survey, score.threshold, score.review
-    limits = f"`{threshold.name}` {threshold.pass_when} {feet(threshold.value_ft)} ft"
+    limits = f"{_code(threshold.name)} {threshold.pass_when} {feet(threshold.value_ft)} ft"
     if review is not None:
-        limits = f"`{review.name}` {feet(review.value_ft)} ft and {limits}"
+        limits = f"{_code(review.name)} {feet(review.value_ft)} ft and {limits}"
     if survey.value_ft is None:
         return f"the survey is {score.truth} ({survey.status.replace('_', ' ')}) against {limits}"
     return (
@@ -425,8 +468,8 @@ def _wrong_pass(run: RunScore, score: CheckScore) -> str:
     has_value = reported is not None and reported.value_ft is not None
     run_value = f"{feet(reported.value_ft)} ft" if has_value else "no value"
     return (
-        f"- `{run.results.pipeline}` passed `{score.check.check}` at "
-        f"`{score.check.candidate}`; {_survey_text(score)} (run measured {run_value})."
+        f"- {_code(run.results.pipeline)} passed {_code(score.check.check)} at "
+        f"{_code(score.check.candidate)}; {_survey_text(score)} (run measured {run_value})."
     )
 
 
@@ -434,8 +477,9 @@ def _decision_without_measurement(run: RunScore, score: CheckScore) -> str:
     reported = score.measurement.reported
     assert reported is not None and reported.missing is not None
     return (
-        f"- `{run.results.pipeline}` reported {score.reported} for `{score.check.check}` at "
-        f"`{score.check.candidate}` with measurement `{score.check.measurement}` missing "
+        f"- {_code(run.results.pipeline)} reported {score.reported} for "
+        f"{_code(score.check.check)} at {_code(score.check.candidate)} with measurement "
+        f"{_code(score.check.measurement)} missing "
         f"({reported.missing}); {_survey_text(score)}."
     )
 

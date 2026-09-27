@@ -11,12 +11,12 @@
     "facing_gap_ft": {
       "value_ft": 3,
       "pass_when": "at_least",
-      "source": "Synthetic placeholder; the public passage width is TBD in docs/01-feature-map.md"
+      "source": "Synthetic placeholder; the public passage width is TBD in https://github.com/SamGu-NRX/house-scanning-master/blob/9737e3f0eefe90f2a12a190bf8750e7fed64413f/docs/01-feature-map.md#L97"
     },
     "review_route_ft": {
       "value_ft": 15,
       "pass_when": "at_most",
-      "source": "Synthetic placeholder; the confident reach before review, per docs/02-implementation-plan.md Lane C"
+      "source": "Synthetic placeholder; the confident reach before review, per Lane C in https://github.com/SamGu-NRX/house-scanning-master/blob/9737e3f0eefe90f2a12a190bf8750e7fed64413f/docs/02-implementation-plan.md#L114"
     },
     "max_route_ft": {
       "value_ft": 20,
@@ -26,7 +26,7 @@
     "pool_clearance_ft": {
       "value_ft": 5,
       "pass_when": "at_least",
-      "source": "Synthetic placeholder; no public value, TBD in docs/01-feature-map.md"
+      "source": "Synthetic placeholder; no public value, TBD in https://github.com/SamGu-NRX/house-scanning-master/blob/9737e3f0eefe90f2a12a190bf8750e7fed64413f/docs/01-feature-map.md#L96"
     }
   }
 }

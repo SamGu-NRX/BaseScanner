@@ -103,8 +103,8 @@ def truth_outcome(
     The check passes when the margin to the pass line is larger than u and fails when the margin
     to the fail line is below -u. The fail line is `threshold`. The pass line is `review` when
     the check has a review band and `threshold` otherwise. Anything else is borderline for a
-    single threshold, or review for a band, as docs/02-implementation-plan.md "Lane C" sends a
-    route past the confident reach to UNSURE.
+    single threshold, or review for a band, as the plan's Lane C sends a route past the confident
+    reach to UNSURE (https://github.com/SamGu-NRX/house-scanning-master/blob/9737e3f0eefe90f2a12a190bf8750e7fed64413f/docs/02-implementation-plan.md#L114).
 
     Both comparisons are strict, following Lane C: "A check answers PASS if the margin is larger
     than the error." A value exactly on a line, or exactly u from it, is borderline or review,

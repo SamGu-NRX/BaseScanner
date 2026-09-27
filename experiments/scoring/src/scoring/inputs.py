@@ -10,6 +10,7 @@ would pass a 3.1 +- 0.1 ft clearance against a 3 ft rule that is exactly borderl
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Container, Iterable
 from dataclasses import dataclass
@@ -241,6 +242,23 @@ class Fields:
                 f'every length must be in feet ("{UNIT}"), got {_describe(self.raw("unit"))}',
                 "unit",
             )
+
+
+def refuse_output_over_inputs(outputs: Iterable[Path], inputs: Iterable[tuple[str, Path]]) -> None:
+    """Stop before any write when an output file is one of the inputs, whether by the same path,
+    another spelling of it, a symlink or a hard link."""
+    inputs = list(inputs)
+    for out_path in outputs:
+        out_resolved = out_path.resolve()
+        for role, path in inputs:
+            same = out_resolved == path.resolve()
+            if not same and out_path.exists() and path.exists():
+                same = os.path.samefile(out_path, path)
+            if same:
+                raise InputError(
+                    f"--out {out_path} is the {role} {path}; writing there would overwrite an "
+                    "input. Choose another output path"
+                )
 
 
 def read_json(path: Path) -> tuple[Any, bytes]:
@@ -522,15 +540,17 @@ def _validate_review_band(fields: Fields, review_name: str, fail: Threshold, rul
             f"{fail.pass_when}; a review band needs both in the same direction",
             "review_threshold",
         )
+    # Strict: an equal value leaves no band, and values up to the fail line would pass unreviewed.
     inside = (
-        review.value_ft <= fail.value_ft
+        review.value_ft < fail.value_ft
         if fail.pass_when == "at_most"
-        else review.value_ft >= fail.value_ft
+        else review.value_ft > fail.value_ft
     )
     if not inside:
         raise fields.error(
-            f"{review.name!r} ({review.value_ft} ft) must be on the passing side of "
-            f"{fail.name!r} ({fail.value_ft} ft, {fail.pass_when})",
+            f"{review.name!r} ({review.value_ft} ft) must be strictly on the passing side of "
+            f"{fail.name!r} ({fail.value_ft} ft, {fail.pass_when}); equal values leave no "
+            "band to review",
             "review_threshold",
         )
 

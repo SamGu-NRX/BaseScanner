@@ -123,7 +123,7 @@
       "id": "p4",
       "kind": "wall",
       "position": [
-        2.02,
+        2.024,
         0.0,
         0.0
       ],
@@ -137,7 +137,7 @@
       "twoView": null,
       "wallCoordinates": {
         "wall": "w1",
-        "along": 2.02,
+        "along": 2.024,
         "heightAboveGround": 0.0,
         "offset": 0.0,
         "withinContacts": true
@@ -233,7 +233,7 @@
       ],
       "taps": [],
       "ground": {
-        "surface": "detectedPlane",
+        "surface": "estimatedPlane",
         "planeAnchor": "A1",
         "lookDown": 42.0
       },
@@ -246,7 +246,9 @@
         "offset": -0.95,
         "withinContacts": true
       },
-      "flags": [],
+      "flags": [
+        "estimatedPlane"
+      ],
       "wallWarnings": []
     },
     {
@@ -269,6 +271,58 @@
         "wall": "w1",
         "along": 6.00456,
         "heightAboveGround": 0.3,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p10",
+      "kind": "wall",
+      "position": [
+        2.26,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 2.26,
+        "heightAboveGround": 0.0,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p11",
+      "kind": "wall",
+      "position": [
+        6.4,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 6.4,
+        "heightAboveGround": 0.0,
         "offset": 0.0,
         "withinContacts": true
       },
@@ -362,15 +416,13 @@
     {
       "id": "m3",
       "time": 1120.0,
-      "from": "p5",
-      "to": "w1",
-      "referenceWall": "w1",
+      "from": "p10",
+      "to": "p5",
+      "referenceWall": null,
       "values": {
         "straight": 1.4,
         "horizontal": 1.4,
-        "vertical": 0.0,
-        "gapToWall": 1.4,
-        "heightAboveGround": 0.0
+        "vertical": 0.0
       },
       "compared": "straight",
       "tape": null,
@@ -384,11 +436,8 @@
       "time": 1180.0,
       "from": "p6",
       "to": "w1",
-      "referenceWall": "w1",
+      "referenceWall": null,
       "values": {
-        "straight": 1.49352,
-        "horizontal": 1.49352,
-        "vertical": 0.0,
         "gapToWall": 1.49352,
         "heightAboveGround": 0.0
       },
@@ -409,8 +458,7 @@
         "straight": 3.73065,
         "horizontal": 3.71856,
         "vertical": 0.3,
-        "alongWall": 3.71856,
-        "heightAboveGround": 0.3
+        "alongWall": 3.71856
       },
       "compared": "alongWall",
       "tape": null,
@@ -422,22 +470,20 @@
     {
       "id": "m6",
       "time": 1350.0,
-      "from": "p8",
-      "to": "w1",
-      "referenceWall": "w1",
+      "from": "p11",
+      "to": "p8",
+      "referenceWall": null,
       "values": {
         "straight": 0.95,
         "horizontal": 0.95,
-        "vertical": 0.04,
-        "gapToWall": 0.95,
-        "heightAboveGround": -0.04
+        "vertical": 0.0
       },
       "compared": "straight",
       "tape": null,
       "errorMeters": null,
       "errorInches": null,
       "warnings": [
-        "belowGround"
+        "estimatedPlane"
       ],
       "accepted": false
     },
@@ -451,8 +497,7 @@
         "straight": 6.01205,
         "horizontal": 6.00456,
         "vertical": 0.3,
-        "alongWall": 6.00456,
-        "heightAboveGround": 0.3
+        "alongWall": 6.00456
       },
       "compared": "alongWall",
       "tape": null,
@@ -466,14 +511,11 @@
     {
       "id": "r1",
       "time": 1300.0,
-      "tool": "gapToWall",
+      "tool": "ground",
       "tap": null,
-      "reason": "grazingRay",
-      "message": "The ray meets the ground too shallowly. Step back and tap again.",
-      "values": {
-        "lookDown": 8.0,
-        "minimumGroundLookDown": 20.0
-      }
+      "reason": "trackingNotReady",
+      "message": "That frame wasn't in normal tracking. Hold steady and try again.",
+      "values": {}
     }
   ],
   "tracking": [
