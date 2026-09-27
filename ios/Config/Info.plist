@@ -20,17 +20,33 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>HouseScanGitCommit</key>
+	<string>$(HOUSESCAN_GIT_COMMIT)</string>
+	<key>HouseScanServerURL</key>
+	<string>$(HOUSESCAN_SERVER_URL)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>House Scan uses the camera to measure the outside wall around your electric meter.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>House Scan records your phone's motion and air pressure during the scan, so it can be measured more accurately. It stays on this phone unless you share the scan.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>Canvas</string>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arkit</string>

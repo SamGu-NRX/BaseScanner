@@ -1,0 +1,61 @@
+import SwiftUI
+
+/// Every screen driven by a scripted fake engine, launched with `-uiDemo`.
+///
+/// Launch arguments (all optional), for screenshots and for trying one screen at a time:
+/// - `-uiDemoPhase <phase>`: start at a phase with plausible state (`ScanPhase` raw value).
+/// - `-uiDemoFreeze`: don't run the timed scripts, so the screen holds still.
+/// - `-uiDemoMarking <FeatureKind raw value>`: open the walk in marking mode.
+/// - `-uiDemoRefusal`: the marking shows a refusal.
+/// - `-uiDemoCoaching <slowDown|needsTexture|tooDark|holdSteady|relocalizing|trackingLost|pastWallEnd>`.
+/// - `-uiDemoCloseUpFailed`: the close-up has failed twice, so the way out shows.
+/// - `-uiDemoMeterChoose`: the close-up asks which of three made-up readings is the meter number.
+/// - `-uiDemoOffline`: uploads fail offline.
+/// - `-uiDemoRejected`: the server refuses the first upload; "Back to review" then sends it again.
+/// - `-uiDemoFailure <cameraDenied|arUnsupported|sessionFailed|replayUnreadable>`: open on the
+///   unsupported screen.
+/// - `-uiDemoPass`: the sample result is a pass with approved rules.
+/// - `-uiDemoOverlap`: the sample result's spot overlaps the meter's working space.
+/// - `-uiDemoResultFile <path>`: debug builds only. The result is the server answer in this JSON
+///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
+/// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
+/// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
+///   where they stand leaves part of the walk out.
+/// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with
+///   `-uiDemoRefusal` the last mark was refused.
+/// - `-uiDemoTiltUp`: both ends are marked and the walk asks to tilt up by the meter.
+/// - `-uiDemoOverheadQuestion`: the tilt-up view is in and the walk asks what is overhead.
+/// - `-uiDemoGap <groundOut|walkOut|overhead>`: the gap screen shows that server request.
+/// - `-uiDemoSample`: no server is configured, so the upload screen says the result is a sample.
+/// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
+/// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
+/// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoCorner`: the wall turns an outside corner 1.8 m right of the meter and the walk
+///   followed it, so the window and part of its clearance zone are round the corner. For the
+///   result model: `-uiDemoPhase result -uiDemoCorner`.
+/// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
+/// - `-uiDemoSpotStep <which|ground>`: with `-uiDemoPhase spotConfirm`, the check asks which
+///   unmarked thing is in the area, or what the ground is.
+/// - `-uiDemoSpotAnswered <clear|notSure|somethingThere|cantMark|unconfirmed>`: with
+///   `-uiDemoPhase spotConfirm`, the check is answered and says what happens next.
+/// - `-uiDemoSpotUnconfirmable`: with `-uiDemoPhase spotConfirm`, no photo shows the whole area.
+/// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
+///   and asked for one more view: the upload screen as it hands over, or the view itself.
+///
+/// Unfrozen, the demo goes back to the camera once after the first answer, as the engine does
+/// when the answer lists a view the camera can take.
+enum UIDemo {
+    @MainActor
+    static func makeRoot() -> some View {
+        DemoHost()
+    }
+}
+
+private struct DemoHost: View {
+    @State private var engine = DemoEngine(arguments: ProcessInfo.processInfo.arguments)
+
+    var body: some View {
+        ScanRootView(state: engine.state, actions: engine)
+    }
+}
