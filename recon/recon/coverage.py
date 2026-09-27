@@ -5,8 +5,11 @@ The app's coverage map credits a cell whose samples fall in a keyframe's view, r
 it cannot tell a wall from a bush in front of it, and on ETH3D electro it claimed 1.1 ft of wall no
 photo saw (experiments/evals README section 7 on t3/evals). A depth test against true depth
 claimed nothing unseen (section 7b). Here a sample counts as seen by a frame only when also:
-- the frame's own depth at the sample's pixel is not nearer than the sample by more than the
-  tolerance max(10 cm, 4% of the distance), and
+- the frame's own depth at the sample's pixel lies within the tolerance max(10 cm, 4% of the
+  distance) of the sample's depth. Nearer means something hides the sample. Farther means no
+  surface is there, only a clear view through it: the fitted wall line bridges doors and openings
+  up to geometry.GAP_M, and a view through an opening to whatever lies behind it is not wall
+  backing, nor is a view into a pit ground; and
 - no occupied voxel of the fused reconstruction lies between the camera and the sample, short of
   that tolerance.
 A cell is observed when every sample row was seen from two camera positions at least 0.25 m
@@ -84,8 +87,9 @@ def seen_by(
         dv = np.clip((v[idx] * s).astype(np.int64), 0, h - 1)
         measured = d.depth[dv, du]
         tol = tolerance(dist[idx])
-        # The frame's own depth: unknown there, or nearer by more than the tolerance, is not seen.
-        visible = np.isfinite(measured) & (measured >= z[idx] - tol)
+        # The frame's own depth must put a surface at the sample: unknown there, nearer (hidden)
+        # or farther (seen through, no surface) by more than the tolerance is not seen.
+        visible = np.isfinite(measured) & (np.abs(measured - z[idx]) <= tol)
         # The fused reconstruction: nothing occupied between the camera and the sample.
         keep = idx[visible]
         if len(keep):
@@ -154,7 +158,9 @@ def wall_and_ground(
     wseen = two_positions(seen_by(wpts, wall.outward, frames, depths, vol), centres)
     wall_ok = wseen.reshape(len(cells), 2, WALL_ROWS).all(axis=(1, 2))
 
-    outs = np.arange(0.05, GROUND_MAX_M + 1e-9, CELL_M)
+    # Half-foot steps from the foot, and GROUND_MAX_M itself: the steps alone end 0.1 m short,
+    # and `ground_out` only ever reports a sampled distance, so 10 ft needs a sample at 10 ft.
+    outs = np.append(np.arange(0.05, GROUND_MAX_M - 1e-6, CELL_M), GROUND_MAX_M)
     S = np.broadcast_to(alongs[:, :, None], (len(cells), 2, len(outs)))
     Oo = np.maximum(np.broadcast_to(outs[None, None, :], S.shape), faces[:, None, None] + 0.05)
     gpts = wall.world(S, np.zeros_like(S), Oo).reshape(-1, 3)
@@ -289,7 +295,7 @@ def observed(cov: CellCoverage, ground_levels_ft=(2.0, 4.0, 6.0, 8.0, 10.0)) -> 
 
 
 def measurements(
-    cov: CellCoverage, wall_id: str, plus_minus_ft: float | None
+    cov: CellCoverage, wall_id: str, plus_minus_ft: float
 ) -> tuple[list[dict], list[dict]]:
     """scene.json `facing` and `overheads` entries: runs of cells whose measured gap or clearance
     stays within half a foot, each reporting its smallest value."""
@@ -305,14 +311,12 @@ def measurements(
         return out
 
     def entry(a, b, key, values):
-        e = {
+        return {
             "wall_id": wall_id,
             "span_ft": [_ft(cov.cells[a]), _ft(cov.cells[b - 1] + CELL_M)],
             key: _ft(float(values[a:b].min())),
+            "plus_minus_ft": plus_minus_ft,
         }
-        if plus_minus_ft is not None:
-            e["plus_minus_ft"] = plus_minus_ft
-        return e
 
     facing = [entry(a, b, "depth_ft", cov.facing_gap) for a, b in runs_of(cov.facing_gap)]
     overheads = [

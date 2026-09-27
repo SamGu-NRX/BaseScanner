@@ -306,6 +306,14 @@ def laser_face(
     return out
 
 
+def laser_sees(nearest: np.ndarray, z: np.ndarray) -> np.ndarray:
+    """Whether the laser shows a sample at depth `z` visible: its nearest surface at the pixel is
+    not nearer by more than the tolerance. A pixel with no laser return (NaN) is no evidence, so
+    the sample stays unseen: an unknown must not lower the false-observed length it is checked
+    against."""
+    return np.isfinite(nearest) & (nearest >= z - np.maximum(HIDE_ABS_M, HIDE_REL * z))
+
+
 def false_observed(
     r: dict,
     scene: str,
@@ -340,14 +348,13 @@ def false_observed(
         s = 512 / v.width
         iu = np.clip(np.nan_to_num(u * s).astype(int), 0, buf.shape[1] - 1)
         iv = np.clip(np.nan_to_num(vv * s).astype(int), 0, buf.shape[0] - 1)
-        nearest = buf[iv, iu]
-        hidden = np.isfinite(nearest) & (nearest < z - np.maximum(HIDE_ABS_M, HIDE_REL * z))
+        visible = laser_sees(buf[iv, iu], z)
         m = 1024 / v.width
-        hidden |= miss[
+        visible &= ~miss[
             np.clip(np.nan_to_num(vv * m).astype(int), 0, miss.shape[0] - 1),
             np.clip(np.nan_to_num(u * m).astype(int), 0, miss.shape[1] - 1),
         ]
-        seen |= framed & near & front & ~hidden
+        seen |= framed & near & front & visible
     unseen = (~seen).reshape(len(cols), len(heights)).sum(axis=1)
     cell = np.floor((cols - cov.cells[0]) / CELL_M).astype(int)
     claimed = cov.wall[np.clip(cell, 0, len(cov.wall) - 1)] & (cell >= 0) & (cell < len(cov.wall))

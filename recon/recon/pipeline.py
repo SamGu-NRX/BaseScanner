@@ -19,11 +19,15 @@ from recon import coverage, depth, fusion, geometry, scene, server
 from recon.capture import FEET, Capture
 from recon.glb import write_glb
 
-# Error bars the worker states on what it measures, by depth source. MoGe-2: the upper end of the
-# 95% interval of the ETH3D surface p90 over 1 to 3 m spans at an assumed 2% pose error, 6.7 in
-# (experiments/evals README section 3 on t3/evals). LiDAR: no measured value here, so none is
-# sent and the server applies its default for mesh measurements (0.5 ft).
-PLUS_MINUS_FT = {"moge2-triangulated": 0.56, "lidar": None}
+# Error bars the worker states on what it measures (the wall line, facing gaps and overhead
+# clearances), by depth source. MoGe-2: the upper end of the 95% interval of the ETH3D surface p90
+# over 1 to 3 m spans at an assumed 2% pose error, 6.7 in (experiments/evals README section 3 on
+# t3/evals). LiDAR: no measured value exists here; 0.5 ft is the server's default for mesh
+# measurements (errors.mesh_ft in server/rules.yaml on t3/server, a day-1 estimate), sent
+# explicitly so the wall line cannot keep a tap's bound. The server does not grow an explicit
+# bound with distance walked from the meter (errors.drift_per_ft), so neither value covers pose
+# drift along a long wall; no measurement of that exists for this worker.
+PLUS_MINUS_FT = {"moge2-triangulated": 0.56, "lidar": 0.5}
 
 
 def _log(msg: str) -> None:
@@ -116,7 +120,7 @@ def run(
     capture = cap.load(bundle, work)
     _log(f"{capture.source}: {len(capture.frames)} frames from {bundle}")
     t0 = time.perf_counter()
-    depths, depth_report = depth.depth_maps(capture, work / capture.root.name, depth_mode)
+    depths, depth_report = depth.depth_maps(capture, work, depth_mode)
     _log(f"depth from {depth_report['source']} ({time.perf_counter() - t0:.0f} s)")
     r = reconstruct(capture, depths, depth_report, move_meter)
     write_model(r, out / "model.glb")

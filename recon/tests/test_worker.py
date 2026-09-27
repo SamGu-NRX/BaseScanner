@@ -1,16 +1,23 @@
-"""Hand-computed cases for the worker's adapters, depth helpers, fusion, coverage output and GLB."""
+"""Hand-computed cases for the worker's adapters, depth helpers and cache, fusion, coverage,
+scene.json output, the acceptance oracle and GLB."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
 from recon import capture as cap
-from recon.coverage import CELL_M, CellCoverage, _runs, observed
+from recon import coverage, depth, scene
+from recon.coverage import CELL_M, GROUND_MAX_M, CellCoverage, _runs, observed, seen_by
 from recon.depth import Depth, lidar, rotated_intrinsics, upright_turns
-from recon.fusion import integrate, mesh
+from recon.eth3d import laser_sees
+from recon.fusion import Mesh, integrate, mesh
+from recon.geometry import WallFrame
 from recon.glb import read_glb, write_glb
+from recon.pipeline import PLUS_MINUS_FT
 
 
 def test_outward_is_the_baseline_turned_clockwise_from_above():
@@ -75,8 +82,6 @@ def test_upright_turns_for_a_phone_held_upright():
 
 
 def test_lidar_reads_float_meters_and_drops_low_confidence(tmp_path: Path):
-    import cv2
-
     cv2.imwrite(str(tmp_path / "k.jpg"), np.zeros((6, 8, 3), np.uint8))
     np.array([[1.0, 2.0], [3.0, 0.0]], "<f4").tofile(tmp_path / "k.depth.f32")
     np.array([[2, 0], [1, 2]], np.uint8).tofile(tmp_path / "k.conf.u8")
@@ -162,3 +167,227 @@ def test_glb_round_trip(tmp_path: Path):
     view = doc["bufferViews"][pos["bufferView"]]
     got = np.frombuffer(blob, np.float32, 9, view["byteOffset"]).reshape(3, 3)
     np.testing.assert_allclose(got, v)
+
+
+# --- Coverage: what counts as seen ------------------------------------------------------------
+
+W, H, K = 64, 48, np.array([40.0, 40, 32, 24])
+
+
+def _frames_facing(ids_x: dict[str, float], height: float, rot: np.ndarray) -> list[cap.Frame]:
+    frames = []
+    for fid, x in ids_x.items():
+        T = np.eye(4)
+        T[:3, :3] = rot
+        T[:3, 3] = [x, height, 0.0]
+        frames.append(cap.Frame(fid, Path(f"{fid}.jpg"), W, H, K, T))
+    return frames
+
+
+def _flat_depths(frames: list[cap.Frame], z: float) -> dict[str, Depth]:
+    """Every pixel at camera depth z: a plane square to each camera's axis."""
+    return {
+        f.id: Depth(np.full((H, W), z, np.float32), K, np.zeros((H, W, 3), np.uint8), "lidar")
+        for f in frames
+    }
+
+
+def _seen(frames, depths, points, normal) -> np.ndarray:
+    poses = {f.id: f.cam_to_world for f in frames}
+    vol = integrate(depths, poses, voxel=0.05)
+    return seen_by(points, normal, frames, depths, vol)
+
+
+# Two cameras 0.4 m apart at 1 m height, looking along -z at the plane z = -2 (outward +z).
+WALL_FRAMES = _frames_facing({"a": -0.2, "b": 0.2}, 1.0, np.eye(3))
+WALL_POINTS = np.array([[x, y, -2.0] for x in (-0.2, 0.0, 0.2) for y in (0.6, 1.0, 1.4)])
+
+
+def test_a_wall_where_the_depth_puts_a_surface_is_seen():
+    saw = _seen(WALL_FRAMES, _flat_depths(WALL_FRAMES, 2.0), WALL_POINTS, np.array([0, 0, 1.0]))
+    assert saw.all()
+
+
+def test_an_opening_with_a_surface_behind_it_is_not_wall_seen():
+    # No surface at the wall line; the depth reaches a surface 1 m behind it. Nothing occludes the
+    # samples, but a clear view through an opening is no evidence of wall there.
+    saw = _seen(WALL_FRAMES, _flat_depths(WALL_FRAMES, 3.0), WALL_POINTS, np.array([0, 0, 1.0]))
+    assert not saw.any()
+
+
+def test_a_wall_hidden_by_something_nearer_is_not_seen():
+    saw = _seen(WALL_FRAMES, _flat_depths(WALL_FRAMES, 1.5), WALL_POINTS, np.array([0, 0, 1.0]))
+    assert not saw.any()
+
+
+# Two cameras 0.4 m apart, 1.5 m up, looking straight down (camera -z is world -y).
+DOWN = np.array([[1.0, 0, 0], [0, 0, 1], [0, -1, 0]])
+GROUND_FRAMES = _frames_facing({"a": -0.2, "b": 0.2}, 1.5, DOWN)
+GROUND_POINTS = np.array([[x, 0.0, z] for x in (-0.2, 0.0, 0.2) for z in (-0.3, 0.0, 0.3)])
+
+
+def test_ground_needs_a_surface_at_the_ground_too():
+    up = coverage.UP
+    assert _seen(GROUND_FRAMES, _flat_depths(GROUND_FRAMES, 1.5), GROUND_POINTS, up).all()
+    # A pit (a window well) 1 m deep: seen into, but there is no ground at the sample.
+    assert not _seen(GROUND_FRAMES, _flat_depths(GROUND_FRAMES, 2.5), GROUND_POINTS, up).any()
+
+
+def _all_visible_setup():
+    """A wall along +x through the origin facing +z, two cells, no reconstructed face."""
+    frames = _frames_facing({"a": -0.2, "b": 0.2}, 1.0, np.eye(3))
+    wall = WallFrame(
+        np.array([0.0, 1.0, 0.0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]), 0.0, (0, 0.3)
+    )
+    empty = Mesh(
+        np.zeros((0, 3), np.float32),
+        np.zeros((0, 3), np.uint32),
+        np.zeros((0, 3), np.float32),
+        np.zeros((0, 3), np.uint8),
+    )
+    return wall, frames, {}, None, empty, np.array([0.0, CELL_M])
+
+
+def test_ground_seen_everywhere_reaches_ten_feet(monkeypatch):
+    monkeypatch.setattr(coverage, "seen_by", lambda points, *_: np.ones((len(points), 2), bool))
+    wall_ok, ground_out, _ = coverage.wall_and_ground(*_all_visible_setup())
+    assert wall_ok.all()
+    np.testing.assert_array_equal(ground_out, [GROUND_MAX_M, GROUND_MAX_M])
+    nan = np.full(2, np.nan)
+    cells = np.array([0.0, CELL_M])
+    cov = CellCoverage(cells, wall_ok, ground_out, nan, np.zeros(2), nan, np.zeros(2))
+    assert {"band": "ground", "span_ft": [0.0, 1.0], "out_ft": 10.0} in observed(cov)
+
+
+def test_ground_unseen_at_ten_feet_reports_the_last_sampled_distance(monkeypatch):
+    # Seen everywhere short of 3 m out (out is world z here): 10 ft itself was not seen.
+    monkeypatch.setattr(
+        coverage, "seen_by", lambda points, *_: np.repeat((points[:, 2] < 3.0)[:, None], 2, 1)
+    )
+    _, ground_out, _ = coverage.wall_and_ground(*_all_visible_setup())
+    assert np.all(ground_out < GROUND_MAX_M - 0.1)
+    nan = np.full(2, np.nan)
+    cells = np.array([0.0, CELL_M])
+    cov = CellCoverage(cells, np.ones(2, bool), ground_out, nan, np.zeros(2), nan, np.zeros(2))
+    levels = {e["out_ft"] for e in observed(cov) if e["band"] == "ground"}
+    assert levels == {2.0, 4.0, 6.0, 8.0}
+
+
+# --- The acceptance oracle ------------------------------------------------------------------
+
+
+def test_no_laser_return_is_unseen_not_seen():
+    z = np.array([2.0, 2.0, 2.0, 2.0])
+    nearest = np.array([np.nan, 2.0, 1.5, 3.0])  # no return; the surface; an occluder; beyond
+    np.testing.assert_array_equal(laser_sees(nearest, z), [False, True, False, True])
+
+
+# --- scene.json: the wall line's provenance ----------------------------------------------------
+
+WALL = WallFrame(
+    np.array([0.0, 1.5, 0.0]), np.array([1.0, 0, 0]), np.array([0, 0, 1.0]), 0.0, (-1.0, 1.0)
+)
+NO_COVERAGE = CellCoverage(
+    np.array([0.0]),
+    np.array([False]),
+    np.zeros(1),
+    np.full(1, np.nan),
+    np.zeros(1),
+    np.full(1, np.nan),
+    np.zeros(1),
+)
+
+
+def test_a_new_scene_marks_its_wall_as_reconstructed_with_the_depth_sources_error():
+    frames = _frames_facing({"a": 0.0}, 1.0, np.eye(3))
+    c = cap.Capture("measure-lab", Path("s"), frames, 0.0, None, None)
+    doc = scene.build(c, WALL, NO_COVERAGE, PLUS_MINUS_FT["moge2-triangulated"])
+    (w,) = doc["walls"]
+    assert w["source"] == "mesh" and w["plus_minus_ft"] == 0.56
+
+
+def test_a_bundles_tap_bound_does_not_survive_the_reconstructed_line():
+    prior = {
+        "schema_version": "1.0",
+        "meter": {"pos": [0.0, 5.0, 0.0], "wall_id": "w"},
+        "walls": [
+            {
+                "id": "w",
+                "baseline": [[-3.0, 0.0], [3.0, 0.0]],
+                "source": "tap",
+                "plus_minus_ft": 0.1,
+                "height_ft": 9.0,
+            },
+            {"id": "v", "baseline": [[3.0, 0.0], [3.0, -5.0]], "plus_minus_ft": 0.2},
+        ],
+    }
+    c = cap.Capture("scan-bundle", Path("b"), [], 0.0, np.array([0.0, 1.524, 0]), None, prior)
+    doc = scene.build(c, WALL, NO_COVERAGE, PLUS_MINUS_FT["lidar"])
+    w, v = doc["walls"]
+    assert w["source"] == "mesh" and w["plus_minus_ft"] == 0.5 and w["height_ft"] == 9.0
+    assert v == prior["walls"][1]  # another wall's tap stays as the phone marked it
+    assert prior["walls"][0]["source"] == "tap"  # the input scene is not modified
+
+
+# --- The MoGe-2 depth cache -----------------------------------------------------------------
+
+
+def _capture_named_scan(parent: Path, pixel: int) -> cap.Capture:
+    root = parent / "scan"
+    root.mkdir(parents=True)
+    cv2.imwrite(str(root / "k.png"), np.full((6, 8, 3), pixel, np.uint8))
+    frame = cap.Frame("k", root / "k.png", 8, 6, np.array([8.0, 8, 4, 3]), np.eye(4))
+    return cap.Capture("scan-bundle", root, [frame], 0.0, None, None)
+
+
+def _fake_moge(calls: list):
+    """Stands in for the MoGe-2 process: depth = the image's mean pixel value."""
+
+    def run(cmd, **_):
+        items = json.loads(Path(cmd[-1]).read_text())
+        calls.append(len(items))
+        for item in items:
+            img = cv2.imread(item["image"])
+            np.savez(item["out"], depth=np.full(img.shape[:2], img.mean(), np.float32))
+
+    return run
+
+
+def test_same_named_captures_with_different_pixels_do_not_share_depth(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(depth.subprocess, "run", _fake_moge(calls))
+    a = _capture_named_scan(tmp_path / "a", 10)
+    b = _capture_named_scan(tmp_path / "b", 200)
+    assert a.root.name == b.root.name == "scan"
+    work = tmp_path / "work"
+    da, db = depth.moge(a, work)["k"].depth, depth.moge(b, work)["k"].depth
+    assert calls == [1, 1] and np.allclose(da, 10) and np.allclose(db, 200)
+    depth.moge(a, work)
+    assert calls == [1, 1]  # the same photos again: reused
+
+
+def test_a_cache_whose_stored_key_differs_is_recomputed(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(depth.subprocess, "run", _fake_moge(calls))
+    a = _capture_named_scan(tmp_path / "a", 10)
+    folder = depth.moge_cache(a, tmp_path / "work")
+    np.savez(folder / "k.moge2.npz", depth=np.full((6, 8), 99.0, np.float32))  # someone else's
+    (folder / "key.json").write_text(json.dumps({"frames": []}))
+    d = depth.moge(a, tmp_path / "work")["k"].depth
+    assert calls == [1] and np.allclose(d, 10)
+
+
+def test_the_cache_key_changes_with_pose_intrinsics_and_the_model(tmp_path, monkeypatch):
+    c = _capture_named_scan(tmp_path, 10)
+    (f,) = c.frames
+    base = depth.moge_key(c)
+    moved = f.cam_to_world.copy()
+    moved[0, 3] = 0.5
+    for changed in (replace(f, cam_to_world=moved), replace(f, intrinsics=f.intrinsics * 2)):
+        assert depth.moge_key(replace(c, frames=[changed])) != base
+    other = tmp_path / "moge_depth.py"
+    other.write_text(
+        depth.MOGE_SCRIPT.read_text().replace("RESOLUTION_LEVEL = 9", "RESOLUTION_LEVEL = 8")
+    )
+    monkeypatch.setattr(depth, "MOGE_SCRIPT", other)
+    assert depth.moge_key(c) != base

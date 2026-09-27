@@ -6,6 +6,12 @@ A scan bundle's scene is updated: the meter's wall takes the fitted line (over t
 fitted extent and the phone's baseline), `coverage.observed` is replaced by the occlusion-aware
 coverage, and the measured facing gaps and overhead clearances are added to whatever the phone
 marked. A Measure Lab session gets a new scene with the same parts.
+
+The fitted wall is marked `source: "mesh"` with the depth source's `plus_minus_ft`. Without that
+the server would read the old line's provenance: a bundle's tap source and its tap bound, or, with
+none (a new scene), the tap default of 0.3 ft, tighter than anything the reconstruction measured.
+"mesh" is the schema's only non-tap, non-plane source; it covers the photos-only path too, whose
+bound is its own.
 """
 
 from __future__ import annotations
@@ -25,9 +31,7 @@ def _plan_ft(p: np.ndarray) -> list[float]:
     return [round(float(p[0]) / FEET, 4), round(float(p[2]) / FEET, 4)]
 
 
-def build(
-    capture: Capture, wall: WallFrame, cov: CellCoverage, plus_minus_ft: float | None
-) -> dict:
+def build(capture: Capture, wall: WallFrame, cov: CellCoverage, plus_minus_ft: float) -> dict:
     """The scene to send. For a bundle the scene frame is the bundle's own (its ground is y = 0 by
     the phone's estimate); for a session it is ARKit's world lowered to the fitted ground."""
     shift = 0.0 if capture.scene is not None else wall.ground_y
@@ -70,6 +74,8 @@ def build(
         }
         target = doc["walls"][0]
     target["baseline"] = [_plan_ft(wall.world(s, 0.0)) for s in (lo, hi)]
+    target["source"] = "mesh"
+    target["plus_minus_ft"] = plus_minus_ft
     doc.setdefault("coverage", {})["observed"] = observed(cov)[:500]
     facing, overheads = measurements(cov, wid, plus_minus_ft)
     doc["facing"] = [*doc.get("facing", []), *facing]

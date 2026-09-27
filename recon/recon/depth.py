@@ -15,6 +15,7 @@ walls reached 6.3 in even with exact poses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -32,6 +33,8 @@ MAX_SIDE = 640  # MoGe-2 input; keeps the model process under 4 GB (2.97 GB peak
 MIN_CONFIDENCE = 1  # ARKit confidence: 0 low, 1 medium, 2 high
 NEIGHBOURS = 7
 MODELS = Path(__file__).resolve().parents[1] / "models"
+MOGE_SCRIPT = MODELS / "moge_depth.py"  # pins the checkpoint revision and resolution level
+JPEG_QUALITY = 95
 ACCURACY_NOTE = {
     "lidar": "LiDAR depth as measured; this worker has no measured error bar for iPhone LiDAR.",
     "moge2-triangulated": (
@@ -101,9 +104,61 @@ def _image(frame: Frame) -> np.ndarray:
     return img
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def moge_key(capture: Capture) -> dict:
+    """Everything MoGe-2's depth maps for a capture depend on: each frame's image bytes, pose (it
+    sets the upright turn) and intrinsics (the field of view); the model process, by the bytes of
+    its script (checkpoint revision, resolution level) and lockfile (library versions); and the
+    resizing and JPEG quality of its input. Frame IDs and folder names repeat across captures."""
+    return {
+        "model_script_sha256": _sha256(MOGE_SCRIPT),
+        "model_lock_sha256": _sha256(MODELS / "uv.lock"),
+        "max_side": MAX_SIDE,
+        "jpeg_quality": JPEG_QUALITY,
+        "frames": [
+            {
+                "id": f.id,
+                "image_sha256": _sha256(f.image),
+                "w": f.width,
+                "h": f.height,
+                "intrinsics": f.intrinsics.tolist(),
+                "pose": f.cam_to_world.tolist(),
+            }
+            for f in capture.frames
+        ],
+    }
+
+
+def moge_cache(capture: Capture, work: Path) -> Path:
+    """The capture's MoGe-2 cache folder under `work`, named by a hash of `moge_key` and holding
+    that key. Cached depth maps there are kept only when the stored key equals this capture's;
+    otherwise (a hash collision, a folder written without a key) they are deleted, to recompute."""
+    key = json.dumps(moge_key(capture), sort_keys=True)
+    folder = work / hashlib.sha256(key.encode()).hexdigest()[:16]
+    folder.mkdir(parents=True, exist_ok=True)
+    key_file = folder / "key.json"
+    if not key_file.exists() or json.loads(key_file.read_text()) != json.loads(key):
+        stale = sorted(folder.glob("*.moge2.npz"))
+        if stale:
+            print(
+                f"depth: {folder} holds depth for other photos or another model; "
+                f"recomputing its {len(stale)} maps",
+                file=sys.stderr,
+            )
+        for path in stale:
+            path.unlink()
+        # Written before the model runs, so the maps a run finishes before failing stay reusable.
+        key_file.write_text(key)
+    return folder
+
+
 def moge(capture: Capture, work: Path) -> dict[str, Depth]:
-    """MoGe-2 depth per frame at up to MAX_SIDE px, in the frame's own (unrotated) orientation."""
-    work.mkdir(parents=True, exist_ok=True)
+    """MoGe-2 depth per frame at up to MAX_SIDE px, in the frame's own (unrotated) orientation,
+    cached under `work` by the capture's content (`moge_cache`)."""
+    work = moge_cache(capture, work)
     manifest, meta = [], {}
     for f in capture.frames:
         img = _image(f)
@@ -114,7 +169,7 @@ def moge(capture: Capture, work: Path) -> dict[str, Depth]:
         k_small = scaled(f.intrinsics, small.shape[1] / f.width)
         turns = upright_turns(f.cam_to_world)
         up_path = work / f"{f.id}.upright.jpg"
-        cv2.imwrite(str(up_path), np.rot90(small, turns), [cv2.IMWRITE_JPEG_QUALITY, 95])
+        cv2.imwrite(str(up_path), np.rot90(small, turns), [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         k_up = rotated_intrinsics(k_small, small.shape[1], small.shape[0], turns)
         out = work / f"{f.id}.moge2.npz"
         meta[f.id] = (out, turns, k_small, small)
