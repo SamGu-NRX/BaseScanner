@@ -168,17 +168,27 @@ final class FullFlowUITests: XCTestCase {
     /// the first screen, the close-up stores the drawn sample's photo and the app's own reader
     /// reads its number, which the autopilot confirms, and the rest of the flow runs to the AR
     /// result. Every screen after the first carries the "Practice meter" badge. Afterwards Start
-    /// over clears the badge and the switch is turned off again for the tests that follow.
+    /// over clears the badge. The switch is turned off again for the tests that follow, also when
+    /// this one fails partway.
     @MainActor
     func testPracticeMeterFromReplay() throws {
+        addTeardownBlock { @MainActor in
+            let demo = XCUIApplication()
+            demo.launchArguments = ["-uiDemo"]
+            demo.launch()
+            XCTAssertTrue(demo.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
+            Self.setPracticeMeter(false, in: demo)
+            demo.terminate()
+        }
         var readNumber: String?
         var unbadged: [String] = []
         var drawn: CGRect?
         var app: XCUIApplication?
         try runFlow(replay: Self.fixture, practice: true, onAppear: { running, phase in
-            // The close-up replays the recording from its first frames, which aim at the meter for
-            // about a second at the autopilot's 3x: the drawn sample must be on screen then, over
-            // the tapped spot at the middle of the view.
+            // The close-up replays the recording from the start: frames aimed at the meter from 1 to
+            // 2.6 m, then the walk's first frame at the meter, pitched 20 degrees down. The drawn
+            // sample must show on one of them, across the middle of the view; how high depends on
+            // which frame is up when it is found (run 36310614834 found it on the pitched one).
             guard phase == "meterCloseUp" else { return }
             let sample = running.descendants(matching: .any)["practiceMeter"]
             let screen = running.frame
@@ -214,13 +224,11 @@ final class FullFlowUITests: XCTestCase {
         let sample = try XCTUnwrap(drawn, "the sample meter was never drawn on screen at the close-up")
         let middle = try XCTUnwrap(app).frame
         XCTAssertLessThan(abs(sample.midX - middle.midX), middle.width / 4, "sample meter at \(sample), far from the middle of \(middle)")
-        XCTAssertLessThan(abs(sample.midY - middle.midY), middle.height / 4, "sample meter at \(sample), far from the middle of \(middle)")
 
         let running = try XCTUnwrap(app)
         running.buttons["action.startOver"].firstMatch.tap()
         XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
         XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
-        Self.setPracticeMeter(false, in: running)
     }
 
     /// `PracticeMeter.number` in HouseScanKit, which the test bundle doesn't link.
