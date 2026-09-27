@@ -11,6 +11,13 @@ extension ResultPresentation {
         ResultReading.spotIsClean(hasSpot: spot != nil, checks: readingChecks)
     }
 
+    /// How the meter working-space check came out at the spot, for the outline of a spot that
+    /// isn't clean: `.unsure` when it isn't clean for any other reason, so the outline never reads
+    /// as a clear fail without one.
+    var workingSpaceOutcome: CheckOutcome {
+        checks.contains { $0.id == ResultReading.meterWorkingSpaceCheckID && $0.outcome == .fail } ? .fail : .unsure
+    }
+
     var answer: ResultReading.Answer {
         ResultReading.answer(decision: placementDecision, policyApproved: policyApproved, hasSpot: spot != nil, checks: readingChecks)
     }
