@@ -103,6 +103,16 @@ final class ScanEngine {
     /// the answer opens the camera: 1.5 s, about the time to read four words and see the new
     /// step appear, and what the UI lane asked for. Not measured with homeowners.
     static let followUpHold: Double = 1.5
+    /// The least time the upload screen shows "Check clearances" at work before it ticks: 0.6 s,
+    /// enough to see the step start. The server answers in the request that carries the scene,
+    /// often a moment after the last byte, and the step was never drawn (issue #31). A guess
+    /// like `followUpHold`, not measured with homeowners.
+    static let analyzingMinimum: Double = 0.6
+    /// How long the upload screen shows every step ticked before the result replaces it: 0.8 s,
+    /// about the time to see "Clearances checked" land. A guess like `followUpHold`, not measured.
+    static let resultHold: Double = 0.8
+    /// When the upload screen moved to "Check clearances" in this upload, for `analyzingMinimum`.
+    private var analyzingSince: ContinuousClock.Instant?
 
     // LiDAR
     /// The bands the see-behind step is about, while `state.guidance` is `.seeBehind`: those with
@@ -1408,16 +1418,26 @@ final class ScanEngine {
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
+        analyzingSince = nil
         do {
             let data = try await resultClient.submit(scene: scene) { [weak self] fraction in
                 Task { @MainActor in
                     guard let self, scan == self.generation, case .uploading = self.state.upload else { return }
+                    if fraction >= 1 { self.analyzingSince = ContinuousClock.now }
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
                 }
             }
             guard scan == generation else { return }
+            if analyzingSince == nil { analyzingSince = ContinuousClock.now }
             state.upload = .analyzing
             let result = try PlacementResult.decode(data)
+            // "Check clearances" stays up for `analyzingMinimum` however fast the answer came,
+            // so the step and then its tick are drawn (issue #31).
+            let dwell = UploadPacing.remaining(since: analyzingSince, minimum: .seconds(Self.analyzingMinimum), now: ContinuousClock.now)
+            if dwell > .zero {
+                try await Task.sleep(for: dwell)
+                guard scan == generation, state.phase == .uploading else { return }
+            }
             placement = result
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.followUps = automaticGapQueue(result).count
@@ -1435,6 +1455,10 @@ final class ScanEngine {
                 beginServerGap(next.item, plan: next.plan)
                 return
             }
+            // Every step ticked, "Clearances checked" last, for `resultHold` before the result
+            // replaces the screen: going on in the same turn never drew the tick (issue #31).
+            try await Task.sleep(for: .seconds(Self.resultHold))
+            guard scan == generation, state.phase == .uploading else { return }
             // The result appears only after the server answered (checklist R6).
             go(.result)
         } catch is CancellationError {

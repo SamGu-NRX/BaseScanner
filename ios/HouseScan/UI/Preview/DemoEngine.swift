@@ -474,6 +474,9 @@ final class DemoEngine: ScanActions {
             enterGap(serverItem: item)
             return
         }
+        // Like the real engine's `resultHold`: every step ticked before the result (#31).
+        state.upload = .done
+        guard await pause(0.8) else { return }
         showResult()
     }
 
