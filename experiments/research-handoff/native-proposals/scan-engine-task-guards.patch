@@ -1,0 +1,33 @@
+--- a/ios/HouseScan/Runtime/ScanEngine.swift
++++ b/ios/HouseScan/Runtime/ScanEngine.swift
+@@ -280,6 +280,7 @@
+         let scan = generation
+         let store = store
+         Task {
++            guard scan == generation, state.phase == .meterCloseUp else { return }
+             let saved = await store.saveStill(frame.jpeg, name: "meter_close.jpg")
+             guard scan == generation, state.phase == .meterCloseUp else { return }
+             if !saved {
+@@ -289,6 +290,7 @@
+                 return
+             }
+             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
++            guard scan == generation, state.phase == .meterCloseUp else { return }
+             state.closeUp = .captured(thumbnail)
+             state.captureCount += 1
+             state.lastCapture = CaptureEvent(id: state.captureCount, kind: .closeUp, thumbnail: thumbnail)
+@@ -368,9 +370,12 @@
+         let store = store
+         pendingSaves[scan, default: 0] += 1
+         Task {
++            defer {
++                let left = (pendingSaves[scan] ?? 1) - 1
++                pendingSaves[scan] = left > 0 ? left : nil
++            }
++            guard scan == generation else { return }
+             let saved = await store.saveKeyframe(frame.jpeg, index: index, camera: frame.camera)
+-            let left = (pendingSaves[scan] ?? 1) - 1
+-            pendingSaves[scan] = left > 0 ? left : nil
+             guard scan == generation, saved.stored else { return }
+             // Coverage only moves on kept frames with normal tracking (checklist R3).
+             coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal)

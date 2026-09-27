@@ -1,0 +1,21 @@
+{
+  "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-1"},
+  "reset_scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-2"},
+  "notice": "Synthetic symbolic asset references/hashes only; no genuine photo, OCR or physical identity evidence. Candidate A/B names describe test intentions, not an inference made by the module.",
+  "photos": {
+    "context_a": {"frame_id": "frame-context-a", "asset_ref": "synthetic/context-a.jpg", "asset_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "width": 640, "height": 480, "xywh": [100, 80, 180, 250], "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-1"}},
+    "context_b": {"frame_id": "frame-context-b", "asset_ref": "synthetic/context-b.jpg", "asset_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "width": 640, "height": 480, "xywh": [330, 80, 180, 250], "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-1"}},
+    "label_a": {"frame_id": "frame-label-a", "asset_ref": "synthetic/label-a.jpg", "asset_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "width": 640, "height": 480, "xywh": [120, 130, 100, 40], "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-1"}},
+    "label_b": {"frame_id": "frame-label-b", "asset_ref": "synthetic/label-b.jpg", "asset_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "width": 640, "height": 480, "xywh": [350, 130, 100, 40], "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-1"}},
+    "new_context_a": {"frame_id": "frame-new-context-a", "asset_ref": "synthetic/new-context-a.jpg", "asset_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "width": 640, "height": 480, "xywh": [110, 90, 180, 250], "scope": {"session_id": "session-1", "epoch_id": "epoch-1", "sequence_id": "sequence-2"}}
+  },
+  "cases": [
+    {"id": "same_uuid_wrong_target", "expected": "Two high-confidence samples with the same UUID cannot attach a label; explicit unresolved review retains it without a link."},
+    {"id": "explicit_review_and_immutable_source", "expected": "Inspectably reviewed per-label attachment is current; caller mutation cannot change saved source data."},
+    {"id": "reset_and_late_label", "expected": "Old pending review is stale; late old-scope label remains saved; fresh context/new review is required."},
+    {"id": "contradiction_preserves_history", "expected": "Current link becomes historical_only, pending ticket becomes stale, originals remain; contradiction acknowledgement is explicit. A competing explicit current assignment of the same label also makes both candidates disputed without silently replacing history."},
+    {"id": "candidate_revision_race", "expected": "Late result for superseded nomination is recorded stale without current attachment."},
+    {"id": "review_ticket_revision_race", "expected": "An old attach decision cannot overwrite a newer unresolved/current decision."},
+    {"id": "idempotency_and_export_revision", "expected": "Exact event replay is idempotent, changed replay conflicts, old snapshot export and reused scope fail."}
+  ]
+}

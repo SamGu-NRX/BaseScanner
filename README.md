@@ -16,6 +16,7 @@ Two teams share the work. The client team, Sam with AI agents and Aiden on video
 | --- | --- |
 | [docs/how-it-works.html](docs/how-it-works.html) | A picture-first walkthrough of the system, about fifteen minutes |
 | [docs/00-overview.md](docs/00-overview.md) | The plan, the decisions and their reasons, the evidence so far, and open questions |
+| [docs/06-research-handoff.md](docs/06-research-handoff.md) | The server team's research handoff: findings, tested prototypes and remaining field work |
 | [AGENTS.md](AGENTS.md) | The rules for anyone changing this repository, person or agent |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branches, CI checks and TestFlight |
 
