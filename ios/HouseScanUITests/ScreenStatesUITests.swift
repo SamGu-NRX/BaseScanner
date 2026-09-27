@@ -329,6 +329,29 @@ final class ScreenStatesUITests: XCTestCase {
         for (_, finding) in outcome.persistent {
             XCTFail("\(name): \(finding.message)")
         }
+        // After the audit, so its scrolling can't change what the audit saw: a control that
+        // exists can still sit past the bottom edge, out of the homeowner's reach. At the default
+        // size it must be tappable where it is; at AX5 the screen scrolls, so after scrolling to it
+        // (#39: "Show my result" sits below the tape there).
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            let target = element(app, identifier)
+            guard target.exists else { continue }
+            let reached = name.hasSuffix("-AX5") ? scrollUntilHittable(target, in: app) : target.isHittable
+            XCTAssertTrue(reached, "\(name): \(identifier) can't be tapped")
+        }
+    }
+
+    /// Drags the screen up, at most four times, until the control can be tapped. The same slow
+    /// drag as `revealCutOff`, so it scrolls without momentum.
+    @MainActor
+    private func scrollUntilHittable(_ target: XCUIElement, in app: XCUIApplication) -> Bool {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<4 {
+            if target.isHittable { return true }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -step)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+        return target.isHittable
     }
 
     /// At the largest text sizes a camera screen scrolls, and a control cut off by the bottom edge
