@@ -114,11 +114,13 @@ export function reduce(state, action) {
     case "events":
       return applyEvents(state, action.body, action.at, action.catchUp);
     case "result-loading":
-      return { ...state, result: { ...state.result, phase: "loading", error: null } };
+      // Refreshing a result already shown keeps showing it until the new one arrives.
+      return { ...state, result: { ...state.result, phase: state.result.phase === "ready" ? "ready" : "loading", error: null } };
     case "result":
       return applyResult(state, action.body);
     case "result-error":
-      return { ...state, result: { ...state.result, phase: "error", error: action.error } };
+      // A failed refresh keeps a result already shown; it is still what the server last said.
+      return { ...state, result: { ...state.result, phase: state.result.phase === "ready" ? "ready" : "error", error: action.error } };
     case "preview-loading":
       return { ...state, preview: { phase: "loading", runId: action.runId, cloud: null, error: null } };
     case "preview":
@@ -371,8 +373,8 @@ export function stageRows(state) {
  * stages produce. The viewer shows this as a caution next to the stages, never as a verdict.
  */
 export function looksLikePlaceholderStages(state) {
-  const done = stageRows(state).filter((r) => r.status === "done" && r.durationS != null);
-  return done.length >= 3 && done.every((r) => r.durationS < 0.05);
+  const done = stageRows(state).filter((r) => r.status === "done");
+  return done.length >= 3 && done.every((r) => r.durationS != null && r.durationS < 0.05);
 }
 
 /** A non-empty preview URL; an empty string means the result has no preview. */

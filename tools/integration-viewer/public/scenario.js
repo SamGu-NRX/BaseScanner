@@ -125,7 +125,8 @@ export function resultBody(name, status) {
     criteria: [
       { id: "synthetic_gas_clearance", outcome: "pass", measuredFt: 4.1, coverage: "observed" },
       { id: "synthetic_window_clearance", outcome: "pass", measuredFt: 2.2, coverage: "observed" },
-      { id: "synthetic_ground_slope", outcome: "unsure", coverage: "partial" },
+      // Observed and passing: an eligible answer cannot rest on a check that was left unsure.
+      { id: "synthetic_ground_slope", outcome: "pass", coverage: "observed" },
     ],
     previewUrl: "synthetic",
   };

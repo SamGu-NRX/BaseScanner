@@ -251,6 +251,25 @@ test("a stage left running when the capture settles shows no reported end", () =
   assert.equal(stageRows(open)[0].status, "running");
 });
 
+test("a finished stage with no reported duration keeps the placeholder warning off", () => {
+  const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
+  assert.ok(!looksLikePlaceholderStages(run(selected(), events([...quick, stage(4, "dense", "done")]))));
+});
+
+test("a failed refresh keeps the result already shown", () => {
+  const s = run(selected(), { type: "result", body: { runId: "run_a", status: "manual_review", outcome: { kind: "manual_review" } } }, { type: "result-loading" }, { type: "result-error", error: "network error" });
+  assert.equal(s.result.phase, "ready");
+  assert.equal(s.result.body.outcome.kind, "manual_review");
+  assert.equal(s.result.error, "network error");
+});
+
+test("the eligible illustration leaves no check unsure", async () => {
+  const { resultBody } = await import("../public/scenario.js");
+  const body = resultBody("complete", "complete");
+  assert.equal(body.outcome.kind, "eligible");
+  assert.ok(body.criteria.every((c) => c.outcome === "pass"));
+});
+
 test("near-zero stage durations are flagged as placeholders", () => {
   const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
   assert.ok(looksLikePlaceholderStages(run(selected(), events(quick))));

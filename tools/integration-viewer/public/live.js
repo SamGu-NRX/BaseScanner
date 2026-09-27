@@ -21,6 +21,7 @@ const BACKOFF_MS = [1_000, 2_000, 3_000, 5_000];
 // `wait` cannot turn the loop into a request storm.
 const MIN_EMPTY_POLL_MS = 1_000;
 const RETRY_AFTER_CAP_MS = 120_000;
+const PREVIEW_RETRY_MS = 5_000;
 // The API returns at most this many events per read; a full page means more history is waiting.
 const PAGE_SIZE = 100;
 
@@ -58,7 +59,6 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
   }
 
   async function run() {
-    get("/healthz").then((body) => send({ type: "health", body }), () => {});
     let failures = 0;
     let statusAt = -Infinity;
     let triesKey = null;
@@ -66,6 +66,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
     let resultTries = 0;
     let resultAt = -Infinity;
     let previewKey = null;
+    let previewRetryAt = -Infinity;
     // Reads start without waiting and repeat while pages come back full. They return what happened
     // before the viewer connected, which the reducer marks as backlog so it does not animate.
     let catchUp = true;
@@ -74,6 +75,8 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
     while (!signal.aborted) {
       try {
         if (now() - statusAt >= STATUS_EVERY_MS) {
+          // Health is read until it answers once, so the build shown survives a failed first read.
+          if (!getState().identity) get("/healthz").then((body) => send({ type: "health", body }), () => {});
           send({ type: "status", body: await get(`/captures/${captureId}`) });
           statusAt = now();
           send({ type: "contact-ok", at: now() });
@@ -129,7 +132,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
 
       const result = getState().result;
       const runId = result.body?.runId ?? null;
-      if (result.phase === "ready" && hasPreview(result.body) && typeof runId === "string" && previewKey !== runId) {
+      if (result.phase === "ready" && hasPreview(result.body) && typeof runId === "string" && previewKey !== runId && now() >= previewRetryAt) {
         previewKey = runId;
         send({ type: "preview-loading", runId });
         try {
@@ -144,7 +147,12 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
             continue;
           }
           if (error instanceof PlyError) send({ type: "preview-error", runId, unsupported: true, error: error.message });
-          else send({ type: "preview-error", runId, error: error instanceof HttpError ? error.message : "network error" });
+          else {
+            // A fetch failure may pass; an unreadable file will not. Only the first is retried.
+            send({ type: "preview-error", runId, error: error instanceof HttpError ? error.message : "network error" });
+            previewKey = null;
+            previewRetryAt = now() + PREVIEW_RETRY_MS;
+          }
         }
       }
     }

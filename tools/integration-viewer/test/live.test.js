@@ -156,3 +156,50 @@ test("an empty previewUrl fetches no preview, and long polls end by the next sta
   assert.equal(state.preview.phase, "none");
   assert.ok(waits.every((w) => w <= 5), `waits ${waits.join(",")}`);
 });
+
+test("health and a failed preview are read again after a transient failure", async () => {
+  let healthCalls = 0;
+  let previewCalls = 0;
+  const json = (body, status = 200) => ({ ok: status < 400, status, headers: new Headers(), json: async () => body, arrayBuffer: async () => new ArrayBuffer(0) });
+  const fetchImpl = async (path) => {
+    if (path.endsWith("/healthz")) {
+      healthCalls += 1;
+      return healthCalls === 1 ? json({ errors: [{ code: "upstream_unreachable", message: "x" }] }, 502) : json({ status: "ok", version: "stub" });
+    }
+    if (path.includes("/preview")) {
+      previewCalls += 1;
+      if (previewCalls === 1) return json({ errors: [{ code: "preview_unreachable", message: "storage hiccup" }] }, 502);
+      const ply = new TextEncoder().encode("ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nproperty float y\nproperty float z\nend_header\n1 2 3\n");
+      return { ok: true, status: 200, headers: new Headers(), arrayBuffer: async () => ply.buffer };
+    }
+    if (path.includes("/events")) {
+      const first = new URL(path, "http://x").searchParams.get("after") === "0";
+      return json({ status: "complete", next: 1, events: first ? [{ seq: 1, type: "verdict_ready", at: "x", data: { runId: "run_s", kind: "eligible" } }] : [] });
+    }
+    if (path.endsWith("/result")) return json({ runId: "run_s", status: "complete", outcome: { kind: "eligible", message: "m" }, previewUrl: "withheld-by-viewer-relay" });
+    return json({ captureId: "cap_STUB_2", status: "complete", filesRegistered: 0, runId: "run_s" });
+  };
+  let clock = 0;
+  let state = reduce(initialState(), { type: "select", mode: "live", source: { key: "s", label: "s", kind: "synthetic" }, captureId: "cap_STUB_2" });
+  const follower = followCapture({
+    sourceKey: "s",
+    captureId: "cap_STUB_2",
+    session: state.session,
+    dispatch: (a) => { state = reduce(state, a); },
+    getState: () => state,
+    fetchImpl,
+    now: () => clock,
+    // Each sleep advances the fake clock, so 5 s retry intervals pass without real waiting.
+    sleep: (ms) => new Promise((r) => { clock += ms; setTimeout(r, 1); }),
+    online: () => true,
+  });
+  const tick = setInterval(() => { clock += 1000; }, 5);
+  try {
+    await until(() => state.preview.phase === "ready" && state.identity != null, 5000);
+  } finally {
+    clearInterval(tick);
+    follower.stop();
+  }
+  assert.ok(healthCalls >= 2);
+  assert.equal(previewCalls, 2);
+});
