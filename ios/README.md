@@ -24,6 +24,8 @@ Native iPhone app for the AR capture walk. The homeowner marks the electric mete
 
 **Spot check.** Before the result, the app shows the kept photo that best sees the answer's spot, with the spot and its clearance area outlined, and asks whether anything stands in front of the wall or on the ground there (`STATE=spotConfirm`). Photos without depth and the walked path claim wall, ground and clear space they never saw; "It's clear" backs those claims for that spot, and "Something's there" takes them back over the area, so scene.json reports it unseen, and sends the scan again. The rules are in `Runtime/ScanEngine+Confirm.swift` and HouseScanKit's `Confirm/SpotConfirmation.swift`.
 
+**Live fog.** During the walk and a gap request, a soft fog covers what the coverage map has not counted and lifts only where it counts a cell, the same rule the scan's decisions use (`FogValue.target` in `UI/Camera/LiveFog/LiveFogScene.swift`). On a LiDAR phone, dots settle on the surfaces the kept keyframes' depth measured (HouseScanKit's `Overlay/SurfaceDots.swift`, run by `Runtime/LiveDotsFeed.swift`); they are guidance and feed nothing. The look is the prototype's (experiments/live-dots on t3/experience). Phones without LiDAR get the same fog without dots. The shaders compile at launch, and the old frosted strip (`FogOverlay`) draws until they are ready, and for good if Metal fails.
+
 Every screen change is logged as `STATE=<phase>` under subsystem `dev.housescanning.housescan`, category `state`.
 
 ## Layout
