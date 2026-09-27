@@ -16,6 +16,7 @@ import HouseScanKit
 /// | something in front of the wall at s (LiDAR) | gap_band | its hidden band, s ± 1 m |
 /// | a gap request, phone's or server's | gap_band | wall, ground, overhead, or facing for a walk-out |
 /// | a server past_end request | gap_past_end | its span |
+/// | the spot check before the result | gap_band | ground, the spot's clearance area |
 ///
 /// Finding and marking the meter, "that's the whole wall" and the questions (what is at an end,
 /// what is overhead) are not requests of any packet kind and are not logged. Coaching (slow
@@ -41,6 +42,8 @@ extension ScanEngine {
                 topic: .gap(id: gap.id), kind: pastEndSide == nil ? .gapBand : .gapPastEnd, origin: gap.origin == .server ? .server : .phone,
                 message: Self.text(ScanCopy.gap(gap)), band: pastEndSide == nil ? band : nil, span: plan.span
             )
+        case .spotConfirm:
+            return spotCheckGuidance
         case .onboarding, .findMeter, .markFeatures, .uploading, .result, .resultAR, .unsupported:
             return nil
         }
@@ -123,7 +126,7 @@ extension ScanEngine {
             guard let s, let map = coverage else { return .superseded }
             let band: SurfaceBand = old.band == .wall ? .wall : .ground
             return Self.hiddenCells(map, band: band, around: s).isEmpty ? .met : .superseded
-        case .tiltUp, .gap:
+        case .tiltUp, .gap, .spotCheck:
             // These close through their answers (`resolveGuidance`); leaving any other way means
             // something else took over.
             return .superseded

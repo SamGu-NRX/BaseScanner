@@ -14,13 +14,17 @@ struct WallWalkScreen: View {
     @State private var cameraSize: CGSize = .zero
     @State private var trayOpen = false
     @State private var taps: [TapRipple.Ripple] = []
+    /// The camera area between the card and the controls, for the aim ring's legend.
+    @State private var openArea: OpenCameraArea? = nil
+    /// The aim ring's legend while it doesn't fit beside the ring: drawn under the card (#81).
+    @State private var cardLegend: String? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: nil)
+            CameraOverlays(state: state, highlight: nil, openArea: openArea, cardLegend: $cardLegend)
             if state.coaching == .relocalizing, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up shows what to aim at.
                 SavedMeterPhoto(image: meterPhoto)
@@ -45,7 +49,9 @@ struct WallWalkScreen: View {
                 onCameraTap: state.marking == nil ? nil : { point in
                     taps.append(.init(point: point))
                     actions.markFeaturePoint(at: point, viewSize: cameraSize)
-                }
+                },
+                legend: cardLegend,
+                openArea: $openArea
             ) {
                 VStack(spacing: 10) {
                     controls
