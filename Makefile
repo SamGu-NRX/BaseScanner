@@ -1,13 +1,34 @@
 # Each suite target runs the commands of its CI job in .github/workflows/.
-# `make check` runs all three.
+# `make check` runs server, web and ios, then scoring, measure-lab, evals, recon
+# and meter-closeup where the branch has them.
+# tests/makefile.sh checks this dispatch with stub suites.
 
 XCODEGEN ?= xcodegen
 # Must match XCODEGEN_VERSION in .github/workflows/ios.yml; other versions write a different project.
 XCODEGEN_VERSION := 2.46.0
 
-.PHONY: check server web ios ios-project smoke
+# The file each experiment suite's target needs. These suites arrive in separate pull requests, so
+# `check` includes one only when its file exists and the Makefile works before and after each
+# merge. Once all five are on main, list them in `check` directly so a deleted folder fails.
+SCORING := experiments/scoring/pyproject.toml
+MEASURE_LAB := experiments/measure-lab/Makefile
+EVALS := experiments/evals/Makefile
+RECON := recon/Makefile
+METER_CLOSEUP := experiments/meter-closeup/Makefile
 
-check: server web ios
+# $(call present,FILE,TARGET) is TARGET when FILE exists, otherwise nothing.
+present = $(if $(wildcard $(1)),$(2))
+# $(call require,FILE,PR): stop before any command runs when the suite's file is missing.
+require = @test -f $(1) || { echo "make $@: $(1) is missing; the suite arrives with pull request $(2)." >&2; exit 1; }
+
+.PHONY: check server web ios ios-project smoke scoring measure-lab evals recon meter-closeup
+
+check: server web ios \
+	$(call present,$(SCORING),scoring) \
+	$(call present,$(MEASURE_LAB),measure-lab) \
+	$(call present,$(EVALS),evals) \
+	$(call present,$(RECON),recon) \
+	$(call present,$(METER_CLOSEUP),meter-closeup)
 
 server:
 	cd server && uv sync --locked
@@ -34,6 +55,35 @@ ios-project:
 		exit 1; \
 	fi
 	$(XCODEGEN) generate --spec ios/project.yml
+
+# The commands of .github/workflows/scoring.yml. The folder has no Makefile of its own.
+scoring:
+	$(call require,$(SCORING),#4)
+	cd experiments/scoring && uv sync --locked
+	cd experiments/scoring && uv run ruff check .
+	cd experiments/scoring && uv run ruff format --check .
+	cd experiments/scoring && uv run pytest -q
+
+# The Geometry package's tests, then the app build.
+measure-lab:
+	$(call require,$(MEASURE_LAB),#7)
+	$(MAKE) -C experiments/measure-lab check
+
+# The folder's `make test` lints and tests but leaves out the `uv sync --locked` that
+# .github/workflows/evals.yml runs first, and a plain `uv run` rewrites a stale uv.lock instead of failing.
+evals:
+	$(call require,$(EVALS),#12)
+	cd experiments/evals && uv sync --locked
+	$(MAKE) -C experiments/evals test
+
+recon:
+	$(call require,$(RECON),#20)
+	$(MAKE) -C recon test
+
+# Lint and unit tests only. The separate leak scan needs a private key and must not run here.
+meter-closeup:
+	$(call require,$(METER_CLOSEUP),#16)
+	$(MAKE) -C experiments/meter-closeup check
 
 # Posts each scene in server/examples to a placement server and prints its decision:
 # make smoke URL=https://house-scanning-server.vercel.app [KEY_FILE=server/.env.private.local]
