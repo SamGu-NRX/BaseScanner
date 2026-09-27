@@ -288,6 +288,8 @@ def invariant_problems(
     if decision == "pass":
         if spot is None or spot.get("outcome") != "pass":
             problems.append("decision pass without a passing spot")
+        if not checks:
+            problems.append("decision pass with no checks")
         not_passing = [c["id"] for c in checks if c["outcome"] != "pass"]
         if not_passing:
             problems.append(f"decision pass with checks not passing: {not_passing}")
@@ -307,6 +309,15 @@ def invariant_problems(
             problems.append("decision reject while asking for more evidence")
     if decision == "manual_review" and not result.get("reasons"):
         problems.append("decision manual_review without reasons")
+    # A person reviews a spot that may pass; one that fails is a reject's, not theirs.
+    if decision == "manual_review" and spot is not None and spot["outcome"] == "fail":
+        problems.append("decision manual_review with a failing spot")
+    # A spot's outcome is its checks': a pass has every check passing, an unsure spot none failing.
+    if spot is not None and spot["outcome"] in ("pass", "unsure"):
+        for c in checks:
+            if c["outcome"] == "fail" or (spot["outcome"] == "pass" and c["outcome"] != "pass"):
+                verb = "fails" if c["outcome"] == "fail" else f"is {c['outcome']}"
+                problems.append(f"the spot is {spot['outcome']} but its check {c['id']} {verb}")
     if (spot is None) != (result.get("route") is None):
         problems.append("spot and route must be both null or both present")
 
@@ -339,6 +350,7 @@ def invariant_problems(
     problems += spot_sweep_problems(result)
     if rules is not None:
         problems += footprint_problems(scene, result, rules)
+        problems += spot_position_problems(scene, result, rules)
     problems += missing_evidence_problems(scene, result, rules)
     if rules is not None:
         problems += coverage_problems(scene, result, rules)
@@ -418,6 +430,36 @@ def footprint_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
             battery = (start, start + rules.width_ft)
             if (why := off_wall(*battery, run["outcome"], run["wall_id"])) is not None:
                 problems.append(f"sweep {run['outcome']} start {start:.2f} {why}")
+    return problems
+
+
+def spot_position_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
+    """Where the app places the battery must be where the result says it stands: spot.center is
+    its footprint's centre, and that is the middle of span_ft on the wall, half the battery's
+    depth out. meter_offset_ft is checked against center elsewhere, so a centre moved together
+    with its offset is caught here."""
+    spot = result.get("spot")
+    if spot is None:
+        return []
+    problems = []
+    cx, cz = spot["center"]
+    corners = spot.get("footprint") or []
+    if corners:
+        fx = sum(pt[0] for pt in corners) / len(corners)
+        fz = sum(pt[1] for pt in corners) / len(corners)
+        if math.dist((cx, cz), (fx, fz)) > OFFSET_TOL_FT:
+            problems.append(
+                f"spot.center [{cx:.2f}, {cz:.2f}] is not its footprint's centre "
+                f"[{fx:.2f}, {fz:.2f}]"
+            )
+    lo, hi = spot["span_ft"]
+    plan = GroundPlan(scene, rules)
+    want = plan.point((lo + hi) / 2, (lo + hi) / 2, rules.depth_ft / 2)
+    if want is not None and math.dist((cx, cz), want) > COLLINEAR_FT:
+        problems.append(
+            f"spot.center [{cx:.2f}, {cz:.2f}] is not the centre of span [{lo:.2f}, {hi:.2f}] "
+            f"on its wall, [{want[0]:.2f}, {want[1]:.2f}]"
+        )
     return problems
 
 
@@ -634,8 +676,6 @@ def expected_checks(scene: dict, rules: RuleSet) -> set[str]:
 
 def dropped_check_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     listed = {c["id"] for c in result.get("checks", [])}
-    if not listed:
-        return []
     wanted = expected_checks(scene, rules) | ALWAYS_CHECKS
     return [
         f"the result leaves out check {c}, which the rules define" for c in sorted(wanted - listed)

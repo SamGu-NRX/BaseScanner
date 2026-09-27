@@ -1426,3 +1426,46 @@ def test_ground_past_an_inside_corner_behind_the_next_wall_is_the_house():
     assert not plan.required((6.0, 5.0))  # behind w2, in front of no wall
     assert plan.required((1.0, 11.5))  # in the corner's yard, in front of w1
     assert plan.required((-9.0, 3.0))  # past the chain's left end
+
+
+# Codex on 255bc84, verified by the #11 caretaker: three more false certifications.
+
+
+def test_a_pass_with_no_checks_is_flagged():
+    # 4114865912: decision pass, a passing spot and sweep, and checks [].
+    r = result(decision="pass", checks=[], complete=False)
+    r["policy"]["auto_approve"] = True
+    msgs = invariant_problems(broadly_seen(), r, rules=RULES)
+    assert "decision pass with no checks" in msgs
+    assert "the result leaves out check gas_clearance, which the rules define" in msgs
+
+
+def test_the_spot_centre_must_sit_on_its_footprint_on_the_wall():
+    # 4114865917: centre and meter_offset moved together by 5 ft, footprint unchanged.
+    r = result()
+    r["spot"]["center"] = [7.29, 0.92]
+    r["spot"]["meter_offset_ft"] = [7.29, 0.92]
+    msgs = invariant_problems(SCENE, r, rules=RULES)
+    assert any(m.startswith("spot.center [7.29, 0.92] is not its footprint's centre") for m in msgs)
+    assert any(m.startswith("spot.center [7.29, 0.92] is not the centre of span") for m in msgs)
+    assert not any("spot.center" in m for m in invariant_problems(SCENE, result(), rules=RULES))
+
+
+def test_manual_review_needs_a_spot_that_does_not_fail():
+    # 4114865919: manual_review, a failing spot, a failing check and a matching failing run.
+    run = {
+        "wall_id": "w1",
+        "start_ft": [1.0, 1.0],
+        "outcome": "fail",
+        "failing": ["gas_clearance"],
+        "unsure": [],
+    }
+    r = result(checks=[check("fail", 2.0)], sweep=[run])
+    r["spot"]["outcome"] = "fail"
+    r["stats"] |= {"pass": 0, "fail": 1}
+    msgs = invariant_problems(SCENE, r, rules=RULES)
+    assert "decision manual_review with a failing spot" in msgs
+    passing_spot = result(checks=[check("fail", 2.0)])
+    assert "the spot is pass but its check gas_clearance fails" in invariant_problems(
+        SCENE, passing_spot, rules=RULES
+    )

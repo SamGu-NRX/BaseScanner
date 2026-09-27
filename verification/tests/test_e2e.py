@@ -202,7 +202,35 @@ class FakeServer(BaseHTTPRequestHandler):
             },
             "spot": None,
             "route": None,
-            "checks": [],
+            # Every check a server lists, passing with no numbers, so no check is left out.
+            "checks": [
+                {
+                    "id": i,
+                    "label": i,
+                    "outcome": "pass",
+                    "reason": "",
+                    "measured_ft": None,
+                    "plus_minus_ft": None,
+                    "threshold_ft": None,
+                    "comparison": "at_least",
+                    "rule": {"key": i, "source": "", "placeholder": False},
+                }
+                for i in (
+                    "wall_backing",
+                    "ground_surface",
+                    "meter_working_space",
+                    "gas_clearance",
+                    "ac_clearance",
+                    "drive_clearance",
+                    "pool_clearance",
+                    "opening_clearance",
+                    "wall_equipment_above",
+                    "facing_gap",
+                    "headroom",
+                    "route_path",
+                    "route_length",
+                )
+            ],
             "missing_evidence": [],
             "ends": {},
             "sweep": [
