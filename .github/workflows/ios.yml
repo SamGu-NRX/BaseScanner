@@ -81,13 +81,13 @@ jobs:
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
           nohup xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &
 
-      # The package's drift tests compare the vendored schemas with the server's and the capture
-      # packet's own copies: the checkout's files once those branches merge, else the t3/server
-      # and t3/packet branches, which the shallow checkout leaves out. One of the two is required:
+      # The package's drift test compares the vendored server schemas with the server's own copies:
+      # the checkout's files once that branch merges, else the t3/server branch, which the shallow
+      # checkout leaves out. One of the two is required:
       # a failed fetch fails the run, and HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather
       # than skip, so CI can't go green without comparing. The checkout counts only when it holds
       # every compared file: a folder alone isn't enough (main has a server/ without schemas).
-      - name: Fetch the contract branches
+      - name: Fetch the server contract
         run: |
           fetch_unless_present() {
             local branch="$1"; shift
@@ -103,7 +103,6 @@ jobs:
             fi
           }
           fetch_unless_present t3/server server/schemas/scene.schema.json server/schemas/result.schema.json server/tests/fixtures/example-scene.json
-          fetch_unless_present t3/packet packet/manifest.schema.json
 
       - name: Install XcodeGen
         run: |
