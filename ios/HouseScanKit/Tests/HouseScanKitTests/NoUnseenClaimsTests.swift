@@ -401,7 +401,9 @@ import Testing
         var map = CoverageMap(wall: standardWall())
         #expect(map.wallRows.first == 0)
         map.heightError = 0.3
-        #expect(map.wallRows.prefix(3).map { $0 } == [-0.3, -0.1524, 0])
+        let lowest: [Float] = Array(map.wallRows.prefix(3))
+        let expected: [Float] = [-0.3, -0.1524, 0]
+        #expect(lowest == expected)
         map.heightError = 0
         #expect(map.wallRows.first == 0)
     }

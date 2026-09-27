@@ -50,9 +50,10 @@ struct GroundQuestion: View {
     )
 
     /// The card's resize and the review sliding up or down under it. Critically damped, so the
-    /// panel settles without a wobble; under Reduce Motion a short ease, as elsewhere in the app.
-    private var fold: Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : .spring(duration: 0.35, bounce: 0)
+    /// panel settles without a wobble. With Reduce Motion none: the review below would slide by the
+    /// height of the answers, so the card changes in place instead.
+    private var fold: Animation? {
+        reduceMotion ? nil : .spring(duration: 0.35, bounce: 0)
     }
 
     private func give(_ newAnswer: GroundAnswer) {

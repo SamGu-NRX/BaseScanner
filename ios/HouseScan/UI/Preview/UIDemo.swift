@@ -19,6 +19,8 @@ import SwiftUI
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoOverlap`: the sample result's spot overlaps the meter's working space.
+/// - `-uiDemoResultFile <path>`: debug builds only. The result is the server answer in this JSON
+///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
@@ -32,6 +34,12 @@ import SwiftUI
 /// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
 /// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
 /// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoCorner`: the wall turns an outside corner 1.8 m right of the meter and the walk
+///   followed it, so the window and part of its clearance zone are round the corner. For the
+///   result model: `-uiDemoPhase result -uiDemoCorner`.
+/// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
+/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
+///   answered and says what happens next.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

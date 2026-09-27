@@ -18,6 +18,10 @@ struct MeterReadout: Sendable, Equatable {
     /// The photo decoded and passed the focus check, whether or not a number was read in it. Only
     /// such a photo's view goes into coverage (`CloseUpCredit`).
     var photoPassedChecks: Bool
+    /// The maker named on the meter (`MeterBrand.read`), or nil when no line names one. Shown
+    /// beside the candidates; it counts only when the homeowner confirms a number without
+    /// rejecting it.
+    var brand: String? = nil
 }
 
 /// Reads the meter number from the close-up JPEG. Runs off the main actor.
