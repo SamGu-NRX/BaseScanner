@@ -101,8 +101,11 @@ extension ScanEngine: ScanActions {
     /// and the walk's first frame.
     private func observeCloseUpView() {
         guard let view = closeUpCredit.take() else { return }
+        // Corrected for anchor moves made while the photo was saved and read.
+        let camera = view.time.map { correctedPose(view.camera.cameraToWorld, capturedAt: $0) }
+            .map { CameraFrame(cameraToWorld: $0, intrinsics: view.camera.intrinsics, imageSize: view.camera.imageSize) } ?? view.camera
         var delta: CoverageMap.Delta?
-        updateCoverage { delta = $0.observe(view.camera, trackingNormal: true, depth: view.depth) }
+        updateCoverage { delta = $0.observe(camera, trackingNormal: true, depth: view.depth) }
         RuntimeLog.capture.info("close-up view in coverage: \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered")
     }
 
@@ -397,7 +400,8 @@ extension ScanEngine: ScanActions {
     }
 
     func captureMissing(_ id: String) {
-        guard state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
+        // A stopped camera can't take the view: the answer stays, the request goes to review.
+        guard mayCapture, state.phase == .result || state.phase == .gapRequest || state.phase == .uploading,
               let missing = placement?.missingEvidence,
               let index = Int(id.replacingOccurrences(of: "missing-", with: "")),
               missing.indices.contains(index) else { return }

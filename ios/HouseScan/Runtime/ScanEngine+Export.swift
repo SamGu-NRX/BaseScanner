@@ -51,7 +51,8 @@ extension ScanEngine {
         }
 
         let keyframes = store.keyframes.map { stored -> SceneKeyframe in
-            var pose = stored.camera.cameraToWorld
+            // The photo's raw pose moved by the anchor corrections made after it was taken.
+            var pose = correctedPose(stored.rawPose, capturedAt: stored.t)
             pose.columns.3.y -= wall.groundY
             return SceneKeyframe(
                 id: stored.id, cameraToWorld: pose, intrinsics: stored.camera.intrinsics,

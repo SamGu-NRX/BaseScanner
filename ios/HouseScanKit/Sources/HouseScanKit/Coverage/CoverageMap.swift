@@ -1161,10 +1161,26 @@ public struct CoverageMap: Sendable {
     /// anchor (`MeterAnchorTracking`): what was captured moves with the meter, so the relations
     /// between the wall and the views of it, and every s (cells, ends, corners), stay exactly as
     /// they were, and nothing is rebuilt.
+    ///
+    /// The positions each row's sightings were made from move too, their depth flags kept: a
+    /// sighting left where it was would sit the correction's distance from the camera that made
+    /// it, so the same view seen again after a 0.30 m shift counted as a second position.
     public mutating func apply(_ correction: YawCorrection) {
         wall.apply(correction)
         observedCameras = observedCameras.map { correction.moved($0) }
         overheadCameras = overheadCameras.map { correction.moved($0) }
+        func moved(_ rows: [[Sight]]) -> [[Sight]] {
+            rows.map { row in row.map { Sight(position: correction.point($0.position), depthVerified: $0.depthVerified) } }
+        }
+        for (band, bandCells) in cells {
+            for (index, cell) in bandCells {
+                var cell = cell
+                cell.rows = moved(cell.rows)
+                cells[band]?[index] = cell
+            }
+        }
+        depthCells = depthCells.mapValues(moved)
+        pastLimitCells = pastLimitCells.mapValues { $0.mapValues(moved) }
         revision += 1
     }
 
