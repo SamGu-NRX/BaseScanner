@@ -32,7 +32,10 @@ struct GapRequestScreen: View {
                     title: "I can't get there",
                     identifier: "action.skipGap",
                     hint: skipHint,
-                    perform: { actions.skipGap() }
+                    perform: { actions.skipGap() },
+                    // The request, not the coaching that can show over it: coaching coming and going
+                    // doesn't lock the reply again (InstructionCard.replyLock).
+                    task: state.gap.map { ScanCopy.gap($0) }
                 ),
                 eyebrow: followUps > 0 && state.gap?.isSatisfied != true ? ScanCopy.followUp(remaining: followUps) : nil,
                 photoCount: state.captureCount,

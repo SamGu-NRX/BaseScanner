@@ -141,6 +141,13 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if arguments.contains("-uiDemoAim"), state.phase == .wallWalk {
+            // The walk asks for the ground about 2 ft right of the meter, which it hasn't seen
+            // from two places; the card's reply says "Skip this spot" there.
+            state.guidance = .aimAtGround(s: 0.6)
+            state.target = DemoScene.wall.world(s: 0.6, height: 0, out: 0.5)
+            state.path = []
+        }
         if arguments.contains("-uiDemoCorner") {
             // The walk followed an outside corner right of the meter, between the battery spot and
             // the window, and went on 1.6 m along the next wall: that wall runs away from the
@@ -813,6 +820,16 @@ final class DemoEngine: ScanActions {
             tiltUpSettled = true
             refreshGuidance()
             return
+        }
+        switch state.guidance {
+        case .aimAtGround(let s), .aimAtWall(let s):
+            // Like the real engine: that stretch goes to review and the walk moves on.
+            skippedSpan = (s - 0.5)...(s + 0.5)
+            refreshCoverage()
+            refreshGuidance()
+            return
+        default:
+            break
         }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {

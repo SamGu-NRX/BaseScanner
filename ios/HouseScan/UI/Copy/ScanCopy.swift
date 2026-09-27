@@ -287,6 +287,30 @@ enum ScanCopy {
     /// The reply on the see-behind step: the homeowner can't get a view past the obstruction.
     static let cannotSeeBehind = "Can't see past it"
 
+    // MARK: Card replies
+
+    /// The walk card's reply (`ScanActions.cannotAccessArea`) and its VoiceOver hint, worded for
+    /// what it does on `step`; nil on a step that offers none. On an aim or tilt step the
+    /// homeowner is already at the spot and it's the view that can't be had, so "Can't get
+    /// there" read as the wrong answer and testers kept tilting (#63). It stays on the steps
+    /// that ask to go somewhere. The wall's end (`markEnd`) has "Wall ends here" instead.
+    static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
+        switch step {
+        case .aimAtGround, .aimAtWall:
+            (title: "Skip this spot", hint: "An installer will look at it instead.")
+        case .tiltUp:
+            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer will look at it instead.")
+        case .walk:
+            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.")
+        case .markNextWall:
+            (title: "Can't get there", hint: "Skips this part of the wall. An installer will look at it instead.")
+        case .seeBehind:
+            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer will look at it instead.")
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
+            nil
+        }
+    }
+
     // MARK: Follow-up view
 
     /// The check came back asking for views the camera can take now; the scan goes straight
