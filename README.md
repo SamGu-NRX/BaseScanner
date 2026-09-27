@@ -13,7 +13,7 @@ Today a person at Base Power decides where a battery goes by looking at a homeow
 
 We're trying to make it one walk. The homeowner scans the outside wall around their electric meter. The app guides them until it has seen everything the placement rules need, then sends what it captured. The server builds a 3D model, decides in plain code whether a battery fits and where, and the app shows the spot in AR.
 
-This is a four-person hackathon project for Base Power, started 2026-09-25. Sam, with AI agents, builds the iPhone app, and Aiden films video and gathers sample data. Hunter, with his own agents, owns the 3D model and the rule checks.
+This is a four-person hackathon project for Base Power, started 2026-09-25. [Team](#team) says who does what.
 
 ## Quick start
 
@@ -255,6 +255,15 @@ Most of these numbers come from public datasets with laser-scanned or surveyed g
 2. Pick the 3D path, and try world models, which nobody has tested yet.
 3. Decide who checks for hidden wall. One idea is to show the homeowner the photo of the chosen spot and ask.
 4. Load Base's values into the private deployment in place of the placeholders.
+
+## Team
+
+| Name | Role | Contact |
+| --- | --- | --- |
+| Sam Gu | The iPhone app and the capture packet, built with AI agents | [@SamGu-NRX](https://github.com/SamGu-NRX) |
+| Aiden Johnston | Field tests on a real iPhone, the app fixes they turn up, video and sample data | [@AidenJohnston](https://github.com/AidenJohnston) |
+| Hunter Carver | The 3D model and the rule checks, built with AI agents | [@huntertcarver](https://github.com/huntertcarver) |
+| Shrey Suri | This README, its diagrams and the writing skills the agents share | [@ShreySuri](https://github.com/ShreySuri) |
 
 ## Repository map
 
