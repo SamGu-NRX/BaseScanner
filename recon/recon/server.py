@@ -1,0 +1,46 @@
+"""Posting a scene to the placement server (server/README.md, "API", on t3/server)."""
+
+from __future__ import annotations
+
+import json
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_URL = "https://house-scanning-server.vercel.app"
+TIMEOUT_S = 60
+
+
+def _post(url: str, body: bytes) -> tuple[int, bytes]:
+    # The public demo needs no key. The key-protected deployment's scheme is not known here.
+    headers = {"Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
+
+
+def place(scene: dict, base_url: str, out: Path) -> dict:
+    """POSTs bare scene.json (the server reads no images, and Vercel caps bodies at 4.5 MB) and
+    saves result.json and site-plan.svg. A refusal of either raises; a refused placement's body
+    is saved as result.json. Both files are deleted first, so a reused output folder never shows
+    a previous run's answer or plan beside this run's scene."""
+    for name in ("result.json", "site-plan.svg"):
+        (out / name).unlink(missing_ok=True)
+    body = json.dumps(scene).encode()
+    status, data = _post(f"{base_url.rstrip('/')}/v1/placements", body)
+    (out / "result.json").write_bytes(data)
+    if status != 200:
+        raise RuntimeError(
+            f"server refused the scene ({status}): {data[:500].decode(errors='replace')}"
+        )
+    status, svg = _post(f"{base_url.rstrip('/')}/v1/placements/site-plan.svg", body)
+    if status != 200:
+        raise RuntimeError(
+            f"server placed the scene but refused its site plan ({status}): "
+            f"{svg[:500].decode(errors='replace')}"
+        )
+    (out / "site-plan.svg").write_bytes(svg)
+    return json.loads(data)

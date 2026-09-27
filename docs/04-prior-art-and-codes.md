@@ -69,9 +69,9 @@ None of the products above runs the whole loop outdoors, from metric AR capture 
 | Status | Models |
 | --- | --- |
 | Noncommercial | MapAnything's default checkpoint (use `facebook/map-anything-apache` instead), Depth Anything 3 Giant and Nested (Metric Large, Base and Small are Apache-2.0), VGGT-Ω, UniDepthV2, Mapillary-Vistas Mask2Former weights, Molmo 2 |
-| Restricted or unclear | Depth Pro (Apple personal-use grant), SAM 3 (custom license, gated weights), HY-World 2.0 (custom community license), Metric3D v2 (its files disagree), MoGe-2 weights (UNVERIFIED, though the code is MIT) |
+| Restricted or unclear | Depth Pro (Apple personal-use grant), SAM 3 (custom license, gated weights), HY-World 2.0 (custom community license), Metric3D v2 (its files disagree) |
 | Copyleft | YOLO-World, YOLOE and Ultralytics (GPL or AGPL), pymeshlab (GPL-3) |
-| Permissive | SAM 2, Grounding DINO, OWLv2, Qwen3-VL and zxing-cpp (Apache-2.0), Florence-2, supervision, Open3D and Stray Scanner (MIT), shapely (BSD-3) |
+| Permissive | SAM 2, Grounding DINO, OWLv2, Qwen3-VL and zxing-cpp (Apache-2.0), Florence-2, supervision, Open3D and Stray Scanner (MIT), MoGe-2 code and the `Ruicheng/moge-2-vitl-normal` weights at revision cb0e8bb, which the worker pins (MIT, from Hugging Face's metadata for that revision, checked 2026-09-26), shapely (BSD-3) |
 
 For recognition boxes, Gemini 2.5 Pro scored 13.3 zero-shot mAP on RF100-VL, against 1.5 for GPT-5.
 
