@@ -20,6 +20,10 @@ final class ScanEngine {
     /// Which kind of plane the meter tap hit; an estimated plane widens the meter's error in the
     /// export. A replay's wall comes from the recording, so it counts as detected.
     var meterPlaneSource: MeterPlaneSource = .detectedPlane
+    /// Where the phone was when the meter was marked: the ground choice prefers the plane under
+    /// it, and a re-fit follows the tap's line of sight from it (`refitWallToDetectedPlane`). Nil
+    /// on a replay.
+    var meterTapCamera: SIMD3<Float>?
     private var live: LiveCapture?
 
     // Capture logic (HouseScanKit)
@@ -61,6 +65,8 @@ final class ScanEngine {
     private var sourceState = CaptureSourceState()
     /// Detected horizontal planes, with their classes and outlines.
     private var groundPlanes: [GroundPlaneEvidence] = []
+    /// Detected vertical planes, with their classes, normals and outlines.
+    private var wallPlanes: [WallPlaneEvidence] = []
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
     /// than the chest-height guess. The export widens position errors while it is a guess.
@@ -387,7 +393,12 @@ final class ScanEngine {
             groundPlanes = frame.groundPlanes
             refineGround()
         }
-        refreshMeterFromAnchor(frame)
+        if !frame.wallPlanes.isEmpty, frame.wallPlanes != wallPlanes {
+            wallPlanes = frame.wallPlanes
+            refitWallToDetectedPlane()
+        }
+        // A frame made before the meter was anchored again carries the old anchor's pose.
+        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
         trackRelocalization(frame)
         guard !frame.isReview else {
@@ -408,12 +419,15 @@ final class ScanEngine {
     }
 
     /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
-    /// wall always replaces the guess, and a better plane replaces an earlier one.
+    /// wall always replaces the guess, and a better plane replaces an earlier one. A measured
+    /// ground is never raised by more than `GroundPlaneChoice.maximumRaise`.
     private func refineGround() {
-        guard var wall = coverage?.wall, let y = groundBelow(wall.meter, along: wall.along) else { return }
+        guard var wall = coverage?.wall,
+              let choice = groundBelow(wall.meter, along: wall.along, current: groundMeasured ? wall.groundY : nil) else { return }
+        let y = choice.plane.y
         // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
         guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
-        RuntimeLog.engine.info("ground at y=\(y) from a detected plane (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
+        RuntimeLog.engine.info("ground at y=\(y) from \(Self.describe(choice), privacy: .public) (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
         wall.groundY = y
         groundMeasured = true
         coverage?.heightError = 0
@@ -422,6 +436,36 @@ final class ScanEngine {
         publishWall()
         publishCoverage()
         reprojectFeatures()
+    }
+
+    /// A ground choice for the log: the plane's id, its class and why it was chosen.
+    nonisolated static func describe(_ choice: GroundPlaneChoice.Choice) -> String {
+        "plane \(choice.plane.id) (\(choice.plane.kind), \(choice.reason.rawValue))"
+    }
+
+    /// Moves the wall to a detected wall plane that disagrees with a meter tap on an estimated
+    /// plane (`MeterTap.refit`): the meter goes where the tap's line of sight meets the plane, the
+    /// wall faces the plane's normal, and the meter is anchored again there. Only during the
+    /// close-up, before the walk has kept any view: coverage can't turn a wall it has already
+    /// seen (`CoverageMap.updateWall`), so a wall found wrong later stays wrong.
+    private func refitWallToDetectedPlane() {
+        guard state.phase == .meterCloseUp, replay == nil, meterPlaneSource == .estimatedPlane,
+              let live, let tapCamera = meterTapCamera, let wall = coverage?.wall,
+              let refit = MeterTap.refit(meter: wall.meter, outward: wall.outward, tapCamera: tapCamera, planes: wallPlanes) else { return }
+        let along = simd_normalize(simd_cross(-refit.outward, SIMD3(0, 1, 0)))
+        let choice = groundBelow(refit.meter, along: along, current: nil)
+        let measured = choice != nil || groundMeasured
+        guard setWall(meter: refit.meter, outward: refit.outward, groundY: choice?.plane.y ?? wall.groundY, groundMeasured: measured) else { return }
+        meterPlaneSource = .detectedPlane
+        updateCoverage { $0.setWallLineSource(meterLineSource) }
+        meterAnchorID.map { live.removeAnchor($0) }
+        // Axes as a wall hit's: y the wall's normal, z up the wall.
+        let x = simd_normalize(simd_cross(refit.outward, SIMD3(0, 1, 0)))
+        let pose = simd_float4x4(SIMD4(x, 0), SIMD4(refit.outward, 0), SIMD4(simd_cross(x, refit.outward), 0), SIMD4(refit.meter, 1))
+        setMeterAnchor(live.addMeterAnchor(at: pose), pose: pose)
+        let degrees = refit.turned * 180 / .pi
+        let ground = choice.map(Self.describe) ?? "kept"
+        RuntimeLog.engine.info("wall re-fitted to detected plane \(refit.planeID, privacy: .public): meter moved \(refit.moved) m, wall turned \(degrees) degrees; ground \(ground, privacy: .public)")
     }
 
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
@@ -1121,6 +1165,7 @@ final class ScanEngine {
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
+        wallPlanes = []
         groundMeasured = false
         lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -1655,6 +1700,7 @@ final class ScanEngine {
     }
 
     var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
+    var detectedWallPlanes: [WallPlaneEvidence] { wallPlanes }
 
     /// The camera failed after the scan was sent: no frame will come to say tracking was lost, so
     /// the last one's "normal" would keep the AR result up and offered. The answer stays; the
