@@ -82,10 +82,15 @@ extension CaptureResult {
             let worldFromAnchor = Self.double(meterAnchor)
             guard Self.isRigid(worldFromAnchor) else { return .unavailable(.invalidMeterAnchor) }
 
-            let anchorFromBox = worldFromAnchor.inverse * worldFromBox
-            return .box(AnchoredBox(
-                anchorFromBox: Self.float(anchorFromBox),
-                size: SIMD3<Float>(Float(box.size[0]), Float(box.size[1]), Float(box.size[2]))))
+            let anchorFromBox = Self.float(worldFromAnchor.inverse * worldFromBox)
+            let size = SIMD3<Float>(Float(box.size[0]), Float(box.size[1]), Float(box.size[2]))
+            // Finite Doubles can overflow Float, and positive sizes can round to zero.
+            let columns = [anchorFromBox.columns.0, anchorFromBox.columns.1, anchorFromBox.columns.2, anchorFromBox.columns.3]
+            guard columns.allSatisfy({ c in (0..<4).allSatisfy { c[$0].isFinite } }),
+                  (0..<3).allSatisfy({ size[$0].isFinite })
+            else { return .unavailable(.malformedBox(.nonFinite)) }
+            guard (0..<3).allSatisfy({ size[$0] > 0 }) else { return .unavailable(.malformedBox(.nonPositiveSize)) }
+            return .box(AnchoredBox(anchorFromBox: anchorFromBox, size: size))
         }
 
         private static func matrix(columnMajor v: [Double]) -> simd_double4x4 {

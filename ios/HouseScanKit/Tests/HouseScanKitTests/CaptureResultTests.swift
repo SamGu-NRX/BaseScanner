@@ -177,13 +177,14 @@ import simd
     enum BadBox: CaseIterable, Sendable {
         case shortPose, twoSizes, nanPose, infiniteSize, zeroSize, scaledPose, shearedPose, mirroredPose, badBottomRow
         case noBox, noEpoch, noPlacement
+        case floatOverflowSize, floatUnderflowSize, floatOverflowTranslation
 
         var expected: CaptureResult.Unavailable {
             switch self {
             case .shortPose: .malformedBox(.poseCount(15))
             case .twoSizes: .malformedBox(.sizeCount(2))
-            case .nanPose, .infiniteSize: .malformedBox(.nonFinite)
-            case .zeroSize: .malformedBox(.nonPositiveSize)
+            case .nanPose, .infiniteSize, .floatOverflowSize, .floatOverflowTranslation: .malformedBox(.nonFinite)
+            case .zeroSize, .floatUnderflowSize: .malformedBox(.nonPositiveSize)
             case .scaledPose, .shearedPose, .mirroredPose, .badBottomRow: .malformedBox(.notRigid)
             case .noBox, .noEpoch: .notInARKitWorld
             case .noPlacement: .noPlacement
@@ -197,6 +198,9 @@ import simd
             case .nanPose: outcome.recommendedPlacement?.boxArkitWorld?.pose[13] = .nan
             case .infiniteSize: outcome.recommendedPlacement?.boxArkitWorld?.size[1] = .infinity
             case .zeroSize: outcome.recommendedPlacement?.boxArkitWorld?.size[2] = 0
+            case .floatOverflowSize: outcome.recommendedPlacement?.boxArkitWorld?.size[0] = 1e40
+            case .floatUnderflowSize: outcome.recommendedPlacement?.boxArkitWorld?.size[0] = 1e-50
+            case .floatOverflowTranslation: outcome.recommendedPlacement?.boxArkitWorld?.pose[12] = 1e40
             case .scaledPose:
                 for i in 0..<11 { outcome.recommendedPlacement?.boxArkitWorld?.pose[i] *= 1.25 }
             case .shearedPose: outcome.recommendedPlacement?.boxArkitWorld?.pose[4] = 0.3
