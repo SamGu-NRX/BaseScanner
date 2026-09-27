@@ -111,6 +111,8 @@ schemes:
         HouseScan: all
     run:
       config: Integration Debug
+    test:
+      config: Integration Debug
     profile:
       config: Integration Release
     analyze:

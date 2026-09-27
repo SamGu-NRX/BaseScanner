@@ -307,20 +307,7 @@ struct TrackingCode: Sendable, Equatable {
         self.reason = reason
     }
 
-    var packetTracking: PacketTracking {
-        let why: PacketTracking.Reason? = switch reason {
-        case 1: .initializing
-        case 2: .relocalizing
-        case 3: .excessiveMotion
-        case 4: .insufficientFeatures
-        default: nil
-        }
-        return switch state {
-        case 0: .normal
-        case 1: .limited(why)
-        default: .notAvailable
-        }
-    }
+    var packetTracking: PacketTracking { PacketTracking(recorderState: state, reason: reason) }
 }
 
 /// Core Motion for the packet: accelerometer, gyroscope, magnetometer and device motion at

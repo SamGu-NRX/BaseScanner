@@ -91,6 +91,7 @@ public enum Packet04Streams {
             "imuRawGyroPairing": "nearest gyro sample within \(maxPairingOffset) s; accelerometer samples without one are left out",
             "imuRawGyroOffsetMaxS": worst.description,
             "imuRawRowsKept": "\(times.count) of \(accel.count)",
+            "imuRawPairingStatus": "proposal from the phone; the server has not agreed how accelerometer and gyro samples join into one row",
         ]
         return (Data(text.utf8), rate, note)
     }
@@ -104,6 +105,17 @@ public enum Packet04Streams {
             events.append(.init(time: row.t, state: state, epoch: epoch))
         }
         return events
+    }
+
+    /// One sensor's samples exactly as Core Motion timed them, `t,x,y,z`: the raw evidence behind
+    /// `imuRaw`, kept because the pairing rule there is a proposal the server has not agreed to.
+    public static func rawMotionCSV(_ rows: [MotionRow], columns: [String]) throws -> Data {
+        guard !rows.isEmpty else { throw Packet04Error.streamEmpty(columns.joined(separator: ",")) }
+        var text = columns.joined(separator: ",") + "\n"
+        for row in rows.sorted(by: { $0.t < $1.t }) {
+            text += [row.t, row.value.x, row.value.y, row.value.z].map(\.description).joined(separator: ",") + "\n"
+        }
+        return Data(text.utf8)
     }
 
     /// Pose rows from the recorder's raw rows: trajectory rows `[t, tracking state, tracking

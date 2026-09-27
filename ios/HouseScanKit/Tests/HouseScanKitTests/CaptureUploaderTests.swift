@@ -60,15 +60,17 @@ import Testing
         let done = await rig.uploader.snapshot
         #expect(done.end == .finished(status: "manual_review"))
         #expect(done.finalized?.status == "awaiting_files")
-        #expect(done.finalized?.missing.sorted() == ["streams/arkit_poses.csv.gz", "streams/imu_raw.csv.gz"])
-        #expect(done.committedCount == images.count + 2)
+        #expect(done.finalized?.missing.sorted() == [
+            "streams/accelerometer_raw.csv.gz", "streams/arkit_poses.csv.gz", "streams/gyroscope_raw.csv.gz", "streams/imu_raw.csv.gz",
+        ])
+        #expect(done.committedCount == images.count + 4)
         #expect(done.result != nil)
         let marks = done.marks
         #expect(try #require(marks["firstCommit"]) < #require(marks["sealed"]))
         #expect(try #require(marks["sealed"]) <= #require(marks["lastCommit"]))
 
         let puts = rig.server.requests("PUT upload")
-        #expect(puts.count == images.count + 2)
+        #expect(puts.count == images.count + 4)
         #expect(puts.allSatisfy { $0.headers["authorization"] == nil && $0.headers["content-md5"] != nil })
         #expect(rig.server.requests("POST captures").count == 1)
     }

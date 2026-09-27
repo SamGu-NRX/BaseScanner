@@ -50,6 +50,7 @@ extension ScanEngine: ScanActions {
         // takes the server's error for it.
         updateCoverage { $0.setWallLineSource(meterLineSource) }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform), pose: hit.transform)
+        integration.meterTapped(live.tapObservation(at: viewPoint, viewSize: viewSize), hit: hit)
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
     }

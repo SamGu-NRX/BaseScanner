@@ -239,6 +239,21 @@ public actor Packet04Producer {
             rayDirection: ray.direction, hit: hit, epoch: epoch))
     }
 
+    /// The frame the homeowner tapped, kept as a keyframe (reason `tap`) unless it already is one,
+    /// and the tap on it: `pixel` in that frame's stored image, the ray rebuilt from its own pose
+    /// and intrinsics, and what the phone's raycast hit.
+    public func sealTap(
+        id: String, label: String, jpeg: Data, observation: Packet04Observation, pixel: SIMD2<Double>, hit: Packet04.TapHit?
+    ) throws -> [SealedFile] {
+        var files: [SealedFile] = []
+        if keyframeID(at: observation.t) == nil {
+            files = try sealKeyframe(jpeg: jpeg, observation: observation, reason: "tap")
+        }
+        guard let keyframe = keyframeID(at: observation.t) else { throw Packet04Error.unknownKeyframe("at \(observation.t)") }
+        try addTap(id: id, label: label, keyframe: keyframe, pixel: pixel, time: observation.t, hit: hit)
+        return files
+    }
+
     // MARK: Finish
 
     /// Writes the two required streams, then returns their sealed files and the exact packet
@@ -254,6 +269,16 @@ public actor Packet04Producer {
         let imu = try Packet04Streams.imuRaw(accelerometer: accelerometer, gyroscope: gyroscope)
         let poseFile = try write(try Gzip.compress(posesCSV.csv), "streams/arkit_poses.csv.gz", role: .stream, type: "application/gzip", priority: 30)
         let imuFile = try write(try Gzip.compress(imu.csv), "streams/imu_raw.csv.gz", role: .stream, type: "application/gzip", priority: 30)
+        // Each sensor as Core Motion timed it, so the server can re-pair them its own way.
+        let accelFile = try write(
+            try Gzip.compress(try Packet04Streams.rawMotionCSV(accelerometer, columns: ["t", "ax", "ay", "az"])),
+            "streams/accelerometer_raw.csv.gz", role: .stream, type: "application/gzip", priority: 31)
+        let gyroFile = try write(
+            try Gzip.compress(try Packet04Streams.rawMotionCSV(gyroscope, columns: ["t", "gx", "gy", "gz"])),
+            "streams/gyroscope_raw.csv.gz", role: .stream, type: "application/gzip", priority: 31)
+        var ext = imu.pairingNote
+        ext["rawAccelerometerFile"] = accelFile.path
+        ext["rawGyroscopeFile"] = gyroFile.path
 
         let close = stills.first { $0.purpose == "meter_close" }
         let oblique = stills.first { $0.purpose == "meter_oblique" }
@@ -278,7 +303,7 @@ public actor Packet04Producer {
                 meterCloseUp: close.map { .init(captured: true, still: $0.id, arkitDistanceM: closeUpDistanceM, side: nil) } ?? .notCaptured,
                 ext: .init(obliqueCloseUp: oblique.map { .init(captured: true, still: $0.id, arkitDistanceM: nil, side: nil) } ?? .notCaptured)),
             files: files.map(\.entry),
-            ext: imu.pairingNote)
+            ext: ext)
         let problems = Packet04Check.problems(packet, folder: folder)
         guard problems.isEmpty else { throw Packet04Error.invalidPacket(problems) }
         let encoder = JSONEncoder()
@@ -286,7 +311,7 @@ public actor Packet04Producer {
         let data = try encoder.encode(packet)
         try data.write(to: folder.appending(path: "packet.json"), options: .atomic)
         finished = data
-        return ([poseFile, imuFile], data)
+        return ([poseFile, imuFile, accelFile, gyroFile], data)
     }
 
     // MARK: Helpers
