@@ -164,6 +164,68 @@ final class FullFlowUITests: XCTestCase {
         }
     }
 
+    /// Practice meter on the synthetic replay: the switch is turned on in the developer options on
+    /// the first screen, the close-up stores the drawn sample's photo and the app's own reader
+    /// reads its number, which the autopilot confirms, and the rest of the flow runs to the AR
+    /// result. Every screen after the first carries the "Practice meter" badge. Afterwards Start
+    /// over clears the badge and the switch is turned off again for the tests that follow.
+    @MainActor
+    func testPracticeMeterFromReplay() throws {
+        var readNumber: String?
+        var unbadged: [String] = []
+        var app: XCUIApplication?
+        try runFlow(replay: Self.fixture, practice: true, beforeLeaving: { running, phase in
+            app = running
+            if phase == "onboarding" {
+                Self.setPracticeMeter(true, in: running)
+                return
+            }
+            if !running.descendants(matching: .any)["practiceBadge"].exists { unbadged.append(phase) }
+            if phase == "meterCloseUp" {
+                // Offered as a candidate, or already confirmed ("Meter number saved"): either way
+                // the reader read it from the sample's photo.
+                let number = running.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label CONTAINS %@", Self.sampleNumber)).firstMatch
+                readNumber = number.waitForExistence(timeout: 30) ? number.label : nil
+            }
+        })
+        XCTAssertNotNil(readNumber, "the reader never offered the sample meter's number \(Self.sampleNumber)")
+        XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
+
+        let running = try XCTUnwrap(app)
+        running.buttons["action.startOver"].firstMatch.tap()
+        XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
+        XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
+        Self.setPracticeMeter(false, in: running)
+    }
+
+    /// `PracticeMeter.number` in HouseScanKit, which the test bundle doesn't link.
+    static let sampleNumber = "12345678"
+
+    /// Opens the developer options from the first screen and sets the practice meter switch.
+    @MainActor
+    static func setPracticeMeter(_ on: Bool, in app: XCUIApplication) {
+        let open = app.buttons["action.developerOptions"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "no developer options on the first screen")
+        open.tap()
+        let row = app.switches["developer.practiceMeter"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the developer options have no practice meter switch")
+        let wanted = on ? "1" : "0"
+        if row.value as? String != wanted {
+            // A Form row's switch is the row; the control inside it takes the tap.
+            let control = row.switches.firstMatch
+            (control.exists ? control : row).tap()
+        }
+        let set = NSPredicate(format: "value == %@", wanted)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 5), .completed, "the switch didn't turn \(on ? "on" : "off")")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "developerOptions-\(on ? "on" : "off")"
+        shot.lifetime = .keepAlways
+        XCTContext.runActivity(named: shot.name ?? "") { $0.add(shot) }
+        app.buttons["action.closeDeveloperOptions"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 10))
+    }
+
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
     @MainActor
     private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
@@ -220,9 +282,14 @@ final class FullFlowUITests: XCTestCase {
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
     /// once the result shows, and the gate folder for the other files it leaves there.
+    ///
+    /// The practice meter switch is stored in the app's settings, which outlive a run in the
+    /// Simulator. Unless `practice` is set, `-practiceMeter NO` holds it off for this run whatever
+    /// an earlier test left there; with it, the test sets the switch itself.
     @MainActor
     private func runFlow(
-        replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
+        replay: String, extraArguments: [String] = [], practice: Bool = false,
+        beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
         onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let app = XCUIApplication()
@@ -232,6 +299,7 @@ final class FullFlowUITests: XCTestCase {
         try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: gate) }
         var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path] + extraArguments
+        if !practice { arguments += ["-practiceMeter", "NO"] }
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {

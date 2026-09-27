@@ -698,7 +698,10 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let saved = await store.saveStill(frame, name: "meter_close.jpg")
+            let photo = await closeUpPhoto(frame)
+            // Drawing a practice photo suspends: a reset meanwhile must not save into the new scan.
+            guard scan == generation, state.phase == .meterCloseUp else { return }
+            let saved = await store.saveStill(photo, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
             if !saved {
                 retakeCloseUp(.blurry)
@@ -1992,6 +1995,7 @@ final class ScanEngine {
         state.meterNumber = nil
         closeUpRetake = nil
         meterReadout = nil
+        state.isPracticeScan = false
         go(.onboarding)
         replay?.show(index: 0)
     }

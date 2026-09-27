@@ -16,7 +16,8 @@ extension ScanEngine {
                 // Written into the built Info.plist by the "Stamp the git commit" build phase.
                 commit: info["HouseScanGitCommit"] as? String ?? "unknown"),
             server: .init(url: (resultClient as? HTTPResultClient)?.serverURL.absoluteString),
-            answer: answer.map { ScanStamp.Answer($0, sample: resultClient.isSample) })
+            answer: answer.map { ScanStamp.Answer($0, sample: resultClient.isSample) },
+            practice: state.isPracticeScan)
         let file = store.directory.appending(path: ScanStamp.fileName)
         do {
             try stamp.jsonData().write(to: file, options: .atomic)
