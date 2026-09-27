@@ -2,8 +2,9 @@ name: Meter close-up experiment
 
 # The leak check needs METER_HMAC_KEY. Pull-request code must never receive it, because the key
 # lets anyone reverse the short meter numbers behind the committed digests. So pull requests get
-# lint and tests only; the keyed check runs on reviewed code after merge, or on demand. Before
-# asking for review, run `make leakcheck` locally.
+# lint and tests only, and the keyed job runs only on main: after merge, or dispatched from main.
+# A dispatch from any other branch would run that branch's code with the key, so it is skipped.
+# Before asking for review, run `make leakcheck` locally.
 on:
   workflow_dispatch:
   push:
@@ -46,7 +47,7 @@ jobs:
 
   leakcheck:
     name: Meter close-up leak check
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:

@@ -25,7 +25,7 @@ To confirm the labels by hand, run `make review` and open `~/house-scanning-data
 
 `make leakcheck` digests every run of 4 or more digits in the tracked files and fails on any identifier either reader transcribed; the shortest is a four-digit utility plate number. Only cells in the measurement columns listed in `leakcheck.py`, which this code fills with measured numbers, are exempt. Any other cell is scanned whatever its shape, so an identifier printed with dots is still caught. The labels' free-text notes lose every run of four or more digits before they reach `manifest.csv`.
 
-Pull-request code never receives the key, because the key would let it reverse the digests. CI runs the keyed check after merge and on demand; run `make leakcheck` locally before asking for review.
+Pull-request code never receives the key, because the key would let it reverse the digests. CI runs the keyed check only on `main`, after merge or when dispatched from `main`; run `make leakcheck` locally before asking for review.
 
 ## Reading (question 1)
 
