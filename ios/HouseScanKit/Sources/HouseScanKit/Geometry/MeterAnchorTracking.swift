@@ -47,6 +47,11 @@ public struct YawCorrection: Sendable, Equatable {
         CameraFrame(cameraToWorld: pose(camera.cameraToWorld), intrinsics: camera.intrinsics, imageSize: camera.imageSize)
     }
 
+    /// This correction followed by `next`.
+    public func then(_ next: YawCorrection) -> YawCorrection {
+        YawCorrection(yaw: yaw + next.yaw, translation: next.direction(translation) + next.translation)
+    }
+
     public var matrix: simd_float4x4 {
         let x = direction(SIMD3(1, 0, 0)), z = direction(SIMD3(0, 0, 1))
         return simd_float4x4(SIMD4(x, 0), SIMD4(0, 1, 0, 0), SIMD4(z, 0), SIMD4(translation, 1))
@@ -77,19 +82,66 @@ public struct MeterAnchorTracking: Sendable, Equatable {
     public static let minimumMove: Float = 0.02
     public static let minimumTurn: Float = 0.4 * .pi / 180
 
+    /// Every correction applied, with the frame time it was applied at, oldest first.
+    public private(set) var log: [(time: Double, correction: YawCorrection)] = []
+
     public init(pose: simd_float4x4) {
         self.pose = pose
     }
 
-    /// The correction from `pose` to `anchor`, when it is large enough to apply; the pose then
-    /// becomes `anchor`. Nil, and nothing changes, otherwise.
-    public mutating func update(to anchor: simd_float4x4) -> YawCorrection? {
+    public static func == (a: MeterAnchorTracking, b: MeterAnchorTracking) -> Bool {
+        a.pose == b.pose && a.log.map(\.time) == b.log.map(\.time) && a.log.map(\.correction) == b.log.map(\.correction)
+    }
+
+    /// The correction from `pose` to `anchor`, seen on the frame at `time`, when it is large
+    /// enough to apply; the pose then becomes `anchor` and the correction is logged. Nil, and
+    /// nothing changes, otherwise.
+    public mutating func update(to anchor: simd_float4x4, at time: Double = 0) -> YawCorrection? {
         let correction = YawCorrection(from: pose, to: anchor)
         let origin = SIMD3(pose.columns.3.x, pose.columns.3.y, pose.columns.3.z)
         let moved = simd_distance(correction.point(origin), origin)
         guard moved > Self.minimumMove || abs(correction.yaw) > Self.minimumTurn else { return nil }
         pose = anchor
+        log.append((time, correction))
         return correction
+    }
+
+    /// What takes a pose captured at `time` into the frame the wall agrees with now: every
+    /// correction applied after it, in order. A frame's own anchor is already the corrected one,
+    /// so a correction applied on the frame at `time` itself doesn't apply to it.
+    public func correction(since time: Double) -> YawCorrection {
+        log.filter { $0.time > time }.reduce(.identity) { $0.then($1.correction) }
+    }
+
+    /// A camera-to-world pose ARKit reported at `time`, raw, in the frame the wall agrees with
+    /// now. The raw pose is kept wherever it is stored (`StoredKeyframe.rawPose`); this is what
+    /// scene.json and the packet use.
+    public func correctedPose(_ raw: simd_float4x4, capturedAt time: Double) -> simd_float4x4 {
+        correction(since: time).pose(raw)
+    }
+
+    public func correctedCamera(_ raw: CameraFrame, capturedAt time: Double) -> CameraFrame {
+        correction(since: time).moved(raw)
+    }
+}
+
+/// The corrections to apply to poses captured at given times, for work off the main actor (the
+/// packet writer). Identity when the scan has no anchor (a replay).
+public struct PoseCorrections: Sendable {
+    private let log: [(time: Double, correction: YawCorrection)]
+
+    public static let none = PoseCorrections(log: [])
+
+    init(log: [(time: Double, correction: YawCorrection)]) {
+        self.log = log
+    }
+
+    public init(_ tracking: MeterAnchorTracking?) {
+        log = tracking?.log ?? []
+    }
+
+    public func pose(_ raw: simd_float4x4, capturedAt time: Double) -> simd_float4x4 {
+        log.filter { $0.time > time }.reduce(YawCorrection.identity) { $0.then($1.correction) }.pose(raw)
     }
 }
 

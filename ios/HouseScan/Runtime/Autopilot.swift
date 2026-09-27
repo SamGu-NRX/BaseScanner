@@ -17,6 +17,10 @@ final class Autopilot {
     /// back to pixels use the same size.
     private let viewSize = CGSize(width: 393, height: 852)
     private var hold: Double { engine.options.autopilotHold }
+    /// Set once a spot check was answered "Something's there" (`-autopilotSomethingThere`): the
+    /// checks after it are answered "It's clear", so a server that keeps moving the spot can't
+    /// keep the run going.
+    private var answeredSomethingThere = false
 
     init(engine: ScanEngine) {
         self.engine = engine
@@ -286,11 +290,13 @@ final class Autopilot {
     }
 
     /// With `-autopilotGate`, leaves the scene.json of the scan the result answers in the gate
-    /// folder, for the UI test to check its ends and what it reports as seen.
+    /// folder, for the UI test to check its ends and what it reports as seen, and the scene.json
+    /// the last upload sent as `uploaded-scene.json`.
     private func writeSceneForTest() {
         guard let gate = engine.options.autopilotGate else { return }
         do {
             try engine.sceneJSON().write(to: gate.appending(path: "scene.json"))
+            try engine.spotConfirm.lastScene?.write(to: gate.appending(path: "uploaded-scene.json"))
             log("wrote scene.json to the gate folder")
         } catch {
             log("could not write scene.json to the gate folder: \(error)")
@@ -339,13 +345,14 @@ final class Autopilot {
     }
 
     /// After an upload the engine raises the answer's capturable requests one at a time, uploading
-    /// after each, before it shows the result. Drives each request, retries a failed upload once,
-    /// and returns true once the result is up. Bounded by the engine's own bound on requests.
+    /// after each, before it shows the result, and checks the answer's spot with the homeowner.
+    /// Drives each request and check, retries a failed upload once, and returns true once the
+    /// result is up. Bounded by the engine's own bound on requests, and by one refused check.
     private func driveToResult(_ replay: ReplayPlayer) async -> Bool {
         var retried = false
-        for _ in 0..<(ScanEngine.maxAutomaticGaps + 2) {
+        for _ in 0..<(ScanEngine.maxAutomaticGaps + 4) {
             let settled = await waitUntil(timeout: 240) {
-                self.engine.state.phase == .result || self.engine.state.phase == .gapRequest || self.uploadFailed
+                [.result, .gapRequest, .spotConfirm].contains(self.engine.state.phase) || self.uploadFailed
             }
             guard settled else {
                 fail("no result")
@@ -356,6 +363,8 @@ final class Autopilot {
                 return true
             case .gapRequest:
                 await driveServerRequest(replay)
+            case .spotConfirm:
+                await answerSpotCheck()
             default:
                 guard !retried else {
                     fail("no result after retry")
@@ -368,6 +377,36 @@ final class Autopilot {
         }
         fail("still no result after \(ScanEngine.maxAutomaticGaps) requests")
         return false
+    }
+
+    /// "It's clear", or with `-autopilotSomethingThere` "Something's there" the first time. After
+    /// a refusal the stretch it withdrew goes to the gate folder as `spot-refusal.json` (the
+    /// stretch's s in feet, as scene.json's spans), for the UI test to check the scene against.
+    private func answerSpotCheck() async {
+        guard let check = engine.state.spotCheck, check.answer == nil else { return }
+        await pause(hold)
+        await engine.waitForGate(.spotConfirm)
+        let refuse = engine.options.autopilotSomethingThere && !answeredSomethingThere
+        engine.answerSpotCheck(clear: !refuse)
+        log("spot check \(check.id) over \(format(check.area)): \(refuse ? "something's there" : "it's clear")")
+        if refuse {
+            answeredSomethingThere = true
+            writeRefusalForTest()
+        }
+        _ = await waitUntil(timeout: 20) { self.engine.state.phase != .spotConfirm }
+    }
+
+    /// The whole cells the refusal withdrew, in feet: what the scene must no longer claim.
+    private func writeRefusalForTest() {
+        guard let gate = engine.options.autopilotGate, let map = engine.coverage,
+              let low = map.withdrawnCells.min(), let high = map.withdrawnCells.max() else { return }
+        let feet = { (meters: Float) in Double(meters) * SceneUnits.feetPerMeter }
+        let span = [feet(map.cellRange(low).lowerBound), feet(map.cellRange(high).upperBound)]
+        do {
+            try JSONSerialization.data(withJSONObject: ["withdrawn_span_ft": span]).write(to: gate.appending(path: "spot-refusal.json"))
+        } catch {
+            log("could not write spot-refusal.json to the gate folder: \(error)")
+        }
     }
 
     private var uploadFailed: Bool {

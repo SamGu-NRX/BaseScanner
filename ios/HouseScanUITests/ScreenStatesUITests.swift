@@ -46,10 +46,13 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
+        ("spotConfirm", ["-uiDemoPhase", "spotConfirm"], "spotConfirm"),
+        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
+        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -57,30 +60,45 @@ final class ScreenStatesUITests: XCTestCase {
         ("replayUnreadable", ["-uiDemoFailure", "replayUnreadable"], "unsupported"),
     ]
 
+    /// A server answer in Fixtures/results, which the demo reads in debug builds.
+    private static func resultFile(_ name: String, file: String = #filePath) -> String {
+        URL(fileURLWithPath: file).deletingLastPathComponent().appending(path: "Fixtures/results/\(name).json").path
+    }
+
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
         "onboarding", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
+        "spotConfirm", "spotConfirm-answered",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
     /// in any text on screen.
-    private static let expectations: [String: (identifier: String?, text: String)] = [
-        "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
-        "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
-        "gapRequest-followUp": ("instruction", "One more view to finish"),
+    private static let expectations: [String: [(identifier: String?, text: String)]] = [
+        "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
+        "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
-        "gapRequest-groundOut": ("instruction", "From 4 ft to 7 ft right of your meter."),
-        "uploading-followUp": (nil, "One more view to finish"),
-        "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
-        "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
-        "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
+        "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
+        "uploading-followUp": [(nil, "One more view to finish")],
+        "markFeatures-groundQuestion": [(nil, "What's on the ground along this wall?")],
+        "markFeatures-groundAnswered": [("ground.answered", "Mulch")],
+        "markFeatures-lostPlace": [("review.lostPlace", "Your phone lost its place")],
+        // The spot check asks one question over a photo VoiceOver describes, then says the answer.
+        "spotConfirm": [("spot.question", "Is anything standing in the marked area?")],
+        "spotConfirm-answered": [("spot.answered", "Thanks, it's clear")],
         // #40: an overlap reads as one, not as clearance.
-        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
-        // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
-        "result-review": ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
+        // The answer comes from the checks: an unsure ground check a view settles.
+        "result-review": [
+            ("result.headline", "One more look"),
+            // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
+            ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+        ],
+        // A reject names the closest spot and the check it fails.
+        "result-reject": [("result.nearest", "The closest spot")],
     ]
 
     /// Controls a state must offer, by identifier.
@@ -104,6 +122,20 @@ final class ScreenStatesUITests: XCTestCase {
                 try check("\(state.name)-AX5", arguments: state.arguments + Self.largestText, screen: state.screen)
             }
         }
+    }
+
+    /// The brand read on the close-up is only offered: "Not <brand>" removes it and leaves the
+    /// number candidates to answer.
+    @MainActor
+    func testRejectingTheMeterBrandKeepsTheNumbers() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"]
+        app.launch()
+        XCTAssertTrue(element(app, "meter.brand").waitForExistence(timeout: 15))
+        tap(app, "action.rejectMeterBrand")
+        XCTAssertTrue(element(app, "meter.brand").waitForNonExistence(timeout: 5))
+        XCTAssertTrue(element(app, "meter.candidate.0").exists)
     }
 
     /// The homeowner's path through the real buttons and camera taps, not the autopilot.
@@ -151,6 +183,10 @@ final class ScreenStatesUITests: XCTestCase {
         let followUp = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
         XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        // Before the result, the spot is checked on a photo.
+        XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 30))
+        XCTAssertEqual(element(app, "spot.photo").label, "Photo of your wall")
+        tap(app, "action.spotClear")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
@@ -169,6 +205,8 @@ final class ScreenStatesUITests: XCTestCase {
         showAR.tap()
         XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 10))
         tap(app, "action.closeAR")
+        // Start over sits under Details, last.
+        tap(app, "result.details", timeout: 10)
         let startOver = element(app, "action.startOver")
         XCTAssertTrue(startOver.waitForExistence(timeout: 10))
         app.swipeUp()
@@ -260,7 +298,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.backToReview")
         XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 10))
         tap(app, "action.confirmFeatures")
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+        tap(app, "action.spotClear", timeout: 40)
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
     }
 
     /// "Share scan" opens the system share sheet with the scan file.
@@ -298,9 +337,11 @@ final class ScreenStatesUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
-            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+            // The result keeps Share scan under Details.
+            if screen == "result" { tap(app, "result.details") }
+            XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
+        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
                 let target = ElementRead.snapshot(element(app, identifier))
@@ -375,10 +416,17 @@ final class ScreenStatesUITests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
+    /// Taps once the element exists, after giving it a moment to become hittable. A control that
+    /// has just appeared can still be moving into place (the walk's controls settle after the
+    /// close-up), and a tap there misses without an error (the button flow at 577acc4 never
+    /// opened the mark tray). An element below the fold of a scroll view never becomes hittable
+    /// on its own, and `tap()` scrolls it into view, so after the short wait it is tapped anyway.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
+        _ = XCTWaiter().wait(for: [hittable], timeout: 3)
         target.tap()
     }
 }
