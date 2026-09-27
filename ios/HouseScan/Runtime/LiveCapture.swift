@@ -161,12 +161,14 @@ final class LiveCapture {
         return true
     }
 
-    /// Whether RealityKit can be drawing the shown result now: its anchor entity is anchored to
-    /// the meter's ARKit anchor, it is enabled, and the result's focus point lands in front of
-    /// the camera and inside the view. A check of the chain, not of pixels: RealityKit says
-    /// nothing about what it drew. The findings are logged when they change.
-    func resultIsDrawn() -> Bool {
-        guard let result, let resultFocus else { return false }
+    /// Whether RealityKit holds the shown result now, and whether it can be drawing it: `held`
+    /// when its anchor entity is anchored to the meter's ARKit anchor and enabled, `drawn` when
+    /// the result's focus point also lands in front of the camera and inside the view. A check of
+    /// the chain, not of pixels: RealityKit says nothing about what it drew. `drawn` confirms the
+    /// model; `held` keeps it once confirmed (`ResultOverlayPolicy`). The findings are logged
+    /// when they change.
+    func resultIsDrawn() -> (drawn: Bool, held: Bool) {
+        guard let result, let resultFocus else { return (false, false) }
         let id = delegate.shared.withLock { $0.meterAnchorID }
         let inSession = id.map { id in arView.session.currentFrame?.anchors.contains(where: { $0.identifier == id }) == true } ?? false
         let anchored = result.isAnchored
@@ -181,7 +183,7 @@ final class LiveCapture {
             let at = point.map { String(format: "(%.0f, %.0f) in %.0f x %.0f", Double($0.x), Double($0.y), Double(arView.bounds.width), Double(arView.bounds.height)) } ?? "none"
             RuntimeLog.engine.info("AR result: \(report, privacy: .public), projected at \(at, privacy: .public)")
         }
-        return anchored && enabled && onScreen
+        return (anchored && enabled && onScreen, anchored && enabled)
     }
 
     func hideResult() {

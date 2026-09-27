@@ -129,6 +129,8 @@ final class ScanEngine {
     /// Watches whether the AR scene draws the result (`watchResultInCamera`) while "See it on
     /// your wall" is up on the live camera.
     private var resultWatch: Task<Void, Never>?
+    /// Which layer draws the result, for the model in the AR scene now (`watchResultInCamera`).
+    private var resultPolicy = ResultOverlayPolicy()
     /// The wall the model in the AR scene was built from; nil when none is in it.
     private var resultBuiltFor: WallGeometry?
 
@@ -1213,6 +1215,11 @@ final class ScanEngine {
         // moved by a centimeter or two (the ground or the meter's anchor refined) keeps the one
         // it has. It hangs on the meter's anchor, so it follows the anchor's corrections anyway.
         if !rising, let built = resultBuiltFor, Self.movedLittle(from: built, to: wall) { return }
+        // A new model goes in, and nobody has seen it drawn: the screen draws the result until it
+        // is (`ResultOverlayPolicy.modelReplaced`). Left confirmed, a replacement that looked
+        // anchored and in view at the next look hid the screen's drawing at once (review of #100).
+        resultPolicy.modelReplaced()
+        setResultInCamera(false)
         let model = ResultARModel.build(wall: wall, result: result)
         // The battery's middle, or the meter without a spot, in the model's coordinates.
         let focus = (result.spotCenter(on: wall) ?? wall.meter) - wall.meter
@@ -1226,28 +1233,32 @@ final class ScanEngine {
     }
 
     /// Looks at the AR scene about ten times a second while "See it on your wall" is up, and
-    /// lets the screen's drawing step aside only while the scene is seen drawing the result
-    /// (`ResultOverlayPolicy`). On its own clock, not in `ingest`: it has to notice a scene that
-    /// stopped drawing whether frames arrive or not.
+    /// lets the screen's drawing step aside once the scene is seen drawing the result, for as
+    /// long as the scene holds it (`ResultOverlayPolicy`). On its own clock, not in `ingest`: it
+    /// has to notice a scene that stopped holding it whether frames arrive or not.
     private func watchResultInCamera() {
         resultWatch?.cancel()
         resultWatch = Task { [weak self] in
-            var policy = ResultOverlayPolicy()
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
-                let usesRealityKit = policy.update(drawn: live.resultIsDrawn(), time: self.screenTime)
-                if self.state.resultInCamera != usesRealityKit {
-                    RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
-                    self.state.resultInCamera = usesRealityKit
-                }
+                let look = live.resultIsDrawn()
+                self.setResultInCamera(self.resultPolicy.update(drawn: look.drawn, held: look.held, time: self.screenTime))
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
     }
 
+    /// Which layer draws the result: the AR scene (true) or the screen's overlay (false).
+    private func setResultInCamera(_ usesRealityKit: Bool) {
+        guard state.resultInCamera != usesRealityKit else { return }
+        RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
+        state.resultInCamera = usesRealityKit
+    }
+
     private func hideResultInCamera() {
         resultWatch?.cancel()
         resultWatch = nil
+        resultPolicy = ResultOverlayPolicy()
         resultBuiltFor = nil
         live?.hideResult()
         state.resultInCamera = false
