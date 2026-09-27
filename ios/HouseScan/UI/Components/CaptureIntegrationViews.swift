@@ -228,6 +228,8 @@ struct CaptureIntegrationDetails: View {
     }
 }
 
+#endif
+
 /// The integration build's two additions: the consent question when a scan that can be sent
 /// starts (before the meter is marked), and the sync line while a capture is being sent.
 struct CaptureIntegrationOverlay: ViewModifier {
