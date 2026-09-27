@@ -2,7 +2,7 @@ import HouseScanKit
 import simd
 import Testing
 
-// Where the space in front of the wall ends (#160), on the standard wall (face z = 0, s = x,
+// Where the space in front of the wall ends (#160, #164), on the standard wall (face z = 0, s = x,
 // ground y = 0). The far wall is a slab 0.1 m thick and 2.5 m tall standing parallel in front of
 // the whole wall, and ARKit's plane of its face toward the wall is what marks where the space
 // ends. Depth images are rendered from the scene mesh (`renderDepth`).
@@ -110,6 +110,36 @@ import Testing
         if case .seeBehind = after.update(coverage: ended, camera: camera, time: 0).task {
             Issue.record("asked to see past the far wall")
         }
+    }
+
+    /// #164: a wall with a parallel wall 1.8 m in front, walked 1.65 m out, and a server walk-out
+    /// of 1.47 m (4.83 ft, D + r under the public rules) over s 1 to 3. The walk counts only past
+    /// 1.47 m plus the tapped wall's error, 0.09 + 0.16 m per meter from the meter at a cell's far
+    /// edge: 1.73 to 2.05 m over the span, all past the far wall (1.798 m, 1.8 rounded down to
+    /// 0.1 ft) less the 0.3 m a homeowner stands behind the phone. The walk shows 1.65 m less the
+    /// error, 1.07 to 1.39 m, so progress stays at 0; the planner says the line can't be walked
+    /// and where the space ends, instead of holding the request there. With the far wall 4 m out,
+    /// or none found, the line can be walked.
+    @Test func aWalkOutLinePastTheFarWallIsUnreachable() throws {
+        let planner = GapPlanner()
+        let gap = GapPlan(band: .ground, span: 1...3, reason: .server, need: .walkOut(1.47))
+        var map = Self.ended(at: 1.8)
+        FacingTests.walk(&map, out: 1.65, from: -1, to: 4)
+        #expect(planner.progress(of: gap, map) == 0)
+        let block = try #require(planner.walkOutBlock(gap, map))
+        #expect(nearlyEqual(block.spaceEnds, 59 * 0.03048))
+        #expect(nearlyEqual(block.span, 1...3))
+        #expect(nearlyEqual(block.needed, 1.47 + ServerErrorDefaults.wall(.tap, atS: 20 * 0.1524)))
+        // Where the phone is, what counts: 1.47 m plus the error there, kept to the span.
+        #expect(nearlyEqual(planner.walkOutNeeded(gap, map, atS: 2) ?? 0, 1.47 + ServerErrorDefaults.wall(.tap, atS: 2)))
+        #expect(nearlyEqual(planner.walkOutNeeded(gap, map, atS: 5) ?? 0, 1.47 + ServerErrorDefaults.wall(.tap, atS: 3)))
+
+        var open = CoverageMap(wall: standardWall())
+        FacingTests.walk(&open, out: 1.65, from: -1, to: 4)
+        #expect(planner.walkOutBlock(gap, open) == nil)
+        var wide = Self.ended(at: 4)
+        FacingTests.walk(&wide, out: 1.65, from: -1, to: 4)
+        #expect(planner.walkOutBlock(gap, wide) == nil)
     }
 
     /// Something standing nearer the wall than where the space ends still hides it: the box of

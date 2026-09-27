@@ -1262,6 +1262,7 @@ final class ScanEngine {
     private func updateGap(camera: CameraFrame?) {
         guard let map = coverage, let plan = gapPlan, var request = state.gap else { return }
         request.progress = gapPlanner.progress(of: plan, map)
+        noteWalkOut(plan, map, camera: camera, into: &request)
         let fresh = if case .overhead = plan.need {
             map.overheadCameras.count > overheadViewsAtGapStart
         } else {
@@ -1272,7 +1273,10 @@ final class ScanEngine {
         let center = (plan.span.lowerBound + plan.span.upperBound) / 2
         let cue = gapCue(plan, map, center: center)
         state.target = cue.target
-        if let camera {
+        if request.spaceEnds != nil {
+            // The walk-out line lies behind where the space ends (#164): no dotted line to it.
+            state.path = []
+        } else if let camera {
             let from = map.wall.wallPoint(camera.position).s
             // Every request but an overhead one needs its whole span seen or walked, and the
             // server's can run 20 ft or more (ground out to a pool's clearance), so the line runs
@@ -1298,6 +1302,29 @@ final class ScanEngine {
             }
         } else if !request.isSatisfied {
             state.gap = request
+        }
+    }
+
+    /// A walk-out request's reading and whether the space ends short of its line (#164): the
+    /// card then gives the distance that counts where the phone is, or says the space ends
+    /// before the line and "I can't get there" is the answer. Both are rounded to 3 in, the
+    /// reading's out down and what counts up, so the card changes every few strides rather than
+    /// every frame and never asks for less than counts. A guess at what reads calmly.
+    private func noteWalkOut(_ plan: GapPlan, _ map: CoverageMap, camera: CameraFrame?, into request: inout GapRequest) {
+        guard case .walkOut = plan.need else { return }
+        let step: Float = 0.0762
+        let block = gapPlanner.walkOutBlock(plan, map)
+        let ends = block.map { GapRequest.SpaceEnds(at: ($0.spaceEnds / step).rounded(.down) * step, needed: ($0.needed / step).rounded(.up) * step) }
+        if (ends == nil) != (request.spaceEnds == nil) {
+            let found = block.map { "the space ends \($0.spaceEnds) m out over s \($0.span.lowerBound)...\($0.span.upperBound), short of the line at up to \($0.needed) m" } ?? "the line lies short of where the space ends"
+            RuntimeLog.engine.info("gap \(request.id) walk-out: \(found, privacy: .public)")
+        }
+        request.spaceEnds = ends
+        request.walkOut = camera.flatMap { camera in
+            let at = map.wall.wallPoint(camera.position)
+            return gapPlanner.walkOutNeeded(plan, map, atS: at.s).map {
+                GapRequest.WalkOutReading(out: (max(0, at.out) / step).rounded(.down) * step, needed: ($0 / step).rounded(.up) * step)
+            }
         }
     }
 

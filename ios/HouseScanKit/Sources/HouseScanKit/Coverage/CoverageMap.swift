@@ -143,6 +143,11 @@ public struct CoverageConfig: Sendable, Equatable {
     /// no more than this short of it. A guess: a detected plane lies within a few centimetres of
     /// its surface, and at 2.5 m a reading is matched within 15 cm (`depthTolerance`).
     public var farSurfaceTolerance: Float = 0.15
+    /// How near the surface where the space ends (`CoverageMap.farSurface`) a homeowner holding
+    /// the phone toward the wall can bring it: they stand behind the phone. A walk-out line nearer
+    /// that surface than this can't be walked (`GapPlanner.walkOutBlock`, #164). 0.3 m is a
+    /// guess, not measured.
+    public var walkerDepth: Float = 0.3
 
     public init() {}
 }
