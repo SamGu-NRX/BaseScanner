@@ -273,6 +273,10 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
     case nonFiniteNumber(String)
     /// Left corners must run from the meter leftward (s falling below 0), right corners rightward.
     case cornersOutOfOrder([Float])
+    /// A fence whose two feet lie in front of different pieces of the wall. Its one facing depth
+    /// would be its feet's distance out, while by the corner the fence's straight line runs much
+    /// closer to the wall; each side of the corner has to be its own fence.
+    case fenceAcrossCorner(feature: String)
 
     public var description: String {
         switch self {
@@ -288,6 +292,7 @@ public enum SceneExportError: Error, Equatable, CustomStringConvertible {
         case .invalidKeyframe(let id, let r): "keyframe \(id): \(r)"
         case .nonFiniteNumber(let d): "non-finite number in scene: \(d)"
         case .cornersOutOfOrder(let s): "corner s values \(s) do not run outward from the meter"
+        case .fenceAcrossCorner(let f): "\(f): its feet are on different pieces of the wall"
         }
     }
 }
@@ -438,6 +443,11 @@ public enum SceneExport {
                 }
                 let a = wall.wallCoordinates(of: foot[0])
                 let b = wall.wallCoordinates(of: foot[1])
+                // Refused, not sent: across a corner the feet's distances say nothing about how
+                // close the fence's line comes to the wall by the corner (`fenceAcrossCorner`).
+                guard WallSegment.index(in: chain.segments, atS: a.s) == WallSegment.index(in: chain.segments, atS: b.s) else {
+                    throw SceneExportError.fenceAcrossCorner(feature: name)
+                }
                 // The nearer tap: a fence that angles toward the wall must not read as farther out
                 // at its narrow end than it is. The mean overstated that end by half the difference.
                 let depth = min(a.out, b.out)

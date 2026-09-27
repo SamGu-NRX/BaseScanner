@@ -210,6 +210,7 @@ enum ScanCopy {
         case .wrongSide: "That spot is behind the wall. Tap something on this side."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
+        case .fenceAcrossCorner: "That's round the corner. Mark the fence on each side of the corner as its own fence."
         }
     }
 

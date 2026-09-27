@@ -251,6 +251,13 @@ extension ScanEngine: ScanActions {
             state.marking = marking
             return
         }
+        // A fence's feet on two pieces of the wall would be sent as one depth that misses how
+        // close its line comes to the wall by the corner: refused, and asked for per side.
+        if marking.kind == .fence, let first = pendingTaps.first, !wall.onSamePiece(wall.world(first), wall.world(hit)) {
+            marking.refusal = .fenceAcrossCorner
+            state.marking = marking
+            return
+        }
         pendingTaps.append(hit)
         marking.refusal = nil
         marking.step += 1

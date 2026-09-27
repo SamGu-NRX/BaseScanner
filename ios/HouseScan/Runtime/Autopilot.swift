@@ -34,7 +34,7 @@ final class Autopilot {
         guard await waitUntil(timeout: 60, { self.engine.replay != nil || self.engine.state.failure != nil }), let replay = engine.replay else {
             return fail("replay did not load")
         }
-        async let prepared: Void = replay.prepareHeldBack()
+        async let prepared: Void = replay.prepareHeldBack(endsWherePhoneStood: engine.options.autopilotCantGetThere)
         await pause(hold)
         await engine.waitForGate(.onboarding)
         engine.finishOnboarding()
@@ -325,6 +325,10 @@ final class Autopilot {
         await pause(hold)
         await answerOpenSky()
         log("answered the overhead question: open sky; \(overheadSummary)")
+        // The rest of the tilt-up run (the synthetic replay's upper walk) plays out, so its
+        // views are kept before the walk ends.
+        guard let replay = engine.replay else { return }
+        _ = await waitUntil(timeout: 30) { !replay.isPlaying }
     }
 
     /// An overhead gap request: the engine plays the recording's tilt-up frames for it, and the
