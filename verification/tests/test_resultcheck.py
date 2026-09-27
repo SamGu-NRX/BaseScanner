@@ -825,7 +825,7 @@ def test_each_start_in_a_sweep_run_needs_only_its_own_reach():
     )
 
 
-def test_a_sweep_run_stands_for_its_starts_at_the_rules_step():
+def test_sweep_run_starts_are_sampled_at_the_rules_step_plus_the_ends():
     assert run_starts([1.0, 1.5], 1 / 6) == pytest.approx([1.0, 7 / 6, 8 / 6, 1.5])
     assert run_starts([2.0, 2.0], 1 / 6) == [2.0]
     with pytest.raises(ValueError, match=r"sweep\.step_ft"):

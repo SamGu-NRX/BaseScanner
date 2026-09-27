@@ -78,8 +78,7 @@ class RuleSet:
     errors: dict[str, float]
     # the height up the wall the cable route must be seen, from the meter to the battery
     route_height_ft: float = 0.0
-    # the distance between the battery starts the server evaluates (sweep.step_ft); a sweep run
-    # lists evaluated starts from its first one at this step
+    # the rules' sweep.step_ft: the spacing at which a passing sweep run's starts are sampled
     step_ft: float | None = None
 
     @classmethod
@@ -379,7 +378,10 @@ def measured_band_gap(
 
 
 def run_starts(span: list[float], step_ft: float | None) -> list[float]:
-    """The starts a sweep run stands for: its first, then every step to its last."""
+    """Starts sampled from a sweep run: its first, every step after it, and its last.
+
+    A sample, not the server's own list: the server also evaluates boundaries and midpoints
+    that a run reports only as its two ends."""
     if step_ft is None or step_ft <= 0:
         raise ValueError("checking a sweep run needs the rules' sweep.step_ft")
     a, b = span
@@ -389,11 +391,10 @@ def run_starts(span: list[float], step_ft: float | None) -> list[float]:
 
 def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     """Missing coverage is never a pass (C5), to the reach each check's rule looks out to (see
-    reach_gaps). A sweep run that passes needs, for each start in it, every check's area around
-    that start's battery with that battery's own position error, and the wall and cable route
-    back to the meter. Checking the whole run as one battery at its farthest start's error would
-    ask for more than any single start needs. No slack: runs list exactly the starts that were
-    evaluated."""
+    reach_gaps). A sweep run that passes needs, at each start sampled from it (run_starts), every
+    check's area around that start's battery with that battery's own position error, and the
+    wall and cable route back to the meter over the whole run. Checking the whole run as one
+    battery at its farthest start's error would ask for more than any single start needs."""
     problems: list[str] = []
     route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft, beyond=True)
     # A passing run passes every check the server evaluated; a check it did not evaluate (a
