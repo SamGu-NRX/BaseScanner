@@ -5,8 +5,10 @@ import SwiftUI
 /// missed, then confirm.
 ///
 /// "Looks complete" is a soft gate (#65): with a question still unanswered, the first tap
-/// scrolls to the first one and outlines it, and the next tap sends anyway. The ground question
-/// and every window's question count; "Not sure" is an answer to both.
+/// scrolls to the first one and outlines it, and the next tap sends anyway. Once that question
+/// is answered (or its window removed), the gate re-arms, so a tap with another question still
+/// open points to that one. The ground question and every window's question count; "Not sure"
+/// is an answer to both.
 ///
 /// A panel over the dimmed camera rather than a new page: the homeowner is still standing at
 /// the wall, and the list refers to things they can see.
@@ -20,7 +22,8 @@ struct MarkFeaturesScreen: View {
     let actions: any ScanActions
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The unanswered question the first "Looks complete" pointed to; set, the next tap sends.
+    /// The unanswered question "Looks complete" pointed to; set, the next tap sends. Cleared
+    /// once that question has an answer, so the next unanswered one is pointed to in turn.
     @State private var nudged: ReviewQuestion? = nil
 
     var body: some View {
@@ -107,6 +110,11 @@ struct MarkFeaturesScreen: View {
                 .padding(.bottom, 12)
             }
             .animation(Motion.text, value: nudged)
+            // The question pointed to got its answer, or its window was removed: re-arm, so a
+            // window added later or a second unanswered one is pointed to by the next tap.
+            .onChange(of: nudged.map(isUnanswered) ?? false) { _, stillOpen in
+                if !stillOpen { nudged = nil }
+            }
         }
         .background {
             UnevenRoundedRectangle(topLeadingRadius: 28, topTrailingRadius: 28, style: .continuous)
@@ -116,9 +124,9 @@ struct MarkFeaturesScreen: View {
         .environment(\.colorScheme, .light)
     }
 
-    /// Sends, unless a question is unanswered and none has been pointed to yet: then scrolls to
-    /// the first and outlines it, once. The phone having lost its place changes nothing here, so
-    /// the second tap still sends the scan.
+    /// Sends, unless a question is unanswered and none is pointed to now: then scrolls to the
+    /// first and outlines it. The phone having lost its place changes nothing here, so the next
+    /// tap still sends the scan.
     private func confirm(_ proxy: ScrollViewProxy) {
         guard nudged == nil, let question = firstUnanswered else {
             actions.confirmFeatures()
@@ -167,7 +175,8 @@ struct MarkFeaturesScreen: View {
     }
 
     /// A mark is a tap into the scene, so while the phone has lost its place the chips give way
-    /// to a line that says so; "Looks complete" still sends the scan.
+    /// to a line that says so. The questions and "Looks complete" don't need the phone's place,
+    /// and the line doesn't promise one tap sends: with a question unanswered it takes two.
     private var addSomething: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Add something")
@@ -175,7 +184,7 @@ struct MarkFeaturesScreen: View {
                 .accessibilityAddTraits(.isHeader)
             if state.tracking.hasLostItsPlace {
                 Label {
-                    Text("Your phone lost its place. Point it back at the wall to add more, or tap Looks complete to send the scan.")
+                    Text("Your phone lost its place. Point it back at the wall to add more. You can still answer the questions above and send the scan.")
                 } icon: {
                     Image(systemName: "location.slash.fill")
                         .foregroundStyle(Palette.muted)

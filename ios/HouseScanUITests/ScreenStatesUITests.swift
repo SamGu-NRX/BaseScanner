@@ -441,6 +441,21 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "the second tap must send anyway")
+        app.terminate()
+
+        // Answering the question pointed to re-arms the gate: with the window still open, the
+        // next tap points to it instead of sending, and the one after sends.
+        app.launch()
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
+        tap(app, "ground.answer.gravel")
+        XCTAssertTrue(element(app, "review.unanswered").waitForNonExistence(timeout: 5), "answering the question pointed to must re-arm")
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5), "the window still open must be pointed to")
+        XCTAssertFalse(element(app, "screen.gapRequest").exists, "pointing to the window must not send")
+        tap(app, "action.confirmFeatures")
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10))
     }
 
     /// #81: the first aim ring comes with a line saying what it is for, and reads its progress to
