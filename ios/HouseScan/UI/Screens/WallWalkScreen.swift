@@ -80,6 +80,7 @@ struct WallWalkScreen: View {
             }
             return prompt
         }
+        if state.endScanQuestion { return ScanCopy.endScanQuestion }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side, leavesOut: state.endQuestionLeavesOut) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
         if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
@@ -106,7 +107,7 @@ struct WallWalkScreen: View {
     /// that only rides along: the refusal's words are on the card, so its tone should match.
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
+        let coachingShows = state.marking == nil && !state.endScanQuestion && state.endQuestion == nil && !state.overheadQuestion
         if coachingShows, let coaching, ScanCopy.coachingReplacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
@@ -119,11 +120,12 @@ struct WallWalkScreen: View {
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
-        case marking, endQuestion, overheadQuestion, tray, nextWall, markEnd, finish, walking
+        case marking, endScanQuestion, endQuestion, overheadQuestion, tray, nextWall, markEnd, finish, walking
     }
 
     private var controlsKey: ControlsKey {
         if state.marking != nil { return .marking }
+        if state.endScanQuestion { return .endScanQuestion }
         if state.endQuestion != nil { return .endQuestion }
         if state.overheadQuestion { return .overheadQuestion }
         if trayOpen { return .tray }
@@ -171,6 +173,29 @@ struct WallWalkScreen: View {
                 .buttonStyle(.primary)
                 .accessibilityHint("Marks the point under the circle in the middle of the screen")
                 .accessibilityIdentifier("action.markPoint")
+            }
+            .transition(.opacity)
+        case .endScanQuestion:
+            // "Can't get there" again soon after it ended a side (#82): two equal full-width
+            // answers, like the end question's.
+            VStack(spacing: 8) {
+                Button {
+                    actions.answerEndScan(true)
+                } label: {
+                    Label(ScanCopy.endScanYes, systemImage: "checkmark")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityHint("Finishes the walk with the part of the wall you've walked")
+                .accessibilityIdentifier("action.endScan")
+                Button {
+                    actions.answerEndScan(false)
+                } label: {
+                    Label(ScanCopy.keepWalking, systemImage: "figure.walk")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.keepWalking")
             }
             .transition(.opacity)
         case .endQuestion:
@@ -295,7 +320,7 @@ struct WallWalkScreen: View {
     /// aim step, "Can't get there" on the walk). Its identifier is `action.cannotAccess` on
     /// every step.
     private var reply: InstructionCard.Reply? {
-        guard state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, !coachingHidesReply, !trayOpen,
+        guard state.marking == nil, !state.endScanQuestion, state.endQuestion == nil, !state.overheadQuestion, !coachingHidesReply, !trayOpen,
               let copy = ScanCopy.reply(for: state.guidance) else { return nil }
         return InstructionCard.Reply(
             title: copy.title,

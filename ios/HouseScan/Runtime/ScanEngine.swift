@@ -78,6 +78,9 @@ final class ScanEngine {
     /// to be marked (`GuidanceStep.markNextWall`), and why the last mark was refused.
     var nextWallSide: WallSide?
     var nextWallRefusal: NextWallRefusal?
+    /// "Can't get there" on the walk's card: when it last ended a side, and which ends it set
+    /// before the homeowner walked that side (#82, #76). Reset with the wall.
+    var walkRefusals = WalkRefusals()
 
     // Gap loop
     private(set) var gapPlan: GapPlan?
@@ -243,6 +246,8 @@ final class ScanEngine {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
         if state.phase == .resultAR { hideResultInCamera() }
+        // "End the scan here?" belongs to the walk it was asked on.
+        state.endScanQuestion = false
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         switch phase {
@@ -1319,6 +1324,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
@@ -1353,6 +1359,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         publishWall()
         publishCoverage()
@@ -1859,6 +1866,7 @@ final class ScanEngine {
         state.wallTooShort = false
         nextWallSide = nil
         nextWallRefusal = nil
+        walkRefusals = WalkRefusals()
         resetTiltUp()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight

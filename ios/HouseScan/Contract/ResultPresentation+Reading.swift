@@ -5,6 +5,26 @@ import HouseScanKit
 // answer means the engine's results and the UI demo's samples go through the same rules.
 
 extension ResultPresentation {
+    /// This answer for a wall neither side of which was walked (`wallNotMeasured`, #76): the
+    /// server still placed a spot on the tapped wall line, but nothing confirmed that line, so
+    /// the spot, the nearest spot, the cable route, the clearances and the checks and requests
+    /// made at them are dropped. The rules' notice and hash stay.
+    func withWallNotMeasured() -> ResultPresentation {
+        var shown = self
+        shown.wallNotMeasured = true
+        shown.summary = ""
+        shown.spot = nil
+        shown.nearestSpot = nil
+        shown.nearestFailingCheck = nil
+        shown.cableRoute = []
+        shown.cableLength = nil
+        shown.checks = []
+        shown.clearances = []
+        shown.missing = []
+        shown.unseenEnd = nil
+        return shown
+    }
+
     /// True when there is a spot and the meter working-space check at it, if the server ran one,
     /// passed.
     var spotIsClean: Bool {

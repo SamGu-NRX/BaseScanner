@@ -97,12 +97,22 @@ extension ScanEngine {
     }
 
     /// "Can't get there" while the walk asks to walk `side` or to mark its end: the end goes where
-    /// the preview showed, as an unexplored end.
+    /// the preview showed, as an unexplored end. `walkRefusals` notes when, and whether the side
+    /// had been walked (#82, #76).
     func endWalkCannotGoOn(_ side: WallSide) {
-        guard let s = walkedEnd(side) else { return }
+        guard let s = walkedEnd(side), let map = coverage else { return }
         logEnd("can't get there", side: side, at: s)
+        let walked = map.walkedFarthest(side.walk)
         setEnd(side, at: s, kind: .unexplored)
+        walkRefusals.ended(side.walk, at: s, walked: walked, time: ScanEngine.refusalClock)
+        if walked < WalkRefusals.walkedMinimum {
+            RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m)")
+        }
     }
+
+    /// Seconds for `WalkRefusals`: the time since boot, which a replay's frame clock doesn't
+    /// hold back while its playback is paused.
+    static var refusalClock: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     /// Where the end went and what the old rule, the unbroken covered reach, would have said.
     private func logEnd(_ action: String, side: WallSide, at s: Float) {

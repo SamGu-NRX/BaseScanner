@@ -370,8 +370,17 @@ extension ScanEngine: ScanActions {
         case .gapRequest:
             skipCurrentGap()
         case .wallWalk:
-            guard coverage != nil else { return }
+            guard coverage != nil, !state.endScanQuestion else { return }
             let task = ScanEngine.name(state.guidance)
+            if isWalkTask, state.endQuestion == nil, state.marking == nil, !state.overheadQuestion,
+               walkRefusals.asksToEndScan(at: ScanEngine.refusalClock) {
+                // A second "Can't get there" on a walk card soon after the last ended a side:
+                // the homeowner may be trying to stop, so ask before ending this side too (#82).
+                // The task stays unresolved until the answer.
+                RuntimeLog.engine.info("cannot access area again during \(task, privacy: .public): asking to end the scan")
+                state.endScanQuestion = true
+                return
+            }
             switch state.guidance {
             case .aimAtGround, .aimAtWall, .seeBehind, .walk, .markEnd, .tiltUp, .markNextWall:
                 resolveGuidance(.cannotReach)
@@ -413,6 +422,36 @@ extension ScanEngine: ScanActions {
         }
     }
 
+    func answerEndScan(_ end: Bool) {
+        guard state.phase == .wallWalk, state.endScanQuestion else { return }
+        state.endScanQuestion = false
+        guard end else {
+            RuntimeLog.engine.info("end the scan here? keep walking")
+            walkRefusals.keepWalking()
+            return
+        }
+        RuntimeLog.engine.info("end the scan here? yes")
+        // The walk task the second "Can't get there" answered is met as refused.
+        if isWalkTask { resolveGuidance(.cannotReach) }
+        // Each side without an end ends where "Can't get there" would put it (`WalkedEnd`).
+        for side in [WallSide.left, .right] where (side == .left ? coverage?.leftEnd : coverage?.rightEnd) == nil {
+            endWalkCannotGoOn(side)
+        }
+        walkRefusals.keepWalking()
+        // Ends closer than a battery is wide are refused here as after "Done with this wall",
+        // and the walk goes on with the card saying so.
+        finishWalk()
+    }
+
+    /// The walk asks to walk a side or to mark its end: the steps whose "Can't get there" ends
+    /// the wall on that side (`endWalkCannotGoOn`).
+    private var isWalkTask: Bool {
+        switch state.guidance {
+        case .walk, .markEnd: true
+        default: false
+        }
+    }
+
     func retryUpload() {
         guard state.phase == .uploading else { return }
         if case .failed = state.upload { startUpload() }
@@ -437,7 +476,8 @@ extension ScanEngine: ScanActions {
     }
 
     func showAR() {
-        guard state.phase == .result, state.spatialResultAvailable else { return }
+        // A wall neither side of which was walked has no spot to show (#76).
+        guard state.phase == .result, state.spatialResultAvailable, state.result?.wallNotMeasured != true else { return }
         go(.resultAR)
     }
 

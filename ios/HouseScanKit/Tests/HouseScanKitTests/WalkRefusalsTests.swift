@@ -1,0 +1,71 @@
+import Foundation
+import HouseScanKit
+import Testing
+
+/// "Can't get there" on the walk's card: a second one soon after asks to end the scan (#82), and
+/// a wall neither side of which was walked shows no spot (#76).
+@Suite struct WalkRefusalsTests {
+    @Test func firstRefusalNeverAsks() {
+        let refusals = WalkRefusals()
+        #expect(!refusals.asksToEndScan(at: 0))
+        #expect(!refusals.asksToEndScan(at: 100))
+    }
+
+    @Test func secondRefusalWithinTheWindowAsks() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -0.2, walked: 0, time: 10)
+        #expect(refusals.asksToEndScan(at: 10.6))
+        #expect(refusals.asksToEndScan(at: 10 + WalkRefusals.repeatWindow))
+        #expect(!refusals.asksToEndScan(at: 10 + WalkRefusals.repeatWindow + 0.1))
+        // A clock that went backwards (a new scan's clock) doesn't count as soon.
+        #expect(!refusals.asksToEndScan(at: 9))
+    }
+
+    @Test func keepWalkingForgetsTheLastRefusal() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -0.2, walked: 0, time: 10)
+        refusals.keepWalking()
+        #expect(!refusals.asksToEndScan(at: 11))
+        // The side it ended is still refused.
+        #expect(refusals.wasRefused(.left, end: -0.2))
+    }
+
+    /// Run 3's shape: both sides ended by "Can't get there" before either was walked.
+    @Test func bothSidesRefusedMeansNeitherWasWalked() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -0.3, walked: 0.2, time: 1)
+        refusals.ended(.right, at: 0.6, walked: 0, time: 2)
+        #expect(refusals.neitherSideWalked(leftEnd: -0.3, rightEnd: 0.6))
+    }
+
+    @Test func oneSideRefusedIsNotEnough() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -0.3, walked: 0, time: 1)
+        #expect(!refusals.neitherSideWalked(leftEnd: -0.3, rightEnd: 4))
+        #expect(!refusals.neitherSideWalked(leftEnd: -0.3, rightEnd: nil))
+    }
+
+    /// Device run 1's shape: each side walked 5 m, then ended with "Can't get there".
+    @Test func aSideWalkedBeforeTheRefusalCountsAsWalked() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -5, walked: 5, time: 1)
+        refusals.ended(.right, at: 5, walked: 5, time: 2)
+        #expect(!refusals.wasRefused(.left, end: -5))
+        #expect(!refusals.neitherSideWalked(leftEnd: -5, rightEnd: 5))
+        // Just short of the minimum still counts as refused.
+        refusals.ended(.left, at: -0.7, walked: WalkRefusals.walkedMinimum - 0.01, time: 3)
+        #expect(refusals.wasRefused(.left, end: -0.7))
+        refusals.ended(.left, at: -0.8, walked: WalkRefusals.walkedMinimum, time: 4)
+        #expect(!refusals.wasRefused(.left, end: -0.8))
+    }
+
+    /// An end moved or set again by something else (a past-end request that was met, a corner)
+    /// is no longer the one the refusal set.
+    @Test func anEndThatMovedIsNoLongerRefused() {
+        var refusals = WalkRefusals()
+        refusals.ended(.left, at: -0.3, walked: 0, time: 1)
+        refusals.ended(.right, at: 0.6, walked: 0, time: 2)
+        #expect(!refusals.neitherSideWalked(leftEnd: -2.4, rightEnd: 0.6))
+        #expect(!refusals.neitherSideWalked(leftEnd: nil, rightEnd: 0.6))
+    }
+}

@@ -138,7 +138,7 @@ struct ResultScreen: View {
                     }
                     // Last, so the one action that throws the scan away is the farthest. The card's
                     // button already starts over after a reject.
-                    if result.answer != .notHere {
+                    if result.answer != .notHere, !result.wallNotMeasured {
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(TextActionStyle())
                             .accessibilityHint("Deletes this scan and its photos.")
@@ -183,9 +183,49 @@ private struct AnswerCard: View {
     let actions: any ScanActions
 
     var body: some View {
+        if result.wallNotMeasured {
+            notMeasured
+        } else {
+            answerCard
+        }
+    }
+
+    /// Neither side of the meter was walked (#76): no spot, no route, no checks, and the one
+    /// next step is a new scan.
+    private var notMeasured: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(ScanCopy.wallNotMeasured)
+                    .font(Typeface.screenTitle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("result.headline")
+                Text(ScanCopy.wallNotMeasuredDetail)
+                    .font(Typeface.hint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("result.wallNotMeasured")
+            }
+            .modifier(Reveal(revealed: revealed, order: 0))
+
+            Button {
+                actions.startOver()
+            } label: {
+                Label(ScanCopy.scanAgain, systemImage: "arrow.counterclockwise")
+            }
+            .buttonStyle(.primary)
+            .accessibilityHint("Deletes this scan and its photos.")
+            .accessibilityIdentifier("action.startOver")
+            .padding(.top, 18)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+    }
+
+    private var answerCard: some View {
         let answer = result.answer
         let lines = result.cardChecks
-        VStack(alignment: .leading, spacing: 0) {
+        return VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(ScanCopy.headline(answer))
                     .font(Typeface.screenTitle)
