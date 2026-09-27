@@ -26,7 +26,7 @@ struct SpotConfirmState {
 }
 
 /// The spot check: before an answer's spot is shown as the result, the homeowner is shown the
-/// kept photo that best sees the area the answer's checks rest on (`SpotArea(result:wall:)`,
+/// kept photo that best sees the footprint and its front clearance (`SpotArea(result:wall:)`,
 /// `SpotPhoto.best`) and asked, on that one photo, at most two questions.
 ///
 /// 1. Is anything in the marked area? "It's clear" backs the camera-only and walked-path claims

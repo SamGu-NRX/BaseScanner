@@ -59,18 +59,16 @@ import Testing
         #expect(abs(feet(area.height) - 3.29) < 0.05)
     }
 
-    /// A passing gas clearance (r = 3 ft) widens the area by r + e either side and takes it out
-    /// to D + r + e, e the tapped wall's error at the far edge (0.3 + 0.16 x 2.791667 ft). While
-    /// the check is unsure (the answer as the server gave it) it adds nothing.
-    @Test func aPassingClearanceWidensTheArea() throws {
-        let unsure = try #require(SpotArea(result: try Self.serverAnswer(), wall: standardWall()))
-        let passing = try #require(SpotArea(result: try Self.serverAnswer { Self.setCheck("gas_clearance", outcome: "pass", in: &$0) }, wall: standardWall()))
-        let e = 0.3 + 0.16 * 2.791667
-        let feet = { (meters: Float) in Double(meters) / 0.3048 }
-        #expect(abs(feet(passing.span.lowerBound) - (0.208333 - 3 - e)) < 1e-3)
-        #expect(abs(feet(passing.span.upperBound) - (2.791667 + 3 + e)) < 1e-3)
-        #expect(abs(feet(passing.depth) - (1.833333 + 3 + e)) < 1e-3)
-        #expect(unsure.span.upperBound < passing.span.upperBound)
+    /// The other clearances stay out of the area (the #10 freeze decision): a passing gas
+    /// clearance (r = 3 ft) changes nothing. An unsure front check adds nothing either: the area
+    /// is then the footprint alone.
+    @Test func onlyThePassingFrontClearanceGrowsTheArea() throws {
+        let asGiven = try #require(SpotArea(result: try Self.serverAnswer(), wall: standardWall()))
+        let gasPassing = try #require(SpotArea(result: try Self.serverAnswer { Self.setCheck("gas_clearance", outcome: "pass", in: &$0) }, wall: standardWall()))
+        #expect(gasPassing == asGiven)
+        let frontUnsure = try #require(SpotArea(result: try Self.serverAnswer { Self.setCheck("facing_gap", outcome: "unsure", in: &$0) }, wall: standardWall()))
+        #expect(frontUnsure.span == frontUnsure.spot)
+        #expect(abs(Double(frontUnsure.depth) / 0.3048 - 1.833333) < 1e-3)
     }
 
     // MARK: Photo choice

@@ -16,7 +16,7 @@ import HouseScanKit
 /// | something in front of the wall at s (LiDAR) | gap_band | its hidden band, s ± 1 m |
 /// | a gap request, phone's or server's | gap_band | wall, ground, overhead, or facing for a walk-out |
 /// | a server past_end request | gap_past_end | its span |
-/// | the spot check before the result | gap_band | ground, the area the answer's checks rest on |
+/// | the spot check before the result | gap_band | ground, the footprint and its front clearance |
 /// | its ground question | gap_band | ground, the footprint and its margin |
 ///
 /// Finding and marking the meter, "that's the whole wall" and the questions (what is at an end,

@@ -675,7 +675,7 @@ enum SpotCheckAnswer: Equatable, Sendable {
 }
 
 /// The questions asked before an answer's spot is shown as the result, on one photo: is anything
-/// in the area the answer's checks rest on (something standing there, or equipment the scan
+/// in the footprint or its front clearance (something standing there, or equipment the scan
 /// didn't mark), and then what is the ground where the battery would stand? A photo can claim
 /// wall and ground behind a bush, and a walked path can pass over something low, so the scan's
 /// claims there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
@@ -696,7 +696,7 @@ struct SpotCheck: Equatable {
     var spot: ClosedRange<Float>
     var spotOut: ClosedRange<Float>
     var spotHeight: Float
-    /// The whole area asked about: the footprint and the space the answer's checks rest on.
+    /// The whole area asked about: the footprint and its front clearance.
     var area: ClosedRange<Float>
     var areaDepth: Float
     /// The kept photo that shows the area best; nil when none shows even half the footprint.

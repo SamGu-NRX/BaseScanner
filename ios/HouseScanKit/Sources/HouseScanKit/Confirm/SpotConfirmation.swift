@@ -7,7 +7,7 @@ import simd
 // bin in front of the wall is claimed as wall and ground behind it. The walked path is taken as
 // clear space in front of the wall even where something low stands under it (`CoverageMap`,
 // "Bounded exceptions"). Before the answer is shown, the app shows the homeowner a kept photo of
-// the spot and the area the answer's checks rest on (`SpotArea(result:wall:)`) and asks whether
+// the spot and its front clearance (`SpotArea(result:wall:)`) and asks whether
 // anything is there. An answer counts only about what a photo showed whole (`SpotPhotoChoice
 // .showsWholeArea`); without such a photo the area is withdrawn (`unconfirmed`). "It's clear" keeps
 // the claims; "Something's there" takes them back over that area (`CoverageMap.withdrawClaims`)
@@ -16,8 +16,8 @@ import simd
 // the parts with one correct answer: which area is asked about, which photo shows it, when an
 // answer already given settles a new answer, and where a ground answer is sent.
 
-/// The area a spot check asks about, meters: the spot's footprint and the space the answer's
-/// checks rest on, as a stretch of wall, the ground in front of it and the wall face above it.
+/// The area a spot check asks about, meters: the spot's footprint and its front clearance
+/// (`init(result:wall:)`), as a stretch of wall, the ground in front of it and the wall face above it.
 public struct SpotArea: Sendable, Equatable {
     /// The footprint along the wall (s) and out from it.
     public var spot: ClosedRange<Float>
@@ -45,28 +45,19 @@ public struct SpotArea: Sendable, Equatable {
     /// The area an answer's spot rests on, or nil when the answer names no spot.
     ///
     /// The footprint (`span_ft`, and out from the wall from the back edge the server puts on the
-    /// wall line to its depth), grown by what each passing check needs seen, read from the
-    /// answer: its `threshold_ft` r and the rule it applies (`rule.key`). The extents follow the
-    /// server's "What settles each check" (server/README.md on t3/server), with e the wall's error
-    /// at the footprint's far edge (`ServerErrorDefaults.wall(_:atS:)`, as the server's
-    /// `piece.plus_minus`) and D the footprint's depth:
+    /// wall line to its depth) and the front clearance: when the answer's front-clearance check
+    /// (`rule.key` `facing.*`, measured from the battery's front) passes, out to D + r, D the
+    /// footprint's depth and r its `threshold_ft`, over the footprint's stretch. That is the space
+    /// the walked path claims clear that the result rests on (server/README.md "What settles each
+    /// check" on t3/server: the facing band's `out_ft` must exceed D + r). The wall face is asked
+    /// about up to the battery's height. Both questions, what stands there and what unmarked
+    /// equipment is there, are asked over this one area.
     ///
-    /// - `clearances.*` (gas, AC, pool, drive, an existing battery): along r + e either side, out
-    ///   to D + r + e. `clearances.opening_ft` is on the wall face: along r + e either side.
-    ///   `clearances.wall_equipment_ft`: along r either side.
-    /// - `facing.*` (the clear space in front, measured from the battery's front): the footprint's
-    ///   stretch, out to D + r. This is the space the walked path claims clear that the result
-    ///   rests on; the scene may claim clear space farther out, which no check reads.
-    /// - `ground.*`: along e either side, out to D + e.
-    /// - A rule key the app doesn't know, with a minimum (`at_least`) threshold, counts as a
-    ///   ground clearance: asking about too much ground costs a question, too little a claim.
-    ///   Heights (`headroom.*`), lengths (`route.*`), the meter's working space and the wall
-    ///   behind the battery (`battery.*`) add nothing beyond the footprint.
-    ///
-    /// Only passing checks count: an unsure or failing check already goes to a person, and its
-    /// region is not a claim the result makes. The area is the rectangle holding all of these,
-    /// which can ask about a little more than their union. The wall face is asked about up to the
-    /// battery's height.
+    /// The other clearances (gas, AC, openings, pool, drive) are left out by the manager's decision
+    /// for the #10 freeze: their regions reach r + e either side, wider than a walk photo shows, so
+    /// every spot would go unconfirmed. The known tradeoff: an unmarked gas meter just outside the
+    /// area goes unasked, and the gas check can pass without it. Asking about it is a follow-up.
+    /// An unsure or failing front check adds nothing: the result doesn't rest on that space.
     public init?(result: PlacementResult, wall: WallFrame) {
         guard let placed = result.spot else { return nil }
         let meters = { (feet: Double) in Float(feet * 0.3048) }
@@ -79,30 +70,12 @@ public struct SpotArea: Sendable, Equatable {
         let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
         let offset = max(0, centerOut - depth / 2)
         let spotOut = offset...(offset + depth)
-        let e = ServerErrorDefaults.wall(wall.segment(atS: (spot.lowerBound + spot.upperBound) / 2).source, atS: max(abs(spot.lowerBound), abs(spot.upperBound)))
-        var along: Float = 0
-        var out = spotOut.upperBound
-        for check in result.checks where check.outcome == .pass {
-            guard let extent = Self.extent(of: check, footprintDepth: spotOut.upperBound, wallError: e) else { continue }
-            along = max(along, extent.along)
-            out = max(out, extent.out)
-        }
-        self.init(spot: spot, spotOut: spotOut, span: (spot.lowerBound - along)...(spot.upperBound + along), depth: out, height: meters(placed.heightFt))
-    }
-
-    /// How far along the wall either side of the footprint, and how far out from the wall, a
-    /// passing check needs seen (see `init(result:wall:)`), meters; nil when it needs nothing
-    /// beyond the footprint.
-    static func extent(of check: PlacementCheck, footprintDepth: Float, wallError e: Float) -> (along: Float, out: Float)? {
-        let key = check.rule.key
-        let r = check.thresholdFt.map { Float($0 * 0.3048) }
-        if key.hasPrefix("ground.") { return (e, footprintDepth + e) }
-        guard let r, check.comparison == .atLeast else { return nil }
-        for prefix in ["headroom.", "route.", "meter_working_space.", "battery."] where key.hasPrefix(prefix) { return nil }
-        if key == "clearances.opening_ft" { return (r + e, footprintDepth) }
-        if key == "clearances.wall_equipment_ft" { return (r, footprintDepth) }
-        if key.hasPrefix("facing.") { return (0, footprintDepth + r) }
-        return (r + e, footprintDepth + r + e)
+        let front = result.checks
+            .filter { $0.outcome == .pass && $0.comparison == .atLeast && $0.rule.key.hasPrefix("facing.") }
+            .compactMap { $0.thresholdFt.map { meters($0) } }
+            .max()
+        let out = spotOut.upperBound + (front ?? 0)
+        self.init(spot: spot, spotOut: spotOut, span: spot, depth: out, height: meters(placed.heightFt))
     }
 
     /// Whether this area holds `other`: the same footprint, and an area at least as large. An

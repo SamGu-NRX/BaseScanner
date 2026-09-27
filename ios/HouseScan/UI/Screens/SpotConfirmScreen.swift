@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The spot check before the result: one kept photo with the answer's spot and the area its
-/// checks rest on outlined, and at most two questions, one at a time. First, is anything in the
+/// The spot check before the result: one kept photo with the answer's spot and its front
+/// clearance outlined, and at most two questions, one at a time. First, is anything in the
 /// marked area (something in the way, or a gas meter, AC, window or door the scan didn't mark)?
 /// A photo can claim wall and ground behind a bush, and the server only keeps clearances from
 /// marked things, so the homeowner, who is standing there, says. Then, once it is clear, what the
@@ -259,7 +259,7 @@ private struct Answered: View {
     }
 }
 
-/// The spot's footprint and the area its checks rest on drawn over the photo, on the ground and up
+/// The spot's footprint and its front clearance drawn over the photo, on the ground and up
 /// the wall face to the battery's height: the space the question is about. For the ground question
 /// only the footprint, where the battery would stand. Blue, the app's "look here", with a white
 /// edge under the outline so it reads on any wall.

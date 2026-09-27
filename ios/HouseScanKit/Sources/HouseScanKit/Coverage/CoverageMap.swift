@@ -165,7 +165,7 @@ public struct CoverageConfig: Sendable, Equatable {
 /// The server takes both claims as given and reads no images. They are allowed only because the
 /// homeowner confirms the chosen spot before the result is shown: the spot check (`SpotPhoto`,
 /// `SpotConfirmations`; the app's `ScanEngine+Confirm.swift`) shows a kept photo of the spot and
-/// the area its passing checks rest on (`SpotArea(result:wall:)`) and asks whether anything is
+/// its front clearance (`SpotArea(result:wall:)`) and asks whether anything is
 /// there. "It's clear" backs the claims over that area, and counts only with a photo that shows
 /// all of it. "Something's there", or no such photo, withdraws them (`withdrawClaims(over:)`): the
 /// area's wall, ground and walked-path claims export as unseen and the scan is checked again.
