@@ -63,6 +63,16 @@ final class Map3DSession: Sendable {
     /// measurement of that cost on a phone exists yet.
     static let snapshotInterval: Double = 0.5
 
+    /// Mesh vertices kept for a map not started yet (before the meter is placed, or after a
+    /// reset), oldest chunks dropped first. ARKit keeps meshing while the homeowner looks for the
+    /// meter; without a budget every chunk it made was copied. 200,000 vertices with their faces
+    /// is about 10 MB, a few rooms' or a house side's worth. A guess, not measured: a map started
+    /// after a longer search lacks the mesh first made, until ARKit updates those chunks.
+    static let chunkBudget = 200_000
+    /// Plane boundary points kept, oldest planes dropped first; a plane has a few dozen. A
+    /// guess, not measured.
+    static let planeBudget = 20_000
+
     /// How far the walk's ground may move from the map's before the map is rebuilt, meters. The
     /// voxels are laid out around the map's ground and reach `Map3DConfig.groundBelow` (0.5 m)
     /// under it, so within half of that the true ground stays well inside the grid; beyond it the
@@ -186,9 +196,14 @@ final class Map3DSession: Sendable {
     /// An estimated depth frame (`DepthEstimator`) of a kept keyframe. Held apart from the
     /// sampled frame, which replaces itself ten times a second: an estimate comes once per kept
     /// keyframe and is not replaced by the next feature frame. At most `waitingEstimates` wait.
-    func ingest(estimated depth: DepthFrame) {
+    ///
+    /// `generation` is the session's `generation` when the frame was kept. An estimate finishes
+    /// long after its frame, and one kept before a reset (tracking restarted, the meter placed
+    /// again) is in a world frame the map no longer has; it is dropped here, under the same lock
+    /// `start` and `reset` change the generation under.
+    func ingest(estimated depth: DepthFrame, generation: Int) {
         inbox.withLock { inbox in
-            guard inbox.active else { return }
+            guard inbox.active, inbox.generation == generation else { return }
             inbox.estimated.append(depth)
             if inbox.estimated.count > Self.waitingEstimates {
                 inbox.dropped += inbox.estimated.count - Self.waitingEstimates
@@ -236,6 +251,9 @@ final class Map3DSession: Sendable {
     /// True while inputs wait to be integrated or a change to the map has not yet reached the
     /// main actor as a snapshot. The autopilot waits for it before acting on coverage; a person
     /// never needs to. Blocks while an integration runs.
+    /// Changes with every `start` and `reset`: what `ingest(estimated:generation:)` checks.
+    var generation: Int { inbox.withLock { $0.generation } }
+
     var isCatchingUp: Bool {
         if inbox.withLock({ $0.drainScheduled || $0.frame != nil || !$0.estimated.isEmpty || !$0.replay.isEmpty || $0.command != nil || $0.reset != nil }) { return true }
         return core.withLock { core in
@@ -298,9 +316,11 @@ final class Map3DSession: Sendable {
         var map: Map3D?
         var wall: WallFrame?
         var generation = 0
-        var planes: [UUID: PlaneObservation] = [:]
-        /// Chunks that arrived while there was no map, for the next `start`.
-        var waitingChunks: [UUID: MeshChunk] = [:]
+        /// Planes ARKit has, newest kept within `anchorBudget` boundary points.
+        var planes = BoundedRecent<UUID, PlaneObservation>(budget: Map3DSession.planeBudget) { $0.boundary.count }
+        /// Chunks that arrived while there was no map, for the next `start`, newest kept within
+        /// `chunkBudget` vertices.
+        var waitingChunks = BoundedRecent<UUID, MeshChunk>(budget: Map3DSession.chunkBudget) { $0.vertices.count }
         /// A measured depth frame (LiDAR or a replay's) went into the map since `start`
         /// (`Map3DSnapshot.integratedDepth`). Estimated depth doesn't count: it never certifies
         /// coverage, so a map with only estimated depth can't decide it. A rebuild after the
@@ -348,26 +368,13 @@ final class Map3DSession: Sendable {
             core.map = nil
             core.wall = nil
             if forgetAnchors {
-                core.planes = [:]
-                core.waitingChunks = [:]
+                core.planes.removeAll()
+                core.waitingChunks.removeAll()
             }
             core.integratedDepth = false
             changed = true
         }
-        for (id, plane) in taken.planes {
-            core.planes[id] = plane
-            if let plane { core.map?.update(plane) } else { core.map?.removePlane(id: id) }
-        }
-        for (id, chunk) in taken.chunks {
-            if core.map == nil {
-                core.waitingChunks[id] = chunk
-            } else if let chunk {
-                core.map?.update(chunk)
-            } else {
-                core.map?.removeMeshChunk(id: id)
-            }
-        }
-        if core.map != nil, !taken.planes.isEmpty || !taken.chunks.isEmpty { changed = true }
+        var moved: MapFrame?
         switch taken.command {
         case .start(let wall)?:
             var map = Self.newMap(at: wall, planes: core.planes)
@@ -375,19 +382,31 @@ final class Map3DSession: Sendable {
             for chunk in core.waitingChunks.values {
                 if Self.reaches(chunk, map) { map.update(chunk) } else { outside += 1 }
             }
-            let waiting = core.waitingChunks.count
-            if waiting > 0 {
-                RuntimeLog.engine.info("3D map started with \(waiting - outside) waiting mesh chunks; \(outside) wholly outside its bounds dropped")
+            let waiting = core.waitingChunks.keys.count
+            let overBudget = core.waitingChunks.evicted
+            if waiting > 0 || overBudget > 0 {
+                RuntimeLog.engine.info("3D map started with \(waiting - outside) waiting mesh chunks; \(outside) wholly outside its bounds and \(overBudget) over the budget dropped")
             }
-            core.waitingChunks = [:]
+            core.waitingChunks.removeAll()
             core.integratedDepth = false
             core.map = map
             core.wall = wall
             changed = true
         case .update(let wall)?:
-            if follow(wall, in: &core) { changed = true }
+            if follow(wall, in: &core, moved: &moved) { changed = true }
         case nil:
             break
+        }
+        // Anchors after the meter's move: ARKit sent them placed in the corrected world
+        // (`Map3D.apply`). Without a map they wait for the next start, within a budget.
+        for (id, plane) in taken.planes { core.planes[id] = plane }
+        if var map = core.map {
+            core.map = nil
+            map.apply(frame: moved, planes: taken.planes, chunks: taken.chunks)
+            core.map = map
+            if !taken.planes.isEmpty || !taken.chunks.isEmpty { changed = true }
+        } else {
+            for (id, chunk) in taken.chunks { core.waitingChunks[id] = chunk }
         }
         // A frame taken after a reset but before the next start has no map to go into.
         if var map = core.map, let frame = taken.frame {
@@ -431,8 +450,10 @@ final class Map3DSession: Sendable {
 
     /// Applies a changed wall to the map: the map follows the meter, or is rebuilt when the ground
     /// moved beyond `groundTolerance`. Returns whether anything changed.
-    private func follow(_ wall: WallFrame, in core: inout Core) -> Bool {
-        guard var map = core.map, let old = core.wall, wall != old else { return false }
+    /// `moved` is the frame the map follows the meter to, for `Map3D.apply` to reanchor before
+    /// the batch's anchors; a rebuilt map is already in the new frame.
+    private func follow(_ wall: WallFrame, in core: inout Core, moved: inout MapFrame?) -> Bool {
+        guard let map = core.map, let old = core.wall, wall != old else { return false }
         core.wall = wall
         let ground = wall.groundY - wall.meter.y
         guard abs(ground - map.frame.groundY) <= Self.groundTolerance else {
@@ -441,13 +462,11 @@ final class Map3DSession: Sendable {
             return true
         }
         guard wall.meter != old.meter else { return true }
-        core.map = nil
-        map.reanchor(map.frame.following(anchorMovedFrom: Self.translation(old.meter), to: Self.translation(wall.meter)))
-        core.map = map
+        moved = map.frame.following(anchorMovedFrom: Self.translation(old.meter), to: Self.translation(wall.meter))
         return true
     }
 
-    private static func newMap(at wall: WallFrame, planes: [UUID: PlaneObservation]) -> Map3D {
+    private static func newMap(at wall: WallFrame, planes: BoundedRecent<UUID, PlaneObservation>) -> Map3D {
         var map = Map3D(frame: MapFrame(wall: wall))
         for plane in planes.values { map.update(plane) }
         return map

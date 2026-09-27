@@ -332,7 +332,7 @@ final class ScanEngine {
     private func startEstimatedDepth() {
         guard options.estimatedDepth, let map3D, !LiveCapture.supportsDepth else { return }
         Task {
-            guard let estimator = await DepthEstimator.load(onFrame: { map3D.ingest(estimated: $0) }), let live else { return }
+            guard let estimator = await DepthEstimator.load(onFrame: { map3D.ingest(estimated: $0, generation: $1) }), let live else { return }
             depthEstimator = estimator
             live.setDepthEstimator(estimator)
         }
@@ -691,7 +691,7 @@ final class ScanEngine {
             let delta = coverage?.observe(frame.camera, trackingNormal: frame.tracking == .normal, time: frame.timestamp, depth: frame.depth, segment: segment)
             RuntimeLog.capture.info("stored \(frame.id, privacy: .public) as keyframe \(index)\(frame.depth == nil ? "" : " with depth", privacy: .public): \(delta?.newlySeen ?? 0) cells newly seen, \(delta?.newlyCovered ?? 0) newly covered, \(delta?.newlyHidden ?? 0) newly hidden")
             if overhead { recordOverhead(frame) }
-            if frame.tracking == .normal { depthEstimator?.estimate(frameID: frame.id) }
+            if frame.tracking == .normal, let map3D { depthEstimator?.estimate(frameID: frame.id, generation: map3D.generation) }
             state.captureCount += 1
             state.lastCapture = CaptureEvent(id: state.captureCount, kind: kind, thumbnail: saved.thumbnail)
             afterCoverageChange(camera: lastFrame?.camera, time: lastFrame?.timestamp ?? frame.timestamp)
@@ -1129,6 +1129,7 @@ final class ScanEngine {
         live?.restart()
         coverage = nil
         map3D?.reset(forgetAnchors: true)
+        depthEstimator?.reset()
         state.map3D = nil
         exported = nil
         uploadedScene = nil
@@ -1448,27 +1449,46 @@ final class ScanEngine {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation else { return }
-        let geometry: ExportGeometry
-        do {
-            geometry = try await exportGeometry()
-        } catch {
+        // The wall, the meter and the export geometry are read as one state: the meter anchor can
+        // move the walk's wall while the mesh is measured off the main actor, and a scene pairing
+        // the new meter with the old wall fails to package (`meterOffChainOrigin`). A move during
+        // the measurement takes it again; three tries, then the upload fails rather than mix them.
+        var consistent: (geometry: ExportGeometry, mesh: LiveCapture.MeshSnapshot?, measured: MeshMeasurements)?
+        for _ in 0..<3 {
+            let geometry: ExportGeometry
+            do {
+                geometry = try await exportGeometry()
+            } catch {
+                guard scan == generation else { return }
+                RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
+                state.upload = UploadFailure.packaging(error)
+                return
+            }
             guard scan == generation else { return }
-            RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
-            state.upload = UploadFailure.packaging(error)
-            return
+            // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
+            // overhead, off the main actor since ray casts over a whole mesh take a while. Measured
+            // along the wall the scene describes, so its s agrees with the scene's.
+            let meshSnapshot = live?.meshSnapshot()
+            var measured = MeshMeasurements()
+            if let mesh = meshSnapshot?.mesh {
+                let wall = geometry.wall
+                let span = geometry.baselineS
+                measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
+                guard scan == generation else { return }
+                RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+            }
+            guard coverage?.wall == geometry.walk else {
+                RuntimeLog.engine.info("export: the wall moved while the mesh was measured; reading it again")
+                continue
+            }
+            consistent = (geometry, meshSnapshot, measured)
+            break
         }
-        guard scan == generation else { return }
-        // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
-        // overhead, off the main actor since ray casts over a whole mesh take a while. Measured
-        // along the wall the scene describes, so its s agrees with the scene's.
-        let meshSnapshot = live?.meshSnapshot()
-        var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh {
-            let wall = geometry.wall
-            let span = geometry.baselineS
-            measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-            guard scan == generation else { return }
-            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+        guard let (geometry, meshSnapshot, measured) = consistent else {
+            RuntimeLog.engine.error("scene.json export failed: \(ExportError.wallKeptMoving.description, privacy: .public)")
+            state.upload = UploadFailure.packaging(ExportError.wallKeptMoving)
+            updateRecording()
+            return
         }
         let scene: Data
         do {
@@ -1481,7 +1501,7 @@ final class ScanEngine {
         }
         uploadedScene = scene
         // The answer's s runs along this wall; `presentation(of:)` places the result on it.
-        if let walk = coverage?.wall { exported = (geometry.wall, walk) }
+        exported = (geometry.wall, geometry.walk)
         saveBundle(scene: scene, mesh: meshSnapshot)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
@@ -1632,6 +1652,7 @@ final class ScanEngine {
         coverage = nil
         // The AR session and its anchors go on, so the mesh ARKit built stays with the map.
         map3D?.reset(forgetAnchors: false)
+        depthEstimator?.reset()
         state.map3D = nil
         exported = nil
         uploadedScene = nil

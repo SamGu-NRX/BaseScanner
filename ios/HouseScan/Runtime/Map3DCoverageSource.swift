@@ -33,30 +33,12 @@ enum Map3DCoverageError: Error, CustomStringConvertible {
 
 /// Turns a `Map3DSnapshot` into what the export and the walk read.
 enum Map3DCoverageSource {
-    /// How far the measured chain may stop short of each end of the walk's baseline and still
-    /// describe it, meters: two 10 cm voxels. A measured piece ends within half a voxel of its
-    /// last column of wall evidence, and a marked end is a tap. A guess, not measured.
-    static let chainShortfall: Float = 0.2
-    /// How far the tapped meter may lie from the line of the measured meter piece, meters. A
-    /// parallel surface near the meter (a fence, a hedge face, the meter box's own front) faces
-    /// the same way as the wall and passes the direction check; this keeps it from standing in
-    /// for the wall. The meter box stands roughly 0.1 to 0.2 m proud of the wall. A guess, not
-    /// measured.
-    static let meterLineDistance: Float = 0.3
-    /// How far a measured corner within the baseline may lie from the tapped chain, meters. The
-    /// homeowner's taps say where the walk's wall runs; a measured corner far from it belongs to
-    /// something else. A guess, not measured: larger than tap error, smaller than a step.
-    static let cornerDistance: Float = 0.5
-
     /// The wall, baseline, coverage and wall sources scene.json gets.
     ///
     /// The measured chain is used when `snapshot.measured` exists (`finalSnapshot()` fills it)
-    /// and it agrees with the walk: its meter piece faces within `WallFrame.minCornerAngle` of the
-    /// tapped wall (the rule that tells a new wall from the same one), the meter lies within
-    /// `meterLineDistance` of that piece's line with its foot on the piece, every measured corner
-    /// within the baseline lies within `cornerDistance` of the tapped chain, and the chain reaches
-    /// both ends of the baseline to within `chainShortfall`. Otherwise the tapped wall is written with source
-    /// `tap`, and `tappedBecause` says which test failed. Coverage is always the one measured along
+    /// and it agrees with the walk (`MeasuredChainAdmission`). Otherwise the tapped wall is
+    /// written with source `tap`, and `tappedBecause` says which test failed. Coverage is always
+    /// the one measured along
     /// the wall written, so s agrees.
     ///
     /// `walkedFacing` (`CoverageMap.facingSpans()`: where the phone was carried, less its position
@@ -108,55 +90,14 @@ enum Map3DCoverageSource {
     private static func measuredExport(
         _ snapshot: Map3DSnapshot, tapWall: WallFrame, baselineS: ClosedRange<Float>
     ) -> Result<(wall: WallFrame, baselineS: ClosedRange<Float>, coverage: Map3DCoverage, plusMinus: [Float?]), Refusal> {
-        guard let chain = snapshot.chain, chain.meterIndex < chain.walls.count else { return .failure(Refusal(reason: "no measured wall passes the meter")) }
-        guard let measured = snapshot.measured, measured.wall.segments.count == chain.walls.count else {
-            return .failure(Refusal(reason: "the snapshot has no measured wall frame"))
+        guard let chain = snapshot.chain else { return .failure(Refusal(reason: "no measured wall passes the meter")) }
+        guard let measured = snapshot.measured else { return .failure(Refusal(reason: "the snapshot has no measured wall frame")) }
+        switch MeasuredChainAdmission.admit(chain, as: measured.wall, frame: snapshot.frame, tapWall: tapWall, baselineS: baselineS) {
+        case .success(let baseline):
+            return .success((measured.wall, baseline, measured.coverage, chain.walls.map(plusMinus(of:))))
+        case .failure(let refusal):
+            return .failure(Refusal(reason: refusal.reason))
         }
-        let frame = snapshot.frame
-        let meterPiece = chain.walls[chain.meterIndex]
-        let outward = frame.worldDirection(SIMD3(meterPiece.outward.x, 0, meterPiece.outward.y))
-        let flat = simd_normalize(SIMD3(outward.x, 0, outward.z))
-        guard simd_dot(flat, tapWall.outward) >= cos(WallFrame.minCornerAngle) else {
-            return .failure(Refusal(reason: "the measured meter piece turns more than 30 degrees from the tapped wall"))
-        }
-        let meterMap = frame.map(tapWall.meter)
-        let meterPlan = SIMD2(meterMap.x, meterMap.z)
-        // The exported wall's origin is the meter's foot on this piece (`wallFrame`), which the
-        // server must find again by projecting the meter; a foot off the piece would be clamped.
-        let footT = simd_dot(meterPlan - meterPiece.start, meterPiece.along)
-        let inset = min(0.01, meterPiece.length / 2)
-        guard footT >= inset, footT <= meterPiece.length - inset else {
-            return .failure(Refusal(reason: "the meter's foot falls off the measured meter piece"))
-        }
-        let meterOff = abs(simd_dot(meterPlan - meterPiece.start, meterPiece.outward))
-        guard meterOff <= meterLineDistance else {
-            return .failure(Refusal(reason: "the meter is \(meterOff) m from the measured meter piece's line"))
-        }
-
-        // The baseline's ends are places on the tapped wall; the same places on the measured one.
-        func measuredS(_ s: Float) -> Float { measured.wall.wallPoint(tapWall.world(s: s, height: 0)).s }
-        let low = measuredS(baselineS.lowerBound)
-        let high = measuredS(baselineS.upperBound)
-        guard low < 0, high > 0 else { return .failure(Refusal(reason: "the baseline's ends fall on one side of the meter on the measured wall")) }
-
-        for corner in measured.wall.leftCorners + measured.wall.rightCorners where corner.s > low && corner.s < high {
-            let point = measured.wall.world(s: corner.s, height: 0)
-            let onTapped = tapWall.world(s: tapWall.wallPoint(point).s, height: 0)
-            let distance = simd_distance(SIMD2(point.x, point.z), SIMD2(onTapped.x, onTapped.z))
-            guard distance <= cornerDistance else {
-                return .failure(Refusal(reason: "the measured corner at s=\(corner.s) m is \(distance) m from the tapped wall"))
-            }
-        }
-
-        // The chain's own ends in s, as `MeasuredWallChain.wallFrame` lays it out from the meter.
-        let meterS = footT
-        let leftEnd = -meterS - chain.walls.prefix(chain.meterIndex).reduce(0) { $0 + $1.length }
-        let rightEnd = meterPiece.length - meterS + chain.walls.suffix(from: chain.meterIndex + 1).reduce(0) { $0 + $1.length }
-        guard leftEnd <= low + chainShortfall, rightEnd >= high - chainShortfall else {
-            return .failure(Refusal(reason: "the measured chain spans s=\(leftEnd)...\(rightEnd) m, short of the baseline \(low)...\(high) m"))
-        }
-
-        return .success((measured.wall, low...high, measured.coverage, chain.walls.map(plusMinus(of:))))
     }
 
     /// The line's position error, meters: the fit's two standard errors (`MeasuredWall.plusMinus`),

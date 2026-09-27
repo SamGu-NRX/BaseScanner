@@ -14,8 +14,9 @@ extension ScanEngine {
     /// Everything is placed against `geometry.wall` (`exportGeometry()`): marks are read again
     /// from their tapped world points when that is the measured chain rather than the walk's wall.
     func sceneJSON(mesh: MeshMeasurements = MeshMeasurements(), geometry: ExportGeometry) throws -> Data {
-        guard let map = coverage else { throw ExportError.noWall }
+        guard coverage != nil else { throw ExportError.noWall }
         let wall = geometry.wall
+        let walk = geometry.walk
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         // The corners carry their pieces' sources (`markNextWall`, or the measured chain's); the
         // meter's piece, its own (`meterLineSource`, set on the map in `markMeter`, or the
@@ -33,7 +34,7 @@ extension ScanEngine {
         // near it as seen and clear, which can pass its clearance check with the hazard unsent.
         let features: [SceneFeature] = try state.features.map { marked in
             var feature = marked
-            if wall != map.wall { Self.project(&feature, onto: wall) }
+            if wall != walk { Self.project(&feature, onto: wall) }
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
             case .door, .window:
@@ -86,7 +87,7 @@ extension ScanEngine {
             wallPlusMinus: geometry.plusMinus,
             // A measured wall lies on its fitted line; the meter stays where it was tapped, which
             // may be on a box proud of that line.
-            meterPosition: wall.meter == map.wall.meter ? nil : map.wall.meter - drop
+            meterPosition: wall.meter == walk.meter ? nil : walk.meter - drop
         )
         return try SceneExport.jsonData(input)
     }
@@ -95,6 +96,8 @@ extension ScanEngine {
     /// of its pieces' lines is known.
     struct ExportGeometry: Sendable {
         var wall: WallFrame
+        /// The walk's wall this was built against: the meter, ends and marks are read from it.
+        var walk: WallFrame
         var baselineS: ClosedRange<Float>
         var coverage: SceneCoverage
         /// `SceneInput.wallPlusMinus`; empty takes the server's default for every piece.
@@ -109,16 +112,19 @@ extension ScanEngine {
     /// with `-estimatedDepth on` and the model present). Without, it holds only feature points
     /// and planes and would report near-empty coverage, so the camera coverage map decides here
     /// as it does for the walk on such a phone.
+    ///
+    /// Everything is read from one state of the walk's wall (`ExportGeometry.walk`); the caller
+    /// must check it is still the walk's wall after any await (`upload`).
     func exportGeometry() async throws -> ExportGeometry {
-        guard let map = coverage else { throw ExportError.noWall }
-        func camera(because reason: String) -> ExportGeometry {
+        guard let start = coverage else { throw ExportError.noWall }
+        func camera(_ map: CoverageMap, because reason: String) -> ExportGeometry {
             RuntimeLog.engine.info("export: camera coverage map, \(reason, privacy: .public)")
             return ExportGeometry(
-                wall: map.wall, baselineS: Self.exportSpan(map),
+                wall: map.wall, walk: map.wall, baselineS: Self.exportSpan(map),
                 coverage: SceneCoverage(map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit),
                 plusMinus: [])
         }
-        guard let map3D else { return camera(because: "-coverage legacy") }
+        guard let map3D else { return camera(start, because: "-coverage legacy") }
         // The snapshot is computed off the main actor, and meanwhile the meter anchor can move the
         // wall. One read along another wall than the current one is taken again; the next read
         // includes the move. Three tries, then the export fails rather than mix two walls.
@@ -128,7 +134,7 @@ extension ScanEngine {
             guard let map = coverage else { throw ExportError.noWall }
             guard snapshot.wall == map.wall else { continue }
             guard snapshot.integratedDepth else {
-                return camera(because: "the 3D map integrated no depth (no LiDAR, and estimated depth off or without its model)")
+                return camera(map, because: "the 3D map integrated no depth (no LiDAR, and estimated depth off or without its model)")
             }
             let export = try Map3DCoverageSource.export(
                 snapshot, tapWall: map.wall, baselineS: Self.exportSpan(map),
@@ -141,7 +147,7 @@ extension ScanEngine {
             }
             RuntimeLog.engine.info("export: 3D map revision \(snapshot.revision), \(why, privacy: .public), \(export.wall.segments.count) pieces, s \(export.baselineS.lowerBound)...\(export.baselineS.upperBound)")
             return ExportGeometry(
-                wall: export.wall, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
+                wall: export.wall, walk: map.wall, baselineS: export.baselineS, coverage: export.coverage, plusMinus: export.plusMinus)
         }
         throw ExportError.wallKeptMoving
     }

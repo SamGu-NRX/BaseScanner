@@ -51,11 +51,18 @@ final class DepthEstimator: Sendable {
     /// one JPEG encode and the engine keeps it on arrival; four covers a second of candidates at
     /// the walk's fastest encode rate (one per 0.3 s). A guess, not measured.
     private static let waiting = 4
+    /// Kept frames waiting for the model, beyond the one it runs on; older ones are dropped. Each
+    /// holds the 518 x 392 image (812 KB) and the frame's geometry, and waiting longer only makes
+    /// its estimate staler. Two keeps the model busy without a backlog. A guess, not measured.
+    private static let queued = 2
 
     private let model: ModelBox
     private let queue = DispatchQueue(label: "dev.housescanning.housescan.depth-model", qos: .utility)
     private let candidates = Mutex<[DepthEstimatorInput]>([])
-    private let onFrame: @Sendable (DepthFrame) -> Void
+    /// Kept frames for the model with the generation they were kept in, and whether the model's
+    /// queue is running through them.
+    private let work = Mutex((pending: PendingWork<(input: DepthEstimatorInput, generation: Int)>(limit: DepthEstimator.queued), running: false))
+    private let onFrame: @Sendable (DepthFrame, Int) -> Void
 
     /// Core ML documents a loaded model's predictions as safe to call from any thread; this
     /// type calls it from its one serial queue only.
@@ -63,7 +70,7 @@ final class DepthEstimator: Sendable {
         let model: MLModel
     }
 
-    private init(model: MLModel, onFrame: @escaping @Sendable (DepthFrame) -> Void) {
+    private init(model: MLModel, onFrame: @escaping @Sendable (DepthFrame, Int) -> Void) {
         self.model = ModelBox(model: model)
         self.onFrame = onFrame
     }
@@ -71,7 +78,8 @@ final class DepthEstimator: Sendable {
     /// Loads the model found by `DepthModelLocator`, or returns nil when there is none or it
     /// fails to load. The first load on a device specializes the model for the Neural Engine
     /// and can take seconds; later loads read Core ML's cache.
-    static func load(onFrame: @escaping @Sendable (DepthFrame) -> Void) async -> DepthEstimator? {
+    /// `onFrame` gets each estimate with the generation its frame was kept in (`estimate`).
+    static func load(onFrame: @escaping @Sendable (DepthFrame, Int) -> Void) async -> DepthEstimator? {
         guard let url = DepthModelLocator.url() else {
             RuntimeLog.engine.info("depth model: none in the bundle or Application Support; estimated depth off")
             return nil
@@ -125,29 +133,59 @@ final class DepthEstimator: Sendable {
     // MARK: Any actor
 
     /// Estimates depth for a kept frame offered earlier; does nothing when it was not offered
-    /// (a replay, a LiDAR phone) or has already left the candidates.
-    func estimate(frameID: String) {
+    /// (a replay, a LiDAR phone) or has already left the candidates. `generation` (the 3D map's,
+    /// `Map3DSession.generation`) goes back with the estimate, so one from before a reset is
+    /// dropped. At most `queued` frames wait for the model, the oldest dropped first.
+    func estimate(frameID: String, generation: Int) {
         let input = candidates.withLock { waiting -> DepthEstimatorInput? in
             guard let index = waiting.firstIndex(where: { $0.frameID == frameID }) else { return nil }
             return waiting.remove(at: index)
         }
         guard let input else { return }
-        queue.async { [self] in
-            let started = ProcessInfo.processInfo.systemUptime
-            guard let prediction = predict(input.bgra) else { return }
-            let predicted = ProcessInfo.processInfo.systemUptime
-            let anchors = DepthAnchor.anchors(points: input.points, camera: input.camera) + DepthAnchor.anchors(planes: input.planes, confirmedBy: input.points, camera: input.camera)
-            guard let estimate = MonocularDepth.estimate(prediction, anchors: anchors, photo: input.camera) else {
-                RuntimeLog.engine.info("depth \(input.frameID, privacy: .public): no scale fit from \(anchors.count) anchors; frame skipped")
-                return
-            }
-            let fitted = ProcessInfo.processInfo.systemUptime
-            RuntimeLog.engine.info("depth \(input.frameID, privacy: .public): model \(Int((predicted - started) * 1000)) ms, fit \(Int((fitted - predicted) * 1000)) ms, \(estimate.fit.inlierCount)/\(anchors.count) anchors, relative sigma \(estimate.fit.relativeSigma)")
-            onFrame(estimate.frame)
+        let start = work.withLock { work -> Bool in
+            work.pending.add((input, generation))
+            guard !work.running else { return false }
+            work.running = true
+            return true
         }
+        if start { queue.async { [self] in runPending() } }
+    }
+
+    /// Drops the frames waiting for the model and the candidates: after a reset they belong to a
+    /// world frame the map no longer has.
+    func reset() {
+        candidates.withLock { $0.removeAll() }
+        work.withLock { $0.pending.removeAll() }
     }
 
     // MARK: Model queue
+
+    /// Runs the model on waiting frames, newest last, until none wait.
+    private func runPending() {
+        while let (input, generation) = work.withLock({ work -> (DepthEstimatorInput, Int)? in
+            guard let next = work.pending.take() else {
+                work.running = false
+                return nil
+            }
+            return (next.input, next.generation)
+        }) {
+            estimateNow(input, generation: generation)
+        }
+    }
+
+    private func estimateNow(_ input: DepthEstimatorInput, generation: Int) {
+        let started = ProcessInfo.processInfo.systemUptime
+        guard let prediction = predict(input.bgra) else { return }
+        let predicted = ProcessInfo.processInfo.systemUptime
+        let anchors = DepthAnchor.anchors(points: input.points, camera: input.camera) + DepthAnchor.anchors(planes: input.planes, confirmedBy: input.points, camera: input.camera)
+        guard let estimate = MonocularDepth.estimate(prediction, anchors: anchors, photo: input.camera) else {
+            RuntimeLog.engine.info("depth \(input.frameID, privacy: .public): no scale fit from \(anchors.count) anchors; frame skipped")
+            return
+        }
+        let fitted = ProcessInfo.processInfo.systemUptime
+        RuntimeLog.engine.info("depth \(input.frameID, privacy: .public): model \(Int((predicted - started) * 1000)) ms, fit \(Int((fitted - predicted) * 1000)) ms, \(estimate.fit.inlierCount)/\(anchors.count) anchors, relative sigma \(estimate.fit.relativeSigma)")
+        onFrame(estimate.frame, generation)
+    }
 
     private func predict(_ bgra: [UInt8]) -> RelativeInverseDepth? {
         var buffer: CVPixelBuffer?
