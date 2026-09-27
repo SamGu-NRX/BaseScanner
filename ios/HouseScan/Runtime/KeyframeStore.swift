@@ -39,10 +39,14 @@ struct StoredDepth: Sendable {
 final class KeyframeStore {
     let directory: URL
     private(set) var keyframes: [StoredKeyframe] = []
-    /// Purpose (scene.json `stills` key) to file name.
-    private(set) var stills: [String: String] = [:]
-    /// Purpose to the still's frame, for the packet's photos.
-    private(set) var stillFrames: [String: StoredKeyframe] = [:]
+    /// The stills saved, by purpose (scene.json `stills` key), and which the homeowner accepted.
+    private var stillCatalog = StillCatalog<StoredKeyframe>()
+    /// Purpose to file name, for accepted stills only: scene.json's `stills`, and the stills the
+    /// packet links to their marks.
+    var stills: [String: String] { stillCatalog.acceptedFileNames }
+    /// Purpose to the still's frame, accepted or not, for the packet's photos. A still the
+    /// homeowner turned down is still a photo of the scan, just not the one for its purpose.
+    var stillFrames: [String: StoredKeyframe] { stillCatalog.frames }
     private var nextIndex = 1
     /// Bumped by `discardKeyframes`, so a write that started before it doesn't land in the list.
     private var epoch = 0
@@ -159,7 +163,7 @@ final class KeyframeStore {
     }
 
     /// Writes a still such as the meter close-up from `frame`. Returns false when there was
-    /// nothing to write.
+    /// nothing to write. The still stands for its purpose only once accepted (`acceptStill`).
     func saveStill(_ frame: SourceFrame, name: String) async -> Bool {
         let directory = directory
         let id = Self.purpose(of: name)
@@ -171,14 +175,26 @@ final class KeyframeStore {
         guard let written else { return false }
         // Taken in a world frame that was discarded while the file was being written. The file is
         // left alone: a close-up in the new frame may already have written the same name, and
-        // nothing reads a still that `stills` doesn't list.
+        // nothing reads a still that `stillFrames` doesn't list.
         guard startedIn == epoch else {
             RuntimeLog.capture.info("still \(name, privacy: .public) not kept: its world frame was discarded")
             return false
         }
-        stills[id] = name
-        stillFrames[id] = written
+        stillCatalog.save(written, purpose: id, fileName: name)
         return true
+    }
+
+    /// The homeowner accepted the still saved as `name` (the meter number read from it was
+    /// confirmed). False when none is saved.
+    @discardableResult
+    func acceptStill(_ name: String) -> Bool {
+        stillCatalog.accept(Self.purpose(of: name))
+    }
+
+    /// The still saved as `name` no longer stands for its purpose (the step was skipped). It stays
+    /// a plain photo of the scan.
+    func withdrawStill(_ name: String) {
+        stillCatalog.withdraw(Self.purpose(of: name))
     }
 
     func thumbnail(ofStill name: String) async -> CGImage? {
@@ -191,17 +207,15 @@ final class KeyframeStore {
 
     /// Forgets keyframes and stills taken in a world frame that no longer exists (after a failed
     /// relocalization), the meter close-up included: export and the packet read only what
-    /// `keyframes` and `stills` list, so a close-up skipped in the new frame exports none. Keyframe
-    /// files stay until the scan is discarded; still files go now, since the next close-up
-    /// reuses the name (`meter_close.jpg`).
+    /// `keyframes`, `stills` and `stillFrames` list, so a close-up skipped in the new frame exports
+    /// none. Keyframe files stay until the scan is discarded; still files go now, since the next
+    /// close-up reuses the name (`meter_close.jpg`).
     func discardKeyframes() {
         epoch += 1
         keyframes = []
-        for name in stills.values {
+        for name in stillCatalog.removeAll() {
             try? FileManager.default.removeItem(at: directory.appending(path: name))
         }
-        stills = [:]
-        stillFrames = [:]
     }
 
     /// Where the packet is assembled, and the zip Share scan offers.

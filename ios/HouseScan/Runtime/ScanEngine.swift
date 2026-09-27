@@ -350,6 +350,27 @@ final class ScanEngine {
         }
     }
 
+    /// Camera access may have been turned on in Settings while the failure screen said it was
+    /// off: the screen asks again each time the app comes back to the foreground. With access
+    /// granted the failed source is let go and the scan goes on without Start over. Before the
+    /// meter is marked nothing is lost: the onboarding's permission step runs again (Motion &
+    /// Fitness, if it was never asked) and the meter search follows. After it, a new camera
+    /// session is a new world frame, so the flow goes back to the meter as after a lost
+    /// relocalization (`resetSpatialState`), keeping what describes the house. Still denied,
+    /// nothing changes.
+    func recheckCameraAccess() {
+        guard state.phase == .unsupported, state.failure == .cameraDenied, options.replayFolder == nil else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { return }
+        RuntimeLog.engine.info("camera access granted: resuming the scan")
+        releaseFailedSource()
+        if coverage != nil {
+            resetSpatialState(reason: "camera access granted after a camera failure")
+        } else {
+            go(.onboarding)
+            leaveOnboarding()
+        }
+    }
+
     private func startSourceIfNeeded() {
         // A replay is its own source (`loadReplay`); a failed source waits for Start over.
         guard replay == nil, options.replayFolder == nil, live == nil, sourceState.mayStartSource else { return }
@@ -1315,7 +1336,15 @@ final class ScanEngine {
             RuntimeLog.capture.info("session interruption ended")
             state.coaching = .relocalizing
         case .cameraDenied:
-            fail(.cameraDenied)
+            // As for a failed session: once the scan is sent, the answer stays on screen.
+            switch state.phase {
+            case .uploading, .result, .resultAR:
+                RuntimeLog.engine.error("camera access lost after capture")
+                _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
+                loseSpatialResult()
+            default:
+                fail(.cameraDenied)
+            }
         case .failed(let message):
             // Once the scan is sent, the upload and its result no longer need the camera: keep
             // them on screen. Only the AR view needs it, and it already hides the battery while

@@ -858,6 +858,9 @@ protocol ScanActions: AnyObject {
     func showAR()
     func closeAR()
     func startOver()
+    /// The app came back to the foreground on the camera-access failure: if access is now on,
+    /// the scan goes on without Start over. Does nothing otherwise.
+    func recheckCameraAccess()
     /// The live AR camera view. Only called while `feed == .live`.
     func liveCameraView() -> AnyView
 }
