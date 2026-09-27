@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g07-headroom-unobserved",
   "source": "t3-lane-c-review.md golden 07 at origin/t3/research a7d91f1",
   "description": "Nothing overhead was recorded and the overhead band was never observed, so every start's headroom check is unsure for lack of a view, and the result asks for that view.",

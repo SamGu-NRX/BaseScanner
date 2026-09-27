@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g10-derived-compound-error",
   "source": "t3-lane-c-review.md golden 10 at origin/t3/research a7d91f1",
   "description": "Gas gap 3.5 ft between a gas meter at +/- 0.3 and a battery on a wall at +/- 0.3. The gap carries +/- 0.6 (linear sum), so 3.5 - 0.6 = 2.9 is not above 3: unsure by margin. A root-sum-square error of 0.424 would wrongly pass it.",

@@ -111,16 +111,51 @@ def load_app_export(path: Path) -> SceneInput:
     return item
 
 
+# Limits on a scene bundle this harness reads into memory: the server's own scene.json cap, and
+# room for a few hundred phone JPEGs, well under the shared Mac's ~4 GB per-process budget. A
+# compressed bundle can declare anything, so reads stop at the limit whatever it declares.
+MAX_BUNDLE_ENTRIES = 2000
+MAX_SCENE_BYTES = 10 * 2**20
+MAX_IMAGE_BYTES = 32 * 2**20
+MAX_BUNDLE_BYTES = 512 * 2**20
+
+
+def read_bounded(bundle: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) -> bytes:
+    """An entry's bytes, refused when it declares or turns out to hold more than `limit`."""
+    if info.file_size > limit:
+        raise SystemExit(f"{info.filename}: declares {info.file_size} bytes, limit {limit}")
+    with bundle.open(info) as f:
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise SystemExit(f"{info.filename}: holds more than {limit} bytes")
+    return data
+
+
+def read_bundle(path: Path) -> tuple[bytes, dict[str, bytes]]:
+    """scene.json and the JPEGs of a C1 zip bundle, within the limits above."""
+    with zipfile.ZipFile(path) as bundle:
+        infos = [i for i in bundle.infolist() if not i.is_dir()]
+        if len(infos) > MAX_BUNDLE_ENTRIES:
+            raise SystemExit(f"{path}: {len(infos)} entries, limit {MAX_BUNDLE_ENTRIES}")
+        declared = sum(i.file_size for i in infos)
+        if declared > MAX_BUNDLE_BYTES:
+            raise SystemExit(f"{path}: declares {declared} bytes, limit {MAX_BUNDLE_BYTES}")
+        scene = next((i for i in infos if i.filename.endswith("scene.json")), None)
+        if scene is None:
+            raise SystemExit(f"{path}: no scene.json in the bundle")
+        raw = read_bounded(bundle, scene, MAX_SCENE_BYTES)
+        images = {
+            Path(i.filename).name: read_bounded(bundle, i, MAX_IMAGE_BYTES)
+            for i in infos
+            if i.filename.lower().endswith(".jpg")
+        }
+    return raw, images
+
+
 def load_input(path: Path, real: bool = False) -> SceneInput:
     """A case file (scene + expect), a bare scene.json, or a C1 zip bundle."""
     if path.suffix == ".zip":
-        with zipfile.ZipFile(path) as bundle:
-            names = bundle.namelist()
-            scene_name = next((n for n in names if n.endswith("scene.json")), None)
-            if scene_name is None:
-                raise SystemExit(f"{path}: no scene.json in the bundle")
-            raw = bundle.read(scene_name)
-            images = {Path(n).name: bundle.read(n) for n in names if n.lower().endswith(".jpg")}
+        raw, images = read_bundle(path)
         return SceneInput(path.stem, json.loads(raw), raw, images, real=real, source=str(path))
     data = json.loads(path.read_text())
     if "scene_path" in data and "expect" in data:
@@ -380,7 +415,7 @@ def judge(
     if item.skip_reason:
         return record | {"status": "skipped", "problems": [], "skip_reason": item.skip_reason}
     if item.hostile:
-        return record | judge_hostile(url, endpoint, item, schemas, limit)
+        return record | {"hostile": True} | judge_hostile(url, endpoint, item, schemas, limit)
     input_errors = schema_errors(item.scene, schemas["scene"])
     if input_errors:
         return record | {"status": "bad input", "problems": input_errors[:20]}
@@ -635,18 +670,29 @@ def write_report(out: Path, meta: dict, records: list[dict]) -> dict:
     counts: dict[str, int] = {}
     for r in records:
         counts[r["status"]] = counts.get(r["status"], 0) + 1
-    real = [r["latency_ms"] for r in records if r.get("real") and "latency_ms" in r]
+    # A scene counts as checked only when the server answered it and the answer was judged; a
+    # skipped scene, a refused one or scene input that failed its own schema checks nothing.
+    checked = [r for r in records if "decision" in r and not r.get("hostile")]
+    # Latency counts only a real scene the server answered with a result, never a fast refusal.
+    real = [r["latency_ms"] for r in checked if r.get("real") and r.get("http_status") == 200]
     exported = [r for r in records if r.get("app_export")]
+    contract_problems = sum(len(r.get("contract_problems", [])) for r in records)
+    killed = bool(meta["peak_memory"].get("server_killed"))
     report = meta | {
         "counts": counts,
         "all_passed": all(r["status"] in ("pass", "skipped") for r in records)
-        and bool(records)
-        and not meta["peak_memory"].get("server_killed"),
+        and bool(checked)
+        and not killed,
         "latency_ms": max(real) if real else None,
         "scenes_answered": sum(1 for r in records if "decision" in r),
+        "scenes_checked": len(checked),
+        "scenes_skipped": counts.get("skipped", 0),
+        "scenes_bad_input": counts.get("bad input", 0),
         # Invariants and properties broken, summed over every answered scene. Case
         # expectations are counted separately because a case can be wrong itself.
-        "contract_problem_count": sum(len(r.get("contract_problems", [])) for r in records),
+        "contract_problem_count": contract_problems,
+        # The contract holds only on evidence: at least one scene checked, none broken.
+        "contract_ok": bool(checked) and contract_problems == 0 and not killed,
         "expectation_problem_count": sum(len(r.get("expectation_problems", [])) for r in records),
         "real_scene_passed": any(r.get("real") and r["status"] == "pass" for r in records),
         # Null when the run had no app export, so the scoreboard looks for an older run.

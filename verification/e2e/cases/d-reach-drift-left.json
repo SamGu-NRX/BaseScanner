@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "d-reach-drift-left",
   "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
   "description": "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge b = a + W, so the boundaries sit at a = -12.058 - W and a = -25.016 - W.",

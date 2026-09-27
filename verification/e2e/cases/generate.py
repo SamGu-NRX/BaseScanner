@@ -962,11 +962,21 @@ case(
 )
 
 
-def main():
-    for old in HERE.glob("*.json"):
-        old.unlink()
+# Marks the files this script owns. Regenerating replaces only those, so a regression case
+# written by hand in this folder survives.
+GENERATED_BY = "e2e/cases/generate.py"
+
+
+def main(folder: Path = HERE) -> None:
+    ids = {c["id"] for c in CASES}
+    for old in folder.glob("*.json"):
+        if json.loads(old.read_text()).get("generated_by") == GENERATED_BY:
+            old.unlink()
+        elif old.stem in ids:
+            raise SystemExit(f"{old.name} was written by hand but a generated case has its id")
     for c in CASES:
-        (HERE / f"{c['id']}.json").write_text(json.dumps(c, indent=2) + "\n")
+        case = {"generated_by": GENERATED_BY, **c}
+        (folder / f"{c['id']}.json").write_text(json.dumps(case, indent=2) + "\n")
     print(f"wrote {len(CASES)} cases")
 
 

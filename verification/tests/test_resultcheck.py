@@ -5,8 +5,10 @@ import json
 import pytest
 
 from hsverify.resultcheck import (
+    Need,
     RuleSet,
     assumption_mismatches,
+    battery_error,
     comparable,
     expectation_problems,
     invariant_problems,
@@ -29,12 +31,21 @@ from hsverify.resultcheck import (
 RULES = RuleSet(
     width_ft=31 / 12,
     depth_ft=22 / 12,
-    radii={
-        "ground_surface": (("ground",), 0.0),
-        "gas_clearance": (("ground",), 1.0),
-        "opening_clearance": (("wall",), 1.0),
+    needs={
+        "ground_surface": (Need("ground", 0.0),),
+        "gas_clearance": (Need("ground", 1.0),),
+        "opening_clearance": (Need("wall", 1.0, height=6.5),),
     },
-    errors={"tap": 0.3, "vlm": 1.5, "tape": 0.05, "wall": 0.3, "meter": 0.3, "drift_per_ft": 0.16},
+    errors={
+        "tap": 0.3,
+        "vlm": 1.5,
+        "tape": 0.05,
+        "wall": 0.3,
+        "mesh": 0.5,
+        "plane": 0.75,
+        "meter": 0.3,
+        "drift_per_ft": 0.16,
+    },
 )
 
 SCENE = {
@@ -335,7 +346,7 @@ def test_a_clearance_is_named_under_each_band_it_lacks():
     two_band = RuleSet(
         RULES.width_ft,
         RULES.depth_ft,
-        RULES.radii | {"gas_clearance": (("ground", "wall"), 1.0)},
+        RULES.needs | {"gas_clearance": (Need("ground", 1.0), Need("wall", 1.0, height=6.5))},
         RULES.errors,
     )
     scene = copy.deepcopy(SCENE)
@@ -345,8 +356,8 @@ def test_a_clearance_is_named_under_each_band_it_lacks():
     ground_only = {"kind": "band", "band": "ground", "span_ft": [0, 5], "checks": ["gas_clearance"]}
     r["missing_evidence"] = [ground_only | {"message": ""}]
     assert missing_evidence_problems(scene, r, two_band) == [
-        "check gas_clearance is unsure and needs wall [0.00, 4.58] observed, but no wall request "
-        "names it"
+        "check gas_clearance is unsure and needs wall [0.00, 4.58] observed higher than 6.5 ft, "
+        "but no wall request names it"
     ]
     r["missing_evidence"].append(ground_only | {"band": "wall", "message": ""})
     assert missing_evidence_problems(scene, r, two_band) == []
@@ -354,17 +365,30 @@ def test_a_clearance_is_named_under_each_band_it_lacks():
 
 def test_rules_come_from_rules_yaml_and_a_missing_one_is_loud():
     text = """
-battery: {width_ft: {value: 2.5}, depth_ft: {value: 1.5}}
+battery: {width_ft: {value: 2.5}, depth_ft: {value: 1.5}, height_ft: {value: 3.25}}
 errors: {tap_ft: {value: 0.3}, vlm_ft: {value: 1.5}, tape_ft: {value: 0.05},
-         wall_ft: {value: 0.3}, meter_ft: {value: 0.3}, drift_per_ft: {value: 0.16}}
-clearances: {gas_ft: {value: 3}, ac_ft: {value: 3}, drive_ft: {value: 5},
-             pool_ft: {value: 10}, opening_ft: {value: 3}}
+         wall_ft: {value: 0.3}, mesh_ft: {value: 0.5}, plane_ft: {value: 0.75},
+         meter_ft: {value: 0.3}, drift_per_ft: {value: 0.16}}
+clearances: {gas_ft: {value: 3}, ac_ft: {value: 3}, battery_ft: {value: 3}, drive_ft: {value: 5},
+             pool_ft: {value: 10}, opening_ft: {value: 3}, wall_equipment_ft: {value: 0}}
+openings: {exempt_bottom_above_ft: null}
+facing: {min_ft: {value: 3}}
+headroom: {min_ft: {value: 6.5}}
+route: {height_ft: {value: 1}}
 """
     rules = RuleSet.from_yaml(text)
-    assert rules.radii["pool_clearance"] == (("ground",), 10.0)
-    assert rules.radii["gas_clearance"] == (("ground", "wall"), 3.0)
-    assert rules.radii["opening_clearance"] == (("wall",), 3.0)
-    assert (rules.width_ft, rules.errors["tape"]) == (2.5, 0.05)
+    assert rules.needs["pool_clearance"] == (Need("ground", 10.0),)
+    assert rules.needs["gas_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
+    assert rules.needs["battery_clearance"] == (Need("ground", 3.0), Need("wall", 3.0, 6.5))
+    assert rules.needs["opening_clearance"] == (Need("wall", 3.0, 6.5),)
+    assert rules.needs["wall_backing"] == (Need("wall", 0.0, 3.25, widen=False),)
+    assert rules.needs["facing_gap"] == (Need("facing", 0.0, 4.5, widen=False),)
+    assert rules.needs["headroom"] == (Need("overhead", 0.0, 6.5, widen=False),)
+    assert (rules.width_ft, rules.errors["plane"], rules.route_height_ft) == (2.5, 0.75, 1.0)
+    lower = RuleSet.from_yaml(
+        text.replace("exempt_bottom_above_ft: null", "exempt_bottom_above_ft: 2")
+    )
+    assert lower.needs["opening_clearance"] == (Need("wall", 3.0, 2.0),)
     with pytest.raises(ValueError, match=r"rules\.yaml has no clearances\.pool_ft"):
         RuleSet.from_yaml(text.replace("pool_ft: {value: 10}, ", ""))
 
@@ -599,3 +623,111 @@ def test_a_ground_request_is_redundant_only_as_far_out_as_it_asks():
     assert any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))
     r["missing_evidence"] = [ask | {"out_ft": 3.5}]
     assert not any("lists as observed" in m for m in invariant_problems(SCENE, r, rules=RULES))
+
+
+# --- Every band's reach, and the wall's source ---------------------------------------------------
+
+PASS_RUN = {"wall_id": "w1", "start_ft": [1.0, 1.0], "outcome": "pass", "failing": [], "unsure": []}
+
+
+def passing(check_id: str) -> dict:
+    return {**check(), "id": check_id, "measured_ft": None, "plus_minus_ft": None}
+
+
+def with_wall_seen(out_ft: float | None) -> dict:
+    scene = copy.deepcopy(SCENE)
+    wall = scene["coverage"]["observed"][0]
+    wall.pop("out_ft", None)
+    if out_ft is not None:
+        wall["out_ft"] = out_ft
+    return scene
+
+
+def test_a_wall_seen_too_low_does_not_settle_an_opening():
+    r = result(checks=[check(), passing("opening_clearance")])
+    msgs = invariant_problems(with_wall_seen(1.0), r, rules=RULES)
+    needs = "check opening_clearance passes but needs wall [0.00, 4.58] observed higher than 6.5 ft"
+    assert any(needs in m for m in msgs)
+    assert invariant_problems(with_wall_seen(7.0), r, rules=RULES) == []
+    assert invariant_problems(with_wall_seen(None), r, rules=RULES) == []  # seen to headroom
+
+
+def test_a_request_to_see_higher_than_the_view_reached_is_not_redundant():
+    r = result()
+    r["missing_evidence"] = [
+        {"kind": "band", "band": "wall", "span_ft": [-3.0, -1.0], "out_ft": 6.6, "message": ""}
+    ]
+    low = invariant_problems(with_wall_seen(1.0), r, rules=RULES)
+    assert not any("lists as observed" in m for m in low)
+    full = invariant_problems(with_wall_seen(None), r, rules=RULES)
+    assert any("lists as observed" in m for m in full)
+
+
+BAND_RULES = RuleSet(
+    RULES.width_ft,
+    RULES.depth_ft,
+    RULES.needs
+    | {
+        "facing_gap": (Need("facing", 0.0, 22 / 12 + 3.0, widen=False),),
+        "headroom": (Need("overhead", 0.0, 6.5, widen=False),),
+        "battery_clearance": (Need("ground", 100.0),),
+    },
+    RULES.errors,
+)
+
+
+def test_facing_and_headroom_passes_need_their_bands():
+    r = result(checks=[check(), passing("facing_gap"), passing("headroom")])
+    msgs = invariant_problems(SCENE, r, rules=BAND_RULES)
+    assert any(
+        "facing_gap passes but needs facing [1.00, 3.58] observed, none seen" in m for m in msgs
+    )
+    assert any(
+        "headroom passes but needs overhead [1.00, 3.58] observed, none seen" in m for m in msgs
+    )
+
+
+def test_a_short_facing_view_needs_a_measurement():
+    r = result(checks=[check(), passing("facing_gap")])
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"].append({"band": "facing", "span_ft": [0.0, 5.0], "out_ft": 3.0})
+    msgs = invariant_problems(scene, r, rules=BAND_RULES)
+    assert any("out to 4.83 ft or measured, seen 3.00 ft" in m for m in msgs)
+    scene["facing"] = [{"wall_id": "w1", "span_ft": [0.0, 5.0], "depth_ft": 8.0}]
+    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+
+
+def test_an_overhead_seen_clear_all_the_way_up_settles_headroom():
+    r = result(checks=[check(), passing("headroom")])
+    scene = copy.deepcopy(SCENE)
+    scene["coverage"]["observed"].append({"band": "overhead", "span_ft": [0.0, 5.0]})
+    assert invariant_problems(scene, r, rules=BAND_RULES) == []
+    scene["coverage"]["observed"][-1]["out_ft"] = 5.0  # clear only to 5 ft, under 6.5
+    assert any("overhead [1.00, 3.58]" in m for m in invariant_problems(scene, r, rules=BAND_RULES))
+
+
+def test_a_check_the_server_did_not_evaluate_needs_nothing():
+    evaluated = result(checks=[check()], sweep=[PASS_RUN])
+    assert not any(
+        "battery_clearance" in m for m in invariant_problems(SCENE, evaluated, rules=BAND_RULES)
+    )
+    with_battery = result(checks=[check(), passing("battery_clearance")], sweep=[PASS_RUN])
+    assert any(
+        "battery_clearance" in m for m in invariant_problems(SCENE, with_battery, rules=BAND_RULES)
+    )
+
+
+@pytest.mark.parametrize(
+    ("wall", "error"),
+    [
+        ({}, 0.3),
+        ({"source": "tap"}, 0.3),
+        ({"source": "mesh"}, 0.5),
+        ({"source": "plane"}, 0.75),
+        ({"source": "mesh", "plus_minus_ft": 0.2}, 0.2),
+    ],
+)
+def test_the_wall_source_sets_the_default_error(wall, error):
+    scene = {"walls": [{"id": "w1", "baseline": [[0, 0], [9, 0]], **wall}]}
+    drift = 0.0 if "plus_minus_ft" in wall else 0.16 * 1.0  # far edge 1 ft from the meter
+    assert battery_error(scene, RULES, "w1", 0.0, 1.0) == pytest.approx(error + drift)

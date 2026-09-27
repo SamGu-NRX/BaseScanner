@@ -9,7 +9,8 @@ a screenshot once it has been on screen for `--settle` seconds; a state replaced
 captured immediately and flagged `transient`, because its image may already show the next
 state. The run ends at `--until`, after `--idle` seconds without a new state, or at
 `--timeout`. A state named with `--require` that never appeared makes the run fail. If the app
-logged a scan bundle, it is copied into the report as scan.zip and named in report.json's
+logged a scan bundle, it is copied into the report as scan.zip (required with `--require-export`)
+and named in report.json's
 `app_export`, so the report folder can be replayed as an app export. Reports go outside git
 (default ~/house-scanning-data/reports/sim/) because a replay can put dataset frames on screen.
 """
@@ -337,6 +338,17 @@ def copy_app_export(out: Path) -> tuple[str | None, list[str]]:
     return "scan.zip", []
 
 
+def app_export(out: Path, required: bool) -> tuple[str | None, list[str]]:
+    """copy_app_export, where a run that must keep the app's scan fails without one."""
+    name, problems = copy_app_export(out)
+    if required and name is None and not problems:
+        problems = [
+            "The run was required to keep the app's scan (--require-export), but the app logged "
+            "no bundle."
+        ]
+    return name, problems
+
+
 def app_running(udid: str, bundle_id: str) -> bool:
     out = subprocess.run(
         ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], capture_output=True, text=True
@@ -517,6 +529,11 @@ def main(argv: list[str] | None = None) -> int:
         help="a state the run must reach; one that never appears is a problem (exit 1)",
     )
     parser.add_argument(
+        "--require-export",
+        action="store_true",
+        help="fail unless the app logs a scan bundle, which is copied into the report as scan.zip",
+    )
+    parser.add_argument(
         "--log-ready-timeout",
         type=float,
         default=30.0,
@@ -607,7 +624,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Running...", flush=True)
             follow(args, udid, bundle_id, out, rep)
             rep.problems += missing_required(args.require, rep.states)
-            rep.app_export, export_problems = copy_app_export(out)
+            rep.app_export, export_problems = app_export(out, args.require_export)
             rep.problems += export_problems
         rep.crash_reports = collect_crashes(started, out)
         if rep.crash_reports:

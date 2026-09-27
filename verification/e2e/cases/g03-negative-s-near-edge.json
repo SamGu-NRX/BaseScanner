@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g03-negative-s-near-edge",
   "source": "t3-lane-c-review.md golden 03 at origin/t3/research a7d91f1",
   "description": "Two straight 3 ft pads, s = [-9, -6] and [7, 10], joined by segments 13/7 ft long that no battery fits on. The left pad's route runs to its near edge (6 ft), so it beats the right pad (7 ft); measuring to the far edge (103/12 ft) would pick the right pad.",

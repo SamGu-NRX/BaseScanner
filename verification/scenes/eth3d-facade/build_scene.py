@@ -604,6 +604,30 @@ def round3(a):
     return [round(float(x), 3) for x in a]
 
 
+# Everything this script writes into --out. It replaces only these, so a mistyped --out (say,
+# ~/house-scanning-data) fails instead of losing whatever is there.
+OUTPUTS = {"bundle", "scene.json", "scene.zip", "build_report.json", "overlays"}
+
+
+def clear_outputs(out: Path) -> None:
+    """Remove this script's earlier outputs from `out`; refuse a folder holding anything else."""
+    if not out.exists():
+        return
+    if not out.is_dir():
+        raise SystemExit(f"--out {out} is a file, not a folder")
+    foreign = sorted(p.name for p in out.iterdir() if p.name not in OUTPUTS)
+    if foreign:
+        raise SystemExit(
+            f"--out {out} holds files this script did not write ({', '.join(foreign[:5])}); "
+            "choose an empty or new folder"
+        )
+    for p in out.iterdir():
+        if p.is_dir() and not p.is_symlink():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -821,8 +845,7 @@ def main():
 
     # 8. Write ----------------------------------------------------------------------------------
     out = args.out
-    if out.exists():
-        shutil.rmtree(out)
+    clear_outputs(out)
     (out / "bundle").mkdir(parents=True)
     img_dir = args.data / "images/dslr_images_undistorted"
     for k in kfs:

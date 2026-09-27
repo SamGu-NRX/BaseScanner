@@ -6,6 +6,7 @@ from pathlib import Path
 
 from hsverify.simrun import (
     ShotRecord,
+    app_export,
     compiling,
     copy_app_export,
     missing_required,
@@ -152,3 +153,10 @@ def test_a_bundle_line_the_runner_cannot_read_is_a_problem(tmp_path):
         None,
         ["the app logged a bundle line this runner cannot read; see state.ndjson"],
     )
+
+
+def test_a_run_that_must_keep_the_scan_fails_without_one(tmp_path):
+    write_log(tmp_path, log_line("STATE=result"))
+    assert app_export(tmp_path, required=False) == (None, [])
+    name, problems = app_export(tmp_path, required=True)
+    assert name is None and "--require-export" in problems[0]

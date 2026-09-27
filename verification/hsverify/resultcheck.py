@@ -33,17 +33,31 @@ EPS = 1e-6
 NUMBER_TOL_FT = 1e-5
 # Spot centres and offsets are rounded by the server; a hundredth of a foot is 1/8 inch.
 OFFSET_TOL_FT = 0.01
-# Clearance check -> the bands an unseen hazard could hide in, and its rules.yaml radius. C1: a
-# gas meter hangs on the wall face (wall band) and its regulator stands on the ground (ground
-# band); openings are on the wall face; AC units, drives and pools are on the ground.
-# ground_surface (radius 0, added in RuleSet.from_yaml) needs the ground under the battery.
-CLEARANCE_CHECKS = {
-    "gas_clearance": (("ground", "wall"), "gas_ft"),
-    "ac_clearance": (("ground",), "ac_ft"),
-    "drive_clearance": (("ground",), "drive_ft"),
-    "pool_clearance": (("ground",), "pool_ft"),
-    "opening_clearance": (("wall",), "opening_ft"),
-}
+
+
+@dataclass(frozen=True)
+class Need:
+    """One piece of coverage a check needs around a battery over [lo, hi] (server/README.md at the
+    tested ref, "What settles each check"):
+
+    - `ground`: ground over [lo - r, hi + r], out to depth + r in front of the battery;
+    - `wall`: the wall band over [lo - r, hi + r], seen higher than `height`;
+    - `facing`, `overhead`: the band over [lo, hi]; where no measurement (`facing`, `overheads`)
+      covers a stretch, the band's `out_ft` there must reach `height`.
+
+    r is `radius`, plus the battery's position error when `widen`.
+    """
+
+    band: str
+    radius: float = 0.0
+    height: float = 0.0
+    widen: bool = True
+
+
+# Scene lists whose entries settle facing_gap and headroom where they cover the battery.
+MEASUREMENTS = {"facing": "facing", "overhead": "overheads"}
+# rules.yaml error keys for a wall's `source`; a wall without one is tapped.
+WALL_ERROR = {"tap": "wall", "mesh": "mesh", "plane": "plane"}
 
 
 @dataclass(frozen=True)
@@ -52,33 +66,61 @@ class RuleSet:
 
     width_ft: float
     depth_ft: float
-    # check id -> (bands, radius in feet around the battery footprint that must be observed)
-    radii: dict[str, tuple[tuple[str, ...], float]]
-    # default error by object source, for walls and the meter, and drift_per_ft
+    # check id -> the coverage its pass needs
+    needs: dict[str, tuple[Need, ...]]
+    # default error by object source, for walls (tap, mesh, plane) and the meter, and drift_per_ft
     errors: dict[str, float]
+    # the height up the wall the cable route must be seen, from the meter to the battery
+    route_height_ft: float = 0.0
 
     @classmethod
     def from_yaml(cls, text: str) -> RuleSet:
         data = yaml.safe_load(text)
 
-        def value(*path: str) -> float:
+        def value(*path: str, default: float | None = None) -> float:
             node: Any = data
             for key in path:
                 if not isinstance(node, dict) or key not in node:
+                    if default is not None:
+                        return default
                     raise ValueError(f"rules.yaml has no {'.'.join(path)}")
                 node = node[key]
+            if node is None and default is not None:
+                return default
             return float(node["value"] if isinstance(node, dict) else node)
 
-        radii = {
-            check: (bands, value("clearances", key))
-            for check, (bands, key) in CLEARANCE_CHECKS.items()
+        depth = value("battery", "depth_ft")
+        headroom = value("headroom", "min_ft")
+        # Openings need the wall seen to headroom height, or to a lower exempt height the rules set.
+        opening_height = min(
+            headroom, value("openings", "exempt_bottom_above_ft", default=headroom)
+        )
+
+        def r(key: str) -> float:
+            return value("clearances", key)
+
+        def reach(key: str) -> Need:
+            return Need("ground", r(key))
+
+        needs = {
+            "ground_surface": (Need("ground", 0.0),),
+            "wall_backing": (Need("wall", 0.0, value("battery", "height_ft"), widen=False),),
+            "gas_clearance": (reach("gas_ft"), Need("wall", r("gas_ft"), headroom)),
+            "battery_clearance": (reach("battery_ft"), Need("wall", r("battery_ft"), headroom)),
+            "ac_clearance": (reach("ac_ft"),),
+            "drive_clearance": (reach("drive_ft"),),
+            "pool_clearance": (reach("pool_ft"),),
+            "opening_clearance": (Need("wall", r("opening_ft"), opening_height),),
+            "wall_equipment_above": (Need("wall", r("wall_equipment_ft"), headroom, widen=False),),
+            "facing_gap": (Need("facing", 0.0, depth + value("facing", "min_ft"), widen=False),),
+            "headroom": (Need("overhead", 0.0, headroom, widen=False),),
         }
-        radii["ground_surface"] = (("ground",), 0.0)
         errors = {
-            name: value("errors", f"{name}_ft") for name in ("tap", "vlm", "tape", "wall", "meter")
+            name: value("errors", f"{name}_ft")
+            for name in ("tap", "vlm", "tape", "wall", "mesh", "plane", "meter")
         }
         errors["drift_per_ft"] = value("errors", "drift_per_ft")
-        return cls(value("battery", "width_ft"), value("battery", "depth_ft"), radii, errors)
+        return cls(value("battery", "width_ft"), depth, needs, errors, value("route", "height_ft"))
 
 
 def schema_errors(instance: Any, schema: dict) -> list[str]:
@@ -90,13 +132,22 @@ def schema_errors(instance: Any, schema: dict) -> list[str]:
 # --- Coverage --------------------------------------------------------------------------------
 
 
+def reached(entry: dict) -> float:
+    """How far an observed entry's view reached: its `out_ft`, or for a band other than ground
+    without one, all the way (C1: the wall to headroom height, facing to whatever faces it,
+    overhead clear to the sky)."""
+    default = 0.0 if entry["band"] == "ground" else math.inf
+    return entry.get("out_ft", default)
+
+
 def observed(scene: dict, band: str, min_out_ft: float = 0.0) -> list[tuple[float, float]]:
-    """Merged observed s-intervals for a band. Ground intervals must reach `min_out_ft` out."""
+    """Merged observed s-intervals for a band, counting only entries whose view reached
+    `min_out_ft` (out from the wall for ground and facing, up for wall and overhead)."""
     spans = []
     for entry in scene.get("coverage", {}).get("observed", []):
         if entry["band"] != band:
             continue
-        if band == "ground" and entry.get("out_ft", 0.0) + EPS < min_out_ft:
+        if reached(entry) + EPS < min_out_ft:
             continue
         spans.append(tuple(sorted(entry["span_ft"])))
     spans.sort()
@@ -229,46 +280,80 @@ def required_span(lo: float, hi: float, radius: float) -> tuple[float, float]:
 
 
 def battery_error(scene: dict, rules: RuleSet, wall_id: str, lo: float, hi: float) -> float:
-    """Position error of a battery over [lo, hi] on `wall_id`: the wall's explicit error, or its
-    default plus drift at the battery's edge further from the meter (S2 70ab0b0)."""
+    """Position error of a battery over [lo, hi] on `wall_id`: the wall's explicit error, or the
+    default for its `source` (tap, mesh, plane) plus drift at the battery's edge further from the
+    meter (S2 70ab0b0)."""
     wall = next((w for w in scene["walls"] if w["id"] == wall_id), None)
     if wall is None:
         raise ValueError(f"the result names wall {wall_id!r}, which the scene does not have")
     if "plus_minus_ft" in wall:
         return wall["plus_minus_ft"]
-    return rules.errors["wall"] + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
+    default = rules.errors[WALL_ERROR[wall.get("source", "tap")]]
+    return default + rules.errors["drift_per_ft"] * max(abs(lo), abs(hi))
 
 
 def reach_gaps(
     scene: dict, rules: RuleSet, check: str, wall_id: str, lo: float, hi: float
 ) -> list[tuple[str, str]]:
-    """(band, what is missing) for each band `check` needs observed around a battery over
-    [lo, hi] and does not have.
+    """(band, what is missing) for each Need of `check` a battery over [lo, hi] does not have.
 
     Only points within the check's radius R of the battery whatever the wall's shape are
     required, so a correct server is never flagged. R is widened by the battery's position
-    error e (C5: a pass needs the margin to exceed the error, and an unseen hazard just past the
-    seen area is a margin of zero).
+    error e where the server widens it (C5: a pass needs the margin to exceed the error, and an
+    unseen hazard just past the seen area is a margin of zero).
 
     - wall band: [lo - R - e, hi + R + e] along the wall, since distance along the wall is
-      never shorter than straight-line distance;
+      never shorter than straight-line distance, seen up to the check's height;
     - ground band: out to depth + R + e in front of the battery (a battery sits flush on one
       straight segment), and at distance d past either end out to R + e - d. The ground point
-      there is at most d along the wall plus R + e - d out from the battery's end.
+      there is at most d along the wall plus R + e - d out from the battery's end;
+    - facing and overhead bands: over the battery, reaching the check's distance unless
+      measured.
     """
-    bands, radius = rules.radii[check]
-    reach = radius + battery_error(scene, rules, wall_id, lo, hi)
     gaps = []
-    for band in bands:
-        if band == "ground":
+    for need in rules.needs[check]:
+        reach = need.radius + (battery_error(scene, rules, wall_id, lo, hi) if need.widen else 0.0)
+        if need.band == "ground":
             gap = ground_gap(scene, lo, hi, rules.depth_ft, reach)
-        else:
+        elif need.band == "wall":
             a, b = required_span(lo, hi, reach)
-            seen = covers(observed(scene, band), a, b)
-            gap = None if seen else f"{band} [{a:.2f}, {b:.2f}] observed"
+            seen = covers(observed(scene, "wall", min_out_ft=need.height), a, b)
+            gap = None if seen else f"wall [{a:.2f}, {b:.2f}] observed higher than {need.height} ft"
+        else:
+            gap = measured_band_gap(scene, need.band, wall_id, lo, hi, need.height)
         if gap:
-            gaps.append((band, gap))
+            gaps.append((need.band, gap))
     return gaps
+
+
+def measured_band_gap(
+    scene: dict, band: str, wall_id: str, lo: float, hi: float, need: float
+) -> str | None:
+    """The first stretch of [lo, hi] the facing or overhead band leaves unsettled: not observed,
+    or observed short of `need` where no measurement covers it."""
+    entries = [
+        (*sorted(e["span_ft"]), reached(e))
+        for e in scene.get("coverage", {}).get("observed", [])
+        if e["band"] == band
+    ]
+    measured = [
+        tuple(sorted(m["span_ft"]))
+        for m in scene.get(MEASUREMENTS[band], [])
+        if m.get("wall_id", wall_id) == wall_id
+    ]
+    edges = {x for e in entries for x in e[:2]} | {x for m in measured for x in m}
+    cuts = sorted({lo, hi} | {x for x in edges if lo < x < hi})
+    for p, q in itertools.pairwise(cuts):
+        if q - p <= EPS:
+            continue
+        seen = [out for x, y, out in entries if x <= p + EPS and q - EPS <= y]
+        where = f"{band} [{p:.2f}, {q:.2f}] observed"
+        if not seen:
+            return f"{where}, none seen"
+        settled = any(x <= p + EPS and q - EPS <= y for x, y in measured)
+        if not settled and max(seen) + EPS < need:
+            return f"{where} out to {need:.2f} ft or measured, seen {max(seen):.2f} ft"
+    return None
 
 
 def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
@@ -277,7 +362,10 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     wall and cable route back to the meter. No slack: runs list exactly the starts that were
     evaluated."""
     problems: list[str] = []
-    wall = observed(scene, "wall")
+    route_wall = observed(scene, "wall", min_out_ft=rules.route_height_ft)
+    # A passing run passes every check the server evaluated; a check it did not evaluate (a
+    # battery clearance with no battery in the scene, say) needs nothing.
+    evaluated = {c["id"] for c in result.get("checks", [])} or set(rules.needs)
     if "coverage" not in scene and result["decision"] == "pass":
         problems.append("decision pass for a scene with no coverage at all")
 
@@ -286,12 +374,13 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
             continue
         lo, hi = run["start_ft"][0], run["start_ft"][1] + rules.width_ft
         route_lo, route_hi = min(0.0, lo), max(0.0, hi)
-        if not covers(wall, route_lo, route_hi):
+        if not covers(route_wall, route_lo, route_hi):
             problems.append(
                 f"sweep pass for starts {run['start_ft']} but the wall and cable route "
-                f"[{route_lo:.2f}, {route_hi:.2f}] were not all observed"
+                f"[{route_lo:.2f}, {route_hi:.2f}] were not all observed higher than "
+                f"{rules.route_height_ft} ft"
             )
-        for check in sorted(rules.radii):
+        for check in sorted(set(rules.needs) & evaluated):
             for _, gap in reach_gaps(scene, rules, check, run["wall_id"], lo, hi):
                 problems.append(f"sweep pass for starts {run['start_ft']} but {check} needs {gap}")
 
@@ -299,7 +388,7 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
     if spot is not None:
         lo, hi = spot["span_ft"]
         for check in result.get("checks", []):
-            if check["outcome"] != "pass" or check["id"] not in rules.radii:
+            if check["outcome"] != "pass" or check["id"] not in rules.needs:
                 continue
             for _, gap in reach_gaps(scene, rules, check["id"], spot["wall_id"], lo, hi):
                 problems.append(f"check {check['id']} passes but needs {gap}")
@@ -308,10 +397,12 @@ def coverage_problems(scene: dict, result: dict, rules: RuleSet) -> list[str]:
         if request["kind"] != "band" or "span_ft" not in request or "band" not in request:
             continue
         a, b = sorted(request["span_ft"])
-        # A ground request may want deeper ground over a span already seen: it is redundant only
-        # where ground was seen as far out as it asks (out_ft, S2 55cb4b0), or, when it does not
-        # say, out to GROUND_FAR_FT.
-        far = request.get("out_ft", GROUND_FAR_FT) if request["band"] == "ground" else 0.0
+        # A request may want a farther or higher view over a span already seen: it is redundant
+        # only where the band was seen as far as it asks (`out_ft`, on every band since S2
+        # 55cb4b0). Without one, a ground request is redundant past GROUND_FAR_FT, and any other
+        # only where the band was seen all the way (no `out_ft`).
+        default = GROUND_FAR_FT if request["band"] == "ground" else math.inf
+        far = request.get("out_ft", default)
         if b - a > EPS and covers(observed(scene, request["band"], min_out_ft=far), a, b):
             problems.append(
                 f"missing_evidence asks for {request['band']} {request['span_ft']}, "
@@ -367,7 +458,7 @@ def missing_evidence_problems(scene: dict, result: dict, rules: RuleSet | None =
         return problems
     lo, hi = spot["span_ft"]
     for c in unobserved_checks(result):
-        if c not in rules.radii:
+        if c not in rules.needs:
             continue
         for band, gap in reach_gaps(scene, rules, c, spot["wall_id"], lo, hi):
             if (band, c) not in named:
@@ -657,7 +748,7 @@ def with_less_coverage(scene: dict, trim_ft: float = 0.5) -> dict | None:
 def with_ground_short_of(scene: dict, rules: RuleSet, margin_ft: float = 0.1) -> dict | None:
     """Ground seen out to just short of the largest clearance radius, where any correct server
     must stop passing the check that needs it."""
-    radius = max(r for bands, r in rules.radii.values() if "ground" in bands)
+    radius = max(n.radius for ns in rules.needs.values() for n in ns if n.band == "ground")
     reach = rules.depth_ft + radius - margin_ft
     grounds = [e for e in scene.get("coverage", {}).get("observed", []) if e["band"] == "ground"]
     if not any(e.get("out_ft", 0.0) > reach for e in grounds):

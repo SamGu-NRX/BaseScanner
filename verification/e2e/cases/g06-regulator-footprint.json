@@ -1,4 +1,5 @@
 {
+  "generated_by": "e2e/cases/generate.py",
   "id": "g06-regulator-footprint",
   "source": "t3-lane-c-review.md golden 06 at origin/t3/research a7d91f1",
   "description": "The gas meter body stands 10 ft from the wall but its regulator reaches [7, 23/6], 2 ft from the front edge of any battery covering x = 7. Clearance is measured to every part of the footprint.",

@@ -132,6 +132,7 @@ metrics:
     text: A real-derived scene returns a result in under 1 s
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
+      # Null unless a real scene got an HTTP 200 result that was checked.
       key: latency_ms
       less_than: 1000
       require_current_sha: true
@@ -155,8 +156,9 @@ metrics:
       complete, ordering properties, hostile inputs refused in time
     report:
       glob: ~/house-scanning-data/reports/e2e/*/report.json
-      key: contract_problem_count
-      equals: 0
+      # True only when at least one scene was answered and checked and none broke the contract.
+      key: contract_ok
+      equals: true
       require_current_sha: true
 
   # --- S3 --------------------------------------------------------------------------------------
@@ -288,9 +290,9 @@ metrics:
     manual:
       status: met
       evidence: >-
-        verification/product covers every screen of t3/ios-mvf at a39d0a5, checked in the
-        Simulator there with the real server's result (verification.md); bug-triage.md has 16
-        entries, 3 resolved; ux/review.md judges every state.
+        docs/app-review/product (#61) covers every screen of t3/ios-mvf at a39d0a5, checked in
+        the Simulator there with the real server's result; its bug triage has 16 entries, 3
+        resolved; docs/app-review/ux/review.md judges every state.
 
   - id: S4-4
     workstream: S4
