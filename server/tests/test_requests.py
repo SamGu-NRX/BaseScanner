@@ -73,6 +73,8 @@ def test_ground_past_a_limit_end_is_still_asked_for_and_says_why() -> None:
     assert ground["span_ft"][1] > END + 1  # an AC unit behind the fence still counts
     assert "Part of it is past the right end" in ground["message"]
     assert "to check for" in ground["message"] and "an AC unit" in ground["message"]
+    # One "or" between the alternatives; before: "a gas meter or pipe or an AC unit".
+    assert ground["message"].count(" or ") == 1, ground["message"]
     # The pool's distance is a placeholder in these rules, so it doesn't ask (issue #75).
     assert "pool" not in ground["message"]
 
@@ -82,6 +84,30 @@ def test_a_request_inside_the_ends_has_no_past_end_hint() -> None:
     observed_band(raw, "ground", [(-40, 5), (15, 40)])
     ground = band_requests(run(raw, golden_rules()), "ground")
     assert ground and not any("past the" in m["message"] for m in ground)
+
+
+def test_once_every_request_is_met_the_rest_goes_to_a_person() -> None:
+    # Round 2 of the gap loop: the homeowner shows exactly what round 1 asked for. The gas and
+    # opening clearances' radius still crosses the limit end, where no request reaches, so before
+    # the summary read "More views are needed ... 2 checks depend on areas the scan did not see"
+    # with nothing left to show.
+    raw = spot_beside_a_limit_end()
+    first = run(raw)
+    asked = [m for m in first["missing_evidence"] if m["kind"] == "band"]
+    assert asked, first["missing_evidence"]
+    raw["coverage"]["observed"] += [
+        {
+            "band": m["band"],
+            "span_ft": m["span_ft"],
+            **({"out_ft": m["out_ft"]} if "out_ft" in m else {}),
+        }
+        for m in asked
+    ]
+    second = run(raw)
+    assert second["missing_evidence"] == [], second["missing_evidence"]
+    assert second["summary"].startswith("A person needs to check"), second["summary"]
+    still_unseen = [c for c in second["checks"] if c.get("unsure_cause") == "unobserved"]
+    assert still_unseen  # left for a person, not asked for
 
 
 # --- #75: placeholder distances don't size the requests ------------------------------------------

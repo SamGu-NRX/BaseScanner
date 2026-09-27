@@ -228,6 +228,15 @@ def _a(noun: str) -> str:
     return f"{'an' if vowel else 'a'} {noun}"
 
 
+# Ground types that are materials rather than things, so they read without an article.
+_MASS_NOUNS = frozenset({"concrete", "gravel", "mulch"})
+
+
+def _surface(kind: str) -> str:
+    """A ground type as what the battery stands on: "a driveway", "a deck", but "gravel"."""
+    return _noun(kind) if kind in _MASS_NOUNS else _a(_noun(kind))
+
+
 def _about(s: float) -> str:
     """Roughly where along the walls s is, to tell things apart: "about 14 ft right of the
     meter". Positions carry error, so whole feet."""
@@ -446,7 +455,7 @@ class Solver:
             if not core.is_empty and fp.intersection(core).area > _MEASURE_EPS:
                 c.outcome, c.subject = FAIL, f"ground[{g.index}] {g.type}"
                 c.reason = (
-                    f"The footprint stands on {_a(_noun(g.type))}, which is not an allowed surface."
+                    f"The footprint stands on {_surface(g.type)}, which is not an allowed surface."
                 )
                 return c
         if not self._covered(fp, self.unobserved_ground, ew):
@@ -1551,7 +1560,7 @@ def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
 
 # What a view of the ground past a limit end looks for, by the check that asks for it.
 _LOOKS_FOR = {
-    "gas_clearance": "a gas meter or pipe",
+    "gas_clearance": "a gas meter",
     "ac_clearance": "an AC unit",
     "battery_clearance": "another battery",
     "drive_clearance": "a driveway",
@@ -1726,15 +1735,17 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             reasons.append(unexplored_reason)
             missing += past_end_requests()
         spot_at = where((best.s0 + best.s1) / 2)
+        # Only a check that an emitted view request names is settled by more views. The rest are
+        # named for a person, as in "A person needs to check the best spot" (issue #45, #50's
+        # wording): unseen checks on a placeholder distance (issue #75), and unseen checks whose
+        # remaining views lie past an end mark, which no request asks for (issue #78).
+        requested = {i for m in missing if m["kind"] == "band" for i in m["checks"]}
         unseen = [
             c
             for c in best.checks
-            if c.outcome == UNSURE and c.unsure_cause == "unobserved" and c.asks_for_views
+            if c.outcome == UNSURE and c.unsure_cause == "unobserved" and c.id in requested
         ]
         if unseen:
-            # Only unseen checks are settled by the views asked for; the rest, including unseen
-            # ones on a placeholder distance (issue #75), are named for a person, as in "A person
-            # needs to check the best spot" (issue #45, #50's wording).
             asked = {c.id for c in unseen}
             rest = [
                 _phrase(c.label) for c in best.checks if c.outcome == UNSURE and c.id not in asked
@@ -1827,7 +1838,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                 "object": f"objects[{index}] {kind}",
                 "side": side,
                 "message": (
-                    f"The {kind.replace('_', ' ')} marked {where(s)} is past the {side} end of "
+                    f"The {_noun(kind)} marked {where(s)} is past the {side} end of "
                     "the scan, where the wall may turn, so it was not used."
                 ),
             }

@@ -193,3 +193,20 @@ def test_the_article_fits_the_noun(noun: str, expected: str) -> None:
 )
 def test_where_a_thing_is_reads_in_whole_feet(s: float, expected: str) -> None:
     assert solver._about(s) == expected
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [("drive", "a driveway"), ("deck", "a deck"), ("lawn", "a lawn"), ("gravel", "gravel")],
+)
+def test_a_surface_takes_an_article_only_if_it_is_a_thing(kind: str, expected: str) -> None:
+    # Before: "stands on a gravel" under rules that leave gravel out of ground.allowed.
+    assert solver._surface(kind) == expected
+
+
+def test_a_mark_set_aside_is_named_by_what_it_is() -> None:
+    # Before: "The elec box marked 17 ft 0 in right of the meter ...".
+    raw = window_past_the_end("unexplored")
+    raw["objects"][0]["type"] = "elec_box"
+    (aside,) = answer(raw)["objects_not_used"]
+    assert aside["message"].startswith("The electrical box marked "), aside["message"]
