@@ -82,23 +82,28 @@ jobs:
           nohup xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &
 
       # The package's drift tests compare the vendored schemas with the server's and the capture
-      # packet's own copies: the checkout's server/ and packet/ once merged, else the t3/server and
-      # t3/packet branches, which the shallow checkout leaves out. Either source is required here:
+      # packet's own copies: the checkout's files once those branches merge, else the t3/server
+      # and t3/packet branches, which the shallow checkout leaves out. One of the two is required:
       # a failed fetch fails the run, and HOUSESCAN_REQUIRE_UPSTREAM makes the tests fail rather
-      # than skip, so CI can't go green without comparing.
+      # than skip, so CI can't go green without comparing. The checkout counts only when it holds
+      # every compared file: a folder alone isn't enough (main has a server/ without schemas).
       - name: Fetch the contract branches
         run: |
-          for pair in server:t3/server packet:t3/packet; do
-            folder="${pair%%:*}" branch="${pair#*:}"
-            if [ -d "$folder" ]; then
-              echo "$folder/ is in the checkout; the drift tests read it."
-              continue
+          fetch_unless_present() {
+            local branch="$1"; shift
+            local missing=0
+            for file in "$@"; do [ -f "$file" ] || missing=1; done
+            if [ "$missing" = 0 ]; then
+              echo "$* are in the checkout; the drift tests read them."
+              return
             fi
             if ! git fetch --no-tags --depth=1 origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
-              echo "::error::Neither $folder/ nor $branch is available, so the vendored $folder schemas can't be compared."
+              echo "::error::Neither the checkout nor $branch holds $*, so the vendored copies can't be compared."
               exit 1
             fi
-          done
+          }
+          fetch_unless_present t3/server server/schemas/scene.schema.json server/schemas/result.schema.json server/tests/fixtures/example-scene.json
+          fetch_unless_present t3/packet packet/manifest.schema.json
 
       - name: Install XcodeGen
         run: |
