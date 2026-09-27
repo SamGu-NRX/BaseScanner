@@ -173,8 +173,28 @@ final class FullFlowUITests: XCTestCase {
     func testPracticeMeterFromReplay() throws {
         var readNumber: String?
         var unbadged: [String] = []
+        var drawn: CGRect?
         var app: XCUIApplication?
-        try runFlow(replay: Self.fixture, practice: true, beforeLeaving: { running, phase in
+        try runFlow(replay: Self.fixture, practice: true, onAppear: { running, phase in
+            // The close-up replays the recording from its first frames, which aim at the meter for
+            // about a second at the autopilot's 3x: the drawn sample must be on screen then, over
+            // the tapped spot at the middle of the view.
+            guard phase == "meterCloseUp" else { return }
+            let sample = running.descendants(matching: .any)["practiceMeter"]
+            let screen = running.frame
+            let deadline = Date().addingTimeInterval(10)
+            repeat {
+                if let frame = ElementRead.snapshot(sample)?.frame, frame.width > 40, screen.contains(CGPoint(x: frame.midX, y: frame.midY)) {
+                    drawn = frame
+                    let shot = XCTAttachment(screenshot: running.screenshot())
+                    shot.name = "meterCloseUp-sampleMeter"
+                    shot.lifetime = .keepAlways
+                    self.add(shot)
+                    break
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+            } while Date() < deadline
+        }, beforeLeaving: { running, phase in
             app = running
             if phase == "onboarding" {
                 Self.setPracticeMeter(true, in: running)
@@ -191,6 +211,10 @@ final class FullFlowUITests: XCTestCase {
         })
         XCTAssertNotNil(readNumber, "the reader never offered the sample meter's number \(Self.sampleNumber)")
         XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
+        let sample = try XCTUnwrap(drawn, "the sample meter was never drawn on screen at the close-up")
+        let middle = try XCTUnwrap(app).frame
+        XCTAssertLessThan(abs(sample.midX - middle.midX), middle.width / 4, "sample meter at \(sample), far from the middle of \(middle)")
+        XCTAssertLessThan(abs(sample.midY - middle.midY), middle.height / 4, "sample meter at \(sample), far from the middle of \(middle)")
 
         let running = try XCTUnwrap(app)
         running.buttons["action.startOver"].firstMatch.tap()
@@ -283,12 +307,16 @@ final class FullFlowUITests: XCTestCase {
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
     /// once the result shows, and the gate folder for the other files it leaves there.
     ///
+    /// `onAppear` runs as soon as a screen appears, before it settles, for what only its first
+    /// moments show.
+    ///
     /// The practice meter switch is stored in the app's settings, which outlive a run in the
     /// Simulator. Unless `practice` is set, `-practiceMeter NO` holds it off for this run whatever
     /// an earlier test left there; with it, the test sets the switch itself.
     @MainActor
     private func runFlow(
         replay: String, extraArguments: [String] = [], practice: Bool = false,
+        onAppear: (XCUIApplication, String) -> Void = { _, _ in },
         beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
         onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
@@ -314,6 +342,7 @@ final class FullFlowUITests: XCTestCase {
             // The walk replays the whole recording; everything else takes seconds.
             let timeout: TimeInterval = phase == "markFeatures" || phase == "result" ? 150 : 60
             XCTAssertTrue(screen.waitForExistence(timeout: timeout), "screen.\(phase) never appeared")
+            onAppear(app, phase)
             // Let the entrance animation finish so the screenshot and audit see the settled screen.
             Thread.sleep(forTimeInterval: 1.0)
             let shot = XCTAttachment(screenshot: app.screenshot())

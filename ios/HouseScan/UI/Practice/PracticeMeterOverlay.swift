@@ -14,22 +14,34 @@ struct PracticeMeterOverlay: View {
         GeometryReader { proxy in
             // Hidden while tracking isn't normal, like the other overlays: from a pose the phone
             // doesn't trust, it would sit in the wrong place.
-            if state.tracking == .normal, let face = SampleMeterArt.face, let transform = transform(in: proxy.size) {
-                Image(decorative: face, scale: 1)
-                    .resizable()
-                    .frame(width: CGFloat(face.width), height: CGFloat(face.height))
-                    .projectionEffect(transform)
-                    .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+            if state.tracking == .normal, let face = SampleMeterArt.face, let placed = placement(in: proxy.size) {
+                ZStack(alignment: .topLeading) {
+                    Image(decorative: face, scale: 1)
+                        .resizable()
+                        .frame(width: CGFloat(face.width), height: CGFloat(face.height))
+                        .projectionEffect(placed.transform)
+                        .accessibilityHidden(true)
+                    // The camera shows a real meter to anyone who can see it; this one exists only
+                    // in the app, so VoiceOver finds it where it is drawn.
+                    Color.clear
+                        .frame(width: placed.bounds.width, height: placed.bounds.height)
+                        .position(x: placed.bounds.midX, y: placed.bounds.midY)
+                        .accessibilityElement()
+                        .accessibilityLabel("Sample meter")
+                        .accessibilityAddTraits(.isImage)
+                        .accessibilityIdentifier("practiceMeter")
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
             }
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
-    /// Takes the face image's rectangle onto the sample's four corners on screen; nil when the
-    /// wall isn't set yet or any corner is behind the camera.
-    private func transform(in size: CGSize) -> ProjectionTransform? {
+    /// The transform that takes the face image's rectangle onto the sample's four corners on
+    /// screen, and the corners' bounding box; nil when the wall isn't set yet or any corner is
+    /// behind the camera.
+    private func placement(in size: CGSize) -> (transform: ProjectionTransform, bounds: CGRect)? {
         guard let wall = state.wall, let projection = state.projection, let face = SampleMeterArt.face else { return nil }
         var quad: [SIMD2<Double>] = []
         for corner in PracticeMeter.plateCorners(meter: wall.meter, along: wall.along, outward: wall.outward) {
@@ -48,7 +60,10 @@ struct PracticeMeterOverlay: View {
         transform.m31 = m[0][2]
         transform.m32 = m[1][2]
         transform.m33 = m[2][2]
-        return transform
+        let xs = quad.map(\.x)
+        let ys = quad.map(\.y)
+        let bounds = CGRect(x: xs.min() ?? 0, y: ys.min() ?? 0, width: (xs.max() ?? 0) - (xs.min() ?? 0), height: (ys.max() ?? 0) - (ys.min() ?? 0))
+        return (transform, bounds)
     }
 }
 
