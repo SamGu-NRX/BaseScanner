@@ -51,7 +51,11 @@ struct InstructionCard: View {
                     .accessibilityIdentifier(reply.identifier)
                     .padding([.horizontal, .bottom], 12)
                     .padding(.top, -4)
-                    .transition(.opacity)
+                    // Appears and goes at once, like the message above it: the walk's request can
+                    // change every few seconds, and a fading button spends those moments as faint
+                    // text on the card, which the accessibility audit caught twice on CI (runs
+                    // 36295565916, and the LiDAR replay after the coaching fix).
+                    .transition(.identity)
             }
         }
         .frame(maxWidth: .infinity)
