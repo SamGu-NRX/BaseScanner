@@ -11,7 +11,7 @@
 **Result.**
 
 - Apple's on-device Vision read the number on 71 of 73 real photos (97%) and the US class label on 20 of 22.
-- No rule can fill the number in unasked: the best is right on 6 of 8 held-out picks. The top three held it on 28 of 33 held-out photos (85%), short of the bar.
+- No rule can fill the number in unasked: the best is right on 5 of 7 held-out picks. The top three held it on 27 of 32 held-out photos (84%), short of the bar. Held out means meters the rules never saw.
 - Two phone-side retake checks work: whole-photo sharpness of 6.68 or less, and a top candidate 33.9 px tall or less. Glare, framing and hand shake have none.
 - The labels come from two AI readers, not people.
 

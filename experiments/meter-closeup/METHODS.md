@@ -55,12 +55,16 @@ Every failed degraded read was retried on a crop around the top candidate, and o
 
 `meterocr` also runs `VNDetectBarcodesRequest` (revision 4). Candidates are the digit-bearing tokens of every recognized line. A candidate is right when it equals the labelled number after dropping separators and any leading letters. `locate.py` scores candidates by barcode confirmation, a `No.`, `Nr.` or `#:` label, standing alone on the line, and length, and penalizes specification lines, rotated text and runs of zeros.
 
-The rules and weights were written on the odd-numbered photos only and committed before the even-numbered photos were scored (`results/locate_dev.md`, then `results/locate.md`). The number-finding misses split evenly:
+The rules and weights were written on the odd-numbered photos only and committed before the even-numbered photos were scored (`results/locate_dev.md`, then `results/locate.md`).
+
+The held-out set is split by physical meter, not by photo number, so no meter the rules saw is scored as held out. A meter is identified by its labelled number's keyed digest. A meter with any odd-numbered photo goes wholly to the design side (`locate.meter_splits`). One meter had three photos across both halves; moving its even-numbered photo to the design side changed the held-out figures from 28/33 (85%) to 27/32 (84%) in the top three, and barcode precision from 6/8 to 5/7. Both criteria failed either way. Two photos have no labelled number, so their meter is unknown; neither is held out. A cross-check against every number either reader transcribed found one more shared string, a model code printed on two different meters whose labelled numbers differ, so those stay separate.
+
+The number-finding misses split evenly:
 
 - **Several real identifiers on one plate.** The rule picked a maker serial, a second barcode or a `SERIAL#` line. Base needs to say which identifier it uses.
 - **Vision split the number.** A prefix or digits landed in a separate observation, so the exact number never became a candidate.
 
-The US-only barcode result (3 of 3 held out) was chosen after scoring, so it is exploratory.
+The US-only barcode result (2 of 2 held out) was chosen after scoring, so it is exploratory.
 
 ## Limits
 

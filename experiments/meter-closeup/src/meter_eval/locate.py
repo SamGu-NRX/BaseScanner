@@ -6,7 +6,9 @@ core, so "NO. 12345678" and "ABC 123456" count, while a longer string that merel
 the number, such as a barcode line "*XYZ1234567890…*", does not.
 
 The rules and the ranking were written from the odd-numbered photos only (`--split dev`)
-and committed before the even-numbered photos were scored.
+and committed before the even-numbered photos were scored. The held-out set is split by
+physical meter, not by photo: a meter with any odd-numbered photo counts as seen by the rules,
+so all its photos go to the design side (`meter_splits`).
 
 Writes results/locate.md and results/locate_per_image.csv; raw Vision output stays in the
 data directory because it contains meter numbers.
@@ -208,10 +210,30 @@ def barcode_stats(row: dict, result: dict) -> dict:
     }
 
 
-def evaluate(row: dict, result: dict) -> dict:
+def meter_splits(rows: list[dict]) -> dict[str, str]:
+    """Each photo's side, assigned per physical meter.
+
+    A meter is identified by its labelled number's keyed digest, so photos of one meter share
+    a side. It goes to the design side ("dev") when any of its photos is odd-numbered, because
+    the rules were written on those photos, and is held out ("test") only when the rules never
+    saw it. A photo without a labelled number has no known meter: "unknown", never held out.
+    """
+    photos_of: dict[str, list[str]] = {}
+    for row in rows:
+        if row["number_core_hmac"]:
+            photos_of.setdefault(row["number_core_hmac"], []).append(row["id"])
+    splits = {row["id"]: "unknown" for row in rows}
+    for photos in photos_of.values():
+        seen = any(int(photo[1:]) % 2 for photo in photos)
+        for photo in photos:
+            splits[photo] = "dev" if seen else "test"
+    return splits
+
+
+def evaluate(row: dict, result: dict, split: str) -> dict:
     out = {
         "id": row["id"],
-        "split": "dev" if int(row["id"][1:]) % 2 else "test",
+        "split": split,
         "us_style": int(row["class_kind"] == "ansi_class"),
         "strict": int(row["number_agreed_strict"] == "yes"),
     }
@@ -255,12 +277,12 @@ def barcode_table(rows: list[dict]) -> str:
 def rule_table(rows: list[dict], names: list[str]) -> str:
     out = []
     groups = {
-        "odd-numbered photos, used to write the rules": lambda r: r["split"] == "dev",
-        "even-numbered photos, held out": lambda r: r["split"] == "test",
+        "design side: meters with a photo the rules were written on": lambda r: r["split"] == "dev",
+        "held out: meters the rules never saw": lambda r: r["split"] == "test",
         "all photos": lambda r: True,
         "all photos, strict labels (readers' main numbers identical)": lambda r: r["strict"],
         # Exploratory: chosen after the held-out scoring, as a description of Base's market.
-        "exploratory: US-style meters (CL class label), odd-numbered": lambda r: (
+        "exploratory: US-style meters (CL class label), design side": lambda r: (
             r["us_style"] and r["split"] == "dev"
         ),
         "exploratory: US-style meters (CL class label), held out": lambda r: (
@@ -302,7 +324,11 @@ def main() -> None:
     if args.split == "dev":
         manifest = [r for r in manifest if int(r["id"][1:]) % 2]
     results = scan(manifest)
-    rows = [evaluate(row, results[row["id"]]) for row in manifest]
+    # The --split dev run reproduces the frozen record: the odd-numbered photos, all design side.
+    splits = (
+        {row["id"]: "dev" for row in manifest} if args.split == "dev" else meter_splits(manifest)
+    )
+    rows = [evaluate(row, results[row["id"]], splits[row["id"]]) for row in manifest]
     names = list(rules([], []))  # rule names, in table order
     text = "\n".join(
         [

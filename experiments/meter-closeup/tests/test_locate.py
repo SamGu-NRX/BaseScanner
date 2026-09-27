@@ -80,3 +80,24 @@ def test_rules_do_not_fire_without_their_cue():
     assert picks["barcode confirms a text line"] is None
     assert picks["after a No./Nr./#: keyword"] is None
     assert picks["tallest digit line (phase 1)"]["core"] == "12345678"
+
+
+def test_meter_splits_keep_every_photo_of_a_meter_on_one_side():
+    from meter_eval.locate import meter_splits
+
+    rows = [
+        {"id": "m05", "number_core_hmac": "a"},  # odd: the rules saw meter a
+        {"id": "m06", "number_core_hmac": "a"},  # even, but the same meter: design side
+        {"id": "m08", "number_core_hmac": "b"},  # even, a meter the rules never saw
+        {"id": "m10", "number_core_hmac": "b"},
+        {"id": "m12", "number_core_hmac": ""},  # no labelled number: meter unknown
+        {"id": "m13", "number_core_hmac": ""},
+    ]
+    assert meter_splits(rows) == {
+        "m05": "dev",
+        "m06": "dev",
+        "m08": "test",
+        "m10": "test",
+        "m12": "unknown",
+        "m13": "unknown",
+    }
