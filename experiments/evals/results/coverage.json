@@ -40,7 +40,7 @@
      "range": 0.0,
      "one position": 0.0
     },
-    "claimed_samples_seen_only_where_scan_is_empty": 0.0,
+    "claimed_samples_unknown_for_lack_of_scan": 0.0,
     "passes": false
    },
    "ground": {
@@ -62,7 +62,7 @@
      "range": 0.0,
      "one position": 0.0
     },
-    "claimed_samples_seen_only_where_scan_is_empty": 0.0,
+    "claimed_samples_unknown_for_lack_of_scan": 0.0,
     "passes": null
    }
   }

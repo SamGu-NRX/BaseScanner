@@ -1,4 +1,4 @@
-"""Does the app's coverage map claim wall and ground that no photo saw? (README section 7)
+"""Does the app's coverage map claim wall and ground that no photo saw? (METHODS.md section 7)
 
 The app exports as observed the stretches `CoverageMap.coveredIntervals` returns (`ios/HouseScanKit`
 on t3/ios-mvf), and the server passes a check only over them. This runs that code, unmodified, on
@@ -10,7 +10,7 @@ Frames. ETH3D's world is levelled on the ground plane under the cameras (ARKit's
 to the app in ARKit's camera axes (+x right, +y up, looking along -z), intrinsics unrotated, with
 (0, 0) at the image's top-left corner, the convention of `CameraFrame`.
 
-The truth, the pass criteria and the cause labels are defined in README section 7. The only copy of
+The truth, the pass criteria and the cause labels are defined in METHODS.md section 7. The only copy of
 app logic here is `app_rows`, a replica of `CoverageMap.visibleRows` used to name why the app turned
 a photo down; `main` refuses to report unless it reproduces the app's own sightings exactly.
 """
@@ -37,6 +37,7 @@ from evals.eth3d import (
     scan_points,
     up_direction,
 )
+from evals.pairs import results_json
 from evals.paths import ETH3D_DIR, EVALS_DIR
 
 KIT_COMMIT = "beede15f568b3a4d694fb275caf9eaaa882c546b"
@@ -412,7 +413,8 @@ class PhotoTruth:
 
     @property
     def saw(self) -> np.ndarray:
-        return self.framed & self.in_range & self.facing & ~self.hidden
+        # No scan point near the pixel leaves occlusion unknown, which is not seen.
+        return self.framed & self.in_range & self.facing & ~self.hidden & ~self.no_scan
 
 
 def photo_truth(
@@ -602,8 +604,10 @@ def evaluate_band(
 
     ft = COLUMN_M / FEET
     claimed_ft = claimed.sum() * ft
-    no_scan = np.stack([t.no_scan & t.saw for t in truths], axis=-1)
-    only_unknown = seen1 & ~(saw & ~no_scan).any(axis=-1)
+    # Samples no photo saw, but where some photo framed them over an empty scan pixel: unknown
+    # rather than unseen. Counted apart so a laser hole is visible in the result.
+    unknown = np.stack([t.framed & t.in_range & t.facing & t.no_scan for t in truths], axis=-1)
+    only_unknown = ~seen1 & unknown.any(axis=-1)
     return {
         "claimed_ft": claimed_ft,
         "false_observed_ft": false_cols.sum() * ft,
@@ -614,7 +618,7 @@ def evaluate_band(
         "seen_two_view_ft": seen2.all(axis=1).sum() * ft,
         "missed_ft": missed_cols.sum() * ft,
         "missed_by_cause_ft": {k: missed_causes[k] * ft for k in MISSED_CAUSES},
-        "claimed_samples_seen_only_where_scan_is_empty": float(only_unknown[claimed].mean())
+        "claimed_samples_unknown_for_lack_of_scan": float(only_unknown[claimed].mean())
         if claimed.any()
         else 0.0,
         # Nothing claimed tests nothing.
@@ -816,7 +820,7 @@ def markdown(runs: list[dict]) -> str:
         f"HouseScanKit `CoverageMap` at {KIT_COMMIT} (t3/ios-mvf), unmodified, default "
         "`CoverageConfig`. ETH3D photos with true poses, "
         "every photo a kept keyframe. Lengths in feet along the wall. Definitions and pass criteria: "
-        "README section 7.",
+        "METHODS.md section 7.",
         "",
         "| Scene | Band | Claimed | False-observed (share) | Pass (<= 0.5 ft) | Causes: occlusion / frame edge / range | False-observed, 2-position truth (share) | Seen from 2 positions | Missed | Missed causes: frame edge / grazing / range / one position |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -839,7 +843,7 @@ def markdown(runs: list[dict]) -> str:
         "",
         "## Setup and validity checks",
         "",
-        "| Scene | Photos (with a sighting) | Wall stretch | Of it, pilaster faces | Wall plane fit RMS | Ground fit RMS | App sightings | Replica mismatches | Claimed samples seen only where the scan is empty (wall / ground) |",
+        "| Scene | Photos (with a sighting) | Wall stretch | Of it, pilaster faces | Wall plane fit RMS | Ground fit RMS | App sightings | Replica mismatches | Claimed samples unknown for lack of scan (wall / ground) |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for r in runs:
@@ -854,8 +858,8 @@ def markdown(runs: list[dict]) -> str:
             f"{r['wall_length_ft']:.1f} ft | {r['pilaster_ft']:.1f} ft | "
             f"{r['wall_fit_rms_cm']:.1f} cm | {r['ground_fit_rms_cm']:.1f} cm | "
             f"{r['sightings']} | {r['replica_mismatches']} | "
-            f"{100 * b['wall']['claimed_samples_seen_only_where_scan_is_empty']:.1f}% / "
-            f"{100 * b['ground']['claimed_samples_seen_only_where_scan_is_empty']:.1f}% |"
+            f"{100 * b['wall']['claimed_samples_unknown_for_lack_of_scan']:.1f}% / "
+            f"{100 * b['ground']['claimed_samples_unknown_for_lack_of_scan']:.1f}% |"
         )
     return "\n".join(lines) + "\n"
 
@@ -865,7 +869,7 @@ def main() -> None:
     runs = [evaluate_scene(scene) for scene in RUNS]
     bad = [r["scene"] for r in runs if r["wall"] and r["replica_mismatches"]]
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "coverage.json").write_text(json.dumps(runs, indent=1))
+    (RESULTS / "coverage.json").write_text(results_json(runs))
     if bad:
         raise SystemExit(f"cause replica disagrees with the app on {bad}; causes would be wrong")
     md = markdown(runs)

@@ -100,6 +100,13 @@ def _depth(kid, scale):
     return d
 
 
+@pytest.fixture(autouse=True)
+def _free_space_is_not_under_test(monkeypatch):
+    # Unpacking needs 3 GB left free; these tests write a few KB and must not depend on how full
+    # the machine is. test_unpack_needs_free_space_to_remain restores the bound and mocks the disk.
+    monkeypatch.setattr(field, "MIN_FREE_AFTER_UNPACK", 0)
+
+
 @pytest.fixture
 def case(tmp_path, monkeypatch):
     monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
@@ -119,6 +126,7 @@ def case(tmp_path, monkeypatch):
     work = tmp_path / "field" / "work" / "synthetic-field"
     (work / "moge2").mkdir(parents=True)
     (work / "turns.json").write_text(json.dumps(dict.fromkeys(CAMERAS, 0)))
+    (work / "capture.json").write_text(json.dumps({"capture": capture}))
     for kid in CAMERAS:
         np.savez(
             work / "moge2" / f"{kid}.npz",
@@ -295,7 +303,7 @@ def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
     survey["measurements"][1]["value_ft"] = "32 9 3/4"
     paths["truth"].write_text(json.dumps(survey))
     mapping = json.loads(paths["map"].read_text())
-    mapping["session"] = "placeholder"
+    mapping["session"] = field.MAP_SESSION_PLACEHOLDER
     paths["map"].write_text(json.dumps(mapping))
     stamped = field.stamp(archive, paths["truth"], paths["map"], out)
     survey = json.loads(paths["truth"].read_text())
@@ -305,6 +313,18 @@ def test_stamp_fills_in_capture_session_and_feet(case, tmp_path):
     # Idempotent: a second stamp adds nothing.
     field.stamp(archive, paths["truth"], paths["map"], out)
     assert json.loads(paths["truth"].read_text())["captures"] == [capture]
+
+
+def test_stamp_refuses_a_map_bound_to_another_session_before_writing(case):
+    archive, paths, _, out = case
+    survey_before = paths["truth"].read_text()
+    mapping = json.loads(paths["map"].read_text())
+    mapping["session"] = "some-other-session"
+    paths["map"].write_text(json.dumps(mapping))
+    with pytest.raises(ValueError, match="is the map for session 'some-other-session'"):
+        field.stamp(archive, paths["truth"], paths["map"], out)
+    assert paths["truth"].read_text() == survey_before
+    assert not (out / "inputs" / "map.json").exists()
 
 
 @pytest.mark.parametrize("text", ["30 2 5", "30 1/4 2", "1 1/0", "1/2", "30 -2"])
@@ -319,3 +339,315 @@ def test_safe_id_refuses_path_components(bad):
     with pytest.raises(ValueError):
         field.safe_id(bad, "session id")
     assert field.safe_id("synthetic-field_1.2", "session id") == "synthetic-field_1.2"
+
+
+def test_session_file_stays_inside_the_session(tmp_path):
+    (tmp_path / "keyframes").mkdir()
+    (tmp_path / "keyframes" / "k.jpg").write_bytes(b"x")
+    assert (
+        field.session_file(tmp_path, "keyframes/k.jpg")
+        == (tmp_path / "keyframes" / "k.jpg").resolve()
+    )
+    for bad in ["/etc/hosts", "../outside.jpg", "keyframes/../../outside.jpg"]:
+        with pytest.raises(ValueError):
+            field.session_file(tmp_path, bad)
+
+
+def test_score_refuses_predictions_prepared_for_another_capture(case):
+    archive, paths, _, out = case
+    stamp = field.FIELD_DIR / "work" / "synthetic-field" / "capture.json"
+    stamp.write_text(json.dumps({"capture": "0" * 64}))  # same session id, different archive
+    with pytest.raises(ValueError, match="prepared for another capture"):
+        field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+
+
+def test_score_refuses_a_map_for_another_session(case):
+    archive, paths, _, out = case
+    mapping = json.loads(paths["map"].read_text())
+    mapping["session"] = "some-other-session"
+    paths["map"].write_text(json.dumps(mapping))
+    with pytest.raises(ValueError, match="map is for session"):
+        field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+
+
+def test_a_failed_tape_reference_fails_only_the_tape_row(case, monkeypatch):
+    archive, paths, _, out = case
+
+    def no_scale(*args, **kwargs):
+        raise ValueError("no model depth at a reference tap")
+
+    monkeypatch.setattr(field, "tape_scale", no_scale)
+    report = field.score(archive, paths["truth"], paths["map"], paths["rules"], out)
+    assert "every value failed" in report
+    tape_row = json.loads((out / "moge2-tape.json").read_text())
+    assert all(m["value_ft"] is None for m in tape_row["measurements"])
+    native = json.loads((out / "moge2.json").read_text())
+    assert any(m["value_ft"] is not None for m in native["measurements"])
+
+
+def _zip(path, members):
+    with zipfile.ZipFile(path, "w") as z:
+        for name, data in members:
+            z.writestr(name, data)
+    return path
+
+
+SESSION_JSON = json.dumps({"format": "measure-lab-session", "formatVersion": 2})
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["../session.json", "/session.json", "a/../../session.json", "C:/session.json", "a\\b.jpg"],
+)
+def test_unpack_refuses_member_paths_that_leave_the_folder(tmp_path, monkeypatch, name):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), (name, "x")])
+    with pytest.raises(ValueError, match="not a plain relative path"):
+        field.unpack(archive)
+    assert not (tmp_path / "session.json").exists()
+    assert not (tmp_path / "field").exists()  # refused before anything was written
+
+
+def test_unpack_refuses_duplicates_and_too_many_or_too_large_members(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    dup = tmp_path / "dup.zip"
+    # "s/./a.jpg" names the same file as "s/a.jpg" once normalised.
+    _zip(dup, [("s/session.json", SESSION_JSON), ("s/a.jpg", "1"), ("s/./a.jpg", "2")])
+    with pytest.raises(ValueError, match="appears twice"):
+        field.unpack(dup)
+    monkeypatch.setattr(field, "MAX_ZIP_MEMBERS", 2)
+    many = _zip(
+        tmp_path / "many.zip", [("s/session.json", SESSION_JSON), ("s/a", "1"), ("s/b", "2")]
+    )
+    with pytest.raises(ValueError, match="more than 2"):
+        field.unpack(many)
+    monkeypatch.setattr(field, "MAX_ZIP_MEMBERS", 10)
+    monkeypatch.setattr(field, "MAX_ZIP_BYTES", 100)
+    big = _zip(tmp_path / "big.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 200)])
+    with pytest.raises(ValueError, match="more than 100"):
+        field.unpack(big)
+
+
+def test_unpack_counts_bytes_even_when_a_header_understates_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_BYTES", 100)
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 200)])
+    real = zipfile.ZipFile.infolist
+
+    def understated(self):
+        infos = real(self)
+        for info in infos:
+            info.file_size = 1  # as a crafted header would claim
+        return infos
+
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", understated)
+    with pytest.raises((ValueError, zipfile.BadZipFile)):
+        field.unpack(archive)
+    assert not list((tmp_path / "field").glob("*/s/a"))  # nothing left half-written
+
+
+def test_unpack_needs_free_space_to_remain(tmp_path, monkeypatch):
+    from collections import namedtuple
+
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MIN_FREE_AFTER_UNPACK", 3 * 1024**3)
+    Usage = namedtuple("Usage", "total used free")
+    monkeypatch.setattr(field.shutil, "disk_usage", lambda p: Usage(0, 0, 1024**3))
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON)])
+    with pytest.raises(ValueError, match="less than 3 GB free"):
+        field.unpack(archive)
+
+
+def test_unpack_extracts_a_plain_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/k/a.jpg", "x")])
+    folder, digest = field.unpack(archive)
+    assert folder.is_relative_to((tmp_path / "field").resolve())
+    assert (folder / "k" / "a.jpg").read_text() == "x"
+    assert field.unpack(archive) == (folder, digest)  # a second call reuses the folder
+
+
+def test_unpack_refuses_an_oversized_archive_before_reading_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_ARCHIVE_BYTES", 100)
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 500)])
+
+    def no_read(*args, **kwargs):
+        raise AssertionError("an oversized archive was hashed or opened")
+
+    monkeypatch.setattr(field, "file_sha256", no_read)
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_read)
+    with pytest.raises(ValueError, match="more than 100"):
+        field.unpack(archive)
+
+
+def test_unpack_counts_every_zip_entry_including_skipped_ones(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 3)
+    entries = [("s/session.json", SESSION_JSON)] + [(f"__MACOSX/{i}", "") for i in range(3)]
+    archive = _zip(tmp_path / "s.zip", entries)
+    with pytest.raises(ValueError, match="4 zip entries, more than 3"):
+        field.unpack(archive)
+
+
+def test_file_sha256_streams_and_matches_hashlib(tmp_path):
+    path = tmp_path / "f"
+    path.write_bytes(b"x" * (3 << 20) + b"tail")  # spans several 1 MB reads
+    assert field.file_sha256(path) == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_zip_directory_limits_apply_before_zipfile_reads_the_directory(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    entries = [("s/session.json", SESSION_JSON)] + [(f"s/{i:03d}", "") for i in range(20)]
+    archive = _zip(tmp_path / "s.zip", entries)
+
+    def no_zipfile(*args, **kwargs):
+        raise AssertionError("ZipFile read the directory before the limits were checked")
+
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_zipfile)
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 10)
+    with pytest.raises(ValueError, match="21 zip entries, more than 10"):
+        field.unpack(archive)
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 100)
+    monkeypatch.setattr(field, "MAX_ZIP_DIRECTORY_BYTES", 200)
+    with pytest.raises(ValueError, match="zip directory, more than 200"):
+        field.unpack(archive)
+
+
+def test_zip_directory_limits_read_zip64_end_records(tmp_path, monkeypatch):
+    archive = tmp_path / "z64.zip"
+    # Writing more entries than this limit makes zipfile add a ZIP64 end record, as a very large
+    # session would, without writing 65,536 files.
+    monkeypatch.setattr(zipfile, "ZIP_FILECOUNT_LIMIT", 1)
+    _zip(archive, [("s/session.json", SESSION_JSON), ("s/a", "x"), ("s/b", "y")])
+    with archive.open("rb") as f:
+        assert zipfile._EndRecData(f)[zipfile._ECD_SIGNATURE] == zipfile.stringEndArchive64
+    field.check_zip_directory(archive)  # a well-formed ZIP64 archive passes
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 2)
+    with pytest.raises(ValueError, match="3 zip entries, more than 2"):
+        field.check_zip_directory(archive)
+
+
+def test_a_file_that_is_not_a_zip_is_refused_loudly(tmp_path):
+    path = tmp_path / "s.zip"
+    path.write_bytes(b"not a zip at all")
+    with pytest.raises(ValueError, match="not a zip file"):
+        field.check_zip_directory(path)
+
+
+def test_a_reported_multi_gigabyte_archive_is_refused_from_its_size_alone(tmp_path, monkeypatch):
+    import os
+    from pathlib import Path
+
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON)])
+    real_stat = Path.stat
+
+    def huge(self, *args, **kwargs):
+        st = real_stat(self, *args, **kwargs)
+        if self == archive:
+            fields = list(st)
+            fields[6] = 5 * 1024**3  # st_size: a 5 GiB file, without writing one
+            return os.stat_result(fields)
+        return st
+
+    def no_read(*args, **kwargs):
+        raise AssertionError("the archive was read or opened")
+
+    monkeypatch.setattr(Path, "stat", huge)
+    monkeypatch.setattr(field, "check_zip_directory", no_read)
+    monkeypatch.setattr(field, "file_sha256", no_read)
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_read)
+    with pytest.raises(ValueError, match="more than 2147483648"):
+        field.unpack(archive)
+
+
+def _jpeg_claiming(width: int, height: int) -> bytes:
+    """A few dozen bytes: SOI, an APP0 segment to skip, then a baseline frame header declaring
+    `width` x `height`, with no pixel data behind it."""
+    app0 = b"\xff\xe0" + (16).to_bytes(2, "big") + b"JFIF\x00" + bytes(9)
+    sof0 = (
+        b"\xff\xc0"
+        + (17).to_bytes(2, "big")
+        + b"\x08"
+        + height.to_bytes(2, "big")
+        + width.to_bytes(2, "big")
+        + b"\x03"
+        + bytes(9)
+    )
+    return b"\xff\xd8" + app0 + sof0 + b"\xff\xd9"
+
+
+def test_image_size_reads_real_and_crafted_headers(tmp_path):
+    real = tmp_path / "real.jpg"
+    cv2.imwrite(str(real), np.zeros((48, 64, 3), np.uint8))
+    assert field.image_size(real) == (64, 48)
+    png = tmp_path / "real.png"
+    cv2.imwrite(str(png), np.zeros((5, 7), np.uint8))
+    assert field.image_size(png) == (7, 5)
+    crafted = tmp_path / "bomb.jpg"
+    crafted.write_bytes(_jpeg_claiming(65535, 65535))
+    assert field.image_size(crafted) == (65535, 65535)
+
+
+def test_an_image_whose_header_claims_too_many_pixels_is_never_decoded(tmp_path, monkeypatch):
+    bomb = tmp_path / "bomb.jpg"
+    bomb.write_bytes(_jpeg_claiming(65535, 65535))  # 4.3 gigapixels claimed in 60 bytes
+
+    def no_decode(*args, **kwargs):
+        raise AssertionError("an oversized image was decoded")
+
+    monkeypatch.setattr(field.cv2, "imread", no_decode)
+    with pytest.raises(ValueError, match="more than 50000000"):
+        field.read_session_image(bomb)
+    other = tmp_path / "x.gif"
+    other.write_bytes(b"GIF89a" + bytes(20))
+    with pytest.raises(ValueError, match="not a JPEG or PNG"):
+        field.read_session_image(other)
+
+
+def test_a_session_image_within_the_bound_decodes(tmp_path):
+    path = tmp_path / "k.jpg"
+    cv2.imwrite(str(path), np.full((30, 40, 3), 200, np.uint8))
+    assert field.read_session_image(path).shape == (30, 40, 3)
+    assert field.read_session_image(path, cv2.IMREAD_GRAYSCALE).shape == (30, 40)
+
+
+def test_session_memory_follows_one_group_not_the_session():
+    loads, live_peak = [], 0
+    frames = field.GroupFrames(lambda k: loads.append(k) or (k,), lambda k: 1_000_000)
+    groups = [[f"k{i}", f"k{i + 1}", f"k{i + 2}"] for i in range(50)]  # a 52-keyframe walk
+    for group in groups:
+        held = frames.hold(group)
+        assert set(held) == set(group)
+        live_peak = max(live_peak, len(frames.held))
+    assert live_peak == 3  # never more than one group, however long the session
+    assert len(loads) == 52  # overlapping frames are kept, not decoded again
+
+
+def test_a_group_over_the_pixel_budget_is_refused_before_decoding(monkeypatch):
+    def no_decode(k):
+        raise AssertionError("a frame was decoded")
+
+    # Eight 48 MP photos, sized from their headers only: 390 MP against a 200 MP budget.
+    frames = field.GroupFrames(no_decode, lambda k: 8064 * 6048)
+    with pytest.raises(ValueError, match="more than 200000000"):
+        frames.hold([f"k{i}" for i in range(8)])
+    small = field.GroupFrames(lambda k: (k,), lambda k: 1920 * 1440)  # eight ARKit keyframes
+    assert len(small.hold([f"k{i}" for i in range(8)])) == 8
+
+
+def test_stamp_refuses_a_survey_already_bound_to_another_capture(case):
+    archive, paths, capture, out = case
+    survey = json.loads(paths["truth"].read_text())
+    survey["captures"] = ["0" * 64]  # the survey from another walk
+    survey["measurements"][1]["value_ft"] = "32 9 3/4"
+    paths["truth"].write_text(json.dumps(survey))
+    before = paths["truth"].read_text()
+    with pytest.raises(ValueError, match=f"already the survey for capture {'0' * 64}"):
+        field.stamp(archive, paths["truth"], paths["map"], out)
+    assert paths["truth"].read_text() == before  # nothing converted or appended
+    assert not (out / "inputs" / "map.json").exists()
+    survey["captures"] = [capture]  # its own capture, stamped before: accepted again
+    paths["truth"].write_text(json.dumps(survey))
+    field.stamp(archive, paths["truth"], paths["map"], out)

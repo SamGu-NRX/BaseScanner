@@ -30,6 +30,7 @@ produced them, so rescoring does not refit and changed inputs do.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 from pathlib import Path
@@ -39,7 +40,7 @@ import numpy as np
 
 from evals.ar_poses import ADVIO_ARKIT_SCALES, SETTINGS, group_poses, noise_draws
 from evals.eth3d import SCENES, read_views
-from evals.pairs import INCH, evaluate_fixed, pool
+from evals.pairs import INCH, evaluate_fixed, pool, results_json
 from evals.paths import ETH3D_DIR
 from evals.recon import (
     COHORTS,
@@ -51,9 +52,11 @@ from evals.recon import (
     Method,
     Scene,
     cell,
+    comparable_groups,
     load_prediction,
     model_frame_method,
     predict,
+    require_complete,
 )
 from evals.triangulate import view_scales
 
@@ -63,9 +66,14 @@ BOOTSTRAP_REPS = 1000
 # Percentiles interpolate and inf - inf is NaN, so failures become a finite sentinel (as in
 # `evals.pairs.summarize`) and any result that touches one is reported as a failure.
 SENTINEL = 1e12
-# The MapAnything advio_2018 runs were given the poses of the earlier advio_2018 setting, whose
-# scales were ARKit against ARCore (0.883, 0.936, 0.958); the weights are gone, so it cannot rerun.
-MAPANYTHING_LABELS = {"advio_2018": "advio_2018 poses, earlier ARCore-referenced scales"}
+# The published MapAnything advio_2018 runs were given the poses of the earlier advio_2018 setting,
+# whose scales were ARKit against ARCore (0.883, 0.936, 0.958). Those runs predate the pose hash in
+# run.json, so a run without one keeps this label; a run that records its poses is labelled by them.
+HISTORICAL_MAPANYTHING = {"advio_2018": "advio_2018 poses, earlier ARCore-referenced scales"}
+HISTORICAL_NOTE = (
+    " Its advio_2018 row was run on the earlier advio_2018 poses, whose scales were ARKit against "
+    "ARCore (0.883, 0.936, 0.958), with the same noise as draw 0 here."
+)
 
 
 def pose_file(scene: str, setting: str, draw: int = 0) -> Path:
@@ -110,15 +118,56 @@ class FitCache:
             self.changed = False
 
 
-def fit_inputs(T: dict, K: dict, max_reproj_px: float) -> str:
-    """What a group's scale fit depends on besides the images and depth maps on disk."""
+@functools.cache
+def _file_digest(path: Path, mtime_ns: int, size: int) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def file_digest(path: Path) -> str:
+    """sha256 of a file's bytes, computed once per (path, modification time, size)."""
+    st = path.stat()
+    return _file_digest(path, st.st_mtime_ns, st.st_size)
+
+
+def fit_inputs(
+    T: dict, K: dict, max_reproj_px: float, images: dict[str, Path], depths: dict[str, Path]
+) -> str:
+    """Everything a group's scale fit reads: poses, intrinsics, the threshold, and the bytes of
+    each member's image and depth prediction."""
     spec = {
         "model": MODEL,
         "poses": {m: np.asarray(t).tolist() for m, t in T.items()},
         "K": {m: np.asarray(k).tolist() for m, k in K.items()},
         "max_reproj_px": max_reproj_px,
+        "images": {m: file_digest(p) for m, p in images.items()},
+        "depths": {m: file_digest(p) for m, p in depths.items()},
     }
     return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def mapanything_label(run_root: Path, setting: str, poses_file: Path) -> str:
+    """A MapAnything row's label, from the poses its groups' run.json files record. Runs that
+    record no pose hash are the published historical ones; runs that record one must all match
+    the current pose file, or the row would mix poses."""
+    recorded = {json.loads(p.read_text()).get("poses_sha256") for p in run_root.glob("*/run.json")}
+    if recorded <= {None}:
+        return HISTORICAL_MAPANYTHING.get(setting, f"{setting} poses")
+    if recorded != {file_digest(poses_file)}:
+        raise SystemExit(
+            f"{run_root}: its groups were run on poses other than {poses_file} (or a mix of "
+            f"recorded and unrecorded runs); rerun `make pose-priors` for {setting}"
+        )
+    return f"{setting} poses"
+
+
+def uses_historical_rows(results: dict) -> bool:
+    labels = {f"mapanything@392 + {label}" for label in HISTORICAL_MAPANYTHING.values()}
+    return any(
+        method in labels
+        for ranges in results.values()
+        for per_method in ranges.values()
+        for method in per_method
+    )
 
 
 def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
@@ -127,14 +176,20 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
     gray: dict[str, np.ndarray] = {}
     depths: dict[str, np.ndarray] = {}
 
+    def image_path(name):
+        return scene.dir / f"images_{WIDTH}" / f"{name}.jpg"
+
+    def depth_path(name):
+        return root / MODEL / f"{name}.npz"
+
     def image(name):
         if name not in gray:
-            gray[name] = cv2.imread(str(scene.dir / f"images_{WIDTH}" / f"{name}.jpg"), 0)
+            gray[name] = cv2.imread(str(image_path(name)), 0)
         return gray[name]
 
     def depth(name):
         if name not in depths:
-            depths[name] = load_prediction(root / MODEL / f"{name}.npz")[0]
+            depths[name] = load_prediction(depth_path(name))[0]
         return depths[name]
 
     def fused_with(setting: str, draw: int, rescale: bool) -> Method:
@@ -159,7 +214,14 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
                     )
                     return {m: f[m].scale for m in members}
 
-                scale = fits.get(f"{setting}/draw{draw}/{gid}", fit_inputs(T, K, px), fit)
+                key = fit_inputs(
+                    T,
+                    K,
+                    px,
+                    {m: image_path(m) for m in members},
+                    {m: depth_path(m) for m in members},
+                )
+                scale = fits.get(f"{setting}/draw{draw}/{gid}", key, fit)
 
             def pv(name):
                 d, s = depth(name), scale[name]
@@ -178,7 +240,9 @@ def pose_methods(scene: Scene, fits: FitCache) -> dict[str, list[Method]]:
         "mapanything@392, images only": [model_frame_method(root / "ma392_images")]
     }
     for setting in SETTINGS:
-        label = MAPANYTHING_LABELS.get(setting, f"{setting} poses")
+        label = mapanything_label(
+            root / f"ma392_{setting}", setting, pose_file(scene.name, setting)
+        )
         methods[f"mapanything@392 + {label}"] = [model_frame_method(root / f"ma392_{setting}")]
     for setting in SETTINGS:
         draws = noise_draws(setting)
@@ -271,14 +335,17 @@ def score_scene(scene: Scene, methods: dict[str, list[Method]], sizes=GROUP_SIZE
         out[range_name] = {}
         for method, draws in methods.items():
             res: dict = {}
+            groups = comparable_groups(scene.groups, sizes)
             for n in map(str, sizes):
                 units: dict[str, list[list[dict]]] = {c: [] for c in COHORTS}
-                for members in scene.groups.get(n, []):
+                missing = []
+                for members in groups.get(n, []):
                     ev = sets[members[0]]
                     per_cohort: dict[str, list[dict]] = {c: [] for c in COHORTS}
-                    for factory in draws:
+                    for d, factory in enumerate(draws):
                         per_view = factory(f"n{n}-{members[0]}", members)
                         if per_view is None:
+                            missing.append(f"n{n}-{members[0]}" + (f" draw {d}" if d else ""))
                             continue
                         pts = predict(scene, ev, members, per_view, max_range)
                         for c in COHORTS:
@@ -287,6 +354,9 @@ def score_scene(scene: Scene, methods: dict[str, list[Method]], sizes=GROUP_SIZE
                     for c, raws in per_cohort.items():
                         if raws:
                             units[c].append(raws)
+                require_complete(
+                    scene.name, method, n, missing, len(groups.get(n, [])) * len(draws)
+                )
                 if units["surface interior"]:
                     res[n] = {c: summarize_groups(u) for c, u in units.items() if u}
             if res:
@@ -350,8 +420,7 @@ def markdown(results: dict) -> str:
         "estimate pools every seed group and noise draw; the interval is a bootstrap over seed "
         f"groups and, within each, noise draws ({BOOTSTRAP_REPS} replicates). 'Groups x noise "
         "draws' counts both. MapAnything rows have one noise draw: its weights are no longer on "
-        "this machine. Its advio_2018 row was run on the earlier advio_2018 poses, whose scales "
-        "were ARKit against ARCore (0.883, 0.936, 0.958), with the same noise as draw 0 here."
+        "this machine." + (HISTORICAL_NOTE if uses_historical_rows(results) else "")
     )
     for scene, ranges in results.items():
         for range_name in RANGES:
@@ -379,7 +448,7 @@ def main() -> None:
         results[s] = score_scene(scene, pose_methods(scene, fits))
         fits.save()
     out = Path(__file__).resolve().parents[1] / "results"
-    (out / "pose_priors.json").write_text(json.dumps(results, indent=1))
+    (out / "pose_priors.json").write_text(results_json(results))
     md = markdown(results)
     (out / "pose_priors.md").write_text(md)
     print(md)

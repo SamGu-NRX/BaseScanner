@@ -8,7 +8,7 @@
    "false_observed_share": 0.0,
    "missed_ft": 6.889763779527559,
    "seen_two_view_ft": 17.979002624671917,
-   "claimed_samples_seen_only_where_scan_is_empty": 0.0
+   "claimed_samples_unknown_for_lack_of_scan": 0.0
   },
   "ground": {
    "claimed_ft": 0.0,
@@ -16,7 +16,7 @@
    "false_observed_share": 0.0,
    "missed_ft": 18.11023622047244,
    "seen_two_view_ft": 18.11023622047244,
-   "claimed_samples_seen_only_where_scan_is_empty": 0.0
+   "claimed_samples_unknown_for_lack_of_scan": 0.0
   }
  },
  "bands_5m_truth": {
@@ -24,9 +24,9 @@
    "claimed_ft": 11.089238845144356,
    "false_observed_ft": 0.0,
    "false_observed_share": 0.0,
-   "missed_ft": 6.102362204724409,
-   "seen_two_view_ft": 16.076115485564305,
-   "claimed_samples_seen_only_where_scan_is_empty": 0.0
+   "missed_ft": 4.6587926509186355,
+   "seen_two_view_ft": 14.63254593175853,
+   "claimed_samples_unknown_for_lack_of_scan": 0.0
   },
   "ground": {
    "claimed_ft": 0.0,
@@ -34,7 +34,7 @@
    "false_observed_share": 0.0,
    "missed_ft": 16.46981627296588,
    "seen_two_view_ft": 16.46981627296588,
-   "claimed_samples_seen_only_where_scan_is_empty": 0.0
+   "claimed_samples_unknown_for_lack_of_scan": 0.0
   }
  },
  "wall_over_all_claims": {
@@ -47,18 +47,18 @@
   "false_observed_share": 0.0,
   "missed_ft": 8.858267716535433,
   "seen_two_view_ft": 25.196850393700785,
-  "claimed_samples_seen_only_where_scan_is_empty": 0.0,
+  "claimed_samples_unknown_for_lack_of_scan": 0.0,
   "missed_on_pilaster_faces_ft": 5.51
  },
  "facing_3cm_truth": {
-  "claimed_ft": 0.52,
-  "false_observed_ft": 0.52,
-  "passes": 0.0,
+  "claimed_ft": 0.5,
+  "false_observed_ft": 0.5,
+  "passes": 1.0,
   "spans_with_unseen_ft": [
    [
     8.5,
     9.0,
-    0.52
+    0.5
    ]
   ]
  },
@@ -74,14 +74,14 @@
  "wall_claimed_total_ft": 19.5,
  "wall_claimed_on_stretch_ft": 11.09,
  "facing": {
-  "claimed_ft": 0.52,
-  "false_observed_ft": 0.52,
-  "passes": 0.0,
+  "claimed_ft": 0.5,
+  "false_observed_ft": 0.5,
+  "passes": 1.0,
   "spans_with_unseen_ft": [
    [
     8.5,
     9.0,
-    0.52
+    0.5
    ]
   ]
  },

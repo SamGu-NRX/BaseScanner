@@ -29,6 +29,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from evals.coverage import level_world
 from evals.eth3d import (
     SCENES,
     View,
@@ -41,7 +42,7 @@ from evals.eth3d import (
     up_direction,
     visible_scan_points,
 )
-from evals.pairs import BINS_M, Points, bin_key, evaluate_fixed, pool, sample_pairs
+from evals.pairs import BINS_M, Points, bin_key, evaluate_fixed, pool, results_json, sample_pairs
 from evals.paths import ETH3D_DIR, EVALS_DIR
 from evals.triangulate import sample_depth
 
@@ -93,6 +94,17 @@ def view_groups(views: list[View]) -> dict[str, list[list[str]]]:
             if len(members) == n:
                 groups[str(n)].append(members)
     return groups
+
+
+def comparable_groups(groups: dict[str, list[list[str]]], sizes) -> dict[str, list[list[str]]]:
+    """Each size's groups restricted to the seeds that have a group at every size compared, so
+    the photo-count comparison changes the number of photos and nothing else. A seed without
+    enough neighbours for the largest size would otherwise leave that row alone."""
+    sizes = [str(n) for n in sizes if groups.get(str(n))]
+    if not sizes:
+        return {}
+    common = set.intersection(*({m[0] for m in groups[n]} for n in sizes))
+    return {n: [m for m in groups[n] if m[0] in common] for n in sizes}
 
 
 def visibility_dir(scene: str, tolerance: float) -> Path:
@@ -152,8 +164,23 @@ class Scene:
         self.views = {v.name: v for v in read_views(self.dir)}
         self.cands = eval_candidates(name)
         self.groups = json.loads((self.dir / "subsets.json").read_text())
-        up = up_direction(list(self.views.values()))
-        self.vertical = np.abs(np.load(self.dir / "normals.npy") @ up) < VERTICAL_MAX_UP
+        # Up is the normal of the ground plane under the cameras (`coverage.level_world`). The
+        # cameras' mean up axis, used before, was 5 degrees off on electro and 10 on facade;
+        # the change in cohort membership is recorded in the results.
+        views = list(self.views.values())
+        R, _, _ = level_world(views, scan_points(name)[::3].astype(np.float64))
+        up = R.T @ np.array([0.0, 1.0, 0.0])
+        normals = np.load(self.dir / "normals.npy")
+        self.vertical = np.abs(normals @ up) < VERTICAL_MAX_UP
+        before = np.abs(normals @ up_direction(views)) < VERTICAL_MAX_UP
+        self.cohort_change = {
+            "vertical_points": int(self.vertical.sum()),
+            "vertical_points_with_camera_up": int(before.sum()),
+            "points_changing_cohort": int((self.vertical != before).sum()),
+            "up_change_deg": round(
+                float(np.degrees(np.arccos(np.clip(up @ up_direction(views), -1, 1)))), 2
+            ),
+        }
         self.vis_dir = visibility_dir(name, tolerance)
         self._vis: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
         self._oracle: dict[str, tuple[np.ndarray, np.ndarray]] = {}
@@ -271,6 +298,23 @@ def _evaluate_into(raws: dict, scene: Scene, ev: EvalSet, members, per_view, max
             raws[cohort].append(evaluate_fixed(pts, ev.pairs[cohort], ev.refs))
 
 
+class PartialRun(SystemExit):
+    """A method has output for some of a size's seed groups but not all."""
+
+
+def require_complete(scene: str, method: str, n: str, missing: list[str], total: int) -> None:
+    """Refuse to score a partial run. A size with no output at all is a run that was never made
+    (MapAnything's 8 views don't fit in memory) and is left out of the table. A size with some
+    groups missing is a run that stopped partway: scoring the rest would report percentiles over
+    only the groups that finished, and counting the missing ones as failed pairs would blame the
+    method for a crash, so the run must be completed instead."""
+    if missing and len(missing) < total:
+        raise PartialRun(
+            f"{scene}: {method} has no output for {len(missing)} of {total} {n}-photo groups "
+            f"({', '.join(missing)}); finish that run before scoring"
+        )
+
+
 def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) -> dict:
     """{range: {method: {views: {cohort: pooled summary}}}} on the fixed per-seed evaluation sets."""
     out: dict = {}
@@ -279,12 +323,17 @@ def score_groups(scene: Scene, methods: dict[str, Method], sizes=GROUP_SIZES) ->
         out[range_name] = {}
         for method, factory in methods.items():
             res: dict = {}
+            groups = comparable_groups(scene.groups, sizes)
             for n in map(str, sizes):
                 raws: dict[str, list] = {c: [] for c in COHORTS}
-                for members in scene.groups.get(n, []):
+                missing = []
+                for members in groups.get(n, []):
                     per_view = factory(f"n{n}-{members[0]}", members)
-                    if per_view is not None:
-                        _evaluate_into(raws, scene, sets[members[0]], members, per_view, max_range)
+                    if per_view is None:
+                        missing.append(f"n{n}-{members[0]}")
+                        continue
+                    _evaluate_into(raws, scene, sets[members[0]], members, per_view, max_range)
+                require_complete(scene.name, method, n, missing, len(groups.get(n, [])))
                 if raws["surface interior"]:
                     res[n] = {c: pool(r) | {"groups": len(r)} for c, r in raws.items() if r}
             if res:
@@ -432,6 +481,7 @@ def score(tolerance: float = TOLERANCE) -> dict:
     for s in SCENES:
         scene = Scene(s, tolerance)
         results[s] = {
+            "vertical_cohort": scene.cohort_change,
             "groups": score_groups(scene, true_pose_methods(scene)),
             "single": {
                 m: score_single_photos(scene, m)
@@ -484,7 +534,7 @@ def main() -> None:
             prepare(s)
     elif args.step == "score":
         results = score()
-        (args.out / "eth3d_recon.json").write_text(json.dumps(results, indent=1))
+        (args.out / "eth3d_recon.json").write_text(results_json(results))
         md = markdown(results)
         (args.out / "eth3d_recon.md").write_text(md)
         print(md)

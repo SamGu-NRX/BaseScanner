@@ -16,6 +16,7 @@ import argparse
 import importlib
 import json
 import platform
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -129,11 +130,56 @@ def main(argv: list[str] | None = None) -> None:
     module = importlib.import_module(MODULES[args.model])
     device = pick_device(args.device)
     require_free_space_for_download(module.REPO, module.FILENAME, module.REVISION)
-    args.out.mkdir(parents=True, exist_ok=True)
+    # Everything is written to a staging folder and swapped in only when the whole run succeeds,
+    # so a run that stops midway (out of memory, cancelled) leaves the previous run whole instead of
+    # a mix of its depth maps and new ones under the old run.json.
+    stage = args.out.with_name(args.out.name + ".staging")
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    try:
+        run_into(args, stage, images, intrinsics, poses, caches, module, device, torch)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    publish(stage, args.out)
+    print(f"wrote the run's npz files and run.json to {args.out}", file=sys.stderr)
 
+
+def publish(stage: Path, out: Path) -> None:
+    """Replace `out` with the complete run in `stage`, all or nothing.
+
+    The previous run is set aside as `out.previous` and put back if the swap fails. A
+    `.previous` is deleted only when a complete run (with its run.json) is published at `out`. A
+    `.previous` with nothing at `out` is a run a killed publication set aside, and is restored
+    before anything else, so a failed publication never loses the last complete run."""
+    previous = out.with_name(out.name + ".previous")
+    if previous.exists():
+        if (out / "run.json").exists():
+            shutil.rmtree(previous)  # a later publication completed; this one is superseded
+        elif not out.exists():
+            previous.rename(out)
+        else:
+            raise RuntimeError(
+                f"both {out} (without run.json) and {previous} exist; inspect them by hand"
+            )
+    if out.exists():
+        out.rename(previous)
+    try:
+        stage.rename(out)
+    except BaseException:
+        if previous.exists() and not out.exists():
+            previous.rename(out)
+        raise
+    shutil.rmtree(previous, ignore_errors=True)
+
+
+def run_into(args, out: Path, images, intrinsics, poses, caches, module, device, torch) -> None:
+    """Load the model, verify its checkpoint, and write every prediction and run.json to `out`."""
     start = time.perf_counter()
     model = module.load(device)
     load_seconds = time.perf_counter() - start
+    # Before any output: a replaced cached checkpoint must not leave depth maps behind.
+    checkpoint = checkpoint_record(module.REPO, module.FILENAME, module.REVISION, module.SHA256)
     if device == "mps":
         torch.mps.empty_cache()
         torch.mps.set_per_process_memory_fraction(
@@ -153,7 +199,7 @@ def main(argv: list[str] | None = None) -> None:
     per_image = []
     for res in module.run(model, inputs):
         write_npz(
-            args.out,
+            out,
             res.path.stem,
             res.depth,
             res.valid,
@@ -188,9 +234,7 @@ def main(argv: list[str] | None = None) -> None:
     run = {
         "model": args.model,
         "license": module.LICENSE,
-        "checkpoint": checkpoint_record(
-            module.REPO, module.FILENAME, module.REVISION, module.SHA256
-        ),
+        "checkpoint": checkpoint,
         "code": module.CODE,
         "device": device,
         "torch": torch.__version__,
@@ -208,8 +252,7 @@ def main(argv: list[str] | None = None) -> None:
     }
     if args.model == "mapanything":
         run["timing_note"] = "views run jointly; per-image seconds = joint seconds / views"
-    (args.out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
-    print(f"wrote {len(per_image)} npz and run.json to {args.out}", file=sys.stderr)
+    (out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
 
 
 if __name__ == "__main__":

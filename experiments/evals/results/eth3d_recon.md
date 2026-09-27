@@ -6,65 +6,65 @@
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 6.3 / 13.2 | 21.9 / 52.5 | -6.6% | -7.9% | 2.9 / 12.3 | 9.2 / 45.4 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 10.7 / 20.1 | 36.6 / 78.0 | -13.8% | -15.1% | 3.8 / 14.8 | 12.0 / 56.5 | 100% |
-| scan rendered as depth (evaluation floor) | 1 | 0.2 / 1.6 | 0.6 / 2.9 | -0.2% | -0.2% | 0.3 / 2.7 | 0.7 / 6.2 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.2 / 1.6 | 0.6 / 3.0 | -0.2% | -0.2% | 0.3 / 2.8 | 0.7 / 6.2 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.2 / 1.6 | 0.6 / 2.8 | -0.2% | -0.2% | 0.3 / 2.9 | 0.7 / 6.6 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.2 / 1.6 | 0.7 / 2.8 | -0.2% | -0.2% | 0.3 / 2.9 | 0.8 / 6.7 | 100% |
-| MoGe-2 per photo + true poses | 1 | 5.6 / 11.6 | 20.2 / 47.3 | -5.6% | -7.0% | 3.0 / 12.1 | 10.3 / 44.8 | 100% |
-| MoGe-2 per photo + true poses | 2 | 5.9 / 12.0 | 20.4 / 47.7 | -6.2% | -7.3% | 3.0 / 12.6 | 9.8 / 43.6 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.7 / 11.6 | 19.2 / 46.9 | -5.9% | -7.0% | 3.3 / 12.3 | 10.8 / 42.1 | 100% |
-| MoGe-2 per photo + true poses | 8 | 5.9 / 11.8 | 19.9 / 46.1 | -6.0% | -7.2% | 3.5 / 14.4 | 11.0 / 49.0 | 98% |
-| Depth Anything 3 metric per photo + true poses | 1 | 11.4 / 20.9 | 39.2 / 81.5 | -14.8% | -16.3% | 3.6 / 13.9 | 12.1 / 54.7 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 11.3 / 21.2 | 38.1 / 82.7 | -14.3% | -15.9% | 4.0 / 16.9 | 13.3 / 59.2 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 11.0 / 20.6 | 36.6 / 77.7 | -14.0% | -15.4% | 4.1 / 15.8 | 13.5 / 55.5 | 98% |
-| Depth Anything 3 metric per photo + true poses | 8 | 10.7 / 19.9 | 36.0 / 77.0 | -13.2% | -15.1% | 4.2 / 15.4 | 13.7 / 56.0 | 98% |
+| MoGe-2, one photo (every photo) | 1 | 6.3 / 13.2 | 21.9 / 52.5 | -6.6% | -7.9% | 2.9 / 12.2 | 9.2 / 45.1 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 10.7 / 20.1 | 36.6 / 78.0 | -13.8% | -15.1% | 3.8 / 14.6 | 11.9 / 56.1 | 100% |
+| scan rendered as depth (evaluation floor) | 1 | 0.2 / 1.6 | 0.6 / 2.9 | -0.2% | -0.2% | 0.3 / 2.6 | 0.7 / 6.0 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.2 / 1.6 | 0.6 / 3.0 | -0.2% | -0.2% | 0.3 / 2.7 | 0.8 / 6.0 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.2 / 1.6 | 0.6 / 2.8 | -0.2% | -0.2% | 0.3 / 2.8 | 0.8 / 6.3 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.2 / 1.6 | 0.7 / 2.8 | -0.2% | -0.2% | 0.3 / 2.8 | 0.8 / 6.4 | 100% |
+| MoGe-2 per photo + true poses | 1 | 5.6 / 11.6 | 20.2 / 47.3 | -5.6% | -7.0% | 3.0 / 11.9 | 10.1 / 44.2 | 100% |
+| MoGe-2 per photo + true poses | 2 | 5.9 / 12.0 | 20.4 / 47.7 | -6.2% | -7.3% | 3.0 / 12.5 | 9.6 / 43.3 | 100% |
+| MoGe-2 per photo + true poses | 4 | 5.7 / 11.6 | 19.2 / 46.9 | -5.9% | -7.0% | 3.3 / 12.3 | 10.6 / 41.9 | 100% |
+| MoGe-2 per photo + true poses | 8 | 5.9 / 11.8 | 19.9 / 46.1 | -6.0% | -7.2% | 3.5 / 14.4 | 10.9 / 48.8 | 98% |
+| Depth Anything 3 metric per photo + true poses | 1 | 11.4 / 20.9 | 39.2 / 81.5 | -14.8% | -16.3% | 3.5 / 13.7 | 11.6 / 54.8 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 11.3 / 21.2 | 38.1 / 82.7 | -14.3% | -15.9% | 3.9 / 16.9 | 12.8 / 59.3 | 100% |
+| Depth Anything 3 metric per photo + true poses | 4 | 11.0 / 20.6 | 36.6 / 77.7 | -14.0% | -15.4% | 4.0 / 15.7 | 13.1 / 55.5 | 98% |
+| Depth Anything 3 metric per photo + true poses | 8 | 10.7 / 19.9 | 36.0 / 77.0 | -13.2% | -15.1% | 4.2 / 15.3 | 13.4 / 55.8 | 98% |
 
 ## facade, all points, vertical interior
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 6.3 / 12.9 | 21.6 / 54.1 | -7.0% | -8.1% | 2.8 / 11.3 | 8.9 / 46.1 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 10.8 / 19.9 | 37.0 / 78.1 | -14.1% | -15.5% | 3.6 / 13.7 | 11.5 / 56.8 | 100% |
-| scan rendered as depth (evaluation floor) | 1 | 0.2 / 0.9 | 0.6 / 2.0 | -0.2% | -0.2% | 0.2 / 2.2 | 0.5 / 5.6 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.2 / 1.0 | 0.6 / 2.0 | -0.2% | -0.2% | 0.2 / 2.3 | 0.5 / 5.7 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.2 / 1.0 | 0.6 / 1.9 | -0.2% | -0.2% | 0.2 / 2.5 | 0.5 / 6.1 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.2 / 1.0 | 0.6 / 1.9 | -0.2% | -0.2% | 0.2 / 2.6 | 0.6 / 6.1 | 100% |
-| MoGe-2 per photo + true poses | 1 | 5.5 / 10.9 | 19.3 / 46.2 | -5.9% | -7.1% | 2.8 / 10.9 | 9.7 / 43.9 | 100% |
-| MoGe-2 per photo + true poses | 2 | 5.9 / 11.2 | 19.6 / 46.7 | -6.5% | -7.4% | 2.8 / 11.3 | 9.2 / 42.7 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.6 / 10.9 | 18.3 / 46.5 | -6.2% | -7.0% | 3.1 / 11.1 | 10.3 / 41.0 | 100% |
-| MoGe-2 per photo + true poses | 8 | 5.9 / 11.2 | 19.1 / 46.5 | -6.3% | -7.3% | 3.2 / 13.0 | 10.6 / 48.5 | 98% |
-| Depth Anything 3 metric per photo + true poses | 1 | 11.7 / 20.7 | 39.2 / 79.3 | -15.3% | -17.0% | 3.4 / 12.5 | 11.3 / 51.2 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 11.6 / 21.1 | 38.4 / 81.0 | -14.9% | -16.6% | 3.7 / 15.3 | 12.5 / 56.1 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 11.2 / 20.4 | 37.1 / 77.7 | -14.6% | -16.2% | 3.9 / 14.4 | 12.9 / 53.9 | 98% |
-| Depth Anything 3 metric per photo + true poses | 8 | 10.8 / 19.7 | 36.2 / 77.1 | -13.8% | -15.6% | 4.0 / 14.2 | 13.1 / 54.8 | 98% |
+| MoGe-2, one photo (every photo) | 1 | 6.3 / 12.9 | 21.6 / 54.0 | -7.0% | -8.2% | 2.7 / 11.2 | 8.9 / 45.9 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 10.8 / 19.8 | 37.1 / 78.1 | -14.1% | -15.6% | 3.5 / 13.5 | 11.4 / 56.5 | 100% |
+| scan rendered as depth (evaluation floor) | 1 | 0.2 / 1.0 | 0.6 / 2.0 | -0.2% | -0.2% | 0.2 / 2.1 | 0.5 / 5.4 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.2 / 1.0 | 0.6 / 2.0 | -0.2% | -0.2% | 0.2 / 2.2 | 0.5 / 5.4 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.2 / 1.0 | 0.6 / 1.8 | -0.2% | -0.2% | 0.2 / 2.5 | 0.6 / 5.8 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.2 / 1.0 | 0.6 / 1.9 | -0.2% | -0.2% | 0.2 / 2.5 | 0.6 / 5.8 | 100% |
+| MoGe-2 per photo + true poses | 1 | 5.6 / 11.0 | 19.4 / 46.3 | -5.9% | -7.1% | 2.7 / 10.7 | 9.6 / 43.2 | 100% |
+| MoGe-2 per photo + true poses | 2 | 5.9 / 11.3 | 19.6 / 46.7 | -6.5% | -7.4% | 2.7 / 11.1 | 9.1 / 42.5 | 100% |
+| MoGe-2 per photo + true poses | 4 | 5.6 / 11.0 | 18.5 / 46.9 | -6.2% | -7.1% | 3.1 / 11.0 | 10.2 / 40.9 | 100% |
+| MoGe-2 per photo + true poses | 8 | 5.8 / 11.3 | 19.2 / 46.5 | -6.3% | -7.4% | 3.2 / 13.0 | 10.5 / 48.1 | 98% |
+| Depth Anything 3 metric per photo + true poses | 1 | 11.7 / 20.6 | 39.5 / 79.3 | -15.3% | -17.0% | 3.3 / 12.0 | 10.7 / 51.1 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 11.6 / 21.0 | 38.6 / 81.0 | -14.8% | -16.6% | 3.6 / 15.3 | 12.0 / 56.3 | 100% |
+| Depth Anything 3 metric per photo + true poses | 4 | 11.2 / 20.5 | 37.2 / 77.4 | -14.6% | -16.2% | 3.8 / 14.3 | 12.5 / 54.2 | 98% |
+| Depth Anything 3 metric per photo + true poses | 8 | 10.9 / 19.8 | 36.5 / 77.1 | -13.9% | -15.7% | 4.0 / 14.1 | 12.8 / 54.6 | 98% |
 
 ## facade, all points, edges
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 5.7 / 20.8 | 15.8 / 48.4 | -2.9% | -4.7% | 4.4 / 23.8 | 11.7 / 50.7 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 9.5 / 27.7 | 26.4 / 68.8 | -8.9% | -10.4% | 6.9 / 41.5 | 17.5 / 77.2 | 100% |
-| scan rendered as depth (evaluation floor) | 1 | 0.5 / 3.4 | 1.0 / 5.4 | -0.3% | -0.2% | 0.6 / 4.2 | 1.4 / 7.7 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.5 / 3.6 | 1.0 / 5.7 | -0.3% | -0.2% | 0.7 / 4.3 | 1.4 / 7.8 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.5 / 3.5 | 1.0 / 5.3 | -0.2% | -0.2% | 0.6 / 4.2 | 1.4 / 7.9 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.5 / 3.5 | 1.0 / 5.3 | -0.3% | -0.2% | 0.7 / 4.3 | 1.4 / 8.2 | 100% |
+| MoGe-2, one photo (every photo) | 1 | 5.7 / 20.8 | 15.8 / 48.4 | -2.9% | -4.7% | 4.5 / 23.8 | 11.7 / 50.5 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 9.5 / 27.7 | 26.4 / 68.8 | -8.9% | -10.4% | 6.9 / 41.4 | 17.4 / 76.7 | 100% |
+| scan rendered as depth (evaluation floor) | 1 | 0.5 / 3.4 | 1.0 / 5.4 | -0.3% | -0.2% | 0.6 / 4.0 | 1.4 / 7.5 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.5 / 3.6 | 1.0 / 5.7 | -0.3% | -0.2% | 0.7 / 4.2 | 1.4 / 7.6 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.5 / 3.5 | 1.0 / 5.3 | -0.2% | -0.2% | 0.6 / 4.1 | 1.4 / 7.7 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.5 / 3.5 | 1.0 / 5.3 | -0.3% | -0.2% | 0.7 / 4.2 | 1.4 / 8.0 | 100% |
 | MoGe-2 per photo + true poses | 1 | 5.3 / 25.3 | 15.1 / 51.1 | -1.8% | -3.2% | 4.9 / 28.2 | 14.0 / 55.4 | 100% |
-| MoGe-2 per photo + true poses | 2 | 5.5 / 26.1 | 16.0 / 48.5 | -2.3% | -4.0% | 5.0 / 30.5 | 13.8 / 55.8 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.1 / 24.6 | 14.8 / 45.4 | -2.3% | -3.9% | 5.2 / 28.5 | 13.7 / 52.7 | 100% |
-| MoGe-2 per photo + true poses | 8 | 5.3 / 28.2 | 15.3 / 53.2 | -2.4% | -4.0% | 5.7 / 36.0 | 14.7 / 65.2 | 98% |
-| Depth Anything 3 metric per photo + true poses | 1 | 9.8 / 29.2 | 30.4 / 71.9 | -8.5% | -11.6% | 6.8 / 42.7 | 19.5 / 82.0 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 9.2 / 29.1 | 29.4 / 70.8 | -8.1% | -10.8% | 8.0 / 45.5 | 21.9 / 87.7 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 9.0 / 26.5 | 27.8 / 67.2 | -7.9% | -10.3% | 7.6 / 44.5 | 20.6 / 83.5 | 98% |
-| Depth Anything 3 metric per photo + true poses | 8 | 9.3 / 28.5 | 28.2 / 69.6 | -8.4% | -10.3% | 7.4 / 43.7 | 19.7 / 78.5 | 98% |
+| MoGe-2 per photo + true poses | 2 | 5.5 / 26.1 | 16.0 / 48.5 | -2.3% | -4.0% | 5.0 / 30.6 | 13.8 / 55.9 | 100% |
+| MoGe-2 per photo + true poses | 4 | 5.1 / 24.6 | 14.8 / 45.4 | -2.3% | -3.9% | 5.2 / 28.6 | 13.8 / 52.8 | 100% |
+| MoGe-2 per photo + true poses | 8 | 5.3 / 28.2 | 15.3 / 53.2 | -2.4% | -4.0% | 5.7 / 36.1 | 14.8 / 65.2 | 98% |
+| Depth Anything 3 metric per photo + true poses | 1 | 9.8 / 29.2 | 30.4 / 71.9 | -8.5% | -11.6% | 6.7 / 42.7 | 19.1 / 81.8 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 9.2 / 29.1 | 29.4 / 70.8 | -8.1% | -10.8% | 7.8 / 45.5 | 21.6 / 87.5 | 100% |
+| Depth Anything 3 metric per photo + true poses | 4 | 9.0 / 26.5 | 27.8 / 67.2 | -7.9% | -10.3% | 7.5 / 44.4 | 20.4 / 83.2 | 98% |
+| Depth Anything 3 metric per photo + true poses | 8 | 9.3 / 28.5 | 28.2 / 69.6 | -8.4% | -10.3% | 7.3 / 43.7 | 19.6 / 78.2 | 98% |
 
 ## facade, within 6 m, surface interior
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 7.7 / 20.0 | 16.9 / 31.6 | +10.3% | +11.7% | 0.9 / 6.5 | 2.2 / 12.1 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 6.5 / 18.2 | 16.4 / 36.5 | -8.2% | -10.9% | 2.1 / 10.9 | 4.5 / 19.7 | 100% |
+| MoGe-2, one photo (every photo) | 1 | 7.7 / 20.0 | 16.9 / 31.6 | +10.3% | +11.7% | 0.9 / 6.5 | 2.2 / 12.3 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 6.5 / 18.2 | 16.4 / 36.5 | -8.2% | -10.9% | 2.1 / 10.9 | 4.6 / 19.9 | 100% |
 | scan rendered as depth (evaluation floor) | 1 | 0.8 / 1.4 | 1.6 / 2.1 | -1.3% | -1.1% | 0.2 / 1.6 | 0.5 / 2.5 | 100% |
 | scan rendered as depth (evaluation floor) | 2 | 0.8 / 1.4 | 1.6 / 2.1 | -1.3% | -1.2% | 0.3 / 1.7 | 0.5 / 2.6 | 100% |
 | scan rendered as depth (evaluation floor) | 4 | 0.8 / 1.4 | 1.6 / 2.1 | -1.3% | -1.1% | 0.2 / 1.7 | 0.5 / 2.6 | 100% |
@@ -82,27 +82,27 @@
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 14.9 / 25.4 | 26.1 / 37.0 | +20.9% | +17.5% | 2.7 / 8.2 | 4.8 / 13.0 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 3.5 / 9.3 | 4.8 / 13.0 | +0.2% | -2.5% | 4.1 / 11.8 | 6.6 / 18.7 | 100% |
-| scan rendered as depth (evaluation floor) | 1 | 0.0 / 0.4 | 0.1 / 0.6 | -0.0% | -0.1% | 0.5 / 2.0 | 1.0 / 4.0 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.0 / 0.4 | 0.1 / 0.6 | -0.0% | -0.1% | 0.5 / 2.1 | 1.0 / 4.0 | 100% |
+| MoGe-2, one photo (every photo) | 1 | 14.8 / 25.3 | 25.9 / 37.2 | +20.7% | +17.4% | 2.7 / 8.2 | 4.8 / 13.2 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 3.5 / 9.3 | 5.2 / 12.9 | +0.0% | -2.7% | 4.1 / 11.8 | 6.7 / 19.1 | 100% |
+| scan rendered as depth (evaluation floor) | 1 | 0.0 / 0.3 | 0.1 / 0.5 | -0.0% | -0.1% | 0.5 / 2.1 | 1.0 / 4.0 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.0 / 0.4 | 0.1 / 0.5 | -0.1% | -0.1% | 0.5 / 2.1 | 1.0 / 4.0 | 100% |
 | scan rendered as depth (evaluation floor) | 4 | 0.1 / 0.3 | 0.1 / 0.6 | -0.1% | -0.1% | 0.5 / 2.2 | 1.0 / 4.1 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.1 / 0.3 | 0.1 / 0.6 | -0.1% | -0.1% | 0.4 / 2.1 | 0.9 / 4.1 | 100% |
-| MoGe-2 per photo + true poses | 1 | 16.3 / 25.6 | 26.6 / 32.9 | +21.4% | +18.0% | 3.3 / 8.8 | 4.7 / 11.2 | 100% |
-| MoGe-2 per photo + true poses | 2 | 15.8 / 24.2 | 26.1 / 32.3 | +20.7% | +17.7% | 3.4 / 8.7 | 4.9 / 12.1 | 100% |
-| MoGe-2 per photo + true poses | 4 | 15.8 / 23.3 | 25.4 / 31.1 | +20.4% | +17.3% | 3.4 / 8.8 | 5.0 / 13.1 | 100% |
-| MoGe-2 per photo + true poses | 8 | 15.4 / 22.6 | 25.3 / 31.0 | +20.3% | +17.3% | 5.0 / 13.5 | 6.6 / 28.4 | 100% |
-| Depth Anything 3 metric per photo + true poses | 1 | 1.5 / 4.5 | 1.8 / 4.6 | +0.3% | -0.9% | 2.8 / 8.1 | 4.9 / 14.6 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 2.2 / 6.7 | 2.5 / 7.3 | +1.1% | -1.3% | 4.1 / 11.1 | 6.3 / 20.3 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 2.5 / 7.0 | 2.4 / 7.0 | +1.6% | -0.8% | 4.3 / 11.8 | 6.6 / 21.3 | 100% |
-| Depth Anything 3 metric per photo + true poses | 8 | 2.4 / 5.7 | 4.0 / 7.9 | -0.6% | -2.6% | 3.7 / 11.2 | 5.3 / 24.3 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.1 / 0.3 | 0.1 / 0.6 | -0.1% | -0.1% | 0.5 / 2.1 | 0.9 / 4.1 | 100% |
+| MoGe-2 per photo + true poses | 1 | 16.2 / 25.3 | 26.2 / 32.8 | +21.0% | +17.7% | 3.2 / 8.6 | 4.7 / 11.3 | 100% |
+| MoGe-2 per photo + true poses | 2 | 15.7 / 24.0 | 25.8 / 32.2 | +20.4% | +17.4% | 3.2 / 8.4 | 4.8 / 12.2 | 100% |
+| MoGe-2 per photo + true poses | 4 | 15.5 / 23.2 | 25.2 / 31.0 | +20.2% | +17.0% | 3.3 / 8.6 | 5.0 / 13.3 | 100% |
+| MoGe-2 per photo + true poses | 8 | 15.2 / 22.5 | 25.1 / 30.5 | +20.2% | +17.1% | 4.9 / 13.5 | 6.6 / 28.8 | 100% |
+| Depth Anything 3 metric per photo + true poses | 1 | 1.5 / 4.3 | 1.9 / 4.7 | +0.1% | -1.0% | 2.8 / 8.0 | 4.9 / 14.5 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 2.1 / 6.3 | 2.7 / 7.5 | +0.7% | -1.4% | 4.0 / 10.9 | 6.4 / 20.5 | 100% |
+| Depth Anything 3 metric per photo + true poses | 4 | 2.3 / 6.9 | 2.5 / 7.0 | +1.2% | -1.0% | 4.3 / 11.6 | 6.6 / 21.4 | 100% |
+| Depth Anything 3 metric per photo + true poses | 8 | 2.5 / 5.6 | 4.2 / 8.2 | -0.9% | -2.8% | 3.8 / 11.2 | 5.3 / 24.6 | 100% |
 
 ## facade, within 6 m, edges
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 11.2 / 24.3 | 30.2 / 43.7 | +19.4% | +16.7% | 3.0 / 9.3 | 5.8 / 17.6 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 3.8 / 39.4 | 8.0 / 19.7 | +1.2% | -2.9% | 4.6 / 38.4 | 8.8 / 29.1 | 100% |
+| MoGe-2, one photo (every photo) | 1 | 11.2 / 24.2 | 30.2 / 43.7 | +19.4% | +16.7% | 2.9 / 9.1 | 5.9 / 18.1 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 3.8 / 39.1 | 8.0 / 19.8 | +1.2% | -2.9% | 4.5 / 38.1 | 8.9 / 29.7 | 100% |
 | scan rendered as depth (evaluation floor) | 1 | 0.6 / 1.4 | 1.4 / 3.2 | -0.5% | -0.7% | 0.7 / 1.8 | 1.6 / 4.5 | 100% |
 | scan rendered as depth (evaluation floor) | 2 | 0.6 / 1.4 | 1.4 / 3.2 | -0.4% | -0.7% | 0.7 / 1.9 | 1.7 / 4.7 | 100% |
 | scan rendered as depth (evaluation floor) | 4 | 0.6 / 1.4 | 1.6 / 3.3 | -0.5% | -0.8% | 0.7 / 1.9 | 1.8 / 4.7 | 100% |
@@ -120,112 +120,112 @@
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 6.8 / 19.1 | 18.4 / 52.6 | +0.9% | +0.6% | 2.5 / 9.7 | 5.9 / 25.4 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 7.5 / 24.9 | 21.5 / 72.6 | -8.6% | -9.7% | 3.4 / 15.3 | 8.6 / 38.0 | 99% |
-| scan rendered as depth (evaluation floor) | 1 | 0.7 / 2.4 | 1.4 / 5.2 | -0.6% | -0.6% | 0.7 / 2.8 | 1.6 / 6.6 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.7 / 2.3 | 1.4 / 5.0 | -0.6% | -0.6% | 0.7 / 2.9 | 1.6 / 6.6 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.7 / 2.2 | 1.4 / 4.9 | -0.6% | -0.6% | 0.7 / 2.8 | 1.6 / 6.7 | 100% |
+| MoGe-2, one photo (every photo) | 1 | 6.8 / 19.1 | 18.4 / 52.6 | +0.9% | +0.6% | 2.5 / 9.7 | 5.9 / 25.3 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 7.5 / 24.9 | 21.5 / 72.6 | -8.6% | -9.7% | 3.4 / 15.2 | 8.6 / 37.7 | 99% |
+| scan rendered as depth (evaluation floor) | 1 | 0.6 / 2.0 | 1.2 / 4.5 | -0.6% | -0.6% | 0.7 / 2.3 | 1.4 / 5.1 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.6 / 2.0 | 1.3 / 4.3 | -0.6% | -0.6% | 0.7 / 2.4 | 1.4 / 5.3 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.6 / 1.9 | 1.3 / 4.2 | -0.6% | -0.6% | 0.7 / 2.4 | 1.4 / 5.4 | 100% |
 | scan rendered as depth (evaluation floor) | 8 | 0.7 / 1.9 | 1.4 / 4.1 | -0.6% | -0.6% | 0.7 / 2.4 | 1.4 / 5.1 | 100% |
-| MoGe-2 per photo + true poses | 1 | 7.6 / 17.9 | 21.9 / 49.2 | +4.1% | +5.1% | 2.9 / 13.2 | 6.9 / 37.3 | 100% |
-| MoGe-2 per photo + true poses | 2 | 6.3 / 16.6 | 17.5 / 42.2 | +2.2% | +3.4% | 3.2 / 14.0 | 7.0 / 37.4 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.9 / 16.8 | 16.5 / 49.8 | +2.5% | +3.7% | 3.2 / 15.2 | 6.9 / 39.4 | 99% |
-| MoGe-2 per photo + true poses | 8 | 5.0 / 12.7 | 13.6 / 25.7 | +1.1% | +1.9% | 3.5 / 13.2 | 7.1 / 29.8 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 7.6 / 19.0 | 22.0 / 50.6 | -7.9% | -8.3% | 3.7 / 20.6 | 9.7 / 48.7 | 99% |
-| Depth Anything 3 metric per photo + true poses | 2 | 7.7 / 19.6 | 21.6 / 55.9 | -8.1% | -8.5% | 4.0 / 18.3 | 9.6 / 41.3 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 7.2 / 20.5 | 21.0 / 59.3 | -7.5% | -8.5% | 4.3 / 21.8 | 9.9 / 51.4 | 99% |
+| MoGe-2 per photo + true poses | 1 | 7.0 / 14.5 | 20.4 / 34.4 | +4.9% | +6.8% | 2.5 / 8.9 | 5.8 / 22.5 | 100% |
+| MoGe-2 per photo + true poses | 2 | 5.6 / 14.0 | 16.0 / 30.9 | +3.0% | +4.4% | 2.8 / 10.1 | 6.0 / 22.8 | 100% |
+| MoGe-2 per photo + true poses | 4 | 5.3 / 13.4 | 14.8 / 29.0 | +3.8% | +4.6% | 2.8 / 10.7 | 5.9 / 25.0 | 99% |
+| MoGe-2 per photo + true poses | 8 | 5.0 / 12.7 | 13.6 / 25.7 | +1.1% | +1.9% | 3.5 / 13.1 | 7.0 / 29.7 | 99% |
+| Depth Anything 3 metric per photo + true poses | 1 | 6.8 / 18.0 | 20.1 / 46.9 | -6.7% | -7.2% | 3.5 / 17.7 | 8.9 / 40.7 | 99% |
+| Depth Anything 3 metric per photo + true poses | 2 | 6.6 / 17.7 | 19.0 / 49.6 | -6.6% | -6.6% | 3.7 / 15.9 | 8.7 / 35.6 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 6.1 / 16.5 | 18.0 / 46.8 | -6.2% | -6.3% | 3.9 / 17.4 | 8.9 / 41.2 | 99% |
 | Depth Anything 3 metric per photo + true poses | 8 | 6.7 / 17.9 | 19.8 / 50.9 | -7.0% | -8.0% | 3.9 / 19.0 | 8.8 / 45.6 | 99% |
 
 ## electro, all points, vertical interior
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 6.5 / 19.2 | 17.8 / 56.1 | +0.3% | -0.1% | 2.5 / 9.7 | 5.8 / 25.4 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 8.1 / 26.7 | 22.6 / 78.5 | -10.0% | -11.5% | 3.5 / 15.3 | 8.9 / 41.4 | 99% |
-| scan rendered as depth (evaluation floor) | 1 | 0.3 / 1.4 | 0.8 / 4.5 | -0.3% | -0.4% | 0.5 / 2.5 | 1.3 / 6.2 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.3 / 1.2 | 0.9 / 4.2 | -0.3% | -0.4% | 0.6 / 2.5 | 1.4 / 6.3 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.3 / 1.3 | 0.9 / 4.4 | -0.3% | -0.4% | 0.6 / 2.4 | 1.6 / 6.2 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.3 / 1.0 | 0.8 / 3.1 | -0.3% | -0.4% | 0.6 / 2.1 | 1.5 / 5.2 | 100% |
-| MoGe-2 per photo + true poses | 1 | 7.3 / 17.9 | 22.8 / 56.2 | +4.3% | +7.2% | 2.5 / 12.4 | 7.1 / 38.1 | 100% |
-| MoGe-2 per photo + true poses | 2 | 6.1 / 16.2 | 17.6 / 45.5 | +1.7% | +4.7% | 2.8 / 13.4 | 7.0 / 38.5 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.6 / 16.2 | 16.5 / 52.4 | +1.3% | +4.2% | 2.8 / 14.7 | 6.9 / 41.1 | 99% |
-| MoGe-2 per photo + true poses | 8 | 4.8 / 12.2 | 13.3 / 24.3 | -0.5% | +2.9% | 3.3 / 13.4 | 7.8 / 30.1 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 7.3 / 19.2 | 26.2 / 59.4 | -9.7% | -11.5% | 3.4 / 19.2 | 11.4 / 53.9 | 99% |
-| Depth Anything 3 metric per photo + true poses | 2 | 7.3 / 20.3 | 28.0 / 65.3 | -10.1% | -13.3% | 3.6 / 17.3 | 11.3 / 51.1 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 7.0 / 20.5 | 26.6 / 69.4 | -9.6% | -13.5% | 3.7 / 20.9 | 11.0 / 62.7 | 99% |
-| Depth Anything 3 metric per photo + true poses | 8 | 7.3 / 18.6 | 25.4 / 59.7 | -9.4% | -12.8% | 3.7 / 20.4 | 11.3 / 54.9 | 99% |
+| MoGe-2, one photo (every photo) | 1 | 6.6 / 19.2 | 17.8 / 56.1 | +0.3% | -0.2% | 2.5 / 9.6 | 5.8 / 25.2 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 8.1 / 26.6 | 22.6 / 78.5 | -10.0% | -11.5% | 3.5 / 15.2 | 8.9 / 41.2 | 99% |
+| scan rendered as depth (evaluation floor) | 1 | 0.2 / 1.0 | 0.7 / 3.1 | -0.3% | -0.3% | 0.5 / 2.0 | 1.1 / 4.9 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.2 / 0.9 | 0.8 / 2.6 | -0.3% | -0.4% | 0.5 / 2.1 | 1.2 / 5.2 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.2 / 0.9 | 0.7 / 3.0 | -0.3% | -0.4% | 0.6 / 2.1 | 1.4 / 5.3 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.3 / 1.0 | 0.8 / 3.0 | -0.4% | -0.4% | 0.6 / 2.1 | 1.5 / 5.2 | 100% |
+| MoGe-2 per photo + true poses | 1 | 6.7 / 14.1 | 20.7 / 35.5 | +5.2% | +8.0% | 2.2 / 8.2 | 5.9 / 22.8 | 100% |
+| MoGe-2 per photo + true poses | 2 | 5.4 / 13.6 | 16.2 / 30.8 | +3.1% | +5.7% | 2.4 / 9.4 | 6.0 / 23.2 | 100% |
+| MoGe-2 per photo + true poses | 4 | 4.9 / 12.4 | 14.9 / 29.8 | +3.3% | +5.3% | 2.4 / 10.2 | 5.9 / 28.8 | 99% |
+| MoGe-2 per photo + true poses | 8 | 4.8 / 12.3 | 13.2 / 24.2 | -0.6% | +2.9% | 3.3 / 13.6 | 7.8 / 29.8 | 99% |
+| Depth Anything 3 metric per photo + true poses | 1 | 6.3 / 18.2 | 23.6 / 58.8 | -8.1% | -10.2% | 3.1 / 17.0 | 10.7 / 50.2 | 99% |
+| Depth Anything 3 metric per photo + true poses | 2 | 6.2 / 18.5 | 24.1 / 62.4 | -8.0% | -12.2% | 3.3 / 15.9 | 10.6 / 49.1 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 6.0 / 16.4 | 22.2 / 58.8 | -7.6% | -11.8% | 3.4 / 17.1 | 9.9 / 54.1 | 99% |
+| Depth Anything 3 metric per photo + true poses | 8 | 7.2 / 18.6 | 25.4 / 59.0 | -9.2% | -12.8% | 3.7 / 20.3 | 11.2 / 54.8 | 99% |
 
 ## electro, all points, edges
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | MoGe-2, one photo (every photo) | 1 | 8.0 / 24.9 | 17.1 / 63.4 | +4.3% | +2.7% | 4.4 / 25.1 | 7.2 / 37.4 | 100% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 7.3 / 39.4 | 16.9 / 93.0 | -2.2% | -4.4% | 8.7 / 61.9 | 13.7 / 95.4 | 99% |
-| scan rendered as depth (evaluation floor) | 1 | 0.4 / 1.5 | 0.9 / 4.2 | -0.5% | -0.6% | 0.7 / 2.6 | 1.5 / 5.6 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.4 / 1.9 | 1.0 / 3.9 | -0.5% | -0.6% | 0.7 / 2.7 | 1.6 / 5.9 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.4 / 1.8 | 1.0 / 3.8 | -0.5% | -0.6% | 0.8 / 2.6 | 1.7 / 5.8 | 100% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 7.3 / 39.4 | 16.9 / 93.0 | -2.2% | -4.4% | 8.8 / 61.9 | 13.7 / 95.2 | 99% |
+| scan rendered as depth (evaluation floor) | 1 | 0.4 / 1.6 | 0.9 / 3.7 | -0.4% | -0.6% | 0.6 / 2.4 | 1.3 / 4.6 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.4 / 1.9 | 1.0 / 2.9 | -0.5% | -0.6% | 0.7 / 2.6 | 1.4 / 4.9 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.4 / 1.9 | 1.0 / 3.1 | -0.5% | -0.6% | 0.8 / 2.5 | 1.6 / 4.9 | 100% |
 | scan rendered as depth (evaluation floor) | 8 | 0.5 / 1.9 | 1.1 / 3.3 | -0.6% | -0.7% | 0.8 / 2.5 | 1.5 / 4.7 | 100% |
-| MoGe-2 per photo + true poses | 1 | 8.8 / 33.0 | 19.0 / 54.8 | +6.6% | +5.9% | 4.1 / 37.0 | 7.0 / 45.5 | 100% |
-| MoGe-2 per photo + true poses | 2 | 7.6 / 30.6 | 15.3 / 44.7 | +5.6% | +4.3% | 4.3 / 32.6 | 7.0 / 46.4 | 100% |
-| MoGe-2 per photo + true poses | 4 | 6.4 / 21.3 | 13.3 / 37.6 | +4.8% | +4.7% | 4.7 / 27.1 | 7.7 / 47.8 | 99% |
-| MoGe-2 per photo + true poses | 8 | 6.5 / 15.6 | 11.1 / 24.1 | +3.8% | +3.8% | 4.8 / 16.3 | 7.3 / 28.0 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 9.5 / 37.5 | 22.9 / 113.4 | -0.9% | -2.1% | 7.6 / 57.9 | 15.4 / 148.0 | 99% |
-| Depth Anything 3 metric per photo + true poses | 2 | 9.5 / 43.1 | 24.3 / 96.7 | -0.7% | -1.3% | 8.1 / 62.5 | 16.7 / 128.6 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 8.0 / 32.2 | 20.5 / 78.3 | -1.0% | -2.0% | 7.6 / 52.0 | 16.2 / 113.0 | 99% |
+| MoGe-2 per photo + true poses | 1 | 7.8 / 19.5 | 17.4 / 34.5 | +5.4% | +6.2% | 3.5 / 15.0 | 5.9 / 22.5 | 100% |
+| MoGe-2 per photo + true poses | 2 | 7.0 / 19.0 | 14.0 / 27.7 | +4.6% | +4.8% | 3.6 / 16.4 | 5.9 / 24.4 | 100% |
+| MoGe-2 per photo + true poses | 4 | 6.0 / 17.2 | 12.3 / 26.7 | +4.6% | +5.2% | 3.9 / 15.9 | 6.5 / 25.5 | 99% |
+| MoGe-2 per photo + true poses | 8 | 6.5 / 15.6 | 11.1 / 24.1 | +3.8% | +3.8% | 4.7 / 16.3 | 7.3 / 28.0 | 99% |
+| Depth Anything 3 metric per photo + true poses | 1 | 8.3 / 30.3 | 20.8 / 48.5 | -2.7% | -1.9% | 6.1 / 40.5 | 12.7 / 60.9 | 99% |
+| Depth Anything 3 metric per photo + true poses | 2 | 8.6 / 42.5 | 22.1 / 60.9 | -2.3% | -0.9% | 6.7 / 49.7 | 14.2 / 65.0 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 7.5 / 28.4 | 18.5 / 54.9 | -2.1% | -1.6% | 6.3 / 38.0 | 13.3 / 58.1 | 99% |
 | Depth Anything 3 metric per photo + true poses | 8 | 7.3 / 28.6 | 18.0 / 58.5 | -2.9% | -2.4% | 6.2 / 41.5 | 13.8 / 65.4 | 99% |
 
 ## electro, within 6 m, surface interior
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 6.8 / 19.5 | 15.1 / 41.8 | +3.5% | +4.3% | 1.6 / 9.6 | 3.0 / 17.8 | 98% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 6.0 / 20.2 | 13.9 / 43.4 | -6.6% | -7.4% | 2.9 / 25.3 | 6.1 / 62.6 | 97% |
-| scan rendered as depth (evaluation floor) | 1 | 0.7 / 1.6 | 1.3 / 2.4 | -0.9% | -0.8% | 0.5 / 1.6 | 0.9 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.7 / 1.5 | 1.3 / 2.3 | -0.8% | -0.8% | 0.5 / 1.6 | 0.9 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.6 / 1.3 | 1.1 / 2.2 | -0.7% | -0.7% | 0.4 / 1.6 | 0.8 / 3.1 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.5 / 1.2 | 1.0 / 2.0 | -0.6% | -0.6% | 0.5 / 1.7 | 0.8 / 3.6 | 100% |
-| MoGe-2 per photo + true poses | 1 | 6.9 / 14.9 | 15.5 / 30.4 | +4.4% | +4.8% | 1.8 / 8.7 | 3.5 / 17.5 | 100% |
-| MoGe-2 per photo + true poses | 2 | 6.8 / 15.0 | 14.9 / 28.7 | +2.4% | +3.8% | 2.3 / 11.3 | 4.0 / 21.1 | 100% |
-| MoGe-2 per photo + true poses | 4 | 6.1 / 14.4 | 13.9 / 25.9 | +2.5% | +4.4% | 2.5 / 15.7 | 4.4 / 33.1 | 100% |
-| MoGe-2 per photo + true poses | 8 | 5.4 / 12.5 | 12.4 / 22.6 | +0.7% | +3.0% | 2.8 / 10.8 | 4.3 / 21.1 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 6.5 / 19.3 | 14.9 / 42.7 | -5.9% | -7.6% | 3.3 / 24.8 | 7.4 / 52.2 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 5.7 / 17.7 | 13.6 / 38.2 | -5.6% | -7.4% | 3.6 / 21.6 | 7.1 / 44.4 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 5.6 / 18.1 | 13.1 / 36.0 | -5.7% | -7.0% | 4.0 / 25.2 | 7.8 / 51.4 | 99% |
-| Depth Anything 3 metric per photo + true poses | 8 | 5.1 / 14.7 | 11.9 / 33.1 | -5.6% | -6.8% | 3.6 / 20.1 | 6.5 / 38.9 | 95% |
+| MoGe-2, one photo (every photo) | 1 | 6.8 / 19.5 | 15.1 / 41.8 | +3.5% | +4.3% | 1.6 / 9.3 | 3.0 / 16.9 | 98% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 6.0 / 20.2 | 13.9 / 43.4 | -6.6% | -7.4% | 2.9 / 24.4 | 6.0 / 57.9 | 97% |
+| scan rendered as depth (evaluation floor) | 1 | 0.7 / 1.6 | 1.2 / 2.3 | -0.9% | -0.7% | 0.5 / 1.6 | 0.9 / 2.8 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.6 / 1.5 | 1.2 / 2.2 | -0.8% | -0.7% | 0.5 / 1.6 | 0.9 / 3.0 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.6 / 1.2 | 1.1 / 2.1 | -0.6% | -0.6% | 0.5 / 1.7 | 0.8 / 3.3 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.5 / 1.2 | 1.0 / 2.0 | -0.6% | -0.6% | 0.5 / 1.8 | 0.8 / 3.8 | 100% |
+| MoGe-2 per photo + true poses | 1 | 6.8 / 13.8 | 15.2 / 28.6 | +4.2% | +4.4% | 1.4 / 5.2 | 2.8 / 10.1 | 100% |
+| MoGe-2 per photo + true poses | 2 | 6.6 / 13.9 | 14.6 / 27.8 | +2.0% | +2.6% | 2.0 / 8.3 | 3.5 / 15.6 | 99% |
+| MoGe-2 per photo + true poses | 4 | 5.7 / 13.0 | 13.5 / 24.3 | +2.9% | +4.4% | 2.2 / 10.0 | 3.9 / 18.9 | 99% |
+| MoGe-2 per photo + true poses | 8 | 5.4 / 12.5 | 12.4 / 22.6 | +0.7% | +3.0% | 2.8 / 11.9 | 4.5 / 24.3 | 98% |
+| Depth Anything 3 metric per photo + true poses | 1 | 5.7 / 16.9 | 13.2 / 36.8 | -5.6% | -7.5% | 2.8 / 16.2 | 5.8 / 29.5 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 5.0 / 15.2 | 12.3 / 35.1 | -5.2% | -7.3% | 3.3 / 15.9 | 6.3 / 31.0 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 5.0 / 14.8 | 12.1 / 33.6 | -5.3% | -6.9% | 3.6 / 19.9 | 7.0 / 38.5 | 97% |
+| Depth Anything 3 metric per photo + true poses | 8 | 5.1 / 14.7 | 11.9 / 33.1 | -5.6% | -6.8% | 3.6 / 21.4 | 6.5 / 41.5 | 95% |
 
 ## electro, within 6 m, vertical interior
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 7.1 / 24.7 | 15.6 / 64.2 | +1.0% | +1.6% | 1.8 / 15.1 | 3.6 / 58.2 | 97% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 6.2 / 35.3 | 14.6 / fails (13% failed) | -7.2% | -7.3% | 2.9 / 171.3 | 6.7 / fails (14% failed) | 96% |
-| scan rendered as depth (evaluation floor) | 1 | 0.1 / 0.9 | 0.3 / 1.9 | -0.2% | -0.2% | 0.4 / 1.5 | 0.8 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.1 / 0.8 | 0.3 / 1.8 | -0.2% | -0.2% | 0.4 / 1.5 | 0.8 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.2 / 0.8 | 0.4 / 1.6 | -0.2% | -0.2% | 0.4 / 1.6 | 0.8 / 3.0 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.1 / 0.5 | 0.3 / 0.9 | -0.2% | -0.2% | 0.4 / 1.7 | 0.8 / 3.2 | 100% |
-| MoGe-2 per photo + true poses | 1 | 5.4 / 14.8 | 13.5 / 33.5 | +3.5% | +4.5% | 1.8 / 9.9 | 4.1 / 29.1 | 100% |
-| MoGe-2 per photo + true poses | 2 | 5.2 / 15.3 | 13.3 / 31.6 | -0.1% | +2.5% | 2.4 / 12.8 | 5.1 / 32.2 | 100% |
-| MoGe-2 per photo + true poses | 4 | 5.6 / 15.0 | 13.7 / 30.4 | -0.1% | +4.3% | 2.4 / 19.8 | 5.3 / 52.6 | 99% |
-| MoGe-2 per photo + true poses | 8 | 4.8 / 12.4 | 11.6 / 25.8 | -1.3% | +2.7% | 2.8 / 10.0 | 5.5 / 25.6 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 6.4 / 27.8 | 15.4 / 52.9 | -6.8% | -7.4% | 2.5 / 34.7 | 6.8 / 118.0 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 5.8 / 20.7 | 13.8 / 41.9 | -6.9% | -7.3% | 2.8 / 27.7 | 7.7 / 77.0 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 5.6 / 20.8 | 12.7 / 38.4 | -6.5% | -6.5% | 3.3 / 30.9 | 8.2 / 76.8 | 99% |
-| Depth Anything 3 metric per photo + true poses | 8 | 4.8 / 17.7 | 10.4 / 36.5 | -5.8% | -5.8% | 3.0 / 20.6 | 6.8 / 38.0 | 97% |
+| MoGe-2, one photo (every photo) | 1 | 7.1 / 23.9 | 15.6 / 54.0 | +1.1% | +1.9% | 1.8 / 13.6 | 3.6 / 44.7 | 98% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 6.2 / 33.2 | 14.7 / fails (12% failed) | -7.2% | -7.3% | 3.0 / 74.5 | 6.8 / fails (14% failed) | 96% |
+| scan rendered as depth (evaluation floor) | 1 | 0.1 / 0.5 | 0.2 / 1.0 | -0.1% | -0.2% | 0.4 / 1.5 | 0.8 / 2.8 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.1 / 0.5 | 0.3 / 0.9 | -0.2% | -0.2% | 0.4 / 1.6 | 0.9 / 3.0 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.1 / 0.5 | 0.3 / 0.9 | -0.2% | -0.2% | 0.4 / 1.7 | 0.9 / 3.3 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.1 / 0.5 | 0.3 / 0.9 | -0.2% | -0.2% | 0.4 / 1.7 | 0.9 / 3.4 | 100% |
+| MoGe-2 per photo + true poses | 1 | 5.2 / 14.3 | 13.5 / 33.0 | +3.4% | +4.2% | 1.4 / 5.3 | 3.4 / 13.9 | 100% |
+| MoGe-2 per photo + true poses | 2 | 4.9 / 13.8 | 12.9 / 31.4 | -1.3% | +1.9% | 2.2 / 8.6 | 4.5 / 21.9 | 99% |
+| MoGe-2 per photo + true poses | 4 | 5.0 / 12.6 | 13.1 / 28.9 | +0.1% | +4.2% | 2.1 / 11.0 | 4.4 / 30.1 | 99% |
+| MoGe-2 per photo + true poses | 8 | 4.8 / 12.5 | 11.8 / 26.0 | -1.3% | +2.7% | 2.9 / 11.4 | 5.6 / 27.6 | 97% |
+| Depth Anything 3 metric per photo + true poses | 1 | 5.1 / 19.7 | 13.7 / 45.1 | -6.4% | -6.9% | 2.0 / 19.3 | 5.4 / 45.0 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 5.0 / 19.4 | 12.9 / 41.5 | -6.5% | -6.9% | 2.6 / 22.0 | 6.6 / 54.6 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 4.8 / 18.5 | 11.7 / 38.1 | -5.7% | -5.5% | 2.9 / 26.7 | 7.2 / 70.9 | 97% |
+| Depth Anything 3 metric per photo + true poses | 8 | 4.8 / 17.6 | 10.8 / 36.6 | -5.8% | -5.6% | 3.0 / 22.0 | 7.2 / 44.7 | 97% |
 
 ## electro, within 6 m, edges
 
 | Method | Views | Model scale: 1-3 m | 3-10 m | Scale error: 1-3 m | 3-10 m | One taped distance: 1-3 m | 3-10 m | Tape calibrated |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| MoGe-2, one photo (every photo) | 1 | 8.3 / 31.8 | 15.0 / 53.0 | +3.6% | +4.2% | 3.7 / 26.9 | 5.8 / 36.8 | 97% |
-| Depth Anything 3 metric, one photo (every photo) | 1 | 6.2 / 35.0 | 9.5 / 73.1 | -1.2% | -0.1% | 7.1 / 117.4 | 12.4 / 185.2 | 96% |
-| scan rendered as depth (evaluation floor) | 1 | 0.3 / 1.1 | 0.5 / 1.7 | -0.4% | -0.3% | 0.5 / 1.7 | 1.0 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 2 | 0.3 / 1.1 | 0.5 / 1.6 | -0.4% | -0.3% | 0.5 / 1.7 | 1.0 / 2.8 | 100% |
-| scan rendered as depth (evaluation floor) | 4 | 0.3 / 1.1 | 0.6 / 1.6 | -0.4% | -0.4% | 0.5 / 1.8 | 1.0 / 3.0 | 100% |
-| scan rendered as depth (evaluation floor) | 8 | 0.3 / 1.0 | 0.5 / 1.6 | -0.4% | -0.4% | 0.5 / 1.9 | 1.0 / 3.2 | 100% |
-| MoGe-2 per photo + true poses | 1 | 7.8 / 35.5 | 15.1 / 68.7 | +3.6% | +4.7% | 2.8 / 26.1 | 4.5 / 52.4 | 100% |
-| MoGe-2 per photo + true poses | 2 | 8.5 / 33.8 | 15.1 / 49.9 | +1.2% | +2.4% | 3.9 / 27.3 | 5.5 / 38.1 | 100% |
-| MoGe-2 per photo + true poses | 4 | 7.5 / 20.6 | 13.3 / 34.6 | +2.8% | +3.3% | 4.2 / 26.4 | 6.4 / 50.0 | 99% |
-| MoGe-2 per photo + true poses | 8 | 6.4 / 14.6 | 7.8 / 18.5 | +1.2% | -0.3% | 4.0 / 15.3 | 6.1 / 25.2 | 99% |
-| Depth Anything 3 metric per photo + true poses | 1 | 9.2 / 40.9 | 19.8 / 142.8 | -1.4% | -1.6% | 5.7 / 66.9 | 10.8 / 171.6 | 100% |
-| Depth Anything 3 metric per photo + true poses | 2 | 8.3 / 37.1 | 18.8 / 103.1 | -1.9% | -1.7% | 6.2 / 55.1 | 11.3 / 132.1 | 100% |
-| Depth Anything 3 metric per photo + true poses | 4 | 7.3 / 23.7 | 14.8 / 74.4 | -1.7% | -2.0% | 6.0 / 44.6 | 10.7 / 109.4 | 99% |
-| Depth Anything 3 metric per photo + true poses | 8 | 6.1 / 19.0 | 8.4 / 33.2 | -2.9% | -3.4% | 5.0 / 26.8 | 8.4 / 47.0 | 97% |
+| MoGe-2, one photo (every photo) | 1 | 8.3 / 31.7 | 15.0 / 53.2 | +3.6% | +4.2% | 3.6 / 25.3 | 5.8 / 33.8 | 98% |
+| Depth Anything 3 metric, one photo (every photo) | 1 | 6.2 / 34.9 | 9.5 / 73.7 | -1.2% | -0.1% | 7.1 / 99.4 | 12.5 / 166.7 | 96% |
+| scan rendered as depth (evaluation floor) | 1 | 0.3 / 1.1 | 0.5 / 1.6 | -0.3% | -0.3% | 0.5 / 1.7 | 1.0 / 2.7 | 100% |
+| scan rendered as depth (evaluation floor) | 2 | 0.3 / 1.1 | 0.5 / 1.6 | -0.4% | -0.3% | 0.5 / 1.8 | 1.1 / 2.9 | 100% |
+| scan rendered as depth (evaluation floor) | 4 | 0.3 / 1.1 | 0.6 / 1.6 | -0.4% | -0.4% | 0.6 / 1.9 | 1.1 / 3.2 | 100% |
+| scan rendered as depth (evaluation floor) | 8 | 0.3 / 1.0 | 0.5 / 1.6 | -0.4% | -0.4% | 0.5 / 2.0 | 1.0 / 3.4 | 100% |
+| MoGe-2 per photo + true poses | 1 | 6.6 / 16.5 | 12.2 / 23.4 | +3.0% | +3.8% | 2.2 / 9.9 | 3.7 / 13.4 | 100% |
+| MoGe-2 per photo + true poses | 2 | 7.2 / 17.3 | 12.0 / 23.6 | +0.4% | +1.4% | 3.2 / 14.6 | 4.7 / 18.8 | 99% |
+| MoGe-2 per photo + true poses | 4 | 6.9 / 16.0 | 11.4 / 21.1 | +2.4% | +3.0% | 3.5 / 16.5 | 5.2 / 24.7 | 99% |
+| MoGe-2 per photo + true poses | 8 | 6.4 / 14.6 | 7.8 / 18.5 | +1.3% | -0.3% | 4.0 / 16.9 | 6.2 / 27.6 | 97% |
+| Depth Anything 3 metric per photo + true poses | 1 | 8.0 / 26.6 | 12.5 / 41.1 | -3.1% | -2.4% | 4.6 / 36.7 | 8.6 / 50.1 | 100% |
+| Depth Anything 3 metric per photo + true poses | 2 | 7.5 / 25.4 | 11.0 / 38.2 | -3.0% | -2.4% | 5.0 / 38.8 | 8.9 / 53.8 | 99% |
+| Depth Anything 3 metric per photo + true poses | 4 | 6.7 / 19.4 | 9.9 / 34.6 | -2.6% | -2.8% | 5.1 / 34.1 | 8.8 / 62.5 | 97% |
+| Depth Anything 3 metric per photo + true poses | 8 | 6.1 / 18.9 | 8.6 / 33.4 | -2.9% | -3.3% | 5.1 / 28.2 | 8.6 / 51.0 | 97% |

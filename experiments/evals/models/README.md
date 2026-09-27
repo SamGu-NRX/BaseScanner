@@ -12,7 +12,7 @@ uv sync --project models
 uv run --project models pytest -q models/tests
 ```
 
-Checkpoints download on first use into `$HOUSE_SCANNING_DATA/evals/hf-cache` (`HF_HOME`) and `evals/torch-cache` (`TORCH_HOME`) unless those variables are already set. A run refuses to start a download with less than 6 GB free, and checks each checkpoint's sha256 against the pinned value.
+Checkpoints download on first use into `$HOUSE_SCANNING_DATA/evals/hf-cache` (`HF_HOME`) and `evals/torch-cache` (`TORCH_HOME`) unless those variables are already set. A run refuses to start a download with less than 6 GB free on the volume holding `HF_HOME`, and checks each checkpoint's sha256 against the pinned value. The grouped MapAnything runner (`models.run_groups`) does both too, records the checkpoint in each group's `run.json`, and reuses a group's output only when a fingerprint of its members, image bytes, intrinsics, poses, input size and checkpoint matches.
 
 ## Run
 
@@ -43,7 +43,7 @@ Each run loads one model and processes images one at a time; mapanything runs al
 | `cam_to_world` | mapanything only. float64 4x4, OpenCV camera, metres. Frame: the first image's camera, or the `--poses` world when poses are given |
 | `intrinsics_predicted` | mapanything only. What its output rays imply, in input pixels |
 
-`DIR/run.json` records the model, checkpoint repo, revision and sha256, code commit, device, torch version, flags, load time and, per image, seconds, the network input size, the exact resize and crop, and a depth summary.
+A run writes into `DIR.staging` and replaces `DIR` only when every image is done, so a run that fails midway leaves the previous run whole. `DIR/run.json` records the model, checkpoint repo, revision and sha256, code commit, device, torch version, flags, load time and, per image, seconds, the network input size, the exact resize and crop, and a depth summary.
 
 Network outputs are resampled to the input grid bilinearly. A pixel is valid only if every network pixel it draws on is valid and it lies inside the region the network saw; pixels removed by a crop are invalid.
 

@@ -26,14 +26,16 @@ the tape, over spans of at least 10 ft, where scale dominates tapping error.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import re
+import shutil
 import sys
 import time
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import cv2
 import numpy as np
@@ -59,20 +61,146 @@ FIELD_DIR = EVALS_DIR / "field"
 # --- Session ---------------------------------------------------------------------------------
 
 
+# Bounds on a session zip before anything is written. A real session is a few hundred files and
+# well under 1 GB (the ADVIO replay: 81 files, 17 MB); these leave room for long LiDAR sessions while
+# stopping a crafted archive from filling the shared disk.
+MAX_ZIP_MEMBERS = 10_000
+MAX_ZIP_BYTES = 2 * 1024**3
+# The archive itself, checked before it is hashed or opened, and every central-directory entry
+# (folders and __MACOSX included), so neither the file nor its index can be arbitrarily large.
+MAX_ZIP_ARCHIVE_BYTES = 2 * 1024**3
+MAX_ZIP_ENTRIES = 2 * MAX_ZIP_MEMBERS
+# The central directory ZipFile reads whole and parses into one object per entry. 20,000 entries
+# with 100-byte names take about 3 MB; the cap also bounds entries with minimal 46-byte records.
+MAX_ZIP_DIRECTORY_BYTES = 8 * 1024**2
+MIN_FREE_AFTER_UNPACK = 3 * 1024**3
+# Pixels in one session image, read from its header before OpenCV decodes it. The zip limits count
+# encoded bytes, and a few-KB JPEG can declare 65,535 x 65,535 pixels (13 GB decoded in colour).
+# ARKit keyframes are 1920 x 1440 (2.8 MP) and a 48 MP iPhone photo is 8064 x 6048 (48.8 MP), so
+# 50 MP admits both, and decoding it in colour takes about 150 MB of the 4 GB per-process budget.
+MAX_IMAGE_PIXELS = 50_000_000
+# Pixels held at once while fitting scales. Triangulation needs a keyframe and its NEIGHBOURS nearest
+# together, so only that group's grayscale image (1 byte per pixel) and depth (4) are kept, about
+# 5 bytes a pixel whatever the session's length. 200 MP is then about 1 GB, leaving the rest of the
+# 4 GB per-process budget for feature matching. Eight ARKit keyframes are 22 MP; eight 48 MP photos
+# are 390 MP and are refused from their headers before any is decoded.
+MAX_GROUP_PIXELS = 200_000_000
+
+
+def safe_member(name: str) -> PurePosixPath:
+    """A zip member name as a relative path with no way out of the extraction root."""
+    path = PurePosixPath(name)
+    parts = [p for p in path.parts if p not in ("", ".")]
+    if (
+        not parts
+        or path.is_absolute()
+        or "\\" in name
+        or ":" in parts[0]
+        or any(p == ".." for p in parts)
+    ):
+        raise ValueError(f"zip member {name!r} is not a plain relative path")
+    return PurePosixPath(*parts)
+
+
+def file_sha256(path: Path) -> str:
+    """sha256 of a file, read 1 MB at a time so a large file is never held in memory."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while block := f.read(1 << 20):
+            h.update(block)
+    return h.hexdigest()
+
+
+def check_zip_directory(session: Path) -> None:
+    """Refuse a zip whose central directory is too large or lists too many entries, reading only
+    its end record. `zipfile.ZipFile` reads the whole directory and builds every entry while it is
+    constructed, so a later count comes too late. The end record is read by `zipfile._EndRecData`,
+    the function ZipFile itself uses (ZIP64 included), so the sizes checked here are the ones it
+    will read."""
+    with session.open("rb") as f:
+        try:
+            end = zipfile._EndRecData(f)
+        except OSError as e:
+            raise ValueError(f"{session}: not a zip file ({e})") from e
+    if not end:
+        raise ValueError(f"{session}: not a zip file (no end-of-central-directory record)")
+    entries, directory_bytes = end[zipfile._ECD_ENTRIES_TOTAL], end[zipfile._ECD_SIZE]
+    if entries > MAX_ZIP_ENTRIES:
+        raise ValueError(f"{session}: {entries} zip entries, more than {MAX_ZIP_ENTRIES}")
+    if directory_bytes > MAX_ZIP_DIRECTORY_BYTES:
+        raise ValueError(
+            f"{session}: {directory_bytes}-byte zip directory, more than {MAX_ZIP_DIRECTORY_BYTES}"
+        )
+
+
 def unpack(session: Path) -> tuple[Path, str | None]:
-    """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped."""
+    """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped.
+
+    Every member is checked before anything is written: a plain relative path, no duplicates, at
+    most MAX_ZIP_MEMBERS files and MAX_ZIP_BYTES in all, with MIN_FREE_AFTER_UNPACK left free. Files
+    are copied with a running byte count, so a member whose header understates its size still
+    stops at the bound. Extraction goes to a temporary folder renamed into place only when complete.
+    """
     if session.is_dir():
         return session, None
-    digest = hashlib.sha256(session.read_bytes()).hexdigest()
+    size = session.stat().st_size
+    if size > MAX_ZIP_ARCHIVE_BYTES:
+        raise ValueError(f"{session}: {size} bytes, more than {MAX_ZIP_ARCHIVE_BYTES}")
+    check_zip_directory(session)
+    digest = file_sha256(session)
     out = FIELD_DIR / digest[:16]
     with zipfile.ZipFile(session) as z:
-        names = [n for n in z.namelist() if not n.startswith("__MACOSX/")]
-        roots = [n for n in names if n.split("/")[-1] == "session.json" and n.count("/") <= 1]
+        infos = z.infolist()
+        if len(infos) > MAX_ZIP_ENTRIES:
+            raise ValueError(f"{session}: {len(infos)} zip entries, more than {MAX_ZIP_ENTRIES}")
+        members, seen = [], set()
+        for info in infos:
+            if info.filename.startswith("__MACOSX/") or info.is_dir():
+                continue
+            rel = safe_member(info.filename)
+            if rel in seen:
+                raise ValueError(f"{session}: {rel} appears twice")
+            seen.add(rel)
+            members.append((info, rel))
+        if len(members) > MAX_ZIP_MEMBERS:
+            raise ValueError(f"{session}: {len(members)} files, more than {MAX_ZIP_MEMBERS}")
+        declared = sum(info.file_size for info, _ in members)
+        if declared > MAX_ZIP_BYTES:
+            raise ValueError(f"{session}: expands to {declared} bytes, more than {MAX_ZIP_BYTES}")
+        roots = [rel for _, rel in members if rel.name == "session.json" and len(rel.parts) <= 2]
         if len(roots) != 1:
             raise ValueError(f"{session}: expected one session.json, found {roots}")
-        if not (out / roots[0]).exists():
-            z.extractall(out, members=names)
-    return (out / roots[0]).parent, digest
+        root = out / roots[0]
+        if not root.exists():
+            FIELD_DIR.mkdir(parents=True, exist_ok=True)
+            free = shutil.disk_usage(FIELD_DIR).free
+            if free - declared < MIN_FREE_AFTER_UNPACK:
+                raise ValueError(
+                    f"{session}: unpacking {declared / 1e9:.2f} GB would leave less than "
+                    f"{MIN_FREE_AFTER_UNPACK / 1024**3:.0f} GB free ({free / 1e9:.1f} GB free now)"
+                )
+            tmp = out.with_name(out.name + ".partial")
+            shutil.rmtree(tmp, ignore_errors=True)
+            try:
+                written = 0
+                for info, rel in members:
+                    dest = tmp.joinpath(*rel.parts)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(info) as src, dest.open("wb") as dst:
+                        while block := src.read(1 << 20):
+                            written += len(block)
+                            if written > MAX_ZIP_BYTES:
+                                raise ValueError(f"{session}: expands past {MAX_ZIP_BYTES} bytes")
+                            dst.write(block)
+                shutil.rmtree(out, ignore_errors=True)
+                tmp.rename(out)
+            except BaseException:
+                shutil.rmtree(tmp, ignore_errors=True)
+                raise
+    folder = root.parent.resolve()
+    if not folder.is_relative_to(out.resolve()):
+        raise ValueError(f"{session}: session folder {folder} is outside {out}")
+    return folder, digest
 
 
 def load_session(folder: Path) -> dict:
@@ -133,20 +261,103 @@ def safe_id(value: str, what: str) -> str:
     return value
 
 
+# JPEG start-of-frame markers carry the image size; C4 (DHT), C8 (JPG) and CC (DAC) share the range
+# but are not frames.
+_JPEG_SOF = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    """(width, height) from a JPEG or PNG header, reading no pixel data. Other formats are
+    refused: sessions carry JPEG keyframes."""
+    with path.open("rb") as f:
+        head = f.read(24)
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        if head[:2] != b"\xff\xd8":
+            raise ValueError(f"{path}: not a JPEG or PNG image")
+        f.seek(2)
+        while True:
+            byte = f.read(1)
+            if not byte:
+                break
+            if byte != b"\xff":
+                continue
+            marker = f.read(1)
+            while marker == b"\xff":  # fill bytes before a marker
+                marker = f.read(1)
+            if not marker:
+                break
+            m = marker[0]
+            if m in (0x01, *range(0xD0, 0xD8)):  # markers with no length field
+                continue
+            if m in (0xD9, 0xDA):  # end of image, or start of scan before any frame header
+                break
+            length = int.from_bytes(f.read(2), "big")
+            if m in _JPEG_SOF:
+                frame = f.read(5)
+                if len(frame) == 5:
+                    return int.from_bytes(frame[3:5], "big"), int.from_bytes(frame[1:3], "big")
+                break
+            if length < 2:
+                break
+            f.seek(length - 2, 1)
+    raise ValueError(f"{path}: JPEG with no readable frame header")
+
+
+def read_session_image(path: Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarray:
+    """Decode a session image after checking its header size against MAX_IMAGE_PIXELS."""
+    w, h = image_size(path)
+    if w <= 0 or h <= 0 or w * h > MAX_IMAGE_PIXELS:
+        raise ValueError(f"{path}: {w} x {h} pixels, more than {MAX_IMAGE_PIXELS} or empty")
+    img = cv2.imread(str(path), flags)
+    if img is None:
+        raise ValueError(f"{path}: OpenCV could not decode it")
+    return img
+
+
+def session_file(folder: Path, relative: str) -> Path:
+    """A file the session names, which must lie inside the session folder: an absolute path or
+    `..` in session.json would otherwise read an unrelated local photo."""
+    root = folder.resolve()
+    path = (root / relative).resolve()
+    if Path(relative).is_absolute() or not path.is_relative_to(root):
+        raise ValueError(f"{folder}: session names {relative!r}, outside the session folder")
+    return path
+
+
+def capture_id(folder: Path, digest: str | None) -> str:
+    """The zip's sha256 (the scoring harness's capture id), or for a folder a sha256 over
+    session.json and every keyframe image, so predictions can be tied to the exact capture."""
+    if digest is not None:
+        return digest
+    h = hashlib.sha256((folder / "session.json").read_bytes())
+    for kf in sorted(load_session(folder)["keyframes"], key=lambda k: k["id"]):
+        with session_file(folder, kf["img"]).open("rb") as f:
+            while block := f.read(1 << 20):
+                h.update(block)
+    return h.hexdigest()
+
+
 def work_dir(folder: Path) -> Path:
     return FIELD_DIR / "work" / safe_id(load_session(folder)["session"]["id"], "session id")
 
 
-def prepare(folder: Path) -> Path:
-    """Upright copies of every keyframe plus the model runner's image list and intrinsics."""
+def prepare(folder: Path, digest: str | None = None) -> Path:
+    """Upright copies of every keyframe plus the model runner's image list and intrinsics, in a
+    work folder tied to this exact capture: a different capture with the same session id clears
+    it, so no earlier prediction survives under the new capture's name."""
     session = load_session(folder)
     out = work_dir(folder)
+    capture = capture_id(folder, digest)
+    stamp = out / "capture.json"
+    if out.exists() and (not stamp.exists() or json.loads(stamp.read_text())["capture"] != capture):
+        shutil.rmtree(out)
+    out.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(json.dumps({"capture": capture}) + "\n")
     (out / "upright").mkdir(parents=True, exist_ok=True)
     listing, intrinsics, turns = [], {}, {}
     for kf in session["keyframes"]:
-        img = cv2.imread(str(folder / kf["img"]))
-        if img is None:
-            raise FileNotFoundError(folder / kf["img"])
+        img = read_session_image(session_file(folder, kf["img"]))
         k = upright_turns(keyframe_pose_cv(kf))
         path = out / "upright" / f"{safe_id(kf['id'], 'keyframe id')}.jpg"
         cv2.imwrite(str(path), np.rot90(img, k), [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -183,26 +394,52 @@ def triangulated_scales(folder: Path, out: Path, session: dict, kids: list[str])
     kfs = {kf["id"]: kf for kf in session["keyframes"]}
     turns = json.loads((out / "turns.json").read_text())
     poses = {k: keyframe_pose_cv(kf) for k, kf in kfs.items()}
-    cache: dict[str, tuple] = {}
 
-    def inputs(k):
-        if k not in cache:
-            gray = cv2.imread(str(folder / kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
-            cache[k] = (gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k]))
-        return cache[k]
+    def load(k):
+        gray = read_session_image(session_file(folder, kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
+        return gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k])
 
+    def pixels(k):
+        w, h = image_size(session_file(folder, kfs[k]["img"]))
+        return w * h
+
+    frames = GroupFrames(load, pixels)
     fits = {}
     for kid in kids:
         group = neighbours(poses, kid)
         if len(group) < 2:
             continue
+        held = frames.hold(group)
         fits[kid] = view_scales(
-            {k: inputs(k)[0] for k in group},
-            {k: inputs(k)[1] for k in group},
+            {k: held[k][0] for k in group},
+            {k: held[k][1] for k in group},
             {k: poses[k] for k in group},
-            {k: inputs(k)[2] for k in group},
+            {k: held[k][2] for k in group},
         )[kid]
     return fits
+
+
+class GroupFrames:
+    """The decoded inputs of one neighbour group at a time. Frames outside the requested group are
+    dropped before new ones load, so memory follows the group, not the session; a group over
+    MAX_GROUP_PIXELS is refused from its image headers before anything in it is decoded."""
+
+    def __init__(self, load, pixels):
+        self.load, self.pixels = load, pixels
+        self.held: dict[str, tuple] = {}
+
+    def hold(self, group: list[str]) -> dict[str, tuple]:
+        total = sum(self.pixels(k) for k in group)
+        if total > MAX_GROUP_PIXELS:
+            raise ValueError(
+                f"keyframes {group} hold {total} pixels together, more than {MAX_GROUP_PIXELS}"
+            )
+        for k in [k for k in self.held if k not in group]:
+            del self.held[k]
+        for k in group:
+            if k not in self.held:
+                self.held[k] = self.load(k)
+        return self.held
 
 
 # --- Points, walls, values (Measure Lab's definitions) ------------------------------------------
@@ -458,17 +695,37 @@ def parse_tape(text: str) -> float:
     return round(feet + inches / 12, 6)
 
 
+# The session field of field/map.template.json before `stamp` binds it to a session.
+MAP_SESSION_PLACEHOLDER = "filled in by make field"
+
+
 def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -> Path:
     """Makes the team's files match this session: tape readings typed as text become feet and the
     zip's sha256 joins the survey's captures (both in place), and a copy of the map naming this
-    session goes to out_dir/inputs/map.json, which is returned."""
+    session goes to out_dir/inputs/map.json, which is returned. A map already bound to another
+    session is refused before anything is written, since its M numbers belong to that walk. So is
+    a survey that already lists another capture: the scoring harness's survey format has no
+    session field, so the captures list is its binding, and a survey stamped for one walk would
+    otherwise score another."""
     folder, capture = unpack(session_path)
     if capture is None:
         raise ValueError(
             f"{session_path}: pass the zip Measure Lab shared; its sha256 is the capture id"
         )
     session_id = load_session(folder)["session"]["id"]
+    mapping = json.loads(map_path.read_text())
+    if mapping.get("session") not in (MAP_SESSION_PLACEHOLDER, session_id):
+        raise ValueError(
+            f"{map_path} is the map for session {mapping.get('session')!r}, not {session_id!r}; "
+            f"start from field/map.template.json for a new session"
+        )
     survey = json.loads(truth_path.read_text())
+    others = [c for c in survey["captures"] if c != capture]
+    if others:
+        raise ValueError(
+            f"{truth_path} is already the survey for capture {others[0]}, not this session's "
+            f"{capture}; copy field/survey.template.json for each session"
+        )
     for m in survey["measurements"]:
         if m["status"] == "measured" and isinstance(m.get("value_ft"), str):
             if "FILL" in m["value_ft"]:
@@ -481,7 +738,6 @@ def stamp(session_path: Path, truth_path: Path, map_path: Path, out_dir: Path) -
         survey["captures"].append(capture)
         print(f"survey captures += {capture}", file=sys.stderr)
     truth_path.write_text(json.dumps(survey, indent=2) + "\n")
-    mapping = json.loads(map_path.read_text())
     mapping["session"] = session_id
     stamped = out_dir / "inputs" / "map.json"
     stamped.parent.mkdir(parents=True, exist_ok=True)
@@ -511,18 +767,26 @@ def score(
     folder, capture = unpack(session_path)
     session = load_session(folder)
     out = work_dir(folder)
+    stamp = out / "capture.json"
+    if not stamp.exists() or json.loads(stamp.read_text())["capture"] != capture_id(
+        folder, capture
+    ):
+        raise ValueError(
+            f"{out} was prepared for another capture (or not at all): run `prepare` on "
+            f"{session_path} and the model again before scoring it"
+        )
     turns = json.loads((out / "turns.json").read_text())
     started = time.perf_counter()
 
     tapped = sorted({t["keyframe"] for t in session["taps"]})
     kids = tapped or [kf["id"] for kf in session["keyframes"]]
     fits = triangulated_scales(folder, out, session, kids)
-    depth_cache: dict[str, np.ndarray] = {}
 
+    # Taps read depth one keyframe at a time; keeping the last two bounds memory to two depth
+    # maps however many keyframes were tapped.
+    @functools.lru_cache(maxsize=2)
     def depth_of(k):
-        if k not in depth_cache:
-            depth_cache[k] = keyframe_depth(out, k, turns[k])
-        return depth_cache[k]
+        return keyframe_depth(out, k, turns[k])
 
     tri = [f.scale for f in fits.values() if f.scale is not None]
     lines = [
@@ -560,6 +824,13 @@ def score(
 
     truth = json.loads(Path(truth_path).read_text())
     mapping = json.loads(Path(map_path).read_text())
+    if mapping.get("session") != session["session"]["id"]:
+        raise ValueError(
+            f"{map_path}: map is for session {mapping.get('session')!r}, the capture is "
+            f"{session['session']['id']!r}; run `stamp` first"
+        )
+    if capture not in truth.get("captures", []):
+        raise ValueError(f"{truth_path}: survey does not list capture {capture}; run `stamp` first")
     rules_sha = hashlib.sha256(Path(rules_path).read_bytes()).hexdigest()
     ref = mapping["measurements"].get(truth["scale_reference"])
     tape = {m["id"]: m for m in truth["measurements"]}.get(truth["scale_reference"])
@@ -569,9 +840,16 @@ def score(
         and tape
         and tape["status"] == "measured"
     ):
-        s = tape_scale(
-            session, native, ref["session_measurement"], ref["key"], tape["value_ft"] * FEET
-        )
+        try:
+            s = tape_scale(
+                session, native, ref["session_measurement"], ref["key"], tape["value_ft"] * FEET
+            )
+        except ValueError as e:
+            # The tape row fails on its own; the native and triangulated rows still stand.
+            s = float("nan")
+            lines.append(
+                f"- `moge2-tape`: every value failed, because the scale reference did: {e}"
+            )
         rows["moge2-tape"] = ("scale_reference", learned_values(session, positions(native, s)))
     else:
         lines.append(
@@ -619,7 +897,7 @@ def main() -> None:
         print(stamp(args.session, args.truth, args.map, out_dir))
         return
     if args.step == "prepare":
-        print(prepare(unpack(args.session)[0]))
+        print(prepare(*unpack(args.session)))
         return
     report = score(args.session, args.truth, args.map, args.rules, out_dir, args.tap_error_in)
     out_dir.mkdir(parents=True, exist_ok=True)

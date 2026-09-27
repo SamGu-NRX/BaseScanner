@@ -15,7 +15,7 @@ out.
 
 The limit: COLMAP from one moving camera has no scale of its own, and the dataset does not say how
 its reconstructions were put into meters. The phone's GPS, the one independent reference shipped,
-cannot pin that scale better than several percent over these 25 to 160 m walks (checked here). So
+cannot pin that scale better than several percent over these 45 to 255 m walks (checked here). So
 ARKit's scale is measured against the ground truth's scale, not against the tape.
 """
 
@@ -39,6 +39,7 @@ from evals.drift import (
     window_pairs,
 )
 from evals.geometry import quat_wxyz_to_matrix
+from evals.pairs import results_json
 from evals.paths import EVALS_DIR
 
 MARVIN_DIR = EVALS_DIR / "marvin"
@@ -52,24 +53,64 @@ OUTLIER = (
 RESULTS = Path(__file__).resolve().parents[1] / "results"
 
 
-def fetch() -> dict[str, str]:
-    """Download only the pose, GPS and ground-truth text files; return {path: sha256}."""
-    files = gdown.download_folder(FOLDER, skip_download=True, quiet=True, remaining_ok=True)
-    wanted = [
-        f
-        for f in files
-        if f.path.split("/")[0] in SCENES
-        and f.path.endswith(("ARkitPose.txt", "GPSData.txt", "train.txt", "test.txt"))
+# The pose, GPS and ground-truth files the published results used, with their sha256. The Drive
+# folder can change under us, so only these files are fetched and scored, and each must match.
+MANIFEST = Path(__file__).with_name("marvin_manifest.json")
+
+
+def manifest() -> dict[str, str]:
+    return json.loads(MANIFEST.read_text())
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def verify(pinned: dict[str, str], root: Path) -> None:
+    """Refuse to score unless every pinned file is present with its pinned content."""
+    wrong = [
+        rel
+        for rel, sha in pinned.items()
+        if not (root / rel).exists() or file_sha256(root / rel) != sha
     ]
-    hashes = {}
-    for f in wanted:
-        out = MARVIN_DIR / f.path
-        if not out.exists():
+    if wrong:
+        raise RuntimeError(
+            f"{len(wrong)} MARViN files are missing or differ from {MANIFEST.name}, "
+            f"e.g. {wrong[:3]}; delete them from {root} and fetch again"
+        )
+
+
+def fetch() -> dict[str, str]:
+    """Download the pinned files that are not on disk yet, then check every one against its hash."""
+    pinned = manifest()
+    missing = [rel for rel in pinned if not (MARVIN_DIR / rel).exists()]
+    if missing:
+        listed = {
+            f.path: f.id
+            for f in gdown.download_folder(
+                FOLDER, skip_download=True, quiet=True, remaining_ok=True
+            )
+        }
+        for rel in missing:
+            if rel not in listed:
+                raise RuntimeError(f"{rel} is no longer in the MARViN Drive folder")
+            out = MARVIN_DIR / rel
             out.parent.mkdir(parents=True, exist_ok=True)
-            if gdown.download(id=f.id, output=str(out), quiet=True) is None:
-                raise RuntimeError(f"Google Drive refused {f.path} ({f.id}); retry later")
-        hashes[f.path] = hashlib.sha256(out.read_bytes()).hexdigest()
-    return hashes
+            if gdown.download(id=listed[rel], output=str(out), quiet=True) is None:
+                raise RuntimeError(f"Google Drive refused {rel} ({listed[rel]}); retry later")
+    verify(pinned, MARVIN_DIR)
+    return pinned
+
+
+def pinned_walks(pinned: dict[str, str], scene: str) -> list[str]:
+    """The scene's walks named in the manifest (`seqN`), in walk order. Other walks on disk are
+    never read."""
+    walks = [
+        rel.split("/")[1]
+        for rel in pinned
+        if rel.startswith(f"{scene}/") and rel.endswith("/ARkitPose.txt")
+    ]
+    return sorted(walks, key=lambda name: int(name[3:]))
 
 
 def read_table(path: Path, columns: int) -> dict[str, np.ndarray]:
@@ -156,15 +197,16 @@ def gps_scale(gps: dict, truth_by_image: dict, frame: np.ndarray) -> tuple[float
     return s, float(np.median(res))
 
 
-def evaluate() -> dict:
+def evaluate(pinned: dict[str, str]) -> dict:
+    verify(pinned, MARVIN_DIR)
     scenes = {}
     for scene in SCENES:
         root = MARVIN_DIR / scene
         truth = {**read_table(root / "train.txt", 8), **read_table(root / "test.txt", 8)}
         frame = level_frame(np.array([v[:3] for v in truth.values()]))
         walks = []
-        for seq in sorted(root.glob("seq*/ARkitPose.txt"), key=lambda p: int(p.parent.name[3:])):
-            name = seq.parent.name
+        for name in pinned_walks(pinned, scene):
+            seq = root / name / "ARkitPose.txt"
             ark_rows = read_table(seq, 8)
             keys = sorted(k for k in ark_rows if f"{name}/{k}" in truth)
             if len(keys) < 30:
@@ -189,7 +231,7 @@ def evaluate() -> dict:
             scale = float(np.median(long)) if len(long) else float("nan")
             gps_path = root / name / "GPSData.txt"
             gps = None
-            if gps_path.exists():
+            if f"{scene}/{name}/GPSData.txt" in pinned:
                 by_image = {k: truth[f"{name}/{k}"][:3] for k in keys}
                 gps = gps_scale(read_table(gps_path, 4), by_image, frame)
             walks.append(
@@ -210,7 +252,7 @@ def evaluate() -> dict:
 def site_spread(
     scales: np.ndarray, draws: int = 10_000, seed: int = 0
 ) -> tuple[float, float, float]:
-    """Walk-to-walk standard deviation of ARKit's scale within one site, and its 95% bootstrap
+    """Walk-to-walk standard deviation of the ARKit / reference scale ratio within one site, and its 95% bootstrap
     interval over walks. Walks off by more than `OUTLIER` are left out: their reference is in doubt.
     """
     s = scales[np.abs(scales - 1) <= OUTLIER]
@@ -253,13 +295,14 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         f"Walks within 2% of the ground truth's scale: {int(np.sum(np.abs(s_all - 1) <= 0.02))} of "
         f"{len(all_walks)}.",
         "",
-        "## Walk-to-walk spread of ARKit's scale within a site",
+        "## Walk-to-walk spread of the ARKit / reference scale ratio within a site",
         "",
         f"Standard deviation over each site's walks within {OUTLIER:.0%} of the reference, with a "
-        "95% bootstrap interval over walks. A reference scaled to ARKit would carry one scale per "
-        "site, which shifts every walk of that site alike, so this spread survives it: a single "
-        "walk's scale error is at least this large, unless the reference's own scale varies walk "
-        "to walk in step with ARKit's.",
+        "95% bootstrap interval over walks. It measures how much ARKit and the reference disagree "
+        "from walk to walk, not ARKit's error alone: a perfect ARKit paired with a reference whose "
+        "local scale varies would give the same spread. A single site scale for the reference "
+        "cannot remove its local reconstruction error, and no independent bound on that error "
+        "exists here.",
         "",
         "| Site | Walks used | Spread (1 SD) | 95% interval |",
         "| --- | --- | --- | --- |",
@@ -333,7 +376,7 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
         f"GPS / truth over each walk: median {np.median(g):.3f}, range {g.min():.3f} to "
         f"{g.max():.3f} ({len(g)} walks). On the {len(tight)} walks where GPS fits within 1.5 m, "
         f"median {np.median(tight):.3f}, range {tight.min():.3f} to {tight.max():.3f}. GPS noise of "
-        "1 to 9 m over 25 to 160 m walks cannot pin the scale to 2%.",
+        "1 to 9 m over 45 to 255 m walks cannot pin the scale to 2%.",
         "",
         "## Files (Google Drive folder " + FOLDER + ")",
         "",
@@ -346,13 +389,13 @@ def markdown(scenes: dict, hashes: dict[str, str]) -> str:
 
 def main() -> None:
     hashes = fetch()
-    scenes = evaluate()
+    scenes = evaluate(hashes)
     summary = {
         scene: [{k: v for k, v in w.items() if k != "errors"} for w in walks]
         for scene, walks in scenes.items()
     }
     RESULTS.mkdir(exist_ok=True)
-    (RESULTS / "modern_arkit.json").write_text(json.dumps(summary, indent=1))
+    (RESULTS / "modern_arkit.json").write_text(results_json(summary))
     md = markdown(scenes, hashes)
     (RESULTS / "modern_arkit.md").write_text(md)
     print(md)

@@ -32,13 +32,13 @@ is reported as a tracking failure, with the time it failed, instead of producing
 from __future__ import annotations
 
 import argparse
-import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 
 from evals.advio import PoseTrack, _read_pose_csv, load_sequence
+from evals.pairs import results_json
 from evals.paths import ADVIO_DIR
 
 FEET = 0.3048
@@ -415,9 +415,7 @@ def main() -> None:
     pooled = _pooled(results)
     args.out.mkdir(parents=True, exist_ok=True)
     slim = [{k: v for k, v in r.items() if k != "errors_in"} for r in results]
-    (args.out / "advio_drift.json").write_text(
-        json.dumps({"sequences": slim, "pooled": pooled}, indent=1)
-    )
+    (args.out / "advio_drift.json").write_text(results_json({"sequences": slim, "pooled": pooled}))
     md = _markdown(results, pooled)
     (args.out / "advio_drift.md").write_text(md)
     print(md)

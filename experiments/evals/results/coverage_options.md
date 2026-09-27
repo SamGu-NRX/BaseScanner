@@ -4,24 +4,26 @@ ETH3D electro, the 19.3 ft wall of section 7. Feet along the wall. False-observe
 
 ## Position baseline b and angle diversity theta (no LiDAR): false-observed / missed
 
+An option that claims no wall is untested, not passed.
+
 | b \ theta | 0 deg | 15 deg | 30 deg | 45 deg | 60 deg | 75 deg |
 | --- | --- | --- | --- | --- | --- | --- |
-| 0.25 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | 0.0 / 18.0 |
-| 0.5 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | 0.0 / 18.0 |
-| 1 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | 0.0 / 18.0 |
-| 2 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | 0.0 / 18.0 |
-| 5 m | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 8.5 | 0.0 / 18.0 |
+| 0.25 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | untested / 18.0 |
+| 0.5 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | untested / 18.0 |
+| 1 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | untested / 18.0 |
+| 2 m | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 1.1 / 0.0 | 0.0 / 8.5 | untested / 18.0 |
+| 5 m | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 6.0 | 0.0 / 8.5 | untested / 18.0 |
 
 ## Options
 
-The last four rows allow that much wall relief in front of the tapped plane, a setting chosen after seeing this wall; see README section 7b.
+The last four rows allow that much wall relief in front of the tapped plane, a setting chosen after seeing this wall; see METHODS.md section 7b.
 
 | Option | Needs LiDAR | Claimed | False-observed | Pass | Missed | Ground claimed |
 | --- | --- | --- | --- | --- | --- | --- |
 | the app today (b = 0.25 m, theta = 0) | no | 19.3 | 1.1 | no | 0.0 | 0.0 |
 | depth test, true depth to 6 m, 3 rows | yes | 14.6 | 0.0 | yes | 3.3 | 0.0 |
 | depth test, true depth to 6 m, 9 rows | yes | 14.6 | 0.0 | yes | 3.3 | 0.0 |
-| depth test, no depth past 5 m, 9 rows | yes | 10.2 | 0.0 | yes | 7.8 | 0.0 |
+| depth test, no depth past 5 m, 9 rows | yes | 9.1 | 0.0 | yes | 8.9 | 0.0 |
 | depth test, true depth to 6 m, 9 rows, 0.2 m of relief | yes | 14.6 | 0.0 | yes | 3.3 | 0.0 |
 | depth test, true depth to 6 m, 9 rows, 0.3 m of relief | yes | 15.1 | 0.0 | yes | 2.9 | 0.0 |
 | depth test, true depth to 6 m, 9 rows, 0.4 m of relief | yes | 18.1 | 0.1 | yes | 0.0 | 0.0 |

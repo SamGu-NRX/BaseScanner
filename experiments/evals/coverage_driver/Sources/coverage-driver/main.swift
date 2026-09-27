@@ -3,7 +3,7 @@
 // each keyframe's sightings so the caller can attribute errors to the frames the app credited.
 // Without a wall it writes only the config.
 //
-// Options for occlusion (README section 7b), modelled here so HouseScanKit stays unedited:
+// Options for occlusion (METHODS.md section 7b), modelled here so HouseScanKit stays unedited:
 // - `variant.coveringBaseline` and `variant.rowsPerBand` set the app's own CoverageConfig fields.
 // - `hidden` removes rows from a keyframe's sightings before the app's `record`: a depth test that
 //   `sees` (CoverageMap.swift lines 241-248) would make, computed by the caller.

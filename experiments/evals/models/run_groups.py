@@ -15,16 +15,52 @@ placed in those poses' frame; without it every group's frame and scale are the m
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
-from models.common import RunInputs, read_intrinsics, set_cache_dirs, write_npz
+from models import map_anything
+from models.common import (
+    RunInputs,
+    checkpoint_record,
+    fingerprint,
+    read_intrinsics,
+    require_free_space_for_download,
+    set_cache_dirs,
+    write_npz,
+)
 from models.map_anything import load, run
-from models.run import pick_device
+from models.run import pick_device, publish
+
+
+def write_group(out: Path, results, summary: dict) -> None:
+    """Write one group's depth maps and run.json, all or nothing: they go to a staging folder
+    that `publish` swaps in for `out` only once every file is written, so a failure partway
+    leaves the previous outputs and run.json as they were, never a mix of old and new views."""
+    stage = out.with_name(out.name + ".staging")
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    try:
+        for res in results:
+            write_npz(
+                stage,
+                res.path.stem,
+                res.depth,
+                res.valid,
+                res.intrinsics,
+                res.cam_to_world,
+                res.arrays,
+            )
+        (stage / "run.json").write_text(json.dumps(summary, indent=1) + "\n")
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    publish(stage, out)
 
 
 def main() -> None:
@@ -60,8 +96,11 @@ def main() -> None:
     images_dir = args.scene_dir / "images_1024"
     intr_file = args.scene_dir / "model_inputs" / "intrinsics.json"
     device = pick_device(args.device)
+    ckpt = (map_anything.REPO, map_anything.FILENAME, map_anything.REVISION)
+    require_free_space_for_download(*ckpt)
     t0 = time.perf_counter()
     model = load(device)
+    checkpoint = checkpoint_record(*ckpt, map_anything.SHA256)
     if device == "mps":
         torch.mps.empty_cache()  # loading leaves about 0.6 GB of freed blocks cached
         torch.mps.set_per_process_memory_fraction(
@@ -72,15 +111,21 @@ def main() -> None:
         for members in members_list:
             gid = f"n{n}-{members[0]}"
             out = args.out / gid
-            if (out / "run.json").exists():
-                continue
             poses = None
             if pose_sets is not None:
                 poses = [np.array(pose_sets[gid]["poses"][m]) for m in members]
             images = [images_dir / f"{m}.jpg" for m in members]
+            intrinsics = read_intrinsics(intr_file, images)
+            key = fingerprint(
+                members, images, intrinsics, poses, args.max_side, checkpoint["sha256"]
+            )
+            done = out / "run.json"
+            # Reuse only an output made from these exact inputs and this checkpoint.
+            if done.exists() and json.loads(done.read_text()).get("fingerprint") == key:
+                continue
             inputs = RunInputs(
                 images=images,
-                intrinsics=read_intrinsics(intr_file, images),
+                intrinsics=intrinsics,
                 intrinsics_mode="known",
                 poses=poses,
                 max_side=args.max_side,
@@ -88,26 +133,23 @@ def main() -> None:
                 fp32=False,
             )
             results = run(model, inputs)
-            out.mkdir(parents=True, exist_ok=True)
-            for res in results:
-                write_npz(
-                    out,
-                    res.path.stem,
-                    res.depth,
-                    res.valid,
-                    res.intrinsics,
-                    res.cam_to_world,
-                    res.arrays,
-                )
             summary = {
+                "fingerprint": key,
+                "checkpoint": checkpoint,
                 "members": members,
                 "seconds_per_view": round(results[0].seconds, 3),
                 "network_wh": list(results[0].network_wh),
                 "weights": "transformer stacks bf16, rest fp32 (models/map_anything.py load)",
                 "metric_scaling_factor": [r.extra["metric_scaling_factor"] for r in results],
                 "poses_file": str(args.poses_file) if args.poses_file else None,
+                # What evals.pose_priors labels the row by: the exact pose file this run used.
+                "poses_sha256": (
+                    hashlib.sha256(args.poses_file.read_bytes()).hexdigest()
+                    if args.poses_file
+                    else None
+                ),
             }
-            (out / "run.json").write_text(json.dumps(summary, indent=1) + "\n")
+            write_group(out, results, summary)
             print(f"n={n} {members[0]}: {results[0].seconds:.2f} s/view", file=sys.stderr)
             if device == "mps":
                 torch.mps.empty_cache()
