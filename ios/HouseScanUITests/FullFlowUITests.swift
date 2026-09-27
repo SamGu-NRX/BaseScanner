@@ -14,6 +14,16 @@ final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
     static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm", "result", "resultAR"]
 
+    /// Screens audited only once the autopilot has finished with them and holds them still
+    /// (`<phase>.held` in the gate folder). On the walk the autopilot marks features, sets the
+    /// ends and tilts up while the replay plays, so the screen changes several times a second:
+    /// an audit started when the walk appeared read cards and buttons mid-crossfade, each pass a
+    /// different transition, and a copy fading out has no identifier, so two passes' transient
+    /// issues matched on the label or the "no element" key and failed as one lasting issue (CI
+    /// runs 36304552823, 36305050676, 36307476187). Held, the walk shows its last state, "Done
+    /// with this wall", and the states it passed through are audited frozen by ScreenStatesUITests.
+    static let auditedOnceHeld: Set<String> = ["wallWalk"]
+
     override func setUp() {
         continueAfterFailure = false
     }
@@ -299,12 +309,13 @@ final class FullFlowUITests: XCTestCase {
     /// Audits the screen twice, six seconds apart, and fails on the issues found both times
     /// (`AccessibilityAudit.run`).
     ///
-    /// The walk keeps taking photos while it is audited, so the photo count's number is often
-    /// mid-roll, and the result's text is still fading in when the screen appears. A single audit
-    /// reports those passing frames as contrast failures; a real contrast or clipping problem is
-    /// still there later. The walk also rebuilds parts of the screen while it is audited, so an
-    /// issue's element can be gone before it is read: that one is attached, not failed on. Every
-    /// screen state is also audited frozen by ScreenStatesUITests.
+    /// Replay screens can still be taking photos while they are audited, so the photo count's
+    /// number is often mid-roll, and the result's text is still fading in when the screen appears.
+    /// A single audit reports those passing frames as contrast failures; a real contrast or
+    /// clipping problem is still there later. The walk is audited once the autopilot holds it
+    /// (`auditedOnceHeld`). A screen that rebuilds parts of itself while it is audited can lose
+    /// an issue's element before it is read: that one is attached, not failed on. Every screen
+    /// state is also audited frozen by ScreenStatesUITests.
     @MainActor
     private func audit(_ app: XCUIApplication, screen: String) throws {
         // Six seconds: long enough for a system notification banner to leave. On CI one slid in
@@ -366,6 +377,12 @@ final class FullFlowUITests: XCTestCase {
             // The walk replays the whole recording; everything else takes seconds.
             let timeout: TimeInterval = phase == "markFeatures" || phase == "result" ? 150 : 60
             XCTAssertTrue(screen.waitForExistence(timeout: timeout), "screen.\(phase) never appeared")
+            if Self.auditedOnceHeld.contains(phase) {
+                let held = gate.appending(path: "\(phase).held")
+                let deadline = Date().addingTimeInterval(150)
+                while !FileManager.default.fileExists(atPath: held.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
+                XCTAssertTrue(FileManager.default.fileExists(atPath: held.path), "the autopilot never finished with screen.\(phase)")
+            }
             // Let the entrance animation finish so the screenshot and audit see the settled screen.
             Thread.sleep(forTimeInterval: 1.0)
             let shot = XCTAttachment(screenshot: app.screenshot())
