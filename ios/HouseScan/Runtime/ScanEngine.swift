@@ -320,9 +320,10 @@ final class ScanEngine {
             live?.setMode(.walk)
             if let replay {
                 autoCapture.reset()
-                // An overhead request is answered by tilting up, which the tilt-up frames show;
-                // other requests by the frames held back from the walk.
-                if case .overhead = gapPlan?.need, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
+                // An overhead request, or one for the wall above what the walk saw, is answered
+                // by tilting up, which the tilt-up frames show; other requests by the frames held
+                // back from the walk.
+                if gapPlan?.asksAboveTheWalk == true, let map = coverage, !Self.tiltUpFrames(in: replay, map: map).isEmpty {
                     replay.play(range: Self.tiltUpFrames(in: replay, map: map), speed: replaySpeed)
                 } else {
                     let range = replay.heldBack.map { ReplayPlanning.gapReplayRange($0.frames) } ?? 0..<replay.frames.count
