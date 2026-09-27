@@ -170,7 +170,7 @@ public struct GapPlanner: Sendable {
         switch gap.need {
         case .cells where gap.reason == .server: spans = Self.exportedSpans(gap.band, coverage)
         case .cells: return coverage.coveredFraction(gap.band, in: gap.span)
-        case .groundOut(let out): spans = reaching(Self.exported(coverage.groundDepthSpans()), out)
+        case .groundOut(let out): spans = reaching(Self.exportedGround(coverage), out)
         case .walkOut(let out): spans = reaching(Self.exported(coverage.facingSpans()), out)
         case .overhead(let height): spans = reaching(Self.exported(coverage.overheadSpans()), height)
         case .wallUp(let height): spans = reaching(Self.exported(coverage.wallSeenSpans()), height)
@@ -206,12 +206,23 @@ public struct GapPlanner: Sendable {
     static func exportedSpans(_ band: SurfaceBand, _ coverage: CoverageMap) -> [ClosedRange<Float>] {
         switch band {
         case .wall: exported(coverage.wallSeenSpans()).map(\.span)
-        case .ground: exported(coverage.groundDepthSpans()).map(\.span)
+        case .ground: exportedGround(coverage).map(\.span)
         }
     }
 
     /// A band's entries as the export writes them: joined or dropped to fit the schema's entry
     /// limit (`ObservedSpan.coarsened`), which only ever reports less.
+    /// The ground entries as the export writes them (`SceneExport.groundEntries`): joined to
+    /// leave one entry per corner of the chain. Joining to the other bands' budget kept two
+    /// neighbours the export joins, and settled a request on the deeper one of them.
+    static func exportedGround(_ coverage: CoverageMap) -> [ObservedSpan] {
+        exportedGround(coverage.groundDepthSpans(), corners: coverage.wall.segments.count - 1)
+    }
+
+    static func exportedGround(_ spans: [ObservedSpan], corners: Int) -> [ObservedSpan] {
+        SceneExport.groundEntries(spans, corners: corners)
+    }
+
     static func exported(_ spans: [ObservedSpan]) -> [ObservedSpan] {
         ObservedSpan.coarsened(spans, toAtMost: SceneExport.bandBudget)
     }
@@ -363,21 +374,28 @@ extension GapPlanner {
 extension GapPlan {
     /// How far a request's span or reach may move and still ask for the same view: 0.1 ft
     /// (0.03 m), meters. Numerical jitter from the server working the request out again is a few
-    /// hundredths of a foot; a guess, not measured.
+    /// hundredths of a foot; a guess, not measured. This applies to the span only: a reach gets
+    /// no allowance beyond float noise (`reachNoise`).
     public static let sameViewTolerance: Float = 0.03048
 
+    /// Float noise only, meters. A reach is compared as strictly as the server compares it:
+    /// `GapPlanner.progress` needs the requested out_ft itself, so a view out to 6.50 ft does not
+    /// meet a request out to 6.59 ft.
+    static let reachNoise: Float = 1e-5
+
     /// Whether this request asks for no view beyond `other`'s, allowing for the server working it
-    /// out again from the next upload: the same band and kind of need, a reach no more than
-    /// `sameViewTolerance` past the other's, and a span inside the other's give or take the same
-    /// tolerance. After "I can't get there" the skipped stretch goes to review and the spot or its
-    /// error margins can move, so the same view comes back as, say, 2.41...7.9 ft instead of
-    /// 2.4...7.9 ft. A request that asks for more is a new view, even when it mostly overlaps: a
-    /// span of 2...9 ft after 2...8 ft, or ground out to 5.10 ft after 4.83 ft (issue #39). A met
-    /// past_end request moves its end on 2 m, so the next one asks for new ground and is a
-    /// different view.
+    /// out again from the next upload: the same band and kind of need, a reach no farther than
+    /// the other's, and a span inside the other's give or take `sameViewTolerance`. After "I can't
+    /// get there" the skipped stretch goes to review and the spot or its error margins can move,
+    /// so the same view comes back as, say, 2.41...7.9 ft instead of 2.4...7.9 ft. A request that
+    /// asks for more is a new view, even when it mostly overlaps: a span of 2...9 ft after
+    /// 2...8 ft, or ground out to 6.59 ft after 6.50 ft (issue #39). A met past_end request moves
+    /// its end on 2 m, so the next one asks for new ground and is a different view.
     public func asksForSameView(as other: GapPlan) -> Bool {
+        guard band == other.band, need.asksNoMore(than: other.need, within: Self.reachNoise) else { return false }
+        // The server's own numbers when both have them: what `progress` compares against.
+        if let reach = requestedOutFt, let otherReach = other.requestedOutFt, reach > otherReach { return false }
         let tolerance = Self.sameViewTolerance
-        guard band == other.band, need.asksNoMore(than: other.need, within: tolerance) else { return false }
         return span.lowerBound >= other.span.lowerBound - tolerance && span.upperBound <= other.span.upperBound + tolerance
     }
 }

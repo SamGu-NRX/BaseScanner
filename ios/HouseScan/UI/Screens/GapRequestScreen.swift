@@ -92,7 +92,9 @@ struct GapRequestScreen: View {
             .buttonStyle(.secondary)
             .accessibilityHint("Stops asking for views and shows your result. An installer will look at the parts you skip.")
             .accessibilityIdentifier("action.showResult")
-            .transition(.opacity)
+            // Appears and goes at once, like the card's reply: a fading button is faint text for
+            // those moments, which the contrast audit fails (as `InstructionCard` found).
+            .transition(.identity)
         }
     }
 
