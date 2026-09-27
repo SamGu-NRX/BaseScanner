@@ -140,17 +140,31 @@ def test_a_request_inside_the_ends_has_no_past_end_hint() -> None:
     assert ground and not any("past the" in m["message"] for m in ground)
 
 
-def spot_beside_an_unexplored_end() -> dict:
-    """spot_beside_a_limit_end() with the walk stopped where the wall goes on."""
+def spot_beside_an_unexplored_end(end: float = END) -> dict:
+    """spot_beside_a_limit_end() with the walk stopped where the wall goes on, `end` ft right of
+    the meter, and the lawn pad the last 3 ft before it."""
     raw = spot_beside_a_limit_end()
+    raw["walls"][0]["baseline"] = [[-40, 0], [end, 0]]
+    raw["overheads"][0]["span_ft"] = raw["facing"][0]["span_ft"] = [-40, end]
+    raw["ground"] = pads_ground([(end - 3, end)], hi=end + 20)
     raw["coverage"]["ends"]["right"] = {"kind": "unexplored"}
     return raw
 
 
+def spot_beside_an_unexplored_end_beyond_reach() -> dict:
+    """The unexplored end 22 ft right of the meter, past cable reach: no past_end request."""
+    return spot_beside_an_unexplored_end(22.0)
+
+
 @pytest.mark.parametrize(
     "scene",
-    [spot_beside_a_limit_end, facing_and_overhead_past_the_end, spot_beside_an_unexplored_end],
-    ids=["wall", "bands", "unexplored"],
+    [
+        spot_beside_a_limit_end,
+        facing_and_overhead_past_the_end,
+        spot_beside_an_unexplored_end,
+        spot_beside_an_unexplored_end_beyond_reach,
+    ],
+    ids=["wall", "bands", "unexplored", "beyond-reach"],
 )
 def test_capturing_the_requests_settles_every_check_they_name(scene) -> None:
     # Round 2 of the gap loop beside an end: the homeowner showed exactly what round 1's band
@@ -160,7 +174,13 @@ def test_capturing_the_requests_settles_every_check_they_name(scene) -> None:
     assert named(first), first["missing_evidence"]
     second = run(captured_exactly(raw, first))
     left = named(first) & unseen(second)
-    if raw["coverage"]["ends"]["right"]["kind"] == "limit":
+    walk_on = [m for m in first["missing_evidence"] if m["kind"] == "past_end"]
+    if not walk_on:
+        # Past a limit end, or an unexplored one beyond reach, no request can show what the
+        # checks left to a person need. Before, the summary read "More views are needed ... 2
+        # checks depend on areas the scan did not see" with nothing left to show, and beyond
+        # reach round 1 named the AC, gas and opening clearances, which round 2 left unseen.
+        assert first["ends"]["right"]["kind"] == "limit" or first["ends"]["right"]["beyond_reach"]
         # What the checks left to a person need lies past the limit end, so before the summary
         # read "More views are needed ... 2 checks depend on areas the scan did not see" with
         # nothing left to show.
@@ -176,6 +196,9 @@ def test_capturing_the_requests_settles_every_check_they_name(scene) -> None:
         assert walk_on["kind"] == "past_end", walk_on
         assert left == {"ac_clearance", "gas_clearance", "opening_clearance"}, left
         assert set(walk_on["checks"]) == left, walk_on
+        # The reason agrees with the summary; before, only band requests raised it.
+        (area,) = [r for r in second["reasons"] if r["code"] == "unobserved_area"]
+        assert set(area["checks"]) == left, area
         assert second["summary"].startswith("More views are needed"), second["summary"]
         assert f"{len(left)} checks depend" in second["summary"], second["summary"]
         for label in ("gas equipment", "AC units", "doors and windows"):

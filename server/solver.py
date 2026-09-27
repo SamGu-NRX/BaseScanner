@@ -98,6 +98,7 @@ class Check:
     # them, the citation is withheld.
     cites: tuple[str, ...] = ()
     _all_missing: list[View] | None = field(default=None, repr=False, compare=False)
+    _past_ends: set[str] | None = field(default=None, repr=False, compare=False)
 
     def all_missing(self) -> list[View]:
         if self._all_missing is None:
@@ -1798,17 +1799,32 @@ def _sides_past(scene: Scene, lo: float, hi: float, kind: str) -> set[str]:
     return sides
 
 
-def settled_by_views(chk: Check, scene: Scene) -> bool:
+def open_ends(solver: Solver) -> set[str]:
+    """The unexplored ends within cable reach: a spot may stand past them, so a past_end request
+    asks to walk on. Past an unexplored end beyond reach no request asks for anything."""
+    scene = solver.scene
+    return {
+        side
+        for side, s_end, piece in (
+            ("left", scene.s_min, scene.walls[0]),
+            ("right", scene.s_max, scene.walls[-1]),
+        )
+        if scene.end_kinds[side] == "unexplored" and abs(s_end) <= solver.reach_limit(piece)
+    }
+
+
+def settled_by_views(chk: Check, scene: Scene, reachable: set[str]) -> bool:
     """Whether views can settle the check, so that requests ask for and name it. Not one on a
     placeholder distance (issue #75), nor one whose view of the wall, the gap in front of it or
     the space over it reaches past an end the walk marked as a limit, by more than the coverage
     tolerance: there is no wall there to show (issue #78), but the stretch still counts as
-    unseen for the check. solve() names those for a person."""
+    unseen for the check. Nor one with unseen area past an unexplored end outside `reachable`
+    (open_ends): no past_end request asks to walk on there. solve() names those for a person."""
     if not chk.asks_for_views:
         return False
-    return not any(
-        v.band != "ground" and _sides_past(scene, v.a, v.b, "limit") for v in chk.all_missing()
-    )
+    if any(v.band != "ground" and _sides_past(scene, v.a, v.b, "limit") for v in chk.all_missing()):
+        return False
+    return walk_on_settles(chk, scene) <= reachable
 
 
 def walk_on_settles(chk: Check, scene: Scene) -> set[str]:
@@ -1816,21 +1832,23 @@ def walk_on_settles(chk: Check, scene: Scene) -> set[str]:
     show it until the walk goes on past that end (a past_end request), after which the next
     answer asks for it: views of the wall, the gap or the space overhead that reach past the
     end, and ground or wall there that Scene.coverable leaves out."""
-    sides = set()
-    for v in chk.all_missing():
-        if v.band != "ground":
-            sides |= _sides_past(scene, v.a, v.b, "unexplored")
-    if chk.past_ends_later:
-        sides |= chk.past_ends_later()
-    return sides
+    if chk._past_ends is None:
+        sides = set()
+        for v in chk.all_missing():
+            if v.band != "ground":
+                sides |= _sides_past(scene, v.a, v.b, "unexplored")
+        if chk.past_ends_later:
+            sides |= chk.past_ends_later()
+        chk._past_ends = sides
+    return chk._past_ends
 
 
-def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
+def _missing_json(c: Candidate, scene: Scene, reachable: set[str]) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[View, str]]] = {}
     for chk in c.checks:
         # A request names only checks that capturing it settles (result.schema.json), and a
         # check it can't settle asks for none of its views, so none of them size a request.
-        if not settled_by_views(chk, scene):
+        if not settled_by_views(chk, scene, reachable):
             continue
         for view in chk.all_missing():
             if view.band != "ground":
@@ -1969,11 +1987,12 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             "point": [_round(pt[0]), _round(pt[1])],
             "beyond_reach": beyond,
         }
-    open_ends = [s for s, e in ends.items() if e["kind"] == "unexplored" and not e["beyond_reach"]]
+    # The unexplored ends not beyond_reach.
+    reachable = open_ends(solver)
 
     def past_end_requests(best: Candidate | None = None) -> list[dict[str, Any]]:
         out = []
-        for side in open_ends:
+        for side in sorted(reachable):
             request: dict[str, Any] = {
                 "kind": "past_end",
                 "side": side,
@@ -1987,7 +2006,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                     for c in best.checks
                     if c.outcome == UNSURE
                     and c.unsure_cause == "unobserved"
-                    and settled_by_views(c, scene)
+                    and settled_by_views(c, scene, reachable)
                     and side in walk_on_settles(c, scene)
                 )
             request["message"] = (
@@ -2038,18 +2057,18 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                 + ".",
             }
         )
-        missing = _missing_json(best, scene)
-        if missing:
+        missing = _missing_json(best, scene, reachable) + past_end_requests(best)
+        named = sorted({i for m in missing for i in m.get("checks", [])})
+        if named:
             reasons.append(
                 {
                     "code": "unobserved_area",
-                    "checks": sorted({i for m in missing for i in m["checks"]}),
+                    "checks": named,
                     "message": "Part of the area the checks need was not seen.",
                 }
             )
-        if open_ends:
+        if reachable:
             reasons.append(unexplored_reason)
-            missing += past_end_requests(best)
         spot_at = where((best.s0 + best.s1) / 2)
         # Only a check a request names is settled by more views: a band request, or a past_end
         # request when its unseen area lies past that end. The rest are named for a person, as
@@ -2107,8 +2126,8 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                     "message": "No straight stretch of scanned wall is as wide as the battery.",
                 }
             )
-        can_reject = auto and r.policy.allow_reject and not open_ends
-        if open_ends:
+        can_reject = auto and r.policy.allow_reject and not reachable
+        if reachable:
             reasons.append(unexplored_reason)
             missing = past_end_requests()
         if not auto:
@@ -2122,7 +2141,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
                 + ("; ".join(names.get(t, t.replace("_", " ")) for t in top[:3]) or "the checks")
                 + "."
             )
-        elif open_ends:
+        elif reachable:
             summary = (
                 "No spot on the scanned walls works; walk further to look for one within reach."
             )
