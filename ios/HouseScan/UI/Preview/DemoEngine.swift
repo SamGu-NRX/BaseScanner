@@ -29,8 +29,10 @@ final class DemoEngine: ScanActions {
     /// How far the walk has seen to each side of the meter, meters.
     private var reachedLeft: Float = 0.3
     private var reachedRight: Float = 0.3
-    /// Stretches the homeowner skipped, kept apart so a later skip doesn't undo an earlier one.
-    private var skippedSpans: [ClosedRange<Float>] = []
+    /// Stretches the homeowner skipped, and in which bands, kept apart so a later skip doesn't
+    /// undo an earlier one. An aim step's skip covers only the band it asked for, as in the real
+    /// engine; skipping the rest of a walk covers both.
+    private var skippedSpans: [(span: ClosedRange<Float>, bands: Set<CoverageBand>)] = []
     /// `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so ending the wall now leaves part
     /// of the walk out.
     private var walkedBack: Float?
@@ -575,11 +577,12 @@ final class DemoEngine: ScanActions {
             wallCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0))
             groundCells.append(Self.state(at: center, left: reachedLeft, right: reachedRight, lag: 0.35))
         }
-        for skippedSpan in skippedSpans {
+        for skipped in skippedSpans {
             for index in 0..<count {
                 let center = wallRange.lowerBound + (Float(index) + 0.5) * Self.cellWidth
-                if skippedSpan.contains(center), wallCells[index] != .covered { wallCells[index] = .skipped }
-                if skippedSpan.contains(center), groundCells[index] != .covered { groundCells[index] = .skipped }
+                guard skipped.span.contains(center) else { continue }
+                if skipped.bands.contains(.wall), wallCells[index] != .covered { wallCells[index] = .skipped }
+                if skipped.bands.contains(.ground), groundCells[index] != .covered { groundCells[index] = .skipped }
             }
         }
         for obstruction in obstructions {
@@ -856,22 +859,25 @@ final class DemoEngine: ScanActions {
             refreshGuidance()
             return
         }
-        switch state.guidance {
-        case .aimAtGround(let s), .aimAtWall(let s):
-            // Like the real engine: that stretch goes to review and the walk moves on.
-            skippedSpans.append((s - 0.5)...(s + 0.5))
+        let aimed: (s: Float, band: CoverageBand)? = switch state.guidance {
+        case .aimAtGround(let s): (s, .ground)
+        case .aimAtWall(let s): (s, .wall)
+        default: nil
+        }
+        if let aimed {
+            // Like the real engine: that stretch of the band asked for goes to review, and the
+            // walk moves on.
+            skippedSpans.append((span: (aimed.s - 0.5)...(aimed.s + 0.5), bands: [aimed.band]))
             refreshCoverage()
             refreshGuidance()
             return
-        default:
-            break
         }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {
-            skippedSpans.append((reachedRight + 0.1)...demoRightEnd)
+            skippedSpans.append((span: (reachedRight + 0.1)...demoRightEnd, bands: Set(CoverageBand.allCases)))
             reachedRight = demoRightEnd
         } else {
-            skippedSpans.append(demoLeftEnd...(-reachedLeft - 0.1))
+            skippedSpans.append((span: demoLeftEnd...(-reachedLeft - 0.1), bands: Set(CoverageBand.allCases)))
             reachedLeft = -demoLeftEnd
         }
         refreshCoverage()

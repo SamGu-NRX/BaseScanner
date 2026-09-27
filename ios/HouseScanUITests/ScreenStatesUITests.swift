@@ -253,7 +253,16 @@ final class ScreenStatesUITests: XCTestCase {
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"]
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let tape = element(app, "wallTape")
+        XCTAssertTrue(tape.waitForExistence(timeout: 5))
+        let wallBefore = Self.rightOfMeterSeen(ElementRead.snapshot(tape)?.value as? String)
+        XCTAssertNotNil(wallBefore, "the map must say how much of the wall right of the meter is seen")
         tapReply(app, "Skip this spot")
+        // Skipping the ground spot sends that ground to review and leaves the wall above it as it
+        // was, as in the real engine: the map shows a skipped section, and the wall seen is unchanged.
+        let afterSkip = ElementRead.waitForValue(of: tape, timeout: 5) { $0.contains("skipped") }
+        XCTAssertNotNil(afterSkip, "the skipped ground must show on the map")
+        XCTAssertEqual(Self.rightOfMeterSeen(afterSkip), wallBefore, "skipping the ground must leave the wall band alone, got \(afterSkip ?? "nil")")
         tapReply(app, "Can't get there")
         tap(app, "action.markEnd", timeout: 10)
         XCTAssertTrue(element(app, "action.endCorner").waitForExistence(timeout: 5), "the end question must ask")
@@ -453,6 +462,12 @@ final class ScreenStatesUITests: XCTestCase {
         let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
         _ = XCTWaiter().wait(for: [hittable], timeout: 3)
         target.tap()
+    }
+
+    /// "Right of your meter: N percent seen" from the wall map's value: the wall band only.
+    private static func rightOfMeterSeen(_ value: String?) -> String? {
+        guard let value, let range = value.range(of: "Right of your meter: [0-9]+ percent seen", options: .regularExpression) else { return nil }
+        return String(value[range])
     }
 
     /// The card's reply with these words.
