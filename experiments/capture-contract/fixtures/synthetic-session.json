@@ -1,0 +1,118 @@
+{
+  "format": "measure-lab-session",
+  "formatVersion": 2,
+  "units": {
+    "length": "meters"
+  },
+  "session": {
+    "id": "synthetic-contract"
+  },
+  "keyframes": [
+    {
+      "id": "k00002",
+      "img": "keyframes/synthetic-2.jpg",
+      "w": 1000,
+      "h": 800,
+      "intrinsics": [
+        500,
+        500,
+        500,
+        400
+      ],
+      "pose": [
+        0,
+        0,
+        -1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        2,
+        1,
+        5,
+        1
+      ],
+      "timestamp": 2,
+      "tracking": "limited.relocalizing",
+      "reason": "tap",
+      "depth": null
+    },
+    {
+      "id": "k00001",
+      "img": "keyframes/synthetic-1.jpg",
+      "w": 1000,
+      "h": 800,
+      "intrinsics": [
+        500,
+        500,
+        500,
+        400
+      ],
+      "pose": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        2,
+        3,
+        1
+      ],
+      "timestamp": 1,
+      "tracking": "normal",
+      "reason": "tap",
+      "depth": null
+    }
+  ],
+  "taps": [
+    {
+      "id": "tap-1",
+      "keyframe": "k00001",
+      "pixel": [
+        750,
+        650
+      ],
+      "rayOrigin": [
+        0,
+        2,
+        3
+      ],
+      "rayDirection": [
+        0.4082482904638631,
+        -0.4082482904638631,
+        -0.8164965809277261
+      ]
+    },
+    {
+      "id": "tap-2",
+      "keyframe": "k00002",
+      "pixel": [
+        500,
+        400
+      ],
+      "rayOrigin": [
+        2,
+        1,
+        5
+      ],
+      "rayDirection": [
+        -1,
+        0,
+        0
+      ]
+    }
+  ]
+}
