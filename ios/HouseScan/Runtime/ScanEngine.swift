@@ -1469,7 +1469,8 @@ final class ScanEngine {
             var policy = ResultOverlayPolicy()
             while !Task.isCancelled {
                 guard let self, self.state.phase == .resultAR, let live = self.live else { return }
-                let usesRealityKit = policy.update(drawn: live.resultIsDrawn(), time: self.screenTime)
+                let look = live.resultIsDrawn()
+                let usesRealityKit = policy.update(drawn: look.drawn, held: look.held, time: self.screenTime)
                 if self.state.resultInCamera != usesRealityKit {
                     RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
                     self.state.resultInCamera = usesRealityKit

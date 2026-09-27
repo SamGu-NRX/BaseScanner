@@ -4,7 +4,8 @@ import Foundation
 /// screen's own drawing over the camera (the Canvas).
 ///
 /// The Canvas is the default. The AR scene takes over only once the app has seen it drawing the
-/// result for `confirmation` seconds without a break, and gives it back at once when it stops.
+/// result for `confirmation` seconds without a break, and gives it back at once when it stops
+/// holding the result (its anchor or the model lost), not when the battery merely leaves the view.
 /// Build 4.1 hid the Canvas as soon as the model was handed to the AR scene; on a phone where the
 /// scene then drew nothing, the homeowner saw no battery at all.
 public struct ResultOverlayPolicy: Sendable, Equatable {
@@ -22,8 +23,15 @@ public struct ResultOverlayPolicy: Sendable, Equatable {
 
     /// Takes one look at the AR scene: `drawn` says whether it draws the result now, at `time`
     /// in seconds (any clock that only goes forward). Returns `usesRealityKit`.
+    ///
+    /// `held` says whether the AR scene still holds the result, drawn or not: anchored and
+    /// enabled, with the battery perhaps out of view. Once the AR scene has taken over it keeps
+    /// the result while `held`, so turning the phone to the meter doesn't bring the Canvas back
+    /// over RealityKit's copy, a second, unoccluded cable and tint a few centimetres off (review
+    /// of #100). Seeing it drawn is only needed to take over.
     @discardableResult
-    public mutating func update(drawn: Bool, time: Double) -> Bool {
+    public mutating func update(drawn: Bool, held: Bool = false, time: Double) -> Bool {
+        if usesRealityKit, held { return true }
         guard drawn else {
             drawnSince = nil
             usesRealityKit = false
