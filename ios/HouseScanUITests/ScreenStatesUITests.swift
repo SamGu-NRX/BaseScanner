@@ -152,10 +152,10 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
         // B-14: a limit says whether it is a minimum or a maximum. The unit is left off: VoiceOver
         // text spells lengths out ("3 feet") once B-16 lands, the screen text says "3 ft".
-        let window = element(app, "check.window")
-        XCTAssertTrue(window.exists, "missing check.window")
-        XCTAssertTrue((window.value as? String)?.contains("The rule is at least 3") == true,
-                      "the window rule must read as a minimum, got \(String(describing: window.value))")
+        // One read (`ElementRead`): the result's content is still settling in.
+        let window = ElementRead.snapshot(element(app, "check.window"))?.value as? String
+        XCTAssertTrue(window?.contains("The rule is at least 3") == true,
+                      "the window rule must read as a minimum, got \(String(describing: window))")
         // The result reveal slides its content in; a tap while it moves can miss (one failure in
         // three local runs), so wait until the button takes taps.
         let showAR = element(app, "action.showAR")
@@ -244,17 +244,18 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "ground.answer.gravel")
         XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5), "the answer must fold into a row")
         XCTAssertTrue(element(app, "ground.answer.lawn").waitForNonExistence(timeout: 5), "the answers must go once answered")
-        XCTAssertTrue(element(app, "ground.answered").label.contains("Gravel"), "the row must show the answer")
+        // Read once each (`ElementRead`): the row and the answers are swapping in and out.
+        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Gravel") == true, "the row must show the answer")
 
         tap(app, "ground.change")
         let gravel = element(app, "ground.answer.gravel")
         XCTAssertTrue(gravel.waitForExistence(timeout: 5), "Change must bring the answers back")
-        XCTAssertTrue(gravel.isSelected, "the current answer must show as selected")
+        XCTAssertTrue(ElementRead.snapshot(gravel)?.isSelected == true, "the current answer must show as selected")
         XCTAssertFalse(element(app, "ground.change").exists)
 
         tap(app, "ground.answer.notSure")
         XCTAssertTrue(element(app, "ground.change").waitForExistence(timeout: 5))
-        XCTAssertTrue(element(app, "ground.answered").label.contains("Not sure"))
+        XCTAssertTrue(ElementRead.snapshot(element(app, "ground.answered"))?.label.contains("Not sure") == true)
     }
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent
@@ -314,8 +315,8 @@ final class ScreenStatesUITests: XCTestCase {
         if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
             let found: Bool
             if let identifier = expected.identifier {
-                let target = element(app, identifier)
-                found = target.label.contains(expected.text) || (target.value as? String)?.contains(expected.text) == true
+                let target = ElementRead.snapshot(element(app, identifier))
+                found = target.map { $0.label.contains(expected.text) || ($0.value as? String)?.contains(expected.text) == true } ?? false
             } else {
                 found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
             }
@@ -324,40 +325,18 @@ final class ScreenStatesUITests: XCTestCase {
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
         // audit, after the banner's few seconds on screen, finds it again.
-        let first = try audit(app)
-        guard !first.isEmpty else { return }
-        Thread.sleep(forTimeInterval: 6)
-        revealCutOff(first.values.compactMap(\.frame), in: app)
-        let second = try audit(app)
-        for key in AuditIssueKey.repeated(first, second) {
-            XCTFail("\(name): \(second[key]?.message ?? key)")
+        let outcome = try AccessibilityAudit.run(app) { first in
+            Thread.sleep(forTimeInterval: 6)
+            revealCutOff(first.findings.values.compactMap(\.frame), in: app)
         }
-    }
-
-    private struct Issue {
-        var message: String
-        var frame: CGRect?
-    }
-
-    /// Issues keyed by `AuditIssueKey`. A failed snapshot (the tree changed while the
-    /// audit read it) is retried once; a second failure throws.
-    @MainActor
-    private func audit(_ app: XCUIApplication) throws -> [String: Issue] {
-        func run() throws -> [String: Issue] {
-            var found: [String: Issue] = [:]
-            try app.performAccessibilityAudit { issue in
-                let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
-                let key = AuditIssueKey.key(auditType: issue.auditType.rawValue, identifier: issue.element?.identifier, label: issue.element?.label)
-                found[key] = Issue(message: "\(issue.compactDescription) (\(element))", frame: issue.element?.frame)
-                return true
-            }
-            return found
+        if !outcome.unread.isEmpty {
+            let note = XCTAttachment(string: outcome.unread.joined(separator: "\n"))
+            note.name = "\(name)-element-gone"
+            note.lifetime = .keepAlways
+            add(note)
         }
-        do {
-            return try run()
-        } catch {
-            Thread.sleep(forTimeInterval: 1)
-            return try run()
+        for (_, finding) in outcome.persistent {
+            XCTFail("\(name): \(finding.message)")
         }
     }
 

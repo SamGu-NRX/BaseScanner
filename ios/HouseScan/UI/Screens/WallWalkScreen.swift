@@ -289,8 +289,22 @@ struct WallWalkScreen: View {
         }
     }
 
+    /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
+    /// a second while the homeowner walks, and the task under it stays the same, so "Can't get
+    /// there" stays put through it: hiding it each time made the button fade in and out under the
+    /// homeowner's thumb, and the accessibility audit caught it half faded (CI run 36295565916).
+    /// Coaching about tracking itself hides it, since where an end would land needs the phone's
+    /// place, as does being past an end.
+    private var coachingHidesReply: Bool {
+        switch state.coaching {
+        case nil, .slowDown?, .needsTexture?, .tooDark?, .holdSteady?: false
+        case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
+        }
+    }
+
     private var reply: InstructionCard.Reply? {
-        guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.coaching == nil, !trayOpen else { return nil }
+        guard asksForArea, state.marking == nil, state.endQuestion == nil, !state.overheadQuestion,
+              !coachingHidesReply, !trayOpen else { return nil }
         if case .seeBehind = state.guidance {
             return InstructionCard.Reply(
                 title: ScanCopy.cannotSeeBehind,
