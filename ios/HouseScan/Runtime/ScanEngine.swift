@@ -385,6 +385,7 @@ final class ScanEngine {
         var features = state.features
         for index in features.indices { Self.project(&features[index], onto: wall) }
         if features != state.features { state.features = features }
+        publishFeaturesPastEnds()
     }
 
     private func refreshMeterFromAnchor(_ frame: SourceFrame) {
@@ -1151,6 +1152,7 @@ final class ScanEngine {
             }
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
+        publishFeaturesPastEnds()
     }
 
     /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's

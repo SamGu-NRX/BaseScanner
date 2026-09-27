@@ -75,7 +75,7 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
         // #40: an overlap reads as one, not as clearance.
-        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot 3 inches. The rule is no overlap"),
+        "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.

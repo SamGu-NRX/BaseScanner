@@ -104,7 +104,7 @@ struct MarkFeaturesScreen: View {
         } else {
             VStack(spacing: 10) {
                 ForEach(state.features) { feature in
-                    FeatureRow(feature: feature, actions: actions)
+                    FeatureRow(feature: feature, pastEnd: state.featuresPastEnds.contains(feature.id), actions: actions)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 }
             }
@@ -147,6 +147,7 @@ struct MarkFeaturesScreen: View {
 
 private struct FeatureRow: View {
     var feature: MarkedFeature
+    var pastEnd: Bool
     var actions: any ScanActions
 
     var body: some View {
@@ -164,6 +165,17 @@ private struct FeatureRow: View {
                     Text(Distance.aroundFromMeter(feature.span).prefix(1).uppercased() + Distance.aroundFromMeter(feature.span).dropFirst())
                         .font(.subheadline)
                         .foregroundStyle(Palette.muted)
+                    if pastEnd {
+                        Label {
+                            Text(ScanCopy.featurePastEnd)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(Palette.caution)
+                                .accessibilityHidden(true)
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .combine)
