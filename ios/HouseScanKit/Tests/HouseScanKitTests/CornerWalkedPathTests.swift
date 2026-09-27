@@ -60,3 +60,19 @@ import Testing
         #expect(nearlyEqual(clear, 0.5 - map.positionError(atS: -0.7620)))
     }
 }
+
+/// An interruption can reach the map before a frame captured ahead of it (Codex 4114518313).
+@Suite struct InterruptionOrderTests {
+    /// B was captured before the interruption but delivered after it, so it gets the new segment;
+    /// C comes after the resume. The break's time keeps B and C apart.
+    @Test func aFrameDeliveredAfterTheInterruptionDoesntJoinAcrossIt() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(FacingTests.camera(s: 0, out: 2), trackingNormal: true, time: 10)
+        map.breakWalkedPath(at: 10.5)
+        map.observe(FacingTests.camera(s: 0.5, out: 2), trackingNormal: true, time: 10.5)
+        map.observe(FacingTests.camera(s: 1.0, out: 2), trackingNormal: true, time: 11)
+        // Cell 4 lies between B (0.5) and C (1.0) only.
+        #expect(map.walkedClearance(at: 4) == nil)
+        #expect(map.facingSpans().allSatisfy { $0.span.upperBound <= 0.5 + 1e-4 })
+    }
+}
