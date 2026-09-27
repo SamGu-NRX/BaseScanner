@@ -105,13 +105,12 @@ enum ScanCopy {
         }
     }
 
-    /// One line for coaching that rides along with the task instead of replacing it (the walk's
-    /// capture-gate coaching): the task's title stays, and this takes its second line.
+    /// One short line for coaching that rides along with the task instead of replacing it (the
+    /// walk's capture-gate coaching): the task's title and second line stay, and this goes under
+    /// them. Only the coaching's title, so the task's own words stay the bigger part of the card.
     static func coachingNote(_ coaching: Coaching) -> String {
-        let words = ScanCopy.coaching(coaching)
-        let title = words.title.hasSuffix(".") ? words.title : "\(words.title)."
-        guard let detail = words.detail else { return title }
-        return "\(title) \(detail)"
+        let title = ScanCopy.coaching(coaching).title
+        return title.hasSuffix(".") ? title : "\(title)."
     }
 
     // MARK: Wall ends

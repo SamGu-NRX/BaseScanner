@@ -4,9 +4,9 @@ import SwiftUI
 ///
 /// Over the camera: haze on what the phone hasn't seen, a blue dotted path on the ground, a
 /// ring on the next thing to aim at, pins on what's been marked. At the bottom: the tape map
-/// and at most two actions. At the top: one instruction, with coaching on its second line while
-/// the photos have a problem, replaced while tracking has one, or by the marking prompt while
-/// marking.
+/// and at most two actions. At the top: one instruction, with coaching on a line of its own
+/// under it while the photos have a problem, replaced while tracking has one, or by the marking
+/// prompt while marking.
 struct WallWalkScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -88,12 +88,14 @@ struct WallWalkScreen: View {
     }
 
     /// Coaching about how the photos come out (the capture gate's, and too little texture) rides
-    /// along with the task: the task's title stays, the coaching takes the second line, and its
-    /// symbol marks the card (`tone`). Replacing the whole card hid the task each time the
-    /// coaching came up (#80).
+    /// along with the task: the task's title and second line both stay (on an aim step the second
+    /// line is the only thing that says where to aim), the coaching adds its own short line under
+    /// them, and its symbol marks the card (`tone`). Replacing the whole card hid the task each
+    /// time the coaching came up (#80), and the dark coaching can stay up for a whole night walk.
     private func withCoaching(_ task: Instruction) -> Instruction {
         guard let coaching else { return task }
-        return Instruction(title: task.title, detail: ScanCopy.coachingNote(coaching))
+        let detail = [task.detail, ScanCopy.coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
+        return Instruction(title: task.title, detail: detail)
     }
 
     /// Tracking problems and standing past the end replace the task: nothing the task asks for
@@ -105,21 +107,28 @@ struct WallWalkScreen: View {
         }
     }
 
-    /// "Slow down" is for walking. With the tray open the homeowner has stopped to pick a mark
-    /// and is only turning the phone, which the gate also reads as moving (field test run 1).
-    /// Tracking problems still show.
+    /// "Slow down", "Turn more slowly" and "Hold steady" are for walking and aiming. With the tray
+    /// open the homeowner has stopped to pick a mark and is only turning the phone, which the gate
+    /// also reads as moving or turning (field test run 1). Tracking problems still show.
     private var coaching: Coaching? {
-        if trayOpen, state.coaching == .slowDown { return nil }
-        return state.coaching
+        switch state.coaching {
+        case .slowDown?, .turnSlowly?, .holdSteady?: trayOpen ? nil : state.coaching
+        default: state.coaching
+        }
     }
 
+    /// Coaching that replaces the task marks the card with its symbol. A refusal on the task
+    /// (the next wall wasn't marked, the wall is too short) keeps its red triangle over coaching
+    /// that only rides along: the refusal's words are on the card, so its tone should match.
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, let coaching {
+        let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
+        if coachingShows, let coaching, Self.replacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
-        if state.marking == nil, state.endQuestion == nil, !state.overheadQuestion, state.wallTooShort { return .refusal }
+        if coachingShows, state.wallTooShort { return .refusal }
+        if coachingShows, let coaching { return .coaching(symbol: ScanCopy.coachingSymbol(coaching)) }
         return .normal
     }
 

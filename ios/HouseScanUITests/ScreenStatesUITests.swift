@@ -185,6 +185,7 @@ final class ScreenStatesUITests: XCTestCase {
         let card = element(app, "instruction")
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         XCTAssertTrue(card.label.contains("Walk slowly to your right"), "the task must stay on the card, got \(card.label)")
+        XCTAssertTrue(card.label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(card.label)")
         XCTAssertTrue(card.label.contains("It's dark here"), "the coaching must show on the card, got \(card.label)")
     }
 
