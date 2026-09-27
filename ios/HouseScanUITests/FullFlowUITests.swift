@@ -70,11 +70,13 @@ final class FullFlowUITests: XCTestCase {
         var scene: [String: Any] = [:]
         try runFlow(replay: Self.fixture, extraArguments: ["-autopilotCantGetThere"], beforeLeaving: { app, phase in
             guard phase == "wallWalk" else { return }
-            let element = app.descendants(matching: .any)["wallTape"]
-            let bothEnds = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "value CONTAINS 'Left end' AND value CONTAINS 'Right end'"), object: element)
-            XCTAssertEqual(XCTWaiter().wait(for: [bothEnds], timeout: 90), .completed, "the walk never ended both sides")
-            tape = element.value as? String ?? ""
+            // The value that matched, from one read: the map's element is rebuilt as the walk
+            // goes on, so a second read could find it gone.
+            let ended = ElementRead.waitForValue(of: app.descendants(matching: .any)["wallTape"], timeout: 90) {
+                $0.contains("Left end") && $0.contains("Right end")
+            }
+            XCTAssertNotNil(ended, "the walk never ended both sides")
+            tape = ended ?? ""
         }, onScene: { data in
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         })
@@ -112,9 +114,9 @@ final class FullFlowUITests: XCTestCase {
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
     @MainActor
     private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
-        let tape = app.descendants(matching: .any)["wallTape"]
-        let mentionsHidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value CONTAINS[c] %@", "hidden"), object: tape)
-        return XCTWaiter().wait(for: [mentionsHidden], timeout: timeout) == .completed
+        ElementRead.waitForValue(of: app.descendants(matching: .any)["wallTape"], timeout: timeout) {
+            $0.localizedCaseInsensitiveContains("hidden")
+        } != nil
     }
 
     /// Runs only when HOUSESCAN_REPLAY names a session folder, so CI stays on the synthetic fixture.
@@ -127,45 +129,29 @@ final class FullFlowUITests: XCTestCase {
         try runFlow(replay: replay)
     }
 
-    /// Audits the screen twice, a second apart, and fails on the issues found both times.
+    /// Audits the screen twice, six seconds apart, and fails on the issues found both times
+    /// (`AccessibilityAudit.run`).
     ///
     /// The walk keeps taking photos while it is audited, so the photo count's number is often
     /// mid-roll, and the result's text is still fading in when the screen appears. A single audit
     /// reports those passing frames as contrast failures; a real contrast or clipping problem is
-    /// still there a second later. Every screen state is also audited frozen, in one pass, by
-    /// ScreenStatesUITests.
+    /// still there later. The walk also rebuilds parts of the screen while it is audited, so an
+    /// issue's element can be gone before it is read: that one is attached, not failed on. Every
+    /// screen state is also audited frozen by ScreenStatesUITests.
     @MainActor
     private func audit(_ app: XCUIApplication, screen: String) throws {
-        func pass() throws -> [String: String] {
-            var found: [String: String] = [:]
-            try app.performAccessibilityAudit { issue in
-                let element = issue.element
-                let key = AuditIssueKey.key(auditType: issue.auditType.rawValue, identifier: element?.identifier, label: element?.label)
-                // Only the identifier and label: reading the element's type or frame queries it live,
-                // and an element that has gone records a snapshot failure the retry can't catch
-                // (CI run 36260279300).
-                found[key] = "\(issue.compactDescription) - \(issue.detailedDescription) [\(element?.identifier ?? "")] \(element?.label ?? "")"
-                return true
-            }
-            return found
+        // Six seconds: long enough for a system notification banner to leave. On CI one slid in
+        // over the find-meter screen and failed its contrast check twice a second apart (run
+        // 36264789032), as ScreenStatesUITests' audit also allows for.
+        let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6.0) }
+        if !outcome.unread.isEmpty {
+            let note = XCTAttachment(string: outcome.unread.joined(separator: "\n"))
+            note.name = "audit-\(screen)-element-gone"
+            note.lifetime = .keepAlways
+            add(note)
         }
-        // A failed snapshot means the tree changed while the audit read it (seen once on CI);
-        // retry that pass once, and let a second failure throw.
-        func passRetrying() throws -> [String: String] {
-            do { return try pass() } catch {
-                Thread.sleep(forTimeInterval: 1)
-                return try pass()
-            }
-        }
-        let first = try passRetrying()
-        guard !first.isEmpty else { return }
-        // Long enough for a system notification banner to leave: on CI one slid in over the
-        // find-meter screen and failed its contrast check twice a second apart (run 36264789032),
-        // as ScreenStatesUITests' audit also allows for.
-        Thread.sleep(forTimeInterval: 6.0)
-        let second = try passRetrying()
-        for key in AuditIssueKey.repeated(first, second) {
-            let text = "screen.\(screen): \(second[key] ?? key)"
+        for (_, finding) in outcome.persistent {
+            let text = "screen.\(screen): \(finding.message)"
             if Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
                 let note = XCTAttachment(string: text)
                 note.name = "audit-\(screen)"
