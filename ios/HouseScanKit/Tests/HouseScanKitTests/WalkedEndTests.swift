@@ -178,4 +178,21 @@ import Testing
         #expect(groundSeen.contains { $0.span.upperBound < -3 || $0.span.lowerBound < -3 })
         #expect(groundSeen.contains { $0.span.upperBound > 3 })
     }
+
+    /// Made-up ends and marks (issue #42): a mark wholly past an end lies past it; one that reaches
+    /// an end, straddles one or sits between them doesn't.
+    @Test func marksWhollyPastAnEndLiePastIt() {
+        let left: Float = -2.0
+        let right: Float = 0.3
+        #expect(WalkedEnd.liesPastAnEnd(4.0...4.3, leftEnd: left, rightEnd: right))
+        #expect(WalkedEnd.liesPastAnEnd(1.5...2.0, leftEnd: left, rightEnd: right))
+        #expect(WalkedEnd.liesPastAnEnd(-3.2 ... -2.4, leftEnd: left, rightEnd: right))
+        // Reaching an end, straddling one, or between them: on the scanned wall.
+        #expect(!WalkedEnd.liesPastAnEnd(0.3...0.6, leftEnd: left, rightEnd: right))
+        #expect(!WalkedEnd.liesPastAnEnd(-2.3 ... -1.7, leftEnd: left, rightEnd: right))
+        #expect(!WalkedEnd.liesPastAnEnd(-0.5...0.1, leftEnd: left, rightEnd: right))
+        // A side without an end has nothing to lie past.
+        #expect(!WalkedEnd.liesPastAnEnd(4.0...4.3, leftEnd: left, rightEnd: nil))
+        #expect(!WalkedEnd.liesPastAnEnd(-3.2 ... -2.4, leftEnd: nil, rightEnd: nil))
+    }
 }

@@ -34,9 +34,9 @@ struct ResultScreen: View {
                     // the length of the fade, which the audit caught.
                     headline(result)
                         .offset(y: revealed || reduceMotion ? 0 : 12)
-                    if result.spot != nil {
+                    if result.spot != nil, state.spatialResultAvailable {
                         // Right under the answer: seeing it on the real wall is the next thing
-                        // anyone wants to do.
+                        // anyone wants to do. Not once the camera has failed.
                         Button {
                             actions.showAR()
                         } label: {

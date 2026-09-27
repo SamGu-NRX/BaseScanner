@@ -952,14 +952,14 @@ final class DemoEngine: ScanActions {
         isSample: true
     )
 
-    /// Field test run 2's working-space line: the spot overlaps the meter's working space by
-    /// 1 ft 3 in (measured_ft -1.25), within the measurement's 1 ft 6 in error (#40).
+    /// A made-up working-space line: the spot overlaps the meter's working space by 1 ft
+    /// (measured_ft -1.0), within the measurement's 1 ft 6 in error (#40).
     static let overlapSample: ResultPresentation = {
         var sample = reviewSample
         sample.checks.insert(
             CheckRow(id: "meter_working_space", title: "Clear of the meter's working space", outcome: .unsure,
                      reason: "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
-                     needsPerson: true, measured: -0.381, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
+                     needsPerson: true, measured: -0.3048, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
             at: 0
         )
         return sample
