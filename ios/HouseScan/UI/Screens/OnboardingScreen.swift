@@ -37,7 +37,8 @@ struct OnboardingScreen: View {
                 Spacer()
                 if page < pages.count - 1 {
                     Button("Skip") {
-                        withAnimation(Motion.screen) { page = pages.count - 1 }
+                        // Reduce Motion: the page changes in place, without sliding past the others.
+                        withAnimation(reduceMotion ? nil : Motion.screen) { page = pages.count - 1 }
                     }
                     .font(Typeface.hint.weight(.semibold))
                     .foregroundStyle(Palette.signalText)
@@ -75,7 +76,7 @@ struct OnboardingScreen: View {
                     .transition(.opacity)
                 } else {
                     Button("Next") {
-                        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen) { page += 1 }
+                        withAnimation(reduceMotion ? nil : Motion.screen) { page += 1 }
                     }
                     .buttonStyle(.primary)
                     .accessibilityIdentifier("action.onboardingNext")
@@ -159,6 +160,8 @@ private struct PageDots: View {
     var count: Int
     var current: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(0..<count, id: \.self) { index in
@@ -167,7 +170,8 @@ private struct PageDots: View {
                     .frame(width: index == current ? 22 : 8, height: 8)
             }
         }
-        .animation(Motion.settle, value: current)
+        // The current dot widens; with Reduce Motion it changes without the stretch.
+        .animation(reduceMotion ? nil : Motion.settle, value: current)
         // The page view already announces its position; these dots are for sighted users.
         .accessibilityHidden(true)
     }

@@ -194,7 +194,7 @@ private struct UploadSteps: View {
                 } else if index < current {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Palette.covered)
-                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
                 } else if index == current {
                     ProgressView()
                         .controlSize(.small)
@@ -209,7 +209,8 @@ private struct UploadSteps: View {
             Text(title(index))
                 .font(Typeface.hint)
                 .foregroundStyle(index <= current ? Color.primary : Palette.muted)
-                .contentTransition(.numericText())
+                // The rolling digits move; with Reduce Motion they crossfade.
+                .contentTransition(reduceMotion ? .opacity : .numericText())
         }
     }
 }
