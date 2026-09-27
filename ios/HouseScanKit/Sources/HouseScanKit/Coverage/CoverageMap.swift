@@ -594,6 +594,11 @@ public struct CoverageMap: Sendable {
     /// or past it, or what the reading met does. On build 5.1 a corridor's far wall, 5 ft out,
     /// hid everything behind it and was asked to be looked past (#160). False wherever no far
     /// surface is known.
+    ///
+    /// A large flat obstacle standing parallel in front of the wall, such as an AC unit's screen
+    /// or a parked car's side, can qualify as the far surface (`FarSurface.spans`). The wall and
+    /// ground behind it then read unseen rather than hidden: the walk stops asking to look past
+    /// it, but nothing behind it is claimed seen, so a check there stays unsure.
     private func endsSpace(_ point: SIMD3<Float>, reading: Float, depth: Float, camera: CameraFrame) -> Bool {
         guard !farSurfaceByCell.isEmpty else { return false }
         func pastSpace(_ world: SIMD3<Float>) -> Bool {

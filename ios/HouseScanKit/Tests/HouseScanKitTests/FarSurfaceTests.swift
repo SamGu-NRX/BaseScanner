@@ -47,6 +47,64 @@ import Testing
         #expect(FarSurface.spans(planes: [door], wall: wall, over: -2...4).isEmpty)
     }
 
+    /// A vertical plane from `a` to `b` on the ground, 2.5 m tall, facing `normal`.
+    static func plane(_ id: String, from a: SIMD3<Float>, to b: SIMD3<Float>, normal: SIMD3<Float>) -> WallPlaneEvidence {
+        let top = SIMD3<Float>(0, 2.5, 0)
+        return WallPlaneEvidence(id: id, kind: .wall, center: (a + b) / 2 + top / 2, normal: normal, boundary: [a, b, b + top, a + top])
+    }
+
+    /// A wall's own plane turned off the chain's piece is not where the space ends. The standard
+    /// wall turns a corner 0.6 m right of the meter, away from the homeowner, into a corridor: the
+    /// next piece runs along -z from (0.6, 0, 0), facing +x, with s = 0.6 + distance along it.
+    /// ARKit's plane of that piece's wall runs 10 degrees off it from the corner for 6 m, so it
+    /// stands 0.5 m in front of the piece from s = 3.44 on and 1.04 m at its far end: measured
+    /// cell by cell it would end the space there. Its near end touches the wall, so it never
+    /// counts. The corridor's far wall, 1.8 m out along the whole piece, is found over the
+    /// requested 1 to 6 m (1.798 m, 1.8 rounded down to 0.1 ft); its near end lies at the
+    /// corridor's mouth, in front of the corner and along no piece but the corridor's.
+    @Test func aWallsOwnPlaneTurnedOffThePieceIsNotAFarSurface() throws {
+        var wall = standardWall()
+        let corner = try wall.corner(on: .right, meeting: SIMD3(0.6, 0, -2), outward: SIMD3(1, 0, 0))
+        wall.turn(.right, at: corner)
+        #expect(nearlyEqual(corner.s, 0.6))
+        let turn = Float.pi / 18
+        let own = Self.plane(
+            "own", from: SIMD3(0.6, 0, 0), to: SIMD3(0.6 + 6 * sin(turn), 0, -6 * cos(turn)), normal: SIMD3(cos(turn), 0, sin(turn)))
+        #expect(FarSurface.spans(planes: [own], wall: wall, over: 1...6).isEmpty)
+
+        let far = Self.plane("far", from: SIMD3(2.4, 0, 0), to: SIMD3(2.4, 0, -6), normal: SIMD3(-1, 0, 0))
+        let spans = FarSurface.spans(planes: [own, far], wall: wall, over: 1...6)
+        #expect(!spans.isEmpty)
+        #expect(spans.allSatisfy { nearlyEqual($0.out, 59 * 0.03048) })
+        #expect(nearlyEqual(spans.first?.span.lowerBound ?? 0, 1) && nearlyEqual(spans.last?.span.upperBound ?? 0, 6))
+    }
+
+    /// A far wall found turned 11 degrees off the piece still ends the space: a 7.6 m wide plane
+    /// along z = 1.8 + x tan 11 degrees, from x = -0.5 (1.70 m out) to 6.96 (3.15 m out), meets
+    /// the cells over s 0 to 2 between 1.8 and 2.19 m out. A plane 0.75 m wide, 1.5 m out, is
+    /// narrower than a fence or a wall is found and doesn't count.
+    @Test func aWideFarWallTurnedOffTheWallCountsAndANarrowPlaneDoesNot() {
+        let wall = standardWall()
+        let turn = 11 * Float.pi / 180
+        let start = SIMD3<Float>(-0.5, 0, 1.8 - 0.5 * tan(turn))
+        let far = Self.plane("far", from: start, to: start + 7.6 * SIMD3(cos(turn), 0, sin(turn)), normal: SIMD3(-sin(turn), 0, cos(turn)))
+        let narrow = Self.plane("narrow", from: SIMD3(0.5, 0, 1.5), to: SIMD3(1.25, 0, 1.5), normal: SIMD3(0, 0, -1))
+        #expect(FarSurface.spans(planes: [narrow], wall: wall, over: 0...2).isEmpty)
+
+        let spans = FarSurface.spans(planes: [far, narrow], wall: wall, over: 0...2)
+        #expect(!spans.isEmpty)
+        #expect(spans.allSatisfy { $0.out >= 1.79 && $0.out <= 2.2 })
+        #expect(nearlyEqual(spans.first?.span.lowerBound ?? 1, 0) && nearlyEqual(spans.last?.span.upperBound ?? 0, 2))
+        #expect(spans.last.map { $0.out > 2.1 } == true)
+    }
+
+    /// The plane the meter's wall was refit to is the wall's own, and is left out by its id.
+    @Test func theRefitPlaneIsLeftOut() {
+        let wall = standardWall()
+        #expect(!FarSurface.spans(planes: [Self.plane(at: 2.0)], wall: wall, over: 0...1).isEmpty)
+        #expect(FarSurface.spans(planes: [Self.plane(at: 2.0)], wall: wall, over: 0...1, excluding: ["far"]).isEmpty)
+    }
+
     /// A camera in a 2 m corridor, at (x, 1.4, 0.6) for x = -0.3, 0 and 0.3, looking out at the
     /// far wall pitched down 30 degrees. It sees the ground from 1.375 m out (61 degrees down,
     /// the image's 31 past its axis) to the far wall's foot, and the depth rows behind the wall

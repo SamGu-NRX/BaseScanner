@@ -14,7 +14,9 @@ import simd
 public struct FarSurfaceConfig: Sendable, Equatable {
     /// Nearer the wall than this a plane is taken for the wall itself: ARKit's plane of the house
     /// wall lies within a few centimetres to decimetres of the wall line (a tapped line is off by
-    /// 0.3 ft and more), and a space narrower than this is not one anyone walks in. A guess.
+    /// 0.3 ft and more), and a space narrower than this is not one anyone walks in. It holds for
+    /// the whole plane, not only where a cell meets it: a wall's own plane turned a few degrees
+    /// off the piece's line drifts past it a few meters along. A guess.
     public var minOut: Float = 0.5
     /// Farther than this a plane says nothing about the space in front of the wall: 5 m, the
     /// mesh probe's reach (`MeshProbeConfig.maxRange`).
@@ -48,13 +50,20 @@ public enum FarSurface {
     /// reaches the point it is met at. The smaller of the two, rounded down to `quantum`, with
     /// touching cells of equal distance merged. Cells with no such plane are left out.
     ///
+    /// A plane whose outline comes within `minOut` of the wall's line, or crosses it, at either
+    /// end is the wall's own, or runs into it, and never counts (`Candidate.clearsWall`): replayed
+    /// on the build 7.1 corridor, the corridor wall's own plane, turned about 11 degrees off the
+    /// chain's piece, passed `minOut` two thirds of the way along and came out as a far surface
+    /// under 3 ft out. So is the plane the meter's wall was refit to (`excluding`, by id).
+    ///
     /// A plane is ARKit's fit to a surface, not a measurement of what stands between it and the
     /// wall: it says where the space ends, never that the space before it is clear.
     public static func spans(
         planes: [WallPlaneEvidence], wall: WallFrame, over range: ClosedRange<Float>,
-        cellWidth: Float = CoverageConfig().cellWidth, config: FarSurfaceConfig = FarSurfaceConfig()
+        cellWidth: Float = CoverageConfig().cellWidth, excluding ids: Set<String> = [],
+        config: FarSurfaceConfig = FarSurfaceConfig()
     ) -> [ObservedSpan] {
-        let facing = planes.compactMap { Candidate($0, config: config) }
+        let facing = planes.filter { !ids.contains($0.id) }.compactMap { Candidate($0, wall: wall, config: config) }
         guard !facing.isEmpty else { return [] }
         let cosLimit = cos(config.maxAngle)
         func distance(atS s: Float) -> Float? {
@@ -103,18 +112,33 @@ public enum FarSurface {
         var first: Float
         var last: Float
 
-        init?(_ plane: WallPlaneEvidence, config: FarSurfaceConfig) {
+        init?(_ plane: WallPlaneEvidence, wall: WallFrame, config: FarSurfaceConfig) {
             guard plane.kind != .other, let normal = plane.horizontalNormal, !plane.boundary.isEmpty else { return nil }
             let along = SIMD3(-normal.z, 0, normal.x)
             let offsets = plane.boundary.map { simd_dot($0 - plane.center, along) }
             let heights = plane.boundary.map(\.y)
             guard let first = offsets.min(), let last = offsets.max(), let bottom = heights.min(), let top = heights.max(),
                   last - first >= config.minWidth, top - bottom >= config.minHeight else { return nil }
+            guard Self.clearsWall(plane.center + along * first, wall: wall, config: config),
+                  Self.clearsWall(plane.center + along * last, wall: wall, config: config) else { return nil }
             self.center = plane.center
             self.normal = normal
             self.along = along
             self.first = first
             self.last = last
+        }
+
+        /// Whether one horizontal end of a plane's outline stands at least `minOut` in front of
+        /// every piece of the wall whose stretch it lies along. A plane is straight, so with both
+        /// ends clear of a piece's line all of it is. An end along no piece (round a corner, past
+        /// where the chain turns) is not held to any: measured against the piece before the
+        /// corner, a corridor's far wall ending at the corridor's mouth would read as touching
+        /// the wall it only lines up with.
+        static func clearsWall(_ end: SIMD3<Float>, wall: WallFrame, config: FarSurfaceConfig) -> Bool {
+            wall.segments.allSatisfy { piece in
+                let at = piece.coordinates(ofOffset: end - wall.origin)
+                return !piece.span.contains(at.s) || at.out >= config.minOut
+            }
         }
     }
 }
