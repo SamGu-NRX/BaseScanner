@@ -327,6 +327,7 @@ function renderResult() {
     const shown = c.kept < c.count ? ` (drawing ${c.kept.toLocaleString()})` : "";
     const from = replay ? "Synthetic model for this illustration" : state.source?.kind === "backend" ? "Final model from the server" : state.source?.kind === "synthetic" ? "Final model from the synthetic API (self-authored)" : "Final model from the local API";
     caption = `${from} · ${c.count.toLocaleString()} points${shown}`;
+    if (preview.error) caption += ` · Reloading it failed (${preview.error}); this is the last model received.`;
   } else if (preview.phase === "empty") caption = "The server returned a model with no points.";
   else if (preview.phase === "unsupported") caption = `Preview unavailable: the file is not a point cloud this viewer reads (${preview.error}).`;
   else if (preview.phase === "error") caption = `Could not load the model: ${preview.error}.`;
@@ -356,6 +357,8 @@ function renderResult() {
     return;
   }
   box.hidden = false;
+  $("outcome-note").hidden = !result.error;
+  $("outcome-note").textContent = result.error ? `Refreshing the result failed (${plainError(result.error)}). This is the last result received.` : "";
   const outcome = body.outcome;
   if (outcome && typeof outcome.kind === "string") {
     setOutcome(outcome.kind, OUTCOME_WORDS[outcome.kind] ?? outcome.kind, typeof outcome.message === "string" ? outcome.message : "");

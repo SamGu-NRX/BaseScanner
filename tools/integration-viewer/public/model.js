@@ -216,6 +216,11 @@ function applyEvents(state, body, at, catchUp) {
   const events = Array.isArray(body.events) ? body.events : [];
   // Events read while catching up on history arrived before the viewer connected.
   const backlog = catchUp ?? !state.firstBatchDone;
+  // The first read after history pins a run the status named to the events seen before it, so a
+  // run first named in this very batch can outrank it.
+  if (catchUp !== true && !state.caughtUp) {
+    state = { ...state, caughtUp: true, declaredRank: state.declaredRank === Infinity ? state.cursor + 0.5 : state.declaredRank };
+  }
   let next = {
     ...state,
     firstBatchDone: true,
@@ -235,12 +240,7 @@ function applyEvents(state, body, at, catchUp) {
   const reported = Number.isInteger(body.next) ? body.next : 0;
   next.cursor = Math.max(state.cursor, reported, maxSeq);
   if (at != null) next.connection = { phase: "live", lastContactAt: at, lastError: null, failures: 0 };
-  // The first read after history pins a run the status named to the events seen so far.
-  if (catchUp !== true && !next.caughtUp) {
-    next = { ...next, caughtUp: true };
-    if (next.declaredRank === Infinity) next = chooseRun({ ...next, declaredRank: next.cursor + 0.5 }, next.currentRunId);
-  }
-  return next;
+  return chooseRun(next, next.currentRunId);
 }
 
 function applyEvent(state, event, backlog) {
@@ -416,7 +416,9 @@ export function viewsToShow(state) {
   const fromResult = listed
     .filter((v) => isObject(v) && typeof v.id === "string" && !seen.has(v.id) && seen.add(v.id))
     .map((v) => ({ id: v.id, title: typeof v.prompt?.title === "string" ? v.prompt.title : null }));
-  if (fromResult.length > 0) return fromResult;
+  // A ready result's own list, even an empty one, is the server's answer for this run.
+  const hasList = Array.isArray(body?.viewsNeeded) || Array.isArray(body?.outcome?.viewsNeeded);
+  if (fromResult.length > 0 || (hasList && state.result.phase === "ready" && body.runId === state.currentRunId)) return fromResult;
   return state.retake ? state.retake.views.map((id) => ({ id, title: null })) : [];
 }
 

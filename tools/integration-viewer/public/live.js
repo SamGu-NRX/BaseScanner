@@ -114,6 +114,7 @@ export function followCapture({ sourceKey, captureId, session, dispatch, getStat
       if (key !== triesKey) {
         triesKey = key;
         resultTries = 0;
+        resultNotBefore = -Infinity; // backpressure applied to the previous key's reads
       }
       const pending = resultExpected(state) && readyKey !== key;
       const interval = resultTries < RESULT_QUICK_TRIES ? RESULT_RETRY_MS : RESULT_SLOW_MS;

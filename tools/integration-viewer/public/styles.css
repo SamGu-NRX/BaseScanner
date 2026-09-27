@@ -239,6 +239,7 @@ body[data-motion="off"] .st[data-status="running"]::after { animation-play-state
 .views-h { margin: 0 0 4px; font-weight: 600; color: var(--unsure-ink); }
 .views ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .views .view-id { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 6px; }
+.outcome-note { margin: 0 0 8px; font-size: 13px; color: var(--unsure-ink); }
 .review-link { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--phone); font-weight: 600; }
 
 /* ticker */

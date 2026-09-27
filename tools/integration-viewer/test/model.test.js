@@ -294,6 +294,28 @@ test("after history is read, a run first named by a later event supersedes the o
   assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
 });
 
+test("a run first named in the first live batch outranks a run the status named without events", () => {
+  const s = run(
+    selected(),
+    { type: "status", body: { captureId: "cap_TEST_1", status: "complete", runId: "run_a" } },
+    { ...events([committed(1, ["stills/a.jpg"])], 1), catchUp: true },
+    { ...events([{ seq: 2, type: "retake_request", at: "x", data: { runId: "run_b", viewsNeeded: ["vn1"], memberActions: [] } }], 2), catchUp: false },
+  );
+  assert.equal(s.currentRunId, "run_b");
+  assert.deepEqual(viewsToShow(s), [{ id: "vn1", title: null }]);
+});
+
+test("a ready result's empty views list replaces an earlier retake for the same run", () => {
+  const s = run(
+    selected(),
+    events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn1"], memberActions: [] } }]),
+    { type: "result", body: { runId: "run_a", status: "complete", viewsNeeded: [], outcome: { kind: "eligible", viewsNeeded: [] } } },
+  );
+  assert.deepEqual(viewsToShow(s), []);
+  const pending = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn1"], memberActions: [] } }]), { type: "result", body: { runId: "run_a", status: "processing", viewsNeeded: [], outcome: null } });
+  assert.deepEqual(viewsToShow(pending), [{ id: "vn1", title: null }]);
+});
+
 test("the result revision stays a number across a run switch", () => {
   const a = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
   const b = run(a, events([{ ...stage(5, "validate", "running"), data: { stage: "validate", status: "running", attempt: 1, runId: "run_b" } }], 5));
