@@ -23,7 +23,7 @@ struct OnboardingScreen: View {
             // The ring and the arrows carry most of the walk's guidance, and nothing said what
             // they were for (#81).
             guide: "A blue ring marks a spot to show. It fills and turns green once captured. When the spot is off screen, an arrow at the edge points to it.",
-            note: "Only the wall's measurements are sent. Your photos stay on this phone and are deleted when you start over.",
+            note: "Only the wall's measurements are sent. Completed scans and their photos stay on this phone until newer scans replace them.",
             art: .fog
         ),
         OnboardingPage(

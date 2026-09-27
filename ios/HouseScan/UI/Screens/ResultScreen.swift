@@ -32,6 +32,10 @@ struct ResultScreen: View {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
                     AnswerCard(result: result, canShowAR: state.spatialResultAvailable, revealed: revealed, actions: actions)
+                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
+                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                            .accessibilityIdentifier("result.spotRefused")
+                    }
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -136,12 +140,12 @@ struct ResultScreen: View {
                     if let scan = state.shareableScan {
                         ShareScanButton(url: scan)
                     }
-                    // Last, so the one action that throws the scan away is the farthest. The card's
-                    // button already starts over after a reject.
+                    // Keep starting another scan after the current scan's review and export.
+                    // Completed scans stay on disk under ScanFolderCleanup's retention policy.
                     if result.answer != .notHere {
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(TextActionStyle())
-                            .accessibilityHint("Deletes this scan and its photos.")
+                            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
                             .accessibilityIdentifier("action.startOver")
                     }
                 }
@@ -266,7 +270,7 @@ private struct AnswerCard: View {
                 Label(ScanCopy.scanAnotherWall, systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(.primary)
-            .accessibilityHint("Deletes this scan and its photos.")
+            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
             .accessibilityIdentifier("action.startOver")
         }
     }
