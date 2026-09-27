@@ -207,6 +207,50 @@ def where(s: float) -> str:
     return f"{format_ft_in(abs(s))} {'left' if s < 0 else 'right'} of the meter"
 
 
+# Homeowner text names things by what they are and roughly where, never by the ids in `subject`
+# ("objects[1] ac"; issue #74). Object and ground types read with underscores as spaces, except:
+_NOUNS = {
+    "ac": "AC unit",
+    "elec_box": "electrical box",
+    "drive": "driveway",
+}
+
+
+def _noun(kind: str) -> str:
+    return _NOUNS.get(kind, kind.replace("_", " "))
+
+
+def _a(noun: str) -> str:
+    """The noun with its indefinite article: "an AC unit", "a gas meter". An initialism takes
+    "an" when its first letter is said with a vowel sound."""
+    first = noun.split()[0]
+    vowel = first[0] in "AEFHILMNORSX" if first.isupper() else first[0].lower() in "aeiou"
+    return f"{'an' if vowel else 'a'} {noun}"
+
+
+def _about(s: float) -> str:
+    """Roughly where along the walls s is, to tell things apart: "about 14 ft right of the
+    meter". Positions carry error, so whole feet."""
+    feet = int(abs(s) + 0.5)
+    if feet == 0:
+        return "next to the meter"
+    return f"about {feet} ft {'left' if s < 0 else 'right'} of the meter"
+
+
+def _describe(o: SceneObject) -> str:
+    """An object as a homeowner finds it: "the AC unit about 14 ft right of the meter"."""
+    return f"the {_noun(o.type)} {_about((o.span[0] + o.span[1]) / 2)}"
+
+
+def _sentence(text: str) -> str:
+    return text[:1].upper() + text[1:]
+
+
+def _phrase(label: str) -> str:
+    """A check's label inside a sentence: "distance from AC units", keeping the initialism."""
+    return label[:1].lower() + label[1:]
+
+
 @dataclass
 class Route:
     outcome: str
@@ -325,6 +369,13 @@ class Solver:
                 return False
         return True
 
+    @staticmethod
+    def _items(
+        objs: list[SceneObject], counts: Callable[[SceneObject], bool | None] = lambda o: True
+    ) -> list[tuple[str, str, Geometry, float, bool | None]]:
+        """check_clearance's items for scene objects."""
+        return [(o.label, _describe(o), o.geom, o.plus_minus, counts(o)) for o in objs]
+
     # --- checks --------------------------------------------------------------------------------
 
     def check_backing(self, piece: Piece, s0: float, s1: float) -> Check:
@@ -394,7 +445,9 @@ class Solver:
             core = self._buffered(g.polygon, -(g.plus_minus + erosion))
             if not core.is_empty and fp.intersection(core).area > _MEASURE_EPS:
                 c.outcome, c.subject = FAIL, f"ground[{g.index}] {g.type}"
-                c.reason = f"The footprint stands on {g.type}, which is not an allowed surface."
+                c.reason = (
+                    f"The footprint stands on {_a(_noun(g.type))}, which is not an allowed surface."
+                )
                 return c
         if not self._covered(fp, self.unobserved_ground, ew):
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
@@ -476,20 +529,22 @@ class Solver:
         rule: Value,
         piece: Piece,
         fp: Polygon,
-        items: list[tuple[str, Geometry, float, bool | None]],
+        items: list[tuple[str, str, Geometry, float, bool | None]],
         band: str,
         noun: str,
         wall_height: float | None = None,
     ) -> Check:
-        """Minimum plan distance from the footprint to each item. `items` holds (label, geometry,
-        error, counts) where counts None means an unknown attribute decides whether it applies.
-        `wall_height` is how high up the wall the face must have been seen, for a check that
-        reads the wall band."""
+        """Minimum plan distance from the footprint to each item. `items` holds (subject,
+        description, geometry, error, counts): the subject is the id the answer reports, the
+        description how its reason names the item, and counts None means an unknown attribute
+        decides whether it applies. `wall_height` is how high up the wall the face must have
+        been seen, for a check that reads the wall band."""
         t = rule.value
         c = Check(check_id, label, PASS, "", rule_key, rule, threshold=t, comparison="at_least")
         c.asks_for_views = not self._placeholder(rule_key, rule)
         worst_key: tuple[int, float] | None = None
-        for name, geom, err, counts in items:
+        what = ""
+        for name, description, geom, err, counts in items:
             if counts is False:
                 continue
             d = fp.distance(geom)
@@ -503,9 +558,10 @@ class Solver:
                 worst_key = key
                 c.outcome, c.measured, c.plus_minus, c.subject = outcome, d, e, name
                 c.unsure_cause = cause if outcome == UNSURE else None
+                what = _sentence(description)
         if c.outcome == FAIL:
             c.reason = (
-                f"{c.subject} is {ft(c.measured or 0)} (± {ft(c.plus_minus or 0)}) from the "
+                f"{what} is {ft(c.measured or 0)} (± {ft(c.plus_minus or 0)}) from the "
                 f"battery; the rule needs more than {ft(t)}."
             )
             return c
@@ -522,12 +578,12 @@ class Solver:
         if c.outcome == UNSURE:
             if c.unsure_cause == "unknown_attribute":
                 c.reason = (
-                    f"{c.subject} is within {ft(t)} of the battery, and whether the rule applies "
+                    f"{what} is within {ft(t)} of the battery, and whether the rule applies "
                     "to it (for example whether a window opens) was not recorded."
                 )
             else:
                 c.reason = (
-                    f"{c.subject} is {ft(c.measured or 0)} (± {ft(c.plus_minus or 0)}) from the "
+                    f"{what} is {ft(c.measured or 0)} (± {ft(c.plus_minus or 0)}) from the "
                     f"battery against a {ft(t)} rule: too close to call."
                 )
             c.missing_later = missing_later
@@ -536,7 +592,7 @@ class Solver:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
             c.missing_later = missing_later
             c.reason = (
-                f"Not everything within {ft(t)} of the battery was seen, so a {noun} could "
+                f"Not everything within {ft(t)} of the battery was seen, so {_a(noun)} could "
                 "hide there."
             )
             return c
@@ -580,6 +636,7 @@ class Solver:
             comparison="at_least",
         )
         worst_key: tuple[int, float] | None = None
+        what = ""
         for o in self.equipment:
             gap = max(o.span[0] - s1, s0 - o.span[1])
             # Both ends of the gap carry error: the box's own, and the battery's position, which
@@ -590,14 +647,15 @@ class Solver:
             if worst_key is None or key > worst_key:
                 worst_key = key
                 c.outcome, c.measured, c.plus_minus, c.subject = outcome, gap, e, o.label
+                what = _sentence(_describe(o))
         if c.outcome == FAIL:
-            c.reason = f"{c.subject} is on the wall directly above the battery."
+            c.reason = f"{what} is on the wall directly above the battery."
             return c
         up_to = self.wall_height["above"]
         missing = self.scene.missing("wall", s0 - t, s1 + t, up_to)
         if c.outcome == UNSURE:
             c.unsure_cause = "margin"
-            c.reason = f"{c.subject} ends within measurement error of the battery's edge."
+            c.reason = f"{what} ends within measurement error of the battery's edge."
         elif missing:
             c.outcome, c.unsure_cause = UNSURE, "unobserved"
             c.reason = "The wall above the battery was not fully seen."
@@ -663,6 +721,7 @@ class Solver:
         # The lowest value surely under the battery, and whether the deciding entry only might be.
         surely: tuple[float, float] | None = None
         only_maybe = False
+        what = ""
         for m in entries:
             # plus_minus is the error of the measured height or depth; where the stretch sits
             # along the wall is known to the wall's error. A measurement that lies under the
@@ -686,12 +745,16 @@ class Solver:
                 worst_key, only_maybe = key, maybe
                 c.outcome, c.measured, c.plus_minus = outcome, value, m.plus_minus
                 c.subject = f"{'overheads' if band == 'overhead' else 'facing'}[{m.index}]"
+                at = _about((m.span[0] + m.span[1]) / 2)
+                what = (
+                    f"what is overhead {at}" if band == "overhead" else f"what faces the wall {at}"
+                )
         val = f"{ft(c.measured or 0)} (± {ft(c.plus_minus or 0)})"
         if c.outcome == FAIL:
             c.reason = f"The {noun} is {val}; the rule needs more than {ft(t)}."
             return c
         if c.outcome == UNSURE and only_maybe:
-            self._report_range(c, surely, wall_error, noun)
+            self._report_range(c, what, surely, wall_error, noun)
         elif c.outcome == UNSURE:
             c.unsure_cause = "margin"
             c.reason = f"The {noun} is {val} against a {ft(t)} rule: too close to call."
@@ -726,7 +789,7 @@ class Solver:
 
     @staticmethod
     def _report_range(
-        c: Check, surely: tuple[float, float] | None, wall_error: float, noun: str
+        c: Check, what: str, surely: tuple[float, float] | None, wall_error: float, noun: str
     ) -> None:
         """The deciding entry fails the rule but only might lie over the battery: its end is
         within the wall's position error of the battery's edge. The value is then somewhere
@@ -736,8 +799,8 @@ class Solver:
         low, low_err = c.measured or 0.0, c.plus_minus or 0.0
         c.unsure_cause = "margin"
         maybe = (
-            f"{c.subject} ({ft(low)}) may or may not be over the battery: its end is within the "
-            f"wall's ± {ft(wall_error)} of the battery's edge"
+            f"{_sentence(what)} ({ft(low)}) may or may not be over the battery: its end is "
+            f"within the wall's ± {ft(wall_error)} of the battery's edge"
         )
         if surely is None:
             # Nothing else surely lies over the battery, so nothing bounds the value from above.
@@ -756,10 +819,11 @@ class Solver:
         r = self.r.route
         near = s0 if s0 > 0 else (s1 if s1 < 0 else 0.0)
         lo, hi = min(0.0, near), max(0.0, near)
+        # Each crossing's "what" names it in the reasons; the answer reports only its subject.
         crossings: list[dict[str, Any]] = []
         detours: list[dict[str, Any]] = []
         effects: list[str] = []
-        unknown: list[str] = []
+        unknown: list[dict[str, Any]] = []
         small_gaps: list[str] = []
         for gap in self.scene.gaps:
             if min(hi, gap.s1) - max(lo, gap.s0) > EPS:
@@ -769,6 +833,7 @@ class Solver:
                 crossings.append(
                     {
                         "subject": "stretch with no wall",
+                        "what": f"the stretch with no wall {_about((gap.s0 + gap.s1) / 2)}",
                         "span_ft": [gap.s0, gap.s1],
                         "effect": "fail" if clear else "review",
                     }
@@ -780,7 +845,7 @@ class Solver:
         h = r.height_ft.value
         path_line = self.scene.wall_line(lo, hi) if hi - lo > EPS else None
         e = self.scene.meter_plus_minus + piece.plus_minus
-        maybe_blockers: list[str] = []
+        maybe_blockers: list[dict[str, Any]] = []
         for o in self.route_objects:
             if path_line is None:
                 continue
@@ -798,17 +863,18 @@ class Solver:
             standoff = o.geom.distance(path_line) - o.plus_minus - piece.plus_minus
             if effect in ("detour", "allow") and standoff > _MEASURE_EPS:
                 continue
+            crossing = {"subject": o.label, "what": _describe(o), "span_ft": list(o.span)}
             if effect == "fail" and not definite:
                 # A door that may or may not reach the route: neither clear nor blocking.
-                maybe_blockers.append(o.label)
-                crossings.append({"subject": o.label, "span_ft": list(o.span), "effect": "review"})
+                maybe_blockers.append(crossing)
+                crossings.append({**crossing, "effect": "review"})
                 continue
-            crossings.append({"subject": o.label, "span_ft": list(o.span), "effect": effect})
+            crossings.append({**crossing, "effect": effect})
             effects.append(effect)
             if effect == "detour":
                 bottom = o.bottom if o.bottom is not None else 0.0
                 if o.top is None:
-                    unknown.append(o.label)
+                    unknown.append(crossing)
                     continue
                 # Heights carry the object's error; a detour that may or may not be needed, or
                 # whose size is uncertain, widens the route's error by the round trip.
@@ -848,21 +914,22 @@ class Solver:
         )
         if "fail" in effects:
             path.outcome = FAIL
-            blockers = [x["subject"] for x in crossings if x["effect"] == "fail"]
-            path.subject = blockers[0]
-            path.reason = f"The cable would have to cross {', '.join(blockers)}."
+            blockers = [x for x in crossings if x["effect"] == "fail"]
+            path.subject = blockers[0]["subject"]
+            path.reason = f"The cable would have to cross {', '.join(x['what'] for x in blockers)}."
         elif maybe_blockers:
             path.outcome, path.unsure_cause = UNSURE, "margin"
-            path.subject = maybe_blockers[0]
+            path.subject = maybe_blockers[0]["subject"]
             path.reason = (
-                f"{path.subject} ends within measurement error of the cable's route, so it may be "
-                "in the way."
+                f"{_sentence(maybe_blockers[0]['what'])} ends within measurement error of the "
+                "cable's route, so it may be in the way."
             )
         elif "review" in effects:
             path.outcome, path.unsure_cause = UNSURE, "rule_requires_review"
-            path.subject = next(x["subject"] for x in crossings if x["effect"] == "review")
+            review = next(x for x in crossings if x["effect"] == "review")
+            path.subject = review["subject"]
             path.reason = (
-                f"The cable would route past {path.subject}, which the policy sends to a person."
+                f"The cable would route past {review['what']}, which the policy sends to a person."
             )
         elif small_gaps:
             path.outcome, path.unsure_cause = UNSURE, "margin"
@@ -873,9 +940,10 @@ class Solver:
             )
         elif unknown:
             path.outcome, path.unsure_cause = UNSURE, "unknown_attribute"
-            path.subject = unknown[0]
+            path.subject = unknown[0]["subject"]
             path.reason = (
-                f"The height of {unknown[0]} was not recorded, so the detour around it is unknown."
+                f"The height of {unknown[0]['what']} was not recorded, so the detour around it is "
+                "unknown."
             )
         elif missing:
             path.outcome, path.unsure_cause = UNSURE, "unobserved"
@@ -961,7 +1029,7 @@ class Solver:
                 c.gas_ft,
                 piece,
                 fp,
-                [(o.label, o.geom, o.plus_minus, True) for o in self.gas],
+                self._items(self.gas),
                 # Gas meters hang on the wall as well as standing on the ground.
                 "ground+wall",
                 "gas meter or pipe",
@@ -974,7 +1042,7 @@ class Solver:
                 c.ac_ft,
                 piece,
                 fp,
-                [(o.label, o.geom, o.plus_minus, True) for o in self.ac],
+                self._items(self.ac),
                 "ground",
                 "AC unit",
             ),
@@ -987,7 +1055,7 @@ class Solver:
                         c.battery_ft,
                         piece,
                         fp,
-                        [(o.label, o.geom, o.plus_minus, True) for o in self.batteries],
+                        self._items(self.batteries),
                         "ground+wall",
                         "battery",
                         self.wall_height["above"],
@@ -1003,12 +1071,20 @@ class Solver:
                 c.drive_ft,
                 piece,
                 fp,
+                # A patch is an area, whose middle says little about where it comes near the
+                # battery, so it is named without a place.
                 [
-                    (f"ground[{g.index}] {g.type}", g.polygon, g.plus_minus, True)
+                    (
+                        f"ground[{g.index}] {g.type}",
+                        f"the {_noun(g.type)}",
+                        g.polygon,
+                        g.plus_minus,
+                        True,
+                    )
                     for g in self.drives
                 ],
                 "ground",
-                "drivable surface",
+                "driveway",
             ),
             self.check_clearance(
                 "pool_clearance",
@@ -1017,7 +1093,7 @@ class Solver:
                 c.pool_ft,
                 piece,
                 fp,
-                [(o.label, o.geom, o.plus_minus, True) for o in self.pool],
+                self._items(self.pool),
                 "ground",
                 "pool",
             ),
@@ -1028,7 +1104,7 @@ class Solver:
                 c.opening_ft,
                 piece,
                 fp,
-                [(o.label, o.geom, o.plus_minus, self._opening_counts(o)) for o in self.openings],
+                self._items(self.openings, self._opening_counts),
                 "wall",
                 "door or window",
                 self.wall_height["openings"],
@@ -1627,7 +1703,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
         best = spot = min(unsures, key=_rank_unsure)
         decision = "manual_review"
         ids = best.unsure()
-        labels = [c.label.lower() for c in best.checks if c.outcome == UNSURE]
+        labels = [_phrase(c.label) for c in best.checks if c.outcome == UNSURE]
         reasons.append(
             {
                 "code": "unsure_checks",
@@ -1661,7 +1737,7 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             # needs to check the best spot" (issue #45, #50's wording).
             asked = {c.id for c in unseen}
             rest = [
-                c.label.lower() for c in best.checks if c.outcome == UNSURE and c.id not in asked
+                _phrase(c.label) for c in best.checks if c.outcome == UNSURE and c.id not in asked
             ]
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "
@@ -1711,9 +1787,11 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             reasons.append(policy_reason)
         decision = "reject" if can_reject else "manual_review"
         if decision == "reject":
+            # Named by their labels, not their ids (issue #74).
+            names = {c.id: _phrase(c.label) for c in best.checks} if best else {}
             summary = (
                 "No spot within reach works: every spot fails "
-                + (", ".join(t.replace("_", " ") for t in top[:3]) or "the checks")
+                + ("; ".join(names.get(t, t.replace("_", " ")) for t in top[:3]) or "the checks")
                 + "."
             )
         elif open_ends:
@@ -1727,8 +1805,9 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
     return {
         "schema_version": SCHEMA_VERSION,
         "decision": decision,
-        # Every answer names whose rules decided it when the policy asks (the public demo).
-        "summary": f"{summary} {r.policy.notice}" if r.policy.notice else summary,
+        # The summary is shown to the homeowner; whose rules decided it is in policy.notice, for
+        # the team (issue #74).
+        "summary": summary,
         "reasons": reasons,
         "policy": {
             "id": r.policy.id,

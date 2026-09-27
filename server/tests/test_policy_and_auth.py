@@ -43,9 +43,10 @@ def test_each_example_gets_its_decision_under_the_demo_policy(name: str, decisio
     result = decide(name)
     assert result["decision"] == decision
     assert result["policy"]["id"] == "demo"
-    # Every answer says whose rules decided it.
+    # Every answer says whose rules decided it, for the team; the homeowner's summary doesn't
+    # (issue #74).
     assert "not Base's" in result["policy"]["notice"]
-    assert "not Base's" in result["summary"]
+    assert "not Base's" not in result["summary"]
 
 
 def test_the_unsure_example_asks_for_more() -> None:

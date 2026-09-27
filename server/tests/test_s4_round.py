@@ -185,7 +185,9 @@ def test_a_band_check_reports_numbers_that_give_its_outcome() -> None:
     facing = next(c for c in gap.checks if c.id == "facing_gap")
     assert facing.outcome == UNSURE
     assert at_least(facing.measured, facing.plus_minus, facing.threshold) == UNSURE
-    assert "facing[1]" in facing.reason
+    assert facing.subject == "facing[1]"
+    # The reason names it for the homeowner, not by its id (issue #74).
+    assert facing.reason.startswith("What faces the wall about 6 ft right of the meter")
 
 
 @settings(max_examples=40, deadline=None)

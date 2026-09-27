@@ -80,7 +80,7 @@ def test_the_summary_counts_unseen_checks_and_names_the_rest() -> None:
     ]
     result = answer(raw)
     others = [
-        c["label"].lower()
+        c["label"][:1].lower() + c["label"][1:]  # "distance from AC units"
         for c in result["checks"]
         if c["outcome"] == UNSURE and c["unsure_cause"] != "unobserved"
     ]
