@@ -57,23 +57,15 @@ extension ScanEngine {
             s = end
         }
         // What this end leaves out of the walk shows only while the walk asks to walk this side
-        // or mark its end, and not with the phone far out from the wall (#66). During a tilt or
-        // step-back request the dashed line and "Wall ends here" stay; the end question says what
-        // pressing it left out (`endWallHere`). Every task is listed, as in `endOnOffer`, so a new
-        // one that offers an end has to decide whether the legend shows on it.
-        let onWalkTask: Bool
-        switch state.guidance {
-        case .walk, .markEnd:
-            onWalkTask = true
-        case .aimAtGround, .aimAtWall, .stepBack,
-             .findMeter, .aimAtWallForMeter, .holdOnMeter, .walkComplete, .tiltUp, .markNextWall, .gap, .seeBehind:
-            onWalkTask = false
-        }
+        // or mark its end, and not with the phone far out from the wall (#66,
+        // `WalkedEnd.saysWhatAnEndLeavesOut`). During a tilt or step-back request the dashed line
+        // and "Wall ends here" stay; the end question says what pressing it left out
+        // (`endWallHere`).
         // The phone's distance from the wall matters only when the end is its place along it.
         let phoneOut: Float? = offer.atReticle ? nil : phonePosition.map { map.wall.wallPoint($0).out }
         let leavesOut = WalkedEnd.leavesOut(
             side: side.walk, s: s, walked: map.walkedPositions, wall: map.wall,
-            phoneOut: phoneOut, onWalkTask: onWalkTask
+            phoneOut: phoneOut, task: state.guidance.plannerTask
         )
         return EndPreview(side: side, s: s, atReticle: offer.atReticle, leavesOutWalked: leavesOut)
     }
@@ -127,4 +119,21 @@ extension ScanEngine {
 
 extension WallSide {
     var walk: WalkSide { self == .left ? .left : .right }
+}
+
+extension GuidanceStep {
+    /// The planner's task this step shows (`ScanEngine.step` the other way round), or nil for a
+    /// step the planner doesn't set. Every case is listed, so a new step has to say which it is.
+    var plannerTask: GuidanceTask? {
+        switch self {
+        case .walk(let side, _): .walk(side.walk)
+        case .markEnd(let side): .markEnd(side.walk)
+        case .aimAtGround(let s): .aimAtGround(s: s)
+        case .aimAtWall(let s): .aimAtWall(s: s)
+        case .stepBack: .stepBack
+        case .seeBehind(let s): .seeBehind(s: s)
+        case .walkComplete: .complete
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .tiltUp, .markNextWall, .gap: nil
+        }
+    }
 }

@@ -199,13 +199,25 @@ import Testing
     @Test func leavesOutOnlyOnAWalkTask() {
         let wall = standardWall()
         let walked = [0, -1, -2, -3].map(Self.stood)
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 2, onWalkTask: true) == 2)
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 2, onWalkTask: false) == nil)
+        func leavesOut(s: Float = -1, phoneOut: Float? = 2, _ task: GuidanceTask?) -> Float? {
+            WalkedEnd.leavesOut(side: .left, s: s, walked: walked, wall: wall, phoneOut: phoneOut, task: task)
+        }
+        // Walking the side or marking its end: the line shows.
+        #expect(leavesOut(.walk(.left)) == 2)
+        #expect(leavesOut(.markEnd(.left)) == 2)
+        // Build 4.1's runs saw it on "Tilt down", "Tilt up" and "Step back" (#66): not any more.
+        #expect(leavesOut(.aimAtGround(s: -1)) == nil)
+        #expect(leavesOut(.aimAtWall(s: -1)) == nil)
+        #expect(leavesOut(.stepBack) == nil)
+        #expect(leavesOut(.seeBehind(s: -1)) == nil)
+        #expect(leavesOut(.complete) == nil)
+        // A step the planner didn't set (meter, corner, gap, overhead).
+        #expect(leavesOut(nil) == nil)
         // At the front of the walk there is nothing to leave out, on any task.
-        #expect(WalkedEnd.leavesOut(side: .left, s: -2.8, walked: walked, wall: wall, phoneOut: 2, onWalkTask: true) == nil)
+        #expect(leavesOut(s: -2.8, .walk(.left)) == nil)
         // The reticle's end (no phone distance): only the task counts.
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: nil, onWalkTask: true) == 2)
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: nil, onWalkTask: false) == nil)
+        #expect(leavesOut(phoneOut: nil, .markEnd(.left)) == 2)
+        #expect(leavesOut(phoneOut: nil, .stepBack) == nil)
     }
 
     /// Issue #66, run 3: walking out into the yard moved the phone's place along the wall and the
@@ -215,11 +227,11 @@ import Testing
         let wall = standardWall()
         let walked = [0, -1, -2, -3].map(Self.stood)
         let limit = 2 * GuidanceConfig().standOff
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit, onWalkTask: true) == 2)
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit + 0.5, onWalkTask: true) == nil)
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 6, onWalkTask: true) == nil)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit, task: .walk(.left)) == 2)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: limit + 0.5, task: .walk(.left)) == nil)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: 6, task: .walk(.left)) == nil)
         // Behind the wall's line counts by distance too.
-        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: -6, onWalkTask: true) == nil)
+        #expect(WalkedEnd.leavesOut(side: .left, s: -1, walked: walked, wall: wall, phoneOut: -6, task: .walk(.left)) == nil)
         // Where the end lands doesn't change with the phone's distance out (`end`).
         #expect(WalkedEnd.end(.left, phone: SIMD3(-1, 1.4, 6), walked: walked, wall: wall) == -1)
     }

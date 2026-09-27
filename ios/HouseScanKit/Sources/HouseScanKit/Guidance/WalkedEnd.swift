@@ -103,19 +103,32 @@ extension WalkedEnd {
         return past >= minimum ? past : nil
     }
 
+    /// Whether the strip may say what an end leaves out during `task`: only while the walk asks
+    /// to walk a side or mark its end (issue #66). During a tilt or step-back request, or a
+    /// request about something in front of the wall, the homeowner isn't ending the wall, and the
+    /// line read as a warning that something went wrong. Nil `task`: the walk is on a step the
+    /// planner didn't set (the meter, a corner, a gap, the overhead), so no.
+    public static func saysWhatAnEndLeavesOut(during task: GuidanceTask?) -> Bool {
+        switch task {
+        case .walk, .markEnd:
+            return true
+        case .aimAtGround, .aimAtWall, .stepBack, .seeBehind, .complete, nil:
+            return false
+        }
+    }
+
     /// What the wall strip says an end at `s` would leave out of the walk (`walkedPast`), before
     /// anything is pressed. Nil unless the walk asks to walk `side` or to mark its end
-    /// (`onWalkTask`): during a tilt or step-back request the homeowner isn't ending the wall, and
-    /// the line read as a warning that something went wrong (issue #66). Nil too when the phone
-    /// stands more than twice `GuidanceConfig.standOff` out from the wall, where its place along
-    /// the wall, and so `s`, says little: walking out into the yard counted up to 11 ft on device
-    /// run 3. `phoneOut` is the phone's distance out from the wall (`WallPoint.out`) when `s` is
-    /// the phone's place, nil when it isn't (the reticle's end) or the phone has lost its place.
+    /// (`saysWhatAnEndLeavesOut(during: task)`). Nil too when the phone stands more than twice
+    /// `GuidanceConfig.standOff` out from the wall, where its place along the wall, and so `s`,
+    /// says little: walking out into the yard counted up to 11 ft on device run 3. `phoneOut` is
+    /// the phone's distance out from the wall (`WallPoint.out`) when `s` is the phone's place,
+    /// nil when it isn't (the reticle's end) or the phone has lost its place.
     public static func leavesOut(
         side: WalkSide, s: Float, walked: [SIMD3<Float>], wall: WallFrame,
-        phoneOut: Float?, onWalkTask: Bool, config: GuidanceConfig = GuidanceConfig()
+        phoneOut: Float?, task: GuidanceTask?, config: GuidanceConfig = GuidanceConfig()
     ) -> Float? {
-        guard onWalkTask else { return nil }
+        guard saysWhatAnEndLeavesOut(during: task) else { return nil }
         if let phoneOut, abs(phoneOut) > 2 * config.standOff { return nil }
         return walkedPast(side, s: s, walked: walked, wall: wall)
     }
