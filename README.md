@@ -37,10 +37,10 @@ make check
 
 ## How the pieces fit together
 
-Here's the whole trip, from the homeowner's phone to our server and back again.
+Here's the whole trip, from the homeowner's phone to our server and back again. Each band is one part of the system, and each box names the framework and the call that does the work. The yellow shapes are the files that pass between parts. Dashed lines are optional, so the app works without LiDAR, and the reconstruction worker runs only when someone sends it the photos.
 
 <p align="center">
-  <img alt="Architecture, in seven steps. On the iPhone: find the meter, walk the wall, mark what is near, and send the capture. The phone posts scene.json to the server, and the full packet can go to the reconstruction worker, which rebuilds the wall and posts a rebuilt scene.json. The server checks every spot along the wall and returns PASS, FAIL or UNSURE. The phone shows the spot in AR, pinned to the meter, and an UNSURE check sends the homeowner back to walk the wall for one more view." src="docs/readme/architecture.svg" width="100%">
+  <img alt="Architecture in four swimlanes. On the iPhone, ARKit anchors the meter, Vision reads its number, Metal draws the coverage fog and RealityKit raycasts each tap, and the capture becomes scene.json. LiDAR depth is optional. URLSession posts scene.json to the placement server at POST /v1/placements. Keyframes can go to the optional reconstruction worker, where MoGe-2 depth scaled with OpenCV SIFT, or LiDAR depth, fuses into a NumPy TSDF and becomes a rebuilt scene.json for the same endpoint. The shapely solver reads rules.yaml and returns result.json. Back on the iPhone, SwiftUI shows the checks, RealityKit pins the spot to an AnchorEntity, and missing_evidence sends the homeowner back to walk the wall." src="docs/readme/architecture.svg" width="100%">
 </p>
 
 We drew one hard line through the design. Machine learning models handle the fuzzy parts, like turning photos into a 3D wall and recognizing a gas meter when they see one. They never decide whether the battery fits. That call comes from plain code you can read top to bottom, so every answer points back to a rule and a measurement, and nobody has to take a model's word for it. Even the distances, like how far the battery has to sit from a gas meter, live in a rules file next to the website or building code each one came from. Changing a rule never means changing code.
@@ -49,9 +49,9 @@ Each part has its own folder:
 
 | Part | Built with | Where |
 | --- | --- | --- |
-| iPhone app | Swift 6, SwiftUI, ARKit, RealityKit, XcodeGen | `ios/` |
-| Rules engine and API | Python 3.12, FastAPI, uv, pytest, deployed on Vercel | `server/` |
-| 3D reconstruction | MoGe-2 learned depth scaled with the ARKit poses, LiDAR depth, Open3D, shapely | `recon/` (PR #20) |
+| iPhone app | Swift 6, SwiftUI, ARKit, RealityKit, Vision, Metal, XcodeGen | `ios/` |
+| Rules engine and API | Python 3.12, FastAPI, shapely, jsonschema, uv, pytest, deployed on Vercel | `server/` |
+| 3D reconstruction | Python 3.12, MoGe-2 on PyTorch, OpenCV, NumPy, SciPy, scikit-image | `recon/` (PR #20) |
 | Reviewer view | TypeScript, Vite, Vitest, Biome | `web/` |
 | Landing page | Static site on Vercel | `sites/landing` |
 
