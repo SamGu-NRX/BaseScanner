@@ -280,10 +280,10 @@ final class FullFlowUITests: XCTestCase {
 
         let running = try XCTUnwrap(app)
         // Start over sits under Details, last, as ScreenStatesUITests reaches it.
-        let details = running.descendants(matching: .any)["result.details"]
+        let details = running.descendants(matching: .any)["result.details"].firstMatch
         XCTAssertTrue(details.waitForExistence(timeout: 20), "no Details on the result")
         details.tap()
-        let startOver = running.descendants(matching: .any)["action.startOver"]
+        let startOver = running.descendants(matching: .any)["action.startOver"].firstMatch
         XCTAssertTrue(startOver.waitForExistence(timeout: 10), "no Start over under Details")
         running.swipeUp()
         running.swipeUp()
