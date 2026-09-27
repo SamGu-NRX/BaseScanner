@@ -802,6 +802,10 @@ final class ScanViewState {
     var isReplay = false
     /// True when the autopilot is driving the intents (UI tests, demos). Show a small badge.
     var isAutopilot = false
+    /// True for a practice scan (HouseScanKit `PracticeMeter`): a drawn sample meter stands in
+    /// for the electric meter and its close-up photo. Every screen that could pass for a real scan
+    /// shows a "Practice meter" badge. Set when the scan starts, from the developer options.
+    var isPracticeScan = false
     /// True when no server is configured and the result will be the bundled sample: nothing is
     /// sent, and every screen that talks about the upload or shows the spot must say so.
     var usesSampleResult = false

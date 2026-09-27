@@ -14,6 +14,13 @@ struct Instruction: Hashable {
 enum ScanCopy {
     // MARK: Guidance
 
+    /// Finding the meter on a practice scan (`ScanViewState.isPracticeScan`): any wall will do.
+    static let practiceFindMeter = Instruction(
+        title: "Tap a spot on a wall",
+        detail: "A sample meter goes there, so you can practice the scan without a real one."
+    )
+    static let practiceMarkMeter = "Put the sample meter here"
+
     static func guidance(_ step: GuidanceStep) -> Instruction {
         switch step {
         case .findMeter:

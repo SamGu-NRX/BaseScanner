@@ -61,13 +61,18 @@ public struct ScanStamp: Codable, Sendable, Equatable {
     public var server: Server
     /// The latest answer for this scan; nil before one arrives.
     public var answer: Answer?
+    /// True for a practice scan (`PracticeMeter`): a drawn sample stood in for the electric
+    /// meter and its close-up photo, so the meter position and number describe no real meter.
+    /// The packet and scene.json don't say so; this file does.
+    public var practice: Bool
 
     public static let fileName = "scan-stamp.json"
 
-    public init(app: App, server: Server, answer: Answer? = nil) {
+    public init(app: App, server: Server, answer: Answer? = nil, practice: Bool = false) {
         self.app = app
         self.server = server
         self.answer = answer
+        self.practice = practice
     }
 
     /// Sorted keys, and a missing answer, URL or version written as null, so the file always has
@@ -83,10 +88,11 @@ public struct ScanStamp: Codable, Sendable, Equatable {
         try c.encode(app, forKey: .app)
         try c.encode(server, forKey: .server)
         try c.encode(answer, forKey: .answer)
+        try c.encode(practice, forKey: .practice)
     }
 
     enum CodingKeys: String, CodingKey {
-        case app, server, answer
+        case app, server, answer, practice
     }
 }
 

@@ -21,6 +21,7 @@ struct ScanRootView: View {
             .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.screen, value: state.phase)
             .preferredColorScheme(Self.showsCamera(state.phase) ? .dark : nil)
             .modifier(ScanHaptics(state: state))
+            .environment(\.isPracticeScan, state.isPracticeScan)
     }
 
     private var stack: some View {
@@ -28,6 +29,9 @@ struct ScanRootView: View {
             if Self.showsCamera(state.phase) {
                 CameraBackdrop(feed: state.feed, actions: actions)
                     .transition(.opacity)
+                if state.isPracticeScan {
+                    PracticeMeterOverlay(state: state)
+                }
                 CameraEdgeShade()
             }
             // Camera screens crossfade over the live feed. The light screens cut: a crossfade

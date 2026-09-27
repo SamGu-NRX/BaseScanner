@@ -216,6 +216,113 @@ final class FullFlowUITests: XCTestCase {
         }
     }
 
+    /// Practice meter on the synthetic replay: the switch is turned on in the developer options on
+    /// the first screen, the close-up stores the drawn sample's photo and the app's own reader
+    /// reads its number, which the autopilot confirms, and the rest of the flow runs to the AR
+    /// result. Every screen after the first carries the "Practice meter" badge. Afterwards Start
+    /// over clears the badge. The switch is turned off again for the tests that follow, also when
+    /// this one fails partway.
+    @MainActor
+    func testPracticeMeterFromReplay() throws {
+        addTeardownBlock { @MainActor in
+            let demo = XCUIApplication()
+            demo.launchArguments = ["-uiDemo"]
+            demo.launch()
+            XCTAssertTrue(demo.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
+            Self.setPracticeMeter(false, in: demo)
+            demo.terminate()
+        }
+        var readNumber: String?
+        var unbadged: [String] = []
+        var drawn: CGRect?
+        var app: XCUIApplication?
+        try runFlow(replay: Self.fixture, practice: true, onAppear: { running, phase in
+            // The close-up replays the recording from the start, and the replay runs on at 3x
+            // while this polls, so which frame shows the sample first varies from run to run (runs
+            // 36310614834 and 36320980419 caught it on walk frames, high and off to the right). The
+            // check is that it is drawn on screen, the plate's shape; where the corners land is
+            // HouseScanKit's PracticeMeterTests.
+            guard phase == "meterCloseUp" else { return }
+            let sample = running.descendants(matching: .any)["practiceMeter"]
+            let screen = running.frame
+            let deadline = Date().addingTimeInterval(10)
+            repeat {
+                if let frame = ElementRead.snapshot(sample)?.frame, frame.width > 40, screen.contains(CGPoint(x: frame.midX, y: frame.midY)) {
+                    drawn = frame
+                    let shot = XCTAttachment(screenshot: running.screenshot())
+                    shot.name = "meterCloseUp-sampleMeter"
+                    shot.lifetime = .keepAlways
+                    self.add(shot)
+                    break
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+            } while Date() < deadline
+        }, beforeLeaving: { running, phase in
+            app = running
+            if phase == "onboarding" {
+                Self.setPracticeMeter(true, in: running)
+                return
+            }
+            if !running.descendants(matching: .any)["practiceBadge"].exists { unbadged.append(phase) }
+            if phase == "meterCloseUp" {
+                // Offered as a candidate, or already confirmed ("Meter number saved"): either way
+                // the reader read it from the sample's photo.
+                let number = running.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label CONTAINS %@", Self.sampleNumber)).firstMatch
+                readNumber = number.waitForExistence(timeout: 30) ? number.label : nil
+            }
+        })
+        XCTAssertNotNil(readNumber, "the reader never offered the sample meter's number \(Self.sampleNumber)")
+        XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
+        let sample = try XCTUnwrap(drawn, "the sample meter was never drawn on screen at the close-up")
+        // A 0.20 by 0.30 m plate seen nearly square on: about 2:3, whatever the distance.
+        XCTAssertEqual(sample.width / sample.height, 2.0 / 3.0, accuracy: 0.12, "sample meter drawn \(sample.width) by \(sample.height)")
+
+        let running = try XCTUnwrap(app)
+        // Start over sits under Details, last, as ScreenStatesUITests reaches it.
+        let details = running.descendants(matching: .any)["result.details"].firstMatch
+        XCTAssertTrue(details.waitForExistence(timeout: 20), "no Details on the result")
+        details.tap()
+        let startOver = running.descendants(matching: .any)["action.startOver"].firstMatch
+        XCTAssertTrue(startOver.waitForExistence(timeout: 10), "no Start over under Details")
+        running.swipeUp()
+        running.swipeUp()
+        startOver.tap()
+        XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
+        XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
+    }
+
+    /// `PracticeMeter.number` in HouseScanKit, which the test bundle doesn't link.
+    static let sampleNumber = "12345678"
+
+    /// Opens the developer options from the first screen and sets the practice meter switch.
+    @MainActor
+    static func setPracticeMeter(_ on: Bool, in app: XCUIApplication) {
+        let open = app.buttons["action.developerOptions"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "no developer options on the first screen")
+        open.tap()
+        let row = app.switches["developer.practiceMeter"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the developer options have no practice meter switch")
+        let wanted = on ? "1" : "0"
+        let set = NSPredicate(format: "value == %@", wanted)
+        // The sheet slides up first; a tap while it moves can miss. The row's own center is its
+        // label, which doesn't flip it, so the tap goes to the switch at the row's trailing end,
+        // and once more if the first didn't take (run 36315397676 missed one).
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: row)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 10), .completed, "the practice meter switch never became tappable")
+        for _ in 0..<2 where row.value as? String != wanted {
+            row.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+            _ = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 3)
+        }
+        XCTAssertEqual(row.value as? String, wanted, "the switch didn't turn \(on ? "on" : "off")")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "developerOptions-\(on ? "on" : "off")"
+        shot.lifetime = .keepAlways
+        XCTContext.runActivity(named: shot.name ?? "") { $0.add(shot) }
+        app.buttons["action.closeDeveloperOptions"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 10))
+    }
+
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
     @MainActor
     private static func wallTapeShowsHidden(_ app: XCUIApplication, timeout: TimeInterval) -> Bool {
@@ -272,9 +379,18 @@ final class FullFlowUITests: XCTestCase {
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
     /// once the result shows, and the gate folder for the other files it leaves there.
+    ///
+    /// `onAppear` runs as soon as a screen appears, before it settles, for what only its first
+    /// moments show.
+    ///
+    /// The practice meter switch is stored in the app's settings, which outlive a run in the
+    /// Simulator. Unless `practice` is set, `-practiceMeter NO` holds it off for this run whatever
+    /// an earlier test left there; with it, the test sets the switch itself.
     @MainActor
     private func runFlow(
-        replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
+        replay: String, extraArguments: [String] = [], practice: Bool = false,
+        onAppear: (XCUIApplication, String) -> Void = { _, _ in },
+        beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
         onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let app = XCUIApplication()
@@ -284,6 +400,7 @@ final class FullFlowUITests: XCTestCase {
         try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: gate) }
         var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path] + extraArguments
+        if !practice { arguments += ["-practiceMeter", "NO"] }
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
@@ -298,6 +415,7 @@ final class FullFlowUITests: XCTestCase {
             // The walk replays the whole recording; everything else takes seconds.
             let timeout: TimeInterval = phase == "markFeatures" || phase == "result" ? 150 : 60
             XCTAssertTrue(screen.waitForExistence(timeout: timeout), "screen.\(phase) never appeared")
+            onAppear(app, phase)
             // Let the entrance animation finish so the screenshot and audit see the settled screen.
             Thread.sleep(forTimeInterval: 1.0)
             let shot = XCTAttachment(screenshot: app.screenshot())
