@@ -1,0 +1,24 @@
+[project]
+name = "drift-anatomy"
+version = "0.1.0"
+description = "Which part of ARKit's position error is worth attacking: loop closure, local scale, along versus across travel, and a range to the meter"
+requires-python = ">=3.12"
+dependencies = ["numpy>=2.1", "scipy>=1.14"]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = ["--strict-markers", "--strict-config"]
