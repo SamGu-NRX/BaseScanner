@@ -1,6 +1,11 @@
 name: Meter close-up experiment
 
+# The leak check needs METER_HMAC_KEY. Pull-request code must never receive it, because the key
+# lets anyone reverse the short meter numbers behind the committed digests. So pull requests get
+# lint and tests only; the keyed check runs on reviewed code after merge, or on demand. Before
+# asking for review, run `make leakcheck` locally.
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -38,8 +43,24 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
-      # Looks for any transcribed meter identifier in the tracked files. The key stays in a
-      # repository secret; without it the step fails with an explanation.
+
+  leakcheck:
+    name: Meter close-up leak check
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/meter-closeup
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/meter-closeup
+      - run: uv sync --locked
+      # Looks for any transcribed meter identifier in the tracked files.
       - run: uv run python -m meter_eval.leakcheck
         env:
           METER_HMAC_KEY: ${{ secrets.METER_HMAC_KEY }}

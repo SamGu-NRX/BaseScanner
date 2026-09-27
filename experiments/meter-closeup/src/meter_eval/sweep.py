@@ -12,13 +12,15 @@ that decoded JPEG too, never on the pixels before encoding.
 
 Each photo's rows go to DATA_DIR/sweep/rows/<id>.jsonl, written to a temporary file and
 renamed into place, so a photo's file exists only once all its degradations were read. Rows
-carry the digest of the label they were scored against. A photo is swept again unless its file
-holds exactly the levels `degrade.expected_levels` gives for that photo, all scored against its
-current label. Raw recognizer output, which contains meter numbers, is not kept.
+carry the digest of the label they were scored against and of the measurement code that made
+them. A photo is swept again unless its file holds exactly the levels `degrade.expected_levels`
+gives for that photo, all scored against its current label by the current code. Raw recognizer output, which contains meter numbers, is not kept.
 """
 
 import argparse
 import csv
+import functools
+import hashlib
 import json
 import os
 import time
@@ -30,11 +32,29 @@ from meter_eval.locate import top_candidate
 from meter_eval.match import digest as match_digest
 from meter_eval.match import number_read
 from meter_eval.ocr import Reader
-from meter_eval.paths import DATA_DIR, MANIFEST, RESULTS_DIR
+from meter_eval.paths import DATA_DIR, EXPERIMENT_DIR, MANIFEST, RESULTS_DIR
 from meter_eval.quality import device_checks, edge_gap, gray, region_checks
 
 SWEEP_DIR = DATA_DIR / "sweep"
 ROWS_DIR = SWEEP_DIR / "rows"
+# Everything that decides a sweep row's values. Rows made by other versions of these files are
+# swept again, so a code change can never leave stale measurements in the tables.
+MEASUREMENT_CODE = [
+    EXPERIMENT_DIR / "meterocr" / "Sources" / "meterocr" / "main.swift",
+    *(
+        EXPERIMENT_DIR / "src" / "meter_eval" / name
+        for name in ("degrade.py", "locate.py", "match.py", "ocr.py", "quality.py", "sweep.py")
+    ),
+]
+
+
+@functools.cache
+def code_digest() -> str:
+    """SHA-256 over the measurement code, in a fixed order."""
+    hasher = hashlib.sha256()
+    for path in MEASUREMENT_CODE:
+        hasher.update(path.name.encode() + b"\0" + path.read_bytes() + b"\0")
+    return hasher.hexdigest()
 
 
 def targets() -> list[tuple[dict, list[float]]]:
@@ -68,6 +88,8 @@ def check_rows(
     problems = []
     if any(r.get("label_hmac") != label_hmac for r in rows):
         problems.append(f"{image_id}: scored against another label")
+    if any(r.get("code_digest") != code_digest() for r in rows):
+        problems.append(f"{image_id}: measured by other code")
     if len(keys) != len(set(keys)):
         problems.append(f"{image_id}: duplicate rows")
     if missing := expected - set(keys):
@@ -152,6 +174,7 @@ def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
             record = {
                 "id": row["id"],
                 "label_hmac": digest,
+                "code_digest": code_digest(),
                 "family": family,
                 "level": level,
                 "ok": int(ok),

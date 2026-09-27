@@ -7,9 +7,10 @@ def known() -> set[str]:
     return {digest("1234567")}
 
 
-def test_windows_only_yield_runs_with_five_digits():
+def test_windows_yield_every_run_with_at_least_four_digits():
+    # Four-digit identifiers exist (a utility plate), so windows start at four digits.
     parts = set(windows("AB12345"))
-    assert parts == {"B12345", "AB12345", "12345"}
+    assert parts == {"1234", "2345", "B1234", "12345", "AB1234", "B12345", "AB12345"}
 
 
 def test_measurement_columns_are_exempt_only_when_they_hold_numbers():

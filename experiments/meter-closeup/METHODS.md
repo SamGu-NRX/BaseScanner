@@ -23,7 +23,9 @@ To confirm the labels by hand, run `make review` and open `~/house-scanning-data
 
 `CONTRIBUTING.md` forbids committing meter numbers. `manifest.csv` stores each one as an HMAC-SHA256 digest. An unkeyed hash of a short number can be reversed by trying every number of that length. The keyed digests cannot be reversed without the key, which lives in `~/house-scanning-data/meter-closeup/hmac.key` and in the `METER_HMAC_KEY` repository secret. To start over without the key, run `uv run python -m meter_eval.labels --new-key` and rebuild the manifest from the plaintext labels.
 
-`make leakcheck` runs locally and in CI. It digests every run of 5 or more digits in the tracked files and fails on any identifier either reader transcribed. Only cells in the measurement columns listed in `leakcheck.py`, which this code fills with measured numbers, are exempt. Any other cell is scanned whatever its shape, so an identifier printed with dots is still caught.
+`make leakcheck` digests every run of 4 or more digits in the tracked files and fails on any identifier either reader transcribed; the shortest is a four-digit utility plate number. Only cells in the measurement columns listed in `leakcheck.py`, which this code fills with measured numbers, are exempt. Any other cell is scanned whatever its shape, so an identifier printed with dots is still caught. The labels' free-text notes lose every run of four or more digits before they reach `manifest.csv`.
+
+Pull-request code never receives the key, because the key would let it reverse the digests. CI runs the keyed check after merge and on demand; run `make leakcheck` locally before asking for review.
 
 ## Reading (question 1)
 
@@ -43,7 +45,7 @@ For each photo and degradation, the break is the first level from which the phot
 
 Only two checks work on the phone. Glare and framing checks work on the true box but not on the top candidate, because a washed-out or cut number usually stops being the top candidate: it was the number on 1,366 of 3,309 degraded reads. "Rejects 0 of 75" is weak evidence, because no real photo is near a threshold. The smallest label is 22 px, and the lowest whole-photo sharpness is 58.7. Even above every break, 0.7–2.6% of degraded reads failed anyway.
 
-Each photo's rows are written to one file under `~/house-scanning-data/meter/sweep/rows/` by an atomic rename, tagged with the digest of the label they were scored against. `degrade.expected_levels` gives the exact levels each photo takes, from its size and number box; a photo skips only the downscaling and edge levels it cannot reach. `make sweep` skips a photo only when its file holds exactly those levels under the current label. `make q2` refuses to run, naming the photos, when any file falls short.
+Each photo's rows are written to one file under `~/house-scanning-data/meter/sweep/rows/` by an atomic rename, tagged with the digest of the label they were scored against. `degrade.expected_levels` gives the exact levels each photo takes, from its size and number box; a photo skips only the downscaling and edge levels it cannot reach. Rows also carry a digest of the measurement code: the Swift reader and the degradation, check, matching and ranking modules. `make sweep` skips a photo only when its file holds exactly those levels under the current label and the current code. If a shard fails, `make sweep` fails too. `make q2` refuses to run, naming the photos, when any file falls short.
 
 ## Second pass (question 3)
 

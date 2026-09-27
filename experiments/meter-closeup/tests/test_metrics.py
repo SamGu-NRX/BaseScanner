@@ -136,3 +136,12 @@ def test_digest_is_hmac_sha256_with_the_key():
     expected = hmac.new(bytes(32), b"1234567", hashlib.sha256).hexdigest()
     assert digest("1234567") == expected
     assert digest("1234567") != hashlib.sha256(b"1234567").hexdigest()
+
+
+def test_scrub_removes_four_digit_runs_and_keeps_model_codes():
+    from meter_eval.labels import scrub
+
+    assert (
+        scrub("utility plate No. 1234; type D4S, CL200") == "utility plate No. #; type D4S, CL200"
+    )
+    assert scrub("serial 12 345 678 and 9.876") == "serial # and #"

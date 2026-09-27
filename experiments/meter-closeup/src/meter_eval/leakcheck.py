@@ -1,8 +1,8 @@
 """Fail if a transcribed meter identifier appears in any tracked file of this experiment.
 
 identifier_digests.txt holds the keyed digest (match.digest) of every identifier either
-reader transcribed, with and without a letter prefix. Every run of 5 to 24 letters and digits
-with at least 5 digits in a tracked file is digested and looked up, so the check needs the
+reader transcribed, with and without a letter prefix. Every run of 4 to 24 letters and digits
+with at least 4 digits in a tracked file is digested and looked up, so the check needs the
 key but no plaintext, and runs in CI with the key from the METER_HMAC_KEY secret.
 
 Separators are dropped before comparing, so a decimal measurement such as 62.5152 can collide
@@ -17,17 +17,19 @@ import re
 import subprocess
 from collections.abc import Iterator
 
+from meter_eval.labels import SHORTEST_IDENTIFIER
 from meter_eval.match import digest, normalize
 from meter_eval.paths import EXPERIMENT_DIR
 
 DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
-SHORTEST, LONGEST = 5, 24
+SHORTEST, LONGEST = SHORTEST_IDENTIFIER, 24
 # Columns of the generated results CSVs that hold image measurements or degradation levels.
 MEASUREMENT_COLUMNS = {
     "contrast",
     "edge_margin",
     "global_lap_var",
     "global_saturated",
+    "height",
     "label_contrast",
     "label_edge_margin",
     "label_lap_var",
@@ -40,6 +42,7 @@ MEASUREMENT_COLUMNS = {
     "number_box",
     "saturated",
     "text_height_px",
+    "width",
 }
 NUMBER = r"-?\d+(?:\.\d+)?"
 MEASUREMENT = re.compile(rf"{NUMBER}|\[{NUMBER}(?:, {NUMBER})*\]")

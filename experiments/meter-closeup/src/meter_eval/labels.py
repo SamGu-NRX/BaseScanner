@@ -35,6 +35,8 @@ READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
 HUMAN = DATA_DIR / "labels_human.csv"
 SOURCES = DATA_DIR / "shortlist.csv"
 IDENTIFIER_DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
+# The shortest identifier either reader transcribed has four digits; leakcheck scans from here.
+SHORTEST_IDENTIFIER = 4
 # Reader 2 marked these "unsure" for a reason other than the characters of reader 1's number,
 # per its notes: which of two printed numbers is the meter's ID (m25, m30, m33, m38), or a
 # second number cut off by the frame (m63). It transcribed reader 1's number identically.
@@ -87,9 +89,14 @@ def class_kind(label: str) -> str:
     return "ansi_class" if "CL" in label.upper() else "current_rating"
 
 
+# Meter numbers can be as short as four digits (a utility plate such as "No. 1234"), so a note
+# loses any run of four or more digits, however it is spaced or punctuated.
+DIGIT_RUN = re.compile(r"\d(?:[ .\-]?\d)+")
+
+
 def scrub(note: str) -> str:
-    """Drop digit runs from free-text notes so no meter number reaches the repository."""
-    return re.sub(r"\d[\d ]{3,}\d", "#", note)
+    """Drop digit runs of four or more digits from free-text notes."""
+    return DIGIT_RUN.sub(lambda m: "#" if sum(c.isdigit() for c in m[0]) >= 4 else m[0], note)
 
 
 def build() -> list[dict]:
@@ -160,7 +167,7 @@ def known_numbers() -> set[str]:
     for row in [*first.values(), *second.values()]:
         for value in numbers_of(row):
             for form in (value, core(value)):
-                if len(form) >= 5 and sum(ch.isdigit() for ch in form) >= 5:
+                if sum(ch.isdigit() for ch in form) >= SHORTEST_IDENTIFIER:
                     found.add(form)
     return found
 

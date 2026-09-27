@@ -30,9 +30,16 @@ def fresh_data(tmp_path, monkeypatch):
     return tmp_path
 
 
-def rows_for(expected, label="h1"):
+def rows_for(expected, label="h1", code=None):
     return [
-        {"id": "m01", "label_hmac": label, "family": f, "level": level, "ok": 1}
+        {
+            "id": "m01",
+            "label_hmac": label,
+            "code_digest": code or sweep.code_digest(),
+            "family": f,
+            "level": level,
+            "ok": 1,
+        }
         for f, level in sorted(expected)
     ]
 
@@ -107,3 +114,14 @@ def test_rows_file_is_json_lines(fresh_data):
     sweep.write_rows("m01", rows_for({("blur", 0.02), ("blur", 0.04)}))
     lines = sweep.rows_path("m01").read_text().splitlines()
     assert sorted(json.loads(line)["level"] for line in lines) == [0.02, 0.04]
+
+
+def test_rows_measured_by_other_code_are_swept_again(fresh_data):
+    expected = sweep.expected_for("m01", BOX)
+    sweep.write_rows("m01", rows_for(expected, code="0" * 64))
+    assert "other code" in " ".join(sweep.problems_with("m01", "h1", expected))
+
+
+def test_code_digest_covers_every_measurement_file():
+    assert all(path.exists() for path in sweep.MEASUREMENT_CODE)
+    assert len(sweep.code_digest()) == 64
