@@ -4,10 +4,10 @@ import simd
 // Where the open space in front of the wall ends: the far wall of a corridor, the fence of a
 // side yard. On the build 5.1 and 7.1 field tests the capture treated that surface as something
 // standing in front of the wall to look past (#160), and sent the homeowner after a walk-out line
-// behind it (#164). ARKit's vertical plane detection had found the surface on both phones, with
-// and without LiDAR, so the planes are what marks it here. The LiDAR mesh measures it too
-// (`TriangleMesh.facingSpans`), but only once, at upload: ray casts over the whole mesh take too
-// long to run during the walk.
+// behind it (#164). On build 7.1, a phone without LiDAR, ARKit's vertical plane detection had
+// found the far wall, and it runs with and without LiDAR, so the planes are what marks it here.
+// The LiDAR mesh measures it too (`TriangleMesh.facingSpans`), but only once, at upload: ray casts
+// over the whole mesh take too long to run during the walk.
 
 /// Which detected planes count as the surface where the space ends. Every value is a guess unless
 /// its comment says where it comes from.
