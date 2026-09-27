@@ -66,7 +66,7 @@ struct UploadingScreen: View {
                         }
                         Button("Start over") { actions.startOver() }
                             .buttonStyle(.quiet)
-                            .accessibilityHint("Deletes this scan and its photos.")
+                            .accessibilityHint("Starts a new scan and keeps your two most recent completed scans on this phone.")
                             .accessibilityIdentifier("action.startOver")
                     }
                 default:

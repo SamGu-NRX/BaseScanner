@@ -3,6 +3,9 @@ import SwiftUI
 
 /// Where to stand and where to aim: a blue dotted path on the ground toward the next place to
 /// stand, and a ring on the point to aim at (or an edge arrow when it is off screen).
+///
+/// Each part sets its own accessibility: the path and arrow are hidden, while the filling ring
+/// and the legend are read (#81). A new part is read by VoiceOver unless it hides itself.
 struct WayfindingOverlay: View {
     var projection: CameraProjection
     var wall: WallGeometry?
@@ -11,24 +14,47 @@ struct WayfindingOverlay: View {
     /// How far the aim task is toward done, 0...1 (`ScanViewState.aimProgress`): the ring fills
     /// with it. Nil when the target only marks a place.
     var progress: Double? = nil
+    /// An aim step's target that was just completed, drawn as a full ring in place of `target`
+    /// while it is on screen (`CameraOverlays` holds it for a moment).
+    var completed: SIMD3<Float>? = nil
     /// One line saying what the ring is for, drawn beside it while it is on screen.
     var legend: String? = nil
-    /// Called when the legend is drawn.
-    var onLegendShown: (() -> Void)? = nil
+    /// A shorter legend, drawn where `legend` doesn't fit between the ring and the card or the
+    /// controls.
+    var legendShort: String? = nil
+    /// The camera area the chrome leaves open, in global coordinates (`CameraChrome.openArea`).
+    /// The legend keeps inside it. Nil: the fixed lane the arrows use.
+    var openArea: OpenCameraArea? = nil
+    /// Called with where the legend went each time that changes: beside the ring, or nowhere
+    /// here because no wording fits (the caller draws it under the card instead). Nil once it
+    /// is gone.
+    var onLegendPlaced: ((LegendPlacement?) -> Void)? = nil
+
+    enum LegendPlacement: Equatable {
+        case besideRing
+        /// No wording fits beside the ring: at the largest text sizes, where the card and the
+        /// controls fill most of the screen, and on short screens.
+        case underCard
+    }
+
+    /// The side of the ring the legend keeps to once shown: true for below.
+    @State private var legendBelow: Bool? = nil
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let top = proxy.frame(in: .global).minY
             ZStack {
                 Canvas { context, size in
                     drawPath(in: &context, size: size)
                 }
                 .accessibilityHidden(true)
-                if let target {
-                    let marker = placement(for: target, in: size)
-                    TargetMarker(placement: marker, progress: progress)
-                    if let legend, case .onScreen(let point, let radius) = marker {
-                        legendView(legend, beside: point, radius: radius, in: size)
+                // One marker either way, so a ring that completes keeps its identity and animates
+                // from its last fill to green.
+                if let shown = marker(in: size) {
+                    TargetMarker(placement: shown.placement, progress: shown.progress)
+                    if let legend, case .onScreen(let point, let radius) = shown.placement {
+                        legendView(legend, beside: point, radius: radius, in: size, top: top)
                     }
                 }
             }
@@ -38,33 +64,93 @@ struct WayfindingOverlay: View {
         .allowsHitTesting(false)
     }
 
+    // MARK: Lane
+
+    /// The band clear of the instruction card above and the buttons and map below, which are
+    /// drawn over this layer, at the default text size. The off-screen arrows keep to it, and
+    /// the legend does where the chrome's open area isn't measured.
+    private static let laneTop: CGFloat = 260
+    private static let laneBottomInset: CGFloat = 300
+
     // MARK: Legend
 
-    /// The legend goes above or below the ring, whichever has more room between the instruction
-    /// card and the controls (the band the off-screen arrows keep to), and moves with the ring
-    /// without covering it.
-    private func legendView(_ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize) -> some View {
+    /// How much more room the other side of the ring needs before the legend moves there. The
+    /// two sides are equal near the middle of the screen, where the ring is held, and pose
+    /// jitter there would otherwise flip the legend across the ring every few frames.
+    private static let legendSwitchMargin: CGFloat = 40
+
+    /// The gap between the ring and the legend, and between the legend and the card or the
+    /// controls.
+    private static let legendGap: CGFloat = 12
+
+    /// The legend goes above or below the ring, whichever has more room between the card and
+    /// the controls, and moves with the ring without covering it. Once shown, it changes sides
+    /// only when the other side has `legendSwitchMargin` more room.
+    ///
+    /// The room is measured from the card's real bottom and the controls' real top
+    /// (`openArea`), which move with Dynamic Type. Both are drawn over this layer, and against
+    /// a fixed lane the legend went under the enlarged card. The longest wording that fits on
+    /// its side is drawn. Where neither fits, nothing is drawn here and `onLegendPlaced` says
+    /// so, and the caller puts the legend under the card, which scrolls at any text size.
+    private func legendView(
+        _ text: String, beside point: CGPoint, radius: CGFloat, in size: CGSize, top: CGFloat
+    ) -> some View {
         let width = max(120, min(300, size.width - 48))
         let x = min(max(point.x, 24 + width / 2), size.width - 24 - width / 2)
-        let roomAbove = point.y - radius - 260
-        let roomBelow = size.height - 300 - (point.y + radius)
-        let below = roomBelow >= roomAbove
-        // A tall frame pinned at the edge nearer the ring, so the text's height (it wraps, and
-        // grows with Dynamic Type) never moves its near edge onto the ring.
-        let reach: CGFloat = 400
-        return Text(text)
+        // The open area in this layer's coordinates.
+        let laneTop = openArea.map { $0.top - top + Self.legendGap } ?? Self.laneTop
+        let laneBottom = openArea.map { $0.bottom - top - Self.legendGap } ?? size.height - Self.laneBottomInset
+        let roomAbove = point.y - radius - laneTop
+        let roomBelow = laneBottom - (point.y + radius)
+        let below: Bool
+        if let kept = legendBelow {
+            below = kept
+                ? roomAbove - roomBelow < Self.legendSwitchMargin
+                : roomBelow - roomAbove >= Self.legendSwitchMargin
+        } else {
+            below = roomBelow >= roomAbove
+        }
+        // The room on the legend's side, pinned at the edge nearer the ring, so the text's height
+        // (it wraps, and grows with Dynamic Type) never moves its near edge onto the ring.
+        let reach = max(0, (below ? roomBelow : roomAbove) - Self.legendGap)
+        // Each choice reports itself when it is the one drawn, so the legend counts as shown
+        // only where it drew.
+        return ViewThatFits(in: .vertical) {
+            legendText(text)
+                .onAppear { onLegendPlaced?(.besideRing) }
+            if let legendShort {
+                legendText(legendShort)
+                    .onAppear { onLegendPlaced?(.besideRing) }
+            }
+            Color.clear.frame(width: 0, height: 0)
+                .onAppear { onLegendPlaced?(.underCard) }
+        }
+        .onAppear { legendBelow = below }
+        .onChange(of: below) { _, side in legendBelow = side }
+        .onDisappear {
+            legendBelow = nil
+            onLegendPlaced?(nil)
+        }
+        .frame(width: width, height: reach, alignment: below ? .top : .bottom)
+        .position(
+            x: x,
+            y: below ? point.y + radius + Self.legendGap + reach / 2 : point.y - radius - Self.legendGap - reach / 2
+        )
+        .transition(.opacity)
+    }
+
+    private func legendText(_ text: String) -> some View {
+        Text(text)
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Palette.chalk)
             .multilineTextAlignment(.center)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color.black.opacity(0.7), in: .rect(cornerRadius: 14, style: .continuous))
+            // The instruction card's solid scrim. A see-through black let the camera image show
+            // through and failed the accessibility audit's contrast check over a bright wall.
+            .background(ScrimShape.rounded(14))
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("aim.legend")
-            .onAppear { onLegendShown?() }
-            .frame(width: width, height: reach, alignment: below ? .top : .bottom)
-            .position(x: x, y: below ? point.y + radius + 12 + reach / 2 : point.y - radius - 12 - reach / 2)
-            .transition(.opacity)
     }
 
     // MARK: Path
@@ -104,6 +190,16 @@ struct WayfindingOverlay: View {
 
     // MARK: Target
 
+    /// The completed ring while it is on screen, else the target's ring or arrow.
+    private func marker(in size: CGSize) -> (placement: TargetMarker.Placement, progress: Double?)? {
+        if let completed {
+            let held = placement(for: completed, in: size)
+            if case .onScreen = held { return (placement: held, progress: 1.0) }
+        }
+        guard let target else { return nil }
+        return (placement: placement(for: target, in: size), progress: progress)
+    }
+
     private func placement(for target: SIMD3<Float>, in size: CGSize) -> TargetMarker.Placement {
         // The ring shows while its center is comfortably on screen; the chevron takes over
         // near the edges, where a half-visible ring would be ambiguous.
@@ -116,9 +212,13 @@ struct WayfindingOverlay: View {
         guard let direction = projection.screenDirection(toward: target) else {
             return .hidden
         }
-        // Chevrons stay clear of the instruction card above and the buttons and map below,
-        // which are drawn over this layer.
-        let lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 260 - 300, 80))
+        // Arrows keep to the lane, clear of the card and the controls.
+        let lane = CGRect(
+            x: 40,
+            y: Self.laneTop,
+            width: size.width - 80,
+            height: max(size.height - Self.laneTop - Self.laneBottomInset, 80)
+        )
         let center = CGPoint(x: lane.midX, y: lane.midY)
         let halfWidth = lane.width / 2
         let halfHeight = lane.height / 2

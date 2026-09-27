@@ -31,12 +31,16 @@ public enum WalkedEnd {
         /// True when the cap decided the end: the phone across the meter, its place lost, or
         /// tracking limited.
         public var capped: Bool
+        /// True when the end stopped `maxPastEvidence` past the farthest kept view or seen cell,
+        /// short of the phone, rather than at the kept-photo cap.
+        public var pastEvidence: Bool
 
-        public init(s: Float, phone: Float?, cap: Float, capped: Bool) {
+        public init(s: Float, phone: Float?, cap: Float, capped: Bool, pastEvidence: Bool = false) {
             self.s = s
             self.phone = phone
             self.cap = cap
             self.capped = capped
+            self.pastEvidence = pastEvidence
         }
     }
 
@@ -56,7 +60,8 @@ public enum WalkedEnd {
 
     /// The end on `side`. `walked` holds the positions of the kept views; `phone` is where the
     /// phone is now, nil when it has lost its place; `trackingNormal` is false while tracking is
-    /// limited (or only just came back, `trackingSteady`); `seen` is the strip's seen extent
+    /// limited, taken as it is at the tap: a brief drop before it doesn't matter (review of #147);
+    /// `seen` is the strip's seen extent
     /// (`CoverageMap.seenExtent`).
     ///
     /// - Phone on that side of the meter, tracking normal: its s, past the farthest kept view
@@ -83,7 +88,7 @@ public enum WalkedEnd {
             let seenEdge = seen.map { side.sign * (side == .left ? $0.lowerBound : $0.upperBound) } ?? 0
             let limit = max(reach, seenEdge) + maxPastEvidence
             if along <= limit { return Choice(s: s, phone: s, cap: cap, capped: false) }
-            return Choice(s: side.sign * limit, phone: s, cap: cap, capped: true)
+            return Choice(s: side.sign * limit, phone: s, cap: cap, capped: true, pastEvidence: true)
         }
         return Choice(s: side.sign * min(along, reach), phone: s, cap: cap, capped: true)
     }
@@ -100,17 +105,6 @@ public enum WalkedEnd {
     /// or a bad pose can't put the end far out along nothing. Run 2's end post was about 0.6 m
     /// past the cells seen. A guess, not measured.
     public static let maxPastEvidence: Float = 2
-
-    /// 1 s: how long tracking must have been normal before the phone's place counts as the end
-    /// (`trackingSteady`). Tracking that has just come back can still hold a jumped pose.
-    public static let trackingSettle: Double = 1
-
-    /// Whether tracking has been normal for `trackingSettle` seconds at `now`: `normalSince` is
-    /// when it last became normal, nil while it isn't.
-    public static func trackingSteady(normalSince: Double?, now: Double, settle: Double = trackingSettle) -> Bool {
-        guard let normalSince else { return false }
-        return now - normalSince >= settle
-    }
 
     /// The strip's seen extent that counts toward what an end leaves out (`leftOut`): nil unless
     /// the cap decided the end, since the camera of a phone standing at the end sees past it.

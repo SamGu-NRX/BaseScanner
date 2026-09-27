@@ -104,7 +104,9 @@ import Testing
         #expect(WalkedEnd.end(.left, phone: Self.stood(-4), walked: walked, wall: wall) == -4)
         // 4 m past it, on the line (out 2 m): capped 2 m past it.
         let far = WalkedEnd.choose(.left, phone: Self.stood(-6), walked: walked, wall: wall)
-        #expect(far == WalkedEnd.Choice(s: -4, phone: -6, cap: -2, capped: true))
+        #expect(far == WalkedEnd.Choice(s: -4, phone: -6, cap: -2, capped: true, pastEvidence: true))
+        // The kept-photo cap is flagged apart from this bound, for the log.
+        #expect(!WalkedEnd.choose(.left, phone: Self.stood(-6), trackingNormal: false, walked: walked, wall: wall).pastEvidence)
         // Cells seen farther than the kept views move the bound out with them.
         let seen: ClosedRange<Float> = -3.5 ... 1
         #expect(WalkedEnd.end(.left, phone: Self.stood(-5.5), walked: walked, wall: wall, seen: seen) == -5.5)
@@ -115,14 +117,24 @@ import Testing
         #expect(WalkedEnd.end(.left, phone: Self.stood(-3), walked: [], wall: wall) == -2)
     }
 
-    /// Re-review of #136: tracking counts as normal for the end only after `trackingSettle` (1 s)
-    /// of normal tracking, so a pose that jumped as tracking came back doesn't place the end.
-    @Test func trackingMustSettleBeforeThePhonesPlaceCounts() {
-        #expect(WalkedEnd.trackingSettle == 1)
-        #expect(!WalkedEnd.trackingSteady(normalSince: nil, now: 10))
-        #expect(!WalkedEnd.trackingSteady(normalSince: 9.5, now: 10))
-        #expect(WalkedEnd.trackingSteady(normalSince: 9, now: 10))
-        #expect(WalkedEnd.trackingSteady(normalSince: 2, now: 10))
+    /// Review of #147: a brief tracking drop just before "Wall ends here" doesn't send run 2's end
+    /// back to the meter. The rule reads tracking at the tap only (the engine passes the current
+    /// frame's), so once it is normal again the end is at the phone, within `maxPastEvidence`.
+    /// A 1 s debounce here put the end at the meter.
+    @Test func tapRightAfterABriefTrackingDropEndsAtThePhone() {
+        var map = CoverageMap(wall: standardWall())
+        map.observe(wallCamera(s: 0.32), trackingNormal: true)
+        map.observe(wallCamera(s: 0.11), trackingNormal: true)
+        // The drop: frames at the post with tracking limited keep no view.
+        map.observe(wallCamera(s: -1.2), trackingNormal: false)
+        #expect(map.walkedFarthest(.left) == 0)
+        let phone = Self.stood(-1.2)
+        // During the drop: the kept-photo cap, the meter.
+        #expect(WalkedEnd.end(.left, phone: phone, trackingNormal: false, walked: map.walkedPositions, wall: map.wall, seen: map.seenExtent) == 0)
+        // The next frame, tracking normal again: at the phone.
+        let after = WalkedEnd.choose(.left, phone: phone, trackingNormal: true, walked: map.walkedPositions, wall: map.wall, seen: map.seenExtent)
+        #expect(!after.capped)
+        #expect(nearlyEqual(after.s, -1.2))
     }
 
     /// Review of #136: with tracking limited the end is capped, and the strip's cells count toward

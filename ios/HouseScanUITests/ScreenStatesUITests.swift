@@ -25,6 +25,8 @@ final class ScreenStatesUITests: XCTestCase {
         ("wallWalk-markingRefused", ["-uiDemoPhase", "wallWalk", "-uiDemoMarking", "window", "-uiDemoRefusal"], "wallWalk"),
         ("wallWalk-endQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-endPreview", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview"], "wallWalk"),
+        ("wallWalk-endScanQuestion", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion"], "wallWalk"),
+        ("wallWalk-endScanTooShort", ["-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion", "-uiDemoEndScanTooShort"], "wallWalk"),
         ("wallWalk-endQuestionLeavesOut", ["-uiDemoPhase", "wallWalk", "-uiDemoEndPreview", "-uiDemoEndQuestion"], "wallWalk"),
         ("wallWalk-pastWallEnd", ["-uiDemoPhase", "wallWalk", "-uiDemoCoaching", "pastWallEnd"], "wallWalk"),
         ("wallWalk-nextWall", ["-uiDemoPhase", "wallWalk", "-uiDemoNextWall"], "wallWalk"),
@@ -53,11 +55,14 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-sample", ["-uiDemoPhase", "uploading", "-uiDemoSample"], "uploading"),
         ("uploading-rejected", ["-uiDemoPhase", "uploading", "-uiDemoRejected"], "uploading"),
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
+        ("spotConfirm", ["-uiDemoPhase", "spotConfirm"], "spotConfirm"),
+        ("spotConfirm-answered", ["-uiDemoPhase", "spotConfirm", "-uiDemoSpotAnswered", "clear"], "spotConfirm"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
+        ("result-wallNotMeasured", ["-uiDemoPhase", "result", "-uiDemoWallNotMeasured"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -78,6 +83,7 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
         // The card's reply under the aim step's words and under coaching.
         "wallWalk-aim", "wallWalk-slowDown",
+        "spotConfirm", "spotConfirm-answered",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -97,6 +103,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-tooDark": [("instruction", "It's dark here")],
         "wallWalk-turnSlowly": [("instruction", "Turn more slowly")],
         "gapRequest-tooDark": [("instruction", "Show the ground")],
+        "spotConfirm": [("spot.question", "Is anything standing in the marked area?")],
+        "spotConfirm-answered": [("spot.answered", "Thanks, it's clear")],
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": [("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap")],
         // The answer comes from the checks: an unsure ground check a view settles.
@@ -113,12 +121,21 @@ final class ScreenStatesUITests: XCTestCase {
         "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
+        // #82: a second "Can't get there" soon after the first asks before ending the scan.
+        "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
+        "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
+        // #76: a wall never walked shows no spot.
+        "result-wallNotMeasured": [("result.headline", "We couldn't measure your wall")],
     ]
 
     /// Controls a state must offer, by identifier.
     private static let controls: [String: [String]] = [
         // #39: stopping is available even when just one requested view remains.
         "gapRequest-followUp": ["action.skipGap", "action.showResult"],
+        "wallWalk-endScanQuestion": ["action.endScan", "action.keepWalking"],
+        // Too little walked to finish: a new scan, not a loop back to the walk.
+        "wallWalk-endScanTooShort": ["action.endScanStartOver", "action.keepWalking"],
+        "result-wallNotMeasured": ["action.startOver"],
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -203,6 +220,10 @@ final class ScreenStatesUITests: XCTestCase {
         let followUp = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'One more view to finish'")).firstMatch
         XCTAssertTrue(followUp.waitForExistence(timeout: 20), "the answer's view must be asked for on the camera")
+        // Before the result, the spot is checked on a photo.
+        XCTAssertTrue(element(app, "screen.spotConfirm").waitForExistence(timeout: 30))
+        XCTAssertEqual(element(app, "spot.photo").label, "Photo of your wall")
+        tap(app, "action.spotClear")
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 30))
         XCTAssertTrue(element(app, "result.sampleBadge").exists, "a sample result must say so")
         XCTAssertTrue(element(app, "result.rulesNotFinal").exists, "placeholder rules must be disclosed")
@@ -289,6 +310,39 @@ final class ScreenStatesUITests: XCTestCase {
             .matching(NSPredicate(format: "identifier == 'instruction' AND label CONTAINS 'to your left'")).firstMatch
         XCTAssertTrue(walkLeft.waitForExistence(timeout: 5), "the walk must go on to the left once the right end is answered")
         XCTAssertTrue(reply(app, "Can't get there").waitForExistence(timeout: 5), "the walk's reply must come back")
+    }
+
+    /// #82: "End the scan here?" holds the card's reply back until it is answered. "Keep walking"
+    /// goes back to the walk; "Yes, end here" finishes it for the feature review.
+    @MainActor
+    func testEndScanQuestionKeepsWalkingOrEnds() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoEndScanQuestion"]
+        app.launch()
+        XCTAssertTrue(element(app, "action.keepWalking").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "action.cannotAccess").exists, "the card's reply must wait for the answer")
+        tap(app, "action.keepWalking", timeout: 5)
+        XCTAssertTrue(element(app, "action.keepWalking").waitForNonExistence(timeout: 5), "the answer must close the question")
+        XCTAssertTrue(element(app, "screen.wallWalk").exists, "Keep walking must stay on the walk")
+        app.terminate()
+
+        app.launch()
+        tap(app, "action.endScan", timeout: 15)
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 5), "Yes, end here must finish the walk")
+    }
+
+    /// #76: a wall neither side of which was walked offers a new scan, not the spot on the wall.
+    @MainActor
+    func testWallNotMeasuredShowsNoSpot() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result", "-uiDemoWallNotMeasured"]
+        app.launch()
+        XCTAssertTrue(element(app, "result.wallNotMeasured").waitForExistence(timeout: 15))
+        XCTAssertFalse(element(app, "action.showAR").exists, "no spot, so no See it on your wall")
+        XCTAssertFalse(element(app, "result.placement").exists)
+        XCTAssertFalse(element(app, "result.nearest").exists)
     }
 
     /// #80: the capture gate's coaching keeps the walk's task on the card and adds its own line,
@@ -413,7 +467,8 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 40))
+        tap(app, "action.spotClear", timeout: 40)
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
     }
 
     /// #65 soft gate: with the ground or a window's question unanswered, the first "Looks
@@ -459,8 +514,23 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show its progress")
         XCTAssertEqual(ring.value as? String, "50 percent captured")
         let legend = element(app, "aim.legend")
-        XCTAssertTrue(legend.exists, "the first aim ring must come with its legend")
+        XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        let card = element(app, "instruction")
+        XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
+        app.terminate()
+
+        // At the largest text size the card and the controls fill the screen, so there is no
+        // room beside the ring: the legend moves under the card instead of going behind it or
+        // disappearing.
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let largeLegend = element(app, "aim.legend")
+        XCTAssertTrue(largeLegend.waitForExistence(timeout: 5), "the legend must still show at the largest text size")
+        XCTAssertTrue(largeLegend.label.contains("It fills as your phone captures this spot"), "legend reads \(largeLegend.label)")
+        let largeCard = element(app, "instruction")
+        XCTAssertFalse(largeLegend.frame.intersects(largeCard.frame), "the legend must keep clear of the card: \(largeLegend.frame) vs \(largeCard.frame)")
         app.terminate()
 
         app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAimOffScreen"]
@@ -584,10 +654,15 @@ final class ScreenStatesUITests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
+    /// Taps once the element can take the tap. Existing isn't enough: a control that has just
+    /// appeared can still be moving into place (the walk's controls settle after the close-up),
+    /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
+    /// tray).
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
         let target = element(app, identifier)
-        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
+        XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: timeout), .completed, "missing or not tappable: \(identifier)")
         target.tap()
     }
 

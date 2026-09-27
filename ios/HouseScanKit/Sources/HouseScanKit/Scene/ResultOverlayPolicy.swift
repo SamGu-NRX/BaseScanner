@@ -16,6 +16,8 @@ public struct ResultOverlayPolicy: Sendable, Equatable {
 
     /// True while the AR scene draws the result and the Canvas should not.
     public private(set) var usesRealityKit = false
+    /// The AR scene has been seen drawing the result on this phone, so it can draw it.
+    private var confirmed = false
     /// When the current unbroken run of "drawn" began; nil while the AR scene isn't drawing.
     private var drawnSince: Double?
 
@@ -24,14 +26,19 @@ public struct ResultOverlayPolicy: Sendable, Equatable {
     /// Takes one look at the AR scene: `drawn` says whether it draws the result now, at `time`
     /// in seconds (any clock that only goes forward). Returns `usesRealityKit`.
     ///
-    /// `held` says whether the AR scene still holds the result, drawn or not: anchored and
-    /// enabled, with the battery perhaps out of view. Once the AR scene has taken over it keeps
-    /// the result while `held`, so turning the phone to the meter doesn't bring the Canvas back
-    /// over RealityKit's copy, a second, unoccluded cable and tint a few centimetres off (review
-    /// of #100). Seeing it drawn is only needed to take over.
+    /// `held` says whether the AR scene holds the result, drawn or not: anchored and enabled,
+    /// with the battery perhaps out of view. Seeing it drawn is only needed the first time: once
+    /// the AR scene has taken over, it keeps the result while `held`, and takes it back as soon
+    /// as it holds it again, after a model rebuilt for a moved wall or a moment of lost tracking.
+    /// Otherwise, with the phone on the meter and the battery out of view, the Canvas came back
+    /// over RealityKit's copy: a second, unoccluded cable and tint a few centimetres off (review
+    /// of #100).
     @discardableResult
     public mutating func update(drawn: Bool, held: Bool = false, time: Double) -> Bool {
-        if usesRealityKit, held { return true }
+        if held, usesRealityKit || confirmed {
+            usesRealityKit = true
+            return true
+        }
         guard drawn else {
             drawnSince = nil
             usesRealityKit = false
@@ -39,7 +46,10 @@ public struct ResultOverlayPolicy: Sendable, Equatable {
         }
         // A clock that ran back restarts the run rather than confirming it early.
         if let since = drawnSince, since <= time {
-            if time - since >= Self.confirmation { usesRealityKit = true }
+            if time - since >= Self.confirmation {
+                usesRealityKit = true
+                confirmed = true
+            }
         } else {
             drawnSince = time
         }

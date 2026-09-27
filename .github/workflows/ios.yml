@@ -37,7 +37,9 @@ jobs:
        (github.event.action != 'labeled' || github.event.label.name == 'full-ui'))
     # macos-26 (arm64) is the newest GA macOS image. The xcode-27 image is still a preview.
     runs-on: macos-26
-    timeout-minutes: 45
+    # Beta run 36302099002 took 43 minutes before the spot-confirmation and review checks
+    # were added. Leave room for those checks without dropping the every-state audit.
+    timeout-minutes: 60
     env:
       # Newest stable Xcode on macos-26 per images/macos/macos-26-arm64-Readme.md (image 20260907).
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer

@@ -12,7 +12,7 @@ import XCTest
 ///   failing, to list every issue in one run. CI leaves it unset, so any issue fails the test.
 final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
-    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "result", "resultAR"]
+    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm", "result", "resultAR"]
 
     override func setUp() {
         continueAfterFailure = false
@@ -77,7 +77,7 @@ final class FullFlowUITests: XCTestCase {
             }
             XCTAssertNotNil(ended, "the walk never ended both sides")
             tape = ended ?? ""
-        }, onScene: { data in
+        }, onScene: { data, _ in
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         })
         // The wall map says where each end is, in words VoiceOver reads.
@@ -109,6 +109,121 @@ final class FullFlowUITests: XCTestCase {
         attachment.name = "cantGetThere-scene"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// "Something's there" on the spot check (`-autopilotSomethingThere`): the scan stops claiming
+    /// the spot's clearance area and goes to the server again, and the flow still ends on the
+    /// result, which says what the homeowner answered. The scene the last upload sent, and the one
+    /// the app exports at the result, list no wall, ground or facing entry over the stretch the
+    /// refusal withdrew (whole cells, as the autopilot reports them in `spot-refusal.json`), and
+    /// still list both bands elsewhere. The uploaded scene is attached as
+    /// `somethingThere-uploaded-scene` for the schema check.
+    @MainActor
+    func testSomethingThereChecksTheWallAgain() throws {
+        var sawPhoto = false
+        var sawRefusal = false
+        var scenes: [String: [String: Any]] = [:]
+        var withdrawn: [Double] = []
+        try runFlow(replay: Self.fixture, extraArguments: ["-autopilotSomethingThere"], beforeLeaving: { app, phase in
+            switch phase {
+            case "spotConfirm":
+                sawPhoto = ElementRead.snapshot(app.descendants(matching: .any)["spot.photo"])?.label == "Photo of your wall"
+            case "result":
+                sawRefusal = app.descendants(matching: .any)["result.spotRefused"].exists
+            default: break
+            }
+        }, onScene: { data, gate in
+            let refusal = try Data(contentsOf: gate.appending(path: "spot-refusal.json"))
+            withdrawn = try XCTUnwrap((JSONSerialization.jsonObject(with: refusal) as? [String: Any])?["withdrawn_span_ft"] as? [Double])
+            let uploaded = try Data(contentsOf: gate.appending(path: "uploaded-scene.json"))
+            let attachment = XCTAttachment(data: uploaded, uniformTypeIdentifier: "public.json")
+            attachment.name = "somethingThere-uploaded-scene"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            for (name, bytes) in [("exported", data), ("uploaded", uploaded)] {
+                scenes[name] = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            }
+        })
+        XCTAssertTrue(sawPhoto, "the spot check showed no photo of the spot")
+        XCTAssertTrue(sawRefusal, "the result doesn't say the homeowner said something stands there")
+        XCTAssertEqual(withdrawn.count, 2)
+        let low = try XCTUnwrap(withdrawn.first), high = try XCTUnwrap(withdrawn.last)
+        XCTAssertGreaterThan(high - low, 1, "withdrawn: \(withdrawn)")
+        for (name, scene) in scenes {
+            let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+            let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+            for band in ["wall", "ground", "facing"] {
+                let spans = observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] }
+                for span in spans {
+                    XCTAssertTrue(span[1] <= low + 1e-3 || span[0] >= high - 1e-3, "\(name) scene: \(band) \(span) reaches into the withdrawn \(low)...\(high)")
+                }
+                if band != "facing" {
+                    XCTAssertFalse(spans.isEmpty, "\(name) scene: no \(band) observed at all")
+                }
+            }
+        }
+    }
+
+    /// Practice meter on the synthetic replay: the switch is turned on in the developer options on
+    /// the first screen, the close-up stores the drawn sample's photo and the app's own reader
+    /// reads its number, which the autopilot confirms, and the rest of the flow runs to the AR
+    /// result. Every screen after the first carries the "Practice meter" badge. Afterwards Start
+    /// over clears the badge and the switch is turned off again for the tests that follow.
+    @MainActor
+    func testPracticeMeterFromReplay() throws {
+        var readNumber: String?
+        var unbadged: [String] = []
+        var app: XCUIApplication?
+        try runFlow(replay: Self.fixture, practice: true, beforeLeaving: { running, phase in
+            app = running
+            if phase == "onboarding" {
+                Self.setPracticeMeter(true, in: running)
+                return
+            }
+            if !running.descendants(matching: .any)["practiceBadge"].exists { unbadged.append(phase) }
+            if phase == "meterCloseUp" {
+                // Offered as a candidate, or already confirmed ("Meter number saved"): either way
+                // the reader read it from the sample's photo.
+                let number = running.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label CONTAINS %@", Self.sampleNumber)).firstMatch
+                readNumber = number.waitForExistence(timeout: 30) ? number.label : nil
+            }
+        })
+        XCTAssertNotNil(readNumber, "the reader never offered the sample meter's number \(Self.sampleNumber)")
+        XCTAssertEqual(unbadged, [], "screens without the Practice meter badge")
+
+        let running = try XCTUnwrap(app)
+        running.buttons["action.startOver"].firstMatch.tap()
+        XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
+        XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
+        Self.setPracticeMeter(false, in: running)
+    }
+
+    /// `PracticeMeter.number` in HouseScanKit, which the test bundle doesn't link.
+    static let sampleNumber = "12345678"
+
+    /// Opens the developer options from the first screen and sets the practice meter switch.
+    @MainActor
+    static func setPracticeMeter(_ on: Bool, in app: XCUIApplication) {
+        let open = app.buttons["action.developerOptions"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "no developer options on the first screen")
+        open.tap()
+        let row = app.switches["developer.practiceMeter"]
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "the developer options have no practice meter switch")
+        let wanted = on ? "1" : "0"
+        if row.value as? String != wanted {
+            // A Form row's switch is the row; the control inside it takes the tap.
+            let control = row.switches.firstMatch
+            (control.exists ? control : row).tap()
+        }
+        let set = NSPredicate(format: "value == %@", wanted)
+        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: set, object: row)], timeout: 5), .completed, "the switch didn't turn \(on ? "on" : "off")")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "developerOptions-\(on ? "on" : "off")"
+        shot.lifetime = .keepAlways
+        XCTContext.runActivity(named: shot.name ?? "") { $0.add(shot) }
+        app.buttons["action.closeDeveloperOptions"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 10))
     }
 
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
@@ -166,11 +281,16 @@ final class FullFlowUITests: XCTestCase {
 
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
-    /// once the result shows.
+    /// once the result shows, and the gate folder for the other files it leaves there.
+    ///
+    /// The practice meter switch is stored in the app's settings, which outlive a run in the
+    /// Simulator. Unless `practice` is set, `-practiceMeter NO` holds it off for this run whatever
+    /// an earlier test left there; with it, the test sets the switch itself.
     @MainActor
     private func runFlow(
-        replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
-        onScene: ((Data) throws -> Void)? = nil
+        replay: String, extraArguments: [String] = [], practice: Bool = false,
+        beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
+        onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
@@ -179,6 +299,7 @@ final class FullFlowUITests: XCTestCase {
         try FileManager.default.createDirectory(at: gate, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: gate) }
         var arguments = ["-replay", replay, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path] + extraArguments
+        if !practice { arguments += ["-practiceMeter", "NO"] }
         if let server = Self.environment["HOUSESCAN_SERVER_URL"], !server.isEmpty {
             arguments += ["-serverURL", server]
         } else {
@@ -205,7 +326,7 @@ final class FullFlowUITests: XCTestCase {
                 let file = gate.appending(path: "scene.json")
                 let deadline = Date().addingTimeInterval(20)
                 while !FileManager.default.fileExists(atPath: file.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
-                try onScene(try Data(contentsOf: file))
+                try onScene(try Data(contentsOf: file), gate)
             }
             try Data().write(to: gate.appending(path: phase))
         }

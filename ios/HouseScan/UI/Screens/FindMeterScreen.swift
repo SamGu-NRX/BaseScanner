@@ -32,10 +32,12 @@ struct FindMeterScreen: View {
                     ripple(at: CGPoint(x: cameraSize.width / 2, y: cameraSize.height / 2))
                     actions.markMeter(at: nil, viewSize: cameraSize)
                 } label: {
-                    Label("This is my meter", systemImage: "mappin.and.ellipse")
+                    Label(state.isPracticeScan ? ScanCopy.practiceMarkMeter : "This is my meter", systemImage: "mappin.and.ellipse")
                 }
                 .buttonStyle(.primary)
-                .accessibilityHint("Pins your electric meter at the circle in the middle of the screen")
+                .accessibilityHint(state.isPracticeScan
+                    ? "Puts the sample meter on the wall at the circle in the middle of the screen"
+                    : "Pins your electric meter at the circle in the middle of the screen")
                 .accessibilityIdentifier("action.markMeter")
             }
         }
@@ -44,7 +46,7 @@ struct FindMeterScreen: View {
     private var instruction: Instruction {
         if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
         if state.guidance == .aimAtWallForMeter { return ScanCopy.guidance(.aimAtWallForMeter) }
-        return ScanCopy.guidance(.findMeter)
+        return state.isPracticeScan ? ScanCopy.practiceFindMeter : ScanCopy.guidance(.findMeter)
     }
 
     private var tone: InstructionCard.Tone {

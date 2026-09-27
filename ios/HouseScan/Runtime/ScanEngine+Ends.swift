@@ -36,9 +36,10 @@ extension ScanEngine {
     /// `walkedEnd` with why it landed there, for the preview and the log.
     private func walkedEndChoice(_ side: WallSide) -> WalkedEnd.Choice? {
         guard let map = coverage else { return nil }
-        // Normal for a moment only doesn't count: a pose can jump as tracking comes back.
+        // Not debounced (review of #147): waiting for tracking to settle put run 2's end back at
+        // the meter after a brief drop. A pose that jumps as tracking returns is bounded by
+        // `WalkedEnd.maxPastEvidence` instead.
         let trackingNormal = currentFrame?.tracking == .normal
-            && WalkedEnd.trackingSteady(normalSince: trackingNormalSince, now: currentFrame?.timestamp ?? 0)
         return WalkedEnd.choose(
             side.walk, phone: phonePosition, trackingNormal: trackingNormal, walked: map.walkedPositions, wall: map.wall,
             seen: map.seenExtent
@@ -123,12 +124,22 @@ extension ScanEngine {
     }
 
     /// "Can't get there" while the walk asks to walk `side` or to mark its end: the end goes where
-    /// the preview showed, as an unexplored end.
+    /// the preview showed, as an unexplored end. `walkRefusals` notes when, and whether the side
+    /// had been walked (#82, #76).
     func endWalkCannotGoOn(_ side: WallSide) {
-        guard let s = walkedEnd(side) else { return }
+        guard let s = walkedEnd(side), let map = coverage else { return }
         logEnd("can't get there", side: side, at: s)
+        let walked = map.walkedFarthest(side.walk)
         setEnd(side, at: s, kind: .unexplored)
+        walkRefusals.ended(side.walk, at: s, walked: walked, time: ScanEngine.refusalClock)
+        if walkRefusals.wasRefused(side.walk, end: s) {
+            RuntimeLog.engine.info("the \(side.rawValue, privacy: .public) side ended before it was walked (\(walked) m walked, end at s=\(s))")
+        }
     }
+
+    /// Seconds for `WalkRefusals`: the time since boot, which a replay's frame clock doesn't
+    /// hold back while its playback is paused.
+    static var refusalClock: TimeInterval { ProcessInfo.processInfo.systemUptime }
 
     /// Where the end went, and why (#71): the phone's place, the kept-photo cap, whether the cap
     /// decided it, tracking, how many meters of cells the strip showed past the end, and what the
@@ -141,7 +152,9 @@ extension ScanEngine {
         let tracking = currentFrame.map { String(describing: $0.tracking) } ?? "none"
         let choice = walkedEndChoice(side)
         let cap = choice?.cap ?? .nan
-        let capped = choice?.capped == true ? "cap" : "phone"
+        // "phone": at the phone; "2 m past evidence": short of it, `WalkedEnd.maxPastEvidence`
+        // past the farthest kept view or seen cell; "cap": the kept-photo cap.
+        let capped = choice?.pastEvidence == true ? "2 m past evidence" : choice?.capped == true ? "cap" : "phone"
         let shown = WalkedEnd.shownPast(side.walk, s: s, seen: map.seenExtent, minimum: 0) ?? 0
         let covered = GuidancePlanner().reach(side.walk, coverage: map)
         RuntimeLog.engine.info("\(action, privacy: .public) on the \(side.rawValue, privacy: .public): end at s=\(s), chose \(capped, privacy: .public) (phone at s=\(phone) \(out) m out, cap s=\(cap), tracking \(tracking, privacy: .public)); strip showed \(shown) m past it; covered reach \(covered) m")
