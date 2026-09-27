@@ -37,6 +37,6 @@ Paths marked with a pull request exist only on that branch until it merges.
 
 - The demo server at https://house-scanning-server.vercel.app runs the engine from PR #11 with public rules only, and every answer says so. `GET /health` shows which rules are loaded. A second deployment loads Base's rules and requires a key.
 - TestFlight builds of the app and Measure Lab start by hand from the Actions tab, as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
-- `make check` runs the server, web and iOS suites that CI runs.
+- `make check` runs CI's local checks for the server, web and iOS, plus the scoring, Measure Lab, evals, recon and meter close-up folders when the branch has them.
 
 This repository is public. Materials Base gave the team stay in the git-ignored `private/` folder, and photos of real homes never enter git.
