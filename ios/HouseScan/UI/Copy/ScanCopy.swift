@@ -186,10 +186,17 @@ enum ScanCopy {
 
     /// One short line for coaching that rides along with the task instead of replacing it (the
     /// walk's capture-gate coaching): the task's title and second line stay, and this goes under
-    /// them. Only the coaching's title, so the task's own words stay the bigger part of the card.
+    /// them. Mostly only the coaching's title, so the task's own words stay the bigger part of the
+    /// card. The dark coaching keeps what to do about it: it can stay up for a whole night walk, and
+    /// "It's dark here" alone doesn't say what would help.
     static func coachingNote(_ coaching: Coaching) -> String {
-        let title = ScanCopy.coaching(coaching).title
-        return title.hasSuffix(".") ? title : "\(title)."
+        switch coaching {
+        case .tooDark: return "It's dark here. Try your phone's flashlight, or come back in daylight."
+        case .tooDarkToMeasure: return "It's too dark to measure here. Try in daylight."
+        default:
+            let title = ScanCopy.coaching(coaching).title
+            return title.hasSuffix(".") ? title : "\(title)."
+        }
     }
 
     /// Tracking problems and standing past the end replace the task on the card: nothing the task
