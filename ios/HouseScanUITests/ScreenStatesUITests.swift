@@ -59,6 +59,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("result-reject", ["-uiDemoPhase", "result", "-uiDemoResultFile", resultFile("reject-nearest")], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
+        ("resultAR-spotOffScreen", ["-uiDemoPhase", "resultAR", "-uiDemoSpotOffScreen"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
         ("sessionFailed", ["-uiDemoFailure", "sessionFailed"], "unsupported"),
@@ -77,6 +78,7 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-lostPlace",
         "spotConfirm", "spotConfirm-which", "spotConfirm-ground", "spotConfirm-answered", "spotConfirm-cantMark", "spotConfirm-unconfirmable",
+        "resultAR-spotOffScreen",
     ]
 
     /// Words a state must show: in the named element's label or value, or with no identifier,
@@ -101,6 +103,11 @@ final class ScreenStatesUITests: XCTestCase {
         "result-review": ("result.headline", "One more look"),
         // A reject names the closest spot and the check it fails.
         "result-reject": ("result.nearest", "The closest spot"),
+        // #67: the screen draws the result itself unless the AR scene is seen drawing it, and
+        // the demo has no AR scene.
+        "resultAR": ("ar.overlay", "drawn on your wall"),
+        // Review of #100: the chevron toward a spot out of view, audited at AX5 too.
+        "resultAR-spotOffScreen": ("ar.spotDirection", "Your battery spot is off screen"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.

@@ -90,8 +90,9 @@ struct WayfindingOverlay: View {
     }
 }
 
-/// The aim ring, or a chevron at the screen edge pointing toward it.
-private struct TargetMarker: View {
+/// The aim ring, or a chevron at the screen edge pointing toward it. Also the chevron toward
+/// the battery spot on "See it on your wall" (`ResultARScreen`).
+struct TargetMarker: View {
     enum Placement: Equatable {
         case onScreen(CGPoint, radius: CGFloat)
         case offScreen(CGPoint, angle: Angle)

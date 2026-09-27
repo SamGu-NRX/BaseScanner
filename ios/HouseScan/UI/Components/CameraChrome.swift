@@ -15,6 +15,9 @@ struct CameraChrome<Bottom: View>: View {
     /// Taps on the open camera area, in the camera view's coordinates (full screen, which is
     /// the window's global space). Nil when the screen has nothing to tap.
     var onCameraTap: ((CGPoint) -> Void)?
+    /// Where the card and the bottom controls cover the camera, measured as laid out at the
+    /// current text size. Nil when the screen doesn't need it.
+    var cover: Binding<ChromeCover>?
     @ViewBuilder var bottom: Bottom
 
     var body: some View {
@@ -52,13 +55,25 @@ struct CameraChrome<Bottom: View>: View {
             }
             .frame(minHeight: 36)
             InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { value in if let cover { cover.wrappedValue.cardBottom = value } }
             Spacer(minLength: 0)
             bottom
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { value in if let cover { cover.wrappedValue.controlsTop = value } }
         }
         .padding(.horizontal, Metrics.edge)
         .padding(.top, 4)
         .padding(.bottom, 8)
     }
+}
+
+/// Where `CameraChrome` covers the camera, in the window's coordinates: the instruction card's
+/// bottom edge and the bottom controls' top edge. The camera between them is what the homeowner
+/// can see. Measured, not assumed: at the largest text sizes the card grows far past its usual
+/// 220 pt (review of #100). Nil until laid out. Measured with `onGeometryChange` rather than a
+/// preference key, whose change handler can't set view state under Swift 6's checks.
+struct ChromeCover: Equatable {
+    var cardBottom: CGFloat?
+    var controlsTop: CGFloat?
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)

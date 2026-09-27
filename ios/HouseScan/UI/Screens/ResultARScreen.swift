@@ -2,36 +2,70 @@ import simd
 import SwiftUI
 
 /// "See it on your wall": the battery drawn onto the live camera at the chosen spot, with the
-/// cable run from the meter and the clearance footprint tinted by outcome. On the live camera the
-/// engine draws it into the AR scene (`state.resultInCamera`); over a replay this screen projects
-/// it from the meter-anchored wall frame. Either way it stays put as the homeowner moves.
+/// cable run from the meter and the clearance footprint tinted by outcome. This screen projects
+/// it from the meter-anchored wall frame (`BatteryOverlay`) unless the engine has seen the AR
+/// scene drawing it (`state.resultInCamera`). Either way it stays put as the homeowner moves.
+/// While the spot can't be seen, a chevron at the edge points toward it and a caption above Done
+/// says which way.
 struct ResultARScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
 
     @State private var appeared = false
+    /// Where the card and the Done button cover the camera (`CameraChrome`), for the chevron.
+    @State private var cover = ChromeCover()
+    /// Which way the spot is while it can't be seen, in eighths of a turn from "right",
+    /// clockwise (`SpotDirection`); nil while it is in view.
+    @State private var spotOctant: Int?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            if !state.resultInCamera, state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
-                BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
-                    .ignoresSafeArea()
-                    .accessibilityHidden(true)
+            if state.tracking == .normal, let projection = state.projection, let wall = state.wall, let result = state.result {
+                if state.resultInCamera {
+                    // The AR scene draws the result in the camera view; this only names it for
+                    // VoiceOver and the UI tests, as the overlay below does.
+                    Color.clear
+                        .allowsHitTesting(false)
+                        .accessibilityElement()
+                        .accessibilityLabel(Self.overlayLabel(result))
+                        .accessibilityAddTraits(.isImage)
+                        .accessibilityIdentifier("ar.overlay")
+                } else {
+                    BatteryOverlay(projection: projection, wall: wall, result: result, rise: appeared ? 1 : 0)
+                        .ignoresSafeArea()
+                        .accessibilityElement()
+                        .accessibilityLabel(Self.overlayLabel(result))
+                        .accessibilityAddTraits(.isImage)
+                        .accessibilityIdentifier("ar.overlay")
+                }
+                if let spot = result.spotCenter(on: wall) {
+                    SpotDirection(projection: projection, spot: spot, cover: cover, octant: $spotOctant)
+                }
             }
             CameraChrome(
                 instruction: instruction,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                cover: $cover
             ) {
-                Button("Done") { actions.closeAR() }
-                    .buttonStyle(.primary)
-                    .accessibilityIdentifier("action.closeAR")
+                VStack(spacing: 10) {
+                    if state.tracking == .normal, let spotOctant {
+                        SpotDirectionCaption(octant: spotOctant)
+                    }
+                    Button("Done") { actions.closeAR() }
+                        .buttonStyle(.primary)
+                        .accessibilityIdentifier("action.closeAR")
+                }
             }
         }
         .onAppear {
             withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.7, bounce: 0.15)) { appeared = true }
         }
+    }
+
+    private static func overlayLabel(_ result: ResultPresentation) -> String {
+        result.spot == nil ? "The cable run and clearances, drawn on your wall" : "The battery, drawn on your wall at its spot"
     }
 
     private var instruction: Instruction {
@@ -52,6 +86,117 @@ struct ResultARScreen: View {
             return Instruction(title: "Example spot, not your result", detail: ["No server checked this scan.", placement].compactMap { $0 }.joined(separator: " "))
         }
         return Instruction(title: title, detail: placement)
+    }
+}
+
+extension ResultPresentation {
+    /// The middle of the battery on `wall`, in world meters; nil without a spot. The point
+    /// "See it on your wall" has to get on screen: the edge chevron points to it while it is off
+    /// screen, and the engine checks the AR scene puts it in view (`LiveCapture.resultIsDrawn`).
+    func spotCenter(on wall: WallGeometry) -> SIMD3<Float>? {
+        guard let spot else { return nil }
+        let middle = (spot.span.lowerBound + spot.span.upperBound) / 2
+        return wall.world(s: middle, height: spot.height / 2, out: spot.offsetFromWall + spot.depth / 2)
+    }
+}
+
+/// While the battery spot can't be seen, an edge chevron toward it in the clear part of the
+/// camera, and which way it is (`octant`) for the caption above the Done button
+/// (`SpotDirectionCaption`). The caption sits in the chrome's own stack rather than over the
+/// camera: at the largest text sizes the card and the button leave no camera clear, and a
+/// caption drawn there went under them (review of #100). The chevron shows only where it fits.
+private struct SpotDirection: View {
+    var projection: CameraProjection
+    var spot: SIMD3<Float>
+    /// Where the card and the Done button cover the camera, as `CameraChrome` measured them.
+    var cover: ChromeCover
+    /// Which way the spot is, in eighths of a turn clockwise from "right"; nil while in view.
+    @Binding var octant: Int?
+
+    /// Half the chevron's disc (52 pt) and a gap.
+    private static let chevronReach: CGFloat = 34
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+            let clear = clearArea(in: size)
+            let chevron = chevronPlacement(in: size, clear: clear)
+            ZStack {
+                Color.clear
+                if let chevron, clear.height >= 2 * Self.chevronReach {
+                    TargetMarker(placement: .offScreen(chevron.point, angle: chevron.angle))
+                        .accessibilityHidden(true)
+                }
+            }
+            .frame(width: size.width, height: size.height)
+            .onChange(of: chevron.map { Self.octant($0.angle) }, initial: true) { _, new in octant = new }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .onDisappear { octant = nil }
+    }
+
+    /// `angle` (screen axes, y down) in eighths of a turn clockwise from "right", 0...7.
+    private static func octant(_ angle: Angle) -> Int {
+        let eighths = Int((angle.radians / (.pi / 4)).rounded())
+        return ((eighths % 8) + 8) % 8
+    }
+
+    /// The part of the screen the chrome leaves clear, as `CameraChrome` measured it: between the
+    /// instruction card's bottom edge and the Done button's top edge. At the largest text sizes
+    /// the card reaches far further down than at the default size, so fixed insets hid the
+    /// chevron while the spot was under the card (review of #100). Before the first layout,
+    /// the default-size card (about 220 pt with a two-line detail) and button (about 100 pt up).
+    /// Empty when the chrome covers it all.
+    private func clearArea(in size: CGSize) -> CGRect {
+        let top = (cover.cardBottom ?? 252) + 8
+        let bottom = (cover.controlsTop ?? size.height - 152) - 8
+        return CGRect(x: 24, y: top, width: max(size.width - 48, 0), height: max(bottom - top, 0))
+    }
+
+    /// Where the chevron goes and which way it points, or nil while the spot is in view: in the
+    /// clear area. A spot under the card or the Done button can't be seen, so it gets the
+    /// chevron too. The chevron keeps to the clear area, toward the spot's side of it.
+    private func chevronPlacement(in size: CGSize, clear: CGRect) -> (point: CGPoint, angle: Angle)? {
+        if let point = projection.viewPoint(for: spot, in: size), clear.contains(point) { return nil }
+        guard let direction = projection.screenDirection(toward: spot) else { return nil }
+        let lane = clear.insetBy(dx: 16, dy: min(Self.chevronReach, clear.height / 2))
+        let tx = direction.dx == 0 ? CGFloat.infinity : lane.width / 2 / abs(direction.dx)
+        let ty = direction.dy == 0 ? CGFloat.infinity : lane.height / 2 / abs(direction.dy)
+        let t = min(tx, ty)
+        let point = CGPoint(x: lane.midX + direction.dx * t, y: lane.midY + direction.dy * t)
+        return (point, .radians(atan2(direction.dy, direction.dx)))
+    }
+}
+
+/// "Your battery spot is this way" with an arrow toward it, above the Done button while the
+/// spot can't be seen (`SpotDirection`). VoiceOver hears which way.
+private struct SpotDirectionCaption: View {
+    /// Eighths of a turn clockwise from "right", 0...7.
+    var octant: Int
+
+    private static let words = ["to the right", "down and to the right", "down", "down and to the left",
+                                "to the left", "up and to the left", "up", "up and to the right"]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.right")
+                .font(.body.weight(.heavy))
+                .rotationEffect(.degrees(Double(octant) * 45))
+            Text("Your battery spot is this way")
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(Palette.chalk)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        // Solid, as the other camera captions: see-through black over a bright wall can fail
+        // the accessibility audit's contrast check.
+        .background(ScrimShape.rounded(20))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your battery spot is off screen, \(Self.words[octant % 8]). Turn the phone that way.")
+        .accessibilityIdentifier("ar.spotDirection")
     }
 }
 

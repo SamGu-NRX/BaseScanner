@@ -16,6 +16,8 @@ import SwiftUI
 ///   unsupported screen.
 /// - `-uiDemoPass`: the sample result is a pass with approved rules.
 /// - `-uiDemoOverlap`: the sample result's spot overlaps the meter's working space.
+/// - `-uiDemoSpotOffScreen`: with `-uiDemoPhase resultAR`, the phone aims away from the spot, so
+///   the edge chevron points to it.
 /// - `-uiDemoResultFile <path>`: debug builds only. The result is the server answer in this JSON
 ///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.

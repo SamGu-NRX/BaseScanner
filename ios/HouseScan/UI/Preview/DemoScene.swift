@@ -26,6 +26,9 @@ enum DemoScene {
     static let projection = camera(at: SIMD3(0.6, 1.5, 5.0), pitchDegrees: 18, focal: 1100)
     /// Standing 2.4 m back and aiming at the meter: finding it.
     static let meterProjection = camera(at: SIMD3(0.05, 1.5, 2.4), pitchDegrees: 0, focal: 1400)
+    /// 2.2 m left of the meter and 1.5 m back, aiming straight at the wall: the battery spot and
+    /// the meter are both well off to the right (`-uiDemoSpotOffScreen`).
+    static let awayFromSpotProjection = camera(at: SIMD3(-2.2, 1.5, 1.5), pitchDegrees: 0, focal: 1400)
     /// Close to the meter for its photo.
     static let closeUpProjection = camera(at: SIMD3(0, 1.5, 0.9), pitchDegrees: 0, focal: 1400)
 

@@ -134,6 +134,14 @@ final class ScanEngine {
     // Tracking recovery
     private var relocalizingSince: Double?
 
+    // AR result
+    /// Watches whether the AR scene draws the result (`watchResultInCamera`) while "See it on
+    /// your wall" is up on the live camera.
+    private var resultWatch: Task<Void, Never>?
+    /// Which layer draws the result, and the wall the model in the AR scene was built for
+    /// (`showResultInCamera`, `watchResultInCamera`).
+    private var resultPolicy = ResultOverlayPolicy()
+
     // Upload
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
@@ -368,6 +376,8 @@ final class ScanEngine {
             RuntimeLog.capture.info("tracking \(Self.name(self.state.tracking), privacy: .public) -> \(Self.name(frame.tracking), privacy: .public)")
             if state.tracking == .normal { breakWalkedPath(because: "tracking left normal") }
             state.tracking = frame.tracking
+            // The model stays see-through until the next look hands it the result
+            // (`setResultInCamera`), so enabling it here never shows it over the screen's drawing.
             live?.setResultVisible(frame.tracking == .normal)
         }
         if let planes = frame.groundPlanes { groundPlanes = planes }
@@ -1223,20 +1233,85 @@ final class ScanEngine {
         refreshSpotPhoto()
     }
 
-    /// "See it on your wall" on the live camera: the result goes into the AR scene on the meter's
-    /// anchor, where people and objects in front of it hide it. A replay, or a meter without an
-    /// anchor, leaves it to the screen's overlay.
+    /// "See it on your wall" on the live camera. The screen draws the result over the camera
+    /// itself (`BatteryOverlay`) unless the AR scene is seen drawing it (`watchResultInCamera`).
+    /// Build 4.1 trusted the AR scene as soon as it had the model and showed no battery at all
+    /// (#67). Only a phone with LiDAR tries the AR scene, where the mesh can hide the result
+    /// behind things in front of it; without LiDAR the screen draws it, as build 3.1 did. A
+    /// replay, or a meter without an anchor, leaves it to the screen too.
     private func showResultInCamera(rising: Bool) {
-        guard let live, let wall = state.wall, let result = state.result, let pose = meterTracking?.pose,
-              state.spatialResultAvailable else { return }
+        guard LiveCapture.supportsMesh, let live, let wall = state.wall, let result = state.result,
+              let pose = meterTracking?.pose, state.spatialResultAvailable else { return }
+        if rising || resultWatch == nil { watchResultInCamera() }
+        // Each rebuild takes the model out of the scene and puts a new one in, so a wall that
+        // moved by a centimeter or two keeps the one it has. A new model starts on the screen's
+        // drawing and has to be seen drawn again (`ResultOverlayPolicy.needsModel`, review of
+        // #100); it goes in see-through (`LiveCapture.showResult`), so only one layer shows.
+        guard resultPolicy.needsModel(for: Self.modelShape(wall), rising: rising) else { return }
+        setResultInCamera(resultPolicy.usesRealityKit)
         let model = ResultARModel.build(wall: wall, result: result)
-        state.resultInCamera = live.showResult(model, builtFor: pose)
-        guard state.resultInCamera else { return }
+        // The battery's middle, or the meter without a spot, in the model's coordinates.
+        let focus = (result.spotCenter(on: wall) ?? wall.meter) - wall.meter
+        guard live.showResult(model, builtFor: pose, focus: focus) else {
+            resultPolicy.modelRemoved()
+            return
+        }
         live.setResultVisible(state.tracking == .normal)
         if rising { ResultARModel.rise(model) }
     }
 
+    /// What the AR result's model is built from, for `ResultOverlayPolicy.needsModel`: the
+    /// meter, the ground, the ends and each piece of wall.
+    private static func modelShape(_ wall: WallGeometry) -> ResultModelShape {
+        var shape = ResultModelShape(
+            points: [wall.meter], values: [wall.groundY, wall.leftEnd, wall.rightEnd],
+            directions: [wall.along, wall.outward]
+        )
+        for piece in wall.cornerSegments {
+            shape.points.append(piece.anchor)
+            shape.values += [piece.span.lowerBound, piece.span.upperBound, piece.anchorS]
+            shape.directions += [piece.along, piece.outward]
+        }
+        return shape
+    }
+
+    /// Looks at the AR scene about ten times a second while "See it on your wall" is up, and
+    /// lets the screen's drawing step aside once the scene is seen drawing the result, for as
+    /// long as the scene holds it (`ResultOverlayPolicy`). On its own clock, not in `ingest`: it
+    /// has to notice a scene that stopped holding it whether frames arrive or not.
+    private func watchResultInCamera() {
+        resultWatch?.cancel()
+        resultWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                guard self.state.phase == .resultAR, let live = self.live else {
+                    // Nothing left to watch: the screen draws the result (review of #100).
+                    self.setResultInCamera(false)
+                    return
+                }
+                let look = live.resultIsDrawn()
+                self.setResultInCamera(self.resultPolicy.update(drawn: look.drawn, held: look.held, time: self.screenTime))
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    /// Which layer draws the result: the AR scene (true) or the screen's overlay (false). The
+    /// AR scene's model shows only while it owns the result (`LiveCapture.setResultOwned`), and
+    /// both change here together, so the two layers are never both on screen: not while a new
+    /// model waits to be seen, and not while tracking comes back and `ingest` enables the model
+    /// before the next look (review of #100).
+    private func setResultInCamera(_ usesRealityKit: Bool) {
+        live?.setResultOwned(usesRealityKit)
+        guard state.resultInCamera != usesRealityKit else { return }
+        RuntimeLog.engine.info("AR result drawn by \(usesRealityKit ? "the AR scene" : "the screen overlay", privacy: .public)")
+        state.resultInCamera = usesRealityKit
+    }
+
     private func hideResultInCamera() {
+        resultWatch?.cancel()
+        resultWatch = nil
+        resultPolicy = ResultOverlayPolicy()
         live?.hideResult()
         state.resultInCamera = false
     }
