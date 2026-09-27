@@ -21,7 +21,7 @@ present = $(if $(wildcard $(1)),$(2))
 # $(call require,FILE,PR): stop before any command runs when the suite's file is missing.
 require = @test -f $(1) || { echo "make $@: $(1) is missing; the suite arrives with pull request $(2)." >&2; exit 1; }
 
-.PHONY: check server web ios ios-project scoring measure-lab evals recon meter-closeup
+.PHONY: check server web ios ios-project smoke scoring measure-lab evals recon meter-closeup
 
 check: server web ios \
 	$(call present,$(SCORING),scoring) \
@@ -84,3 +84,9 @@ recon:
 meter-closeup:
 	$(call require,$(METER_CLOSEUP),#16)
 	$(MAKE) -C experiments/meter-closeup check
+
+# Posts each scene in server/examples to a placement server and prints its decision:
+# make smoke URL=https://house-scanning-server.vercel.app [KEY_FILE=server/.env.private.local]
+smoke:
+	@test -n "$(URL)" || { echo "usage: make smoke URL=<server> [KEY_FILE=<file with HOUSESCAN_API_KEY=...>]" >&2; exit 2; }
+	python3 server/examples/smoke.py "$(URL)" $(if $(KEY_FILE),--key-file "$(KEY_FILE)")

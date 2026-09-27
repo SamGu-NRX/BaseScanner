@@ -1,0 +1,160 @@
+{
+  "id": "g11a-unexplored-corner",
+  "source": "t3-lane-c-review.md golden 11 (a) at origin/t3/research a7d91f1",
+  "description": "Every start on w1 fails gas by 2 ft (gap 1 ft). The walk stopped at the corner at s = 8 without seeing the next wall, so the result cannot reject and must ask for the wall past the corner.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        -1.8333333333333333
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -3,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          -3,
+          8
+        ],
+        "source": "tape",
+        "plus_minus_ft": 0.0,
+        "footprint": [
+          [
+            -10,
+            1.0
+          ],
+          [
+            20,
+            1.0
+          ],
+          [
+            20,
+            1.5
+          ],
+          [
+            -10,
+            1.5
+          ]
+        ]
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -3,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            8.166666666666666
+          ],
+          [
+            -3,
+            8.166666666666666
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -3.0,
+          8.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "unexplored"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -3,
+            8
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -3,
+            8
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -3,
+            8
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -3,
+            8
+          ],
+          "out_ft": 10.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "decision_in": [
+      "manual_review"
+    ],
+    "spot": null,
+    "missing_evidence_empty": false,
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -3,
+          5.4
+        ],
+        "outcome": "fail",
+        "failing_match": "gas"
+      }
+    ]
+  }
+}

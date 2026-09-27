@@ -1,0 +1,42 @@
+name: Evals
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "experiments/evals/**"
+      - ".github/workflows/evals.yml"
+  pull_request:
+    paths:
+      - "experiments/evals/**"
+      - ".github/workflows/evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  evals-checks:
+    name: Evals checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/evals
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Reads tool.uv.required-version from experiments/evals/pyproject.toml.
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/evals
+      # The datasets are non-commercial and never in git, so CI runs the metric code's unit tests
+      # (hand-computed cases), lint and format; the result tables are regenerated locally.
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q

@@ -1,0 +1,741 @@
+{
+  "generated_at": "2026-09-26T12:28:23-05:00",
+  "command": "uv run python -m hsverify.scoreboard",
+  "slow": false,
+  "prs": [
+    {
+      "number": 22,
+      "title": "packet: capture packet 1.1 \u2014 spec, validator and samples",
+      "branch": "t3/packet",
+      "head": "d5439cfe5b6334f439f0518d2de2992cfe27538c",
+      "draft": false,
+      "updated": "2026-09-26T17:09:43Z",
+      "ci": {
+        "counts": {
+          "success": 3,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "3 success"
+      }
+    },
+    {
+      "number": 21,
+      "title": "ios: live on-device 3D map with occlusion-honest coverage",
+      "branch": "t3/ios-map3d",
+      "head": "66cdcbaaca5de3ca4812e7073fd5490b477713a2",
+      "draft": true,
+      "updated": "2026-09-26T17:02:20Z",
+      "ci": {
+        "counts": {
+          "success": 2,
+          "failure": 0,
+          "pending": 1,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "2 success, 1 pending"
+      }
+    },
+    {
+      "number": 20,
+      "title": "recon: handoff to the server team",
+      "branch": "t3/recon",
+      "head": "c962e0929dc29bb890c2c6fb23a359ff5e7f5108",
+      "draft": true,
+      "updated": "2026-09-26T15:59:37Z",
+      "ci": {
+        "counts": {
+          "success": 3,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "3 success"
+      }
+    },
+    {
+      "number": 18,
+      "title": "Research handoff: live survey findings, options and tested prototypes",
+      "branch": "codex/research-findings",
+      "head": "bd4a7d387606d8dedb679e2962accb5a5a48a4b2",
+      "draft": false,
+      "updated": "2026-09-26T14:07:43Z",
+      "ci": {
+        "counts": {
+          "success": 2,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "2 success"
+      }
+    },
+    {
+      "number": 17,
+      "title": "experiments: panel label reading stopped at the gate; field-day photo list",
+      "branch": "t3/panel-label",
+      "head": "cf6e6e1924274523acb9116c354c58b61d8a0826",
+      "draft": false,
+      "updated": "2026-09-26T13:16:12Z",
+      "ci": {
+        "counts": {
+          "success": 4,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "4 success"
+      }
+    },
+    {
+      "number": 16,
+      "title": "experiments: meter close-up reading, tap-to-confirm and two retake checks",
+      "branch": "t3/meter-closeup",
+      "head": "b199613b439f3d399e34df55df1b9ab4c371b24a",
+      "draft": false,
+      "updated": "2026-09-26T13:16:09Z",
+      "ci": {
+        "counts": {
+          "success": 4,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "4 success"
+      }
+    },
+    {
+      "number": 15,
+      "title": "web: placement review page",
+      "branch": "t3/web-review",
+      "head": "1ebc0f40b4f53b8429f0049feb7aff183ec1768d",
+      "draft": true,
+      "updated": "2026-09-26T15:32:04Z",
+      "ci": {
+        "counts": {
+          "success": 3,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "3 success"
+      }
+    },
+    {
+      "number": 14,
+      "title": "docs: rebuild onboarding around the client and server teams",
+      "branch": "t3/docs-cleanup",
+      "head": "8afa331394deda5e15ad9a802361b7082312d638",
+      "draft": false,
+      "updated": "2026-09-26T16:47:37Z",
+      "ci": {
+        "counts": {
+          "success": 2,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "2 success"
+      }
+    },
+    {
+      "number": 13,
+      "title": "verification: independent end-to-end checks (S4)",
+      "branch": "t3/verification",
+      "head": "52aa87f79e8dad281e96a6ef51dfe791a48b7779",
+      "draft": true,
+      "updated": "2026-09-26T13:00:35Z",
+      "ci": {
+        "counts": {
+          "success": 3,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "3 success"
+      }
+    },
+    {
+      "number": 12,
+      "title": "feat(evals): real-data evals for AR drift, wall reconstruction, coverage and the field test",
+      "branch": "t3/evals",
+      "head": "24793c328850fba2018ea1f8d951c45ac30ac281",
+      "draft": false,
+      "updated": "2026-09-26T13:14:09Z",
+      "ci": {
+        "counts": {
+          "success": 4,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "4 success"
+      }
+    },
+    {
+      "number": 11,
+      "title": "server: placement solver, rules and API (S2)",
+      "branch": "t3/server",
+      "head": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+      "draft": false,
+      "updated": "2026-09-26T17:08:40Z",
+      "ci": {
+        "counts": {
+          "success": 2,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "2 success"
+      }
+    },
+    {
+      "number": 10,
+      "title": "ios: guided wall scan from the meter to a battery spot",
+      "branch": "t3/ios-mvf",
+      "head": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+      "draft": false,
+      "updated": "2026-09-26T16:51:33Z",
+      "ci": {
+        "counts": {
+          "success": 3,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "3 success"
+      }
+    },
+    {
+      "number": 9,
+      "title": "experiments: validate camera metadata for reconstruction",
+      "branch": "codex/capture-contract-probe",
+      "head": "4b6c430956bb35edff546f140e3152ed75c56246",
+      "draft": true,
+      "updated": "2026-09-26T05:08:13Z",
+      "ci": {
+        "counts": {
+          "success": 4,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "4 success"
+      }
+    },
+    {
+      "number": 7,
+      "title": "experiments: add measure-lab, a no-LiDAR measurement rig",
+      "branch": "t3/measure-lab",
+      "head": "45770a3b1bd2ab90967e82a974fdfbf4d7bfbecb",
+      "draft": false,
+      "updated": "2026-09-26T08:19:30Z",
+      "ci": {
+        "counts": {
+          "success": 6,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "6 success"
+      }
+    },
+    {
+      "number": 6,
+      "title": "docs: add research notes on capture, lane reviews and scoring",
+      "branch": "t3/research",
+      "head": "9737e3f0eefe90f2a12a190bf8750e7fed64413f",
+      "draft": false,
+      "updated": "2026-09-26T10:13:56Z",
+      "ci": {
+        "counts": {
+          "success": 4,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "4 success"
+      }
+    },
+    {
+      "number": 4,
+      "title": "Add a scoring harness that compares capture pipelines with a tape survey",
+      "branch": "t3/scoring-harness",
+      "head": "77ce830dd08acf0c7982edcec91cd3240e0565ea",
+      "draft": false,
+      "updated": "2026-09-26T15:10:23Z",
+      "ci": {
+        "counts": {
+          "success": 5,
+          "failure": 0,
+          "pending": 0,
+          "skipped": 0
+        },
+        "failing": [],
+        "text": "5 success"
+      }
+    }
+  ],
+  "pr_error": null,
+  "workstreams": [
+    {
+      "id": "S1",
+      "title": "Evals on real data",
+      "refs": [
+        {
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "S1-1",
+          "text": "One command regenerates every number from a clean checkout",
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281",
+          "status": "partial",
+          "evidence": "make drift at b5ca7af from a clean worktree reproduced advio_drift.md and advio_drift.json byte for byte (85 MB peak). ETH3D recon not rerun: it loads the laser scans, whose memory has not been bounded on this shared Mac.",
+          "links": []
+        },
+        {
+          "id": "S1-2",
+          "text": "Dataset URLs and sha256 recorded",
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281",
+          "status": "met",
+          "evidence": "all 2 found",
+          "links": [
+            [
+              "experiments/evals/README.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/README.md"
+            ]
+          ]
+        },
+        {
+          "id": "S1-3",
+          "text": "Metric code tested on hand-computed cases",
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281",
+          "status": "not run",
+          "evidence": "slow; run with --slow",
+          "links": []
+        },
+        {
+          "id": "S1-4",
+          "text": "ADVIO drift report, median and p90 inches after 3, 10, 20 and 30 ft",
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281",
+          "status": "met",
+          "evidence": "all 5 found",
+          "links": [
+            [
+              "experiments/evals/README.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/README.md"
+            ],
+            [
+              "experiments/evals/field/FIELD_SHEET.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/field/FIELD_SHEET.md"
+            ],
+            [
+              "experiments/evals/results/advio_drift.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/results/advio_drift.md"
+            ]
+          ]
+        },
+        {
+          "id": "S1-5",
+          "text": "ETH3D errors per model (median and p90 inches for 1-3 m and 3-10 m pairs, scale error %) with a verdict per question",
+          "ref": "origin/t3/evals",
+          "sha": "24793c328850fba2018ea1f8d951c45ac30ac281",
+          "status": "partial",
+          "evidence": "found 1-3 m row, 3-10 m row, scale error; missing verdict",
+          "links": [
+            [
+              "experiments/evals/README.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/README.md"
+            ],
+            [
+              "experiments/evals/results/eth3d_recon.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/results/eth3d_recon.md"
+            ],
+            [
+              "experiments/evals/results/eth3d_visibility_sensitivity.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/24793c328850fba2018ea1f8d951c45ac30ac281/experiments/evals/results/eth3d_visibility_sensitivity.md"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "Server and solver",
+      "refs": [
+        {
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "S2-1",
+          "text": "pytest green",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "not run",
+          "evidence": "slow; run with --slow",
+          "links": []
+        },
+        {
+          "id": "S2-2",
+          "text": "Every public golden test 01-14 of docs/research/t3-lane-c-review.md present",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "met",
+          "evidence": "all 14 found",
+          "links": [
+            [
+              "server/tests/test_golden_public.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_golden_public.py"
+            ]
+          ]
+        },
+        {
+          "id": "S2-3",
+          "text": "Property tests: missing coverage never passes, equality is unsure, left/right mirror, larger clearance never turns pass into fail",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "partial",
+          "evidence": "found missing coverage, mirror; missing equality unsure, larger clearance",
+          "links": [
+            [
+              "server/tests/test_coderabbit_review.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_coderabbit_review.py"
+            ],
+            [
+              "server/tests/test_properties.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_properties.py"
+            ]
+          ]
+        },
+        {
+          "id": "S2-4",
+          "text": "Schemas published",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "met",
+          "evidence": "present at 68084b5f",
+          "links": [
+            [
+              "server/schemas/scene.schema.json",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/schemas/scene.schema.json"
+            ],
+            [
+              "server/schemas/result.schema.json",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/schemas/result.schema.json"
+            ]
+          ]
+        },
+        {
+          "id": "S2-5",
+          "text": "Schemas validated in tests",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "met",
+          "evidence": "all 2 found",
+          "links": [
+            [
+              "server/tests/test_golden_public.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_golden_public.py"
+            ],
+            [
+              "server/tests/test_schemas.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_schemas.py"
+            ],
+            [
+              "server/tests/test_api.py",
+              "https://github.com/SamGu-NRX/house-scanning/blob/68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f/server/tests/test_api.py"
+            ]
+          ]
+        },
+        {
+          "id": "S2-6",
+          "text": "A real-derived scene returns a result in under 1 s",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "met",
+          "evidence": "latency_ms = 153.8 (want < 1000) at sha 68084b5f: ~/house-scanning-data/reports/e2e/20260926-122755-68084b5f/report.json",
+          "links": []
+        },
+        {
+          "id": "S2-7",
+          "text": "ruff clean",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "not run",
+          "evidence": "slow; run with --slow",
+          "links": []
+        },
+        {
+          "id": "S2-8",
+          "text": "Black-box (verification e2e at this SHA): results valid under C2, consistent with the decision and C5 margins, coverage to each check's required radius, missing evidence complete, ordering properties, hostile inputs refused in time",
+          "ref": "origin/t3/server",
+          "sha": "68084b5f764cc9e6dd9a2cd13840ddfbd67f4a3f",
+          "status": "met",
+          "evidence": "contract_problem_count = 0 (want 0) at sha 68084b5f: ~/house-scanning-data/reports/e2e/20260926-122755-68084b5f/report.json",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "iOS capture app",
+      "refs": [
+        {
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "S3-1",
+          "text": "CI build green",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "iOS build: success at 194f2ebf",
+          "links": [
+            [
+              "#10",
+              "https://github.com/SamGu-NRX/house-scanning/pull/10"
+            ]
+          ]
+        },
+        {
+          "id": "S3-2",
+          "text": "Built as Swift 6 with strict concurrency",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "all 2 found",
+          "links": [
+            [
+              "ios/project.yml",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/project.yml"
+            ]
+          ]
+        },
+        {
+          "id": "S3-3",
+          "text": "Zero build warnings",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "build.warnings = length 0 (want 0) at sha 194f2ebf: ~/house-scanning-data/reports/sim/20260926-121648-t3-ios-mvf-194f2ebf-replay/report.json",
+          "links": []
+        },
+        {
+          "id": "S3-4",
+          "text": "Unit tests for coverage, auto-capture and guidance",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "partial",
+          "evidence": "found coverage; missing auto-capture, guidance",
+          "links": [
+            [
+              "ios/HouseScanKit/Tests/HouseScanKitTests/AutoCaptureTests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanKit/Tests/HouseScanKitTests/AutoCaptureTests.swift"
+            ],
+            [
+              "ios/HouseScanKit/Tests/HouseScanKitTests/JSONSchemaValidatorTests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanKit/Tests/HouseScanKitTests/JSONSchemaValidatorTests.swift"
+            ],
+            [
+              "ios/HouseScanKit/Tests/HouseScanKitTests/SceneExportTests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanKit/Tests/HouseScanKitTests/SceneExportTests.swift"
+            ]
+          ]
+        },
+        {
+          "id": "S3-5",
+          "text": "UI tests run the whole flow from a real replay with no manual input, including one gap-instruction-recapture loop",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "partial",
+          "evidence": "all 3 found (the tests exist; passing is S3-1)",
+          "links": [
+            [
+              "ios/HouseScanUITests/FullFlowUITests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanUITests/FullFlowUITests.swift"
+            ],
+            [
+              "ios/HouseScanUITests/ScreenStatesUITests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanUITests/ScreenStatesUITests.swift"
+            ]
+          ]
+        },
+        {
+          "id": "S3-6",
+          "text": "Accessibility audit on every screen",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "partial",
+          "evidence": "3 matches in 2 files (an audit exists; which screens it covers needs a read)",
+          "links": [
+            [
+              "ios/HouseScanUITests/FullFlowUITests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanUITests/FullFlowUITests.swift"
+            ],
+            [
+              "ios/HouseScanUITests/ScreenStatesUITests.swift",
+              "https://github.com/SamGu-NRX/house-scanning/blob/194f2ebfa8b5336c4f9771a04cbe96f7df49b97b/ios/HouseScanUITests/ScreenStatesUITests.swift"
+            ]
+          ]
+        },
+        {
+          "id": "S3-6b",
+          "text": "Independent accessibility audit (verification a11yaudit: Apple's audit on each screen the run reached, at least nine, plus symbol-name button labels) finds no issues",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "stale",
+          "evidence": "report for sha a39d0a50, ref at 194f2ebf: ~/house-scanning-data/reports/a11y/20260926-071248-t3-ios-mvf-a39d0a50-head-sample/report.json",
+          "links": []
+        },
+        {
+          "id": "S3-7",
+          "text": "Screenshots of each state in the PR",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "18 of 9 matches in the PR body",
+          "links": [
+            [
+              "#10",
+              "https://github.com/SamGu-NRX/house-scanning/pull/10"
+            ]
+          ]
+        },
+        {
+          "id": "S3-8",
+          "text": "Exported scene.json validates against C1",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "app_export_scene_valid = true (want True) at app_sha 194f2ebf: ~/house-scanning-data/reports/e2e/20260926-122755-68084b5f/report.json",
+          "links": []
+        },
+        {
+          "id": "S3-9",
+          "text": "Design self-review against frontend-design, emil-design-eng, holistic-ux, apple-design",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "gap",
+          "evidence": "not yet reviewed",
+          "links": []
+        }
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "Verification",
+      "refs": [
+        {
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b"
+        },
+        {
+          "ref": "origin/t3/verification",
+          "sha": "52aa87f79e8dad281e96a6ef51dfe791a48b7779"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "S4-1",
+          "text": "End to end from a real replay to a placement result passes",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "app_export_passed = true (want True) at app_sha 194f2ebf: ~/house-scanning-data/reports/e2e/20260926-122755-68084b5f/report.json",
+          "links": []
+        },
+        {
+          "id": "S4-2",
+          "text": "Screenshot report per app state",
+          "ref": "origin/t3/ios-mvf",
+          "sha": "194f2ebfa8b5336c4f9771a04cbe96f7df49b97b",
+          "status": "met",
+          "evidence": "states = length 12 (want at least 9) at sha 194f2ebf: ~/house-scanning-data/reports/sim/20260926-121648-t3-ios-mvf-194f2ebf-replay/report.json",
+          "links": []
+        },
+        {
+          "id": "S4-3",
+          "text": "Product description written from the code and checked against screenshots",
+          "ref": "origin/t3/verification",
+          "sha": "52aa87f79e8dad281e96a6ef51dfe791a48b7779",
+          "status": "met",
+          "evidence": "verification/product covers every screen of t3/ios-mvf at a39d0a5, checked in the Simulator there with the real server's result (verification.md); bug-triage.md has 16 entries, 3 resolved; ux/review.md judges every state.",
+          "links": []
+        },
+        {
+          "id": "S4-4",
+          "text": "Scoreboard of every PR",
+          "ref": "origin/t3/verification",
+          "sha": "52aa87f79e8dad281e96a6ef51dfe791a48b7779",
+          "status": "met",
+          "evidence": "present at 52aa87f7",
+          "links": [
+            [
+              "verification/SCOREBOARD.md",
+              "https://github.com/SamGu-NRX/house-scanning/blob/52aa87f79e8dad281e96a6ef51dfe791a48b7779/verification/SCOREBOARD.md"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M",
+      "title": "Maintenance",
+      "refs": [
+        {
+          "ref": "origin/t3/docs-cleanup",
+          "sha": "8afa331394deda5e15ad9a802361b7082312d638"
+        }
+      ],
+      "metrics": [
+        {
+          "id": "M-1",
+          "text": "AGENTS.md shorter than on main",
+          "ref": "origin/t3/docs-cleanup",
+          "sha": "8afa331394deda5e15ad9a802361b7082312d638",
+          "status": "gap",
+          "evidence": "exit 1: AGENTS.md 45 lines, main 45",
+          "links": []
+        },
+        {
+          "id": "M-2",
+          "text": "AGENTS.md accurate, every path and command real",
+          "ref": "origin/t3/docs-cleanup",
+          "sha": "8afa331394deda5e15ad9a802361b7082312d638",
+          "status": "gap",
+          "evidence": "not yet reviewed",
+          "links": []
+        }
+      ]
+    }
+  ]
+}

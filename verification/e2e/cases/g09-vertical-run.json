@@ -1,0 +1,183 @@
+{
+  "id": "g09-vertical-run",
+  "source": "t3-lane-c-review.md golden 09 at origin/t3/research a7d91f1",
+  "description": "The pad starts 11 ft along the wall, but the cable must climb over a 3.5 ft box at the 1 ft run height: 11 + 2 x 2.5 = 16 ft routed, past the 15 ft confident reach.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -1,
+            0.0
+          ],
+          [
+            13.583333333333,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "elec_box",
+        "wall_id": "w1",
+        "span_ft": [
+          4,
+          5
+        ],
+        "bottom_ft": 0.0,
+        "top_ft": 3.5,
+        "source": "tape",
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "ground": [
+      {
+        "type": "deck",
+        "polygon": [
+          [
+            -1,
+            0
+          ],
+          [
+            11.0,
+            0
+          ],
+          [
+            11.0,
+            10
+          ],
+          [
+            -1,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      },
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            11.0,
+            0
+          ],
+          [
+            13.583333333333,
+            0
+          ],
+          [
+            13.583333333333,
+            10
+          ],
+          [
+            11.0,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -1.0,
+          13.583333333333
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -16.0,
+            28.583333333333
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -16.0,
+            28.583333333333
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -16.0,
+            28.583333333333
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -16.0,
+            28.583333333333
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "route_length": 20.0
+  },
+  "expect": {
+    "missing_evidence_empty": true,
+    "spot": {
+      "wall_id": "w1",
+      "span_within": [
+        11.0,
+        13.583333333333334
+      ]
+    },
+    "checks": [
+      {
+        "match": "route_length",
+        "outcome": "unsure",
+        "measured_ft": 16.0,
+        "plus_minus_ft": 0.0
+      },
+      {
+        "match": "route_path",
+        "outcome": "pass"
+      }
+    ],
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          10.999,
+          11.001
+        ],
+        "outcome": "unsure"
+      }
+    ],
+    "decision_not": [
+      "pass"
+    ]
+  }
+}

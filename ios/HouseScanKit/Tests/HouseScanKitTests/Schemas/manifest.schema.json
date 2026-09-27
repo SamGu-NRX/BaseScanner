@@ -1,0 +1,763 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SamGu-NRX/house-scanning-master/packet/manifest.schema.json",
+  "title": "Capture packet manifest",
+  "description": "One scan session: the files in the packet and what they mean. README.md in this folder is the full specification; this schema checks shape only. Lengths in meters, times in seconds of device uptime, poses as 16 numbers column by column.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "packet_version",
+    "session",
+    "photos"
+  ],
+  "properties": {
+    "packet_version": {
+      "description": "MAJOR.MINOR. A reader accepts any packet with its own major version and ignores fields it does not know. 1.1 adds depth frames, estimated depth with sigma, top-level planes with boundaries, and the mesh classification flag.",
+      "type": "string",
+      "pattern": "^1\\.[0-9]+$"
+    },
+    "session": {
+      "$ref": "#/$defs/session"
+    },
+    "photos": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/photo"
+      }
+    },
+    "depth_frames": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/depth_frame"
+      }
+    },
+    "streams": {
+      "$ref": "#/$defs/streams"
+    },
+    "planes": {
+      "description": "1.1. ARPlaneAnchors, with or without LiDAR.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/plane"
+      }
+    },
+    "lidar": {
+      "$ref": "#/$defs/lidar"
+    },
+    "marks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mark"
+      }
+    },
+    "guidance": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/guidance_event"
+      }
+    },
+    "scene": {
+      "description": "The app's own scene.json (C1), exactly as it would be sent for placement.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/file"
+        }
+      ],
+      "type": "object",
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        }
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "$defs": {
+    "file": {
+      "description": "A file inside the packet. `path` is relative to the manifest, uses '/', and never leaves the packet.",
+      "type": "object",
+      "required": [
+        "path",
+        "bytes",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._/-]+$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "pose": {
+      "description": "Rigid 4x4 transform, 16 numbers column by column (simd_float4x4 layout); translation in meters.",
+      "type": "array",
+      "minItems": 16,
+      "maxItems": 16,
+      "items": {
+        "type": "number"
+      }
+    },
+    "vec3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "time": {
+      "description": "Seconds of device uptime: the clock of ARFrame.timestamp and CMLogItem.timestamp.",
+      "type": "number",
+      "minimum": 0
+    },
+    "tracking": {
+      "type": "object",
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "normal",
+            "limited",
+            "not_available"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "initializing",
+            "relocalizing",
+            "excessive_motion",
+            "insufficient_features",
+            null
+          ]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": [
+        "id",
+        "producer",
+        "device",
+        "capture",
+        "world_alignment",
+        "meter_anchor"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "producer": {
+          "description": "What wrote this packet: the app, or a converter building a sample from a dataset.",
+          "type": "object",
+          "required": [
+            "kind",
+            "name",
+            "version"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "app",
+                "converter"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            }
+          }
+        },
+        "device": {
+          "type": "object",
+          "required": [
+            "model",
+            "lidar"
+          ],
+          "properties": {
+            "model": {
+              "description": "Hardware identifier, e.g. iPhone16,1.",
+              "type": "string"
+            },
+            "ios_version": {
+              "type": "string"
+            },
+            "lidar": {
+              "description": "The device has a LiDAR scanner (sceneDepth supported).",
+              "type": "boolean"
+            },
+            "scene_depth_enabled": {
+              "type": "boolean"
+            },
+            "mesh_enabled": {
+              "type": "boolean"
+            },
+            "mesh_classification_enabled": {
+              "type": "boolean",
+              "description": "1.1. ARKit's sceneReconstruction included .meshWithClassification. Required with a mesh from 1.1; when false every face's class is 0."
+            }
+          }
+        },
+        "capture": {
+          "type": "object",
+          "required": [
+            "started_at_uptime",
+            "ended_at_uptime"
+          ],
+          "properties": {
+            "started_at": {
+              "description": "Wall clock at started_at_uptime, ISO 8601 UTC.",
+              "type": "string",
+              "format": "date-time"
+            },
+            "started_at_uptime": {
+              "$ref": "#/$defs/time"
+            },
+            "ended_at_uptime": {
+              "$ref": "#/$defs/time"
+            },
+            "distance_walked_m": {
+              "description": "Horizontal length of the camera trajectory. Must match streams.trajectory within 1%.",
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "world_alignment": {
+          "const": "gravity"
+        },
+        "meter_anchor": {
+          "description": "The meter frame, as a pose in ARKit's world frame of this session. Every other pose and point in the packet is in the meter frame.",
+          "type": "object",
+          "required": [
+            "pose_in_world"
+          ],
+          "properties": {
+            "pose_in_world": {
+              "$ref": "#/$defs/pose"
+            },
+            "ground_y_m": {
+              "description": "Height of the ground at the meter, on the meter frame's y axis (negative: the ground is below the meter).",
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "consent": {
+          "type": "object",
+          "properties": {
+            "location": {
+              "description": "The homeowner allowed location and heading. Required true if either stream is present.",
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "photo": {
+      "type": "object",
+      "required": [
+        "id",
+        "image",
+        "width",
+        "height",
+        "t",
+        "pose",
+        "intrinsics"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "image": {
+          "description": "The full-resolution photo as captured, JPEG, stored unrotated: landscape as the sensor delivers it, EXIF orientation absent or 1.",
+          "$ref": "#/$defs/file"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "t": {
+          "$ref": "#/$defs/time"
+        },
+        "pose": {
+          "description": "Camera to meter frame. ARKit camera axes: +x right and +y up in the stored image, the camera looks along -z.",
+          "$ref": "#/$defs/pose"
+        },
+        "intrinsics": {
+          "description": "[fx, fy, cx, cy] in pixels of this stored image; (0, 0) is the top-left corner of the top-left pixel.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "tracking": {
+          "$ref": "#/$defs/tracking"
+        },
+        "exposure": {
+          "type": "object",
+          "properties": {
+            "duration_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "iso": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "offset_ev": {
+              "type": "number"
+            }
+          }
+        },
+        "lens": {
+          "type": "object",
+          "properties": {
+            "focal_length_mm": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "f_number": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "camera": {
+              "description": "Which camera: wide, ultra_wide, telephoto, or a dataset's camera name.",
+              "type": "string"
+            }
+          }
+        },
+        "sharpness": {
+          "type": "object",
+          "required": [
+            "method",
+            "value"
+          ],
+          "properties": {
+            "method": {
+              "const": "laplacian_variance_luma_640"
+            },
+            "value": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+        "depth": {
+          "$ref": "#/$defs/depth"
+        }
+      }
+    },
+    "depth": {
+      "description": "Depth aligned to an image: float32 little-endian meters along the camera's -z, row by row from the top; 0 means no measurement. For a photo it covers the photo's field of view at the same aspect; for a depth frame its own intrinsics describe it.",
+      "type": "object",
+      "required": [
+        "map",
+        "width",
+        "height"
+      ],
+      "properties": {
+        "map": {
+          "$ref": "#/$defs/file"
+        },
+        "confidence": {
+          "description": "UInt8 per depth pixel, ARConfidenceLevel: 0 low, 1 medium, 2 high.",
+          "$ref": "#/$defs/file"
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "enum": [
+            "arkit_scene_depth",
+            "arkit_smoothed_scene_depth",
+            "estimated",
+            "rendered_from_laser_scan"
+          ],
+          "description": "estimated: metric depth inferred from the image (no LiDAR); needs sigma. From 1.1, the ARKit sources need confidence."
+        },
+        "sigma": {
+          "description": "1.1. Float32 little-endian meters, one standard deviation per depth pixel, same layout as map. Required when source is estimated.",
+          "$ref": "#/$defs/file"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "estimated"
+              }
+            },
+            "required": [
+              "source"
+            ]
+          },
+          "then": {
+            "required": [
+              "sigma"
+            ]
+          }
+        }
+      ]
+    },
+    "stream": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/file"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "nominal_rate_hz": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "streams": {
+      "description": "CSV files with a header row; the first column is always t. Columns are fixed per stream (README, Streams).",
+      "type": "object",
+      "properties": {
+        "trajectory": {
+          "$ref": "#/$defs/stream"
+        },
+        "accelerometer": {
+          "$ref": "#/$defs/stream"
+        },
+        "gyroscope": {
+          "$ref": "#/$defs/stream"
+        },
+        "magnetometer": {
+          "$ref": "#/$defs/stream"
+        },
+        "device_motion": {
+          "$ref": "#/$defs/stream"
+        },
+        "barometer": {
+          "$ref": "#/$defs/stream"
+        },
+        "location": {
+          "$ref": "#/$defs/stream"
+        },
+        "heading": {
+          "$ref": "#/$defs/stream"
+        }
+      },
+      "additionalProperties": false
+    },
+    "lidar": {
+      "type": "object",
+      "properties": {
+        "mesh": {
+          "description": "Binary little-endian PLY: float x, y, z per vertex in the meter frame; per face a vertex index list and uchar classification (ARMeshClassification raw value 0 to 7).",
+          "$ref": "#/$defs/file"
+        },
+        "planes": {
+          "description": "Deprecated in 1.1: use top-level planes. Still read in 1.x; a packet may not use both.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plane"
+          }
+        }
+      }
+    },
+    "mark": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "points"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "meter",
+            "wall_end",
+            "gas_meter",
+            "ac",
+            "door",
+            "window",
+            "garage_door",
+            "drive_edge",
+            "fence"
+          ]
+        },
+        "points": {
+          "description": "Meter frame, meters. One point for the meter, a wall end, a gas meter or an AC unit; two for an opening (bottom-left, top-right corners), a drive edge or a fence.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/vec3"
+          }
+        },
+        "t": {
+          "$ref": "#/$defs/time"
+        },
+        "photo_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "side": {
+          "enum": [
+            "left",
+            "right"
+          ]
+        },
+        "end_kind": {
+          "description": "For a wall end: limit (something blocks it) or unexplored (it turns a corner, or no answer).",
+          "enum": [
+            "limit",
+            "unexplored"
+          ]
+        },
+        "attrs": {
+          "type": "object",
+          "properties": {
+            "operable": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "guidance_event": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "origin",
+        "t_shown",
+        "outcome"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "walk",
+            "tilt_to_ground",
+            "step_back",
+            "mark_end",
+            "closeup",
+            "gap_band",
+            "gap_past_end"
+          ]
+        },
+        "origin": {
+          "enum": [
+            "phone",
+            "server"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "band": {
+          "enum": [
+            "wall",
+            "ground",
+            "overhead",
+            "facing",
+            null
+          ]
+        },
+        "span_m": {
+          "description": "Stretch along the wall, meter frame x, meters.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "t_shown": {
+          "$ref": "#/$defs/time"
+        },
+        "t_resolved": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "met",
+            "skipped",
+            "cannot_reach",
+            "superseded",
+            "unresolved"
+          ]
+        }
+      }
+    },
+    "provenance": {
+      "description": "Where a converted sample's data came from, and what it does not contain.",
+      "type": "object",
+      "properties": {
+        "dataset": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "plane": {
+      "type": "object",
+      "required": [
+        "id",
+        "alignment",
+        "pose",
+        "extent_m"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "alignment": {
+          "enum": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "classification": {
+          "enum": [
+            "none",
+            "wall",
+            "floor",
+            "ceiling",
+            "table",
+            "seat",
+            "window",
+            "door"
+          ]
+        },
+        "pose": {
+          "description": "Plane to meter frame, including the extent's centre and planeExtent.rotationOnYAxis, so extent_m is a rectangle centred on this pose. The plane is its local x-z plane, +y its normal.",
+          "$ref": "#/$defs/pose"
+        },
+        "extent_m": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "boundary_m": {
+          "description": "1.1. ARKit's geometry.boundaryVertices as [x, z] in this pose's frame (moved by the centre and rotation, like extent_m).",
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "depth_frame": {
+      "description": "1.1. Depth recorded between photos, with no image. Intrinsics are for the depth map's own pixel grid.",
+      "allOf": [
+        {
+          "$ref": "#/$defs/depth"
+        }
+      ],
+      "type": "object",
+      "required": [
+        "id",
+        "t",
+        "pose",
+        "intrinsics"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "t": {
+          "$ref": "#/$defs/time"
+        },
+        "pose": {
+          "description": "Camera to meter frame, ARKit camera axes.",
+          "$ref": "#/$defs/pose"
+        },
+        "intrinsics": {
+          "description": "[fx, fy, cx, cy] in pixels of the depth map.",
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "type": "number"
+          }
+        },
+        "tracking": {
+          "$ref": "#/$defs/tracking"
+        }
+      }
+    }
+  }
+}

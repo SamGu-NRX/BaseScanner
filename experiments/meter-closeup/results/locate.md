@@ -1,0 +1,92 @@
+### Barcodes
+
+| Photos | Barcode found | Decoded | Decode contains the meter number |
+|---|---|---|---|
+| All usable: 80 | 25 | 25 | 20 of 24 with a labelled number |
+| US-style (CL class label): 22 | 9 | 9 | 8 of 8 with a labelled number |
+
+### Finding the number
+
+**odd-numbered photos, used to write the rules: 38 with an agreed number, 38 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 38 | 10/38 = 26% (15%–42%) | 10/38 = 26% (15%–42%) |
+| barcode confirms a text line | 12 | 11/12 = 92% (65%–99%) | 11/38 = 29% (17%–45%) |
+| line nearest a decoded barcode | 11 | 7/11 = 64% (35%–85%) | 7/38 = 18% (9%–33%) |
+| after a No./Nr./#: keyword | 10 | 6/10 = 60% (31%–83%) | 6/38 = 16% (7%–30%) |
+| alone on its line, 6-14 characters, not a spec line | 37 | 22/37 = 59% (43%–74%) | 22/38 = 58% (42%–72%) |
+| combined: barcode, else keyword | 19 | 16/19 = 84% (62%–94%) | 16/38 = 42% (28%–58%) |
+| ranking, top 1 | 38 | – | 27/38 = 71% (55%–83%) |
+| ranking, top 3 | 38 | – | 36/38 = 95% (83%–99%) |
+| number is any candidate (ceiling) | 38 | – | 37/38 = 97% (87%–100%) |
+
+**even-numbered photos, held out: 35 with an agreed number, 33 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 33 | 10/33 = 30% (17%–47%) | 10/33 = 30% (17%–47%) |
+| barcode confirms a text line | 8 | 6/8 = 75% (41%–93%) | 6/33 = 18% (9%–34%) |
+| line nearest a decoded barcode | 9 | 6/9 = 67% (35%–88%) | 6/33 = 18% (9%–34%) |
+| after a No./Nr./#: keyword | 10 | 5/10 = 50% (24%–76%) | 5/33 = 15% (7%–31%) |
+| alone on its line, 6-14 characters, not a spec line | 33 | 23/33 = 70% (53%–83%) | 23/33 = 70% (53%–83%) |
+| combined: barcode, else keyword | 17 | 11/17 = 65% (41%–83%) | 11/33 = 33% (20%–50%) |
+| ranking, top 1 | 33 | – | 21/33 = 64% (47%–78%) |
+| ranking, top 3 | 33 | – | 28/33 = 85% (69%–93%) |
+| number is any candidate (ceiling) | 33 | – | 29/33 = 88% (73%–95%) |
+
+**all photos: 73 with an agreed number, 71 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 71 | 20/71 = 28% (19%–40%) | 20/71 = 28% (19%–40%) |
+| barcode confirms a text line | 20 | 17/20 = 85% (64%–95%) | 17/71 = 24% (16%–35%) |
+| line nearest a decoded barcode | 20 | 13/20 = 65% (43%–82%) | 13/71 = 18% (11%–29%) |
+| after a No./Nr./#: keyword | 20 | 11/20 = 55% (34%–74%) | 11/71 = 15% (9%–26%) |
+| alone on its line, 6-14 characters, not a spec line | 70 | 45/70 = 64% (53%–74%) | 45/71 = 63% (52%–74%) |
+| combined: barcode, else keyword | 36 | 27/36 = 75% (59%–86%) | 27/71 = 38% (28%–50%) |
+| ranking, top 1 | 71 | – | 48/71 = 68% (56%–77%) |
+| ranking, top 3 | 71 | – | 64/71 = 90% (81%–95%) |
+| number is any candidate (ceiling) | 71 | – | 66/71 = 93% (85%–97%) |
+
+**all photos, strict labels (readers' main numbers identical): 62 with an agreed number, 60 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 60 | 17/60 = 28% (19%–41%) | 17/60 = 28% (19%–41%) |
+| barcode confirms a text line | 17 | 14/17 = 82% (59%–94%) | 14/60 = 23% (14%–35%) |
+| line nearest a decoded barcode | 17 | 10/17 = 59% (36%–78%) | 10/60 = 17% (9%–28%) |
+| after a No./Nr./#: keyword | 17 | 10/17 = 59% (36%–78%) | 10/60 = 17% (9%–28%) |
+| alone on its line, 6-14 characters, not a spec line | 60 | 42/60 = 70% (57%–80%) | 42/60 = 70% (57%–80%) |
+| combined: barcode, else keyword | 32 | 24/32 = 75% (58%–87%) | 24/60 = 40% (29%–53%) |
+| ranking, top 1 | 60 | – | 42/60 = 70% (57%–80%) |
+| ranking, top 3 | 60 | – | 56/60 = 93% (84%–97%) |
+| number is any candidate (ceiling) | 60 | – | 56/60 = 93% (84%–97%) |
+
+**exploratory: US-style meters (CL class label), odd-numbered: 12 with an agreed number, 12 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 12 | 3/12 = 25% (9%–53%) | 3/12 = 25% (9%–53%) |
+| barcode confirms a text line | 5 | 5/5 = 100% (57%–100%) | 5/12 = 42% (19%–68%) |
+| line nearest a decoded barcode | 5 | 4/5 = 80% (38%–96%) | 4/12 = 33% (14%–61%) |
+| after a No./Nr./#: keyword | 0 | – | 0/12 = 0% (0%–24%) |
+| alone on its line, 6-14 characters, not a spec line | 11 | 6/11 = 55% (28%–79%) | 6/12 = 50% (25%–75%) |
+| combined: barcode, else keyword | 5 | 5/5 = 100% (57%–100%) | 5/12 = 42% (19%–68%) |
+| ranking, top 1 | 12 | – | 8/12 = 67% (39%–86%) |
+| ranking, top 3 | 12 | – | 11/12 = 92% (65%–99%) |
+| number is any candidate (ceiling) | 12 | – | 12/12 = 100% (76%–100%) |
+
+**exploratory: US-style meters (CL class label), held out: 7 with an agreed number, 7 read**
+
+| Rule | Picks | Precision | Recall over read photos |
+|---|---|---|---|
+| tallest digit line (phase 1) | 7 | 2/7 = 29% (8%–64%) | 2/7 = 29% (8%–64%) |
+| barcode confirms a text line | 3 | 3/3 = 100% (44%–100%) | 3/7 = 43% (16%–75%) |
+| line nearest a decoded barcode | 3 | 3/3 = 100% (44%–100%) | 3/7 = 43% (16%–75%) |
+| after a No./Nr./#: keyword | 1 | 0/1 = 0% (0%–79%) | 0/7 = 0% (0%–35%) |
+| alone on its line, 6-14 characters, not a spec line | 7 | 5/7 = 71% (36%–92%) | 5/7 = 71% (36%–92%) |
+| combined: barcode, else keyword | 4 | 3/4 = 75% (30%–95%) | 3/7 = 43% (16%–75%) |
+| ranking, top 1 | 7 | – | 5/7 = 71% (36%–92%) |
+| ranking, top 3 | 7 | – | 5/7 = 71% (36%–92%) |
+| number is any candidate (ceiling) | 7 | – | 6/7 = 86% (49%–97%) |
