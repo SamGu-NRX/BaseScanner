@@ -12,6 +12,7 @@ is taken from the command line and is never written to disk.
 
 import argparse
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -23,6 +24,26 @@ from meter_eval.ocr import Reader
 from meter_eval.quality import gray
 
 SUFFIXES = {".jpg", ".jpeg", ".png", ".heic"}
+
+
+def upright_pixels(photo: Path, scratch: Path) -> Image.Image:
+    """The photo's own decoded pixels, turned upright by its orientation tag.
+
+    Never re-encoded lossily: a JPEG round trip smooths fine detail, and on a synthetic low
+    contrast photo it lifted sharpness from 6.45 to 6.71, across the 6.68 retake threshold.
+    PIL cannot decode HEIC, so macOS sips decodes it to PNG, which is lossless and keeps the
+    orientation tag.
+    """
+    source = photo
+    if photo.suffix.lower() == ".heic":
+        source = scratch / "decoded.png"
+        subprocess.run(
+            ["sips", "-s", "format", "png", str(photo), "--out", str(source)],
+            check=True,
+            capture_output=True,
+        )
+    with Image.open(source) as image:
+        return ImageOps.exif_transpose(image).convert("RGB")
 
 
 def main() -> None:
@@ -39,32 +60,26 @@ def main() -> None:
     if not photos:
         raise SystemExit(f"no .jpg, .png or .heic photos in {args.folder}")
 
-    upright = args.folder / ".upright.jpg"
     print(
         "| Photo | Read | Rank | Top candidate is the number | Top line px | Sharpness | "
         "Retake because |"
     )
     print("|---|---|---|---|---|---|---|")
     wasted = missed = 0
-    with Reader() as reader:
+    # Working copies live in a private temporary folder, never in the photo folder, so no
+    # file of the user's is overwritten, deleted or scored twice.
+    with tempfile.TemporaryDirectory() as scratch, Reader() as reader:
+        # Vision ignores the orientation tag, so it reads the upright pixels, saved as PNG
+        # (lossless) so that it sees exactly the pixels the checks measure.
+        upright = Path(scratch) / "upright.png"
         for photo in photos:
-            source = photo
-            if photo.suffix.lower() == ".heic":
-                # PIL cannot decode HEIC; macOS sips can, and keeps the orientation tag.
-                source = args.folder / ".converted.jpg"
-                subprocess.run(
-                    ["sips", "-s", "format", "jpeg", str(photo), "--out", str(source)],
-                    check=True,
-                    capture_output=True,
-                )
-            with Image.open(source) as image:
-                ImageOps.exif_transpose(image).convert("RGB").save(upright, quality=95)
+            image = upright_pixels(photo, Path(scratch))
+            image.save(upright)
+            g = gray(image)
             result = reader.read(upright, barcodes=True)
             read = number_boxes(result["lines"], target, length, lenient=False) is not None
             order = ranked(candidates(result))
             rank = next((i + 1 for i, c in enumerate(order) if digest(c) == target_core), None)
-            with Image.open(upright) as image:
-                g = gray(image)
             guess = top_candidate(result)
             box = guess and guess["box"]
             why = retake.reasons(g, box)
@@ -76,8 +91,6 @@ def main() -> None:
                 f"{'yes' if rank == 1 else 'no'} | {height_px} | "
                 f"{retake.whole_photo_sharpness(g):.1f} | {', '.join(why) or '–'} |"
             )
-    upright.unlink(missing_ok=True)
-    (args.folder / ".converted.jpg").unlink(missing_ok=True)
     print(
         f"\n{len(photos)} photos; {wasted} retakes asked for photos that read; "
         f"{missed} photos accepted that did not read."

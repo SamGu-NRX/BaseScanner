@@ -6,7 +6,9 @@ core, so "NO. 12345678" and "ABC 123456" count, while a longer string that merel
 the number, such as a barcode line "*XYZ1234567890…*", does not.
 
 The rules and the ranking were written from the odd-numbered photos only (`--split dev`)
-and committed before the even-numbered photos were scored.
+and committed before the even-numbered photos were scored. The held-out set is split by
+physical meter, not by photo: a meter with any odd-numbered photo counts as seen by the rules,
+so all its photos go to the design side (`meter_splits`).
 
 Writes results/locate.md and results/locate_per_image.csv; raw Vision output stays in the
 data directory because it contains meter numbers.
@@ -79,7 +81,8 @@ def candidates(result: dict) -> list[dict]:
 
     A text token that equals a barcode payload part is confirmed. One that sits inside a
     longer payload part (at least 6 characters) is a partial read of it, as when Vision drops
-    a digit or a prefix printed apart; the candidate then takes the payload's full string.
+    a digit or a prefix printed apart; the candidate then takes the payload's full string. If
+    two payloads of the same length both contain it, the read is ambiguous and not promoted.
     """
     payloads = payload_tokens(result.get("barcodes") or [])
     found = []
@@ -91,8 +94,11 @@ def candidates(result: dict) -> list[dict]:
             confirmed = token_core in payloads
             if not confirmed and len(token_core) >= 6:
                 longer = [p for p in payloads if token_core in p]
-                if longer:
-                    token_core, confirmed = min(longer, key=len), True
+                shortest = min((len(p) for p in longer), default=0)
+                closest = [p for p in longer if len(p) == shortest]
+                # Promote only when one payload is the closest match; a tie is ambiguous.
+                if len(closest) == 1:
+                    token_core, confirmed = closest[0], True
             found.append(
                 {
                     "core": token_core,
@@ -208,10 +214,30 @@ def barcode_stats(row: dict, result: dict) -> dict:
     }
 
 
-def evaluate(row: dict, result: dict) -> dict:
+def meter_splits(rows: list[dict]) -> dict[str, str]:
+    """Each photo's side, assigned per physical meter.
+
+    A meter is identified by its labelled number's keyed digest, so photos of one meter share
+    a side. It goes to the design side ("dev") when any of its photos is odd-numbered, because
+    the rules were written on those photos, and is held out ("test") only when the rules never
+    saw it. A photo without a labelled number has no known meter: "unknown", never held out.
+    """
+    photos_of: dict[str, list[str]] = {}
+    for row in rows:
+        if row["number_core_hmac"]:
+            photos_of.setdefault(row["number_core_hmac"], []).append(row["id"])
+    splits = {row["id"]: "unknown" for row in rows}
+    for photos in photos_of.values():
+        seen = any(int(photo[1:]) % 2 for photo in photos)
+        for photo in photos:
+            splits[photo] = "dev" if seen else "test"
+    return splits
+
+
+def evaluate(row: dict, result: dict, split: str) -> dict:
     out = {
         "id": row["id"],
-        "split": "dev" if int(row["id"][1:]) % 2 else "test",
+        "split": split,
         "us_style": int(row["class_kind"] == "ansi_class"),
         "strict": int(row["number_agreed_strict"] == "yes"),
     }
@@ -255,12 +281,12 @@ def barcode_table(rows: list[dict]) -> str:
 def rule_table(rows: list[dict], names: list[str]) -> str:
     out = []
     groups = {
-        "odd-numbered photos, used to write the rules": lambda r: r["split"] == "dev",
-        "even-numbered photos, held out": lambda r: r["split"] == "test",
+        "design side: meters with a photo the rules were written on": lambda r: r["split"] == "dev",
+        "held out: meters the rules never saw": lambda r: r["split"] == "test",
         "all photos": lambda r: True,
         "all photos, strict labels (readers' main numbers identical)": lambda r: r["strict"],
         # Exploratory: chosen after the held-out scoring, as a description of Base's market.
-        "exploratory: US-style meters (CL class label), odd-numbered": lambda r: (
+        "exploratory: US-style meters (CL class label), design side": lambda r: (
             r["us_style"] and r["split"] == "dev"
         ),
         "exploratory: US-style meters (CL class label), held out": lambda r: (
@@ -273,21 +299,33 @@ def rule_table(rows: list[dict], names: list[str]) -> str:
         subset = [r for r in rows if "read" in r and keep(r)]
         read = [r for r in subset if r["read"]]
         out.append(f"**{title}: {len(subset)} with an agreed number, {len(read)} read**\n")
-        out.append("| Rule | Picks | Precision | Recall over read photos |")
+        # Every agreed photo counts, read or not: a rule can still pick a wrong candidate on a
+        # photo where Vision missed the number, and that pick is a false positive.
+        out.append("| Rule | Picks | Precision | Recall over every agreed photo |")
         out.append("|---|---|---|---|")
         for name in names:
-            fired = [r for r in read if r[name] != ""]
+            fired = [r for r in subset if r[name] != ""]
             right = sum(r[name] for r in fired)
             out.append(
                 f"| {name} | {len(fired)} | {share(right, len(fired))} | "
-                f"{share(right, len(read))} |"
+                f"{share(right, len(subset))} |"
             )
         for k in (1, 3):
             hit = sum(1 for r in read if r["rank"] != "" and r["rank"] <= k)
-            out.append(f"| ranking, top {k} | {len(read)} | – | {share(hit, len(read))} |")
+            out.append(
+                f"| ranking, top {k}, over read photos only | {len(read)} | – | "
+                f"{share(hit, len(read))} |"
+            )
+        # End to end: a photo Vision did not read cannot offer the number, so it is a miss.
+        for k in (1, 3):
+            hit = sum(1 for r in subset if r["rank"] != "" and r["rank"] <= k)
+            out.append(
+                f"| ranking, top {k}, over every agreed photo (unread count as misses) | "
+                f"{len(subset)} | – | {share(hit, len(subset))} |"
+            )
         present = sum(1 for r in read if r["rank"] != "")
         out.append(
-            f"| number is any candidate (ceiling) | {len(read)} | – | "
+            f"| number is any candidate, over read photos (ceiling) | {len(read)} | – | "
             f"{share(present, len(read))} |\n"
         )
     return "\n".join(out)
@@ -302,7 +340,11 @@ def main() -> None:
     if args.split == "dev":
         manifest = [r for r in manifest if int(r["id"][1:]) % 2]
     results = scan(manifest)
-    rows = [evaluate(row, results[row["id"]]) for row in manifest]
+    # The --split dev run reproduces the frozen record: the odd-numbered photos, all design side.
+    splits = (
+        {row["id"]: "dev" for row in manifest} if args.split == "dev" else meter_splits(manifest)
+    )
+    rows = [evaluate(row, results[row["id"]], splits[row["id"]]) for row in manifest]
     names = list(rules([], []))  # rule names, in table order
     text = "\n".join(
         [
@@ -318,7 +360,11 @@ def main() -> None:
         writer = csv.DictWriter(handle, fieldnames=fields, restval="")
         writer.writeheader()
         writer.writerows(rows)
-    (RESULTS_DIR / f"locate{suffix}.md").write_text(text)
+    command = "uv run python -m meter_eval.locate" + ("" if args.split == "all" else " --split dev")
+    header = (
+        f"Generated by `{command}`" + (" (`make q45`)" if args.split == "all" else "") + ".\n\n"
+    )
+    (RESULTS_DIR / f"locate{suffix}.md").write_text(header + text)
     print(text)
 
 

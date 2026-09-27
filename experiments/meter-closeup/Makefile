@@ -28,9 +28,11 @@ q1: $(OCR)
 # The degraded reads behind results/sweep.md, in two processes of up to 2 GB each
 # (about 25 minutes). Needs results/clean_per_image.csv from q1.
 sweep: $(OCR)
-	uv run python -m meter_eval.sweep --shard 0 --shards 2 & \
-	uv run python -m meter_eval.sweep --shard 1 --shards 2 & \
-	wait
+	uv run python -m meter_eval.sweep --shard 0 --shards 2 & first=$$!; \
+	uv run python -m meter_eval.sweep --shard 1 --shards 2 & second=$$!; \
+	status=0; wait $$first || status=$$?; wait $$second || status=$$?; \
+	if [ $$status -ne 0 ]; then echo "a sweep shard failed (exit $$status); rerun make sweep" >&2; fi; \
+	exit $$status
 
 # results/sweep.md and results/sweep_rows.csv from the sweep rows.
 q2:

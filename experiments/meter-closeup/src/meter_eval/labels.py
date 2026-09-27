@@ -35,6 +35,9 @@ READER2 = [DATA_DIR / "labels_reader2a.csv", DATA_DIR / "labels_reader2b.csv"]
 HUMAN = DATA_DIR / "labels_human.csv"
 SOURCES = DATA_DIR / "shortlist.csv"
 IDENTIFIER_DIGESTS = EXPERIMENT_DIR / "identifier_digests.txt"
+# The shortest identifier either reader transcribed has four digits. The leak check digests every
+# window of SHORTEST to LONGEST letters and digits holding that many digits; scrub() uses the same.
+SHORTEST_IDENTIFIER, LONGEST_IDENTIFIER = 4, 24
 # Reader 2 marked these "unsure" for a reason other than the characters of reader 1's number,
 # per its notes: which of two printed numbers is the meter's ID (m25, m30, m33, m38), or a
 # second number cut off by the frame (m63). It transcribed reader 1's number identically.
@@ -88,8 +91,29 @@ def class_kind(label: str) -> str:
 
 
 def scrub(note: str) -> str:
-    """Drop digit runs from free-text notes so no meter number reaches the repository."""
-    return re.sub(r"\d[\d ]{3,}\d", "#", note)
+    """Replace digits in free-text notes until the leak check could find no identifier there.
+
+    Uses the leak check's own view of text: normalize() drops every character but A-Z and 0-9,
+    so "12/345", "12:345" and "12 A 34" all read as runs. Any digit inside a window of up to
+    LONGEST_IDENTIFIER normalized characters holding SHORTEST_IDENTIFIER or more digits becomes
+    "#". Dropping digits pulls the rest closer together, so this repeats until no window is left.
+    """
+    chars = list(note)
+    while True:
+        # (position in the note, normalized character) for every character normalize() keeps.
+        kept = [(i, n) for i, c in enumerate(chars) for n in normalize(c)]
+        digits = [0]
+        for _, n in kept:
+            digits.append(digits[-1] + n.isdigit())
+        marked = set()
+        for start in range(len(kept)):
+            end = min(start + LONGEST_IDENTIFIER, len(kept))
+            if digits[end] - digits[start] >= SHORTEST_IDENTIFIER:
+                marked |= {i for i, n in kept[start:end] if n.isdigit()}
+        if not marked:
+            return "".join(chars)
+        for i in marked:
+            chars[i] = "#"
 
 
 def build() -> list[dict]:
@@ -111,7 +135,9 @@ def build() -> list[dict]:
             "notes": scrub(r1["notes"]),
         }
         verdict = human.get(image_id, {}).get("verdict", "")
-        if verdict == "fix":
+        # A person's number replaces the readers': typed with "fix", or confirmed with "keep"
+        # after a fix. A "keep" with no number confirms the readers' own number.
+        if verdict in ("fix", "keep") and human[image_id].get("number"):
             number = human[image_id]["number"]
         if number not in ("EXCLUDE", "NONE"):
             r2_sure = r2["number_sure"] == "sure" or image_id in DOUBT_NOT_ABOUT_CHARACTERS
@@ -153,14 +179,24 @@ def build() -> list[dict]:
 
 
 def known_numbers() -> set[str]:
-    """Every identifier either reader transcribed, normalized, with and without its prefix."""
+    """Every identifier any reader transcribed, normalized, with and without its prefix.
+
+    Covers both AI readers and a person's corrections from the review page, because a
+    correction becomes a committed label that the leak check must also recognize.
+    """
     first = read_csv(READER1)
     second = {k: v for path in READER2 for k, v in read_csv(path).items()}
+    human = read_csv(HUMAN) if HUMAN.exists() else {}
+    corrections = [
+        {"meter_number": row["number"]}
+        for row in human.values()
+        if row.get("verdict") in ("fix", "keep") and row.get("number")
+    ]
     found = set()
-    for row in [*first.values(), *second.values()]:
+    for row in [*first.values(), *second.values(), *corrections]:
         for value in numbers_of(row):
             for form in (value, core(value)):
-                if len(form) >= 5 and sum(ch.isdigit() for ch in form) >= 5:
+                if sum(ch.isdigit() for ch in form) >= SHORTEST_IDENTIFIER:
                     found.add(form)
     return found
 
