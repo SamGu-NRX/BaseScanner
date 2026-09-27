@@ -406,9 +406,12 @@ class Scene:
 
         area = polygonal(region)
 
+        # The bisection stops where the unseen area left crosses this bound, so what is left is a
+        # speck just under it. A check reads any unseen point strictly inside its radius, and at
+        # 1e-9 sq ft a speck where an arc meets the view's edge was still inside it.
         def covers(a: float, b: float, depth: float) -> bool:
             unseen = polygonal(self.unobserved_ground_given([*ground, (a, b, depth)]))
-            return shapely.intersection(area, unseen, grid_size=1e-9).area <= 1e-9
+            return shapely.intersection(area, unseen, grid_size=1e-9).area <= 1e-12
 
         tol = COVERAGE_TOLERANCE_FT
         # A region's nearest wall need not be the one it lies in front of (at an inside corner,

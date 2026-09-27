@@ -6,6 +6,7 @@ import pytest
 from helpers import (
     GOLDEN_RULES,
     D,
+    at_start,
     check,
     golden_rules,
     observed_band,
@@ -109,6 +110,37 @@ def test_once_every_request_is_met_the_rest_goes_to_a_person() -> None:
     assert second["summary"].startswith("A person needs to check"), second["summary"]
     still_unseen = [c for c in second["checks"] if c.get("unsure_cause") == "unobserved"]
     assert still_unseen  # left for a person, not asked for
+
+
+def test_a_small_ground_request_settles_its_checks() -> None:
+    # Found by test_coderabbit_review's property once placeholder distances stopped sizing the
+    # ground request (#75): the request was the depth at which the unseen area left fell to
+    # 1e-9 sq ft, and that last speck, where the 3 ft arc meets the view's edge, lay inside the
+    # radius, so the gas and AC clearances stayed unseen with nothing left to ask for.
+    raw = shared_fixture()
+    raw["objects"] = [
+        {
+            "type": "gas_meter",
+            "wall_id": "w1",
+            "span_ft": [0.0, 1.0],
+            "bottom_ft": 0.5,
+            "top_ft": 2.5,
+            "source": "tape",
+            "plus_minus_ft": 0.05,
+            "footprint": [[0.0, 0], [1.0, 0], [1.0, 1], [0.0, 1]],
+        }
+    ]
+    observed_band(raw, "ground", [(-40, 11.15625), (12, 40)], out=5)
+    rules = golden_rules(clearances={"opening_ft": {"value": 1.0}})
+    first = run(raw, rules)
+    (ground,) = band_requests(first, "ground")
+    assert {"ac_clearance", "gas_clearance"} <= set(ground["checks"]), ground
+    raw["coverage"]["observed"].append(
+        {"band": "ground", "span_ft": ground["span_ft"], "out_ft": ground["out_ft"]}
+    )
+    for check_id in ground["checks"]:
+        after = at_start(raw, first["spot"]["span_ft"][0], check_id, rules)
+        assert after.unsure_cause != "unobserved", (check_id, after.reason)
 
 
 # --- #75: placeholder distances don't size the requests ------------------------------------------
