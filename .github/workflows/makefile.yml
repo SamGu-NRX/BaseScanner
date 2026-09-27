@@ -1,0 +1,33 @@
+name: Makefile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Makefile"
+      - "tests/makefile.sh"
+      - ".github/workflows/makefile.yml"
+  pull_request:
+    paths:
+      - "Makefile"
+      - "tests/makefile.sh"
+      - ".github/workflows/makefile.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: makefile-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  makefile-dispatch:
+    name: Makefile dispatch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Stub suites only; no toolchain is installed and no suite runs.
+      - run: bash tests/makefile.sh

@@ -1,0 +1,158 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g07-headroom-margin",
+  "source": "t3-lane-c-review.md golden 07 at origin/t3/research a7d91f1",
+  "description": "An overhead over the whole wall has clear height 6.8 +/- 0.5 ft against headroom 6.5 ft, so every start's headroom check is unsure.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -5,
+            0.0
+          ],
+          [
+            15,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -5,
+            0.0
+          ],
+          [
+            15,
+            0.0
+          ],
+          [
+            15,
+            10.0
+          ],
+          [
+            -5,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -5.0,
+          15.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -20.0,
+            30.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    },
+    "overheads": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -5,
+          15
+        ],
+        "clearance_ft": 6.8,
+        "plus_minus_ft": 0.5
+      }
+    ]
+  },
+  "rules_assumed": {
+    "headroom": 6.5
+  },
+  "expect": {
+    "checks": [
+      {
+        "match": "headroom",
+        "outcome": "unsure",
+        "measured_ft": 6.8,
+        "plus_minus_ft": 0.5,
+        "unsure_cause": "margin"
+      }
+    ],
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -5,
+          -3.9
+        ],
+        "outcome": "unsure"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          1.3,
+          12.4
+        ],
+        "outcome": "unsure"
+      }
+    ],
+    "missing_evidence_empty": true,
+    "decision_not": [
+      "pass"
+    ]
+  }
+}

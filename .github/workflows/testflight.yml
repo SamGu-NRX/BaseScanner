@@ -163,6 +163,12 @@ jobs:
           [ "$failed" -eq 0 ] || exit 1
           echo "No build scripts, build rules, scheme actions, plugins, macros or external packages in $PROJECT_DIR."
 
+      # The commit this build comes from, for the scan stamp (ScanEngine+Stamp.swift). Workflow
+      # code, not repository code, and it runs before the key exists.
+      - name: Stamp the git commit
+        if: inputs.app == 'house-scan'
+        run: /usr/libexec/PlistBuddy -c "Set :HouseScanGitCommit ${GITHUB_SHA:0:12}" "$PROJECT_DIR/Config/Info.plist"
+
       - name: Archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}

@@ -1,0 +1,184 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g13b-unsure-alone",
+  "source": "t3-lane-c-review.md golden 13 at origin/t3/research a7d91f1",
+  "description": "The wall ends at s = -0.5, so every start has gas gap 3.2 +/- 0.3. The best spot is unsure by margin and fully observed: manual review with no photo request.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        -1.8333333333333333
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -0.5,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          0.3,
+          8
+        ],
+        "source": "tape",
+        "plus_minus_ft": 0.3,
+        "footprint": [
+          [
+            0.3,
+            3.2
+          ],
+          [
+            12,
+            3.2
+          ],
+          [
+            12,
+            3.7
+          ],
+          [
+            0.3,
+            3.7
+          ]
+        ]
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -0.5,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            8.166666666666666
+          ],
+          [
+            -0.5,
+            8.166666666666666
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -0.5,
+          8.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -15.5,
+            23.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -15.5,
+            23.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -15.5,
+            23.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -15.5,
+            23.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "decision_in": [
+      "manual_review"
+    ],
+    "spot": {
+      "wall_id": "w1",
+      "span_within": [
+        -0.5,
+        8
+      ]
+    },
+    "checks": [
+      {
+        "match": "gas",
+        "outcome": "unsure",
+        "unsure_cause": "margin",
+        "measured_ft": 3.2,
+        "plus_minus_ft": 0.3
+      }
+    ],
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -0.4,
+          1.2
+        ],
+        "outcome": "fail",
+        "failing_match": "meter_working_space"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          1.3,
+          5.3
+        ],
+        "outcome": "unsure"
+      }
+    ],
+    "missing_evidence_empty": true
+  }
+}
