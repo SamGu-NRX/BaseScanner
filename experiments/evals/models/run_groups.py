@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -34,7 +35,32 @@ from models.common import (
     write_npz,
 )
 from models.map_anything import load, run
-from models.run import pick_device
+from models.run import pick_device, publish
+
+
+def write_group(out: Path, results, summary: dict) -> None:
+    """Write one group's depth maps and run.json, all or nothing: they go to a staging folder
+    that `publish` swaps in for `out` only once every file is written, so a failure partway
+    leaves the previous outputs and run.json as they were, never a mix of old and new views."""
+    stage = out.with_name(out.name + ".staging")
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    try:
+        for res in results:
+            write_npz(
+                stage,
+                res.path.stem,
+                res.depth,
+                res.valid,
+                res.intrinsics,
+                res.cam_to_world,
+                res.arrays,
+            )
+        (stage / "run.json").write_text(json.dumps(summary, indent=1) + "\n")
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    publish(stage, out)
 
 
 def main() -> None:
@@ -107,17 +133,6 @@ def main() -> None:
                 fp32=False,
             )
             results = run(model, inputs)
-            out.mkdir(parents=True, exist_ok=True)
-            for res in results:
-                write_npz(
-                    out,
-                    res.path.stem,
-                    res.depth,
-                    res.valid,
-                    res.intrinsics,
-                    res.cam_to_world,
-                    res.arrays,
-                )
             summary = {
                 "fingerprint": key,
                 "checkpoint": checkpoint,
@@ -134,7 +149,7 @@ def main() -> None:
                     else None
                 ),
             }
-            (out / "run.json").write_text(json.dumps(summary, indent=1) + "\n")
+            write_group(out, results, summary)
             print(f"n={n} {members[0]}: {results[0].seconds:.2f} s/view", file=sys.stderr)
             if device == "mps":
                 torch.mps.empty_cache()

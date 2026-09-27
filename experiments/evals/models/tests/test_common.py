@@ -377,3 +377,41 @@ def test_a_run_left_aside_by_a_killed_publication_is_restored_not_deleted(tmp_pa
     with pytest.raises(OSError, match="injected"):
         run.publish(stage, tmp_path / "out")
     assert _snapshot(tmp_path / "out") == before
+
+
+def test_a_group_write_that_fails_midway_keeps_the_previous_outputs(tmp_path, monkeypatch):
+    import types
+
+    from models import run_groups
+
+    out = tmp_path / "n2-a"
+    _complete_run(out, "previous")
+    (out / "b.npz").write_bytes(b"previous b")
+    before = _snapshot(out)
+    real_write = run_groups.write_npz
+
+    def fail_on_b(folder, stem, *args):
+        if stem == "b":
+            raise OSError("injected: disk full while writing b")
+        return real_write(folder, stem, *args)
+
+    monkeypatch.setattr(run_groups, "write_npz", fail_on_b)
+    results = [
+        types.SimpleNamespace(
+            path=tmp_path / f"{n}.jpg",
+            depth=np.ones((2, 2), np.float32),
+            valid=np.ones((2, 2), bool),
+            intrinsics=np.array([1.0, 1, 0.5, 0.5]),
+            cam_to_world=np.eye(4),
+            arrays={},
+        )
+        for n in ("a", "b")
+    ]
+    with pytest.raises(OSError, match="injected"):
+        run_groups.write_group(out, results, {"run": "new"})  # a is written, then b fails
+    assert _snapshot(out) == before
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["n2-a"]
+    monkeypatch.setattr(run_groups, "write_npz", real_write)
+    run_groups.write_group(out, results, {"run": "new"})
+    assert sorted(p.name for p in out.iterdir()) == ["a.npz", "b.npz", "run.json"]
+    assert json.loads((out / "run.json").read_text()) == {"run": "new"}
