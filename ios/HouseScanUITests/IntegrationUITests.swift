@@ -183,7 +183,10 @@ final class IntegrationUITests: XCTestCase {
         XCTAssertEqual(server.requests("POST captures").count, 1)
         XCTAssertTrue(server.requests("PUT upload").allSatisfy { $0["authorization"] as? Bool == false && $0["contentMD5"] as? Bool == true })
         attach(run.app, "sending-during-scan")
-        try finish(run, from: "markFeatures")
+        // Up to the result, but not past it: the result's gate file would let the autopilot move
+        // on to AR before Start over is tapped (the b33e214 run found it on screen.resultAR).
+        for phase in ["markFeatures", "gapRequest", "uploading"] { try run.pass(phase) }
+        run.waitFor("result", timeout: 150)
 
         // A new scan: the question again, off again, and nothing more sent until it is answered.
         let creates = server.requests("POST captures").count
