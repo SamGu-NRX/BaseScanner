@@ -2,39 +2,84 @@ name: iOS
 
 on:
   push:
-    branches: [main]
+    branches: [main, t3/ios-mvf]
     paths:
       - "ios/**"
+      - "!ios/**/*.md"
       - ".github/workflows/ios.yml"
   pull_request:
+    # ready_for_review: drafts are skipped below, so run once a draft is marked ready.
+    # labeled: adding full-ui reruns the pull request with the accessibility audit.
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
     paths:
       - "ios/**"
+      - "!ios/**/*.md"
       - ".github/workflows/ios.yml"
+  # Runs every test, the audit included, on any branch.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-${{ github.ref }}
+  # Adding any label other than full-ui gets a group of its own, so it cannot cancel a real run.
+  group: ios-${{ github.ref }}${{ github.event.action == 'labeled' && github.event.label.name != 'full-ui' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   ios-build:
     name: iOS build
+    # A free account runs 5 macOS jobs at once, shared by every open pull request, so drafts and
+    # labels other than full-ui don't take a slot.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (!github.event.pull_request.draft &&
+       (github.event.action != 'labeled' || github.event.label.name == 'full-ui'))
     # macos-26 (arm64) is the newest GA macOS image. The xcode-27 image is still a preview.
     runs-on: macos-26
     timeout-minutes: 45
     env:
       # Newest stable Xcode on macos-26 per images/macos/macos-26-arm64-Readme.md (image 20260907).
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      # iPhone 17 on iOS 26.5 ships with Xcode 26.6 on macos-26 (images/macos/macos-26-arm64-Readme.md).
+      SIM_NAME: iPhone 17
+      SIM_OS: "26.5"
       # Homebrew only installs the latest XcodeGen. The release zip gives an exact version,
       # and the drift check below needs the same version the committed project was made with.
       XCODEGEN_VERSION: 2.46.0
       XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+      # The every-state accessibility audit relaunches the app 65 times (about 10 min). Pull
+      # requests skip it unless labelled full-ui; pushes and manual runs always include it.
+      FULL_UI: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ui') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Show toolchain
+        run: |
+          if [ ! -d "$DEVELOPER_DIR" ]; then
+            echo "::error::$DEVELOPER_DIR is not on this runner image. Pick an installed Xcode from the image readme."
+            exit 1
+          fi
+          xcodebuild -version
+          swift --version
+
+      # Booting takes 2 to 3 minutes and needs nothing from the build, so it runs alongside the
+      # steps below; the UI test step waits for it.
+      - name: Boot the Simulator in the background
+        run: |
+          runtime="com.apple.CoreSimulator.SimRuntime.iOS-${SIM_OS//./-}"
+          udid="$(xcrun simctl list devices available -j \
+            | jq -r --arg runtime "$runtime" --arg name "$SIM_NAME" \
+              '(.devices[$runtime] // [])[] | select(.name == $name) | .udid' | head -n 1)"
+          if [ -z "$udid" ]; then
+            echo "::error::No $SIM_NAME on iOS $SIM_OS on this runner image. Pick one from the image readme."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          nohup xcrun simctl bootstatus "$udid" -b > "$RUNNER_TEMP/simulator-boot.log" 2>&1 &
 
       # The package's drift tests compare the vendored schemas with the server's and the capture
       # packet's own copies. Before those branches merge they exist only as branches, which the
@@ -45,15 +90,6 @@ jobs:
             +refs/heads/t3/server:refs/remotes/origin/t3/server \
             +refs/heads/t3/packet:refs/remotes/origin/t3/packet \
             || echo "::warning::t3/server or t3/packet is gone; the drift tests read the merged tree or skip"
-
-      - name: Show toolchain
-        run: |
-          if [ ! -d "$DEVELOPER_DIR" ]; then
-            echo "::error::$DEVELOPER_DIR is not on this runner image. Pick an installed Xcode from the image readme."
-            exit 1
-          fi
-          xcodebuild -version
-          swift --version
 
       - name: Install XcodeGen
         run: |
@@ -83,20 +119,32 @@ jobs:
         # The capture logic is a plain Swift package; its tests run on macOS without a Simulator.
         run: swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
 
+      # CI builds once from clean, so the index Xcode keeps for editing is wasted work.
       - name: Build
         run: >-
           xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
-          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
+          -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO build
+
+      - name: Wait for the Simulator
+        timeout-minutes: 10
+        run: |
+          xcrun simctl bootstatus "$SIM_UDID" -b
+          echo "Booted $SIM_NAME on iOS $SIM_OS ($SIM_UDID)."
 
       - name: UI test the whole flow in the Simulator
         # Replays the committed synthetic wall (ios/HouseScanUITests/Fixtures/synthetic-wall) with
-        # -autopilot and the bundled sample result. iPhone 17 on iOS 26.5 ships with Xcode 26.6 on
-        # macos-26 (images/macos/macos-26-arm64-Readme.md).
-        run: >-
-          xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug
-          -destination "platform=iOS Simulator,name=iPhone 17,OS=26.5"
-          -resultBundlePath "$RUNNER_TEMP/HouseScanUITests.xcresult"
-          -only-testing:HouseScanUITests test
+        # -autopilot and the bundled sample result.
+        run: |
+          skip=()
+          if [ "$FULL_UI" != "true" ]; then
+            skip=(-skip-testing:HouseScanUITests/ScreenStatesUITests/testEveryStatePassesTheAccessibilityAudit)
+            echo "::notice::Skipped the every-state accessibility audit (about 10 min). Add the full-ui label to run it on this pull request."
+          fi
+          xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug \
+            -destination "id=$SIM_UDID" \
+            -resultBundlePath "$RUNNER_TEMP/HouseScanUITests.xcresult" \
+            -only-testing:HouseScanUITests "${skip[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO test
 
       - name: Keep UI test screenshots
         if: always()
