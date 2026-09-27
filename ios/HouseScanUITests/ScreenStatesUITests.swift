@@ -95,6 +95,12 @@ final class ScreenStatesUITests: XCTestCase {
         "result-reject": ("result.nearest", "The closest spot"),
     ]
 
+    /// Controls a state must offer, by identifier.
+    private static let controls: [String: [String]] = [
+        // #39: "Show my result" on every request the check sent back, with one view left too.
+        "gapRequest-followUp": ["action.skipGap", "action.showResult"],
+    ]
+
     /// States where the scan is packaged, so "Share scan" must show.
     private static let shareStates: Set<String> = ["uploading-offline", "uploading-rejected", "result-review", "result-pass"]
 
@@ -338,6 +344,9 @@ final class ScreenStatesUITests: XCTestCase {
                 found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
             }
             XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
+        }
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            XCTAssertTrue(element(app, identifier).exists, "\(name): \(identifier) is missing")
         }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second
