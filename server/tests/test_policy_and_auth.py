@@ -48,12 +48,11 @@ def test_each_example_gets_its_decision_under_the_demo_policy(name: str, decisio
     assert "not Base's" in result["summary"]
 
 
-def test_the_unsure_example_asks_for_views() -> None:
-    assert [
-        m
-        for m in decide("review-corner-not-walked.json")["missing_evidence"]
-        if m["kind"] == "band"
-    ]
+def test_the_unsure_example_asks_for_more() -> None:
+    # Only the placeholder pool and driveway distances leave ground unseen around its spot, and
+    # those ask for no view (issue #75); walking on past the corner is still asked for.
+    missing = decide("review-corner-not-walked.json")["missing_evidence"]
+    assert [m["kind"] for m in missing] == ["past_end"]
 
 
 def test_the_strict_policy_sends_everything_to_a_person(monkeypatch: pytest.MonkeyPatch) -> None:

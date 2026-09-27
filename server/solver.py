@@ -85,6 +85,10 @@ class Check:
     missing: list[View] = field(default_factory=list)
     # Computing the exact unseen stretch is slow, so it is deferred until a result reports it.
     missing_later: Callable[[], list[View]] | None = None
+    # Whether missing_evidence asks a homeowner for its unseen views. A clearance whose distance
+    # is a placeholder doesn't: that number would set how far out the ground must be shown
+    # (issue #75). The check still reads the area; a person settles what nobody saw.
+    asks_for_views: bool = True
     # Other rule keys whose values or citation the check uses; if the private file set any of
     # them, the citation is withheld.
     cites: tuple[str, ...] = ()
@@ -235,6 +239,7 @@ class Solver:
         self.scene = scene
         r: Rules = loaded.rules
         self.r = r
+        self.private_keys = loaded.private_keys
         self.W = r.battery.width_ft.value
         self.D = r.battery.depth_ft.value
         self.H = r.battery.height_ft.value
@@ -282,6 +287,11 @@ class Solver:
         self._unclassified = outdoor.difference(recorded).buffer(-1e-6).buffer(1e-6)
         self._buffers: dict[tuple[int, float], Geometry] = {}
         self._ground_error = max((g.plus_minus for g in scene.ground), default=0.0)
+
+    def _placeholder(self, rule_key: str, rule: Value) -> bool:
+        """Whether a rule's value is a public placeholder still in effect. A value the private
+        file sets is real whether or not the file clears the flag it merges over."""
+        return rule.placeholder and not _is_private((rule_key,), self.private_keys)
 
     # --- geometry helpers ----------------------------------------------------------------------
 
@@ -477,6 +487,7 @@ class Solver:
         reads the wall band."""
         t = rule.value
         c = Check(check_id, label, PASS, "", rule_key, rule, threshold=t, comparison="at_least")
+        c.asks_for_views = not self._placeholder(rule_key, rule)
         worst_key: tuple[int, float] | None = None
         for name, geom, err, counts in items:
             if counts is False:
@@ -1429,6 +1440,8 @@ _BAND_TEXT = {
 def _missing_json(c: Candidate, scene: Scene) -> list[dict[str, Any]]:
     by_band: dict[str, list[tuple[View, str]]] = {}
     for chk in c.checks:
+        if not chk.asks_for_views:
+            continue
         for view in chk.all_missing():
             if view.band != "ground":
                 # Only the ground is asked for past an end mark: past a limit end there is no
@@ -1637,14 +1650,18 @@ def solve(scene: Scene, loaded: LoadedRules, budget_s: float = SOLVE_BUDGET_S) -
             reasons.append(unexplored_reason)
             missing += past_end_requests()
         spot_at = where((best.s0 + best.s1) / 2)
-        unseen = [c for c in best.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
+        unseen = [
+            c
+            for c in best.checks
+            if c.outcome == UNSURE and c.unsure_cause == "unobserved" and c.asks_for_views
+        ]
         if unseen:
-            # Only unseen checks are settled by more views; the rest are named for a person, as in
-            # "A person needs to check the best spot" (issue #45, #50's wording).
+            # Only unseen checks are settled by the views asked for; the rest, including unseen
+            # ones on a placeholder distance (issue #75), are named for a person, as in "A person
+            # needs to check the best spot" (issue #45, #50's wording).
+            asked = {c.id for c in unseen}
             rest = [
-                c.label.lower()
-                for c in best.checks
-                if c.outcome == UNSURE and c.unsure_cause != "unobserved"
+                c.label.lower() for c in best.checks if c.outcome == UNSURE and c.id not in asked
             ]
             summary = (
                 f"More views are needed around the best spot, {spot_at}: "

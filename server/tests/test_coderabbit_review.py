@@ -100,7 +100,12 @@ def test_capturing_what_missing_evidence_asks_for_settles_coverage(raw: dict) ->
         key=lambda s0: abs(s0 - spot["span_ft"][0]),
     )
     after = evaluate_start(parsed(captured, rules), rules, exact)
-    unseen = [c.id for c in after.checks if c.outcome == UNSURE and c.unsure_cause == "unobserved"]
+    # Checks on a placeholder distance ask for nothing (issue #75); a person settles those.
+    unseen = [
+        c.id
+        for c in after.checks
+        if c.outcome == UNSURE and c.unsure_cause == "unobserved" and c.asks_for_views
+    ]
     assert unseen == [], (unseen, result["missing_evidence"])
 
 

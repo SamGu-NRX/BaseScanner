@@ -8,10 +8,18 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 import solver
-from rules import LoadedRules, public_rules_dict, rules_from_dict
+from rules import LoadedRules, deep_merge, public_rules_dict, rules_from_dict
 from solver import FAIL, PASS, UNSURE, at_least, evaluate_start, solve
 
 PUBLIC = rules_from_dict(public_rules_dict())
+# The public rules with real (not placeholder) pool and driveway distances, which then ask for the
+# ground they read (issue #75). Test settings, not Base policy.
+REAL_POOL_AND_DRIVE = rules_from_dict(
+    deep_merge(
+        public_rules_dict(),
+        {"clearances": {k: {"placeholder": False} for k in ("pool_ft", "drive_ft")}},
+    )
+)
 # Ground captured in answer to a request is seen this far out: past every clearance's reach.
 FAR_FT = 40.0
 
@@ -131,7 +139,7 @@ def test_pool_clearance_needs_the_ground_past_a_limit_end() -> None:
     # Before: past a limit end the ground was never required, so the pool check passed with
     # nothing seen beyond the fence.
     raw = limit_end_near_the_spot()
-    result = answer(raw)
+    result = answer(raw, REAL_POOL_AND_DRIVE)
     pool = next(c for c in result["checks"] if c["id"] == "pool_clearance")
     assert (pool["outcome"], pool["unsure_cause"]) == (UNSURE, "unobserved")
     ground = next(m for m in result["missing_evidence"] if m.get("band") == "ground")
@@ -140,7 +148,7 @@ def test_pool_clearance_needs_the_ground_past_a_limit_end() -> None:
 
 def test_showing_the_ground_past_a_limit_end_settles_it() -> None:
     raw = limit_end_near_the_spot()
-    after = answer(captured(raw, answer(raw)))
+    after = answer(captured(raw, answer(raw, REAL_POOL_AND_DRIVE)), REAL_POOL_AND_DRIVE)
     pool = next(c for c in after["checks"] if c["id"] == "pool_clearance")
     assert pool["outcome"] == PASS
 

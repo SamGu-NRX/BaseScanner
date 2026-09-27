@@ -111,6 +111,8 @@ Ends and corners:
 
 Supplying exactly what a request in `missing_evidence` names settles it: a `coverage.observed` entry with its `band` and `span_ft`, and an `out_ft` at least the request's `out_ft` (ground, facing, overhead and wall requests carry one).
 
+A clearance whose distance is a placeholder (under the public rules `pool_clearance` and `drive_clearance`) asks for no view: its number would set how far out the ground must be shown (issue #75). It still reads the coverage above and stays UNSURE until that is seen, and the summary names it for a person. A value the private rules set counts as real, so under them its requests come back.
+
 ## Reading a result
 
 `decision` is `pass`, `manual_review` or `reject`. `spot` gives the battery's plan footprint and `meter_offset_ft`, its offset from the meter for AR; `route` is the cable run. Each entry in `checks` has an outcome, a reason, the measurement, its error and the rule it was held to:
