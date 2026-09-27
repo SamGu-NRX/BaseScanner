@@ -235,6 +235,10 @@ body[data-motion="off"] .st[data-status="running"]::after { animation-play-state
 .crit-outcome[data-o="unsure"] { color: var(--unsure-ink); }
 .crit-id { font-family: var(--mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crit-num { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.views { margin-top: 10px; font-size: 13px; }
+.views-h { margin: 0 0 4px; font-weight: 600; color: var(--unsure-ink); }
+.views ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.views .view-id { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 6px; }
 .review-link { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--phone); font-weight: 600; }
 
 /* ticker */

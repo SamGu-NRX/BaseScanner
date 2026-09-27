@@ -345,6 +345,7 @@ function renderResult() {
     box.hidden = true;
     $("criteria").replaceChildren();
     $("criteria").dataset.key = "";
+    $("views").hidden = true;
     return;
   }
   box.hidden = false;
@@ -366,10 +367,24 @@ function renderResult() {
       ),
     );
   }
+  renderViews(body);
   const link = $("review-link");
   const reviewPath = typeof body.reviewUrl === "string" && /^\/v1\/captures\/cap_[A-Za-z0-9_]{4,64}\/review$/.test(body.reviewUrl) ? body.reviewUrl : null;
   link.hidden = !(reviewPath && state.source?.kind === "backend");
   if (!link.hidden) link.href = new URL(reviewPath, state.source.origin).href;
+}
+
+/** The views the server asked for: its own prompt text, verbatim, with the view id. */
+function renderViews(body) {
+  const views = [...(Array.isArray(body?.viewsNeeded) ? body.viewsNeeded : []), ...(Array.isArray(body?.outcome?.viewsNeeded) ? body.outcome.viewsNeeded : [])];
+  const seen = new Set();
+  const unique = views.filter((v) => v && typeof v.id === "string" && !seen.has(v.id) && seen.add(v.id));
+  const fromRetake = unique.length === 0 && state.retake ? state.retake.views.map((id) => ({ id })) : [];
+  const list = unique.length ? unique : fromRetake;
+  $("views").hidden = list.length === 0;
+  $("views-list").replaceChildren(
+    ...list.map((v) => el("li", {}, typeof v.prompt?.title === "string" ? v.prompt.title : "View", el("span", { class: "view-id" }, v.id))),
+  );
 }
 
 function setOutcome(kind, title, message) {

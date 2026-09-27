@@ -251,6 +251,26 @@ test("a stage left running when the capture settles shows no reported end", () =
   assert.equal(stageRows(open)[0].status, "running");
 });
 
+test("a retake names the views the server asked for", () => {
+  const s = run(selected(), events([{ seq: 1, type: "retake_request", at: "x", data: { runId: "run_a", viewsNeeded: ["vn3", "vn4"], memberActions: [] } }]));
+  assert.deepEqual(s.retake.views, ["vn3", "vn4"]);
+  assert.match(s.log.at(-1).text, /vn3, vn4/);
+});
+
+test("a refreshed result without a preview drops the earlier model", () => {
+  const cloud = { count: 3, kept: 3, positions: new Float32Array(9), generated: null, bounds: { min: [0, 0, 0], max: [1, 1, 1] } };
+  const shown = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "withheld-by-viewer-relay" } }, { type: "preview", runId: "run_a", cloud });
+  assert.equal(shown.preview.phase, "ready");
+  const refreshed = run(shown, { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" }, previewUrl: "" } });
+  assert.equal(refreshed.preview.phase, "none");
+});
+
+test("a model whose points are all unusable is empty, not ready", () => {
+  const withResult = run(selected(), { type: "result", body: { runId: "run_a", status: "complete", outcome: { kind: "eligible" } } });
+  const s = run(withResult, { type: "preview", runId: "run_a", cloud: { count: 2, kept: 0, positions: new Float32Array(0), generated: null, bounds: null } });
+  assert.equal(s.preview.phase, "empty");
+});
+
 test("a finished stage with no reported duration keeps the placeholder warning off", () => {
   const quick = ["validate", "poses", "scale"].map((n, i) => stage(i + 1, n, "done", { durationS: 0.01 }));
   assert.ok(!looksLikePlaceholderStages(run(selected(), events([...quick, stage(4, "dense", "done")]))));

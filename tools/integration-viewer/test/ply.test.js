@@ -34,6 +34,14 @@ test("a comment that mentions end_header does not end the header", () => {
   assert.deepEqual([...cloud.positions], [1, 2, 3]);
 });
 
+test("non-finite coordinates are skipped", () => {
+  const cloud = parsePly(encodePly([[1, 2, 3, 0], [Number.POSITIVE_INFINITY, 0, 0, 0], [Number.NaN, 1, 1, 0], [4, 5, 6, 1]]).buffer);
+  assert.equal(cloud.count, 4);
+  assert.equal(cloud.kept, 2);
+  assert.deepEqual(cloud.bounds, { min: [1, 2, 3], max: [4, 5, 6] });
+  assert.deepEqual([...cloud.generated.slice(0, 2)], [0, 1]);
+});
+
 test("an empty cloud parses as zero points", () => {
   const cloud = parsePly(buf("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n"));
   assert.equal(cloud.count, 0);

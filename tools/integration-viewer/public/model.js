@@ -125,7 +125,8 @@ export function reduce(state, action) {
       return { ...state, preview: { phase: "loading", runId: action.runId, cloud: null, error: null } };
     case "preview":
       if (action.runId !== (state.result.body?.runId ?? null)) return state; // a model for another run
-      return { ...state, preview: { phase: action.cloud.count > 0 ? "ready" : "empty", runId: action.runId, cloud: action.cloud, error: null } };
+      // Readiness counts drawable points, not the file's declared count.
+      return { ...state, preview: { phase: action.cloud.kept > 0 ? "ready" : "empty", runId: action.runId, cloud: action.cloud, error: null } };
     case "preview-error":
       return {
         ...state,
@@ -248,7 +249,8 @@ function applyEvent(state, event, backlog) {
       const views = Array.isArray(data.viewsNeeded) ? data.viewsNeeded.map(String) : [];
       // A retake starts from a run; if it names a newer one, that run's evidence replaces the old.
       if (str(data.runId)) state = noteRun(state, data.runId, base.seq);
-      return log({ ...state, retake: { ...base, views, runId: str(data.runId) } }, { ...base, kind: "retake", text: `Server asked for ${views.length || "more"} extra view${views.length === 1 ? "" : "s"}` });
+      const named = views.length ? `: ${views.join(", ")}` : "";
+      return log({ ...state, retake: { ...base, views, runId: str(data.runId) } }, { ...base, kind: "retake", text: `Server asked for more views${named}` });
     }
     case "verdict_ready": {
       const verdict = { ...base, runId: str(data.runId), kind: str(data.kind) };
@@ -329,7 +331,9 @@ function applyResult(state, body) {
   }
   if (typeof body.runId === "string") state = noteRun(state, body.runId);
   const ready = body.outcome != null || NO_OUTCOME_STATUSES.has(body.status);
-  return { ...state, result: { phase: ready ? "ready" : "pending", body, error: null } };
+  // A refreshed result that no longer offers a preview takes the earlier model with it.
+  const preview = !hasPreview(body) && state.preview.runId === body.runId ? { phase: "none", runId: null, cloud: null, error: null } : state.preview;
+  return { ...state, preview, result: { phase: ready ? "ready" : "pending", body, error: null } };
 }
 
 function log(state, entry) {

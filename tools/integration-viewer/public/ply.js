@@ -61,6 +61,8 @@ export function parsePly(buffer, { maxPoints = 60_000 } = {}) {
   for (let i = 0; i < count; i += 1) {
     const row = read(i);
     if (i % stride !== 0) continue;
+    // A NaN or infinite coordinate cannot be drawn and would poison the bounds; skip that point.
+    if (!Number.isFinite(row[index.x]) || !Number.isFinite(row[index.y]) || !Number.isFinite(row[index.z])) continue;
     positions[k * 3] = row[index.x];
     positions[k * 3 + 1] = row[index.y];
     positions[k * 3 + 2] = row[index.z];
