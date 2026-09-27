@@ -457,3 +457,32 @@ def test_unpack_extracts_a_plain_session(tmp_path, monkeypatch):
     assert folder.is_relative_to((tmp_path / "field").resolve())
     assert (folder / "k" / "a.jpg").read_text() == "x"
     assert field.unpack(archive) == (folder, digest)  # a second call reuses the folder
+
+
+def test_unpack_refuses_an_oversized_archive_before_reading_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_ARCHIVE_BYTES", 100)
+    archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON), ("s/a", "0" * 500)])
+
+    def no_read(*args, **kwargs):
+        raise AssertionError("an oversized archive was hashed or opened")
+
+    monkeypatch.setattr(field, "file_sha256", no_read)
+    monkeypatch.setattr(field.zipfile, "ZipFile", no_read)
+    with pytest.raises(ValueError, match="more than 100"):
+        field.unpack(archive)
+
+
+def test_unpack_counts_every_zip_entry_including_skipped_ones(tmp_path, monkeypatch):
+    monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MAX_ZIP_ENTRIES", 3)
+    entries = [("s/session.json", SESSION_JSON)] + [(f"__MACOSX/{i}", "") for i in range(3)]
+    archive = _zip(tmp_path / "s.zip", entries)
+    with pytest.raises(ValueError, match="4 zip entries, more than 3"):
+        field.unpack(archive)
+
+
+def test_file_sha256_streams_and_matches_hashlib(tmp_path):
+    path = tmp_path / "f"
+    path.write_bytes(b"x" * (3 << 20) + b"tail")  # spans several 1 MB reads
+    assert field.file_sha256(path) == hashlib.sha256(path.read_bytes()).hexdigest()

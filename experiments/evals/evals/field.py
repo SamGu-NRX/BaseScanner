@@ -65,6 +65,10 @@ FIELD_DIR = EVALS_DIR / "field"
 # stopping a crafted archive from filling the shared disk.
 MAX_ZIP_MEMBERS = 10_000
 MAX_ZIP_BYTES = 2 * 1024**3
+# The archive itself, checked before it is hashed or opened, and every central-directory entry
+# (folders and __MACOSX included), so neither the file nor its index can be arbitrarily large.
+MAX_ZIP_ARCHIVE_BYTES = 2 * 1024**3
+MAX_ZIP_ENTRIES = 2 * MAX_ZIP_MEMBERS
 MIN_FREE_AFTER_UNPACK = 3 * 1024**3
 
 
@@ -83,6 +87,15 @@ def safe_member(name: str) -> PurePosixPath:
     return PurePosixPath(*parts)
 
 
+def file_sha256(path: Path) -> str:
+    """sha256 of a file, read 1 MB at a time so a large file is never held in memory."""
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        while block := f.read(1 << 20):
+            h.update(block)
+    return h.hexdigest()
+
+
 def unpack(session: Path) -> tuple[Path, str | None]:
     """The session folder, and the zip's sha256 (the scoring harness's capture id) if zipped.
 
@@ -93,11 +106,17 @@ def unpack(session: Path) -> tuple[Path, str | None]:
     """
     if session.is_dir():
         return session, None
-    digest = hashlib.sha256(session.read_bytes()).hexdigest()
+    size = session.stat().st_size
+    if size > MAX_ZIP_ARCHIVE_BYTES:
+        raise ValueError(f"{session}: {size} bytes, more than {MAX_ZIP_ARCHIVE_BYTES}")
+    digest = file_sha256(session)
     out = FIELD_DIR / digest[:16]
     with zipfile.ZipFile(session) as z:
+        infos = z.infolist()
+        if len(infos) > MAX_ZIP_ENTRIES:
+            raise ValueError(f"{session}: {len(infos)} zip entries, more than {MAX_ZIP_ENTRIES}")
         members, seen = [], set()
-        for info in z.infolist():
+        for info in infos:
             if info.filename.startswith("__MACOSX/") or info.is_dir():
                 continue
             rel = safe_member(info.filename)
@@ -221,7 +240,9 @@ def capture_id(folder: Path, digest: str | None) -> str:
         return digest
     h = hashlib.sha256((folder / "session.json").read_bytes())
     for kf in sorted(load_session(folder)["keyframes"], key=lambda k: k["id"]):
-        h.update(session_file(folder, kf["img"]).read_bytes())
+        with session_file(folder, kf["img"]).open("rb") as f:
+            while block := f.read(1 << 20):
+                h.update(block)
     return h.hexdigest()
 
 
