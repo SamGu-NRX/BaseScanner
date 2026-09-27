@@ -2,6 +2,7 @@
 coverage, scene.json output, the server call, the acceptance oracle and GLB."""
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 
@@ -563,3 +564,70 @@ def test_laser_visibility_needs_the_point_in_frame_and_unoccluded():
     assert visible(2.0) == [True, False]
     assert visible(1.0) == [False, False]  # the laser saw something nearer: occluded
     assert visible(np.nan) == [False, False]  # no laser return is no evidence
+
+
+# --- Adapters: files a manifest names stay inside its folder ---------------------------------
+
+
+def _manifest(root: Path, fmt: str, img: str, depth_file: str, conf_file: str) -> None:
+    """A one-keyframe scan bundle or Measure Lab session naming the three files."""
+    kf = {
+        "id": "k",
+        "img": img,
+        "w": 8,
+        "h": 6,
+        "intrinsics": [8, 8, 4, 3],
+        "pose": np.eye(4).reshape(-1).tolist(),
+        "depth": {"file": depth_file, "confidenceFile": conf_file, "w": 2, "h": 2},
+    }
+    if fmt == "scan-bundle":
+        doc = {
+            "schema_version": "1.0",
+            "meter": {"pos": [0.0, 5.0, 0.0], "wall_id": "w"},
+            "walls": [{"id": "w", "baseline": [[-3.0, 0.0], [3.0, 0.0]]}],
+            "keyframes": [kf],
+        }
+        (root / "scene.json").write_text(json.dumps(doc))
+    else:
+        doc = {"format": "measure-lab-session", "formatVersion": 2, "keyframes": [kf]}
+        (root / "session.json").write_text(json.dumps(doc))
+
+
+@pytest.fixture
+def packet(tmp_path: Path) -> tuple[Path, Path]:
+    """A packet folder holding valid files, and a secret beside it, outside the folder."""
+    root = tmp_path / "packet"
+    root.mkdir()
+    (root / "k.jpg").write_bytes(b"jpg")
+    (root / "k.f32").write_bytes(b"depth")
+    (root / "k.u8").write_bytes(b"conf")
+    secret = tmp_path / "secret.jpg"
+    secret.write_bytes(b"not the homeowner's")
+    (root / "escape.jpg").symlink_to(secret)
+    return root, secret
+
+
+FORMATS = ["scan-bundle", "measure-lab"]
+FIELDS = {"img": 0, "depth.file": 1, "depth.confidenceFile": 2}
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+def test_files_inside_the_packet_load(packet, fmt):
+    root, _ = packet
+    _manifest(root, fmt, "k.jpg", "k.f32", "k.u8")
+    (f,) = cap.load(root, root / "work").frames
+    assert f.image == root / "k.jpg"
+    assert f.lidar.file == root / "k.f32" and f.lidar.confidence == root / "k.u8"
+
+
+@pytest.mark.parametrize("fmt", FORMATS)
+@pytest.mark.parametrize("field", FIELDS)
+@pytest.mark.parametrize("kind", ["absolute", "traversal", "symlink"])
+def test_a_file_outside_the_packet_is_refused(packet, fmt, field, kind):
+    root, secret = packet
+    bad = {"absolute": str(secret), "traversal": "../secret.jpg", "symlink": "escape.jpg"}[kind]
+    refs = ["k.jpg", "k.f32", "k.u8"]
+    refs[FIELDS[field]] = bad
+    _manifest(root, fmt, *refs)
+    with pytest.raises(cap.UnsafePath, match=f"^{re.escape(field)} "):
+        cap.load(root, root / "work")

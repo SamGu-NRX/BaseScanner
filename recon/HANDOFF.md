@@ -34,7 +34,7 @@ For the server team building photos, then a 3D model, then evaluation against th
 **Coverage and occlusion** (METHODS.md sections 7 and 7b; `evals/coverage.py`, `evals/coverage_options.py`).
 - **The app's coverage map claims unseen wall.** It claims 1.1 ft of a 19.3 ft wall that no photo saw, behind a scaffold's footings. The pre-registered bar was 0.5 ft. The cause is `CoverageMap.swift` lines 241–248 at beede15 (t3/ios-mvf): it checks range, angle and image bounds, not occlusion.
 - **Rules about how the phone moved don't fix it.** Views up to 2 m apart or 45° apart change nothing. The patch goes only at 5 m or 60° apart, which gives up 6.0 or 8.5 ft of wall that was seen.
-- **A depth test does fix it.** Against true depth it claims nothing unseen but misses 3.3 ft: pilasters 0.36 m proud read as occluders. LiDAR's roughly 5 m reach costs 7.8 ft on these photos.
+- **A depth test does fix it.** Against true depth it claims nothing unseen but misses 3.3 ft: pilasters 0.36 m proud read as occluders. LiDAR's roughly 5 m reach costs 8.9 ft on these photos.
 
 **This worker, today** (`recon/results/eth3d_electro.md`, `make accept`). It fuses depth into a truncated signed distance field (TSDF) and tests coverage against it. On ETH3D electro:
 - **Laser-as-LiDAR:** wall pair p90 1.8 in; 0.07 ft false-observed of 22.5 ft claimed (bar 0.5 ft: passes).
@@ -124,7 +124,18 @@ In `recon/` on this branch:
   - public demo https://house-scanning-server.vercel.app, public rules only: `POST /v1/placements`, `POST /v1/placements/site-plan.svg`, bare `scene.json` under 4.5 MB;
   - a private, key-protected deployment with the real rules: ask Sam for access and its auth scheme.
 
-## 6. Data
+## 6. Known defects
+
+Reviewers confirmed these in the worker at this branch's head, and none is fixed. Each can let the server settle a check on evidence the worker doesn't have. No replacement below has been built or validated.
+
+- **One view can count as two for free space.** `recon/coverage.py:183-187, 205-243`: `_slab` treats a voxel as observed when its fused weight is above zero, and any single frame gives it weight. Repro: a capture in which one frame alone sees the space in front of a wall cell reports a facing clearance there. Wall and ground cells need two positions 0.25 m apart for the same claim. The server at 903d86f can settle a check on that clearance. A fix needs visibility kept per frame for free space, with the same two-position test as the wall and ground.
+- **The overhead strip is narrower than a battery.** `recon/coverage.py:42, 231-242`: overhead space is sampled only 0.10 to 0.56 m out from the wall front. Repro: an eave 0.05 m out from the wall, or 0.7 m out over a 3 ft deep battery, is not found, and the cell reports clearance above it. A fix needs the footprint of the battery the chosen rule places, passed from the server's rules or request.
+- **Old facing and overhead entries survive a small meter move.** `recon/scene.py:50-57, 87-89`: when the meter moves 5 cm or less, the bundle's existing `facing` and `overheads` entries are kept and the new ones appended, although the reconstructed wall's line and orientation replaced the phone's. Repro: a bundle with a phone-measured facing gap, and a reconstructed wall rotated a few degrees about the meter, sends both the old gap and the new one. A fix needs the target wall's earlier entries dropped whenever its line is replaced, as they already are when the meter moves more than 5 cm.
+- **The photos-only clearance error is not calibrated.** `recon/pipeline.py:29-35`: facing gaps and overhead clearances from photos carry ±0.56 ft. That comes from the 95% interval of the evals' surface pair-error p90 over 1 to 3 m spans, not from any measurement of where the fused volume puts a boundary. The evals put surface p90 at 5.64 in [4.63, 6.66] and edges at 9.65 in [4.93, 15.01]. Repro: a photos-only overhead clearance measured at 7.10 ft passes the 6.5 ft headroom rule, since 7.10 − 0.56 = 6.54 > 6.5. A fix needs the clearance estimator's own measured uncertainty, or a gate that returns the check unresolved until that exists.
+
+Two more are filed as issues for the server team: coverage samples ground on a flat plane at the meter's height rather than the fitted slope (#95), and coverage cells can reach past the fitted wall's ends (#96).
+
+## 7. Data
 
 Nothing is in git: the datasets are non-commercial and measure accuracy only. Local copies live under `~/house-scanning-data/`:
 - `evals/{advio,eth3d,marvin}` for the datasets, `evals/hf-cache` for checkpoints;

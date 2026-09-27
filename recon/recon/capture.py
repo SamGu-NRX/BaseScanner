@@ -16,6 +16,8 @@ Readers:
 LiDAR depth, when a keyframe carries it, uses Measure Lab's layout: `depth: {file, confidenceFile,
 w, h}`, Float32 meters and UInt8 confidence (0 low, 1 medium, 2 high), row-major, in the
 keyframe's unrotated orientation.
+
+Every file a manifest names must lie inside the manifest's folder (`inside`).
 """
 
 from __future__ import annotations
@@ -136,12 +138,34 @@ def load(path: Path, work: Path) -> Capture:
     raise ValueError(f"{path}: neither scene.json (app scan bundle) nor session.json (Measure Lab)")
 
 
+class UnsafePath(ValueError):
+    """A file the manifest names lies outside the manifest's folder."""
+
+
+def inside(root: Path, ref: str, field: str) -> Path:
+    """`root / ref`, refused unless it stays inside `root`. The manifest is untrusted: an
+    absolute path, a `..` component or a symlink out of the folder would let a crafted packet read
+    any local file, and an image's colours would then reach the returned model. The check runs
+    on the resolved path, so a symlink is followed before it is judged; the path returned is the
+    unresolved one, as the manifest names it."""
+    rel = Path(ref)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise UnsafePath(f"{field} {ref!r} must be a relative path inside {root}")
+    base = root.resolve()
+    target = (base / rel).resolve()
+    if not target.is_relative_to(base):
+        raise UnsafePath(f"{field} {ref!r} resolves to {target}, outside {base}")
+    return root / rel
+
+
 def _lidar(root: Path, kf: dict) -> LidarDepth | None:
     d = kf.get("depth")
     if not d:
         return None
+    file = inside(root, d["file"], "depth.file")
     conf = d.get("confidenceFile")
-    return LidarDepth(root / d["file"], root / conf if conf else None, int(d["w"]), int(d["h"]))
+    conf_path = inside(root, conf, "depth.confidenceFile") if conf else None
+    return LidarDepth(file, conf_path, int(d["w"]), int(d["h"]))
 
 
 def _scan_bundle(root: Path, scene: dict) -> Capture:
@@ -152,7 +176,7 @@ def _scan_bundle(root: Path, scene: dict) -> Capture:
         frames.append(
             Frame(
                 kf["id"],
-                root / kf["img"],
+                inside(root, kf["img"], "img"),
                 int(kf["w"]),
                 int(kf["h"]),
                 np.array(kf["intrinsics"], dtype=np.float64),
@@ -173,18 +197,20 @@ def _scan_bundle(root: Path, scene: dict) -> Capture:
 
 
 def _measure_lab(root: Path, doc: dict) -> Capture:
+    keyframes = sorted(doc["keyframes"], key=lambda k: k["id"])
+    images = {kf["id"]: inside(root, kf["img"], "img") for kf in keyframes}
     frames = [
         Frame(
             kf["id"],
-            root / kf["img"],
+            images[kf["id"]],
             int(kf["w"]),
             int(kf["h"]),
             np.array(kf["intrinsics"], dtype=np.float64),
             column_major(kf["pose"]),
             _lidar(root, kf),
         )
-        for kf in sorted(doc["keyframes"], key=lambda k: k["id"])
-        if (root / kf["img"]).exists()  # a JPEG still being written at share time has no entry
+        for kf in keyframes
+        if images[kf["id"]].exists()  # a JPEG still being written at share time has no entry
     ]
     points = {p["id"]: np.array(p["position"], dtype=np.float64) for p in doc.get("points", [])}
     wall, ground = None, None
