@@ -24,13 +24,15 @@ struct UploadingScreen: View {
         CenteredScroll {
             VStack(spacing: 28) {
                 UploadEmblem(upload: state.upload, followsUp: followUps > 0)
+                // The words swap at once and only the layout eases, as on `InstructionCard`. A
+                // crossfade showed the old and new headlines half-transparent over each other on
+                // every follow-up, when "Checking your wall" becomes "One more view to finish".
                 VStack(spacing: 8) {
                     Text(copy.title)
                         .font(Typeface.screenTitle)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
-                        .contentTransition(.opacity)
                     if let detail = copy.detail {
                         Text(detail)
                             .font(Typeface.hint)
@@ -39,6 +41,8 @@ struct UploadingScreen: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .id(copy)
+                .transition(.identity)
                 .animation(Motion.text, value: copy)
 
                 switch state.upload {
@@ -193,7 +197,7 @@ private struct UploadSteps: View {
                 } else if index < current {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Palette.covered)
-                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
                 } else if index == current {
                     ProgressView()
                         .controlSize(.small)
@@ -208,7 +212,8 @@ private struct UploadSteps: View {
             Text(title(index))
                 .font(Typeface.hint)
                 .foregroundStyle(index <= current ? Color.primary : Palette.muted)
-                .contentTransition(.numericText())
+                // The rolling digits move; with Reduce Motion they crossfade.
+                .contentTransition(reduceMotion ? .opacity : .numericText())
         }
     }
 }

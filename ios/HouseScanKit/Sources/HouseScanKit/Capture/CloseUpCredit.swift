@@ -2,12 +2,18 @@ import Foundation
 
 /// The view a close-up photo was taken from: the frame's camera and its LiDAR depth.
 public struct CloseUpView: Sendable {
+    /// The camera as ARKit reported it when the photo was taken, raw.
     public var camera: CameraFrame
     public var depth: DepthImage?
+    /// The frame's time, for correcting the raw camera into the frame the wall agrees with when
+    /// the view is finally credited (`MeterAnchorTracking.correctedCamera`); nil for a view with
+    /// no anchor to correct against.
+    public var time: Double?
 
-    public init(camera: CameraFrame, depth: DepthImage?) {
+    public init(camera: CameraFrame, depth: DepthImage?, time: Double? = nil) {
         self.camera = camera
         self.depth = depth
+        self.time = time
     }
 }
 

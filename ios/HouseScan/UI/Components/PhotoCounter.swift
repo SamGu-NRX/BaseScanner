@@ -35,7 +35,10 @@ struct PhotoCounter: View {
     }
 }
 
-/// "Replay" or "Autopilot": tells a watcher that the camera or the taps are not live.
+/// "Replay" or "Autopilot": tells a watcher that the camera or the taps are not live. A small
+/// quiet pill rather than an amber one: amber means "look at this" on the camera screens, and a
+/// test mode shouldn't compete with the instruction. Ink at 0.7 keeps Chalk text about 6.9:1 on
+/// the light Canvas; at 0.55 it measured about 4.2:1, under the 4.5:1 small text needs.
 struct ModeBadge: View {
     var isReplay: Bool
     var isAutopilot: Bool
@@ -43,13 +46,11 @@ struct ModeBadge: View {
     var body: some View {
         if let text {
             Text(text)
-                .font(.caption2.weight(.bold))
-                .textCase(.uppercase)
-                .tracking(0.6)
-                .foregroundStyle(Palette.ink)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Palette.chalk)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Palette.caution, in: .capsule)
+                .background(Palette.ink.opacity(0.7), in: .capsule)
                 .accessibilityLabel(text)
                 .accessibilityIdentifier("modeBadge")
         }

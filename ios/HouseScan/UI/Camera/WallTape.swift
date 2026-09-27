@@ -360,7 +360,10 @@ struct WallTape: View {
     private func percentSeen(in range: ClosedRange<Float>) -> Int {
         let states = coverage.wall.indices.filter { range.overlaps(coverage.cellRange($0)) }.map { coverage.wall[$0] }
         guard !states.isEmpty else { return 0 }
-        return Int((Double(states.filter { $0 == .seen || $0 == .covered }.count) / Double(states.count) * 100).rounded())
+        // Split up: as one expression it took the type checker over 60 ms.
+        let seen = Double(states.filter { $0 == .seen || $0 == .covered }.count)
+        let fraction = seen / Double(states.count)
+        return Int((fraction * 100).rounded())
     }
 }
 
