@@ -6,8 +6,8 @@ import SwiftUI
 /// height. A blur or fade between them left both lines half-transparent for a moment, which the
 /// accessibility audit reported as low contrast and, for the outgoing line, as clipped text
 /// (the marking prompt, the end question). When the task changes, the reply under the words
-/// swaps with them. Coaching takes the same slot with an amber icon so a problem replaces the
-/// instruction instead of stacking on top of it.
+/// swaps with them. Coaching shows in the same slot, marked with an amber icon; the screen
+/// decides whether its words stand in for the task's or go under them.
 struct InstructionCard: View {
     enum Tone: Equatable {
         case normal

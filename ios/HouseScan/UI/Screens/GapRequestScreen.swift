@@ -35,8 +35,9 @@ struct GapRequestScreen: View {
                         : "Skips this view. An installer will look at this part instead.",
                     perform: { actions.skipGap() },
                     // The request, not the coaching that can show over it: coaching coming and going
-                    // doesn't lock the reply again (InstructionCard.replyLock).
-                    task: state.gap.map { ScanCopy.gap($0) }
+                    // doesn't lock the reply again (InstructionCard.replyLock). Before the request
+                    // is known, the step's own words, for the same reason.
+                    task: state.gap.map { ScanCopy.gap($0) } ?? ScanCopy.guidance(.gap)
                 ),
                 eyebrow: followUps > 0 && state.gap?.isSatisfied != true ? ScanCopy.followUp(remaining: followUps) : nil,
                 photoCount: state.captureCount,
