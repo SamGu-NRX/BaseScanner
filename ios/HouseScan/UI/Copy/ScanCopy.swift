@@ -257,6 +257,24 @@ enum ScanCopy {
         }
     }
 
+    /// Under an AC unit on the review: one tap gives no size, so the scene sends it as a square
+    /// of `SceneExport.acAssumedSide` (#72), and the homeowner is told the size is assumed.
+    static let acAssumedSize: String = {
+        let side = Distance.feetAndInches(SceneExport.acAssumedSide)
+        return "Assumed about \(side) \u{00D7} \(side)"
+    }()
+    /// `acAssumedSize` for VoiceOver, which reads "ft" as letters.
+    static let acAssumedSizeSpoken: String = {
+        let side = Distance.spoken(SceneExport.acAssumedSide)
+        return "Assumed about \(side) by \(side)"
+    }()
+
+    /// The window question's way out: sent as unknown, like no answer.
+    static let windowNotSure = "Not sure"
+
+    /// Over "Looks complete" after its first tap found a question unanswered (#65).
+    static let reviewUnanswered = "A question above has no answer yet. Answer it, or tap Looks complete again to send."
+
     /// Under a reviewed mark that lies wholly past a marked end (`ScanViewState.featuresPastEnds`).
     static let featurePastEnd = "Past the end of your scan"
 
