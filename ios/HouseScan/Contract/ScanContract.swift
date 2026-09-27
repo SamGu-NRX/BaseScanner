@@ -29,6 +29,8 @@ enum ScanPhase: String, Sendable, CaseIterable {
     case markFeatures
     case gapRequest
     case uploading
+    /// Before the result: is anything standing where the answer's spot would go (`SpotCheck`)?
+    case spotConfirm
     case result
     case resultAR
     case unsupported
@@ -573,6 +575,9 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// The `MissingEvidence.id` of the first view that would settle this check, when the server
+    /// named one.
+    var settledBy: String? = nil
 }
 
 struct MissingEvidence: Identifiable, Equatable, Sendable {
@@ -580,6 +585,8 @@ struct MissingEvidence: Identifiable, Equatable, Sendable {
     var text: String
     /// True when another view can resolve it now; false means it goes to installer review.
     var capturable: Bool
+    /// The `CheckRow.id`s this view settles, as the server listed them.
+    var checkIDs: [String] = []
 }
 
 struct BatterySpot: Equatable, Sendable {
@@ -609,12 +616,23 @@ struct ResultPresentation: Equatable, Sendable {
     }
 
     var decision: Decision
-    /// The server's one-sentence summary.
+    /// The server's one-sentence summary, without `rulesNotice`.
     var summary: String = ""
     /// False while the server's rules hold placeholder values: every would-be pass or reject is
     /// then manual_review, and the screen should say the rules aren't final.
     var policyApproved: Bool = true
+    /// Whose rules decided, from the server ("Demo rules: ... not Base's."), to show with the
+    /// answer. Nil when the rules need no such label.
+    var rulesNotice: String? = nil
+    /// The first eight characters of the rules' SHA-256 (`policy.rules_sha256`), so a reviewer
+    /// can tell which rules answered.
+    var rulesHash: String? = nil
     var spot: BatterySpot?
+    /// When there is no spot: the spot the server found closest to passing.
+    var nearestSpot: BatterySpot? = nil
+    /// The `CheckRow.id` of the first check `nearestSpot` fails. Without a spot, `checks` are the
+    /// checks at `nearestSpot`.
+    var nearestFailingCheck: String? = nil
     /// Cable route as (s, height) points along the wall, meters, from the meter to the spot.
     var cableRoute: [SIMD2<Float>]
     var cableLength: Float?
@@ -626,6 +644,47 @@ struct ResultPresentation: Equatable, Sendable {
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool
+}
+
+// MARK: - Spot check
+
+/// The homeowner's answer to the spot check.
+enum SpotCheckAnswer: Equatable, Sendable {
+    /// Nothing stands in the area: the result is shown.
+    case clear
+    /// Something stands there: the scan stops claiming that area and is checked again.
+    case somethingThere
+}
+
+/// The one question asked before an answer's spot is shown as the result: is anything standing
+/// in front of the wall, or on the ground, in the area around the spot? A photo can claim wall
+/// and ground behind a bush, and a walked path can pass over something low, so the scan's claims
+/// there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
+/// "Bounded exceptions"). Meters of s along the wall and out from it, like `BatterySpot`.
+struct SpotCheck: Equatable {
+    /// Counts the checks of a scan.
+    let id: Int
+    /// The spot's footprint along the wall and out from it.
+    var spot: ClosedRange<Float>
+    var spotOut: ClosedRange<Float>
+    var spotHeight: Float
+    /// The whole area asked about: the footprint and the clearance zone around it.
+    var area: ClosedRange<Float>
+    var areaDepth: Float
+    /// The kept photo that shows the area best; nil when none does, and the question is asked
+    /// about the place itself.
+    var photo: Photo?
+    /// Nil until answered. The answer stays up a moment before the flow moves on.
+    var answer: SpotCheckAnswer?
+    /// The spot is the bundled sample's, not a server's (`ResultPresentation.isSample`).
+    var isSample: Bool
+
+    struct Photo: Equatable {
+        /// The unrotated landscape sensor image. Draw it rotated 90° clockwise, as `CameraFeed.still`.
+        var image: CGImage
+        /// Where it was taken, for drawing the area over it.
+        var projection: CameraProjection
+    }
 }
 
 // MARK: - State and intents
@@ -653,6 +712,22 @@ final class ScanViewState {
     var closeUpFailedAttempts = 0
     /// Nil until the close-up photo is taken.
     var meterNumber: MeterNumberState?
+    /// The meter's maker as read from the close-up, shown above the number candidates. It exists
+    /// only beside those candidates or the number confirmed from them: while `meterNumber` is
+    /// nil, reading or skipped it is nil, so a brand from an earlier photo can't outlive its
+    /// number through a retake, a skip or a new close-up. The homeowner can reject it
+    /// (`rejectMeterBrand`). Like the number, it stays on the phone.
+    var meterBrand: String? {
+        get {
+            switch meterNumber {
+            case .choose, .confirmed: offeredMeterBrand
+            case .reading, .skipped, nil: nil
+            }
+        }
+        set { offeredMeterBrand = newValue }
+    }
+    /// Storage for `meterBrand`, set with the candidates it was read with. Read `meterBrand`.
+    private var offeredMeterBrand: String?
 
     var captureCount = 0
     var lastCapture: CaptureEvent?
@@ -684,6 +759,9 @@ final class ScanViewState {
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
+    /// The spot check of the result's spot: the question during `.spotConfirm`, and the answer
+    /// that stands for the spot on the result.
+    var spotCheck: SpotCheck?
     /// True while the AR result is drawn into the live camera, where people and objects in front
     /// of it hide it. The AR screen then draws no overlay of its own.
     var resultInCamera = false
@@ -726,6 +804,8 @@ protocol ScanActions: AnyObject {
     /// The homeowner's pick from `MeterNumberState.choose`; nil means "None of these", which
     /// asks for a retake.
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?)
+    /// "Not <brand>" beside the number candidates: drops `ScanViewState.meterBrand`.
+    func rejectMeterBrand()
     /// Marks a wall end where `point` meets the wall, on whichever side of the meter that is.
     func markWallEnd(at point: CGPoint?, viewSize: CGSize)
     /// "Wall ends here" during the walk: ends the wall on the side being walked where
@@ -764,6 +844,8 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
+    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
+    func answerSpotCheck(clear: Bool)
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()
