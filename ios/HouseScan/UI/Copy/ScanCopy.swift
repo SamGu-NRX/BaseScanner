@@ -405,9 +405,12 @@ enum ScanCopy {
     }
 
     /// "Settles: distance from the gas meter, clear space in front": the checks a requested view
-    /// would settle, by their titles. Nil when it names none this result has.
+    /// would settle, by their titles. A check a person has to judge (a borderline measurement, an
+    /// unknown attribute) stays off the list: another view doesn't settle it. Nil when none is left.
     static func settles(_ item: MissingEvidence, checks: [CheckRow]) -> String? {
-        let titles = item.checkIDs.compactMap { id in checks.first { $0.id == id }?.title.lowercasedFirst }
+        let titles = item.checkIDs.compactMap { id in
+            checks.first { $0.id == id && !$0.needsPerson }?.title.lowercasedFirst
+        }
         guard !titles.isEmpty else { return nil }
         return "Settles: \(titles.joined(separator: ", "))"
     }
