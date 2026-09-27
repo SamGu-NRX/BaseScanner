@@ -431,12 +431,12 @@ extension ScanEngine: ScanActions {
     }
 
     func showAR() {
-        guard state.phase == .result, state.spatialResultAvailable else { return }
+        guard state.phase == .result, state.spatialResultAvailable, acceptedAnswerIsCurrent(at: "the AR view") else { return }
         go(.resultAR)
     }
 
     func closeAR() {
-        guard state.phase == .resultAR else { return }
+        guard state.phase == .resultAR, acceptedAnswerIsCurrent(at: "the result") else { return }
         go(.result)
     }
 
