@@ -1411,12 +1411,20 @@ final class ScanEngine {
         // the main actor without a break, so nothing can move the wall between that measurement
         // and the export. If the wall keeps moving, the mesh's measurements are left out: less
         // evidence, never evidence about another wall.
-        let meshSnapshot = live?.meshSnapshot()
+        //
+        // The mesh is read again on each attempt, with the wall, so both are in the frame ARKit
+        // reports at that moment: a mesh read before a correction and measured against the
+        // corrected wall would put an overhang at the old height (a 0.2 m lower ground reads a
+        // 2 m overhang as 2.2 m). The packet gets the snapshot the measurement used.
+        var meshSnapshot = live?.meshSnapshot()
         var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh {
+        if meshSnapshot != nil {
             var agreed = false
             for _ in 0..<3 {
                 guard let map = coverage else { break }
+                // Without a session nothing corrects the wall, so the last snapshot still agrees.
+                if let fresh = live?.meshSnapshot() { meshSnapshot = fresh }
+                guard let mesh = meshSnapshot?.mesh else { break }
                 let wall = map.wall
                 let span = Self.exportSpan(map)
                 let result = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
@@ -1429,7 +1437,8 @@ final class ScanEngine {
                 RuntimeLog.engine.info("mesh: the wall moved while it was measured; measuring again")
             }
             if !agreed { RuntimeLog.engine.error("mesh: the wall kept moving; the scene goes without the mesh's measurements") }
-            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
+            let mesh = meshSnapshot?.mesh
+            RuntimeLog.engine.info("mesh: \(mesh?.vertices.count ?? 0) vertices, \((mesh?.indices.count ?? 0) / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data
         do {
