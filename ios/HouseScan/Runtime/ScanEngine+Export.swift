@@ -191,30 +191,7 @@ extension ScanEngine {
             SceneWall(meter: $0.wall.meter, outward: $0.wall.outward, groundY: $0.wall.groundY, leftCorners: $0.wall.leftCorners, rightCorners: $0.wall.rightCorners)
         }
 
-        var spot: BatterySpot?
-        if let placed = result.spot {
-            // Placed by its `span_ft`, its stretch in s along the wall chain, which the screens
-            // turn into world points piece by piece (`WallGeometry.world(s:)`), so a spot round a
-            // corner lands on the right piece and still moves with the meter's anchor. The meter
-            // offset split along the spot's own `along` gave s only on the meter's piece: past a
-            // corner it measured along the other piece's direction and drew the spot on the
-            // meter's wall. Both s and the depth below are frame-free, so the bundled sample (in
-            // its own frame) still means the same on any wall.
-            let low = meters(min(placed.spanFt.x, placed.spanFt.y))
-            let high = meters(max(placed.spanFt.x, placed.spanFt.y))
-            let depth = meters(placed.depthFt)
-            // How far the footprint's centre stands out from its back edge (back-left and
-            // back-right corners come first), along the spot's own outward: the gap to the wall
-            // is what exceeds half the depth. The server puts the back on the wall line. Decoding
-            // refuses a footprint without exactly four corners.
-            let d = placed.center - (placed.footprint[0] + placed.footprint[1]) / 2
-            let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
-            spot = BatterySpot(
-                span: low...high,
-                depth: depth, height: meters(placed.heightFt),
-                offsetFromWall: max(0, centerOut - depth / 2)
-            )
-        }
+        let spot = result.spot.map(Self.batterySpot)
 
         var route: [SIMD2<Float>] = []
         if let cable = result.route {
@@ -247,10 +224,10 @@ extension ScanEngine {
         let checks = result.checks.map { check in
             CheckRow(
                 id: check.id, title: check.label, outcome: Self.outcome(check.outcome), reason: check.reason,
-                // An UNSURE with no cause is unexplained, so a person has to look at it.
-                needsPerson: check.outcome == .unsure && (check.unsureCause.map { [.margin, .unknownAttribute, .ruleRequiresReview].contains($0) } ?? true),
+                needsPerson: check.needsPerson,
                 measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters),
-                comparison: check.comparison.map(Self.comparison)
+                comparison: check.comparison.map(Self.comparison),
+                settledBy: result.evidenceIndex(settling: check.id).map(Self.missingID)
             )
         }
 
@@ -273,13 +250,14 @@ extension ScanEngine {
 
         let missing = result.missingEvidence.enumerated().map { index, item in
             MissingEvidence(
-                id: "missing-\(index)", text: item.message,
+                id: Self.missingID(index), text: item.message,
                 // Only when a gap request can be built from it: a band item needs its span (and
                 // a facing item its out_ft, which a walk can reach), a past_end item its side.
                 // Otherwise the button would do nothing. A request the homeowner already skipped
                 // or answered with something overhead stays with the installer.
                 capturable: gapPlanner.plan(for: item, leftEnd: coverage?.leftEnd, rightEnd: coverage?.rightEnd, limitEnds: coverage?.limitEnds ?? [])
-                    .map { !skippedGaps.contains($0) } ?? false
+                    .map { !skippedGaps.contains($0) } ?? false,
+                checkIDs: item.checks ?? []
             )
         }
 
@@ -295,9 +273,13 @@ extension ScanEngine {
 
         return ResultPresentation(
             decision: Self.decision(result.decision),
-            summary: result.summary,
+            // The solver ends the summary with the policy notice; the screen shows it apart.
+            summary: result.summaryWithoutNotice,
             policyApproved: result.policy.autoApprove,
+            rulesNotice: result.policy.notice.flatMap { $0.isEmpty ? nil : $0 },
             spot: spot,
+            nearestSpot: result.nearestConsidered.map(Self.batterySpot),
+            nearestFailingCheck: result.nearestFailure?.id,
             cableRoute: route,
             cableLength: result.route.map { meters($0.lengthFt) },
             checks: checks,
@@ -305,6 +287,36 @@ extension ScanEngine {
             missing: missing,
             unseenSide: unseen,
             isSample: isSample
+        )
+    }
+
+    static func missingID(_ index: Int) -> String {
+        "missing-\(index)"
+    }
+
+    /// A server spot in wall terms: its stretch of s, size and gap to the wall, meters.
+    ///
+    /// Placed by its `span_ft`, its stretch in s along the wall chain, which the screens turn into
+    /// world points piece by piece (`WallGeometry.world(s:)`), so a spot round a corner lands on
+    /// the right piece and still moves with the meter's anchor. The meter offset split along the
+    /// spot's own `along` gave s only on the meter's piece: past a corner it measured along the
+    /// other piece's direction and drew the spot on the meter's wall. Both s and the depth below
+    /// are frame-free, so the bundled sample (in its own frame) still means the same on any wall.
+    static func batterySpot(_ placed: PlacementSpot) -> BatterySpot {
+        let meters: (Double) -> Float = { Float($0 * 0.3048) }
+        let low = meters(min(placed.spanFt.x, placed.spanFt.y))
+        let high = meters(max(placed.spanFt.x, placed.spanFt.y))
+        let depth = meters(placed.depthFt)
+        // How far the footprint's centre stands out from its back edge (back-left and back-right
+        // corners come first), along the spot's own outward: the gap to the wall is what exceeds
+        // half the depth. The server puts the back on the wall line. Decoding refuses a footprint
+        // without exactly four corners.
+        let d = placed.center - (placed.footprint[0] + placed.footprint[1]) / 2
+        let centerOut = meters(d.x * placed.outward.x + d.y * placed.outward.y)
+        return BatterySpot(
+            span: low...high,
+            depth: depth, height: meters(placed.heightFt),
+            offsetFromWall: max(0, centerOut - depth / 2)
         )
     }
 
