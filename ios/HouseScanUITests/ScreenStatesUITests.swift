@@ -49,6 +49,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
+        ("result-reject", ["-uiDemoPhase", "result", "-uiDemoReject"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
         ("arUnsupported", ["-uiDemoFailure", "arUnsupported"], "unsupported"),
@@ -76,6 +77,10 @@ final class ScreenStatesUITests: XCTestCase {
         "markFeatures-lostPlace": ("review.lostPlace", "Your phone lost its place"),
         // #40: an overlap reads as one, not as clearance.
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
+        // The answer comes from the checks: an unsure ground check a view settles.
+        "result-review": ("result.headline", "One more look"),
+        // A reject names the closest spot and the check it fails.
+        "result-reject": ("result.nearest", "The closest spot"),
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -158,6 +163,8 @@ final class ScreenStatesUITests: XCTestCase {
         showAR.tap()
         XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 10))
         tap(app, "action.closeAR")
+        // Start over sits under Details, last.
+        tap(app, "result.details", timeout: 10)
         let startOver = element(app, "action.startOver")
         XCTAssertTrue(startOver.waitForExistence(timeout: 10))
         app.swipeUp()
@@ -286,7 +293,9 @@ final class ScreenStatesUITests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         if Self.shareStates.contains(where: { name == $0 || name == "\($0)-AX5" }) {
-            XCTAssertTrue(element(app, "action.shareScan").exists, "\(name): Share scan is missing")
+            // The result keeps Share scan under Details.
+            if screen == "result" { tap(app, "result.details") }
+            XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
         if let expected = Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] {
             let found: Bool

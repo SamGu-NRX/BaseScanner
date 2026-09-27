@@ -1,3 +1,4 @@
+import HouseScanKit
 import RealityKit
 import SwiftUI
 import UIKit
@@ -6,6 +7,10 @@ import UIKit
 // where the server placed it, the cable run between them and the clearance zones tinted by
 // outcome. Seeing the battery on your own wall is the moment the scan pays off, so the view opens
 // with a short camera sweep that settles on the battery, then lets the homeowner turn it.
+//
+// A spot that isn't a clean fit gets no battery, only a dashed outline of its footprint on the
+// ground: amber or red for a spot that might stand in the meter's working space
+// (`ResultPresentation.spotIsClean`), red for the closest spot of a result without one.
 //
 // Everything is built in the wall frame of `WallGeometry`, not in ARKit world coordinates:
 // x = s (meters along the wall, + to the right), y = height above the ground, z = meters out
@@ -79,9 +84,10 @@ struct ResultScene3D: View {
         static let introSeconds = 1.6
     }
 
-    /// The point the camera circles: the battery's center when there is one, else the meter.
+    /// The point the camera circles: the battery's (or the closest spot's) center when there is
+    /// one, else the meter.
     private var orbitTarget: SIMD3<Float> {
-        if let spot = result.spot {
+        if let spot = result.spot ?? result.nearestSpot {
             let mid = (spot.span.lowerBound + spot.span.upperBound) / 2
             return SIMD3(mid, spot.height / 2, spot.offsetFromWall + spot.depth / 2)
         }
@@ -148,6 +154,7 @@ struct ResultScene3D: View {
     private var wallExtent: ClosedRange<Float> {
         var spans: [ClosedRange<Float>] = [0...0]
         if let spot = result.spot { spans.append(spot.span) }
+        if let spot = result.nearestSpot { spans.append(spot.span) }
         spans += features.map(\.span)
         spans += result.clearances.map(\.span)
         spans += result.cableRoute.map { $0.x...$0.x }
@@ -187,7 +194,16 @@ struct ResultScene3D: View {
         }
 
         addCable(to: root)
-        if let spot = result.spot { addBattery(spot, to: root) }
+        if let spot = result.spot {
+            if result.spotIsClean {
+                addBattery(spot, to: root)
+            } else {
+                addFootprintOutline(spot, color: SceneColor.ink(workingSpaceOutcome), to: root)
+            }
+        }
+        if let nearest = result.nearestSpot {
+            addFootprintOutline(nearest, color: SceneColor.ink(.fail), to: root)
+        }
         addLights(to: root)
         return root
     }
@@ -239,6 +255,45 @@ struct ResultScene3D: View {
         root.addChild(box(width: 0.04, height: spot.height * 0.7, depth: 0.006,
                           center: SIMD3(centerX, spot.height / 2, front + 0.003), material: UnlitMaterial(color: SceneColor.signal)))
     }
+
+    /// How the meter working-space check came out at the spot: `.unsure` when it isn't clean
+    /// for any other reason, so the outline never reads as a clear fail without one.
+    private var workingSpaceOutcome: CheckOutcome {
+        result.checks.contains { $0.id == ResultReading.meterWorkingSpaceCheckID && $0.outcome == .fail } ? .fail : .unsure
+    }
+
+    /// A dashed outline of a footprint on the ground: where a battery would stand, drawn without
+    /// one. Dashes start at each corner and the gaps stretch to fit, so every corner reads.
+    private func addFootprintOutline(_ spot: BatterySpot, color: UIColor, to root: Entity) {
+        let material = UnlitMaterial(color: color)
+        let left = spot.span.lowerBound, right = spot.span.upperBound
+        let back = spot.offsetFromWall, front = spot.offsetFromWall + spot.depth
+        // Above the clearance zones (6 mm plus 3 mm a zone) so they don't cover it.
+        let lift: Float = 0.02
+        let edges: [(SIMD2<Float>, SIMD2<Float>)] = [
+            (SIMD2(left, back), SIMD2(right, back)), (SIMD2(right, back), SIMD2(right, front)),
+            (SIMD2(right, front), SIMD2(left, front)), (SIMD2(left, front), SIMD2(left, back)),
+        ]
+        for (from, to) in edges {
+            let length = simd_distance(from, to)
+            guard length > 0.01 else { continue }
+            let direction = (to - from) / length
+            let count = max(1, Int(((length + Self.dashGap) / (Self.dash + Self.dashGap)).rounded()))
+            let gap = count > 1 ? (length - Float(count) * Self.dash) / Float(count - 1) : 0
+            let dash = count > 1 ? Self.dash : length
+            for index in 0..<count {
+                let start = from + direction * Float(index) * (dash + gap)
+                let middle = start + direction * dash / 2
+                let horizontal = abs(direction.x) > abs(direction.y)
+                root.addChild(box(width: horizontal ? dash : Self.lineWidth, height: 0.004, depth: horizontal ? Self.lineWidth : dash,
+                                  center: SIMD3(middle.x, lift, middle.y), material: material))
+            }
+        }
+    }
+
+    private static let dash: Float = 0.1
+    private static let dashGap: Float = 0.06
+    private static let lineWidth: Float = 0.03
 
     private func addCable(to root: Entity) {
         let points = result.cableRoute.map { SIMD3($0.x, $0.y, 0.03) }
@@ -295,7 +350,13 @@ struct ResultScene3D: View {
 
     /// Lengths are spelled out: VoiceOver reads "ft" and "in" as letters (B-16).
     private var accessibilitySummary: String {
-        guard let spot = result.spot else { return "No battery spot shown" }
+        guard let spot = result.spot else {
+            guard let nearest = result.nearestSpot else { return "No battery spot shown" }
+            return "No battery spot. The closest spot tried is outlined \(Self.spokenPlace(nearest.span))"
+        }
+        guard result.spotIsClean else {
+            return "Possible battery spot outlined \(Self.spokenPlace(spot.span)), for an installer to confirm"
+        }
         var parts: [String]
         if spot.span.lowerBound > 0 {
             parts = ["Battery \(Distance.spoken(spot.span.lowerBound)) right of your meter"]
@@ -308,6 +369,12 @@ struct ResultScene3D: View {
             parts.append("cable \(Distance.spoken(cable))")
         }
         return parts.joined(separator: ", ")
+    }
+
+    private static func spokenPlace(_ span: ClosedRange<Float>) -> String {
+        if span.lowerBound > 0 { return "\(Distance.spoken(span.lowerBound)) right of your meter" }
+        if span.upperBound < 0 { return "\(Distance.spoken(-span.upperBound)) left of your meter" }
+        return "below your meter"
     }
 }
 
@@ -413,6 +480,16 @@ private enum SceneColor {
     static var gas: UIColor { rgb(0xD9B84A) }
     static var driveway: UIColor { rgb(0x5A5E63) }
     static var fence: UIColor { rgb(0x9A8466) }
+
+    /// `Palette.outcomeInk`: the darker outcome colors, for lines that must stand out on the
+    /// light ground rather than tint it.
+    static func ink(_ outcome: CheckOutcome) -> UIColor {
+        switch outcome {
+        case .pass: UIColor(red: 0.08, green: 0.50, blue: 0.26, alpha: 1)
+        case .unsure: UIColor(red: 0.56, green: 0.36, blue: 0.0, alpha: 1)
+        case .fail: UIColor(red: 0.76, green: 0.16, blue: 0.12, alpha: 1)
+        }
+    }
 
     static func outcome(_ outcome: CheckOutcome) -> UIColor {
         switch outcome {

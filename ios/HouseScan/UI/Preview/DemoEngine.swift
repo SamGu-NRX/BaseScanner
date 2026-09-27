@@ -13,6 +13,8 @@ final class DemoEngine: ScanActions {
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
     private let overlapResult: Bool
+    /// `-uiDemoReject`: no spot within reach; the closest one is too near the window.
+    private let rejectResult: Bool
     private let rejectUpload: Bool
     /// Which request the gap screen shows (`-uiDemoGap`); the phone's ground request by default.
     private let gapKind: String?
@@ -58,6 +60,7 @@ final class DemoEngine: ScanActions {
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
+        rejectResult = arguments.contains("-uiDemoReject")
         rejectUpload = arguments.contains("-uiDemoRejected")
         gapKind = value("-uiDemoGap")
         state.feed = DemoScene.image.map(CameraFeed.still) ?? .none
@@ -467,6 +470,7 @@ final class DemoEngine: ScanActions {
     private var sample: ResultPresentation {
         if passResult { return Self.passSample }
         if overlapResult { return Self.overlapSample }
+        if rejectResult { return Self.rejectSample }
         guard followedUp else { return Self.reviewSample }
         return followUpSkipped ? Self.reviewSample.withFollowUpSkipped : Self.reviewSample.withFollowUpTaken
     }
@@ -937,7 +941,7 @@ final class DemoEngine: ScanActions {
                      reason: "The window is close to the spot's right edge.",
                      needsPerson: true, measured: 0.86, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
             CheckRow(id: "ground", title: "Ground under the spot", outcome: .unsure,
-                     reason: "Part of the ground was only seen from one place.", needsPerson: false),
+                     reason: "Part of the ground was only seen from one place.", needsPerson: false, settledBy: "ground-right"),
             CheckRow(id: "ac", title: "Distance from the AC unit", outcome: .pass,
                      reason: "The AC unit is far enough to the right."),
         ],
@@ -946,8 +950,10 @@ final class DemoEngine: ScanActions {
             ClearanceZone(id: "window", label: "Window", outcome: .unsure, span: 1.3...2.2, depth: 0.9),
         ],
         missing: [
-            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true),
-            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false),
+            MissingEvidence(id: "ground-right", text: "A second look at the ground just right of the spot.", capturable: true,
+                            checkIDs: ["ground"]),
+            MissingEvidence(id: "window-opens", text: "Whether the window next to the spot opens.", capturable: false,
+                            checkIDs: ["window"]),
         ],
         isSample: true
     )
@@ -962,6 +968,35 @@ final class DemoEngine: ScanActions {
                      needsPerson: true, measured: -0.3048, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
             at: 0
         )
+        return sample
+    }()
+
+    /// No spot within reach: the closest one, right of the meter, stands 4 in from the window.
+    /// Made-up numbers.
+    static let rejectSample: ResultPresentation = {
+        var sample = reviewSample
+        sample.decision = .reject
+        sample.policyApproved = true
+        sample.summary = "No spot within reach works: every spot fails opening clearance."
+        sample.spot = nil
+        sample.cableRoute = []
+        sample.cableLength = nil
+        sample.nearestSpot = BatterySpot(span: 1.3...2.09, depth: 0.56, height: 1.1, offsetFromWall: 0.03)
+        sample.nearestFailingCheck = "window"
+        sample.checks = [
+            CheckRow(id: "wall", title: "Wall behind the spot", outcome: .pass,
+                     reason: "Flat, solid wall behind the whole spot."),
+            CheckRow(id: "window", title: "Distance from the window", outcome: .fail,
+                     reason: "The window is 4 in from the spot's right edge.",
+                     measured: 0.11, threshold: 0.91, plusMinus: 0.1, comparison: .atLeast),
+            CheckRow(id: "route", title: "Cable run length", outcome: .pass,
+                     reason: "The cable run is short.", measured: 1.9, threshold: 6.1, plusMinus: 0.1, comparison: .atMost),
+        ]
+        sample.clearances = [
+            ClearanceZone(id: "window", label: "Window", outcome: .fail, span: 1.3...2.2, depth: 0.9),
+        ]
+        sample.missing = []
+        sample.unseenSide = nil
         return sample
     }()
 
