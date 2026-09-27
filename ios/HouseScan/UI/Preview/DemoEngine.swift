@@ -147,6 +147,7 @@ final class DemoEngine: ScanActions {
         }
         if arguments.contains("-uiDemoMeterChoose") {
             state.closeUp = .captured(DemoScene.meterThumbnail)
+            state.meterBrand = Self.demoBrand
             state.meterNumber = .choose(Self.demoCandidates)
         }
         // Frozen, the upload script never runs, so show where it would end.
@@ -367,6 +368,7 @@ final class DemoEngine: ScanActions {
         state.meterNumber = .reading
         guard await pause(1.2) else { return }
         // Waits here for the homeowner's pick (`chooseMeterNumber`).
+        state.meterBrand = Self.demoBrand
         state.meterNumber = .choose(Self.demoCandidates)
     }
 
@@ -631,6 +633,11 @@ final class DemoEngine: ScanActions {
         enterWalk()
     }
 
+    func rejectMeterBrand() {
+        guard case .choose = state.meterNumber else { return }
+        state.meterBrand = nil
+    }
+
     func chooseMeterNumber(_ candidate: MeterNumberCandidate?) {
         guard case .choose = state.meterNumber else { return }
         guard let candidate else {
@@ -850,6 +857,9 @@ final class DemoEngine: ScanActions {
     }
 
     // MARK: Sample data
+
+    /// The made-up meter's maker, as `MeterBrand.read` would name it.
+    static let demoBrand = "Itron"
 
     /// Made-up readings of a made-up meter: the barcode-confirmed one first, then two near
     /// misses the way a reader confuses 8 with 6 and 3 with 8.
