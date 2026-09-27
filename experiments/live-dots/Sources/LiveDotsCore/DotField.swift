@@ -47,7 +47,6 @@ public typealias VoxelKey = SIMD3<Int32>
 /// What one 5 cm voxel has accumulated.
 public struct Voxel: Sendable {
     public let firstSeenFrame: Int
-    public internal(set) var lastSeenFrame: Int
     public internal(set) var hitCount: Int
     public internal(set) var views: ViewDirections
     /// Sum of per-keyframe unit normals: set by the first hit, averaged by later ones.
@@ -120,11 +119,10 @@ public struct VoxelField: Sendable {
     ) {
         let centre = centre(of: key)
         var voxel = voxels[key] ?? Voxel(
-            firstSeenFrame: frame, lastSeenFrame: frame, hitCount: 0, views: ViewDirections(), normalSum: .zero,
+            firstSeenFrame: frame, hitCount: 0, views: ViewDirections(), normalSum: .zero,
             jitter: Jitter.offset(for: key, normal: normal ?? SIMD3(0, 0, 1), cellSize: size),
             gradient: 0, faceOnCosine: -1, edgeSinceFrame: nil)
         voxel.hitCount += samples
-        voxel.lastSeenFrame = max(voxel.lastSeenFrame, frame)
         if let normal, simd_length(normal) > 1e-3 { voxel.normalSum += simd_normalize(normal) }
         voxel.gradient = max(voxel.gradient, gradient)
         voxel.views.insert(camera - centre)
@@ -349,7 +347,7 @@ public struct VoxelField: Sendable {
         return FieldDot(
             id: Self.id(for: key), position: centre + voxel.jitter, kind: kind,
             views: voxel.views.count, onOccluder: FieldDot.isOnOccluder(centre), faceOn: faceOn,
-            normal: voxel.normal ?? .zero, lastSeenFrame: voxel.lastSeenFrame)
+            normal: voxel.normal ?? .zero)
     }
 
     /// Packs the key into 21 bits per axis (plus or minus 52 km at 5 cm), so ids never collide.

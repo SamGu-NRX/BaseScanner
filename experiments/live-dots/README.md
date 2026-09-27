@@ -13,7 +13,7 @@ swift test
 
 `./make-video.sh` and `LiveDots --still` produced `results/`; its stills are downscaled to 800 px.
 
-`--scheme hologram|constellation|ember`, or the Look picker, switches between three looks for comparison: the current one, edges only joined by hairlines, and dots that cool from amber to white after the camera last saw them.
+`--scheme hologram|constellation|ember`, or the Look picker, switches between three looks for comparison: the current one, edges only joined by hairlines, and new dots born amber that cool to white over 6 s.
 
 The fixture is the synthetic wall from #10. The no-LiDAR mode is simulated from its depth: feature points use a 0.1 gradient, since ARKit finds them on brick texture too, and live while seen in 2 of the last 6 keyframes, where the real app would use 3 of 10 at frame rate.
 

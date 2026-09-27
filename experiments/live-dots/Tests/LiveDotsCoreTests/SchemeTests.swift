@@ -26,25 +26,31 @@ struct SchemeTests {
         #expect(links == [SIMD2(0, 1), SIMD2(1, 2), SIMD2(2, 3), SIMD2(3, 4)])
     }
 
-    @Test func `an ember dot re-warms when observed again`() throws {
-        var field = VoxelField()
-        let key = VoxelKey(0, 30, 0)
-        let camera = SIMD3<Float>(0, 1.5, 2.6)
-        field.observe(key, normal: SIMD3(0, 0, 1), gradient: 1, samples: 4, camera: camera, frame: 0)
-        field.classify(frame: 0)
-        let first = try #require(field.dots().first).lastSeenFrame
-        #expect(first == 0)
-        // Keyframe 30 is 7.5 s of playback later: a dot last seen at 0 has fully cooled.
-        let later = Float(30) / Tuning.keyframesPerSecond
-        #expect(DotScheme.warmth(at: later, lastSeen: 0) == 0)
-
-        field.observe(key, normal: SIMD3(0, 0, 1), gradient: 1, samples: 4, camera: camera, frame: 30)
-        let rewarmed = try #require(field.dots().first).lastSeenFrame
-        #expect(rewarmed == 30)
-        let lastSeen = Float(rewarmed) / Tuning.keyframesPerSecond
-        #expect(DotScheme.warmth(at: later, lastSeen: lastSeen) == 1)
-        #expect(abs(DotScheme.warmth(at: later + 3, lastSeen: lastSeen) - 0.5) < 1e-6)
-        #expect(DotScheme.warmth(at: later + 6, lastSeen: lastSeen) == 0)
+    @Test func `an ember dot cools from its birth and seeing it again never re-warms it`() throws {
+        // A 32 x 32 grey image and an empty depth map: nothing occludes, and only the timeline matters.
+        let image = RGBImage(width: 32, height: 32, rgba: [UInt8](repeating: 128, count: 32 * 32 * 4))
+        let depth = DepthMap(
+            meters: [Float](repeating: 0, count: 12), confidence: [UInt8](repeating: 2, count: 12),
+            width: 4, height: 3, intrinsics: SIMD4(500 * 4 / 640, 500 * 3 / 480, 2, 1.5))
+        func frame(_ index: Int) -> FrameInput {
+            FrameInput(index: index, keyframe: .fixtureStyle(x: 0, pitch: 0), depth: depth, gradient: GradientPyramid(image: image))
+        }
+        let position = SIMD3<Float>(0, 1.5, 0)
+        var builder = DotTimeline.Builder()
+        builder.append(frame(0), dots: [FieldDot(id: 1, position: position, kind: .flat, views: 1, onOccluder: false)], seen: [], instruction: .walkLeft)
+        // Keyframe 30, 7.5 s later: dot 1 is observed again, from a new direction, and has become
+        // an edge; dot 2 is new.
+        builder.append(frame(30), dots: [
+            FieldDot(id: 1, position: position, kind: .edge, views: 2, onOccluder: false),
+            FieldDot(id: 2, position: position + SIMD3(0.1, 0, 0), kind: .flat, views: 1, onOccluder: false),
+        ], seen: [], instruction: .walkLeft)
+        let sprites = try #require(builder.states.last).sprites
+        let old = try #require(sprites.first { $0.id == 1 }), new = try #require(sprites.first { $0.id == 2 })
+        let now = Float(30) / Tuning.keyframesPerSecond
+        #expect(old.birthTime == 0)
+        #expect(DotScheme.warmth(at: now, birth: old.birthTime) == 0)
+        #expect(DotScheme.warmth(at: now, birth: new.birthTime) == 1)
+        #expect(abs(DotScheme.warmth(at: now + 3, birth: new.birthTime) - 0.5) < 1e-6)
     }
 }
 

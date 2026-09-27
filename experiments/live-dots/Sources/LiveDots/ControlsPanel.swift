@@ -87,7 +87,7 @@ struct ControlsPanel: View {
         switch player.scheme {
         case .hologram: "Edge and surface dots; opacity rises with each new view."
         case .constellation: "Edges only, linked into outlines. The wall's surface shows nothing."
-        case .ember: "Dots are born amber and cool to white over 6 s after the camera last saw them."
+        case .ember: "New dots are born amber and cool to white over 6 s, so the newest part of the map glows."
         }
     }
 

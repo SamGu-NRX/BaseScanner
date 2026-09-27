@@ -211,14 +211,12 @@ struct SpriteVertex {
     var a: SIMD4<Float>
     var b: SIMD4<Float>
     var c: SIMD4<Float>
-    var d: SIMD4<Float>
 
     init(_ s: DotSprite) {
         func finite(_ t: Float) -> Float { min(max(t, -1e6), 1e6) }
         a = SIMD4(s.position, s.kind == .feature ? 1 : 0)
         b = SIMD4(finite(s.birthTime), s.fromOpacity, s.toOpacity, finite(s.opacityTime))
         c = SIMD4(finite(s.edgeSince), finite(s.deathTime), s.onOccluder ? 1 : 0, 0)
-        d = SIMD4(finite(s.lastSeenTime), 0, 0, 0)
     }
 
     var asHalo: SpriteVertex {

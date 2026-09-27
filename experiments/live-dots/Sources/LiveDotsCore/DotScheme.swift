@@ -6,7 +6,9 @@ public enum DotScheme: String, Sendable, CaseIterable {
     case hologram
     /// Edges only, joined by hairline links into a line drawing; the wall's surface shows nothing.
     case constellation
-    /// As hologram, but a dot is born amber and cools to white over 6 s after its last observation.
+    /// As hologram, but a dot is born amber and cools to white over the 6 s after its birth, so
+    /// the newest part of the map glows. Seeing a dot again never re-warms it: LiDAR re-measures
+    /// everything in view every keyframe, which kept the whole screen amber.
     case ember
 
     /// Whether a dot of `kind` draws at all.
@@ -24,8 +26,8 @@ public enum DotScheme: String, Sendable, CaseIterable {
     /// Seconds of playback for an ember dot to cool from amber to white.
     public static let emberCooling: Float = 6
 
-    /// 1 at the moment of observation, falling linearly to 0 after `emberCooling` seconds.
-    public static func warmth(at t: Float, lastSeen: Float) -> Float {
-        min(max(1 - (t - lastSeen) / emberCooling, 0), 1)
+    /// 1 at birth, falling linearly to 0 `emberCooling` seconds later.
+    public static func warmth(at t: Float, birth: Float) -> Float {
+        min(max(1 - (t - birth) / emberCooling, 0), 1)
     }
 }

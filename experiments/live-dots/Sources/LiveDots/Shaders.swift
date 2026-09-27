@@ -68,7 +68,6 @@ enum Shaders {
         float4 a;  // world xyz, 1 for a simulated feature point (fixed size), else 0
         float4 b;  // birth time, from opacity, to opacity, opacity change time
         float4 c;  // edge since, death time, violet (0 or 1), 1 for the halo sprite
-        float4 d;  // last observed time (ember), unused x3
     };
 
     struct DotUniforms {
@@ -106,8 +105,8 @@ enum Shaders {
         int scheme = int(u.scheme + 0.5f);
         float birth = strongEaseOut((t - visibleBirth(s, scheme)) / 0.35f);
         float evidence = mix(s.b.y, s.b.z, strongEaseOut((t - s.b.w) / 0.25f));
-        // Ember: amber at 90% when observed, cooling linearly to the evidence opacity over 6 s.
-        float warmth = scheme == 2 ? clamp(1.0f - (t - s.d.x) / 6.0f, 0.0f, 1.0f) : 0.0f;
+        // Ember: amber at 90% at birth, cooling linearly to the evidence opacity over 6 s.
+        float warmth = scheme == 2 ? clamp(1.0f - (t - s.b.x) / 6.0f, 0.0f, 1.0f) : 0.0f;
         evidence = mix(evidence, 0.9f, warmth);
         float fade = 1.0f - strongEaseOut((t - s.c.y) / 0.25f);
         float edge = strongEaseOut((t - s.c.x) / 0.25f);

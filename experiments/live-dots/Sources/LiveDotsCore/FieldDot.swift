@@ -25,12 +25,10 @@ public struct FieldDot: Sendable, Equatable {
     public let faceOn: Bool
     /// Unit surface normal, zero when unknown (feature points).
     public let normal: SIMD3<Float>
-    /// The last keyframe that observed it, for the ember scheme's cooling.
-    public let lastSeenFrame: Int
 
     public init(
         id: UInt64, position: SIMD3<Float>, kind: DotKind, views: Int, onOccluder: Bool, faceOn: Bool = true,
-        normal: SIMD3<Float> = .zero, lastSeenFrame: Int = 0
+        normal: SIMD3<Float> = .zero
     ) {
         self.id = id
         self.position = position
@@ -39,7 +37,6 @@ public struct FieldDot: Sendable, Equatable {
         self.onOccluder = onOccluder
         self.faceOn = faceOn
         self.normal = normal
-        self.lastSeenFrame = lastSeenFrame
     }
 
     public var opacity: Float {
