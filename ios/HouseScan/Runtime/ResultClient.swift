@@ -38,7 +38,9 @@ final class HTTPResultClient: ResultClient {
         let (data, response) = try await URLSession.shared.upload(for: request, from: scene, delegate: delegate)
         guard let http = response as? HTTPURLResponse else { throw UploadError.notHTTP }
         guard (200..<300).contains(http.statusCode) else {
-            throw UploadError.server(status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self))
+            throw UploadError.server(
+                status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self),
+                retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
         }
         progress(1)
         return data
@@ -47,13 +49,13 @@ final class HTTPResultClient: ResultClient {
 
 enum UploadError: Error, CustomStringConvertible {
     case notHTTP
-    case server(status: Int, body: String)
+    case server(status: Int, body: String, retryAfter: String? = nil)
     case missingSample
 
     var description: String {
         switch self {
         case .notHTTP: "The server's answer was not HTTP."
-        case .server(let status, let body): "The server answered \(status): \(body)"
+        case .server(let status, let body, _): "The server answered \(status): \(body)"
         case .missingSample: "SampleResult.json is missing from the app bundle."
         }
     }
@@ -65,8 +67,8 @@ enum UploadError: Error, CustomStringConvertible {
 enum UploadFailure {
     /// A failure while sending or reading the answer (not while packaging the scan).
     static func state(for error: any Error) -> UploadState {
-        let kind: UploadFailureKind = if case .server(let status, _) = error as? UploadError {
-            UploadFailureKind.classify(httpStatus: status)
+        let kind: UploadFailureKind = if case .server(let status, _, let retryAfter) = error as? UploadError {
+            UploadFailureKind.classify(httpStatus: status, retryAfter: retryAfter)
         } else {
             UploadFailureKind.classify(error)
         }
@@ -77,11 +79,23 @@ enum UploadFailure {
             .failed(message: "We couldn't reach the House Scan server. Your scan is saved on this phone, so you can try again.", offline: false)
         case .serverError:
             .failed(message: "The House Scan server had a problem. Your scan is saved on this phone, so you can try again.", offline: false)
+        case .busy(let retryAfter):
+            .failed(message: busyMessage(retryAfter), offline: false)
         case .refused:
             .rejected(message: "The server couldn't use this scan. Go back to the review to check your marks, or start over.")
         case .unreadableAnswer:
             .rejected(message: "We couldn't read the server's answer. Go back to the review and send it again, or start over.")
         }
+    }
+
+    /// A busy server: when it said how long to wait, the homeowner hears that, rounded up to a
+    /// minute past 90 seconds; either way the scan is kept and "Try again" is offered.
+    static func busyMessage(_ retryAfter: Int?) -> String {
+        let wait: String? = retryAfter.map { seconds in
+            seconds <= 90 ? "about \(max(seconds, 1)) seconds" : "about \((seconds + 59) / 60) minutes"
+        }
+        let when = wait.map { "Try again in \($0)." } ?? "Try again in a moment."
+        return "The House Scan server is busy. Your scan is saved on this phone. \(when)"
     }
 
     /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked

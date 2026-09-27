@@ -140,7 +140,7 @@ final class FullFlowUITests: XCTestCase {
             var found: [String: String] = [:]
             try app.performAccessibilityAudit { issue in
                 let element = issue.element
-                let key = "\(issue.auditType.rawValue)|\(element?.identifier ?? "")|\(element?.label ?? "")"
+                let key = AuditIssueKey.key(auditType: issue.auditType.rawValue, identifier: element?.identifier, label: element?.label)
                 // Only the identifier and label: reading the element's type or frame queries it live,
                 // and an element that has gone records a snapshot failure the retry can't catch
                 // (CI run 36260279300).
@@ -164,8 +164,7 @@ final class FullFlowUITests: XCTestCase {
         // as ScreenStatesUITests' audit also allows for.
         Thread.sleep(forTimeInterval: 6.0)
         let second = try passRetrying()
-        let persistent = first.keys.filter { second[$0] != nil }.sorted()
-        for key in persistent {
+        for key in AuditIssueKey.repeated(first, second) {
             let text = "screen.\(screen): \(second[key] ?? key)"
             if Self.environment["HOUSESCAN_AUDIT_REPORT_ONLY"] == "1" {
                 let note = XCTAttachment(string: text)

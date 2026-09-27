@@ -63,6 +63,9 @@ struct BatteryOverlay: View, Animatable {
     var result: ResultPresentation
     var rise: Double
 
+    /// With Reduce Motion the box stands at full height from the start and `rise` only fades it in.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     /// Lets `withAnimation` interpolate the rise; a Canvas alone would jump to the end value.
     var animatableData: Double {
         get { rise }
@@ -112,7 +115,8 @@ struct BatteryOverlay: View, Animatable {
     }
 
     private func drawBox(_ spot: BatterySpot, in context: inout GraphicsContext, _ geometry: WallProjection) {
-        let height = spot.height * Float(max(rise, 0.02))
+        let height = reduceMotion ? spot.height : spot.height * Float(max(rise, 0.02))
+        let fade = reduceMotion ? rise : 1
         let s0 = spot.span.lowerBound, s1 = spot.span.upperBound
         let o0 = spot.offsetFromWall, o1 = spot.offsetFromWall + spot.depth
         func corner(_ s: Float, _ h: Float, _ o: Float) -> SIMD3<Float> { wall.world(s: s, height: h, out: o) }
@@ -147,8 +151,8 @@ struct BatteryOverlay: View, Animatable {
             guard simd_dot(projection.cameraPosition - center, face.normal) > 0,
                   let path = geometry.polygon(face.corners) else { continue }
             let base = Color(white: 0.97 * face.shade)
-            context.fill(path, with: .color(base.opacity(0.96)))
-            context.stroke(path, with: .color(.black.opacity(0.18)), lineWidth: 1)
+            context.fill(path, with: .color(base.opacity(0.96 * fade)))
+            context.stroke(path, with: .color(.black.opacity(0.18 * fade)), lineWidth: 1)
             if face.isFront {
                 // The blue light bar across the front, a third of the way down.
                 let barTop = height * 0.72, barBottom = height * 0.66
@@ -156,7 +160,7 @@ struct BatteryOverlay: View, Animatable {
                     corner(s0 + (s1 - s0) * 0.2, barBottom, o1 + 0.002), corner(s1 - (s1 - s0) * 0.2, barBottom, o1 + 0.002),
                     corner(s1 - (s1 - s0) * 0.2, barTop, o1 + 0.002), corner(s0 + (s1 - s0) * 0.2, barTop, o1 + 0.002),
                 ]) {
-                    context.fill(bar, with: .color(Palette.signal))
+                    context.fill(bar, with: .color(Palette.signal.opacity(fade)))
                 }
             }
         }

@@ -135,6 +135,16 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if arguments.contains("-uiDemoCorner") {
+            // The walk followed an outside corner right of the meter, between the battery spot and
+            // the window, and went on 1.6 m along the next wall: that wall runs away from the
+            // homeowner and faces right.
+            let corner: Float = 1.8
+            state.wall?.cornerSegments = [WallGeometry.Segment(
+                span: corner...Float.infinity, along: SIMD3(0, 0, -1), outward: SIMD3(1, 0, 0),
+                anchor: SIMD3(corner, 0, 0), anchorS: corner)]
+            state.wall?.rightEnd = corner + 1.6
+        }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
         }
@@ -952,14 +962,14 @@ final class DemoEngine: ScanActions {
         isSample: true
     )
 
-    /// Field test run 2's working-space line: the spot overlaps the meter's working space by
-    /// 1 ft 3 in (measured_ft -1.25), within the measurement's 1 ft 6 in error (#40).
+    /// A made-up working-space line: the spot overlaps the meter's working space by 1 ft
+    /// (measured_ft -1.0), within the measurement's 1 ft 6 in error (#40).
     static let overlapSample: ResultPresentation = {
         var sample = reviewSample
         sample.checks.insert(
             CheckRow(id: "meter_working_space", title: "Clear of the meter's working space", outcome: .unsure,
                      reason: "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
-                     needsPerson: true, measured: -0.381, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
+                     needsPerson: true, measured: -0.3048, threshold: 0, plusMinus: 0.4572, comparison: .atLeast),
             at: 0
         )
         return sample

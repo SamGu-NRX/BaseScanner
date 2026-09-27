@@ -650,6 +650,10 @@ final class ScanViewState {
     var lastCapture: CaptureEvent?
 
     var features: [MarkedFeature] = []
+    /// Marks lying wholly past a marked end, where the scan doesn't cover them. The review says
+    /// so; they are still exported, since a hazard just past an end can be within clearance of a
+    /// spot at it.
+    var featuresPastEnds: Set<UUID> = []
     var marking: MarkingState?
 
     var gap: GapRequest?
@@ -675,6 +679,9 @@ final class ScanViewState {
     /// True while the AR result is drawn into the live camera, where people and objects in front
     /// of it hide it. The AR screen then draws no overlay of its own.
     var resultInCamera = false
+    /// False once the camera failed after the scan was sent: the answer stays, but "See it on
+    /// your wall" is neither shown nor offered until a new scan starts the camera again.
+    var spatialResultAvailable = true
 
     /// True when frames come from a recorded session instead of the camera.
     var isReplay = false

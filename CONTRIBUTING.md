@@ -28,10 +28,12 @@ The `size:*` label describes the effective diff. It is a review signal, not a me
 | --- | --- | --- |
 | Server checks | `server/` changes | `make server` |
 | Web checks | `web/` changes | `make web` |
-| iOS build | `ios/` changes | `make ios` |
+| iOS build | `ios/` changes outside Markdown, on non-draft pull requests | `make ios` |
 | Sync label definitions | `.github/labels.json` changes on `main` | none |
 | Label PR size | a pull request opens or updates | none |
 | TestFlight | someone runs it from the Actions tab | none |
+
+The iOS UI tests skip the every-state accessibility audit on pull requests, because it adds about 10 minutes and macOS runners are scarce. Add the `full-ui` label when a pull request changes screens or copy; pushes to `t3/ios-mvf` and `main` always run it.
 
 `make check` runs the three local suites. They need uv, Node 24 with pnpm, and Xcode 26 or newer; each directory's README has details. No check is required by branch rules yet. Don't call one required until the rules require its status.
 
