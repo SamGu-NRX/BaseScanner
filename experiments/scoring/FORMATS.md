@@ -10,7 +10,7 @@ Every file starts with `"format": 1` and `"unit": "ft"`.
 
 The scorer reads numbers as exact decimals, so a tie with a threshold resolves the same way every time. In floats, 3.1 − 3.0 is 0.10000000000000009, which would pass a 3.1 ± 0.1 ft clearance against a 3 ft rule that is exactly borderline.
 
-The scorer rejects unknown fields, duplicate keys, `NaN`, negative lengths and numbers written as strings. Fields that may be null must still be present. Any input problem stops the run with exit code 2 and a message that names the file, the field and the fix, and the scorer writes no CSV.
+The scorer rejects unknown fields, duplicate keys, `NaN`, negative lengths and numbers written as strings. Fields that may be null must still be present. Any input problem stops the run with exit code 2 and a message that names the file, the field and the fix, and the scorer writes no CSV. The same happens when `--out` would put a CSV on top of an input file, whether by the same path, a symlink or a hard link.
 
 ## Rules file
 

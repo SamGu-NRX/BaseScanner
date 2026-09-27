@@ -10,7 +10,6 @@ including each measurement's endpoints and the value keys they allow.
 import argparse
 import hashlib
 import json
-import os
 import sys
 import tempfile
 import zipfile
@@ -35,6 +34,7 @@ from scoring.inputs import (
     load_truth,
     parse_json,
     read_json,
+    refuse_output_over_inputs,
 )
 from scoring.metrics import decide
 
@@ -562,20 +562,6 @@ def _string(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _refuse_output_over_input(out_path: Path, inputs: dict[str, Path]) -> None:
-    """Stop before any write when --out names one of the inputs, by path, symlink or hard link."""
-    out_resolved = out_path.resolve()
-    for role, path in inputs.items():
-        same = out_resolved == path.resolve()
-        if not same and out_path.exists() and path.exists():
-            same = os.path.samefile(out_path, path)
-        if same:
-            raise InputError(
-                f"--out {out_path} is the {role} {path}; writing there would overwrite an input. "
-                "Choose another output path"
-            )
-
-
 def import_session(
     session_path: Path,
     map_path: Path,
@@ -585,9 +571,14 @@ def import_session(
     *,
     decide_outcomes: bool,
 ) -> dict[str, Any]:
-    _refuse_output_over_input(
-        out_path,
-        {"session zip": session_path, "map": map_path, "rules": rules_path, "truth": truth_path},
+    refuse_output_over_inputs(
+        [out_path],
+        [
+            ("session zip", session_path),
+            ("map", map_path),
+            ("rules", rules_path),
+            ("truth", truth_path),
+        ],
     )
     rules = load_rules(rules_path)
     truth = load_truth(truth_path, rules)

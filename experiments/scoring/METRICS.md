@@ -1,6 +1,6 @@
 # What the scoring numbers mean
 
-`score` prints a markdown summary and writes `measurements.csv`, `checks.csv` and `runs.csv`. [`results/synthetic-01/`](results/synthetic-01/) is an example made from the synthetic fixtures. [FORMATS.md](FORMATS.md) describes the input files.
+`score` prints a markdown summary and writes `measurements.csv`, `checks.csv` and `runs.csv`. [`results/synthetic-01/`](results/synthetic-01/) is an example made from the synthetic fixtures. [FORMATS.md](FORMATS.md) describes the input files. Ids may be any non-empty string. The summary escapes them so a pipe, backtick or line break cannot break a table, heading or list, and the CSVs hold them unchanged.
 
 The summary has one section per house: distances, checks, timing, and a list by name of every unsafe pass, missed review and decision made without its measurement. Nothing is averaged across houses, and missing outputs stay in the denominator.
 
