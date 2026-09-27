@@ -24,12 +24,13 @@ struct SourceFrame: Sendable {
     /// (`ScanEngine.refitWallToDetectedPlane`) still carries the old one's pose, which the engine
     /// must not take as a correction of the new one.
     var meterAnchorID: UUID?
-    /// Detected horizontal planes, with their classes and outlines. Empty when ARKit has found
-    /// none or the frame doesn't carry them.
-    var groundPlanes: [GroundPlaneEvidence] = []
-    /// Detected vertical planes, with their classes, normals and outlines. Empty when ARKit has
-    /// found none or the frame doesn't carry them.
-    var wallPlanes: [WallPlaneEvidence] = []
+    /// Detected horizontal planes, with their classes and outlines, on a frame that reports them:
+    /// empty when ARKit has found none (or removed the ones it had). Nil on a frame that doesn't
+    /// report planes (a pose-only frame, a replay), which says nothing about the ground.
+    var groundPlanes: [GroundPlaneEvidence]? = nil
+    /// Detected vertical planes, with their classes, normals and outlines, on a frame that reports
+    /// them: empty when ARKit has found none. Nil on a frame that doesn't report planes.
+    var wallPlanes: [WallPlaneEvidence]? = nil
     /// LiDAR depth copied with the photo of a frame that could be kept; nil without LiDAR, and on
     /// frames without a photo. Coverage reads it; a replay's recorded depth plays in here too.
     var depth: DepthImage?

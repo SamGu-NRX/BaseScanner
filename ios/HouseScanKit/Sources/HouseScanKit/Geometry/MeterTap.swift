@@ -36,6 +36,13 @@ public enum MeterTap {
     /// well enough. Guesses: 0.2 m and 10 degrees are what the field analysis proposed.
     public static let refitOffset: Float = 0.2
     public static let refitAngle: Float = 10 * .pi / 180
+    /// How far past the tapped point, along the tap's line of sight, a detected wall plane may lie
+    /// and still take the meter, meters. The tap passes a hit in front of a detected plane because
+    /// a meter stands proud of its wall; a wall plane much farther back is the wall behind a
+    /// meter on a pedestal or a garden wall, not a better fit for the tap. A meter box's depth
+    /// with some to spare; a guess. The field run's bad hit lay behind the real wall, so the
+    /// crossing was in front of the tap, which this doesn't limit.
+    public static let refitBehindTap: Float = 0.3
 
     /// Why an estimated hit was refused, for the log.
     public enum Refusal: Sendable, Equatable, CustomStringConvertible {
@@ -117,14 +124,17 @@ public enum MeterTap {
     /// within the plane's outline, is the surface the homeowner aimed at. It disagrees when the
     /// meter would move more than `refitOffset` to it or the wall would turn more than
     /// `refitAngle`. Only planes classified wall count: an unclassified one near a meter may be
-    /// the meter's own board, or a fence.
+    /// the meter's own board, or a fence. A plane the line crosses more than `refitBehindTap` past
+    /// the tapped point doesn't count either.
     public static func refit(meter: SIMD3<Float>, outward: SIMD3<Float>, tapCamera: SIMD3<Float>, planes: [WallPlaneEvidence]) -> Refit? {
         let flat = SIMD3(outward.x, 0, outward.z)
         guard simd_length(flat) > 1e-3 else { return nil }
+        let reach = simd_distance(meter, tapCamera)
         var nearest: (plane: WallPlaneEvidence, crossing: SightCrossing)?
         for plane in planes where plane.kind == .wall {
             guard let crossing = sightCrossing(from: tapCamera, through: meter, plane: plane),
                   simd_distance(crossing.point, tapCamera) <= maximumReach,
+                  (crossing.fraction - 1) * reach <= refitBehindTap,
                   plane.covers(crossing.point, margin: coverMargin) else { continue }
             if let best = nearest, best.crossing.fraction <= crossing.fraction { continue }
             nearest = (plane: plane, crossing: crossing)

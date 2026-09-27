@@ -6,7 +6,7 @@ import Testing
 // #73 (build 4.1, run 2): a window's outline stayed where it was tapped while the meter pin
 // followed the anchor, and ended up on the panel boxes. In that build a correction moved only the
 // meter, and the marks kept their world points. The engine now moves the tapped points with the
-// same correction as the wall (`ScanEngine.refreshMeterFromAnchor`); these pin what that has to
+// same correction as the wall (`ScanEngine.applySpatialUpdate`); these pin what that has to
 // keep true.
 
 /// The marks move with the meter's anchor as one body with the wall.
@@ -85,5 +85,30 @@ import Testing
         #expect(nearlyEqual(tracking.sinceAnchored.moved, SIMD3(0.2, 0, 0.05)))
         #expect(nearlyEqual(tracking.sinceAnchored.yaw, 3 * .pi / 180, 1e-5))
         #expect(tracking.anchoredPose == pose)
+    }
+
+    /// A re-fit anchors the meter again: the drift totals start from the new anchor, so the
+    /// re-fit's own move isn't read as a correction ARKit made, while the correction log that
+    /// corrects earlier poses stays.
+    @Test func anchoringAgainStartsTheTotalsButKeepsTheLog() throws {
+        let pose = MeterAnchorCorrectionTests.wallHitPose(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1))
+        var tracking = MeterAnchorTracking(pose: pose)
+        let first = Self.corrected(pose)
+        let update = tracking.update(to: first, at: 2)
+        _ = try #require(update)
+        #expect(tracking.corrections == 1)
+        let refitPose = MeterAnchorCorrectionTests.wallHitPose(meter: SIMD3(0.3, 1.5, 0.8), outward: SIMD3(0, 0, 1))
+        tracking.anchorAgain(at: refitPose)
+        #expect(tracking.corrections == 0)
+        #expect(tracking.anchoredPose == refitPose)
+        #expect(nearlyEqual(tracking.sinceAnchored.moved, .zero))
+        #expect(tracking.log.count == 1)
+        var later = refitPose
+        later.columns.3 += SIMD4(0, 0, 0.05, 0)
+        let next = tracking.update(to: later, at: 3)
+        _ = try #require(next)
+        #expect(tracking.corrections == 1)
+        #expect(nearlyEqual(tracking.sinceAnchored.moved, SIMD3(0, 0, 0.05)))
+        #expect(tracking.log.count == 2)
     }
 }

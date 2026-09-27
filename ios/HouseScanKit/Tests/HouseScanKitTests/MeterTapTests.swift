@@ -127,4 +127,29 @@ import Testing
         beside.boundary = beside.boundary.map { $0 + SIMD3(5, 0, 0) }
         #expect(MeterTap.refit(meter: meter, outward: Self.turned(46), tapCamera: tapCamera, planes: [beside]) == nil)
     }
+
+    /// A wall plane ARKit already knew at the tap: the gate takes an estimated hit on the meter
+    /// 0.05 m in front of it, turned 20 degrees, and the same planes re-fit it straight away. The
+    /// engine tries the re-fit on entering the close-up, not only when the planes change.
+    @Test func aTapTheGatePassesIsRefittedAgainstThePlanesAlreadyKnown() throws {
+        let camera = Self.phone(0.5)
+        let hit = SIMD3<Float>(0, 1.5, 0.05)
+        let planes = [Self.house]
+        #expect(Self.refusal(hit: hit, normal: Self.turned(20), camera: camera, planes: planes) == nil)
+        let refit = try #require(MeterTap.refit(meter: hit, outward: Self.turned(20), tapCamera: camera.position, planes: planes))
+        #expect(nearlyEqual(refit.turned, 20 * .pi / 180, 1e-4))
+        #expect(nearlyEqual(refit.meter, SIMD3(0, 1.5, 0)))
+        #expect(nearlyEqual(refit.outward, SIMD3(0, 0, 1)))
+    }
+
+    /// A meter standing proud of the house wall (on a pedestal, say) tapped 0.5 m in front of it:
+    /// the wall behind isn't a better fit, and the meter stays. One 0.25 m in front, a meter box's
+    /// depth, is still moved onto the wall.
+    @Test func aWallFarBehindTheTapDoesNotPullTheMeterBack() throws {
+        let tapCamera = SIMD3<Float>(0, 1.5, 0.9)
+        #expect(MeterTap.refit(meter: SIMD3(0, 1.5, 0.5), outward: SIMD3(0, 0, 1), tapCamera: tapCamera, planes: [Self.house]) == nil)
+        let refit = try #require(MeterTap.refit(meter: SIMD3(0, 1.5, 0.25), outward: SIMD3(0, 0, 1), tapCamera: tapCamera, planes: [Self.house]))
+        #expect(nearlyEqual(refit.meter, SIMD3(0, 1.5, 0)))
+        #expect(nearlyEqual(refit.moved, 0.25))
+    }
 }
