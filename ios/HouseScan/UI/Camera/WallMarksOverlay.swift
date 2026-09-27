@@ -46,13 +46,13 @@ struct WallMarksOverlay: View {
     private func drawFeature(_ feature: MarkedFeature, in context: inout GraphicsContext, _ geometry: WallProjection) {
         let color = Color.white
         switch feature.kind {
-        case .door, .window:
+        case .door, .window, .gasMeter:
             if let bottom = feature.bottom, let top = feature.top,
                let outline = geometry.wallQuad(s: feature.span, height: bottom...top, out: 0.01) {
                 context.fill(outline, with: .color(Palette.signal.opacity(0.18)))
                 context.stroke(outline, with: .color(color), style: StrokeStyle(lineWidth: 3, lineJoin: .round, dash: [9, 6]))
             }
-        case .driveway, .fence:
+        case .driveway, .fence, .acUnit:
             let points = feature.points.compactMap(geometry.point)
             if points.count >= 2 {
                 var line = Path()
@@ -60,8 +60,6 @@ struct WallMarksOverlay: View {
                 context.stroke(line, with: .color(.black.opacity(0.3)), style: StrokeStyle(lineWidth: 8, lineCap: .round))
                 context.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [10, 7]))
             }
-        case .gasMeter, .acUnit:
-            break
         }
         for point in feature.points.compactMap(geometry.point) {
             let dot = CGRect(x: point.x - 8, y: point.y - 8, width: 16, height: 16)

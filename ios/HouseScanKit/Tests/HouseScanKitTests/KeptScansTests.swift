@@ -77,3 +77,89 @@ import Testing
         #expect(try JSONDecoder().decode(ScanStamp.self, from: stamp.jsonData()) == stamp)
     }
 }
+
+/// Replacing a scan's bundle never leaves the folder without one.
+@Suite struct AtomicBundleTests {
+    struct Unreadable: Error {}
+
+    @Test func aFailedRewriteLeavesThePreviousBundleAndTheScanIsKept() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let folder = root.appending(path: "run2")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let bundle = folder.appending(path: ScanFolderCleanup.bundleName)
+        try ZipWriter.write([(name: "manifest.json", load: { Data("{}".utf8) })], to: bundle)
+        let before = try Data(contentsOf: bundle)
+        // "It's clear" repackages the scan, and a file of the new packet can't be read.
+        #expect(throws: Unreadable.self) {
+            try ZipWriter.write([(name: "manifest.json", load: { Data("{\"new\":1}".utf8) }), (name: "photo.jpg", load: { throw Unreadable() })], to: bundle)
+        }
+        #expect(try Data(contentsOf: bundle) == before)
+        #expect(!FileManager.default.fileExists(atPath: folder.appending(path: ZipWriter.temporaryName(for: ScanFolderCleanup.bundleName)).path))
+        // A relaunch keeps the scan.
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(cleanup.keptCompleted.map(\.lastPathComponent) == ["run2"])
+        // A successful rewrite replaces it.
+        try ZipWriter.write([(name: "manifest.json", load: { Data("{\"new\":1}".utf8) })], to: bundle)
+        #expect(try Data(contentsOf: bundle) != before)
+    }
+
+    /// A partial bundle file, written `minutesAgo`.
+    static func partial(in folder: URL, minutesAgo: Double) throws {
+        let file = folder.appending(path: ZipWriter.temporaryName(for: ScanFolderCleanup.bundleName))
+        try Data("partial".utf8).write(to: file)
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -minutesAgo * 60)], ofItemAtPath: file.path)
+    }
+
+    /// A folder caught mid-replacement (the old bundle and the new one's partial file) is kept,
+    /// and counts by its bundle's date, not the newer partial's.
+    @Test func aFolderMidReplacementIsKeptByItsBundle() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try KeptScansTests.scan("run1", in: root, bundledMinutesAgo: 60)
+        try KeptScansTests.scan("run2", in: root, bundledMinutesAgo: 30)
+        try KeptScansTests.scan("run3", in: root, bundledMinutesAgo: 90)
+        try Self.partial(in: root.appending(path: "run3"), minutesAgo: 1)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(cleanup.keptCompleted.map(\.lastPathComponent) == ["run2", "run1"])
+        #expect(cleanup.obsolete.map(\.lastPathComponent) == ["run3"])
+        #expect(cleanup.keptUnfinished == nil)
+    }
+
+    /// Greptile 4115191959: the app died during a scan's first bundle write, leaving only the
+    /// partial file. That folder is not a completed scan: both completed scans stay, and it is
+    /// kept apart, as the newest scan.
+    @Test func anUnfinishedFirstWriteTakesNoCompletedSlot() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try KeptScansTests.scan("run1", in: root, bundledMinutesAgo: 60)
+        try KeptScansTests.scan("run2", in: root, bundledMinutesAgo: 30)
+        try KeptScansTests.scan("crashed", in: root)
+        try Self.partial(in: root.appending(path: "crashed"), minutesAgo: 5)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(cleanup.keptCompleted.map(\.lastPathComponent) == ["run2", "run1"])
+        #expect(cleanup.keptUnfinished?.lastPathComponent == "crashed")
+        #expect(cleanup.obsolete.isEmpty)
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == ["crashed", "run1", "run2"])
+    }
+
+    /// Once a newer scan completes, the unfinished one goes; of two unfinished, only the newer
+    /// can be kept.
+    @Test func anUnfinishedScanGoesOnceANewerOneCompletes() throws {
+        let root = try KeptScansTests.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try KeptScansTests.scan("run1", in: root, bundledMinutesAgo: 60)
+        try KeptScansTests.scan("crashed", in: root)
+        try Self.partial(in: root.appending(path: "crashed"), minutesAgo: 40)
+        try KeptScansTests.scan("run2", in: root, bundledMinutesAgo: 30)
+        try KeptScansTests.scan("crashedAgain", in: root)
+        try Self.partial(in: root.appending(path: "crashedAgain"), minutesAgo: 10)
+        try KeptScansTests.scan("crashedFirst", in: root)
+        try Self.partial(in: root.appending(path: "crashedFirst"), minutesAgo: 20)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(cleanup.keptCompleted.map(\.lastPathComponent) == ["run2", "run1"])
+        #expect(cleanup.keptUnfinished?.lastPathComponent == "crashedAgain")
+        #expect(Set(cleanup.obsolete.map(\.lastPathComponent)) == ["crashed", "crashedFirst"])
+    }
+}

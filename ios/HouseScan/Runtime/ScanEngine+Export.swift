@@ -10,8 +10,12 @@ extension ScanEngine {
     /// The scene frame is the AR world frame moved down so the ground at the wall is y = 0: the
     /// server reads heights (meter.pos y, pose translations) as height above that ground, and
     /// scene.json has no field for the ground's height otherwise.
-    func sceneJSON(mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
-        guard let map = coverage else { throw ExportError.noWall }
+    ///
+    /// Everything comes from `snapshot` (`UploadSnapshot`): nothing live is read, so it
+    /// describes the one frame the snapshot was taken on, as the mesh measurement and the packet
+    /// built from the same snapshot do.
+    func sceneJSON(_ snapshot: UploadSnapshot, mesh: MeshMeasurements = MeshMeasurements()) throws -> Data {
+        let map = snapshot.map
         let wall = map.wall
         let drop = SIMD3<Float>(0, wall.groundY, 0)
         // The corners carry their pieces' sources (`markNextWall`); the meter's piece, its own
@@ -27,22 +31,32 @@ extension ScanEngine {
         // nearest valid shape here and logged. A driveway or fence with nothing valid left fails
         // the export instead (`ExportError.markCollapsed`): dropping it would send the ground
         // near it as seen and clear, which can pass its clearance check with the hazard unsent.
-        let features: [SceneFeature] = try state.features.map { feature in
+        // Each mark's wall coordinates, heights among them, from its tapped world points against
+        // the snapshot's wall and ground, whatever the ground was when it was tapped.
+        let features: [SceneFeature] = try snapshot.features.map { Self.projected($0, onto: wall) }.map { feature in
             let points = feature.points.map { $0 - drop }
             switch feature.kind {
-            case .door, .window:
+            case .door, .window, .gasMeter:
                 let heights = [feature.bottom ?? 0, feature.top ?? 0]
                 let bottom = max(0, heights.min() ?? 0)
                 let top = max(bottom, heights.max() ?? 0)
                 if bottom != feature.bottom || top != feature.top {
                     RuntimeLog.engine.info("export: \(feature.kind.rawValue, privacy: .public) heights \(feature.bottom ?? .nan)...\(feature.top ?? .nan) clamped to \(bottom)...\(top)")
                 }
+                if feature.kind == .gasMeter {
+                    // Two taps on one spot give no size; the homeowner marks it again.
+                    guard feature.span.upperBound - feature.span.lowerBound >= SceneExport.minObjectSize,
+                          top - bottom >= SceneExport.minObjectSize else { throw ExportError.markCollapsed(.gasMeter) }
+                    return .wallObject(kind: .gasMeter, span: feature.span, bottom: bottom, top: top)
+                }
                 return .opening(kind: feature.kind == .door ? .door : .window, span: feature.span, bottom: bottom, top: top,
                                 operable: feature.kind == .window ? feature.opens : nil)
-            case .gasMeter:
-                return .pointObject(kind: .gasMeter, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
             case .acUnit:
-                return .pointObject(kind: .ac, tap: points.first ?? wall.meter - drop, bottom: nil, top: nil)
+                let front = try Self.groundLine(feature, points, wall: sceneWall)
+                guard abs(sceneWall.wallCoordinates(of: front[0]).s - sceneWall.wallCoordinates(of: front[1]).s) >= SceneExport.minObjectSize else {
+                    throw ExportError.markCollapsed(.acUnit)
+                }
+                return .groundObject(kind: .ac, front: front)
             case .fence:
                 return .fence(foot: try Self.groundLine(feature, points, wall: sceneWall))
             case .driveway:
@@ -50,9 +64,9 @@ extension ScanEngine {
             }
         }
 
-        let keyframes = store.keyframes.map { stored -> SceneKeyframe in
+        let keyframes = snapshot.keyframes.map { stored -> SceneKeyframe in
             // The photo's raw pose moved by the anchor corrections made after it was taken.
-            var pose = correctedPose(stored.rawPose, capturedAt: stored.t)
+            var pose = snapshot.corrections.pose(stored.rawPose, capturedAt: stored.t)
             pose.columns.3.y -= wall.groundY
             return SceneKeyframe(
                 id: stored.id, cameraToWorld: pose, intrinsics: stored.camera.intrinsics,
@@ -62,38 +76,27 @@ extension ScanEngine {
 
         // A guessed ground puts the same error into every height in the scene. scene.json has no
         // field for "the ground was estimated", so the error bars say it instead.
-        let groundError: Float? = groundMeasured ? nil : Self.estimatedGroundError
+        let groundError: Float? = snapshot.groundMeasured ? nil : Self.estimatedGroundError
         let input = SceneInput(
             wall: sceneWall,
             baselineS: Self.exportSpan(map),
-            meterPlusMinus: groundError,
-            meterPlane: meterPlaneSource,
-            objectPlusMinus: groundError,
+            meterExtraError: groundError,
+            meterPlane: snapshot.meterPlaneSource,
+            objectExtraError: groundError,
             features: features,
             coverage: SceneCoverage(
-                map, leftEndMarked: wallEndKinds[.left] == .limit, rightEndMarked: wallEndKinds[.right] == .limit
+                map, leftEndMarked: snapshot.leftEndIsLimit, rightEndMarked: snapshot.rightEndIsLimit
             ),
             keyframes: keyframes,
-            stills: store.stills,
+            stills: snapshot.stills,
             // Written without plus_minus_ft: the server takes its mesh error for both.
             meshFacing: mesh.facing,
             meshOverheads: mesh.overheads,
-            // Unanswered exports like "Not sure": no patch, and the server reports the surface unknown.
-            groundType: state.groundAnswer.flatMap(Self.sceneGroundType)
+            // Only what the homeowner said about a checked spot's footprint; before any spot,
+            // none, and the server reports the surface unknown.
+            groundPatches: snapshot.groundPatches
         )
         return try SceneExport.jsonData(input)
-    }
-
-    static func sceneGroundType(_ answer: GroundAnswer) -> SceneGroundType? {
-        switch answer {
-        case .notSure: nil
-        case .type(.lawn): .lawn
-        case .type(.mulch): .mulch
-        case .type(.gravel): .gravel
-        case .type(.concrete): .concrete
-        case .type(.drive): .drive
-        case .type(.deck): .deck
-        }
     }
 
     /// How the line of the meter's piece of wall was found, for scene.json's `walls[].source`.
@@ -158,7 +161,8 @@ extension ScanEngine {
         return c.out >= 0.001 ? point : wall.world(s: c.s, height: c.height, out: 0.001)
     }
 
-    /// The two ground points of a driveway edge or a fence foot, each moved in front of the wall.
+    /// The two ground points of a driveway edge, a fence foot or an AC unit's front, each moved in
+    /// front of the wall.
     /// Throws `markCollapsed` when they are not two points 1 cm apart in plan: a wall line refined
     /// past both taps puts them on one point. SceneExport's own degenerate-edge tolerance is
     /// 1e-3 ft; 1 cm keeps well clear of it.
