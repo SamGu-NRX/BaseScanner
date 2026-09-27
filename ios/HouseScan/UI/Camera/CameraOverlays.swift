@@ -4,17 +4,17 @@ import SwiftUI
 struct CameraOverlays: View {
     let state: ScanViewState
     var highlight: GapRequest?
-    /// The camera area the chrome leaves open (`CameraChrome.openArea`); the ring's legend
-    /// keeps inside it.
-    var openArea: OpenCameraArea? = nil
-    /// Set to the ring's legend while it doesn't fit beside the ring, for the screen to draw
-    /// under its card (`CameraChrome.legend`). Without it, the legend shows only beside the ring.
+    /// Set to the aim ring's legend while it shows, for the screen to draw under its card
+    /// (`CameraChrome.legend`). Nil on screens with no legend.
     var cardLegend: Binding<String?>? = nil
 
     /// The step the aim ring's legend first showed with. The legend explains the first ring that
     /// fills and retires once that step ends (#81); it isn't needed on every ring after.
     @State private var legendStep: GuidanceStep? = nil
     @State private var legendRetired = false
+    /// Whether a filling ring is on screen (`WayfindingOverlay.onFillingRingShown`): the legend
+    /// explains the ring, so it shows only with it.
+    @State private var fillingRingShown = false
     /// The aim step on screen, with its target, so the update that ends it can still score it.
     @State private var lastAim: AimSnapshot? = nil
     /// The target of an aim step that just completed, held on screen as a full green ring with a
@@ -49,6 +49,11 @@ struct CameraOverlays: View {
             do { try await Task.sleep(for: Self.completedHold) } catch { return }
             completedTarget = nil
         }
+        .onChange(of: shownLegend, initial: true) { _, line in
+            if let cardLegend, cardLegend.wrappedValue != line { cardLegend.wrappedValue = line }
+            // Counted as shown only once drawn, so it retires with the step it showed on.
+            if line != nil, cardLegend != nil, legendStep == nil { legendStep = state.guidance }
+        }
     }
 
     @ViewBuilder
@@ -67,20 +72,14 @@ struct CameraOverlays: View {
                 )
                 if state.marking == nil {
                     // While marking, the reticle is the only aim; the path and ring would compete.
-                    let progress = state.aimProgress
-                    let held = heldTarget
-                    let line = held == nil ? legend(progress: progress) : nil
                     WayfindingOverlay(
                         projection: projection,
                         wall: wall,
                         path: state.path,
                         target: state.target,
-                        progress: progress,
-                        completed: held,
-                        legend: line,
-                        legendShort: ScanCopy.aimRingLegendShort,
-                        openArea: openArea,
-                        onLegendPlaced: { placement in legendPlaced(placement, line) }
+                        progress: state.aimProgress,
+                        completed: heldTarget,
+                        onFillingRingShown: { shown in fillingRingShown = shown }
                     )
                     .transition(.opacity)
                 }
@@ -106,20 +105,16 @@ struct CameraOverlays: View {
         return target
     }
 
-    /// Where the legend went. Beside the ring it is drawn there; where no wording fits there,
-    /// it goes under the card. It counts as shown, and so retires with its step, only where it
-    /// drew: a legend with no room on a short screen or at a large text size once used up the
-    /// one explanation without being seen.
-    private func legendPlaced(_ placement: WayfindingOverlay.LegendPlacement?, _ legend: String?) {
-        let underCard = placement == .underCard ? legend : nil
-        if let cardLegend, cardLegend.wrappedValue != underCard { cardLegend.wrappedValue = underCard }
-        let drawn = placement == .besideRing || (placement == .underCard && cardLegend != nil)
-        if drawn, legendStep == nil { legendStep = state.guidance }
-    }
-
-    /// The legend, while the ring fills for the first time.
-    private func legend(progress: Double?) -> String? {
-        guard !legendRetired, let progress, progress < 1 else { return nil }
+    /// The legend, while the first filling ring is on screen and short of full (#81).
+    ///
+    /// It goes under the instruction card, in the chrome's own stack, rather than beside the
+    /// ring: beside it, it went behind the card at accessibility text sizes (the card grows
+    /// and is drawn over the camera layers), and any layout that dropped it where there was no
+    /// room left the people with the largest text without it. In the stack it grows with the
+    /// card and scrolls with it at any size.
+    private var shownLegend: String? {
+        guard fillingRingShown, !legendRetired, state.marking == nil, heldTarget == nil,
+              let progress = state.aimProgress, progress < 1 else { return nil }
         return ScanCopy.aimRingLegend
     }
 }
