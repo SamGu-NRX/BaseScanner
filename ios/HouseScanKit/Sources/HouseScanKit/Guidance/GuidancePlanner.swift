@@ -78,15 +78,14 @@ public struct GuidancePlanner: Sendable {
 
     /// The task for this moment. Switches away from the current task only when it is satisfied or
     /// has been held for `minDwell` seconds and the preferred task differs. An unsatisfied aim
-    /// task is kept while the preferred one asks for the same stretch (`sameStretch`), or for the
-    /// same band while its own stretch is still in the camera's window and between the ends
-    /// (`stillInView`).
+    /// task between the marked ends is kept while the preferred one asks for the same stretch
+    /// (`sameStretch`), or for the same band while its own stretch is still in the camera's window
+    /// (`stillInView`): see `holds`.
     public mutating func update(coverage: CoverageMap, camera: CameraFrame?, time: Double) -> GuidanceOutput {
         let preferred = preferredTask(coverage: coverage, camera: camera)
         if let current, current != preferred {
             let satisfied = isSatisfied(current, coverage: coverage, camera: camera)
-            let held = Self.sameStretch(current, preferred) || Self.stillInView(current, preferred, coverage: coverage, camera: camera)
-            if satisfied || (time - since >= config.minDwell && !held) {
+            if satisfied || (time - since >= config.minDwell && !Self.holds(current, preferred, coverage: coverage, camera: camera)) {
                 self.current = preferred
                 since = time
             }
@@ -200,10 +199,29 @@ public struct GuidancePlanner: Sendable {
         let cameraS = coverage.wall.wallPoint(camera.position).s
         switch (current, preferred) {
         case (.aimAtGround(let s), .aimAtGround), (.aimAtWall(let s), .aimAtWall):
-            return abs(s - cameraS) <= lagWindow && s >= (coverage.leftEnd ?? -.infinity) && s <= (coverage.rightEnd ?? .infinity)
+            return abs(s - cameraS) <= lagWindow && isWithinEnds(s, coverage)
         default:
             return false
         }
+    }
+
+    /// Whether an unsatisfied aim task stays on screen although `preferred` differs: never when
+    /// its stretch is past a marked end, by either rule (review of #56: `sameStretch` alone held
+    /// an aim at 1.22 m past a right end at 1.2 m, because the preferred one inside was at
+    /// 0.99 m), and otherwise while `preferred` asks for the same stretch (`sameStretch`) or the
+    /// task's own stretch is still in view (`stillInView`).
+    static func holds(_ current: GuidanceTask, _ preferred: GuidanceTask, coverage: CoverageMap, camera: CameraFrame?) -> Bool {
+        switch current {
+        case .aimAtGround(let s), .aimAtWall(let s):
+            guard isWithinEnds(s, coverage) else { return false }
+            return sameStretch(current, preferred) || stillInView(current, preferred, coverage: coverage, camera: camera)
+        default:
+            return false
+        }
+    }
+
+    static func isWithinEnds(_ s: Float, _ coverage: CoverageMap) -> Bool {
+        s >= (coverage.leftEnd ?? -.infinity) && s <= (coverage.rightEnd ?? .infinity)
     }
 
     /// A band that lags the other around the camera: the other band is covered there but this one

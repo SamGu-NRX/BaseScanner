@@ -2,9 +2,12 @@ import HouseScanKit
 import simd
 import Testing
 
-/// Device runs 1 and 2 (2026-09-26) replayed on the standard wall (s = x, meter at 0), for #24,
-/// #28 and #29. Run 2's mock wall ended about 17 ft (5.18 m) right of the meter; its window was
-/// about 7 ft and its AC stand-in about 16 ft right.
+/// Synthetic planner and end-helper cases modeled on the symptoms of device runs 1 and 2
+/// (2026-09-26), on the standard wall (s = x, meter at 0), for #24, #28 and #29. They build
+/// cameras and coverage by hand and call `WalkedEnd.end` and `GuidancePlanner.update` directly:
+/// they don't run the app's "Can't get there" or "Wall ends here" actions, and don't replay
+/// recorded frames. Run 2's mock wall ended about 17 ft (5.18 m) right of the meter; its window
+/// was about 7 ft and its AC stand-in about 16 ft right.
 @Suite struct FieldRunReplayTests {
     static let wallEnd: Float = 5.18
 
@@ -12,7 +15,9 @@ import Testing
     static func phone(_ x: Float) -> SIMD3<Float> { SIMD3(x, 1.4, 2.6) }
 
     /// Run 2 up to 2:40: one view of the ground in front of the meter (left amber, seen once),
-    /// then a walk to the wall's end on the right with views kept every 0.5 m.
+    /// then a walk to the wall's end on the right with the phone's position kept every 0.5 m. The
+    /// walk's views look away from the wall, so they add walked path and no coverage: these cases
+    /// test where an end lands, not how the wall is recorded along the way.
     static func run2Walk() -> CoverageMap {
         var map = CoverageMap(wall: standardWall())
         map.observe(CoverageMapTests.frontCamera(), trackingNormal: true)
@@ -123,5 +128,32 @@ import Testing
             Issue.record("expected the ground by the homeowner at s = 2.8, got \(moved)")
             return
         }
+    }
+
+    /// Review of #56: an aim task past a marked end must not be kept by either rule that holds
+    /// one. Here the task asks for s = 1.2192 (from s = 1.1), then the right end is marked at 1.2
+    /// and the homeowner steps to s = 1.8, where the ground lags over cells 5 ... 7 between the
+    /// ends: the preferred task asks for s = 0.9906, 0.23 m away, the same stretch by
+    /// `sameStretch`, while `stillInView` already refuses the task past the end. It still gives
+    /// way once its dwell is up.
+    @Test func anAimPastAMarkedEndGivesWayToTheSameStretchInside() {
+        let map = GuidancePlannerTests.meterGroundSkipped(Self.wallCoveredRight())
+        var planner = GuidancePlanner()
+        let first = planner.update(coverage: map, camera: GuidancePlannerTests.homeowner(x: 1.1), time: 0).task
+        guard case .aimAtGround(let s0) = first, abs(s0 - 1.2192) < 0.01 else {
+            Issue.record("expected aimAtGround at 1.2192, got \(first)")
+            return
+        }
+        var ended = map
+        ended.setEnd(.right, at: 1.2)
+        let camera = GuidancePlannerTests.homeowner(x: 1.8)
+        var fresh = GuidancePlanner()
+        guard case .aimAtGround(let inside) = fresh.update(coverage: ended, camera: camera, time: 0).task, abs(inside - 0.9906) < 0.01 else {
+            Issue.record("expected aimAtGround at 0.9906 inside the ends")
+            return
+        }
+        #expect(abs(inside - s0) < GuidancePlanner.aimHalfWidth)
+        #expect(planner.update(coverage: ended, camera: camera, time: 2.9).task == first)
+        #expect(planner.update(coverage: ended, camera: camera, time: 3).task == .aimAtGround(s: inside))
     }
 }
