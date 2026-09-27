@@ -49,6 +49,13 @@ Here's what we didn't compromise on: while the ML models handle the fuzzy parts 
 
 The criteria (e.g. the distance the battery must be from the gas meter) exist in a separate rules file. Changing a rule has no effect on the creation of a model, only its evaluation.
 
+Below, one wall makes the whole trip, from photos to a checked spot. The models build the wall and name what's on it. The last step, the rule checks, is the plain code.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/rebuild-dark.webp">
+  <img alt="An animated drawing of one wall in six steps. Photos arrive, each with the phone's position. Points are matched between them. A ruler marks feet out from the meter. Dots fill in the wall and the ground, while the left side nobody filmed stays hatched and reads Not seen. The window, meter, AC unit and gravel get labels. Last, a battery appears 12 ft right of the meter with its cable, beside a card where wall behind it, ground under it, open space in front and a 13.6 ft cable run all pass." src="docs/readme/rebuild-light.webp" width="100%">
+</picture>
+
 Each part has its own folder:
 
 | Part | Built with | Where |
@@ -75,6 +82,11 @@ You can watch that happen above. The homeowner walked to the right and never poi
 Measurements get the same caution, because none of them is exact. The phone keeps track of where it is by adding up its own movements, a bit like finding your way by counting steps, so small errors pile up the farther you walk from the meter. That's why every measurement comes with a margin of error.
 
 Take the 3 ft rule for gas meters. If the server measures 4.5 ft, give or take 0.8 ft, the battery clears the rule by more than the error, and the check passes. At 2 ft, give or take 0.8 ft, it falls short by more than the error, and the check fails. At 3.4 ft, give or take 0.8 ft, it could go either way. That check comes back UNSURE, and a person or a better view has to settle it. The numbers in the animation are made up to show the idea.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/margin-dark.png">
+  <img alt="Three measurements against the 3 ft gas meter rule, on one scale in feet. 4.5 ft, give or take 0.8 ft, runs from 3.7 to 5.3 ft, all clear of the rule, and passes. 2 ft, give or take 0.8 ft, runs from 1.2 to 2.8 ft, all short of it, and fails. 3.4 ft, give or take 0.8 ft, runs from 2.6 to 4.2 ft, crosses the 3 ft line, and comes back unsure." src="docs/readme/margin-light.png" width="100%">
+</picture>
 
 ## What the server checks
 
@@ -313,4 +325,4 @@ Anything marked with a pull request exists only on that PR's branch until it mer
 
 If you want to go deeper, start with [the walkthrough](docs/how-it-works.html). It takes about ten minutes and has plenty of pictures. After that, [docs/00-overview.md](docs/00-overview.md) covers the plan, the decisions we made and the evidence behind them. If you're going to change anything, read [AGENTS.md](AGENTS.md) for the rules of the repository and [CONTRIBUTING.md](CONTRIBUTING.md) for branches, CI and TestFlight.
 
-The repository is public, and the pictures in this README come from the [live site](https://house-scanning.vercel.app/).
+The repository is public. Most pictures in this README come from the [live site](https://house-scanning.vercel.app/). We drew the rebuild animation and the gas-meter figure for this README, in the same style.
