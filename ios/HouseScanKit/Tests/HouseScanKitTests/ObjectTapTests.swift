@@ -3,14 +3,14 @@ import HouseScanKit
 import simd
 import Testing
 
-// #140: marking an AC pinned it 105 ft and 276 ft from the meter, tens of meters below the floor.
-// The wall is the plane z = 0 facing +z, so s is x; the ground is y = 0 and the meter 1.23 m up,
-// as in the field run. Field points are offsets from the meter, from that run's manifest.
+// Synthetic cases for #140: a downward or grazing ray must not create a distant object pin.
+// The wall is z = 0 facing +z, the ground is y = 0, and the meter is 1.5 m up.
+// These coordinates are chosen for the tests and do not come from a capture.
 
 @Suite struct ObjectTapTests {
-    static let wall = WallFrame(meter: SIMD3(0, 1.23, 0), outward: SIMD3(0, 0, 1), groundY: 0)!
-    /// A phone held 1.4 m up, 2 m in front of the meter.
-    static let phone = SIMD3<Float>(0, 1.4, 2)
+    static let wall = WallFrame(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1), groundY: 0)!
+    /// A synthetic phone pose 1.75 m up, 2 m in front of the meter.
+    static let phone = SIMD3<Float>(0, 1.75, 2)
     static let reach = CoverageConfig().maxDistance
 
     static func refusal(_ hit: WallPoint, camera: SIMD3<Float> = phone, groundError: Float = 0) -> ObjectTap.Refusal? {
@@ -24,25 +24,25 @@ import Testing
 
     @Test(arguments: [
         // Just above the ground, beside the meter.
-        (SIMD3<Float>(0.16, -1.14, 0), true),
-        // 0.10 m under the ground, just past the left end: within the slack.
-        (SIMD3<Float>(-1.89, -1.33, 0), true),
-        // 105 ft left, 28 m below the meter.
-        (SIMD3<Float>(-31.89, -28.04, 0), false),
-        // 70 m below the meter.
-        (SIMD3<Float>(-77.78, -70.34, 6.58), false),
+        (SIMD3<Float>(0.25, -1.4, 0), true),
+        // A nearby point slightly below the ground is within the slack.
+        (SIMD3<Float>(-1, -1.55, 0), true),
+        // A distant point well below the ground.
+        (SIMD3<Float>(-20, -10, 0), false),
+        // An off-plane point with an implausible height and along-wall distance.
+        (SIMD3<Float>(-40, -25, 5), false),
     ])
-    func fieldRunPoints(offset: SIMD3<Float>, accepted: Bool) {
+    func syntheticPoints(offset: SIMD3<Float>, accepted: Bool) {
         let point = Self.wall.wallPoint(Self.wall.meter + offset)
         #expect((Self.refusal(point) == nil) == accepted)
     }
 
     @Test(arguments: [
-        (SIMD3<Float>(0.16, -1.14, 0), true),
-        (SIMD3<Float>(-1.89, -1.33, 0), true),
-        (SIMD3<Float>(-31.89, -28.04, 0), false),
+        (SIMD3<Float>(0.25, -1.4, 0), true),
+        (SIMD3<Float>(-1, -1.55, 0), true),
+        (SIMD3<Float>(-20, -10, 0), false),
     ])
-    func fieldRunTaps(offset: SIMD3<Float>, accepted: Bool) throws {
+    func syntheticTaps(offset: SIMD3<Float>, accepted: Bool) throws {
         // The same points as taps: rays from the phone through them meet the wall's plane there.
         let hit = try Self.hit(toward: Self.wall.meter + offset)
         #expect(nearlyEqual(hit.s, offset.x, 1e-3))
@@ -50,8 +50,8 @@ import Testing
     }
 
     @Test func downwardRayMeetingTheGroundFirstIsRefused() throws {
-        // Aimed at (0.5, -0.6, 0): the ray crosses y = 0 at z = 0.6, before the wall, and meets the
-        // wall's plane 0.6 m under the ground. Even a guessed ground's 0.3 m error doesn't cover it.
+        // The ray crosses the ground before meeting the wall's plane 0.6 m below it.
+        // Even a guessed ground's 0.3 m error doesn't cover this synthetic tap.
         let hit = try Self.hit(toward: SIMD3(0.5, -0.6, 0))
         #expect(nearlyEqual(hit.height, -0.6, 1e-4))
         guard case .belowGround(let meters) = Self.refusal(hit) else {
