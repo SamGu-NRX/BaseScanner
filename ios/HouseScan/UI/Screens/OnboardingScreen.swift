@@ -68,7 +68,7 @@ struct OnboardingScreen: View {
                         .buttonStyle(.primary)
                         .accessibilityHint("Your phone will ask to use the camera, then Motion & Fitness")
                         .accessibilityIdentifier("action.finishOnboarding")
-                        Text("Your phone will ask to use the camera, then Motion & Fitness, which helps measure your wall more accurately.")
+                        Text("Your phone will ask to use the camera, then Motion & Fitness, which lets it record air pressure with your scan.")
                             .font(.footnote)
                             .foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center)

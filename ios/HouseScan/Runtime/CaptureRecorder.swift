@@ -332,14 +332,30 @@ final class MotionSource {
             && CMMotionActivityManager.isActivityAvailable()
     }
 
-    /// Shows the Motion & Fitness prompt and returns once it is answered. CMAltimeter has no call
-    /// that only asks; an activity query asks for the same permission and calls back after the
-    /// answer. The handler runs on the main queue, so it may be a main-actor closure.
-    func requestPermission() async {
-        guard Self.needsPermission else { return }
+    enum Permission { case allowed, denied, unanswered, notNeeded }
+
+    /// Shows the Motion & Fitness prompt and reports the answer. CMAltimeter has no call that only
+    /// asks; an activity query asks for the same permission and calls back once it is answered.
+    /// The handler runs on the main queue, so it may be a main-actor closure. Every answer lets
+    /// the scan go on; a denial only leaves the barometer without rows.
+    @discardableResult
+    func requestPermission() async -> Permission {
+        guard Self.needsPermission else { return .notNeeded }
         let now = Date()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            activity.queryActivityStarting(from: now, to: now, to: .main) { _, _ in continuation.resume() }
+        let error = await withCheckedContinuation { (continuation: CheckedContinuation<(any Error)?, Never>) in
+            activity.queryActivityStarting(from: now.addingTimeInterval(-60), to: now, to: .main) { _, error in
+                continuation.resume(returning: error)
+            }
+        }
+        if let error = error as NSError?, error.domain == CMErrorDomain,
+           error.code == Int(CMErrorMotionActivityNotAuthorized.rawValue) {
+            return .denied
+        }
+        switch CMMotionActivityManager.authorizationStatus() {
+        case .authorized: return .allowed
+        case .denied, .restricted: return .denied
+        case .notDetermined: return .unanswered
+        @unknown default: return .unanswered
         }
     }
 

@@ -281,17 +281,30 @@ final class ScanEngine {
 
     /// Leaves the onboarding for the meter search. Live, the camera and then Motion & Fitness are
     /// asked for first, while the onboarding that says why is still on screen; otherwise the AR
-    /// session and the barometer raise both prompts over "Find your electric meter".
+    /// session and the barometer raise both prompts over "Find your electric meter". Without the
+    /// camera there is no scan, so motion is not asked for and the camera failure screen shows.
     func leaveOnboarding() {
-        let cameraUnasked = AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined
-        guard options.replayFolder == nil, cameraUnasked || MotionSource.needsPermission else {
+        guard options.replayFolder == nil else {
+            go(.findMeter)
+            return
+        }
+        let camera = AVCaptureDevice.authorizationStatus(for: .video)
+        if camera == .denied || camera == .restricted {
+            fail(.cameraDenied)
+            return
+        }
+        guard camera == .notDetermined || MotionSource.needsPermission else {
             go(.findMeter)
             return
         }
         guard !askingForPermissions else { return }
         askingForPermissions = true
         Task {
-            if cameraUnasked { _ = await AVCaptureDevice.requestAccess(for: .video) }
+            if camera == .notDetermined, !(await AVCaptureDevice.requestAccess(for: .video)) {
+                askingForPermissions = false
+                if state.phase == .onboarding { fail(.cameraDenied) }
+                return
+            }
             await motion.requestPermission()
             askingForPermissions = false
             if state.phase == .onboarding { go(.findMeter) }
