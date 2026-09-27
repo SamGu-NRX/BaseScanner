@@ -1,11 +1,10 @@
 # Three arrival checks for the capture packet validator
 
-The server's validator (`packet/packetgen/validate.py` and `server/contracts` in
-`huntertcarver/house-scanning-server`) already checks the schema, every file's size and SHA-256,
-rigid poses, plausible intrinsics, epochs, depth and confidence byte counts, and tap replay. These
-three checks catch mistakes those do not. Each ran in the packet 1.1 validator (`t3/packet`
-`d5439cf`, `packet/validate.py`) with a test that breaks it on purpose. Whether they reach the
-server as a pull request or stay a proposal is Sam's and Hunter's call.
+Three checks the server's validator does not make at 0.4, each catching a mistake that passes
+every other check. They are described here in our own words; nothing is copied from the server's
+private code. Each ran in the packet 1.1 validator (`t3/packet` `d5439cf`, `packet/validate.py`)
+with a test that breaks it on purpose. Whether they reach the server as a pull request or stay a
+proposal is Sam's and Hunter's call.
 
 ## 1. Keyframes lie on the pose stream
 

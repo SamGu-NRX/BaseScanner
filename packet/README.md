@@ -21,7 +21,10 @@ guess. All are additive, so 0.4 readers keep working.
    the app knows the wall at the tap: the vertical plane its raycast hit. Proposal: on the
    `meter` tap, a `meterAnchor` with `transform` (anchor to world in the tap's epoch: origin at
    the meter, +y up, +z the wall's outward normal, +x along the wall to the right seen from
-   outside) and `normalSource` (`plane`, `mesh` or `estimated`).
+   outside) and `normalSource`: `single_raycast` (one plane hit at the tap), `fitted` (fitted
+   across the walk), `mesh` or `estimated`. The source matters: the signals lab (#59,
+   `experiments/edge-geometry`) measured the yaw of the app's single-raycast plane at 2.2° median
+   and 6.7° p90, which at 10 ft along the wall moves a point about 1 ft.
 2. **The ground's height at the meter.** 0.4 notes that world y = 0 is the phone's height at
    session start, not the ground. The app measures the ground where it can: the horizontal plane
    below the meter. Proposal: `meterAnchor.groundY` (world meters) with `groundSource`
@@ -58,5 +61,25 @@ guess. All are additive, so 0.4 readers keep working.
    state that `boundary` is `[x, z]` in the anchor's frame, and have the validator check it lies
    within `planeExtent` once the centre and rotation are applied.
 
-Packet 1.1 also had a fixed sharpness score, distance walked and a location-consent flag. They are
+8. **Photos that frame one span.** An along-wall edge is 0.9 in p90 when seen within 15° of
+   face-on and 24 in beyond 45° (#59, `experiments/edge-geometry`), so a distance measured inside
+   one face-on photo is far better than one chained across the walk. Proposal: a still or
+   keyframe purpose `span` that names the marks the photo frames.
+9. **Scale references in view.** One reference near the meter is not enough: ARKit's scale drifts
+   1.8% (robust SD) within a walk (#59, `experiments/drift-anatomy`), so a reference helps where
+   it appears. Proposal: `references[]` with `kind` (door, brick course, and hand-held ones such
+   as an ID card or a Letter sheet), nominal size, and its corners in each photo that shows it.
+   Hand-held references ask the homeowner to hold something; #59 rates them worth a device test
+   (`experiments/sensor-budget`), and whether the flow may ask is Sam's and Hunter's call.
+10. **The meter anchor's pose over time.** ARKit re-estimates an anchor as tracking corrects, so
+   the anchor pose at tap time goes stale. Proposal: an optional stream of the meter anchor's
+   world pose at each ARKit update, so the server can see how far the meter frame moved. There
+   is no measurement of that movement yet.
+11. **Distances from a second phone (low priority).** When a second phone with UWB is present,
+   an optional stream of phone-to-phone distances. #59 (`experiments/drift-anatomy`) finds it
+   cuts the p90 error at 20 ft from 10.4 in to 7.7 in at 10 cm ranging noise, and to 4.9 in at
+   5 cm.
+
+Already in 0.4, so not proposed: the kind and distance of each tap's hit, a keyframe for every
+tap, and feature-point identifiers. Packet 1.1 also had a fixed sharpness score, distance walked and a location-consent flag. They are
 left out: 0.4's exposure and EXIF, `arkitPoses` and `locationAuthorization` cover them.
