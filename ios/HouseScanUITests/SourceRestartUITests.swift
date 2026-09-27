@@ -31,6 +31,8 @@ final class SourceRestartUITests: XCTestCase {
             try files.copyItem(at: fixture.appending(path: name), to: folder.appending(path: name))
         }
 
+        // Each control is found again by its identifier after the screen it is on appears.
+        XCTAssertTrue(app.buttons["action.startOver"].waitForExistence(timeout: 10))
         app.buttons["action.startOver"].tap()
         XCTAssertTrue(any["screen.onboarding"].waitForExistence(timeout: 10), "Start over didn't return to the start")
         if app.buttons["action.onboardingSkip"].waitForExistence(timeout: 5) { app.buttons["action.onboardingSkip"].tap() }
