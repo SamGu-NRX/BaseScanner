@@ -11,8 +11,16 @@ on:
         type: choice
         options:
           - house-scan
+          - house-scan-integration
           - measure-lab
         default: house-scan
+      integration_send_device_photos_after_consent:
+        description: >-
+          House Scan Integration only. On: after the homeowner agrees for each scan, the build sends
+          photos of a real home to the capture endpoint, which may accept uploads without a
+          credential. Off: captures stay on the phone.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,8 +81,15 @@ jobs:
 
       - name: Select project
         run: |
+          # The scheme and configuration default to the project's name and Release. The integration
+          # build is the same project under its own scheme and configurations (ios/project.yml).
+          scheme=""
+          configuration=Release
           case "$APP" in
             house-scan)  dir=ios;                     name=HouseScan;  packages="HouseScanKit" ;;
+            house-scan-integration)
+                         dir=ios;                     name=HouseScan;  packages="HouseScanKit"
+                         scheme="HouseScan Integration"; configuration="Integration Release" ;;
             measure-lab) dir=experiments/measure-lab; name=MeasureLab; packages="Geometry" ;;
             *) echo "::error::Unknown app '$APP'."; exit 1 ;;
           esac
@@ -85,8 +100,68 @@ jobs:
           {
             echo "PROJECT_DIR=$dir"
             echo "PROJECT_NAME=$name"
+            echo "PROJECT_SCHEME=${scheme:-$name}"
+            echo "BUILD_CONFIGURATION=$configuration"
             echo "ALLOWED_LOCAL_PACKAGES=$packages"
           } >> "$GITHUB_ENV"
+
+      # Runs before "Check build inputs", so the guard also reads the file written here. The
+      # endpoint stays out of the log and the repository: this is a public repository and the
+      # test endpoint may take uploads without a credential.
+      - name: Configure the integration build
+        env:
+          HOUSESCAN_CAPTURE_API_URL: ${{ inputs.app == 'house-scan-integration' && secrets.HOUSESCAN_CAPTURE_API_URL || '' }}
+          SEND_DEVICE_PHOTOS: ${{ inputs.integration_send_device_photos_after_consent }}
+        run: |
+          case "$SEND_DEVICE_PHOTOS" in
+            true) send=YES ;;
+            false) send=NO ;;
+            *) echo "::error::integration_send_device_photos_after_consent must be true or false."; exit 1 ;;
+          esac
+          if [ "$APP" != house-scan-integration ]; then
+            if [ "$send" = YES ]; then
+              echo "::error::integration_send_device_photos_after_consent applies only to house-scan-integration. Turn it off for $APP."
+              exit 1
+            fi
+            echo "$APP does not use the capture endpoint."
+            exit 0
+          fi
+          url="$HOUSESCAN_CAPTURE_API_URL"
+          if [ -z "$url" ]; then
+            echo "::error::Secret HOUSESCAN_CAPTURE_API_URL is empty. Add the capture API base, including /v1, to the 'testflight' environment (Settings > Environments)."
+            exit 1
+          fi
+          # Only https, a host, an optional port and a path of non-empty segments. The character
+          # set leaves out whitespace, control characters, @ (credentials), # (fragment), ?, $, ;,
+          # quotes and =, so the value can't carry a second setting or an xcconfig expansion, and
+          # its only // is the scheme's. Error messages never repeat the value.
+          label='[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?'
+          pattern="^https://$label(\\.$label)*(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?\$"
+          if ! [[ "$url" =~ $pattern ]]; then
+            echo "::error::HOUSESCAN_CAPTURE_API_URL must be an https URL with a host, such as https://capture.example.test/v1, with no credentials, query, fragment, spaces or empty path segments."
+            exit 1
+          fi
+          authority="${url#https://}"
+          authority="${authority%%/*}"
+          port=""
+          case "$authority" in *:*) port="${authority##*:}" ;; esac
+          if [ -n "$port" ] && { [ "$((10#$port))" -lt 1 ] || [ "$((10#$port))" -gt 65535 ]; }; then
+            echo "::error::HOUSESCAN_CAPTURE_API_URL has a port outside 1-65535."
+            exit 1
+          fi
+          echo "::add-mask::$url"
+          local_config="$PROJECT_DIR/Config/Integration.local.xcconfig"
+          if [ -e "$local_config" ]; then
+            echo "::error file=$local_config::This file must not be in the repository; the workflow writes it for each run."
+            exit 1
+          fi
+          # xcconfig reads // as a comment, so $() splits the scheme's slashes.
+          {
+            echo "// Written by the TestFlight workflow for this run."
+            printf 'HOUSESCAN_CAPTURE_API_URL = https:/$()/%s\n' "${url#https://}"
+            printf 'HOUSESCAN_CAPTURE_SEND_DEVICE_DATA = %s\n' "$send"
+          } > "$local_config"
+          echo "Configured the capture endpoint from the 'testflight' environment. Device photos sent after consent: $send."
 
       - name: Show toolchain
         run: |
@@ -186,8 +261,8 @@ jobs:
           umask 022
           xcodebuild archive \
             -project "$PROJECT_DIR/$PROJECT_NAME.xcodeproj" \
-            -scheme "$PROJECT_NAME" \
-            -configuration Release \
+            -scheme "$PROJECT_SCHEME" \
+            -configuration "$BUILD_CONFIGURATION" \
             -destination "generic/platform=iOS" \
             -archivePath "$RUNNER_TEMP/$PROJECT_NAME.xcarchive" \
             -allowProvisioningUpdates \
@@ -250,7 +325,7 @@ jobs:
             -authenticationKeyPath "$key" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-          echo "Uploaded $PROJECT_NAME build $BUILD_NUMBER. It appears in TestFlight after App Store Connect finishes processing." >> "$GITHUB_STEP_SUMMARY"
+          echo "Uploaded $PROJECT_SCHEME build $BUILD_NUMBER. It appears in TestFlight after App Store Connect finishes processing." >> "$GITHUB_STEP_SUMMARY"
 
       # Fallback for a key step that died before its trap ran.
       - name: Remove App Store Connect key

@@ -91,6 +91,24 @@ Git ignores `Local.xcconfig`. Leave the team field in Xcode's Signing & Capabili
 
 **Getting a scan off the phone.** The result screen, and the screens for a failed or refused upload, have a Share scan button. It shares the scan bundle (below); AirDrop it to your Mac. It holds photos of a real home, so keep it out of git.
 
+## Integration build on TestFlight
+
+The TestFlight workflow's `house-scan-integration` app archives the `HouseScan Integration` scheme in the `Integration Release` configuration: bundle id `<BUNDLE_ID_PREFIX>.housescan.integration`, name House Scan Integration. `house-scan` and `measure-lab` build as before. CONTRIBUTING.md > Distribution covers the key, the environment and the approval.
+
+The workflow reads the capture API base, including `/v1`, from the `testflight` environment's `HOUSESCAN_CAPTURE_API_URL` secret and writes it into `Config/Integration.local.xcconfig` on the runner. The secret binding lets GitHub mask the address before the step's environment is logged; ordinary-app runs receive an empty value. It fails before signing if the value is empty or is anything but an `https` URL with a host and plain path segments. The script's errors do not repeat the address.
+
+The build records captures on the phone and sends none. The `integration_send_device_photos_after_consent` input, off by default, makes the build send photos of a real home to that endpoint after the homeowner agrees for each scan. The test endpoint may accept uploads without a credential. Whoever approves the run decides whether to turn it on. The input fails the run for any other app.
+
+Before the first integration run, the release owner checks:
+
+- An App ID and App Store Connect app record exist for `<BUNDLE_ID_PREFIX>.housescan.integration`.
+- The `testflight` environment's key, `APPLE_TEAM_ID` and `BUNDLE_ID_PREFIX` also cover that app.
+- The `HOUSESCAN_CAPTURE_API_URL` secret is set in that environment.
+- The device-photo input matches what the people whose homes are scanned agreed to.
+- The run's branch is one the environment allows, with the integration code merged.
+
+`ruby ios/Tools/test-testflight-workflow.rb` runs the workflow's selection, configuration and build-input steps on a temporary copy of `ios/`, with made-up endpoints, and checks what `xcodebuild -showBuildSettings` reads back. It signs and uploads nothing.
+
 ## Scan bundle
 
 `scan.zip` in the scan's folder is what Share scan sends: a capture packet, version 1.1, with `manifest.json` at the zip's root. The packet's specification is `packet/README.md` on the `t3/packet` branch, with `packet/manifest.schema.json` and a validator (`uv run python -m packet validate <scan.zip>`). The upload sends only scene.json; nothing uploads the packet.
