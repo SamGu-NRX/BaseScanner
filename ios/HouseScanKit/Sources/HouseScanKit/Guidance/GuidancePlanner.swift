@@ -374,6 +374,8 @@ public struct GuidancePlanner: Sendable {
     /// request is for the run nearest the camera that is long enough. Taking the middle of all
     /// the cells left asked for a stalled stretch again whenever the band lagged on both sides of
     /// it, since the first and last cell, and so the middle, were unchanged (review of #120).
+    /// Cells where the band is already done split the runs the same way: the middle of two runs
+    /// either side of covered ground aimed the homeowner at that covered ground (#129).
     private func laggingBand(coverage: CoverageMap, camera: CameraFrame) -> GuidanceTask? {
         let s = coverage.wall.wallPoint(camera.position).s
         let window = Self.lagSpan(at: s, walking: Self.walkingSide(coverage))
@@ -385,11 +387,11 @@ public struct GuidancePlanner: Sendable {
             return (range.lowerBound + range.upperBound) / 2
         }
         /// The middle of the run of `band`'s lagging cells nearest the camera, among those of at
-        /// least `needed` cells between deferred stretches.
+        /// least `needed` cells between deferred stretches and cells where `band` is done.
         func nearestRun(_ band: SurfaceBand, lags: (Int) -> Bool) -> Float? {
             var runs: [[Int]] = [[]]
             for index in indices {
-                if isDeferred(band, at: middleOf(index)) {
+                if isDeferred(band, at: middleOf(index)) || done(coverage.level(band, index)) {
                     if !runs[runs.count - 1].isEmpty { runs.append([]) }
                 } else if lags(index) {
                     runs[runs.count - 1].append(index)

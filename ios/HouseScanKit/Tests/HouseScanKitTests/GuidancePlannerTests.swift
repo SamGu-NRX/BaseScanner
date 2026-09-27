@@ -109,16 +109,23 @@ import Testing
         var planner = GuidancePlanner()
         // The walk goes left, so the window runs 1 m ahead that way and 0.3 m back: from s = 0.5,
         // [-0.5, 0.8], cells -4 ... 5. Cells -4, -3 and 2 ... 5 have the wall covered and the
-        // ground unseen (-2 ... 1 are skipped): 6 >= ceil(0.45 / 0.1524) = 3. Middle of the
-        // first and last, (-0.6096 + 0.9144) / 2 = 0.1524.
-        let output = planner.update(coverage: Self.wallOnlyCoverage(), camera: Self.homeowner(x: 0.5), time: 0)
+        // ground unseen; -2 ... 1 are skipped, so done, and split them into two runs (#129).
+        // Only 2 ... 5 is at least ceil(0.45 / 0.1524) = 3 cells: its middle is
+        // (0.3048 + 0.9144) / 2 = 0.6096. The middle of the first and last lagging cells,
+        // (-0.6096 + 0.9144) / 2 = 0.1524, lies on the done ground between the runs.
+        let map = Self.wallOnlyCoverage()
+        let output = planner.update(coverage: map, camera: Self.homeowner(x: 0.5), time: 0)
         guard case .aimAtGround(let s) = output.task else {
             Issue.record("expected aimAtGround, got \(output.task)")
             return
         }
-        #expect(nearlyEqual(s, 0.1524))
-        // Target: the middle of the ground band there, (0.1524, 0, 0.6).
-        #expect(nearlyEqual(output.target ?? .zero, SIMD3(0.1524, 0, 0.6)))
+        #expect(nearlyEqual(s, 0.6096))
+        // Every cell of the stretch asked for is still missing ground.
+        for index in map.indices(overlapping: (s - GuidancePlanner.aimHalfWidth)...(s + GuidancePlanner.aimHalfWidth)) {
+            #expect(map.level(.ground, index) != .covered && map.level(.ground, index) != .skipped, "cell \(index)")
+        }
+        // Target: the middle of the ground band there, (0.6096, 0, 0.6).
+        #expect(nearlyEqual(output.target ?? .zero, SIMD3(0.6096, 0, 0.6)))
     }
 
     /// A task other than an aim task is held for 3 s, then gives way. Changed deliberately for

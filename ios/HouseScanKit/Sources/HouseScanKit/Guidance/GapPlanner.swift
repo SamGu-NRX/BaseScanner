@@ -161,10 +161,10 @@ public struct GapPlanner: Sendable {
         switch gap.need {
         case .cells where gap.reason == .server: spans = Self.exportedSpans(gap.band, coverage)
         case .cells: return coverage.coveredFraction(gap.band, in: gap.span)
-        case .groundOut(let out): spans = reaching(Self.exported(coverage.groundDepthSpans()), out)
-        case .walkOut(let out): spans = reaching(Self.exported(coverage.facingSpans()), out)
-        case .overhead(let height): spans = reaching(Self.exported(coverage.overheadSpans()), height)
-        case .wallUp(let height): spans = reaching(Self.exported(coverage.wallSeenSpans()), height)
+        case .groundOut(let out): spans = reaching(Self.exported(coverage.groundDepthSpans(), "ground", coverage), out)
+        case .walkOut(let out): spans = reaching(Self.exported(coverage.facingSpans(), "facing", coverage), out)
+        case .overhead(let height): spans = reaching(Self.exported(coverage.overheadSpans(), "overhead", coverage), height)
+        case .wallUp(let height): spans = reaching(Self.exported(coverage.wallSeenSpans(), "wall", coverage), height)
         }
         let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
         let requested = gap.requestedSpanFt ?? feet(gap.span.lowerBound)...feet(gap.span.upperBound)
@@ -196,15 +196,23 @@ public struct GapPlanner: Sendable {
     /// wall or ground entry, whatever its height or depth.
     static func exportedSpans(_ band: SurfaceBand, _ coverage: CoverageMap) -> [ClosedRange<Float>] {
         switch band {
-        case .wall: exported(coverage.wallSeenSpans()).map(\.span)
-        case .ground: exported(coverage.groundDepthSpans()).map(\.span)
+        case .wall: exported(coverage.wallSeenSpans(), "wall", coverage).map(\.span)
+        case .ground: exported(coverage.groundDepthSpans(), "ground", coverage).map(\.span)
         }
     }
 
-    /// A band's entries as the export writes them: joined or dropped to fit the schema's entry
-    /// limit (`ObservedSpan.coarsened`), which only ever reports less.
-    static func exported(_ spans: [ObservedSpan]) -> [ObservedSpan] {
-        ObservedSpan.coarsened(spans, toAtMost: SceneExport.bandBudget)
+    /// A band's entries as the export writes them from `coverage`'s chain.
+    static func exported(_ spans: [ObservedSpan], _ band: String, _ coverage: CoverageMap) -> [ObservedSpan] {
+        exported(spans, band, corners: coverage.wall.segments.count - 1)
+    }
+
+    /// A band's entries as the export writes them on a chain with `corners` corners: joined or
+    /// dropped to fit the band's share of the schema's entry limit (`SceneExport.observedBudget`,
+    /// `ObservedSpan.coarsened`), which only ever reports less. The ground's share shrinks by one
+    /// entry per corner; reading it at the full share let a request settle locally while the
+    /// export joined the reach down (#129).
+    static func exported(_ spans: [ObservedSpan], _ band: String, corners: Int) -> [ObservedSpan] {
+        ObservedSpan.coarsened(spans, toAtMost: SceneExport.observedBudget(band, corners: corners))
     }
 
     /// The fraction of `requested` (feet) that `spans` (meters) cover, measured the way the server
