@@ -38,11 +38,37 @@ def motion_blur(image: Image.Image, box: list[float], fraction: float) -> Image.
     return Image.fromarray(np.clip(streaked + 0.5, 0, 255).astype(np.uint8))
 
 
+def applicable(family: str, box: list[float], width: int, height: int, level: float) -> bool:
+    """Whether a photo of this size can take this level. `apply` skips exactly the rest.
+
+    Downscaling cannot enlarge a number already smaller than the target line height, and an
+    edge crop needs room to the right of the number for the requested margin.
+    """
+    if family == "scale":
+        return level < box[3] * height
+    if family == "edge":
+        right = (box[0] + box[2]) * width + level * box[3] * height
+        return box[0] * width < right <= width
+    if family in LEVELS:
+        return True
+    raise ValueError(f"unknown degradation family {family!r}; expected one of {list(LEVELS)}")
+
+
+def expected_levels(box: list[float], width: int, height: int) -> set[tuple[str, float]]:
+    """Every (family, level) the sweep runs on a photo of this size."""
+    return {
+        (family, level)
+        for family, levels in LEVELS.items()
+        for level in levels
+        if applicable(family, box, width, height, level)
+    }
+
+
 def downscale(image: Image.Image, box: list[float], line_px: float) -> Image.Image | None:
     """None when the photo's number is already smaller than the target."""
-    scale = line_px / (box[3] * image.height)
-    if scale >= 1:
+    if not applicable("scale", box, image.width, image.height, line_px):
         return None
+    scale = line_px / (box[3] * image.height)
     size = (max(1, round(image.width * scale)), max(1, round(image.height * scale)))
     return image.resize(size, Image.LANCZOS)
 
@@ -73,10 +99,9 @@ def edge_crop(
     Returns the crop and the box in the crop's normalized coordinates, or None when the photo
     has less room to the right than the requested margin.
     """
-    line_px = box[3] * image.height
-    right = (box[0] + box[2]) * image.width + margin * line_px
-    if right > image.width or right <= box[0] * image.width:
+    if not applicable("edge", box, image.width, image.height, margin):
         return None
+    right = (box[0] + box[2]) * image.width + margin * box[3] * image.height
     cropped = image.crop((0, 0, round(right), image.height))
     new_box = [box[0] * image.width / cropped.width, box[1], 0.0, box[3]]
     new_box[2] = min(1.0, (box[0] + box[2]) * image.width / cropped.width) - new_box[0]

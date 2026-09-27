@@ -53,7 +53,9 @@ def pieces(name: str, text: str) -> list[str]:
     header = next(reader, [])
     found = list(header)
     for row in reader:
-        for column, cell in zip(header, row, strict=False):
+        for index, cell in enumerate(row):
+            # Cells beyond the header, or under an empty one, have no column and are scanned.
+            column = header[index] if index < len(header) else None
             if column in MEASUREMENT_COLUMNS and MEASUREMENT.fullmatch(cell):
                 continue
             found.append(cell)

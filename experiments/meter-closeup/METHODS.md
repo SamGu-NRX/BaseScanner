@@ -43,7 +43,7 @@ For each photo and degradation, the break is the first level from which the phot
 
 Only two checks work on the phone. Glare and framing checks work on the true box but not on the top candidate, because a washed-out or cut number usually stops being the top candidate: it was the number on 1,366 of 3,309 degraded reads. "Rejects 0 of 75" is weak evidence, because no real photo is near a threshold. The smallest label is 22 px, and the lowest whole-photo sharpness is 58.7. Even above every break, 0.7–2.6% of degraded reads failed anyway.
 
-Each photo's rows are written to one file under `~/house-scanning-data/meter/sweep/rows/` by an atomic rename, tagged with the digest of the label they were scored against. `make sweep` resumes by skipping only photos whose file exists for the current label. `make q2` refuses to run, naming the photos, if any photo's rows are missing, stale or incomplete.
+Each photo's rows are written to one file under `~/house-scanning-data/meter/sweep/rows/` by an atomic rename, tagged with the digest of the label they were scored against. `degrade.expected_levels` gives the exact levels each photo takes, from its size and number box; a photo skips only the downscaling and edge levels it cannot reach. `make sweep` skips a photo only when its file holds exactly those levels under the current label. `make q2` refuses to run, naming the photos, when any file falls short.
 
 ## Second pass (question 3)
 

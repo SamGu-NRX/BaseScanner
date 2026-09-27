@@ -12,8 +12,9 @@ that decoded JPEG too, never on the pixels before encoding.
 
 Each photo's rows go to DATA_DIR/sweep/rows/<id>.jsonl, written to a temporary file and
 renamed into place, so a photo's file exists only once all its degradations were read. Rows
-carry the digest of the label they were scored against; a photo whose label changed is swept
-again. Raw recognizer output, which contains meter numbers, is not kept.
+carry the digest of the label they were scored against. A photo is swept again unless its file
+holds exactly the levels `degrade.expected_levels` gives for that photo, all scored against its
+current label. Raw recognizer output, which contains meter numbers, is not kept.
 """
 
 import argparse
@@ -24,7 +25,7 @@ import time
 
 from PIL import Image
 
-from meter_eval.degrade import LEVELS, apply
+from meter_eval.degrade import LEVELS, apply, expected_levels
 from meter_eval.locate import top_candidate
 from meter_eval.match import digest as match_digest
 from meter_eval.match import number_read
@@ -53,12 +54,36 @@ def rows_path(image_id: str):
     return ROWS_DIR / f"{image_id}.jsonl"
 
 
-def is_current(image_id: str, label_hmac: str) -> bool:
-    """The photo's rows exist and were all scored against this label."""
+def expected_for(image_id: str, box: list[float]) -> set[tuple[str, float]]:
+    """The (family, level) set the sweep runs on this photo, from its size and number box."""
+    with Image.open(DATA_DIR / "images" / f"{image_id}.jpg") as image:
+        return expected_levels(box, image.width, image.height)
+
+
+def check_rows(
+    image_id: str, rows: list[dict], label_hmac: str, expected: set[tuple[str, float]]
+) -> list[str]:
+    """What is wrong with one photo's rows; empty when they are exactly the expected set."""
+    keys = [(r["family"], r["level"]) for r in rows]
+    problems = []
+    if any(r.get("label_hmac") != label_hmac for r in rows):
+        problems.append(f"{image_id}: scored against another label")
+    if len(keys) != len(set(keys)):
+        problems.append(f"{image_id}: duplicate rows")
+    if missing := expected - set(keys):
+        problems.append(f"{image_id}: missing {sorted(missing)}")
+    if unexpected := set(keys) - expected:
+        problems.append(f"{image_id}: unexpected {sorted(unexpected)}")
+    return problems
+
+
+def problems_with(image_id: str, label_hmac: str, expected: set[tuple[str, float]]) -> list[str]:
+    """Why this photo must be swept again; empty when its rows file is complete and current."""
     path = rows_path(image_id)
     if not path.exists():
-        return False
-    return all(json.loads(line)["label_hmac"] == label_hmac for line in path.open())
+        return [f"{image_id}: not swept"]
+    rows = [json.loads(line) for line in path.open()]
+    return check_rows(image_id, rows, label_hmac, expected)
 
 
 def write_rows(image_id: str, records: list[dict]) -> None:
@@ -107,6 +132,7 @@ def second_pass(
 def sweep_image(reader: Reader, row: dict, box: list[float]) -> list[dict]:
     records = []
     digest, length = row["number_hmac"], int(row["number_len"])
+    SWEEP_DIR.mkdir(parents=True, exist_ok=True)
     work_path = SWEEP_DIR / f"work-{os.getpid()}.jpg"
     with Image.open(DATA_DIR / "images" / f"{row['id']}.jpg") as original:
         original.load()
@@ -156,7 +182,7 @@ def main() -> None:
     mine = targets()[args.shard :: args.shards]
     with Reader() as reader:
         for row, box in mine:
-            if is_current(row["id"], row["number_hmac"]):
+            if not problems_with(row["id"], row["number_hmac"], expected_for(row["id"], box)):
                 continue
             started = time.time()
             write_rows(row["id"], sweep_image(reader, row, box))

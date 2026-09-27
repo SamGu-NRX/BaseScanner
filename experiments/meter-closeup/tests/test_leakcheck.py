@@ -40,3 +40,13 @@ def test_identifier_in_prose_is_caught():
 def test_digests_in_text_are_ignored():
     text = "number_hmac " + "a" * 64
     assert all("aaaa" not in p for p in pieces("x.md", text))
+
+
+def test_cells_beyond_the_header_are_scanned():
+    text = "id,lap_var\nm01,62.5,1234.567\n"
+    assert find_leaks({"x.csv": text}, known()) == [("x.csv", 7)]
+
+
+def test_a_file_with_an_empty_first_line_is_scanned_in_full():
+    text = "\nm01,1.234.567\n"
+    assert find_leaks({"x.csv": text}, known()) == [("x.csv", 7)]

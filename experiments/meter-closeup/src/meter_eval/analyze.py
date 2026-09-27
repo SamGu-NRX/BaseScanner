@@ -20,7 +20,7 @@ import numpy as np
 from meter_eval.degrade import LEVELS
 from meter_eval.paths import RESULTS_DIR
 from meter_eval.stats import auc
-from meter_eval.sweep import is_current, rows_path, targets
+from meter_eval.sweep import expected_for, problems_with, rows_path, targets
 
 FAMILY_NAMES = {
     "blur": "Gaussian blur, σ as a fraction of the number's line height",
@@ -72,42 +72,20 @@ CHECKS = {
 }
 
 
-# Blur, motion and glare apply at every level on every photo; downscaling and edge crops
-# skip levels a photo cannot reach (a number already smaller than the target, or no room).
-ALWAYS_APPLIED = ("blur", "motion", "glare")
-
-
-def check_complete(image_id: str, rows: list[dict]) -> list[str]:
-    """What is wrong with one photo's sweep rows; empty when they are complete."""
-    problems = []
-    keys = [(r["family"], r["level"]) for r in rows]
-    if len(keys) != len(set(keys)):
-        problems.append(f"{image_id}: duplicate rows")
-    for family in ALWAYS_APPLIED:
-        missing = set(LEVELS[family]) - {level for f, level in keys if f == family}
-        if missing:
-            problems.append(f"{image_id}: {family} missing levels {sorted(missing)}")
-    unknown = {(f, level) for f, level in keys if level not in LEVELS.get(f, [])}
-    if unknown:
-        problems.append(f"{image_id}: unexpected rows {sorted(unknown)}")
-    return problems
-
-
 def load_rows() -> list[dict]:
     """Every swept photo's rows, scored against its current label.
 
-    Fails, naming the photos, if any photo's rows are missing, stale or incomplete, rather than
-    analyzing a partial sweep.
+    Fails, naming the photos, if any photo's rows are missing, stale, or not exactly the levels
+    the sweep runs on that photo, rather than analyzing a partial sweep.
     """
     rows, problems = [], []
-    for row, _ in targets():
+    for row, box in targets():
         image_id = row["id"]
-        if not is_current(image_id, row["number_hmac"]):
-            problems.append(f"{image_id}: not swept against its current label")
+        found = problems_with(image_id, row["number_hmac"], expected_for(image_id, box))
+        if found:
+            problems += found
             continue
-        photo_rows = [json.loads(line) for line in rows_path(image_id).open()]
-        problems += check_complete(image_id, photo_rows)
-        rows += photo_rows
+        rows += [json.loads(line) for line in rows_path(image_id).open()]
     if problems:
         raise SystemExit("run `make sweep` first:\n" + "\n".join(problems))
     return rows
