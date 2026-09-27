@@ -141,13 +141,36 @@ def main(argv: list[str] | None = None) -> None:
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)
         raise
-    previous = args.out.with_name(args.out.name + ".previous")
-    shutil.rmtree(previous, ignore_errors=True)
-    if args.out.exists():
-        args.out.rename(previous)
-    stage.rename(args.out)
-    shutil.rmtree(previous, ignore_errors=True)
+    publish(stage, args.out)
     print(f"wrote the run's npz files and run.json to {args.out}", file=sys.stderr)
+
+
+def publish(stage: Path, out: Path) -> None:
+    """Replace `out` with the complete run in `stage`, all or nothing.
+
+    The previous run is set aside as `out.previous` and put back if the swap fails. A
+    `.previous` is deleted only when a complete run (with its run.json) is published at `out`. A
+    `.previous` with nothing at `out` is a run a killed publication set aside, and is restored
+    before anything else, so a failed publication never loses the last complete run."""
+    previous = out.with_name(out.name + ".previous")
+    if previous.exists():
+        if (out / "run.json").exists():
+            shutil.rmtree(previous)  # a later publication completed; this one is superseded
+        elif not out.exists():
+            previous.rename(out)
+        else:
+            raise RuntimeError(
+                f"both {out} (without run.json) and {previous} exist; inspect them by hand"
+            )
+    if out.exists():
+        out.rename(previous)
+    try:
+        stage.rename(out)
+    except BaseException:
+        if previous.exists() and not out.exists():
+            previous.rename(out)
+        raise
+    shutil.rmtree(previous, ignore_errors=True)
 
 
 def run_into(args, out: Path, images, intrinsics, poses, caches, module, device, torch) -> None:

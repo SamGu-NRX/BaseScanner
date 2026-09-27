@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -316,3 +317,63 @@ def test_a_completed_run_replaces_the_previous_one_whole(tmp_path, monkeypatch):
     assert sorted(p.name for p in out.iterdir()) == ["a.npz", "b.npz", "run.json"]
     assert json.loads((out / "run.json").read_text())["images"][1]["stem"] == "b"
     assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith("out")) == ["out"]
+
+
+def _complete_run(folder, tag):
+    folder.mkdir()
+    (folder / "a.npz").write_bytes(f"{tag} a".encode())
+    (folder / "run.json").write_text(json.dumps({"run": tag}))
+
+
+def test_a_publication_that_fails_twice_keeps_the_previous_run(tmp_path, monkeypatch):
+    from models import run
+
+    out = tmp_path / "out"
+    _complete_run(out, "previous")
+    before = _snapshot(out)
+    real_rename = Path.rename
+
+    def failing_rename(self, target):
+        if self.name == "out.staging":
+            raise OSError("injected: the new run could not be moved into place")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", failing_rename)
+    for attempt in range(2):
+        stage = tmp_path / "out.staging"
+        _complete_run(stage, f"new {attempt}")
+        with pytest.raises(OSError, match="injected"):
+            run.publish(stage, out)
+        assert _snapshot(out) == before
+        assert not (tmp_path / "out.previous").exists()
+        shutil.rmtree(stage)
+
+
+def test_a_run_left_aside_by_a_killed_publication_is_restored_not_deleted(tmp_path, monkeypatch):
+    from models import run
+
+    # A kill between setting the old run aside and moving the new one in leaves only .previous.
+    _complete_run(tmp_path / "out.previous", "previous")
+    before = _snapshot(tmp_path / "out.previous")
+    stage = tmp_path / "out.staging"
+    _complete_run(stage, "new")
+    run.publish(stage, tmp_path / "out")
+    assert json.loads((tmp_path / "out" / "run.json").read_text()) == {"run": "new"}
+    assert not (tmp_path / "out.previous").exists()
+    # Restored first, then superseded by a complete publication: never deleted while alone.
+    _complete_run(tmp_path / "out.previous", "previous")
+    shutil.rmtree(tmp_path / "out")
+    stage = tmp_path / "out.staging"
+    _complete_run(stage, "new again")
+
+    real = Path.rename
+
+    def refuse_staging(self, target):
+        if self.name == "out.staging":
+            raise OSError("injected")
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "rename", refuse_staging)
+    with pytest.raises(OSError, match="injected"):
+        run.publish(stage, tmp_path / "out")
+    assert _snapshot(tmp_path / "out") == before

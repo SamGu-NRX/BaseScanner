@@ -611,3 +611,27 @@ def test_a_session_image_within_the_bound_decodes(tmp_path):
     cv2.imwrite(str(path), np.full((30, 40, 3), 200, np.uint8))
     assert field.read_session_image(path).shape == (30, 40, 3)
     assert field.read_session_image(path, cv2.IMREAD_GRAYSCALE).shape == (30, 40)
+
+
+def test_session_memory_follows_one_group_not_the_session():
+    loads, live_peak = [], 0
+    frames = field.GroupFrames(lambda k: loads.append(k) or (k,), lambda k: 1_000_000)
+    groups = [[f"k{i}", f"k{i + 1}", f"k{i + 2}"] for i in range(50)]  # a 52-keyframe walk
+    for group in groups:
+        held = frames.hold(group)
+        assert set(held) == set(group)
+        live_peak = max(live_peak, len(frames.held))
+    assert live_peak == 3  # never more than one group, however long the session
+    assert len(loads) == 52  # overlapping frames are kept, not decoded again
+
+
+def test_a_group_over_the_pixel_budget_is_refused_before_decoding(monkeypatch):
+    def no_decode(k):
+        raise AssertionError("a frame was decoded")
+
+    # Eight 48 MP photos, sized from their headers only: 390 MP against a 200 MP budget.
+    frames = field.GroupFrames(no_decode, lambda k: 8064 * 6048)
+    with pytest.raises(ValueError, match="more than 200000000"):
+        frames.hold([f"k{i}" for i in range(8)])
+    small = field.GroupFrames(lambda k: (k,), lambda k: 1920 * 1440)  # eight ARKit keyframes
+    assert len(small.hold([f"k{i}" for i in range(8)])) == 8

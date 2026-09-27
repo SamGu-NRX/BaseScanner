@@ -26,6 +26,7 @@ the tape, over spans of at least 10 ft, where scale dominates tapping error.
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import re
@@ -78,6 +79,12 @@ MIN_FREE_AFTER_UNPACK = 3 * 1024**3
 # ARKit keyframes are 1920 x 1440 (2.8 MP) and a 48 MP iPhone photo is 8064 x 6048 (48.8 MP), so
 # 50 MP admits both, and decoding it in colour takes about 150 MB of the 4 GB per-process budget.
 MAX_IMAGE_PIXELS = 50_000_000
+# Pixels held at once while fitting scales. Triangulation needs a keyframe and its NEIGHBOURS nearest
+# together, so only that group's grayscale image (1 byte per pixel) and depth (4) are kept, about
+# 5 bytes a pixel whatever the session's length. 200 MP is then about 1 GB, leaving the rest of the
+# 4 GB per-process budget for feature matching. Eight ARKit keyframes are 22 MP; eight 48 MP photos
+# are 390 MP and are refused from their headers before any is decoded.
+MAX_GROUP_PIXELS = 200_000_000
 
 
 def safe_member(name: str) -> PurePosixPath:
@@ -387,26 +394,52 @@ def triangulated_scales(folder: Path, out: Path, session: dict, kids: list[str])
     kfs = {kf["id"]: kf for kf in session["keyframes"]}
     turns = json.loads((out / "turns.json").read_text())
     poses = {k: keyframe_pose_cv(kf) for k, kf in kfs.items()}
-    cache: dict[str, tuple] = {}
 
-    def inputs(k):
-        if k not in cache:
-            gray = read_session_image(session_file(folder, kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
-            cache[k] = (gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k]))
-        return cache[k]
+    def load(k):
+        gray = read_session_image(session_file(folder, kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
+        return gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k])
 
+    def pixels(k):
+        w, h = image_size(session_file(folder, kfs[k]["img"]))
+        return w * h
+
+    frames = GroupFrames(load, pixels)
     fits = {}
     for kid in kids:
         group = neighbours(poses, kid)
         if len(group) < 2:
             continue
+        held = frames.hold(group)
         fits[kid] = view_scales(
-            {k: inputs(k)[0] for k in group},
-            {k: inputs(k)[1] for k in group},
+            {k: held[k][0] for k in group},
+            {k: held[k][1] for k in group},
             {k: poses[k] for k in group},
-            {k: inputs(k)[2] for k in group},
+            {k: held[k][2] for k in group},
         )[kid]
     return fits
+
+
+class GroupFrames:
+    """The decoded inputs of one neighbour group at a time. Frames outside the requested group are
+    dropped before new ones load, so memory follows the group, not the session; a group over
+    MAX_GROUP_PIXELS is refused from its image headers before anything in it is decoded."""
+
+    def __init__(self, load, pixels):
+        self.load, self.pixels = load, pixels
+        self.held: dict[str, tuple] = {}
+
+    def hold(self, group: list[str]) -> dict[str, tuple]:
+        total = sum(self.pixels(k) for k in group)
+        if total > MAX_GROUP_PIXELS:
+            raise ValueError(
+                f"keyframes {group} hold {total} pixels together, more than {MAX_GROUP_PIXELS}"
+            )
+        for k in [k for k in self.held if k not in group]:
+            del self.held[k]
+        for k in group:
+            if k not in self.held:
+                self.held[k] = self.load(k)
+        return self.held
 
 
 # --- Points, walls, values (Measure Lab's definitions) ------------------------------------------
@@ -739,12 +772,12 @@ def score(
     tapped = sorted({t["keyframe"] for t in session["taps"]})
     kids = tapped or [kf["id"] for kf in session["keyframes"]]
     fits = triangulated_scales(folder, out, session, kids)
-    depth_cache: dict[str, np.ndarray] = {}
 
+    # Taps read depth one keyframe at a time; keeping the last two bounds memory to two depth
+    # maps however many keyframes were tapped.
+    @functools.lru_cache(maxsize=2)
     def depth_of(k):
-        if k not in depth_cache:
-            depth_cache[k] = keyframe_depth(out, k, turns[k])
-        return depth_cache[k]
+        return keyframe_depth(out, k, turns[k])
 
     tri = [f.scale for f in fits.values() if f.scale is not None]
     lines = [
