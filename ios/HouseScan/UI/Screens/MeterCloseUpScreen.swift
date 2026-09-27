@@ -43,7 +43,7 @@ struct MeterCloseUpScreen: View {
                 VStack(spacing: 12) {
                     if case .choose(let candidates) = state.meterNumber {
                         MeterNumberPicker(candidates: candidates, choose: actions.chooseMeterNumber)
-                            .transition(.opacity.combined(with: .offset(y: 12)))
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 12)))
                     } else if state.meterNumber == .reading {
                         ProgressView()
                             .controlSize(.large)
@@ -132,11 +132,12 @@ struct MeterCloseUpScreen: View {
                     .foregroundStyle(.white)
                     .padding(22)
                     .background(Palette.covered, in: .circle)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.8).combined(with: .opacity))
             }
         }
         .frame(width: 250, height: 250)
-        .scaleEffect(lockedOn ? 1 : 1.25)
+        // Closes in on the meter; with Reduce Motion it only fades in.
+        .scaleEffect(lockedOn || reduceMotion ? 1 : 1.25)
         // The ring steps back while the answers are up, so it never sits behind them.
         .opacity(lockedOn && !isChoosing ? 1 : 0)
         .animation(Motion.pin, value: done)

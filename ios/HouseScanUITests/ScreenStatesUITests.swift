@@ -48,6 +48,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("uploading-followUp", ["-uiDemoPhase", "uploading", "-uiDemoFollowUp"], "uploading"),
         ("result-review", ["-uiDemoPhase", "result"], "result"),
         ("result-pass", ["-uiDemoPhase", "result", "-uiDemoPass"], "result"),
+        ("result-corner", ["-uiDemoPhase", "result", "-uiDemoCorner"], "result"),
         ("result-overlap", ["-uiDemoPhase", "result", "-uiDemoOverlap"], "result"),
         ("resultAR", ["-uiDemoPhase", "resultAR"], "resultAR"),
         ("cameraDenied", ["-uiDemoFailure", "cameraDenied"], "unsupported"),
@@ -306,7 +307,7 @@ final class ScreenStatesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 6)
         revealCutOff(first.values.compactMap(\.frame), in: app)
         let second = try audit(app)
-        for key in first.keys.sorted() where second[key] != nil {
+        for key in AuditIssueKey.repeated(first, second) {
             XCTFail("\(name): \(second[key]?.message ?? key)")
         }
     }
@@ -316,7 +317,7 @@ final class ScreenStatesUITests: XCTestCase {
         var frame: CGRect?
     }
 
-    /// Issues keyed by type, identifier and label. A failed snapshot (the tree changed while the
+    /// Issues keyed by `AuditIssueKey`. A failed snapshot (the tree changed while the
     /// audit read it) is retried once; a second failure throws.
     @MainActor
     private func audit(_ app: XCUIApplication) throws -> [String: Issue] {
@@ -324,7 +325,7 @@ final class ScreenStatesUITests: XCTestCase {
             var found: [String: Issue] = [:]
             try app.performAccessibilityAudit { issue in
                 let element = issue.element.map { "id '\($0.identifier)' label '\($0.label)'" } ?? "no element"
-                let key = "\(issue.auditType.rawValue)|\(issue.element?.identifier ?? "")|\(issue.element?.label ?? "")"
+                let key = AuditIssueKey.key(auditType: issue.auditType.rawValue, identifier: issue.element?.identifier, label: issue.element?.label)
                 found[key] = Issue(message: "\(issue.compactDescription) (\(element))", frame: issue.element?.frame)
                 return true
             }
