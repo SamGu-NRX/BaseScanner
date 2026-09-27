@@ -279,7 +279,15 @@ final class FullFlowUITests: XCTestCase {
         XCTAssertEqual(sample.width / sample.height, 2.0 / 3.0, accuracy: 0.12, "sample meter drawn \(sample.width) by \(sample.height)")
 
         let running = try XCTUnwrap(app)
-        running.buttons["action.startOver"].firstMatch.tap()
+        // Start over sits under Details, last, as ScreenStatesUITests reaches it.
+        let details = running.descendants(matching: .any)["result.details"]
+        XCTAssertTrue(details.waitForExistence(timeout: 20), "no Details on the result")
+        details.tap()
+        let startOver = running.descendants(matching: .any)["action.startOver"]
+        XCTAssertTrue(startOver.waitForExistence(timeout: 10), "no Start over under Details")
+        running.swipeUp()
+        running.swipeUp()
+        startOver.tap()
         XCTAssertTrue(running.descendants(matching: .any)["screen.onboarding"].waitForExistence(timeout: 15))
         XCTAssertFalse(running.descendants(matching: .any)["practiceBadge"].exists, "the badge outlived the practice scan")
     }
