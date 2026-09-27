@@ -144,6 +144,16 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if arguments.contains("-uiDemoCorner") {
+            // The walk followed an outside corner right of the meter, between the battery spot and
+            // the window, and went on 1.6 m along the next wall: that wall runs away from the
+            // homeowner and faces right.
+            let corner: Float = 1.8
+            state.wall?.cornerSegments = [WallGeometry.Segment(
+                span: corner...Float.infinity, along: SIMD3(0, 0, -1), outward: SIMD3(1, 0, 0),
+                anchor: SIMD3(corner, 0, 0), anchorS: corner)]
+            state.wall?.rightEnd = corner + 1.6
+        }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
         }

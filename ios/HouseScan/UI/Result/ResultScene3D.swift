@@ -12,9 +12,13 @@ import UIKit
 // ground: amber or red for a spot that might stand in the meter's working space
 // (`ResultPresentation.spotIsClean`), red for the closest spot of a result without one.
 //
-// Everything is built in the wall frame of `WallGeometry`, not in ARKit world coordinates:
-// x = s (meters along the wall, + to the right), y = height above the ground, z = meters out
-// from the wall toward the viewer. The meter sits at (0, meterHeight, 0).
+// Everything is built in the frame of the meter's piece of wall, not in ARKit world coordinates:
+// x along that piece (+ to the right), y = height above the ground, z = meters out from the wall
+// toward the viewer. The meter sits at (0, meterHeight, 0). Each straight piece of the wall
+// (`WallGeometry.cornerSegments`) is a container entity placed and turned where that piece is,
+// and what stands on a piece is built flat inside it: x = s, y = height, z = out. So on a straight
+// wall x is s, and a walk round a corner shows the corner, with the marks, the battery and the
+// clearance zones on the piece they belong to, as the AR view places them.
 
 struct ResultScene3D: View {
     let wall: WallGeometry
@@ -89,9 +93,17 @@ struct ResultScene3D: View {
     private var orbitTarget: SIMD3<Float> {
         if let spot = result.spot ?? result.nearestSpot {
             let mid = (spot.span.lowerBound + spot.span.upperBound) / 2
-            return SIMD3(mid, spot.height / 2, spot.offsetFromWall + spot.depth / 2)
+            return piece(atS: mid).point(s: mid, height: spot.height / 2, out: spot.offsetFromWall + spot.depth / 2)
         }
         return SIMD3(0, wall.meterHeight / 2, 0)
+    }
+
+    /// The camera's yaw 0 faces the piece of wall the orbit target stands on, degrees, so a battery
+    /// round a corner is seen from its front.
+    private var orbitHeading: Float {
+        let s = result.spot.map { ($0.span.lowerBound + $0.span.upperBound) / 2 } ?? 0
+        let outward = piece(atS: s).outward
+        return atan2(outward.x, outward.z) * 180 / .pi
     }
 
     private var orbitDistance: Float {
@@ -99,7 +111,7 @@ struct ResultScene3D: View {
     }
 
     private func placeCamera(_ camera: Entity) {
-        let yawRad = yaw * .pi / 180
+        let yawRad = (yaw + orbitHeading) * .pi / 180
         let pitchRad = pitch * .pi / 180
         let direction = SIMD3(sin(yawRad) * cos(pitchRad), sin(pitchRad), cos(yawRad) * cos(pitchRad))
         camera.look(at: orbitTarget, from: orbitTarget + direction * orbitDistance, relativeTo: nil)
@@ -165,14 +177,17 @@ struct ResultScene3D: View {
 
     private func buildDiorama() -> Entity {
         let root = Entity()
-        let extent = wallExtent
-        let width = extent.upperBound - extent.lowerBound
-        let centerX = (extent.lowerBound + extent.upperBound) / 2
+        let pieces = self.pieces
+        let holders = pieces.map { piece in
+            let holder = Entity()
+            holder.position = piece.origin
+            holder.orientation = piece.orientation
+            root.addChild(holder)
+            return holder
+        }
+        func holder(atS s: Float) -> Entity { holders[pieceIndex(atS: s, in: pieces)] }
 
-        root.addChild(box(width: width, height: wallHeight, depth: 0.12,
-                          center: SIMD3(centerX, wallHeight / 2, -0.06), material: matte(SceneColor.wall)))
-        root.addChild(plane(width: width + 1, depth: Self.groundDepth,
-                            center: SIMD3(centerX, 0, Self.groundDepth / 2), material: matte(SceneColor.ground)))
+        for (piece, holder) in zip(pieces, holders) { addWallAndGround(piece, pieces: pieces, to: holder) }
 
         root.addChild(box(width: 0.3, height: 0.4, depth: 0.15,
                           center: SIMD3(0, wall.meterHeight, 0.075), material: matte(SceneColor.meter)))
@@ -181,31 +196,132 @@ struct ResultScene3D: View {
         dial.position = SIMD3(0, wall.meterHeight + 0.04, 0.155)
         root.addChild(dial)
 
-        for feature in features { addFeature(feature, to: root) }
+        // A mark goes on the piece its middle is on.
+        for feature in features { addFeature(feature, to: holder(atS: (feature.span.lowerBound + feature.span.upperBound) / 2)) }
 
         for (index, zone) in result.clearances.enumerated() {
             var material = UnlitMaterial(color: SceneColor.outcome(zone.outcome))
             material.blending = .transparent(opacity: .init(floatLiteral: 0.35))
-            let zoneWidth = zone.span.upperBound - zone.span.lowerBound
             // Stacked zones sit a few millimeters apart so overlapping ones don't flicker.
             let lift = 0.006 + Float(index) * 0.003
-            root.addChild(plane(width: zoneWidth, depth: zone.depth,
-                                center: SIMD3(zone.span.lowerBound + zoneWidth / 2, lift, zone.depth / 2), material: material))
+            // A zone that runs past a corner is drawn in parts, one on each piece it covers.
+            for (piece, holder) in zip(pieces, holders) {
+                let low = max(zone.span.lowerBound, piece.span.lowerBound)
+                let high = min(zone.span.upperBound, piece.span.upperBound)
+                guard high > low else { continue }
+                holder.addChild(plane(width: high - low, depth: zone.depth,
+                                      center: SIMD3((low + high) / 2, lift, zone.depth / 2), material: material))
+            }
         }
 
-        addCable(to: root)
+        addCable(to: root, pieces: pieces)
+        // Each on the piece its middle is on, as the battery is.
+        func middle(_ spot: BatterySpot) -> Float { (spot.span.lowerBound + spot.span.upperBound) / 2 }
         if let spot = result.spot {
             if result.spotIsClean {
-                addBattery(spot, to: root)
+                addBattery(spot, to: holder(atS: middle(spot)))
             } else {
-                addFootprintOutline(spot, color: SceneColor.ink(workingSpaceOutcome), to: root)
+                addFootprintOutline(spot, color: SceneColor.ink(workingSpaceOutcome), to: holder(atS: middle(spot)))
             }
         }
         if let nearest = result.nearestSpot {
-            addFootprintOutline(nearest, color: SceneColor.ink(.fail), to: root)
+            addFootprintOutline(nearest, color: SceneColor.ink(.fail), to: holder(atS: middle(nearest)))
         }
         addLights(to: root)
         return root
+    }
+
+    // MARK: - Wall pieces
+
+    /// A straight piece of the wall in the model frame. Flat coordinates (x = s, y = height,
+    /// z = out) map to the model as `origin + orientation.act(flat)`; the meter's piece is the
+    /// identity.
+    private struct WallPiece {
+        /// The stretch of s it covers, clipped to the drawn extent.
+        var span: ClosedRange<Float>
+        var origin: SIMD3<Float>
+        var orientation: simd_quatf
+        /// A corner the walk followed is at this end, not the end of the drawn wall.
+        var cornerLow: Bool
+        var cornerHigh: Bool
+
+        func point(s: Float, height: Float, out: Float) -> SIMD3<Float> {
+            origin + orientation.act(SIMD3(s, height, out))
+        }
+
+        var outward: SIMD3<Float> { orientation.act(SIMD3(0, 0, 1)) }
+    }
+
+    /// A world direction in the model frame: the meter's piece's along, up and outward.
+    private func modelDirection(_ v: SIMD3<Float>) -> SIMD3<Float> {
+        SIMD3(simd_dot(v, wall.along), v.y, simd_dot(v, wall.outward))
+    }
+
+    /// The meter's piece and each piece past a corner, left to right, clipped to `wallExtent`.
+    private var pieces: [WallPiece] {
+        let extent = wallExtent
+        let low = wall.cornerSegments.map(\.span.upperBound).filter { $0 <= 0 }.max() ?? -.infinity
+        let high = wall.cornerSegments.map(\.span.lowerBound).filter { $0 >= 0 }.min() ?? .infinity
+        var all: [(span: ClosedRange<Float>, origin: SIMD3<Float>, orientation: simd_quatf)] = [
+            (low...high, .zero, simd_quatf(ix: 0, iy: 0, iz: 0, r: 1)),
+        ]
+        for segment in wall.cornerSegments {
+            let along = simd_normalize(modelDirection(segment.along))
+            let outward = simd_normalize(modelDirection(segment.outward))
+            let orientation = simd_quatf(simd_float3x3(columns: (along, SIMD3(0, 1, 0), outward)))
+            all.append((segment.span, modelDirection(segment.anchor) - along * segment.anchorS, orientation))
+        }
+        return all.compactMap { piece in
+            let lower = max(piece.span.lowerBound, extent.lowerBound)
+            let upper = min(piece.span.upperBound, extent.upperBound)
+            guard upper > lower else { return nil }
+            return WallPiece(span: lower...upper, origin: piece.origin, orientation: piece.orientation,
+                             cornerLow: piece.span.lowerBound > extent.lowerBound,
+                             cornerHigh: piece.span.upperBound < extent.upperBound)
+        }
+        .sorted { $0.span.lowerBound < $1.span.lowerBound }
+    }
+
+    private func pieceIndex(atS s: Float, in pieces: [WallPiece]) -> Int {
+        if let index = pieces.firstIndex(where: { $0.span.contains(s) }) { return index }
+        let distances = pieces.map { max($0.span.lowerBound - s, s - $0.span.upperBound, 0) }
+        return distances.indices.min { distances[$0] < distances[$1] } ?? 0
+    }
+
+    private func piece(atS s: Float) -> WallPiece {
+        let pieces = self.pieces
+        return pieces.isEmpty
+            ? WallPiece(span: 0...0, origin: .zero, orientation: simd_quatf(ix: 0, iy: 0, iz: 0, r: 1), cornerLow: false, cornerHigh: false)
+            : pieces[pieceIndex(atS: s, in: pieces)]
+    }
+
+    private static let wallThickness: Float = 0.12
+
+    /// Whether the neighbouring piece across the corner at `s` runs behind this piece's face (an
+    /// outside corner, the usual one walking round a house) rather than out in front of it.
+    private func turnsAway(_ piece: WallPiece, at s: Float, towardLower: Bool, pieces: [WallPiece]) -> Bool {
+        let step: Float = towardLower ? -0.5 : 0.5
+        let neighbour = pieces[pieceIndex(atS: s + step, in: pieces)]
+        let beyond = neighbour.point(s: s + step, height: 0, out: 0) - piece.point(s: s, height: 0, out: 0)
+        return simd_dot(beyond, piece.outward) < 0
+    }
+
+    /// The piece's wall and the ground strip in front of it. At an outside corner the ground runs
+    /// on past the corner to fill the wedge in front of both faces; at an inside corner the wall
+    /// runs on by its thickness to close the notch behind the join. Neither pokes out elsewhere.
+    private func addWallAndGround(_ piece: WallPiece, pieces: [WallPiece], to holder: Entity) {
+        func extensions(corner: Bool, at s: Float, towardLower: Bool) -> (wall: Float, ground: Float) {
+            guard corner else { return (0, 0.5) }
+            return turnsAway(piece, at: s, towardLower: towardLower, pieces: pieces) ? (0, Self.groundDepth) : (Self.wallThickness, 0)
+        }
+        let low = extensions(corner: piece.cornerLow, at: piece.span.lowerBound, towardLower: true)
+        let high = extensions(corner: piece.cornerHigh, at: piece.span.upperBound, towardLower: false)
+        let wallLow = piece.span.lowerBound - low.wall, wallHigh = piece.span.upperBound + high.wall
+        holder.addChild(box(width: wallHigh - wallLow, height: wallHeight, depth: Self.wallThickness,
+                            center: SIMD3((wallLow + wallHigh) / 2, wallHeight / 2, -Self.wallThickness / 2), material: matte(SceneColor.wall)))
+        let groundLow = piece.span.lowerBound - low.ground, groundHigh = piece.span.upperBound + high.ground
+        holder.addChild(plane(width: groundHigh - groundLow, depth: Self.groundDepth,
+                              center: SIMD3((groundLow + groundHigh) / 2, 0, Self.groundDepth / 2), material: matte(SceneColor.ground)))
     }
 
     private static let groundDepth: Float = 2.5
@@ -295,8 +411,10 @@ struct ResultScene3D: View {
     private static let dashGap: Float = 0.06
     private static let lineWidth: Float = 0.03
 
-    private func addCable(to root: Entity) {
-        let points = result.cableRoute.map { SIMD3($0.x, $0.y, 0.03) }
+    /// Point by point on the piece each point's s is on: the route has a vertex at every corner it
+    /// passes (`SceneWall.chainS`), so each stretch lies on one piece and it bends with the wall.
+    private func addCable(to root: Entity, pieces: [WallPiece]) {
+        let points = result.cableRoute.map { pieces.isEmpty ? SIMD3($0.x, $0.y, 0.03) : pieces[pieceIndex(atS: $0.x, in: pieces)].point(s: $0.x, height: $0.y, out: 0.03) }
         let material = matte(SceneColor.signal)
         let radius: Float = 0.015
         for (from, to) in zip(points, points.dropFirst()) {
@@ -452,12 +570,13 @@ enum ResultARModel {
         return root
     }
 
-    /// Lifts the battery out of the ground. Call once the model is in the scene.
+    /// Lifts the battery out of the ground. Call once the model is in the scene. With Reduce Motion
+    /// the battery stays where `build` put it, at its final size: a shorter rise is still a rise.
     static func rise(_ model: Entity) {
-        guard let unit = model.findEntity(named: unitName) else { return }
+        guard !UIAccessibility.isReduceMotionEnabled, let unit = model.findEntity(named: unitName) else { return }
         let settled = unit.transform
         unit.scale = SIMD3(1, 0.02, 1)
-        unit.move(to: settled, relativeTo: unit.parent, duration: UIAccessibility.isReduceMotionEnabled ? 0.2 : 0.7, timingFunction: .easeOut)
+        unit.move(to: settled, relativeTo: unit.parent, duration: 0.7, timingFunction: .easeOut)
     }
 
     /// x along the wall, y up, z out from the wall toward the homeowner.

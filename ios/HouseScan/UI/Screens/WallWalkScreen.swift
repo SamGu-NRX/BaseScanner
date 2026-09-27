@@ -199,7 +199,7 @@ struct WallWalkScreen: View {
                 onPick: { kind in actions.beginMarking(kind) },
                 onClose: { trayOpen = false }
             )
-            .transition(.opacity.combined(with: .move(edge: .bottom)))
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
         case .nextWall, .markEnd, .finish, .walking:
             // One row for all three, so "Mark something" stays the same view while the button
             // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the

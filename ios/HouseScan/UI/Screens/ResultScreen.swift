@@ -31,7 +31,7 @@ struct ResultScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
-                    AnswerCard(result: result, revealed: revealed, actions: actions)
+                    AnswerCard(result: result, canShowAR: state.spatialResultAvailable, revealed: revealed, actions: actions)
                     footnotes(result)
                         .padding(.horizontal, 4)
                     details(result)
@@ -174,6 +174,9 @@ private struct TextActionStyle: ButtonStyle {
 /// the one next step.
 private struct AnswerCard: View {
     let result: ResultPresentation
+    /// False once the camera failed after the scan was sent: the AR buttons are neither shown nor
+    /// offered (`ScanViewState.spatialResultAvailable`).
+    let canShowAR: Bool
     let revealed: Bool
     let actions: any ScanActions
 
@@ -240,7 +243,7 @@ private struct AnswerCard: View {
     private func primaryButton(_ answer: ResultReading.Answer) -> some View {
         switch answer {
         case .fits:
-            if result.spot != nil { showAR(ScanCopy.seeOnWall) }
+            if result.spot != nil, canShowAR { showAR(ScanCopy.seeOnWall) }
         case .oneMoreLook:
             if let view = result.firstViewToTake {
                 Button {
@@ -253,7 +256,7 @@ private struct AnswerCard: View {
                 .accessibilityIdentifier("action.showMe")
             }
         case .installer:
-            if result.spot != nil { showAR(result.spotIsClean ? ScanCopy.seeOnWall : ScanCopy.seeClosest) }
+            if result.spot != nil, canShowAR { showAR(result.spotIsClean ? ScanCopy.seeOnWall : ScanCopy.seeClosest) }
         case .notHere:
             Button {
                 actions.startOver()

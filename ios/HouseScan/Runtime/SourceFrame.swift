@@ -20,9 +20,9 @@ struct SourceFrame: Sendable {
     var still: CGImage?
     /// World transform of the meter's ARAnchor in this frame, when one exists.
     var meterAnchor: simd_float4x4?
-    /// Detected horizontal planes as (center x, y, center z, radius), world meters. Empty when
-    /// ARKit has found none or the frame doesn't carry them.
-    var groundPlanes: [SIMD4<Float>] = []
+    /// Detected horizontal planes, with their classes and outlines. Empty when ARKit has found
+    /// none or the frame doesn't carry them.
+    var groundPlanes: [GroundPlaneEvidence] = []
     /// LiDAR depth copied with the photo of a frame that could be kept; nil without LiDAR, and on
     /// frames without a photo. Coverage reads it; a replay's recorded depth plays in here too.
     var depth: DepthImage?
