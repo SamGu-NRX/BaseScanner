@@ -78,14 +78,17 @@ struct FieldRuleTests {
         #expect(abs(Evidence.opacity(views: views) - opacity) < 1e-6)
     }
 
-    func obliqueEdge(_ extra: Float?) throws -> FieldDot {
+    /// An edge voxel seen from 40, -40 and 60 degrees off its normal (75% if uncapped), plus
+    /// `extra`. The normal is the wall's, or the ground's with `ground`.
+    func obliqueEdge(_ extra: Float?, ground: Bool = false) throws -> FieldDot {
         var field = VoxelField()
         let key = VoxelKey(0, 30, 0)
         let centre = field.centre(of: key)
-        // Three oblique views, 40, -40 and 60 degrees off the normal: 75% if uncapped.
+        let normal: SIMD3<Float> = ground ? SIMD3(0, 1, 0) : SIMD3(0, 0, 1)
+        let side = SIMD3<Float>(1, 0, 0)
         for degrees in [40, -40, 60] + (extra.map { [$0] } ?? []) {
-            let camera = centre + 2.6 * SIMD3(sin(degrees * .pi / 180), 0, cos(degrees * .pi / 180))
-            field.observe(key, normal: SIMD3(0, 0, 1), gradient: 1, samples: 4, camera: camera, frame: 0)
+            let camera = centre + 2.6 * (side * sin(degrees * .pi / 180) + normal * cos(degrees * .pi / 180))
+            field.observe(key, normal: normal, gradient: 1, samples: 4, camera: camera, frame: 0)
         }
         field.classify(frame: 0)
         return try #require(field.dots().first)
@@ -104,6 +107,12 @@ struct FieldRuleTests {
         let near = try obliqueEdge(28)
         #expect(near.views == 3 && near.faceOn)
         #expect(abs(near.opacity - 0.75) < 1e-6)
+    }
+
+    @Test func `the oblique cap leaves edges on the ground alone`() throws {
+        let ground = try obliqueEdge(nil, ground: true)
+        #expect(ground.kind == .edge && ground.faceOn)
+        #expect(abs(ground.opacity - 0.75) < 1e-6)
     }
 
     @Test func `flat dots ignore the oblique cap`() {

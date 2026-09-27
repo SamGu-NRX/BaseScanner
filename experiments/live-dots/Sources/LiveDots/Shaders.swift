@@ -65,9 +65,9 @@ enum Shaders {
     // MARK: Dots
 
     struct Sprite {
-        float4 a;  // world xyz, size at 1 m in points (negative: fixed size)
+        float4 a;  // world xyz, 1 for a simulated feature point (fixed size), else 0
         float4 b;  // birth time, from opacity, to opacity, opacity change time
-        float4 c;  // edge since, death time, violet (0 or 1), shape (0 dot, 1 feature, 2 halo)
+        float4 c;  // edge since, death time, violet (0 or 1), 1 for the halo sprite
     };
 
     struct DotUniforms {
@@ -95,34 +95,40 @@ enum Shaders {
         float fade = 1.0f - strongEaseOut((t - s.c.y) / 0.25f);
         float edge = strongEaseOut((t - s.c.x) / 0.25f);
         float alpha = evidence * birth * fade;
+        bool feature = s.a.w > 0.5f;
+        bool halo = s.c.w > 0.5f;
 
-        float size;
-        if (s.a.w < 0.0f) {
-            size = -s.a.w;
-        } else {
-            float atOneMetre = mix(s.a.w, 3.5f, edge);
-            float distance = max(length(s.a.xyz - u.cameraAndTime.xyz), 0.05f);
-            size = clamp(atOneMetre / distance, 1.5f, 5.0f);
+        // Flat 2.5 pt and edge 3.5 pt from 2.5 m out, growing linearly to 4 and 6 pt at 1 m.
+        float size = 4.5f;
+        if (!feature) {
+            float far = clamp((length(s.a.xyz - u.cameraAndTime.xyz) - 1.0f) / 1.5f, 0.0f, 1.0f);
+            size = mix(mix(4.0f, 2.5f, far), mix(6.0f, 3.5f, far), edge);
         }
-        float inner = s.c.w == 1.0f ? 0.3f : 0.7f;
-        if (s.c.w == 2.0f) {
-            size *= 3.0f;
-            alpha *= 0.12f * edge;
+        float inner = feature ? 0.3f : 0.7f;
+        float3 hologram = float3(0xE6, 0xEC, 0xF4) / 255.0f;
+        float3 glow = float3(0x9C, 0xC8, 0xFF) / 255.0f;
+        float3 violet = float3(0xB4, 0x9C, 0xFF) / 255.0f;
+        float3 color = hologram;
+        if (halo) {
+            // Edge 4x at 22%, flat 2x at 8%, feature 3x at 18%; a flat dot turning edge grows into it.
+            size *= feature ? 3.0f : mix(2.0f, 4.0f, edge);
+            alpha *= feature ? 0.18f : mix(0.08f, 0.22f, edge);
+            inner = 0.0f;
+            color = glow;
         }
+        color = mix(color, violet, s.c.z);
         float scale = u.reduceMotion > 0.5f ? 1.0f : mix(0.6f, 1.0f, birth);
 
         DotOut out;
         out.position = u.clip * float4(s.a.xyz, 1.0f);
         if (alpha < 1.0f / 512.0f) { out.position = float4(0.0f, 0.0f, -1.0f, 1.0f); }
         out.size = size * scale * u.pointScale;
-        float3 hologram = float3(0xE6, 0xEC, 0xF4) / 255.0f;
-        float3 violet = float3(0xB4, 0x9C, 0xFF) / 255.0f;
-        out.color = float4(mix(hologram, violet, s.c.z), 1.0f) * alpha;
+        out.color = float4(color, 1.0f) * alpha;
         out.inner = inner;
         return out;
     }
 
-    // Round sprite, fully opaque inside `inner`, fading to zero at the rim.
+    // Round sprite, fully opaque inside `inner`, fading to zero at the rim. Halos use 0: a glow.
     fragment float4 dotFragment(DotOut in [[stage_in]], float2 pc [[point_coord]]) {
         float r = length(pc * 2.0f - 1.0f);
         return in.color * (1.0f - smoothstep(in.inner, 1.0f, r));

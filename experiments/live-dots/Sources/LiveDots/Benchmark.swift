@@ -24,7 +24,7 @@ enum Benchmark {
         }
         renderer.spriteOverride = sprites
         let edges = sprites.count { $0.edgeSince < .infinity }
-        print("keyframe \(fullest.index + 1): \(sprites.count) dots, \(edges) of them edges with halos, \(sprites.count + edges) point sprites")
+        print("keyframe \(fullest.index + 1): \(sprites.count) dots (\(edges) edges), each with a halo: \(2 * sprites.count) point sprites")
 
         for (label, scale) in [("1170 x 2532 (export, 3x)", Float(3)), ("780 x 1688 (app window, 2x)", Float(2))] {
             let target = try OffscreenTarget(renderer: renderer, scale: scale)

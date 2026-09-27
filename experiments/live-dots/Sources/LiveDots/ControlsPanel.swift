@@ -105,15 +105,22 @@ struct ControlsPanel: View {
             Label {
                 Text("Surface and edges")
             } icon: {
-                Circle().fill(Palette.hologram).frame(width: 8, height: 8)
+                swatch(core: Palette.hologram, glow: Palette.glow)
             }
             Label {
                 Text("In front of the wall")
             } icon: {
-                Circle().fill(Palette.hiddenViolet).frame(width: 8, height: 8)
+                swatch(core: Palette.hiddenViolet, glow: Palette.hiddenViolet)
             }
         }
         .font(.callout)
         .foregroundStyle(.secondary)
+    }
+
+    private func swatch(core: Color, glow: Color) -> some View {
+        Circle()
+            .fill(core)
+            .frame(width: 6, height: 6)
+            .background(Circle().fill(glow.opacity(0.45)).frame(width: 14, height: 14))
     }
 }

@@ -25,9 +25,16 @@
 // kept), a quarter of the edge density on a wall. At most 6,000 dots draw in view; past that,
 // flat dots drop in hash order.
 //
-// Opacity is 45% at one view and rises 15 points a view to 90% at four. An edge dot stays at or
-// below 60% until one view saw it within 30 degrees of face-on. Dots more than 0.25 m in front
-// of the wall and above the ground are on the occluder and draw in violet.
+// Opacity is 45% at one view and rises 15 points a view to 90% at four. An edge dot on a
+// surface within 45 degrees of vertical stays at or below 60% until one view saw it within 30
+// degrees of face-on.
+//
+// Drawing (the shader in Sources/LiveDots/Shaders.swift): flat dots are 2.5 pt and edge dots
+// 3.5 pt at 2.5 m and beyond, growing linearly to 4 and 6 pt at 1 m and no larger closer in, for
+// a view used 1.5 to 3 m from the wall. Every dot carries an additive halo: 4x size at 22% for
+// edges, 2x at 8% for flat dots, 3x at 18% for the 4.5 pt simulated feature points. Cores are
+// Hologram #E6ECF4 and halos #9CC8FF; dots more than 0.25 m in front of the wall and above the
+// ground are on the occluder and draw violet #B49CFF, halo included.
 
 import simd
 
@@ -331,7 +338,8 @@ public struct VoxelField: Sendable {
 
     private func dot(_ key: VoxelKey, _ voxel: Voxel, kind: DotKind) -> FieldDot {
         let centre = centre(of: key)
-        let faceOn = kind != .edge || voxel.faceOnCosine >= cos(Tuning.faceOnDegrees * Float.pi / 180)
+        let wallLike = voxel.normal.map { abs($0.y) < Tuning.cappedNormalMaxY } ?? false
+        let faceOn = kind != .edge || !wallLike || voxel.faceOnCosine >= cos(Tuning.faceOnDegrees * Float.pi / 180)
         return FieldDot(
             id: Self.id(for: key), position: centre + voxel.jitter, kind: kind,
             views: voxel.views.count, onOccluder: FieldDot.isOnOccluder(centre), faceOn: faceOn)

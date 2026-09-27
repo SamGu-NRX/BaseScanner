@@ -30,6 +30,10 @@ public enum Tuning {
     /// than 30 degrees off face-on carried 8 to 24 inches of error.
     public static let obliqueEdgeOpacityCap: Float = 0.6
     public static let faceOnDegrees: Float = 30
+    /// The cap applies only to edges on vertical-ish surfaces (normal within 45 degrees of
+    /// horizontal): the rule came from wall features, and a walking phone never sees the ground
+    /// face-on.
+    public static let cappedNormalMaxY: Float = 0.7071
     /// The occluder is any dot this far in front of the wall. The ground under it is excluded by
     /// `groundBand`, which the brief does not mention: without it the lawn would be violet too.
     public static let occluderMinZ: Float = 0.25
@@ -44,10 +48,13 @@ public enum Tuning {
 
     public static let featureTarget = 600
     public static let featureMatchRadius: Float = 0.08
-    public static let featureWindow = 10
-    public static let featureMinObservations = 3
+    /// A feature lives while re-observed in 2 of the last 6 keyframes and dies 4 s after it was
+    /// last seen. The real app would use 3 of the last 10 frames at frame rate; the fixture's
+    /// keyframes are 0.5 m apart, and at 3 of 10 only 30 to 80 points stayed alive in view.
+    public static let featureWindow = 6
+    public static let featureMinObservations = 2
     /// Seconds of capture time (the fixture's timestamps), not of playback.
-    public static let featureLifetime: Double = 2
+    public static let featureLifetime: Double = 4
     /// Candidate features are merged to one per cell of this size before thinning, so the same
     /// wall spot tends to be picked again in the next keyframe, as a tracked ARKit feature is.
     public static let featureCell: Float = 0.04

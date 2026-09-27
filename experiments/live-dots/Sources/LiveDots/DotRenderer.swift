@@ -158,18 +158,11 @@ final class DotRenderer {
         return buffer
     }
 
-    /// One vertex per dot, plus a halo vertex (3x size, 12% opacity) under every edge dot. Halos
-    /// come first so the sharp dots sit on top of them.
+    /// Two vertices per dot: its halo (size and opacity set in the shader by kind), then the
+    /// core. Halos come first so the sharp cores sit on top of them.
     static func vertices(for sprites: [DotSprite]) -> [SpriteVertex] {
-        var halos: [SpriteVertex] = [], dots: [SpriteVertex] = []
-        halos.reserveCapacity(sprites.count / 4)
-        dots.reserveCapacity(sprites.count)
-        for sprite in sprites {
-            let vertex = SpriteVertex(sprite)
-            dots.append(vertex)
-            if sprite.edgeSince < .infinity { halos.append(vertex.asHalo) }
-        }
-        return halos + dots
+        let cores = sprites.map(SpriteVertex.init)
+        return cores.map(\.asHalo) + cores
     }
 }
 
@@ -182,18 +175,14 @@ struct SpriteVertex {
 
     init(_ s: DotSprite) {
         func finite(_ t: Float) -> Float { min(max(t, -1e6), 1e6) }
-        let size: Float = switch s.kind {
-        case .feature: -4
-        case .flat, .edge, .plane: 2.5
-        }
-        a = SIMD4(s.position, size)
+        a = SIMD4(s.position, s.kind == .feature ? 1 : 0)
         b = SIMD4(finite(s.birthTime), s.fromOpacity, s.toOpacity, finite(s.opacityTime))
-        c = SIMD4(finite(s.edgeSince), finite(s.deathTime), s.onOccluder ? 1 : 0, s.kind == .feature ? 1 : 0)
+        c = SIMD4(finite(s.edgeSince), finite(s.deathTime), s.onOccluder ? 1 : 0, 0)
     }
 
     var asHalo: SpriteVertex {
         var halo = self
-        halo.c.w = 2
+        halo.c.w = 1
         return halo
     }
 }
