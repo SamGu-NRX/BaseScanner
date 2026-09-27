@@ -40,6 +40,7 @@ final class ScreenStatesUITests: XCTestCase {
         ("gapRequest", ["-uiDemoPhase", "gapRequest"], "gapRequest"),
         ("gapRequest-groundOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "groundOut"], "gapRequest"),
         ("gapRequest-walkOut", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "walkOut"], "gapRequest"),
+        ("gapRequest-tooDark", ["-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"], "gapRequest"),
         ("gapRequest-overhead", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead"], "gapRequest"),
         ("gapRequest-overheadQuestion", ["-uiDemoPhase", "gapRequest", "-uiDemoGap", "overhead", "-uiDemoOverheadQuestion"], "gapRequest"),
         ("gapRequest-followUp", ["-uiDemoPhase", "gapRequest", "-uiDemoFollowUp"], "gapRequest"),
@@ -76,6 +77,7 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-slowDown": ("instruction", "Walk slowly to your right"),
         "wallWalk-tooDark": ("instruction", "It's dark here"),
         "wallWalk-turnSlowly": ("instruction", "Turn more slowly"),
+        "gapRequest-tooDark": ("instruction", "Show the ground"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
         "uploading-followUp": (nil, "One more view to finish"),
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
@@ -184,9 +186,29 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         let card = element(app, "instruction")
         XCTAssertTrue(card.waitForExistence(timeout: 5))
-        XCTAssertTrue(card.label.contains("Walk slowly to your right"), "the task must stay on the card, got \(card.label)")
-        XCTAssertTrue(card.label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(card.label)")
-        XCTAssertTrue(card.label.contains("It's dark here"), "the coaching must show on the card, got \(card.label)")
+        // One snapshot read, never live (the #24 flake fix): a live read of a gone element
+        // records a failure that can't be caught.
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Walk slowly to your right"), "the task must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+    }
+
+    /// #80, as on the walk: the capture gate's coaching keeps a gap request on the card. The dark
+    /// coaching can stay up for a whole night request (field test 4.1, run 3).
+    @MainActor
+    func testGateCoachingKeepsTheGapRequestOnTheCard() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest", "-uiDemoCoaching", "tooDark"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 15))
+        let card = element(app, "instruction")
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Show the ground"), "the request must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("a clear look from two places"), "the request's second line must stay on the card, got \(label)")
+        XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the

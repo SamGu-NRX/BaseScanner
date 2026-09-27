@@ -103,6 +103,20 @@ import Testing
         #expect(Self.run(walking).last! == .movingFast)
     }
 
+    /// A gap request to walk the stretch far enough out asks for walking, so hurrying along it is
+    /// still told to slow down. The other requests ask the homeowner to stand and aim.
+    @Test func aWalkOutRequestStillSaysSlowDown() {
+        #expect(GapPlan.Need.walkOut(1.5).asksToWalk)
+        let standing: [GapPlan.Need] = [.cells, .groundOut(1.5), .overhead(nil), .overhead(2), .wallUp(2)]
+        for need in standing {
+            #expect(!need.asksToWalk, "\(need)")
+        }
+        let walkOut = Self.times(for: 3).map { Frame(time: $0, skip: .movingFast, aiming: !GapPlan.Need.walkOut(1.5).asksToWalk) }
+        #expect(Self.run(walkOut).last! == .movingFast)
+        let groundOut = Self.times(for: 3).map { Frame(time: $0, skip: .movingFast, aiming: !GapPlan.Need.groundOut(1.5).asksToWalk) }
+        #expect(Self.run(groundOut).allSatisfy { $0 == nil })
+    }
+
     /// Turning fast is its own problem, said while aiming too.
     @Test func turningFastShowsAfterItsSpell() {
         let frames = Self.times(for: 2).map { Frame(time: $0, skip: .turningFast, aiming: true) }

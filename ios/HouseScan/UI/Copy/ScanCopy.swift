@@ -113,6 +113,26 @@ enum ScanCopy {
         return title.hasSuffix(".") ? title : "\(title)."
     }
 
+    /// Tracking problems and standing past the end replace the task on the card: nothing the task
+    /// asks for counts until they clear. The capture gate's coaching and too little texture ride
+    /// along with it instead (`withCoaching`). No `default`, so a new case has to pick a side.
+    static func coachingReplacesTask(_ coaching: Coaching) -> Bool {
+        switch coaching {
+        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: true
+        case .slowDown, .needsTexture, .tooDark, .tooDarkToMeasure, .holdSteady, .turnSlowly: false
+        }
+    }
+
+    /// The task with ride-along coaching under it: the task's title and second line both stay (on
+    /// an aim step the second line is the only thing that says where to aim), and the coaching adds
+    /// its own short line (`coachingNote`). Replacing the whole card hid the task each time the
+    /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
+    static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
+        guard let coaching else { return task }
+        let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
+        return Instruction(title: task.title, detail: detail)
+    }
+
     // MARK: Wall ends
 
     /// Under the wall map when ending the wall at the dashed line would cut off part of the walk.

@@ -608,14 +608,18 @@ final class ScanEngine {
     }
 
     /// Whether the homeowner is asked to stand and aim rather than walk: an aim, tilt, step-back,
-    /// see-behind or marking step, a question on screen, or a gap request's view. Walking too
-    /// fast is not coached then (#26). Read before this frame's guidance update, so it is the
-    /// step on screen when the frame arrived.
+    /// see-behind or mark-the-end step, marking, a question on screen, or a gap request's view.
+    /// Walking too fast is not coached then (#26). Two steps ask for walking and so still say
+    /// "Slow down": the corner ("walk round it, aim at the next wall and mark it"; the mark
+    /// itself is `state.marking`, which aims) and a request to walk the stretch far enough out
+    /// (`GapPlan.Need.asksToWalk`). Read before this frame's guidance update, so it is the step
+    /// on screen when the frame arrived.
     private var isAiming: Bool {
         if state.marking != nil || state.endQuestion != nil || state.overheadQuestion { return true }
         switch state.guidance {
-        case .aimAtGround, .aimAtWall, .tiltUp, .stepBack, .seeBehind, .markEnd, .markNextWall, .gap: return true
-        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .walk, .walkComplete: return false
+        case .aimAtGround, .aimAtWall, .tiltUp, .stepBack, .seeBehind, .markEnd: return true
+        case .gap: return !(gapPlan?.need.asksToWalk ?? false)
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .walk, .walkComplete, .markNextWall: return false
         }
     }
 

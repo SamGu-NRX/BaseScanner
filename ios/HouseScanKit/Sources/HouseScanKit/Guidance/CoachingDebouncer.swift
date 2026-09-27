@@ -60,6 +60,13 @@ public struct CoachingDebouncer: Sendable {
         public var motionShowAfter: Double = 0.7
         /// Blur shows only after 2 s of it. The gate's blur test compares a frame with the recent
         /// median, and a tilt changes the view enough to trip it with no real blur.
+        ///
+        /// In practice this turns blur coaching off. The median is over the last 15 measured
+        /// frames (`AutoCaptureConfig.sharpnessWindow`), so after about 8 blurry frames in a row
+        /// the median is itself blurry and the next frame passes, ending the spell: at about ten
+        /// measured frames a second an unbroken spell lasts under a second. Steady blur (shaky
+        /// hands at night, a long exposure) never says "Hold steady". Whether blur should be judged
+        /// by its share of a window instead, as darkness is, is for the device run.
         public var blurShowAfter: Double = 2
         /// A motion or blur problem that shows clears 0.5 s after the last frame that had it.
         public var clearAfter: Double = 0.5
@@ -195,6 +202,20 @@ public struct CoachingDebouncer: Sendable {
         case .tooDark?, .tooBright?: [.movingFast: false, .turningFast: false]
         case .blurry?: [.movingFast: false, .turningFast: false, .blurry: true]
         case .tooSoon?, .redundant?, nil: [.movingFast: false, .turningFast: false, .blurry: false]
+        }
+    }
+}
+
+extension GapPlan.Need {
+    /// Whether the request asks the homeowner to walk rather than stand and aim. Only a walk past
+    /// the stretch far enough out does ("Walk along this stretch... Follow the dotted line"), so
+    /// on it the capture gate's coaching says "Slow down" as on the walk; on the others walking
+    /// speed isn't coached (`CoachingDebouncer.update`'s `aiming`). No `default`, so a new need
+    /// has to pick a side.
+    public var asksToWalk: Bool {
+        switch self {
+        case .walkOut: true
+        case .cells, .groundOut, .overhead, .wallUp: false
         }
     }
 }

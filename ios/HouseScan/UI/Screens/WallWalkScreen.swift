@@ -82,29 +82,13 @@ struct WallWalkScreen: View {
         }
         if let side = state.endQuestion { return ScanCopy.endQuestion(side) }
         if state.overheadQuestion { return ScanCopy.overheadQuestion }
-        if let coaching, Self.replacesTask(coaching) { return ScanCopy.coaching(coaching) }
-        if state.wallTooShort { return withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title)) }
-        return withCoaching(ScanCopy.guidance(state.guidance))
-    }
-
-    /// Coaching about how the photos come out (the capture gate's, and too little texture) rides
-    /// along with the task: the task's title and second line both stay (on an aim step the second
-    /// line is the only thing that says where to aim), the coaching adds its own short line under
-    /// them, and its symbol marks the card (`tone`). Replacing the whole card hid the task each
-    /// time the coaching came up (#80), and the dark coaching can stay up for a whole night walk.
-    private func withCoaching(_ task: Instruction) -> Instruction {
-        guard let coaching else { return task }
-        let detail = [task.detail, ScanCopy.coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
-        return Instruction(title: task.title, detail: detail)
-    }
-
-    /// Tracking problems and standing past the end replace the task: nothing the task asks for
-    /// counts until they clear.
-    private static func replacesTask(_ coaching: Coaching) -> Bool {
-        switch coaching {
-        case .initializing, .relocalizing, .trackingLost, .pastWallEnd: true
-        case .slowDown, .needsTexture, .tooDark, .tooDarkToMeasure, .holdSteady, .turnSlowly: false
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        // Coaching about how the photos come out (the capture gate's, and too little texture)
+        // rides along with the task (`ScanCopy.withCoaching`), and its symbol marks the card (`tone`).
+        if state.wallTooShort {
+            return ScanCopy.withCoaching(Instruction(title: ScanCopy.wallTooShort, detail: ScanCopy.guidance(state.guidance).title), coaching)
         }
+        return ScanCopy.withCoaching(ScanCopy.guidance(state.guidance), coaching)
     }
 
     /// "Slow down", "Turn more slowly" and "Hold steady" are for walking and aiming. With the tray
@@ -123,7 +107,7 @@ struct WallWalkScreen: View {
     private var tone: InstructionCard.Tone {
         if state.marking?.refusal != nil { return .refusal }
         let coachingShows = state.marking == nil && state.endQuestion == nil && !state.overheadQuestion
-        if coachingShows, let coaching, Self.replacesTask(coaching) {
+        if coachingShows, let coaching, ScanCopy.coachingReplacesTask(coaching) {
             return .coaching(symbol: ScanCopy.coachingSymbol(coaching))
         }
         if state.marking == nil, case .markNextWall(_, _?) = state.guidance { return .refusal }
@@ -297,7 +281,7 @@ struct WallWalkScreen: View {
     /// place, as does being past an end.
     private var coachingHidesReply: Bool {
         switch state.coaching {
-        case nil, .slowDown?, .needsTexture?, .tooDark?, .holdSteady?: false
+        case nil, .slowDown?, .needsTexture?, .tooDark?, .tooDarkToMeasure?, .holdSteady?, .turnSlowly?: false
         case .initializing?, .relocalizing?, .trackingLost?, .pastWallEnd?: true
         }
     }
