@@ -1203,3 +1203,15 @@ def test_walls_meeting_in_a_straight_line_are_one_stretch_and_a_corner_is_not():
     ]
     r["spot"]["span_ft"] = [5.0, 5.0 + 31 / 12]  # starts exactly at the corner, on the next wall
     assert footprint_problems(scene, r, RULES) == []
+
+
+def test_a_pass_by_the_smallest_reported_margin_is_a_pass():
+    # 3baa338 puts a spot at the edge of its working-space pass: 1.444446 +/- 1.444445 against
+    # 0. The server rounds to 6 decimals, which keeps order, so a reported margin above the
+    # error proves the true one is; equal reported numbers do not.
+    c = check("pass", 1.444446, 1.444445, 0.0) | {"id": "meter_working_space"}
+    assert margin_problem(c) is None
+    assert "should be unsure" in margin_problem(c | {"measured_ft": 1.444445})
+    at_most = check("pass", 19.999999, 0.0, 20.0, cmp="at_most")
+    assert margin_problem(at_most) is None
+    assert "should be unsure" in margin_problem(at_most | {"measured_ft": 20.0})

@@ -254,6 +254,17 @@ def margin_problem(check: dict) -> str | None:
     other_cause = outcome == "unsure" and cause not in (None, "margin")
     if outcome == expected or (other_cause and not clear_fail):
         return None
+    # The EPS above allows for float noise; a PASS may also clear its line by less. The server
+    # rounds each number to 6 decimals and rule lines sit on that grid, and rounding keeps order:
+    # a true margin of zero or less can't come out positive. So any positive reported margin
+    # proves the pass (3baa338 places spots at the edge of a pass, a margin of 1e-6).
+    if outcome == "pass" and expected == "unsure":
+        if cmp == "at_least":
+            proven = all(m - e - x > SERVER_EPS for x in lines)
+        else:
+            proven = all(x - (m + e) > SERVER_EPS for x in lines)
+        if proven:
+            return None
     because = f" ({cause})" if cause else ""
     return (
         f"check {check['id']}: measured {m} ± {e}{band} should be {expected}, "

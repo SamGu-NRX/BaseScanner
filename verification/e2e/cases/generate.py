@@ -752,7 +752,25 @@ def reach_scene(L, meter_pm=0.0, objects=()):
     return scene
 
 
-def reach_case(cid, L, route_ft, e, outcome, description, objects=(), extra_checks=()):
+def reach_case(
+    cid,
+    L,
+    route_ft,
+    e,
+    outcome,
+    description,
+    objects=(),
+    extra_checks=(),
+    meter_pm=None,
+    spot_start=None,
+    at_L_outcome=None,
+):
+    """`e` is the route check's expected error; the meter's error is `e` unless `meter_pm` says
+    otherwise. The spot starts at L unless `spot_start` says otherwise, and the start at L has
+    the spot's outcome unless `at_L_outcome` says otherwise."""
+    meter_pm = e if meter_pm is None else meter_pm
+    spot_start = L if spot_start is None else spot_start
+    at_L_outcome = outcome if at_L_outcome is None else at_L_outcome
     at_L = [round(L - 0.001, 3), round(L + 0.001, 3)]
     check = {
         "match": "route_length",
@@ -767,16 +785,16 @@ def reach_case(cid, L, route_ft, e, outcome, description, objects=(), extra_chec
             {"wall_id": "w1", "start_ft": at_L, "outcome": "fail", "failing_match": "route_length"}
         ]
     else:
-        expect["spot"] = {"wall_id": "w1", "span_within": [L, L + W]}
+        expect["spot"] = {"wall_id": "w1", "span_within": [spot_start, spot_start + W]}
         expect["checks"] = [check, *extra_checks]
-        expect["sweep_runs"] = [{"wall_id": "w1", "start_ft": at_L, "outcome": outcome}]
+        expect["sweep_runs"] = [{"wall_id": "w1", "start_ft": at_L, "outcome": at_L_outcome}]
     if outcome != "pass":
         expect["decision_not"] = ["pass"]
     case(
         cid,
         golden("09"),
         description,
-        reach_scene(L, e, objects),
+        reach_scene(L, meter_pm, objects),
         expect,
         {"route_length": MAX_ROUTE},
     )
@@ -823,13 +841,22 @@ reach_case(
     "fail",
     "Route 21 ft, 1 ft past the 20 ft maximum: the only start on usable ground fails.",
 )
+# The meter's error can lengthen the run, since the meter may stand off the wall, but not
+# shorten it while it stands on its wall's line (server README, route_length, at 3baa338): a
+# start s routes over [s, s + 0.3]. The battery moves with the meter against the ground patches,
+# so starts from L - 0.3 may stand on the concrete and are unsure; the nearest is the spot.
 reach_case(
     "g09-reach-20p2-pm03",
     20.2,
-    20.2,
-    0.3,
+    20.2 - 0.3 / 2,
+    0.3 / 2,
     "unsure",
-    "Route 20.2 +/- 0.3 ft (meter tap error): 20.2 - 0.3 = 19.9 is not above 20, so unsure.",
+    "Meter at +/- 0.3 ft. The spot is the first start that may stand on the concrete, "
+    "L - 0.3 = 19.9, whose route is 19.9 to 20.2: not above 20, so unsure. The start at 20.2 "
+    "routes 20.2 to 20.5, above 20, so it fails.",
+    meter_pm=0.3,
+    spot_start=20.2 - 0.3,
+    at_L_outcome="fail",
 )
 reach_case(
     "g09-reach-20p4-pm03",
@@ -892,25 +919,29 @@ def starts(points):
     ]
 
 
-# Cable reach, right of the meter. Route = a (near edge), error = meter 0.3 + wall at the far
-# edge (0.3 + 0.16(a + W)) = 0.6 + 0.16(a + W). Pass: a + e < 15 (review line) ->
-# a < (14.4 - 0.16W)/1.16. Fail: a - e > 20 -> a > (20.6 + 0.16W)/0.84.
+# Cable reach, right of the meter. Route = a (near edge). The wall's error at the far edge,
+# e_w = 0.3 + 0.16(a + W), moves it either way; the meter's 0.3 only lengthens it, since the
+# meter stands on its wall's line (server README, route_length, at 3baa338). Pass:
+# a + 0.3 + e_w < 15 (review line) -> a < (14.4 - 0.16W)/1.16. Fail: a - e_w > 20 ->
+# a > (20.3 + 0.16W)/0.84.
 R_PASS = (CONFIDENT - METER_E - WALL_E - DRIFT * W) / (1 + DRIFT)
-R_FAIL = (MAX_ROUTE + METER_E + WALL_E + DRIFT * W) / (1 - DRIFT)
+R_FAIL = (MAX_ROUTE + WALL_E + DRIFT * W) / (1 - DRIFT)
 reach_points = [
     (5.0, "pass", "route 5 + 1.81 = 6.81 < 15"),
     (R_PASS - PT, "pass", "just inside a + 0.6 + 0.16(a + W) < 15"),
     (R_PASS + PT, "unsure", "just past the 15 ft review line"),
-    (18.0, "unsure", "18 + 3.89 > 15; 18 - 3.89 < 20"),
-    (R_FAIL - PT, "unsure", "just inside a - 0.6 - 0.16(a + W) <= 20"),
-    (R_FAIL + PT, "fail", "just past a - 0.6 - 0.16(a + W) > 20"),
-    (25.5, "fail", "25.5 - 5.09 = 20.41 > 20"),
+    (18.0, "unsure", "18 + 3.89 > 15; 18 - 3.59 < 20"),
+    (R_FAIL - PT, "unsure", "just inside a - 0.3 - 0.16(a + W) <= 20"),
+    (R_FAIL + PT, "fail", "just past a - 0.3 - 0.16(a + W) > 20"),
+    (25.5, "fail", "25.5 - 4.79 = 20.71 > 20"),
 ]
 case(
     "d-reach-drift-right",
-    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
+    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; route range at "
+    "3baa338; C5 margin rule",
     "Straight wall with default (drifting) errors. The route to a start a right of the meter is "
-    "a +/- (0.6 + 0.16(a + W)): pass below a = 12.058, fail above a = 25.016, unsure between.",
+    "a - (0.3 + 0.16(a + W)) to a + 0.6 + 0.16(a + W): pass below a = 12.058, fail above "
+    "a = 24.659, unsure between.",
     drift_scene(-1, 29),
     {"start_outcomes": starts(reach_points)},
     {"route_length": MAX_ROUTE},
@@ -919,9 +950,10 @@ case(
 # the far edge is a.
 case(
     "d-reach-drift-left",
-    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
+    "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; route range at "
+    "3baa338; C5 margin rule",
     "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge "
-    "b = a + W, so the boundaries sit at a = -12.058 - W and a = -25.016 - W.",
+    "b = a + W, so the boundaries sit at a = -12.058 - W and a = -24.659 - W.",
     drift_scene(-29, 1),
     {
         "start_outcomes": starts([(-s - W, o, why + " (b = a + W)") for s, o, why in reach_points]),

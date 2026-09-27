@@ -1,8 +1,8 @@
 {
   "generated_by": "e2e/cases/generate.py",
   "id": "d-reach-drift-right",
-  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
-  "description": "Straight wall with default (drifting) errors. The route to a start a right of the meter is a +/- (0.6 + 0.16(a + W)): pass below a = 12.058, fail above a = 25.016, unsure between.",
+  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; route range at 3baa338; C5 margin rule",
+  "description": "Straight wall with default (drifting) errors. The route to a start a right of the meter is a - (0.3 + 0.16(a + W)) to a + 0.6 + 0.16(a + W): pass below a = 12.058, fail above a = 24.659, unsure between.",
   "scene": {
     "schema_version": "1.0",
     "meter": {
@@ -133,25 +133,25 @@
         "wall_id": "w1",
         "start_ft": 18.0,
         "outcome": "unsure",
-        "why": "18 + 3.89 > 15; 18 - 3.89 < 20"
+        "why": "18 + 3.89 > 15; 18 - 3.59 < 20"
       },
       {
         "wall_id": "w1",
-        "start_ft": 24.8159,
+        "start_ft": 24.4587,
         "outcome": "unsure",
-        "why": "just inside a - 0.6 - 0.16(a + W) <= 20"
+        "why": "just inside a - 0.3 - 0.16(a + W) <= 20"
       },
       {
         "wall_id": "w1",
-        "start_ft": 25.2159,
+        "start_ft": 24.8587,
         "outcome": "fail",
-        "why": "just past a - 0.6 - 0.16(a + W) > 20"
+        "why": "just past a - 0.3 - 0.16(a + W) > 20"
       },
       {
         "wall_id": "w1",
         "start_ft": 25.5,
         "outcome": "fail",
-        "why": "25.5 - 5.09 = 20.41 > 20"
+        "why": "25.5 - 4.79 = 20.71 > 20"
       }
     ]
   }

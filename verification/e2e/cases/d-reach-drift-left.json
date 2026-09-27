@@ -1,8 +1,8 @@
 {
   "generated_by": "e2e/cases/generate.py",
   "id": "d-reach-drift-left",
-  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; C5 margin rule",
-  "description": "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge b = a + W, so the boundaries sit at a = -12.058 - W and a = -25.016 - W.",
+  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; route range at 3baa338; C5 margin rule",
+  "description": "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge b = a + W, so the boundaries sit at a = -12.058 - W and a = -24.659 - W.",
   "scene": {
     "schema_version": "1.0",
     "meter": {
@@ -133,25 +133,25 @@
         "wall_id": "w1",
         "start_ft": -20.5833,
         "outcome": "unsure",
-        "why": "18 + 3.89 > 15; 18 - 3.89 < 20 (b = a + W)"
+        "why": "18 + 3.89 > 15; 18 - 3.59 < 20 (b = a + W)"
       },
       {
         "wall_id": "w1",
-        "start_ft": -27.3992,
+        "start_ft": -27.0421,
         "outcome": "unsure",
-        "why": "just inside a - 0.6 - 0.16(a + W) <= 20 (b = a + W)"
+        "why": "just inside a - 0.3 - 0.16(a + W) <= 20 (b = a + W)"
       },
       {
         "wall_id": "w1",
-        "start_ft": -27.7992,
+        "start_ft": -27.4421,
         "outcome": "fail",
-        "why": "just past a - 0.6 - 0.16(a + W) > 20 (b = a + W)"
+        "why": "just past a - 0.3 - 0.16(a + W) > 20 (b = a + W)"
       },
       {
         "wall_id": "w1",
         "start_ft": -28.0833,
         "outcome": "fail",
-        "why": "25.5 - 5.09 = 20.41 > 20 (b = a + W)"
+        "why": "25.5 - 4.79 = 20.71 > 20 (b = a + W)"
       }
     ]
   }

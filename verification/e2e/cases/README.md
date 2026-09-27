@@ -122,7 +122,7 @@ From `rules.yaml` at 2c9348f, rechecked at f2705dd:
 | g07-headroom-unobserved | 07 | headroom unsure (unobserved); same intervals unsure; `missing_evidence` non-empty | No overheads, and the overhead band is left out of coverage. |
 | g07-headroom-partial-span | 07 | starts in (5.5, 8.4) fail with `headroom`; starts in (1.3, 5.3) and (8.6, 12.4) pass | Overhead 5.5 ± 0.5 over s = [8, 8.5] only. A battery [a, a + W] overlaps it when 8 − W < a < 8.5, i.e. 5.417 < a < 8.5, even if it covers only a few inches of the battery. The schema's overheads have no depth out from the wall, so the golden's "front strip only" is tested along the wall instead. |
 | g09-reach-14, -15, -16, -20, -21 | 09 | `route_length` measured L, ±0: pass at 14, unsure at 15, 16 and 20, fail at 21. For pass and unsure the spot is [L, L + W] and the sweep at start L has that outcome. For fail the spot is null and the sweep at L fails with `route_length`. No photo request | The wall runs s = [−1, L + W], all ground before L is deck and [L, L + W] is concrete. Every start before L fails `ground_surface`, starts left of the meter also fail the working space, and L is the last start. So the route is L with no corner. 14 < 15, pass. 15 is not inside 15. 16 is past 15 but below 20. For 20: 20 + 0 is not < 20 and 20 − 0 is not > 20, so unsure. For 21: 21 − 0 > 20, fail. |
-| g09-reach-20p2-pm03 | 09 | `route_length` unsure, measured 20.2, ±0.3; spot at L | Meter at ±0.3, wall exact. 20.2 − 0.3 = 19.9 is not > 20, and 20.5 is not < 20. |
+| g09-reach-20p2-pm03 | 09 | `route_length` unsure, measured 20.05, ±0.15; spot at L − 0.3; the start at L fails | Meter at ±0.3, wall exact. The meter's error lengthens the run but can't shorten it while the meter stands on its wall's line (server README at 3baa338), so a start s routes over [s, s + 0.3]. The battery moves with the meter against the ground patches, so the first start that may stand on the concrete is 19.9: route 19.9 to 20.2, unsure. The start at 20.2 routes 20.2 to 20.5, above 20, so it fails. |
 | g09-reach-20p4-pm03 | 09 | spot null; the sweep at L fails with `route_length` | 20.4 − 0.3 = 20.1 > 20. |
 | g09-vertical-run | 09 | `route_length` unsure, measured 16, ±0; `route_path` pass; spot at [11, 11 + W] | Pad at 15 − 4 = 11. An `elec_box` at s = [4, 5], 0 to 3.5 ft tall, sits across the 1 ft cable run, and elec boxes detour. Over: 2 × (3.5 − 1) = 5. Routed 11 + 5 = 16 = 15 + 1, past the confident reach. Measuring along the wall alone (11) would pass. |
 | c5-no-coverage | C5, scene schema | decision manual_review; `missing_evidence` non-empty; starts in (−6, −3.9) and (1.3, 7.4) unsure, starts in (−3.8, 1.2) fail with `meter_working_space` | Clean wall s = [−6, 10] with ground and facing data but no `coverage`. "Absent means nothing is known to be observed" makes every start unsure except where the working space, which needs no observation, fails it. Absent ends default to unexplored, which rules out reject. |
@@ -151,18 +151,20 @@ move.
 
 ### d-reach-drift-right: cable reach, `at_most` 20 with review line 15
 
-Wall s = [−1, 29], meter at 0. For a start a > 0 the route is a (straight wall, no corners) and its
-error is 0.3 (meter) + 0.3 + 0.16(a + W) (wall at the far edge) = 0.6 + 0.16(a + W).
+Wall s = [−1, 29], meter at 0. For a start a > 0 the route is a (straight wall, no corners). The
+wall's error at the far edge, e_w = 0.3 + 0.16(a + W), moves it either way; the meter's 0.3 only
+lengthens it, since the meter stands on its wall's line (server README, `route_length`, at
+3baa338). So the route runs from a − e_w to a + 0.3 + e_w.
 
 | Line | Condition | Start |
 | --- | --- | --- |
 | pass / unsure | a + 0.6 + 0.16(a + W) < 15 | a < (14.4 − 0.16W) / 1.16 = 12.0575 |
-| unsure / fail | a − 0.6 − 0.16(a + W) > 20 | a > (20.6 + 0.16W) / 0.84 = 25.0159 |
+| unsure / fail | a − 0.3 − 0.16(a + W) > 20 | a > (20.3 + 0.16W) / 0.84 = 24.6587 |
 
-Asserted starts: pass at 5 and 11.8575. Unsure at 12.2575, 18 and 24.8159. Fail at 25.2159 and
+Asserted starts: pass at 5 and 11.8575. Unsure at 12.2575, 18 and 24.4587. Fail at 24.8587 and
 25.5. Each boundary is bracketed 0.2 ft inside on both sides, which is more than one 2 in sweep
 step, so each point falls inside a run rather than between two. A cutoff that takes drift at the
-near edge sits 0.16W / 0.84 = 0.492 ft lower, at 24.5238, and fails the start at 24.8159.
+near edge sits 0.16W / 0.84 = 0.492 ft lower, at 24.1667, and fails the start at 24.4587.
 
 ### d-reach-drift-left: the same, left of the meter
 
@@ -198,8 +200,8 @@ tell the detour and leaves every route past it unsure.
 - **Walked distance for an object with a span.** For a tapped object spanning [s0, s1], it could
   be s0, s1 or the nearest end. d-gas-drift uses a zero-length span to avoid the question.
 - **Whether the meter's error enters the route.** The README says drift is not added to the
-  meter. Whether its 0.3 base enters the route error is inferred from 2c9348f, where both
-  defaults gave a route at ±0.6.
+  meter. Until 3baa338 its 0.3 entered the route error both ways (inferred from 2c9348f, where
+  both defaults gave a route at ±0.6); from 3baa338 the README states it lengthens the run only.
 - **How errors combine.** Linear sum is assumed, as elsewhere in this suite. Root-sum-square
   would move every line.
 - **Whether drift enters checks with explicit inputs.** Facing gaps and the working space involve

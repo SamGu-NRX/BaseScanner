@@ -109,7 +109,8 @@ metrics:
         missing coverage: 'coverage|unobserved|unseen'
         equality unsure: 'equal'
         mirror: 'mirror|symmetr'
-        larger clearance: 'monoton|larger_clearance|clearance'
+        # S2 names it for moving an obstacle away (test_more_space.py, since 22292a8).
+        larger clearance: 'monoton|larger_clearance|clearance|obstacle_away'
 
   - id: S2-4
     workstream: S2
