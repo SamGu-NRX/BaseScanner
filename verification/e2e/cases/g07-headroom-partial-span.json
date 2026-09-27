@@ -1,0 +1,155 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g07-headroom-partial-span",
+  "source": "t3-lane-c-review.md golden 07 at origin/t3/research a7d91f1",
+  "description": "A low overhead (5.5 +/- 0.5 ft) covers only s = [8, 8.5]. Every battery whose 31 in stretch overlaps it fails headroom, even when the overhead covers a few inches of it.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -5,
+            0.0
+          ],
+          [
+            15,
+            0.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -5,
+            0.0
+          ],
+          [
+            15,
+            0.0
+          ],
+          [
+            15,
+            10.0
+          ],
+          [
+            -5,
+            10.0
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -5.0,
+          15.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -20.0,
+            30.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -20.0,
+            30.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    },
+    "overheads": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          8,
+          8.5
+        ],
+        "clearance_ft": 5.5,
+        "plus_minus_ft": 0.5
+      }
+    ]
+  },
+  "rules_assumed": {
+    "headroom": 6.5
+  },
+  "expect": {
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          1.3,
+          5.3
+        ],
+        "outcome": "pass"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          5.5,
+          8.4
+        ],
+        "outcome": "fail",
+        "failing_match": "headroom"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          8.6,
+          12.4
+        ],
+        "outcome": "pass"
+      }
+    ],
+    "missing_evidence_empty": true
+  }
+}

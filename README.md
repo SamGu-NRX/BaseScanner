@@ -16,6 +16,7 @@ Two teams share the work. The client team, Sam with AI agents and Aiden on video
 | --- | --- |
 | [docs/how-it-works.html](docs/how-it-works.html) | A picture-first walkthrough of the system, about fifteen minutes |
 | [docs/00-overview.md](docs/00-overview.md) | The plan, the decisions and their reasons, the evidence so far, and open questions |
+| [docs/06-research-handoff.md](docs/06-research-handoff.md) | The server team's research handoff: findings, tested prototypes and remaining field work |
 | [AGENTS.md](AGENTS.md) | The rules for anyone changing this repository, person or agent |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branches, CI checks and TestFlight |
 
@@ -39,6 +40,6 @@ Paths marked with a pull request exist only on that branch until it merges.
 
 - The demo server at https://house-scanning-server.vercel.app runs the engine from PR #11 with public rules only, and every answer says so. `GET /health` shows which rules are loaded. A second deployment loads Base's rules and requires a key.
 - TestFlight builds of the app and Measure Lab start by hand from the Actions tab, as [CONTRIBUTING.md](CONTRIBUTING.md) describes.
-- `make check` runs the server, web and iOS suites that CI runs.
+- `make check` runs CI's local checks for the server, web and iOS, plus the scoring, Measure Lab, evals, recon and meter close-up folders when the branch has them.
 
 This repository is public. Materials Base gave the team stay in the git-ignored `private/` folder, and photos of real homes never enter git.

@@ -1,0 +1,485 @@
+{
+  "format": "measure-lab-session",
+  "formatVersion": 2,
+  "units": {
+    "length": "meters",
+    "angle": "degrees",
+    "time": "seconds of device uptime, the clock of ARFrame.timestamp",
+    "image": "pixels of the saved JPEG"
+  },
+  "conventions": {
+    "world": "ARKit world frame with worldAlignment .gravity: right-handed, y up (away from gravity), origin and heading fixed where the session started",
+    "camera": "ARKit camera frame: +x right and +y up in the unrotated sensor image, the camera looks along -z",
+    "pose": "camera-to-world 4x4 matrix, 16 numbers column by column (simd_float4x4 layout)",
+    "intrinsics": "[fx, fy, cx, cy] in pixels of the saved, unrotated landscape JPEG",
+    "pixel": "[u, v] continuous image coordinates: (0, 0) is the top-left corner of the JPEG, v grows down",
+    "ray": "origin is the camera position; direction is a unit vector through the tapped pixel"
+  },
+  "session": {
+    "id": "synthetic-session-01",
+    "startedAt": "2026-09-26T15:00:00Z",
+    "startedAtUptime": 1000.25,
+    "appVersion": "0.0.0-synthetic",
+    "deviceModel": "synthetic",
+    "systemVersion": "0.0",
+    "lidarAvailable": false,
+    "meshReconstructionSupported": false,
+    "sceneDepthEnabled": false
+  },
+  "gates": {
+    "trackingStableSeconds": 2.0,
+    "minimumGroundLookDown": 20.0,
+    "minimumContactSeparation": 1.0,
+    "maximumAngleFromWallNormal": 60.0,
+    "wallValidationTolerance": 0.05,
+    "minimumCameraOffsetFromWall": 1.0,
+    "minimumRayAngle": 5.0,
+    "maximumRayGap": 0.05,
+    "keyframeSpacingMeters": 0.5,
+    "keyframeSpacingDegrees": 15.0
+  },
+  "keyframes": [],
+  "taps": [],
+  "points": [
+    {
+      "id": "p1",
+      "kind": "ground",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": {
+        "surface": "detectedPlane",
+        "planeAnchor": "A1",
+        "lookDown": 42.0
+      },
+      "onWall": null,
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 0.0,
+        "heightAboveGround": 0.0,
+        "offset": -0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p2",
+      "kind": "ground",
+      "position": [
+        9.87552,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": {
+        "surface": "detectedPlane",
+        "planeAnchor": "A1",
+        "lookDown": 42.0
+      },
+      "onWall": null,
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 9.87552,
+        "heightAboveGround": 0.0,
+        "offset": -0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p3",
+      "kind": "wall",
+      "position": [
+        0.5,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 0.5,
+        "heightAboveGround": 0.0,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p4",
+      "kind": "wall",
+      "position": [
+        2.02,
+        0.0,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 2.02,
+        "heightAboveGround": 0.0,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p5",
+      "kind": "ground",
+      "position": [
+        2.26,
+        0.0,
+        1.4
+      ],
+      "taps": [],
+      "ground": {
+        "surface": "detectedPlane",
+        "planeAnchor": "A1",
+        "lookDown": 42.0
+      },
+      "onWall": null,
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 2.26,
+        "heightAboveGround": 0.0,
+        "offset": -1.4,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p6",
+      "kind": "ground",
+      "position": [
+        2.26,
+        0.0,
+        1.49352
+      ],
+      "taps": [],
+      "ground": {
+        "surface": "detectedPlane",
+        "planeAnchor": "A1",
+        "lookDown": 42.0
+      },
+      "onWall": null,
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 2.26,
+        "heightAboveGround": 0.0,
+        "offset": -1.49352,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p7",
+      "kind": "wall",
+      "position": [
+        3.71856,
+        0.3,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 3.71856,
+        "heightAboveGround": 0.3,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p8",
+      "kind": "ground",
+      "position": [
+        6.4,
+        0.0,
+        0.95
+      ],
+      "taps": [],
+      "ground": {
+        "surface": "detectedPlane",
+        "planeAnchor": "A1",
+        "lookDown": 42.0
+      },
+      "onWall": null,
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 6.4,
+        "heightAboveGround": 0.0,
+        "offset": -0.95,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    },
+    {
+      "id": "p9",
+      "kind": "wall",
+      "position": [
+        6.00456,
+        0.3,
+        0.0
+      ],
+      "taps": [],
+      "ground": null,
+      "onWall": {
+        "wall": "w1",
+        "range": 2.5,
+        "angleFromNormal": 12.0
+      },
+      "twoView": null,
+      "wallCoordinates": {
+        "wall": "w1",
+        "along": 6.00456,
+        "heightAboveGround": 0.3,
+        "offset": 0.0,
+        "withinContacts": true
+      },
+      "flags": [],
+      "wallWarnings": []
+    }
+  ],
+  "walls": [
+    {
+      "id": "w1",
+      "contacts": [
+        "p1",
+        "p2"
+      ],
+      "start": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "end": [
+        9.87552,
+        0.0,
+        0.0
+      ],
+      "direction": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "normal": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "length": 9.87552,
+      "cameraPosition": [
+        4.9,
+        1.4,
+        3.0
+      ],
+      "validations": [
+        {
+          "point": "p3",
+          "residual": 0.01,
+          "tolerance": 0.05,
+          "passes": true
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "measurements": [
+    {
+      "id": "m1",
+      "time": 1010.5,
+      "from": "p3",
+      "to": "p4",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 1.524,
+        "horizontal": 1.524,
+        "vertical": 0.0,
+        "alongWall": 1.524
+      },
+      "compared": "straight",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    },
+    {
+      "id": "m2",
+      "time": 1060.0,
+      "from": "p1",
+      "to": "p2",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 9.87552,
+        "horizontal": 9.87552,
+        "vertical": 0.0,
+        "alongWall": 9.87552
+      },
+      "compared": "alongWall",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    },
+    {
+      "id": "m3",
+      "time": 1120.0,
+      "from": "p5",
+      "to": "w1",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 1.4,
+        "horizontal": 1.4,
+        "vertical": 0.0,
+        "gapToWall": 1.4,
+        "heightAboveGround": 0.0
+      },
+      "compared": "straight",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    },
+    {
+      "id": "m4",
+      "time": 1180.0,
+      "from": "p6",
+      "to": "w1",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 1.49352,
+        "horizontal": 1.49352,
+        "vertical": 0.0,
+        "gapToWall": 1.49352,
+        "heightAboveGround": 0.0
+      },
+      "compared": "gapToWall",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    },
+    {
+      "id": "m5",
+      "time": 1240.0,
+      "from": "p1",
+      "to": "p7",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 3.73065,
+        "horizontal": 3.71856,
+        "vertical": 0.3,
+        "alongWall": 3.71856,
+        "heightAboveGround": 0.3
+      },
+      "compared": "alongWall",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    },
+    {
+      "id": "m6",
+      "time": 1350.0,
+      "from": "p8",
+      "to": "w1",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 0.95,
+        "horizontal": 0.95,
+        "vertical": 0.04,
+        "gapToWall": 0.95,
+        "heightAboveGround": -0.04
+      },
+      "compared": "straight",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [
+        "belowGround"
+      ],
+      "accepted": false
+    },
+    {
+      "id": "m7",
+      "time": 1412.75,
+      "from": "p1",
+      "to": "p9",
+      "referenceWall": "w1",
+      "values": {
+        "straight": 6.01205,
+        "horizontal": 6.00456,
+        "vertical": 0.3,
+        "alongWall": 6.00456,
+        "heightAboveGround": 0.3
+      },
+      "compared": "alongWall",
+      "tape": null,
+      "errorMeters": null,
+      "errorInches": null,
+      "warnings": [],
+      "accepted": true
+    }
+  ],
+  "refusals": [
+    {
+      "id": "r1",
+      "time": 1300.0,
+      "tool": "gapToWall",
+      "tap": null,
+      "reason": "grazingRay",
+      "message": "The ray meets the ground too shallowly. Step back and tap again.",
+      "values": {
+        "lookDown": 8.0,
+        "minimumGroundLookDown": 20.0
+      }
+    }
+  ],
+  "tracking": [
+    {
+      "time": 1000.25,
+      "state": "normal"
+    }
+  ]
+}

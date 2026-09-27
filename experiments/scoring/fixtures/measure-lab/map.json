@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "unit": "ft",
+  "pipeline": "measure-lab",
+  "session": "synthetic-session-01",
+  "notes": "Synthetic example. plus_minus_ft_by_key is docs/02-implementation-plan.md's +-0.3 ft for AR taps, the plan's untested estimate, not a measured error bar.",
+  "plus_minus_ft_by_key": {
+    "straight": 0.3,
+    "horizontal": 0.3,
+    "vertical": 0.3,
+    "alongWall": 0.3,
+    "gapToWall": 0.3,
+    "heightAboveGround": 0.3
+  },
+  "measurements": {
+    "scale": {
+      "session_measurement": "m1",
+      "key": "straight"
+    },
+    "wall-length": {
+      "session_measurement": "m2",
+      "key": "alongWall"
+    },
+    "c1-gas": {
+      "session_measurement": "m3",
+      "key": "straight"
+    },
+    "c1-facing": {
+      "session_measurement": "m4",
+      "key": "gapToWall"
+    },
+    "c1-route": {
+      "session_measurement": "m5",
+      "key": "alongWall"
+    },
+    "c1-pool": "absent",
+    "c2-gas": {
+      "session_measurement": "m6",
+      "key": "straight"
+    },
+    "c2-facing": {
+      "refusal": "r1"
+    },
+    "c2-route": {
+      "session_measurement": "m7",
+      "key": "alongWall"
+    },
+    "c2-pool": "unsupported"
+  }
+}

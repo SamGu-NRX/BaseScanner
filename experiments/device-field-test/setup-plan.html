@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mock wall: device test setup</title>
+<style>
+  :root {
+    --siding: #2f3d33; --wood: #c89a64; --turf: #6f9e45; --concrete: #dcd9d2;
+    --tape: #2563eb; --dim: #e8590c; --act: #d62828; --ink: #1f2328; --muted: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px 32px 40px; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: #fafaf7; width: 1320px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 26px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 6px; }
+  .legend { display: flex; gap: 22px; flex-wrap: wrap; font-size: 13px; margin: 10px 0 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 18px; height: 10px; display: inline-block; border-radius: 2px; }
+  .row { display: flex; gap: 22px; align-items: flex-start; }
+  svg { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; }
+  table { border-collapse: collapse; font-size: 13.5px; background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; overflow: hidden; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+  th { background: #f3f3ef; font-weight: 600; }
+  td.l { font-weight: 700; color: var(--dim); text-align: center; }
+  td.blank { width: 110px; color: #c4c4c4; }
+  .runs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .run { background: #fff; border: 1px solid #e5e5e0; border-radius: 10px; padding: 12px 14px; }
+  .run b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .run ul { margin: 4px 0 0 18px; padding: 0; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Mock wall: what to set up, measure and walk</h1>
+<p class="sub">Schematic, not to scale: the mock house wall used for run 1 on 2026-09-26. Letters A–K are the tape readings taken before scanning; test IDs are in RUNBOOK.md.</p>
+
+<div class="legend">
+  <span><i class="sw" style="background:var(--tape)"></i>Painter's tape mark</span>
+  <span><i class="sw" style="background:var(--dim)"></i>Measure with the tape (letter = row in the table)</span>
+  <span><i class="sw" style="border:2px dashed var(--act)"></i>You change this</span>
+  <span><i class="sw" style="background:#fff;border:2px solid #9ca3af"></i>Already there, leave it</span>
+</div>
+
+<h2>1. Front view: standing on the turf, looking at the green meter wall</h2>
+<svg width="1256" height="610" viewBox="0 0 1256 610" font-family="system-ui, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="#e8590c"/>
+    </marker>
+    <pattern id="lap" width="10" height="22" patternUnits="userSpaceOnUse">
+      <rect width="10" height="22" fill="#2f3d33"/><line x1="0" y1="21" x2="10" y2="21" stroke="#23302a" stroke-width="2"/>
+    </pattern>
+  </defs>
+
+  <!-- side walls (wood) -->
+  <rect x="70" y="95" width="50" height="405" fill="#c89a64"/>
+  <rect x="1020" y="95" width="50" height="405" fill="#d9b889"/>
+  <text x="95" y="88" text-anchor="middle" fill="#8a6a44" font-size="12">wood corner</text>
+  <text x="1045" y="88" text-anchor="middle" fill="#8a6a44" font-size="12">wood corner</text>
+
+  <!-- siding wall -->
+  <rect x="120" y="95" width="900" height="405" fill="url(#lap)"/>
+  <!-- eave -->
+  <rect x="110" y="95" width="920" height="22" fill="#1f2a24"/>
+  <text x="570" y="110" text-anchor="middle" fill="#cfd8d2" font-size="12">eave / overhang</text>
+
+  <!-- turf -->
+  <rect x="40" y="500" width="1060" height="16" fill="#6f9e45"/>
+
+  <!-- conduit -->
+  <path d="M120,335 H240 M255,297 V335 H450 M346,306 V335 M435,311 V335" stroke="#b9bec4" stroke-width="5" fill="none"/>
+
+  <!-- meter -->
+  <rect x="232" y="239" width="46" height="59" fill="#c9ccd0" stroke="#8b9096" stroke-width="2" rx="3"/>
+  <circle cx="255" cy="266" r="12" fill="#eef0f2" stroke="#8b9096"/>
+  <text x="255" y="232" text-anchor="middle" fill="#fff" font-weight="700">METER</text>
+  <!-- panel -->
+  <rect x="322" y="239" width="50" height="68" fill="#c9ccd0" stroke="#8b9096" stroke-width="2" rx="2"/>
+  <text x="347" y="277" text-anchor="middle" fill="#4b5563" font-size="11">panel</text>
+  <!-- disconnect -->
+  <rect x="403" y="221" width="63" height="90" fill="#c9ccd0" stroke="#8b9096" stroke-width="2" rx="2"/>
+  <text x="435" y="270" text-anchor="middle" fill="#4b5563" font-size="11">disconnect</text>
+
+  <!-- window -->
+  <rect x="502" y="176" width="158" height="180" fill="#f4d774" stroke="#3a2a22" stroke-width="7"/>
+  <path d="M581,176 V356 M502,266 H660 M541,176 V356 M620,176 V356 M502,221 H660 M502,311 H660" stroke="#3a2a22" stroke-width="2.5"/>
+  <text x="581" y="378" text-anchor="middle" fill="#fff" font-weight="700">WINDOW</text>
+
+  <!-- existing battery -->
+  <rect x="727" y="374" width="90" height="126" fill="#f7f7f5" stroke="#9ca3af" stroke-width="2" rx="10"/>
+  <text x="772" y="432" text-anchor="middle" fill="#374151" font-weight="700" font-size="12">Base</text>
+  <text x="772" y="448" text-anchor="middle" fill="#374151" font-size="12">battery</text>
+  <text x="772" y="464" text-anchor="middle" fill="#6b7280" font-size="11">(leave it)</text>
+
+  <!-- folding table = AC stand-in -->
+  <rect x="840" y="392" width="158" height="9" fill="#efefe9" stroke="#9ca3af"/>
+  <path d="M852,401 L846,500 M986,401 L992,500" stroke="#555" stroke-width="3"/>
+  <rect x="836" y="410" width="166" height="54" rx="6" fill="none" stroke="#d62828" stroke-width="2" stroke-dasharray="6 4"/>
+  <text x="919" y="433" text-anchor="middle" fill="#d62828" font-weight="700" font-size="12">mark as "AC unit"</text>
+  <text x="919" y="450" text-anchor="middle" fill="#d62828" font-size="11">(stand-in, or use a box)</text>
+
+  <!-- GAS paper -->
+  <rect x="134" y="392" width="44" height="40" fill="#fff" stroke="#d62828" stroke-width="2.5" stroke-dasharray="5 3"/>
+  <text x="156" y="417" text-anchor="middle" fill="#d62828" font-weight="800" font-size="13">GAS</text>
+  <text x="128" y="385" fill="#fff" font-size="11.5" font-weight="600">tape paper here</text>
+
+  <!-- covered table, moved out for run 1 -->
+  <rect x="278" y="383" width="225" height="117" fill="rgba(21,94,52,.25)" stroke="#d62828" stroke-width="2.5" stroke-dasharray="8 5"/>
+  <line x1="278" y1="383" x2="503" y2="500" stroke="#d62828" stroke-width="2"/>
+  <line x1="503" y1="383" x2="278" y2="500" stroke="#d62828" stroke-width="2"/>
+  <rect x="300" y="428" width="182" height="28" fill="#fff" rx="4"/>
+  <text x="391" y="447" text-anchor="middle" fill="#d62828" font-weight="700">covered table: MOVE OUT</text>
+
+  <!-- painter's tape marks at the base -->
+  <rect x="120" y="494" width="22" height="10" fill="#2563eb"/>
+  <rect x="998" y="494" width="22" height="10" fill="#2563eb"/>
+  <rect x="244" y="494" width="22" height="10" fill="#2563eb"/>
+  <text x="131" y="530" text-anchor="middle" fill="#2563eb" font-weight="700" font-size="12">L</text>
+  <text x="255" y="530" text-anchor="middle" fill="#2563eb" font-weight="700" font-size="12">M</text>
+  <text x="1009" y="530" text-anchor="middle" fill="#2563eb" font-weight="700" font-size="12">R</text>
+  <line x1="255" y1="300" x2="255" y2="494" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="3 4"/>
+
+  <!-- dimension lines -->
+  <g stroke="#e8590c" stroke-width="2" fill="none" marker-start="url(#a)" marker-end="url(#a)">
+    <line x1="122" y1="552" x2="1018" y2="552"/>            <!-- A wall -->
+    <line x1="218" y1="498" x2="218" y2="300"/>             <!-- B meter bottom -->
+    <line x1="257" y1="205" x2="500" y2="205"/>             <!-- C meter->window -->
+    <line x1="504" y1="160" x2="658" y2="160"/>             <!-- D window width -->
+    <line x1="680" y1="498" x2="680" y2="358"/>             <!-- E sill -->
+    <line x1="1090" y1="498" x2="1090" y2="119"/>           <!-- F eave -->
+    <line x1="257" y1="585" x2="725" y2="585"/>             <!-- G meter->battery -->
+    <line x1="729" y1="360" x2="815" y2="360"/>             <!-- H battery width -->
+    <line x1="158" y1="470" x2="253" y2="470"/>             <!-- J gas->meter -->
+  </g>
+  <g font-weight="800" fill="#fff" font-size="12" text-anchor="middle">
+    <circle cx="570" cy="552" r="11" fill="#e8590c"/><text x="570" y="556">A</text>
+    <circle cx="218" cy="345" r="11" fill="#e8590c"/><text x="218" y="349">B</text>
+    <circle cx="378" cy="205" r="11" fill="#e8590c"/><text x="378" y="209">C</text>
+    <circle cx="581" cy="160" r="11" fill="#e8590c"/><text x="581" y="164">D</text>
+    <circle cx="680" cy="428" r="11" fill="#e8590c"/><text x="680" y="432">E</text>
+    <circle cx="1090" cy="310" r="11" fill="#e8590c"/><text x="1090" y="314">F</text>
+    <circle cx="491" cy="585" r="11" fill="#e8590c"/><text x="491" y="589">G</text>
+    <circle cx="772" cy="360" r="11" fill="#e8590c"/><text x="772" y="364">H</text>
+    <circle cx="196" cy="470" r="11" fill="#e8590c"/><text x="196" y="474">J</text>
+  </g>
+  <text x="1110" y="200" fill="#6b7280" font-size="12">
+    <tspan x="1110">F = turf up</tspan><tspan x="1110" dy="16">to the eave's</tspan><tspan x="1110" dy="16">underside</tspan>
+  </text>
+</svg>
+
+<h2>2. Top view: where things go and where you walk</h2>
+<div class="row">
+<svg width="820" height="470" viewBox="0 0 820 470" font-family="system-ui, sans-serif" font-size="12.5">
+  <defs>
+    <marker id="w" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,1 L9,5 L0,9 z" fill="#1d4ed8"/>
+    </marker>
+    <marker id="k" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,1 L9,5 L0,9 z" fill="#e8590c"/>
+    </marker>
+    <marker id="r" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,1 L9,5 L0,9 z" fill="#d62828"/>
+    </marker>
+  </defs>
+  <!-- scale: 1 ft = 32 px; wall 20 ft = 640 px from x=80 -->
+  <rect x="0" y="0" width="820" height="470" fill="#dcd9d2"/>
+  <text x="790" y="455" text-anchor="end" fill="#8a877f">concrete floor</text>
+  <!-- turf, 7 ft deep guess -->
+  <rect x="80" y="40" width="640" height="224" fill="#6f9e45"/>
+  <text x="400" y="256" text-anchor="middle" fill="#e8f3de" font-size="12">turf</text>
+  <!-- wall -->
+  <rect x="68" y="28" width="664" height="12" fill="#2f3d33"/>
+  <text x="400" y="20" text-anchor="middle" fill="#2f3d33" font-weight="700">green meter wall</text>
+  <!-- side walls -->
+  <rect x="68" y="28" width="12" height="130" fill="#c89a64"/>
+  <rect x="720" y="28" width="12" height="130" fill="#c89a64"/>
+
+  <!-- items on the wall line -->
+  <rect x="112" y="40" width="26" height="8" fill="#fff" stroke="#d62828" stroke-width="2"/>
+  <text x="125" y="62" text-anchor="middle" fill="#fff" font-weight="700" font-size="11">GAS</text>
+  <rect x="160" y="40" width="32" height="10" fill="#c9ccd0"/>
+  <text x="176" y="66" text-anchor="middle" fill="#fff" font-weight="700" font-size="11">METER</text>
+  <rect x="352" y="40" width="112" height="6" fill="#f4d774"/>
+  <text x="408" y="60" text-anchor="middle" fill="#fff" font-size="11">window</text>
+  <!-- battery 2 ft x ~1.3 ft -->
+  <rect x="512" y="40" width="64" height="40" fill="#f7f7f5" stroke="#9ca3af" rx="5"/>
+  <text x="544" y="64" text-anchor="middle" fill="#374151" font-size="11">battery</text>
+  <!-- folding table / AC stand-in -->
+  <rect x="592" y="40" width="112" height="56" fill="#efefe9" stroke="#d62828" stroke-width="2" stroke-dasharray="5 3"/>
+  <text x="648" y="66" text-anchor="middle" fill="#d62828" font-size="11" font-weight="700">"AC unit"</text>
+  <text x="648" y="81" text-anchor="middle" fill="#d62828" font-size="10.5">folding table</text>
+
+  <!-- covered table: original spot + move arrow -->
+  <rect x="192" y="40" width="160" height="80" fill="rgba(21,94,52,.35)" stroke="#d62828" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="272" y="78" text-anchor="middle" fill="#fff" font-weight="700" font-size="11.5">covered table</text>
+  <text x="272" y="94" text-anchor="middle" fill="#fff" font-size="11">(now)</text>
+  <path d="M232,122 C200,250 140,330 110,382" stroke="#d62828" stroke-width="2.5" fill="none" marker-end="url(#r)"/>
+  <rect x="30" y="388" width="160" height="60" fill="rgba(21,94,52,.35)" stroke="#d62828" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="110" y="414" text-anchor="middle" fill="#7a1111" font-weight="700" font-size="11.5">park it here, off the turf</text>
+  <text x="110" y="430" text-anchor="middle" fill="#7a1111" font-size="11">for run 1 (back for run 2)</text>
+
+  <!-- K turf depth -->
+  <line x1="760" y1="42" x2="760" y2="262" stroke="#e8590c" stroke-width="2" marker-start="url(#k)" marker-end="url(#k)"/>
+  <circle cx="760" cy="152" r="11" fill="#e8590c"/><text x="760" y="156" text-anchor="middle" fill="#fff" font-weight="800">K</text>
+
+  <!-- walking path: stand ~6-8 ft out (y ~ 40 + 7*32 = 264), on the turf edge -->
+  <g fill="#1d4ed8" font-weight="700">
+    <circle cx="176" cy="200" r="13"/><text x="176" y="205" text-anchor="middle" fill="#fff">1</text>
+    <circle cx="176" cy="118" r="11" fill="#3b82f6"/><text x="176" y="122" text-anchor="middle" fill="#fff" font-size="11">2</text>
+  </g>
+  <line x1="176" y1="186" x2="176" y2="134" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#w)"/>
+  <path d="M176,222 V300 H96" stroke="#1d4ed8" stroke-width="3" fill="none" marker-end="url(#w)"/>
+  <path d="M96,316 H704" stroke="#1d4ed8" stroke-width="3" fill="none" marker-end="url(#w)"/>
+  <circle cx="400" cy="300" r="13" fill="#1d4ed8"/><text x="400" y="305" text-anchor="middle" fill="#fff" font-weight="700">3</text>
+  <circle cx="704" cy="340" r="13" fill="#1d4ed8"/><text x="704" y="345" text-anchor="middle" fill="#fff" font-weight="700">4</text>
+  <text x="440" y="340" fill="#1d4ed8" font-size="12">stay 6–8 ft from the wall, walk slowly</text>
+</svg>
+
+<table style="width:410px">
+  <tr><th>#</th><th>On the phone</th></tr>
+  <tr><td class="l" style="color:#1d4ed8">1</td><td>Start recording, open House Scan, go through onboarding. Stand about 6 ft in front of the meter and tap it (<b>F-1</b>).</td></tr>
+  <tr><td class="l" style="color:#1d4ed8">2</td><td>Step in until the meter fills the circle and hold still for the close-up (<b>C-1</b>).</td></tr>
+  <tr><td class="l" style="color:#1d4ed8">3</td><td>Back out to 6–8 ft. It says "walk left" first: go to the left corner, then all the way right. Tilt down when told so the turf is in view.</td></tr>
+  <tr><td class="l" style="color:#1d4ed8">4</td><td>Along the way: <b>Mark something</b> for GAS, the window and the "AC unit". At each corner, answer the end question with "turns a corner" (<b>W-7, W-8</b>). Then the list, upload, result and AR view.</td></tr>
+</table>
+</div>
+<p class="note">The wall is probably under 20 ft, so "Wall ends here" may never appear (known bug B-06). If it doesn't, say so on the recording and use "Can't get there" at the corner.</p>
+
+<div class="row" style="margin-top:6px">
+<div>
+<h2>3. Tape readings: write them down before anyone scans</h2>
+<table>
+  <tr><th></th><th>Measure</th><th>From → to</th><th>Reading</th></tr>
+  <tr><td class="l">A</td><td>Wall length</td><td>tape L → tape R, along the base</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">B</td><td>Meter height</td><td>turf → meter box's bottom edge</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">C</td><td>Meter to window</td><td>meter centre line (tape M) → window's left frame edge</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">D</td><td>Window width</td><td>left frame edge → right frame edge</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">E</td><td>Sill height</td><td>turf → window sill</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">F</td><td>Overhead</td><td>turf → eave's underside</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">G</td><td>Meter to battery</td><td>tape M → battery's near edge</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">H</td><td>Battery size</td><td>width, and depth out from the wall</td><td class="blank">___ × ___</td></tr>
+  <tr><td class="l">J</td><td>Gas to meter</td><td>GAS paper's centre → tape M</td><td class="blank">___ ft ___ in</td></tr>
+  <tr><td class="l">K</td><td>Turf depth</td><td>wall → concrete edge</td><td class="blank">___ ft ___ in</td></tr>
+</table>
+</div>
+</div>
+
+<h2>4. Run order: one screen recording each, say the test ID out loud</h2>
+<div class="runs">
+  <div class="run"><b>Run 1: clean</b>Covered table parked off the turf, GAS paper up.
+    <ul><li>Full flow, onboarding → AR view</li><li>Does the AR spot land near the real battery (G)?</li><li>Close-up tests C-1 to C-4</li></ul></div>
+  <div class="run"><b>Run 2: cluttered</b>Covered table back in front of the panel.
+    <ul><li>Same walk as run 1</li><li>Expect a "show the ground" request (G-1 / G-2)</li><li>Compare the result with run 1</li></ul></div>
+  <div class="run"><b>Run 3: break it</b>Short separate recordings.
+    <ul><li>Deny the camera (O-4, reinstall first)</li><li>Airplane mode before upload (U-4)</li><li>Teammate calls you mid-walk (W-10)</li><li>Cover the lens for 20 s or more (W-11)</li></ul></div>
+</div>
+
+</body>
+</html>

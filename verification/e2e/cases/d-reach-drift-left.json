@@ -1,0 +1,158 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "d-reach-drift-left",
+  "source": "rules.yaml errors.drift_per_ft and route.* at origin/t3/server f2705dd; route range at 3baa338; C5 margin rule",
+  "description": "Mirror of d-reach-drift-right. Left of the meter the route runs to the battery's right edge b = a + W, so the boundaries sit at a = -12.058 - W and a = -24.659 - W.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        0.0
+      ],
+      "wall_id": "w1"
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -29,
+            0.0
+          ],
+          [
+            1,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "objects": [],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -29,
+            0
+          ],
+          [
+            1,
+            0
+          ],
+          [
+            1,
+            10
+          ],
+          [
+            -29,
+            10
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -29,
+          1
+        ],
+        "depth_ft": 20.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -44.0,
+            16.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -44.0,
+            16.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -44.0,
+            16.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -44.0,
+            16.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "route_length": 20.0
+  },
+  "expect": {
+    "start_outcomes": [
+      {
+        "wall_id": "w1",
+        "start_ft": -7.5833,
+        "outcome": "pass",
+        "why": "route 5 + 1.81 = 6.81 < 15 (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -14.4408,
+        "outcome": "pass",
+        "why": "just inside a + 0.6 + 0.16(a + W) < 15 (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -14.8408,
+        "outcome": "unsure",
+        "why": "just past the 15 ft review line (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -20.5833,
+        "outcome": "unsure",
+        "why": "18 + 3.89 > 15; 18 - 3.59 < 20 (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -27.0421,
+        "outcome": "unsure",
+        "why": "just inside a - 0.3 - 0.16(a + W) <= 20 (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -27.4421,
+        "outcome": "fail",
+        "why": "just past a - 0.3 - 0.16(a + W) > 20 (b = a + W)"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": -28.0833,
+        "outcome": "fail",
+        "why": "25.5 - 4.79 = 20.71 > 20 (b = a + W)"
+      }
+    ]
+  }
+}
