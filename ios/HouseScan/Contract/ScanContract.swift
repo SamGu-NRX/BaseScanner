@@ -595,6 +595,12 @@ struct ClearanceZone: Identifiable, Equatable, Sendable {
     var depth: Float
 }
 
+/// An unexplored end of the walk: its side and where the scan stopped, meters of s.
+struct UnseenEnd: Equatable, Sendable {
+    var side: WallSide
+    var s: Float
+}
+
 struct ResultPresentation: Equatable, Sendable {
     enum Decision: String, Equatable, Sendable {
         case pass
@@ -615,8 +621,9 @@ struct ResultPresentation: Equatable, Sendable {
     var checks: [CheckRow]
     var clearances: [ClearanceZone]
     var missing: [MissingEvidence]
-    /// A side of the meter the walk didn't reach, so a closer spot may exist there.
-    var unseenSide: WallSide? = nil
+    /// Where the scan stopped on a side it didn't finish, nearer the meter than the spot, so a
+    /// closer spot may lie past it (`PlacementResult.closerUnseenEnd`).
+    var unseenEnd: UnseenEnd? = nil
     /// True when no server answered and the result is the offline sample used by tests and
     /// demos. The UI must say so on screen.
     var isSample: Bool

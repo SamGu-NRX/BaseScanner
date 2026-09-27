@@ -75,6 +75,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden": ("wallTape", "2 sections hidden behind something"),
         "wallWalk-seeBehind": ("instruction", "Something is in front of the wall here"),
         "gapRequest-followUp": ("instruction", "One more view to finish"),
+        // #75: a server request's stretch by its two ends, not its middle.
+        "gapRequest-groundOut": ("instruction", "From 4 ft to 7 ft right of your meter."),
         "uploading-followUp": (nil, "One more view to finish"),
         "markFeatures-groundQuestion": (nil, "What's on the ground along this wall?"),
         "markFeatures-groundAnswered": ("ground.answered", "Mulch"),
@@ -83,6 +85,14 @@ final class ScreenStatesUITests: XCTestCase {
         "result-overlap": ("check.meter_working_space", "Overlaps by 1 foot. The rule is no overlap"),
         // #66: "Wall ends here" short of the farthest view says on the question what it leaves out.
         "wallWalk-endQuestionLeavesOut": ("instruction", "This leaves out 5 ft you walked"),
+        // #83: the unexplored end nearer the meter than the spot, named by where the scan stopped.
+        "result-review": ("result.unseenSide", "The scan stopped 1 ft 4 in left of your meter. A closer spot may be past there."),
+    ]
+
+    /// Controls a state must offer, by identifier.
+    private static let controls: [String: [String]] = [
+        // #39: "Show my result" on every request the check sent back, with one view left too.
+        "gapRequest-followUp": ["action.skipGap", "action.showResult"],
     ]
 
     /// States where the scan is packaged, so "Share scan" must show.
@@ -384,6 +394,9 @@ final class ScreenStatesUITests: XCTestCase {
                 found = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", expected.text)).firstMatch.exists
             }
             XCTAssertTrue(found, "\(name): \"\(expected.text)\" is missing")
+        }
+        for identifier in Self.controls[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+            XCTAssertTrue(element(app, identifier).exists, "\(name): \(identifier) is missing")
         }
         // A system banner can slide over the app mid-audit (CI's Simulator showed "Ready for Apple
         // Intelligence" over the photo count), so an issue fails the test only when a second

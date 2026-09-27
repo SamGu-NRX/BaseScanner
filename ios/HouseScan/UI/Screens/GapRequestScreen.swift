@@ -7,7 +7,7 @@ import SwiftUI
 /// A request the finished check sent back (the scan came here from the upload, not from the
 /// review) carries "One more view to finish" above the instruction, the words the upload screen
 /// just said. "I can't get there" skips only this view and goes on to the check's next one;
-/// "Show my result" stops asking and leads to the result.
+/// "Show my result", on every such request, stops asking and leads to the result.
 struct GapRequestScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -48,8 +48,10 @@ struct GapRequestScreen: View {
                         OverheadAnswers(actions: actions)
                             .transition(.opacity)
                     }
-                    // With one view left, "I can't get there" already leads to the result.
-                    if followUps > 1, state.gap?.isSatisfied != true, !asking {
+                    // On every request the check sent back, even with one view left: the upload
+                    // after "I can't get there" can bring a new request in the next answer, and
+                    // this is the one way to stop asking (issue #39).
+                    if followUps > 0, state.gap?.isSatisfied != true, !asking {
                         Button {
                             actions.showResultNow()
                         } label: {
@@ -92,11 +94,12 @@ struct GapRequestScreen: View {
     }
 
     /// What "I can't get there" leads to: the check's next view while it wants more than this
-    /// one, else the result.
+    /// one. With one left the scan is sent again, and that answer can still ask for a new view,
+    /// so the hint doesn't promise the result; "Show my result" does.
     private var skipHint: String {
         switch followUps {
         case 0: "Skips this view. An installer will look at this part instead."
-        case 1: "Skips this view and shows your result. An installer will look at this part instead."
+        case 1: "Skips this view and checks your scan again. An installer will look at this part instead."
         default: "Skips this view and goes on to the next one. An installer will look at this part instead."
         }
     }
@@ -108,7 +111,7 @@ struct GapRequestScreen: View {
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
-        return ScanCopy.gap(gap)
+        return ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd))
     }
 }
 

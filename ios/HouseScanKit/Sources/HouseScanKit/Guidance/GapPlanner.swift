@@ -352,31 +352,40 @@ extension GapPlanner {
 }
 
 extension GapPlan {
-    /// Whether this request asks for the same view as `other`, allowing for the server working it
-    /// out again from the next upload: the same band and kind of need, a reach within 0.1 m (4 in)
-    /// of the other's, and at least 80 % of this span inside the other's. After "I can't get
-    /// there" the skipped stretch goes to review and the spot or its error margins can move, so the
-    /// same view comes back as, say, 2.41...7.9 ft instead of 2.4...7.9 ft. A met past_end request
-    /// moves its end on 2 m, so the next one asks for new ground and is a different view.
+    /// How far a request's span or reach may move and still ask for the same view: 0.1 ft
+    /// (0.03 m), meters. Numerical jitter from the server working the request out again is a few
+    /// hundredths of a foot; a guess, not measured.
+    public static let sameViewTolerance: Float = 0.03048
+
+    /// Whether this request asks for no view beyond `other`'s, allowing for the server working it
+    /// out again from the next upload: the same band and kind of need, a reach no more than
+    /// `sameViewTolerance` past the other's, and a span inside the other's give or take the same
+    /// tolerance. After "I can't get there" the skipped stretch goes to review and the spot or its
+    /// error margins can move, so the same view comes back as, say, 2.41...7.9 ft instead of
+    /// 2.4...7.9 ft. A request that asks for more is a new view, even when it mostly overlaps: a
+    /// span of 2...9 ft after 2...8 ft, or ground out to 5.10 ft after 4.83 ft (issue #39). A met
+    /// past_end request moves its end on 2 m, so the next one asks for new ground and is a
+    /// different view.
     public func asksForSameView(as other: GapPlan) -> Bool {
-        guard band == other.band, need.isNear(other.need, within: 0.1) else { return false }
-        let overlap = min(span.upperBound, other.span.upperBound) - max(span.lowerBound, other.span.lowerBound)
-        let length = span.upperBound - span.lowerBound
-        return length > 0 ? overlap >= 0.8 * length : overlap >= 0
+        let tolerance = Self.sameViewTolerance
+        guard band == other.band, need.asksNoMore(than: other.need, within: tolerance) else { return false }
+        return span.lowerBound >= other.span.lowerBound - tolerance && span.upperBound <= other.span.upperBound + tolerance
     }
 }
 
 extension GapPlan.Need {
-    /// The same kind of need, with any reach within `tolerance` meters of the other's.
-    func isNear(_ other: GapPlan.Need, within tolerance: Float) -> Bool {
+    /// The same kind of need, with any reach no more than `tolerance` meters past the other's. An
+    /// overhead need without a height (any recorded view) asks no more than one with a height.
+    func asksNoMore(than other: GapPlan.Need, within tolerance: Float) -> Bool {
         switch (self, other) {
         case (.cells, .cells):
             return true
         case let (.groundOut(a), .groundOut(b)), let (.walkOut(a), .walkOut(b)), let (.wallUp(a), .wallUp(b)):
-            return abs(a - b) <= tolerance
+            return a <= b + tolerance
         case let (.overhead(a), .overhead(b)):
-            guard let a, let b else { return a == nil && b == nil }
-            return abs(a - b) <= tolerance
+            guard let a else { return true }
+            guard let b else { return false }
+            return a <= b + tolerance
         default:
             return false
         }
