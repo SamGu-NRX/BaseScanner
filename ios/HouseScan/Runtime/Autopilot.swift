@@ -158,8 +158,13 @@ final class Autopilot {
         }
         let gasS = nearestCovered(-1.2, in: covered)
         engine.beginMarking(.gasMeter)
-        await tap(map.wall.world(s: gasS, height: 0.55), replay: replay) { point in
-            self.engine.markFeaturePoint(at: point, viewSize: self.viewSize)
+        // Two corners where it meets the wall, inside the fixture's 0.3 m by 0.5 m meter.
+        for corner in [map.wall.world(s: gasS - 0.12, height: 0.35), map.wall.world(s: gasS + 0.12, height: 0.75)] {
+            let tapped = await tap(corner, replay: replay) { point in
+                self.engine.markFeaturePoint(at: point, viewSize: self.viewSize)
+            }
+            if !tapped { log("no replay frame shows a gas meter corner") }
+            await pause(0.4)
         }
         await pause(0.8)
 

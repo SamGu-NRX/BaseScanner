@@ -109,15 +109,24 @@ enum UploadFailure {
     /// The scan couldn't be turned into scene.json. A driveway or fence that has to be marked
     /// again says which, so the homeowner knows what to fix in the review.
     static func packaging(_ error: any Error) -> UploadState {
-        if case .fenceAcrossCorner? = error as? SceneExportError {
+        switch error as? SceneExportError {
+        case .fenceAcrossCorner?:
             // A fence marked before the wall was followed round a corner.
             return .rejected(message: "A fence runs round a corner of your wall. Go back to the review and mark it on each side of the corner as its own fence.")
+        case .objectAcrossCorner?:
+            return .rejected(message: "An AC unit's corners are on two sides of a corner of your wall. Go back to the review and mark it again.")
+        default:
+            break
         }
         switch error as? ScanEngine.ExportError {
         case .markCollapsed(.driveway)?:
             return .rejected(message: "Mark the driveway again: its two points came out on top of each other.")
         case .markCollapsed(.fence)?:
             return .rejected(message: "Mark the fence again: its two points came out on top of each other.")
+        case .markCollapsed(.gasMeter)?:
+            return .rejected(message: "Mark the gas meter again: its two corners came out on top of each other.")
+        case .markCollapsed(.acUnit)?:
+            return .rejected(message: "Mark the AC unit again: its two corners came out on top of each other.")
         default:
             return .rejected(message: "This scan couldn't be prepared for sending. Go back to the review to check your marks, or start over.")
         }

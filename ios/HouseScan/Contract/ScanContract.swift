@@ -416,16 +416,11 @@ enum FeatureKind: String, Equatable, Sendable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    /// How many taps a mark takes: two diagonal corners for a door or window, two points along
-    /// the near edge of a driveway or the foot of a fence, one point for a gas meter or AC unit.
-    /// scene.json (server/schemas/scene.schema.json) stores a driveway as a ground polygon and a
-    /// fence as a facing gap over a span, so both need a line, not a point.
-    var tapCount: Int {
-        switch self {
-        case .door, .window, .driveway, .fence: 2
-        case .gasMeter, .acUnit: 1
-        }
-    }
+    /// How many taps a mark takes, always two: diagonal corners on the wall for a door, window or
+    /// gas meter (where the meter meets the wall), the two front corners on the ground for an AC
+    /// unit, two points along the near edge of a driveway or the foot of a fence. One tap gives
+    /// a place but no size, and the export sends only measured sizes (`SceneFeature`).
+    var tapCount: Int { 2 }
 }
 
 struct MarkedFeature: Identifiable, Equatable, Sendable {
@@ -486,6 +481,8 @@ enum MarkRefusal: Equatable, Sendable {
     case trackingNotReady
     /// A fence's second tap is round a corner from its first: each side needs its own fence.
     case fenceAcrossCorner
+    /// An AC unit's second corner is round a corner of the wall from its first.
+    case unitAcrossCorner
 }
 
 // MARK: - Gap loop
