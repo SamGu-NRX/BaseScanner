@@ -14,16 +14,13 @@ struct DeveloperOptionsButton: View {
             Button {
                 showing = true
             } label: {
-                // The words give way to the icon alone at the largest text sizes; the spoken
-                // label still says the switch is on.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "wrench.and.screwdriver.fill")
-                        if practiceMeter {
-                            Text("Practice meter on")
-                        }
-                    }
+                HStack(spacing: 6) {
                     Image(systemName: "wrench.and.screwdriver.fill")
+                    if practiceMeter {
+                        // Wraps at the largest text sizes rather than dropping out.
+                        Text("Practice meter on")
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .font(Typeface.caption)
                 .foregroundStyle(practiceMeter ? Palette.ink : Palette.muted)
