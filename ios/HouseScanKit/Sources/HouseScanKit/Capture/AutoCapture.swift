@@ -66,7 +66,12 @@ public enum CaptureDecision: Sendable, Equatable {
     public enum SkipReason: Sendable, Equatable {
         case trackingNotReady
         case tooSoon
-        case moving
+        /// The phone moved faster than `AutoCaptureConfig.maxSpeed`: walking too fast.
+        case movingFast
+        /// The phone turned faster than `AutoCaptureConfig.maxAngularSpeed` without moving too
+        /// fast: a tilt or a pan, often while standing still. Kept apart from `movingFast` so
+        /// coaching doesn't tell someone standing still to walk slower (#26).
+        case turningFast
         case blurry
         case tooDark
         case tooBright
@@ -121,7 +126,8 @@ public struct AutoCapture: Sendable {
             let dt = Float(frame.timestamp - previous.timestamp)
             let speed = simd_distance(frame.camera.position, previous.camera.position) / dt
             let turn = frame.camera.rotationAngle(to: previous.camera) / dt
-            if speed > config.maxSpeed || turn > config.maxAngularSpeed { return .skip(.moving) }
+            if speed > config.maxSpeed { return .skip(.movingFast) }
+            if turn > config.maxAngularSpeed { return .skip(.turningFast) }
         }
         if let quality = frame.quality ?? lastQuality {
             if quality.meanLuma < config.minMeanLuma { return .skip(.tooDark) }

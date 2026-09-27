@@ -1008,7 +1008,9 @@ final class DemoEngine: ScanActions {
         case "slowDown": .slowDown
         case "needsTexture": .needsTexture
         case "tooDark": .tooDark
+        case "tooDarkToMeasure": .tooDarkToMeasure
         case "holdSteady": .holdSteady
+        case "turnSlowly": .turnSlowly
         case "relocalizing": .relocalizing
         case "trackingLost": .trackingLost
         case "pastWallEnd": .pastWallEnd

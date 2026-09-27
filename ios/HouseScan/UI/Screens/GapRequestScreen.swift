@@ -28,7 +28,7 @@ struct GapRequestScreen: View {
             }
             CameraChrome(
                 instruction: instruction,
-                tone: asking ? .normal : state.coaching.map { .coaching(symbol: ScanCopy.coachingSymbol($0)) } ?? .normal,
+                tone: asking ? .normal : coaching.map { .coaching(symbol: ScanCopy.coachingSymbol($0)) } ?? .normal,
                 reply: state.gap?.isSatisfied == true || asking ? nil : InstructionCard.Reply(
                     title: "I can't get there",
                     identifier: "action.skipGap",
@@ -121,14 +121,27 @@ struct GapRequestScreen: View {
         }
     }
 
+    /// As on the walk: tracking problems and standing past an end replace the request, and the
+    /// capture gate's coaching rides along under it (`ScanCopy.withCoaching`). The dark coaching
+    /// can stay up for a whole night request, and replacing the card hid the request and "Got it,
+    /// thanks" for as long as it did (field test 4.1, run 3).
     private var instruction: Instruction {
         if asking { return ScanCopy.overheadQuestion }
-        if let coaching = state.coaching { return ScanCopy.coaching(coaching) }
-        guard let gap = state.gap else { return ScanCopy.guidance(.gap) }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return ScanCopy.coaching(coaching) }
+        guard let gap = state.gap else { return ScanCopy.withCoaching(ScanCopy.guidance(.gap), coaching) }
         if gap.isSatisfied {
             return Instruction(title: "Got it, thanks", detail: followUps > 0 ? "Updating your result." : "That's the view we needed.")
         }
-        return ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd))
+        return ScanCopy.withCoaching(ScanCopy.gap(gap, ends: (left: state.wall?.leftEnd, right: state.wall?.rightEnd)), coaching)
+    }
+
+    /// The coaching on the card, marked with its symbol (`tone`). Once the view is in, the
+    /// capture gate's coaching has nothing left to ask for, so only coaching that replaces the
+    /// card still shows.
+    private var coaching: Coaching? {
+        guard let coaching = state.coaching else { return nil }
+        if state.gap?.isSatisfied == true, !ScanCopy.coachingReplacesTask(coaching) { return nil }
+        return coaching
     }
 }
 

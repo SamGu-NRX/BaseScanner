@@ -36,9 +36,11 @@ final class ScanEngine {
     // Stored evidence
     private(set) var store: KeyframeStore
     private var keptSourceIDs: Set<String> = []
-    /// Debounces coaching that comes from the capture gate (see `gateCoaching`).
+    /// Debounces "past the end of the wall" during the walk (see `walkCoaching`).
     private var gateProblem: (coaching: Coaching, since: Double)?
     private var gateClearSince: Double?
+    /// Debounces the capture gate's own coaching during the walk (see `walkCoaching`).
+    private var gateCoaching = CoachingDebouncer()
     private var closeUpPending = false
     /// Why the last close-up has to be retaken (from the meter-number reader, or "None of
     /// these"), and when that was said, in screen seconds. Shown until the next shot fires.
@@ -680,33 +682,32 @@ final class ScanEngine {
             keptSourceIDs.insert(frame.id)
             keep(frame)
         }
-        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, pastEnd: pastEnd != nil, time: frame.timestamp)
+        state.coaching = walkCoaching(tracking: frame.tracking, skip: skip, meanLuma: frame.quality?.meanLuma, pastEnd: pastEnd != nil, time: frame.timestamp)
         afterCoverageChange(camera: frame.camera, time: frame.timestamp)
         askOverheadIfTiltedUp(frame)
     }
 
-    /// Tracking problems show at once. A problem the capture gate reports (moving, blurry, too
-    /// dark) shows only once it has lasted `showAfter` seconds and clears after `clearAfter`
-    /// seconds of frames without it: the gate judges every frame, and one fast frame at 30 fps
-    /// would otherwise flash a prompt for a single frame. During the walk moving and blurry read
-    /// as "Slow down", never "Hold steady", which would tell a walking homeowner to stop. Both
-    /// durations are guesses to try on a phone, not measured. Standing past an end the phone
-    /// can't see back from (`pastEnd`) is debounced the same way and comes before the gate's
-    /// reasons: no photo is kept there whatever the gate says.
-    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, pastEnd: Bool, time: Double) -> Coaching? {
+    /// Tracking problems show at once. The capture gate's problems go through `gateCoaching`
+    /// (`CoachingDebouncer`): each has its own clock, darkness is judged from the frames' luma
+    /// with hysteresis, and "Slow down" is kept for walking, so while the homeowner stands and
+    /// aims (`isAiming`) only turning and blur are said. Blur reads as "Slow down" while walking
+    /// and "Hold steady" while aiming. Standing past an end the phone can't see back from
+    /// (`pastEnd`) shows once it has lasted `showAfter` seconds, clears after `clearAfter`
+    /// seconds without it, and comes before the gate's problems: no photo is kept there whatever
+    /// the gate says. Both durations are guesses to try on a phone, not measured.
+    private func walkCoaching(tracking: TrackingQuality, skip: CaptureDecision.SkipReason?, meanLuma: Double?, pastEnd: Bool, time: Double) -> Coaching? {
         let showAfter = 0.7
         let clearAfter = 0.5
+        let aiming = isAiming
+        let gate = gateCoaching.update(time: time, skip: skip, meanLuma: meanLuma, aiming: aiming)
         guard tracking == .normal else {
             gateProblem = nil
             gateClearSince = nil
+            // The light is what it was, but the motion from before the phone lost its place is not.
+            gateCoaching.forgetMotion()
             return coaching(for: tracking, skip: nil)
         }
-        var candidate: Coaching? = switch skip {
-        case .moving?, .blurry?: .slowDown
-        case .tooDark?: .tooDark
-        default: nil
-        }
-        if pastEnd { candidate = .pastWallEnd }
+        let candidate: Coaching? = pastEnd ? .pastWallEnd : nil
         if let problem = gateProblem, time < problem.since { gateProblem = nil }  // replay restarted
         if let candidate {
             gateClearSince = nil
@@ -721,8 +722,36 @@ final class ScanEngine {
                 gateClearSince = nil
             }
         }
-        guard let problem = gateProblem, time - problem.since >= showAfter else { return nil }
-        return problem.coaching
+        if let problem = gateProblem, time - problem.since >= showAfter { return problem.coaching }
+        return gate.map { Self.coaching(for: $0, aiming: aiming) }
+    }
+
+    /// Whether the homeowner is asked to stand and aim rather than walk: an aim, tilt, step-back,
+    /// see-behind or mark-the-end step, marking, a question on screen, or a gap request's view.
+    /// Walking too fast is not coached then (#26). Two steps ask for walking and so still say
+    /// "Slow down": the corner ("walk round it, aim at the next wall and mark it"; the mark
+    /// itself is `state.marking`, which aims) and a request to walk the stretch far enough out
+    /// (`GapPlan.Need.asksToWalk`). Read before this frame's guidance update, so it is the step
+    /// on screen when the frame arrived.
+    private var isAiming: Bool {
+        if state.marking != nil || state.endQuestion != nil || state.overheadQuestion { return true }
+        switch state.guidance {
+        case .aimAtGround, .aimAtWall, .tiltUp, .stepBack, .seeBehind, .markEnd: return true
+        case .gap: return !(gapPlan?.need.asksToWalk ?? false)
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .walk, .walkComplete, .markNextWall: return false
+        }
+    }
+
+    /// The coaching for a gate problem. Blur reads as "Slow down" while walking and "Hold
+    /// steady" while aiming, where "Slow down" would tell someone standing still to walk slower.
+    static func coaching(for problem: CoachingDebouncer.GateProblem, aiming: Bool) -> Coaching {
+        switch problem {
+        case .tooDark: .tooDark
+        case .persistentlyDark: .tooDarkToMeasure
+        case .movingFast: .slowDown
+        case .turningFast: .turnSlowly
+        case .blurry: aiming ? .holdSteady : .slowDown
+        }
     }
 
     private func afterCoverageChange(camera: CameraFrame?, time: Double) {
@@ -1305,6 +1334,7 @@ final class ScanEngine {
         state.lastCapture = nil
         gateProblem = nil
         gateClearSince = nil
+        gateCoaching = CoachingDebouncer()
         autoCapture.reset()
         planner.reset()
         go(.findMeter)
@@ -1814,6 +1844,7 @@ final class ScanEngine {
         resetPacketLog()
         keptSourceIDs = []
         autoCapture.reset()
+        gateCoaching = CoachingDebouncer()
         planner.reset()
         closeUpGate = CloseUpGate()
         gapPlan = nil
@@ -2029,7 +2060,8 @@ extension ScanEngine {
         case .limited(.unknown): return .trackingLost
         case .normal:
             switch skip {
-            case .moving?, .blurry?: return .holdSteady
+            case .movingFast?, .blurry?: return .holdSteady
+            case .turningFast?: return .turnSlowly
             case .tooDark?: return .tooDark
             default: return nil
             }
