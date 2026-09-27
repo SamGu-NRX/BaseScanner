@@ -12,7 +12,7 @@ import XCTest
 ///   failing, to list every issue in one run. CI leaves it unset, so any issue fails the test.
 final class FullFlowUITests: XCTestCase {
     /// Screens in the order the flow must show them.
-    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "result", "resultAR"]
+    static let flow = ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm", "result", "resultAR"]
 
     override func setUp() {
         continueAfterFailure = false
@@ -75,7 +75,7 @@ final class FullFlowUITests: XCTestCase {
                 predicate: NSPredicate(format: "value CONTAINS 'Left end' AND value CONTAINS 'Right end'"), object: element)
             XCTAssertEqual(XCTWaiter().wait(for: [bothEnds], timeout: 90), .completed, "the walk never ended both sides")
             tape = element.value as? String ?? ""
-        }, onScene: { data in
+        }, onScene: { data, _ in
             scene = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         })
         // The wall map says where each end is, in words VoiceOver reads.
@@ -107,6 +107,59 @@ final class FullFlowUITests: XCTestCase {
         attachment.name = "cantGetThere-scene"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    /// "Something's there" on the spot check (`-autopilotSomethingThere`): the scan stops claiming
+    /// the spot's clearance area and goes to the server again, and the flow still ends on the
+    /// result, which says what the homeowner answered. The scene the last upload sent, and the one
+    /// the app exports at the result, list no wall, ground or facing entry over the stretch the
+    /// refusal withdrew (whole cells, as the autopilot reports them in `spot-refusal.json`), and
+    /// still list both bands elsewhere. The uploaded scene is attached as
+    /// `somethingThere-uploaded-scene` for the schema check.
+    @MainActor
+    func testSomethingThereChecksTheWallAgain() throws {
+        var sawPhoto = false
+        var sawRefusal = false
+        var scenes: [String: [String: Any]] = [:]
+        var withdrawn: [Double] = []
+        try runFlow(replay: Self.fixture, extraArguments: ["-autopilotSomethingThere"], beforeLeaving: { app, phase in
+            switch phase {
+            case "spotConfirm":
+                sawPhoto = app.descendants(matching: .any)["spot.photo"].label == "Photo of your wall"
+            case "result":
+                sawRefusal = app.descendants(matching: .any)["result.spotRefused"].exists
+            default: break
+            }
+        }, onScene: { data, gate in
+            let refusal = try Data(contentsOf: gate.appending(path: "spot-refusal.json"))
+            withdrawn = try XCTUnwrap((JSONSerialization.jsonObject(with: refusal) as? [String: Any])?["withdrawn_span_ft"] as? [Double])
+            let uploaded = try Data(contentsOf: gate.appending(path: "uploaded-scene.json"))
+            let attachment = XCTAttachment(data: uploaded, uniformTypeIdentifier: "public.json")
+            attachment.name = "somethingThere-uploaded-scene"
+            attachment.lifetime = .keepAlways
+            self.add(attachment)
+            for (name, bytes) in [("exported", data), ("uploaded", uploaded)] {
+                scenes[name] = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            }
+        })
+        XCTAssertTrue(sawPhoto, "the spot check showed no photo of the spot")
+        XCTAssertTrue(sawRefusal, "the result doesn't say the homeowner said something stands there")
+        XCTAssertEqual(withdrawn.count, 2)
+        let low = try XCTUnwrap(withdrawn.first), high = try XCTUnwrap(withdrawn.last)
+        XCTAssertGreaterThan(high - low, 1, "withdrawn: \(withdrawn)")
+        for (name, scene) in scenes {
+            let coverage = try XCTUnwrap(scene["coverage"] as? [String: Any])
+            let observed = try XCTUnwrap(coverage["observed"] as? [[String: Any]])
+            for band in ["wall", "ground", "facing"] {
+                let spans = observed.filter { $0["band"] as? String == band }.compactMap { $0["span_ft"] as? [Double] }
+                for span in spans {
+                    XCTAssertTrue(span[1] <= low + 1e-3 || span[0] >= high - 1e-3, "\(name) scene: \(band) \(span) reaches into the withdrawn \(low)...\(high)")
+                }
+                if band != "facing" {
+                    XCTAssertFalse(spans.isEmpty, "\(name) scene: no \(band) observed at all")
+                }
+            }
+        }
     }
 
     /// Waits for the wall map's accessibility summary to mention hidden cells; false on timeout.
@@ -181,11 +234,11 @@ final class FullFlowUITests: XCTestCase {
 
     /// `beforeLeaving` runs on each screen after its screenshot and audit, while the app still
     /// waits to leave it. `onScene` gets the scene.json the autopilot leaves in the gate folder
-    /// once the result shows.
+    /// once the result shows, and the gate folder for the other files it leaves there.
     @MainActor
     private func runFlow(
         replay: String, extraArguments: [String] = [], beforeLeaving: (XCUIApplication, String) -> Void = { _, _ in },
-        onScene: ((Data) throws -> Void)? = nil
+        onScene: ((Data, URL) throws -> Void)? = nil
     ) throws {
         let app = XCUIApplication()
         // The app waits for a file per screen in this folder before leaving it, so the audit of a
@@ -220,7 +273,7 @@ final class FullFlowUITests: XCTestCase {
                 let file = gate.appending(path: "scene.json")
                 let deadline = Date().addingTimeInterval(20)
                 while !FileManager.default.fileExists(atPath: file.path), Date() < deadline { Thread.sleep(forTimeInterval: 0.2) }
-                try onScene(try Data(contentsOf: file))
+                try onScene(try Data(contentsOf: file), gate)
             }
             try Data().write(to: gate.appending(path: phase))
         }

@@ -32,6 +32,9 @@ import SwiftUI
 /// - `-uiDemoDepth`: the phone has depth, so the wall map says it is depth-checked.
 /// - `-uiDemoHidden`: on a phone with depth, the walk has two stretches hidden behind something.
 /// - `-uiDemoSeeBehind`: as `-uiDemoHidden`, and the walk asks to look past the one on the right.
+/// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
+/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
+///   answered and says what happens next.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

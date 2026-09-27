@@ -29,6 +29,8 @@ enum ScanPhase: String, Sendable, CaseIterable {
     case markFeatures
     case gapRequest
     case uploading
+    /// Before the result: is anything standing where the answer's spot would go (`SpotCheck`)?
+    case spotConfirm
     case result
     case resultAR
     case unsupported
@@ -620,6 +622,47 @@ struct ResultPresentation: Equatable, Sendable {
     var isSample: Bool
 }
 
+// MARK: - Spot check
+
+/// The homeowner's answer to the spot check.
+enum SpotCheckAnswer: Equatable, Sendable {
+    /// Nothing stands in the area: the result is shown.
+    case clear
+    /// Something stands there: the scan stops claiming that area and is checked again.
+    case somethingThere
+}
+
+/// The one question asked before an answer's spot is shown as the result: is anything standing
+/// in front of the wall, or on the ground, in the area around the spot? A photo can claim wall
+/// and ground behind a bush, and a walked path can pass over something low, so the scan's claims
+/// there stand only once the homeowner says the area is clear (HouseScanKit `CoverageMap`,
+/// "Bounded exceptions"). Meters of s along the wall and out from it, like `BatterySpot`.
+struct SpotCheck: Equatable {
+    /// Counts the checks of a scan.
+    let id: Int
+    /// The spot's footprint along the wall and out from it.
+    var spot: ClosedRange<Float>
+    var spotOut: ClosedRange<Float>
+    var spotHeight: Float
+    /// The whole area asked about: the footprint and the clearance zone around it.
+    var area: ClosedRange<Float>
+    var areaDepth: Float
+    /// The kept photo that shows the area best; nil when none does, and the question is asked
+    /// about the place itself.
+    var photo: Photo?
+    /// Nil until answered. The answer stays up a moment before the flow moves on.
+    var answer: SpotCheckAnswer?
+    /// The spot is the bundled sample's, not a server's (`ResultPresentation.isSample`).
+    var isSample: Bool
+
+    struct Photo: Equatable {
+        /// The unrotated landscape sensor image. Draw it rotated 90° clockwise, as `CameraFeed.still`.
+        var image: CGImage
+        /// Where it was taken, for drawing the area over it.
+        var projection: CameraProjection
+    }
+}
+
 // MARK: - State and intents
 
 /// Everything the screens read. The engine is the only writer.
@@ -676,6 +719,9 @@ final class ScanViewState {
     var groundAnswer: GroundAnswer?
     var upload: UploadState = .idle
     var result: ResultPresentation?
+    /// The spot check of the result's spot: the question during `.spotConfirm`, and the answer
+    /// that stands for the spot on the result.
+    var spotCheck: SpotCheck?
     /// True while the AR result is drawn into the live camera, where people and objects in front
     /// of it hide it. The AR screen then draws no overlay of its own.
     var resultInCamera = false
@@ -753,6 +799,8 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
+    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
+    func answerSpotCheck(clear: Bool)
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()

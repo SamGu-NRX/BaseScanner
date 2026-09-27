@@ -38,6 +38,9 @@ final class DemoEngine: ScanActions {
     /// like the real engine does; the next answer goes to the result.
     private var followedUp = false
     private var followUpSkipped = false
+    /// The spot check was answered; the next answer goes straight to the result, as the engine's
+    /// does for a spot an earlier answer settles.
+    private var spotChecked = false
     private var failedUploads = 0
     private var rejectedUploads = 0
 
@@ -135,6 +138,9 @@ final class DemoEngine: ScanActions {
                 state.path = DemoScene.path(toward: 2.4, out: 1.8)
             }
         }
+        if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
+            state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
+        }
         if arguments.contains("-uiDemoFollowUp") {
             enterFollowUp(at: state.phase)
         }
@@ -190,6 +196,10 @@ final class DemoEngine: ScanActions {
             placeMeter()
             finishedWalkState()
             enterUpload()
+        case .spotConfirm:
+            placeMeter()
+            finishedWalkState()
+            enterSpotCheck()
         case .result:
             placeMeter()
             finishedWalkState()
@@ -326,6 +336,22 @@ final class DemoEngine: ScanActions {
         run { engine in await engine.uploadScript() }
     }
 
+    /// The spot check of the answer's spot, before the result. The made-up zones don't hold the
+    /// spot, so the area is the footprint alone, as the engine would draw it.
+    private func enterSpotCheck() {
+        let result = sample
+        state.shareableScan = Self.demoScan
+        state.upload = .done
+        state.result = result
+        guard let spot = result.spot else { return showResult() }
+        let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
+        state.spotCheck = SpotCheck(
+            id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound,
+            photo: DemoScene.image.map { SpotCheck.Photo(image: $0, projection: DemoScene.projection) },
+            answer: nil, isSample: result.isSample)
+        state.phase = .spotConfirm
+    }
+
     private func showResult() {
         state.shareableScan = Self.demoScan
         state.upload = .done
@@ -460,7 +486,7 @@ final class DemoEngine: ScanActions {
             enterGap(serverItem: item)
             return
         }
-        showResult()
+        if spotChecked { showResult() } else { enterSpotCheck() }
     }
 
     /// The check's answer, before or after its follow-up view.
@@ -839,6 +865,8 @@ final class DemoEngine: ScanActions {
         seeBehindTicks = 0
         followedUp = false
         followUpSkipped = false
+        spotChecked = false
+        state.spotCheck = nil
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -1013,6 +1041,17 @@ private extension ResultPresentation {
 }
 
 extension DemoEngine {
+    /// Like the engine: the answer stays up a moment, then the result, or the check again.
+    func answerSpotCheck(clear: Bool) {
+        guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
+        state.spotCheck?.answer = clear ? .clear : .somethingThere
+        spotChecked = true
+        run { engine in
+            guard await engine.pause(1.2) else { return }
+            if clear { engine.showResult() } else { engine.enterUpload() }
+        }
+    }
+
     /// Nothing to record in the demo: either answer ends the step, as in the real engine.
     func answerGround(_ answer: GroundAnswer) {
         guard state.phase == .markFeatures else { return }
