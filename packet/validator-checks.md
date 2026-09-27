@@ -57,3 +57,22 @@ ARKit's own 0 ("none").
 **Evidence.** 1.1's `tests/test_checks.py` breaks each of these in turn (index out of range,
 class 8, a truncated body, a changed property type). The ARKit mesh has not yet been exercised
 from a device.
+
+## Hazards the 1.1 review found
+
+Reviewers of the 1.1 validator (#22) found ways a packet passed that it should not. Each applies to
+any validator that reads packets the same way:
+
+- **Symlinks.** A folder packet whose file is a symlink to an identical file outside it passes
+  a path-spelling check. Resolve each path and require it to stay inside the packet.
+- **Duplicate zip entries.** Python's `ZipFile` reads the last entry of a repeated name, while
+  other unzip tools take the first, so a bad first copy can hide behind a good second one. Refuse
+  a zip with repeated names.
+- **Truncated JPEGs.** Pillow's `Image.open` reads only the header, so format, size and EXIF can
+  look right on a truncated file. Decode the pixels (`Image.load()`) before accepting it.
+- **Malformed binaries.** Parsing a short mesh or depth body can raise before the length check
+  runs. Report it as a problem, not an exception.
+- **Non-JSON numbers.** `json.loads` accepts `NaN` and `Infinity` by default. Parse with
+  `parse_constant` raising, so a pose or intrinsic cannot be `NaN`.
+- **Stream times outside the capture.** A stream with samples far outside the session's time span
+  passed with only a warning. Decide whether that is an error.
