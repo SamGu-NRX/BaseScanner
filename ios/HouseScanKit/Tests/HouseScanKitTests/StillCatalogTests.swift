@@ -12,7 +12,8 @@ import Testing
         #expect(!catalog.isAccepted("meter_close"))
         #expect(catalog.acceptedFileNames.isEmpty)
         #expect(catalog.frames == ["meter_close": 1])
-        #expect(catalog.accept("meter_close"))
+        let accepted = catalog.accept("meter_close")
+        #expect(accepted)
         #expect(catalog.isAccepted("meter_close"))
         #expect(catalog.acceptedFileNames == ["meter_close": "meter_close.jpg"])
     }
@@ -26,7 +27,8 @@ import Testing
         #expect(catalog.acceptedFileNames.isEmpty)
         #expect(catalog.frames == ["meter_close": 1])
         catalog.save(2, purpose: "meter_close", fileName: "meter_close.jpg")
-        #expect(catalog.accept("meter_close"))
+        let accepted = catalog.accept("meter_close")
+        #expect(accepted)
         #expect(catalog.frames == ["meter_close": 2])
         #expect(catalog.acceptedFileNames == ["meter_close": "meter_close.jpg"])
     }
@@ -64,7 +66,8 @@ import Testing
     /// Nothing saved, nothing to accept.
     @Test func acceptingWithoutASaveFails() {
         var catalog = StillCatalog<Int>()
-        #expect(!catalog.accept("meter_close"))
+        let accepted = catalog.accept("meter_close")
+        #expect(!accepted)
         #expect(catalog.acceptedFileNames.isEmpty)
     }
 
@@ -74,7 +77,8 @@ import Testing
         catalog.save(1, purpose: "meter_close", fileName: "meter_close.jpg")
         catalog.save(2, purpose: "panel_wall", fileName: "panel_wall.jpg")
         catalog.accept("panel_wall")
-        #expect(catalog.removeAll() == ["meter_close.jpg", "panel_wall.jpg"])
+        let files = catalog.removeAll()
+        #expect(files == ["meter_close.jpg", "panel_wall.jpg"])
         #expect(catalog.frames.isEmpty && catalog.acceptedFileNames.isEmpty)
     }
 }
