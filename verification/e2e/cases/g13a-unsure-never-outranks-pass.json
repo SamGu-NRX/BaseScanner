@@ -1,0 +1,178 @@
+{
+  "generated_by": "e2e/cases/generate.py",
+  "id": "g13a-unsure-never-outranks-pass",
+  "source": "t3-lane-c-review.md golden 13 at origin/t3/research a7d91f1",
+  "description": "Starts right of the meter have gas gap 3.2 +/- 0.3 (unsure) and the shortest routes. Batteries whose right edge is left of s = 0.3 - sqrt(0.65) clear gas and pass. The chosen spot must be a passing one on the left.",
+  "scene": {
+    "schema_version": "1.0",
+    "meter": {
+      "pos": [
+        0.0,
+        4.0,
+        -1.8333333333333333
+      ],
+      "wall_id": "w1",
+      "plus_minus_ft": 0.0
+    },
+    "walls": [
+      {
+        "id": "w1",
+        "baseline": [
+          [
+            -8,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "objects": [
+      {
+        "type": "gas_meter",
+        "wall_id": "w1",
+        "span_ft": [
+          0.3,
+          8
+        ],
+        "source": "tape",
+        "plus_minus_ft": 0.3,
+        "footprint": [
+          [
+            0.3,
+            3.2
+          ],
+          [
+            12,
+            3.2
+          ],
+          [
+            12,
+            3.7
+          ],
+          [
+            0.3,
+            3.7
+          ]
+        ]
+      }
+    ],
+    "ground": [
+      {
+        "type": "concrete",
+        "polygon": [
+          [
+            -8,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            -1.8333333333333333
+          ],
+          [
+            8,
+            8.166666666666666
+          ],
+          [
+            -8,
+            8.166666666666666
+          ]
+        ],
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "facing": [
+      {
+        "wall_id": "w1",
+        "span_ft": [
+          -8.0,
+          8.0
+        ],
+        "depth_ft": 9.0,
+        "plus_minus_ft": 0.0
+      }
+    ],
+    "coverage": {
+      "ends": {
+        "left": {
+          "kind": "limit"
+        },
+        "right": {
+          "kind": "limit"
+        }
+      },
+      "observed": [
+        {
+          "band": "wall",
+          "span_ft": [
+            -23.0,
+            23.0
+          ]
+        },
+        {
+          "band": "overhead",
+          "span_ft": [
+            -23.0,
+            23.0
+          ]
+        },
+        {
+          "band": "facing",
+          "span_ft": [
+            -23.0,
+            23.0
+          ]
+        },
+        {
+          "band": "ground",
+          "span_ft": [
+            -23.0,
+            23.0
+          ],
+          "out_ft": 15.0
+        }
+      ]
+    }
+  },
+  "rules_assumed": {
+    "gas": 3.0
+  },
+  "expect": {
+    "spot": {
+      "wall_id": "w1",
+      "span_within": [
+        -8,
+        -1.25
+      ]
+    },
+    "checks": [
+      {
+        "match": "gas",
+        "outcome": "pass"
+      }
+    ],
+    "sweep_runs": [
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          -3.8,
+          1.2
+        ],
+        "outcome": "fail",
+        "failing_match": "meter_working_space"
+      },
+      {
+        "wall_id": "w1",
+        "start_ft": [
+          1.3,
+          5
+        ],
+        "outcome": "unsure"
+      }
+    ],
+    "missing_evidence_empty": true
+  }
+}

@@ -25,6 +25,11 @@
     "description": "Not ready to merge. State what must change before it is ready."
   },
   {
+    "name": "full-ui",
+    "color": "5319e7",
+    "description": "iOS CI also runs the every-state accessibility audit (about 10 more minutes)."
+  },
+  {
     "name": "size:XS",
     "color": "0e8a16",
     "description": "0-9 effective changed lines."

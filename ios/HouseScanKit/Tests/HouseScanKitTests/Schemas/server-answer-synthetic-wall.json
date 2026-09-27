@@ -1,0 +1,721 @@
+{
+ "checks": [
+  {
+   "comparison": null,
+   "id": "wall_backing",
+   "label": "Flush against one straight wall",
+   "measured_ft": null,
+   "outcome": "pass",
+   "plus_minus_ft": null,
+   "reason": "The whole footprint backs onto one straight, observed wall segment.",
+   "rule": {
+    "key": "battery.width_ft",
+    "placeholder": false,
+    "source": "Base Core spec: 30.68 in wide, rounded up to 31 in (docs/04, What Base does today)"
+   },
+   "subject": null,
+   "threshold_ft": null
+  },
+  {
+   "comparison": null,
+   "id": "ground_surface",
+   "label": "Ground under the battery",
+   "measured_ft": null,
+   "outcome": "unsure",
+   "plus_minus_ft": null,
+   "reason": "The ground under the footprint was seen but its surface was not recorded.",
+   "rule": {
+    "key": "ground.allowed",
+    "placeholder": true,
+    "source": "Ground types from schemas/scene.schema.json; which surfaces are allowed is a demo choice"
+   },
+   "subject": null,
+   "threshold_ft": null,
+   "unsure_cause": "unknown_attribute"
+  },
+  {
+   "comparison": "at_least",
+   "id": "meter_working_space",
+   "label": "Clear of the meter's working space",
+   "measured_ft": -1.041667,
+   "outcome": "unsure",
+   "plus_minus_ft": 1.046667,
+   "reason": "The battery is within measurement error of the meter's 2 ft 6 in wide by 3 ft 0 in deep working space.",
+   "rule": {
+    "key": "meter_working_space.width_ft",
+    "placeholder": false,
+    "source": "NEC 110.26(A)(2): 30 in wide working space"
+   },
+   "subject": "meter",
+   "threshold_ft": 0.0,
+   "unsure_cause": "margin"
+  },
+  {
+   "comparison": "at_least",
+   "id": "gas_clearance",
+   "label": "Distance from gas equipment",
+   "measured_ft": 3.653233,
+   "outcome": "unsure",
+   "plus_minus_ft": 1.755323,
+   "reason": "objects[0] gas_meter is 3 ft 8 in (\u00b1 1 ft 9 in) from the battery against a 3 ft 0 in rule: too close to call.",
+   "rule": {
+    "key": "clearances.gas_ft",
+    "placeholder": false,
+    "source": "Base help page: 3 ft from the gas meter; Austin Energy \u00a71.9; Texas Gas Service"
+   },
+   "subject": "objects[0] gas_meter",
+   "threshold_ft": 3.0,
+   "unsure_cause": "margin"
+  },
+  {
+   "comparison": "at_least",
+   "id": "ac_clearance",
+   "label": "Distance from AC units",
+   "measured_ft": null,
+   "outcome": "unsure",
+   "plus_minus_ft": null,
+   "reason": "Not everything within 3 ft 0 in of the battery was seen, so a AC unit could hide there.",
+   "rule": {
+    "key": "clearances.ac_ft",
+    "placeholder": false,
+    "source": "Base help page: 3 ft from AC units, fences and other batteries"
+   },
+   "subject": null,
+   "threshold_ft": 3.0,
+   "unsure_cause": "unobserved"
+  },
+  {
+   "comparison": "at_least",
+   "id": "drive_clearance",
+   "label": "Distance from the driveway",
+   "measured_ft": null,
+   "outcome": "unsure",
+   "plus_minus_ft": null,
+   "reason": "Not everything within 5 ft 0 in of the battery was seen, so a drivable surface could hide there.",
+   "rule": {
+    "key": "clearances.drive_ft",
+    "placeholder": true,
+    "source": "No public value (docs/04, Public rule values)"
+   },
+   "subject": null,
+   "threshold_ft": 5.0,
+   "unsure_cause": "unobserved"
+  },
+  {
+   "comparison": "at_least",
+   "id": "pool_clearance",
+   "label": "Distance from a pool",
+   "measured_ft": null,
+   "outcome": "unsure",
+   "plus_minus_ft": null,
+   "reason": "Not everything within 10 ft 0 in of the battery was seen, so a pool could hide there.",
+   "rule": {
+    "key": "clearances.pool_ft",
+    "placeholder": true,
+    "source": "No public value (docs/04, Public rule values)"
+   },
+   "subject": null,
+   "threshold_ft": 10.0,
+   "unsure_cause": "unobserved"
+  },
+  {
+   "comparison": "at_least",
+   "id": "opening_clearance",
+   "label": "Distance from doors and windows",
+   "measured_ft": 3.934033,
+   "outcome": "unsure",
+   "plus_minus_ft": 2.595227,
+   "reason": "objects[1] window is 3 ft 11 in (\u00b1 2 ft 7 in) from the battery against a 3 ft 0 in rule: too close to call.",
+   "rule": {
+    "key": "clearances.opening_ft",
+    "placeholder": false,
+    "source": "IRC 2021 R328.4: 3 ft from doors and windows directly entering the dwelling. Applying it to garage doors (openings.types) is a demo choice the code does not require"
+   },
+   "subject": "objects[1] window",
+   "threshold_ft": 3.0,
+   "unsure_cause": "margin"
+  },
+  {
+   "comparison": "at_least",
+   "id": "wall_equipment_above",
+   "label": "No box or vent above the battery",
+   "measured_ft": null,
+   "outcome": "pass",
+   "plus_minus_ft": null,
+   "reason": "Nothing is mounted on the wall above the battery.",
+   "rule": {
+    "key": "clearances.wall_equipment_ft",
+    "placeholder": true,
+    "source": "No public value; 0 means only overlap fails"
+   },
+   "subject": null,
+   "threshold_ft": 0.0
+  },
+  {
+   "comparison": "at_least",
+   "id": "facing_gap",
+   "label": "Open space in front",
+   "measured_ft": null,
+   "outcome": "pass",
+   "plus_minus_ft": null,
+   "reason": "Nothing limits the gap in front of the battery over the battery's stretch of wall.",
+   "rule": {
+    "key": "facing.min_ft",
+    "placeholder": false,
+    "source": "Base help page: 3 ft from fences"
+   },
+   "subject": null,
+   "threshold_ft": 3.0
+  },
+  {
+   "comparison": "at_least",
+   "id": "headroom",
+   "label": "Headroom above",
+   "measured_ft": null,
+   "outcome": "pass",
+   "plus_minus_ft": null,
+   "reason": "Nothing limits the headroom over the battery's stretch of wall.",
+   "rule": {
+    "key": "headroom.min_ft",
+    "placeholder": true,
+    "source": "NEC 110.26(A)(3) working-space headroom, applied to the battery as a demo choice"
+   },
+   "subject": null,
+   "threshold_ft": 6.5
+  },
+  {
+   "comparison": null,
+   "id": "route_path",
+   "label": "Cable route along the wall",
+   "measured_ft": null,
+   "outcome": "pass",
+   "plus_minus_ft": null,
+   "reason": "The cable runs along continuous, observed wall with nothing blocking it.",
+   "rule": {
+    "key": "route.crossing",
+    "placeholder": false,
+    "source": "Demo rule: the cable can't cross a door, a garage or a stretch with no wall"
+   },
+   "subject": null,
+   "threshold_ft": null
+  },
+  {
+   "comparison": "at_most",
+   "id": "route_length",
+   "label": "Cable run length",
+   "measured_ft": 0.208333,
+   "outcome": "pass",
+   "plus_minus_ft": 1.046667,
+   "reason": "The cable run is 0 ft 2 in (\u00b1 1 ft 1 in), within the 15 ft 0 in confident reach.",
+   "review_threshold_ft": 15.0,
+   "rule": {
+    "key": "route.max_ft",
+    "placeholder": true,
+    "source": "Base help page: within 20 ft of the meter. Review past 15 ft 0 in: No public value"
+   },
+   "subject": null,
+   "threshold_ft": 20.0
+  }
+ ],
+ "decision": "manual_review",
+ "ends": {
+  "left": {
+   "beyond_reach": false,
+   "kind": "unexplored",
+   "point": [
+    -18.0,
+    0.0
+   ],
+   "s_ft": -18.0
+  },
+  "right": {
+   "beyond_reach": false,
+   "kind": "unexplored",
+   "point": [
+    18.0,
+    0.0
+   ],
+   "s_ft": 18.0
+  }
+ },
+ "missing_evidence": [
+  {
+   "band": "ground",
+   "checks": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "kind": "band",
+   "message": "Show the ground in front of the wall from 10 ft 2 in left of the meter to 13 ft 2 in right of the meter, at least 12 ft 7 in out from the wall.",
+   "out_ft": 12.592961,
+   "span_ft": [
+    -10.20113,
+    13.20113
+   ]
+  },
+  {
+   "kind": "past_end",
+   "message": "Keep walking past the left end of the scan (18 ft 0 in left of the meter): a spot within reach may be there.",
+   "side": "left",
+   "span_ft": [
+    -18.0,
+    -18.0
+   ]
+  },
+  {
+   "kind": "past_end",
+   "message": "Keep walking past the right end of the scan (18 ft 0 in right of the meter): a spot within reach may be there.",
+   "side": "right",
+   "span_ft": [
+    18.0,
+    18.0
+   ]
+  }
+ ],
+ "nearest_considered": null,
+ "policy": {
+  "auto_approve": true,
+  "id": "demo",
+  "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+  "rules_sha256": "2f52ec3513f0c8333e8e5b27e14ebff3f0e8bdb76a40f08272c07ccb23196615",
+  "sources": [
+   "public"
+  ],
+  "version": "2026-09-26"
+ },
+ "reasons": [
+  {
+   "checks": [
+    "ground_surface",
+    "meter_working_space",
+    "gas_clearance",
+    "ac_clearance",
+    "drive_clearance",
+    "pool_clearance",
+    "opening_clearance"
+   ],
+   "code": "unsure_checks",
+   "message": "The best spot has checks nobody can settle from this scan: ground under the battery; clear of the meter's working space; distance from gas equipment; distance from ac units; distance from the driveway; distance from a pool; distance from doors and windows."
+  },
+  {
+   "checks": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "code": "unobserved_area",
+   "message": "Part of the area the checks need was not seen."
+  },
+  {
+   "code": "unexplored_end",
+   "message": "The wall continues past an end of the scan within cable reach."
+  }
+ ],
+ "route": {
+  "crossings": [],
+  "detours": [],
+  "height_ft": 1.0,
+  "length_ft": 0.208333,
+  "outcome": "pass",
+  "plus_minus_ft": 1.046667,
+  "polyline": [
+   [
+    0.0,
+    0.0
+   ],
+   [
+    0.208333,
+    0.0
+   ]
+  ]
+ },
+ "schema_version": "1.0",
+ "spot": {
+  "along": [
+   1.0,
+   0.0
+  ],
+  "center": [
+   1.5,
+   0.916667
+  ],
+  "depth_ft": 1.833333,
+  "footprint": [
+   [
+    0.208333,
+    0.0
+   ],
+   [
+    2.791667,
+    0.0
+   ],
+   [
+    2.791667,
+    1.833333
+   ],
+   [
+    0.208333,
+    1.833333
+   ]
+  ],
+  "height_ft": 3.291667,
+  "meter_offset_ft": [
+   1.5,
+   0.916667
+  ],
+  "outcome": "unsure",
+  "outward": [
+   -0.0,
+   1.0
+  ],
+  "route_length_ft": 0.208333,
+  "segment": 0,
+  "span_ft": [
+   0.208333,
+   2.791667
+  ],
+  "wall_id": "wall",
+  "width_ft": 2.583333
+ },
+ "stats": {
+  "candidates": 1309,
+  "elapsed_ms": 820.288,
+  "fail": 340,
+  "input_sha256": "2cb165cd4d4e9340496d90a589678ccbbe8ae6720d9d73bcae427a6b22075cb7",
+  "pass": 0,
+  "unsure": 969
+ },
+ "summary": "More views are needed around the best spot, 1 ft 6 in right of the meter: 7 checks depend on areas the scan did not see. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+ "sweep": [
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    -18.0,
+    -16.041667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "facing_gap",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_length",
+    "route_path"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    -16.0,
+    -14.6525
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_length",
+    "route_path"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    -14.625,
+    -7.541667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_path"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "gas_clearance"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -7.5,
+    -6.055783
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_path"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "gas_clearance"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -6.028233,
+    -5.291667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "gas_clearance"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -5.2775,
+    -3.014117
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "ground_surface",
+    "headroom",
+    "meter_working_space",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "gas_clearance"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -3.0,
+    -2.791667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "ground_surface",
+    "meter_working_space",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "gas_clearance",
+    "meter_working_space"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -2.7775,
+    -2.104167
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "ground_surface",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [
+    "meter_working_space"
+   ],
+   "outcome": "fail",
+   "segment": 0,
+   "start_ft": [
+    -2.083333,
+    0.194167
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    0.208333,
+    0.416667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "meter_working_space",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    0.458333,
+    1.916667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "facing_gap",
+    "gas_clearance",
+    "ground_surface",
+    "meter_working_space",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    1.923333,
+    2.694167
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "facing_gap",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "meter_working_space",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    2.708333,
+    4.958333
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "facing_gap",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    5.0,
+    12.049333
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    12.073,
+    13.416667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_length"
+   ],
+   "wall_id": "wall"
+  },
+  {
+   "failing": [],
+   "outcome": "unsure",
+   "segment": 0,
+   "start_ft": [
+    13.458333,
+    15.416667
+   ],
+   "unsure": [
+    "ac_clearance",
+    "drive_clearance",
+    "facing_gap",
+    "gas_clearance",
+    "ground_surface",
+    "headroom",
+    "opening_clearance",
+    "pool_clearance",
+    "route_length"
+   ],
+   "wall_id": "wall"
+  }
+ ]
+}

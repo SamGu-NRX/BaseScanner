@@ -1,0 +1,23 @@
+{
+  "scope": "Public-safe patch export only; no production edit or execution.",
+  "patches": [
+    {
+      "patch": "scan-engine-task-guards.patch",
+      "baselineCommit": "a39d0a503412d688dd151f628cdeebc00f8221b6",
+      "target": "ios/HouseScan/Runtime/ScanEngine.swift",
+      "bytes": 1647,
+      "sha256": "94eb349baf51a0f72f938b4e3a25e6b547352fd46b1b2bf224270845bf17044d",
+      "hunks": 3,
+      "exportCheck": "Byte-identical to reviewed proposal; existing a/ and b/ labels are already relative. No application or compile check performed in handoff."
+    },
+    {
+      "patch": "ground-replay-helper-unrun.patch",
+      "baselineCommit": "a39d0a503412d688dd151f628cdeebc00f8221b6",
+      "target": "ios/HouseScanKit/Sources/HouseScanKit/Coverage/CoverageMap.swift",
+      "bytes": 2778,
+      "sha256": "cfb471608f05f0bc724a52ee518469c5e0e2f050d797b10787c5dbbad049690c",
+      "hunks": 1,
+      "exportCheck": "Byte-identical to reviewed proposal; existing a/ and b/ labels are already relative. No application or compile check performed in handoff."
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+name: Panel label experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "experiments/panel-label/**"
+      - ".github/workflows/panel-label.yml"
+  pull_request:
+    paths:
+      - "experiments/panel-label/**"
+      - ".github/workflows/panel-label.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: panel-label-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Panel label checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: experiments/panel-label
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          working-directory: experiments/panel-label
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+      # Photos of real panels can show addresses and inspection stickers; they stay out of git.
+      - name: No photos committed
+        run: |
+          if git ls-files . | grep -iE '\.(jpe?g|png|heic|webp|tiff?)$'; then
+            echo "Photos must stay in ~/house-scanning-data/panel, not in the repository." >&2
+            exit 1
+          fi
