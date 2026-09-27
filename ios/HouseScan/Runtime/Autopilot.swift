@@ -71,9 +71,7 @@ final class Autopilot {
         await pause(hold)
 
         await engine.waitForGate(.markFeatures)
-        // Mulch, so the replay's scene carries a ground patch over the ground its walk saw.
-        // Answered after the UI test has finished with the screen, so its audit reads a still tree.
-        engine.answerGround(.type(.mulch))
+        // Confirmed after the UI test has finished with the screen, so its audit reads a still tree.
         engine.confirmFeatures()
         await pause(0.3)
         if engine.state.phase == .gapRequest {
@@ -297,6 +295,7 @@ final class Autopilot {
         do {
             try engine.sceneJSON().write(to: gate.appending(path: "scene.json"))
             try engine.spotConfirm.lastScene?.write(to: gate.appending(path: "uploaded-scene.json"))
+            try engine.spotConfirm.lastAnswer?.write(to: gate.appending(path: "answer.json"))
             log("wrote scene.json to the gate folder")
         } catch {
             log("could not write scene.json to the gate folder: \(error)")
@@ -383,19 +382,30 @@ final class Autopilot {
         return false
     }
 
-    /// "It's clear", or with `-autopilotSomethingThere` "Something's there" the first time. After
-    /// a refusal the stretch it withdrew goes to the gate folder as `spot-refusal.json` (the
-    /// stretch's s in feet, as scene.json's spans), for the UI test to check the scene against.
+    /// "It's clear" and mulch at the spot, or with `-autopilotSomethingThere` "Something's in the
+    /// way" the first time. When no kept photo shows the whole area there is no question, only
+    /// Continue, which leaves the area out. After either withdrawal the stretch withdrawn goes to
+    /// the gate folder as `spot-refusal.json` (the stretch's s in feet, as scene.json's spans),
+    /// for the UI test to check the scene against.
     private func answerSpotCheck() async {
         guard let check = engine.state.spotCheck, check.answer == nil else { return }
         await pause(hold)
         await engine.waitForGate(.spotConfirm)
-        let refuse = engine.options.autopilotSomethingThere && !answeredSomethingThere
-        engine.answerSpotCheck(clear: !refuse)
-        log("spot check \(check.id) over \(format(check.area)): \(refuse ? "something's there" : "it's clear")")
-        if refuse {
+        if !check.confirmable {
+            engine.continueUnconfirmed()
+            log("spot check \(check.id) over \(format(check.area)): no kept photo shows the whole area; left out")
+            writeRefusalForTest()
+        } else if engine.options.autopilotSomethingThere && !answeredSomethingThere {
+            engine.answerSpotArea(.somethingThere)
+            log("spot check \(check.id) over \(format(check.area)): something's in the way")
             answeredSomethingThere = true
             writeRefusalForTest()
+        } else {
+            engine.answerSpotArea(.clear)
+            _ = await waitUntil(timeout: 5) { self.engine.state.spotCheck?.step == .ground }
+            await pause(hold)
+            engine.answerSpotGround(.type(.mulch))
+            log("spot check \(check.id) over \(format(check.area)): it's clear, mulch")
         }
         _ = await waitUntil(timeout: 20) { self.engine.state.phase != .spotConfirm }
     }
