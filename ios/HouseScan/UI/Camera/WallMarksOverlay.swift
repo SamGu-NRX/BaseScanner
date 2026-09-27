@@ -73,7 +73,10 @@ struct WallMarksOverlay: View {
             guard let point = feature.points.first else { return }
             let s = (feature.span.lowerBound + feature.span.upperBound) / 2
             let size = feature.kind == .gasMeter ? Self.gasMeterBox : Self.acUnitBox
-            if let corners = box(center: point, along: wall.along(atS: s), up: up, size: size, geometry) {
+            // An AC unit stands on the ground, and most taps on one land there (#163): its bracket
+            // stands on the ground under the tap rather than centred on it, half under the floor.
+            let center = feature.kind == .acUnit ? SIMD3(point.x, wall.groundY + size.y / 2, point.z) : point
+            if let corners = box(center: center, along: wall.along(atS: s), up: up, size: size, geometry) {
                 drawBracket(corners, color: Self.hologram, caption: caption, in: &context)
             }
         case .driveway, .fence:
