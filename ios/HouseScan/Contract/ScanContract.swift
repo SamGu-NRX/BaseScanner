@@ -471,8 +471,14 @@ struct MarkedFeature: Identifiable, Equatable, Sendable {
     var out: Float?
     /// World points of the taps, for drawing pins.
     var points: [SIMD3<Float>]
-    /// Windows only: the homeowner's answer, nil until asked.
+    /// Windows only: the homeowner's answer, nil until asked and after "Not sure".
     var opens: Bool?
+    /// Windows only: the answer was "Not sure". `opens` stays nil, so the window is sent with
+    /// `operable` left out, which scene.schema.json reads as unknown; no new value is sent.
+    var opensNotSure = false
+
+    /// A window whose open/shut question has no answer yet ("Not sure" is an answer).
+    var awaitsOpensAnswer: Bool { kind == .window && opens == nil && !opensNotSure }
 }
 
 /// Marking in progress: which kind, and which tap of `kind.tapCount` comes next (0-based).
@@ -873,7 +879,8 @@ protocol ScanActions: AnyObject {
     func markFeaturePoint(at point: CGPoint?, viewSize: CGSize)
     func cancelMarking()
     func deleteFeature(_ id: UUID)
-    func setWindowOpens(_ id: UUID, opens: Bool)
+    /// The window question on the review; nil is "Not sure".
+    func setWindowOpens(_ id: UUID, opens: Bool?)
     /// Leave the walk for the feature review (allowed once both ends are marked). Ends closer
     /// together than `WallFrame.minWallLength` are cleared instead, and `wallTooShort` is set.
     func finishWalk()

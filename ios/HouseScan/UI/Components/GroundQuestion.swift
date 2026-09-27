@@ -9,6 +9,8 @@ import SwiftUI
 struct GroundQuestion: View {
     let answer: GroundAnswer?
     let actions: any ScanActions
+    /// "Looks complete" pointed here while the question was unanswered (#65).
+    var highlighted = false
 
     /// Change was tapped: the answers show although there is an answer.
     @State private var isChanging = false
@@ -36,6 +38,7 @@ struct GroundQuestion: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Palette.canvas, in: .rect(cornerRadius: 18, style: .continuous))
         .clipShape(.rect(cornerRadius: 18, style: .continuous))
+        .overlay { UnansweredOutline(shown: highlighted) }
         // The tapped button is gone after the swap, so VoiceOver moves to what replaced it.
         .onChange(of: asks) { _, asks in
             focus = asks ? .question : .answered

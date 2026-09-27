@@ -27,3 +27,18 @@ struct AnswerButton: View {
         .animation(.easeOut(duration: 0.15), value: selected)
     }
 }
+
+/// The outline "Looks complete" puts round the first unanswered question on the review (#65),
+/// in the result screen's review amber, which keeps over 3:1 on the light panel.
+struct UnansweredOutline: View {
+    let shown: Bool
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .strokeBorder(Palette.reviewInk, lineWidth: 3)
+            .opacity(shown ? 1 : 0)
+            .animation(Motion.text, value: shown)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}

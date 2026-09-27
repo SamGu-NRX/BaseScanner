@@ -139,6 +139,25 @@ import simd
         #expect(objects[3]["bottom_ft"] == nil && objects[3]["top_ft"] == nil)
     }
 
+    /// #72 option (b): a one-tap AC unit is sent as an assumed 3 ft x 3 ft square centred on the
+    /// tap along the wall, running from the wall line 3 ft out, not the gas meter's 1 ft square.
+    @Test func acUnitGetsItsAssumedThreeFootSquare() throws {
+        #expect(abs(SceneExport.acAssumedSide / 0.3048 - 3) < 1e-4)
+        let (_, v) = try Self.exported()
+        let ac = try #require(v["objects"]?[3])
+        #expect(ac["type"] == .string("ac"))
+        // Tapped at s = 3.0 m = 9.8425 ft; 1.5 ft either side.
+        expectClose(ac["span_ft"]?.numbers, [8.3425, 11.3425])
+        let footprint = (ac["footprint"]?.array ?? []).compactMap(\.numbers)
+        try #require(footprint.count == 4)
+        // Back-left to back-right: 3 ft along (0.8, -0.6). Back-left to front-left: 3 ft out along
+        // (0.6, 0.8), from the wall line although the tap was 0.5 m out.
+        expectClose([footprint[1][0] - footprint[0][0], footprint[1][1] - footprint[0][1]], [2.4, -1.8])
+        expectClose([footprint[3][0] - footprint[0][0], footprint[3][1] - footprint[0][1]], [1.8, 2.4])
+        // Back-left corner on the wall line at s = 3.0 - 0.4572 m: (1, -2) + (0.8, -0.6) * 2.5428 m.
+        expectClose(footprint[0], [(1 + 0.8 * 2.5428) / 0.3048, (-2 - 0.6 * 2.5428) / 0.3048])
+    }
+
     @Test func facingGroundCoverageKeyframes() throws {
         let (_, v) = try Self.exported()
         let facing = try #require(v["facing"]?[0])
