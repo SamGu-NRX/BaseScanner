@@ -16,6 +16,7 @@ import argparse
 import importlib
 import json
 import platform
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -129,8 +130,28 @@ def main(argv: list[str] | None = None) -> None:
     module = importlib.import_module(MODULES[args.model])
     device = pick_device(args.device)
     require_free_space_for_download(module.REPO, module.FILENAME, module.REVISION)
-    args.out.mkdir(parents=True, exist_ok=True)
+    # Everything is written to a staging folder and swapped in only when the whole run succeeds,
+    # so a run that stops midway (out of memory, cancelled) leaves the previous run whole instead of
+    # a mix of its depth maps and new ones under the old run.json.
+    stage = args.out.with_name(args.out.name + ".staging")
+    shutil.rmtree(stage, ignore_errors=True)
+    stage.mkdir(parents=True)
+    try:
+        run_into(args, stage, images, intrinsics, poses, caches, module, device, torch)
+    except BaseException:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    previous = args.out.with_name(args.out.name + ".previous")
+    shutil.rmtree(previous, ignore_errors=True)
+    if args.out.exists():
+        args.out.rename(previous)
+    stage.rename(args.out)
+    shutil.rmtree(previous, ignore_errors=True)
+    print(f"wrote the run's npz files and run.json to {args.out}", file=sys.stderr)
 
+
+def run_into(args, out: Path, images, intrinsics, poses, caches, module, device, torch) -> None:
+    """Load the model, verify its checkpoint, and write every prediction and run.json to `out`."""
     start = time.perf_counter()
     model = module.load(device)
     load_seconds = time.perf_counter() - start
@@ -155,7 +176,7 @@ def main(argv: list[str] | None = None) -> None:
     per_image = []
     for res in module.run(model, inputs):
         write_npz(
-            args.out,
+            out,
             res.path.stem,
             res.depth,
             res.valid,
@@ -208,8 +229,7 @@ def main(argv: list[str] | None = None) -> None:
     }
     if args.model == "mapanything":
         run["timing_note"] = "views run jointly; per-image seconds = joint seconds / views"
-    (args.out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
-    print(f"wrote {len(per_image)} npz and run.json to {args.out}", file=sys.stderr)
+    (out / "run.json").write_text(json.dumps(run, indent=2) + "\n")
 
 
 if __name__ == "__main__":

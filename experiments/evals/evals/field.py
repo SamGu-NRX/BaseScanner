@@ -73,6 +73,11 @@ MAX_ZIP_ENTRIES = 2 * MAX_ZIP_MEMBERS
 # with 100-byte names take about 3 MB; the cap also bounds entries with minimal 46-byte records.
 MAX_ZIP_DIRECTORY_BYTES = 8 * 1024**2
 MIN_FREE_AFTER_UNPACK = 3 * 1024**3
+# Pixels in one session image, read from its header before OpenCV decodes it. The zip limits count
+# encoded bytes, and a few-KB JPEG can declare 65,535 x 65,535 pixels (13 GB decoded in colour).
+# ARKit keyframes are 1920 x 1440 (2.8 MP) and a 48 MP iPhone photo is 8064 x 6048 (48.8 MP), so
+# 50 MP admits both, and decoding it in colour takes about 150 MB of the 4 GB per-process budget.
+MAX_IMAGE_PIXELS = 50_000_000
 
 
 def safe_member(name: str) -> PurePosixPath:
@@ -249,6 +254,60 @@ def safe_id(value: str, what: str) -> str:
     return value
 
 
+# JPEG start-of-frame markers carry the image size; C4 (DHT), C8 (JPG) and CC (DAC) share the range
+# but are not frames.
+_JPEG_SOF = set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    """(width, height) from a JPEG or PNG header, reading no pixel data. Other formats are
+    refused: sessions carry JPEG keyframes."""
+    with path.open("rb") as f:
+        head = f.read(24)
+        if head[:8] == b"\x89PNG\r\n\x1a\n" and head[12:16] == b"IHDR":
+            return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
+        if head[:2] != b"\xff\xd8":
+            raise ValueError(f"{path}: not a JPEG or PNG image")
+        f.seek(2)
+        while True:
+            byte = f.read(1)
+            if not byte:
+                break
+            if byte != b"\xff":
+                continue
+            marker = f.read(1)
+            while marker == b"\xff":  # fill bytes before a marker
+                marker = f.read(1)
+            if not marker:
+                break
+            m = marker[0]
+            if m in (0x01, *range(0xD0, 0xD8)):  # markers with no length field
+                continue
+            if m in (0xD9, 0xDA):  # end of image, or start of scan before any frame header
+                break
+            length = int.from_bytes(f.read(2), "big")
+            if m in _JPEG_SOF:
+                frame = f.read(5)
+                if len(frame) == 5:
+                    return int.from_bytes(frame[3:5], "big"), int.from_bytes(frame[1:3], "big")
+                break
+            if length < 2:
+                break
+            f.seek(length - 2, 1)
+    raise ValueError(f"{path}: JPEG with no readable frame header")
+
+
+def read_session_image(path: Path, flags: int = cv2.IMREAD_COLOR) -> np.ndarray:
+    """Decode a session image after checking its header size against MAX_IMAGE_PIXELS."""
+    w, h = image_size(path)
+    if w <= 0 or h <= 0 or w * h > MAX_IMAGE_PIXELS:
+        raise ValueError(f"{path}: {w} x {h} pixels, more than {MAX_IMAGE_PIXELS} or empty")
+    img = cv2.imread(str(path), flags)
+    if img is None:
+        raise ValueError(f"{path}: OpenCV could not decode it")
+    return img
+
+
 def session_file(folder: Path, relative: str) -> Path:
     """A file the session names, which must lie inside the session folder: an absolute path or
     `..` in session.json would otherwise read an unrelated local photo."""
@@ -291,9 +350,7 @@ def prepare(folder: Path, digest: str | None = None) -> Path:
     (out / "upright").mkdir(parents=True, exist_ok=True)
     listing, intrinsics, turns = [], {}, {}
     for kf in session["keyframes"]:
-        img = cv2.imread(str(session_file(folder, kf["img"])))
-        if img is None:
-            raise FileNotFoundError(folder / kf["img"])
+        img = read_session_image(session_file(folder, kf["img"]))
         k = upright_turns(keyframe_pose_cv(kf))
         path = out / "upright" / f"{safe_id(kf['id'], 'keyframe id')}.jpg"
         cv2.imwrite(str(path), np.rot90(img, k), [cv2.IMWRITE_JPEG_QUALITY, 95])
@@ -334,7 +391,7 @@ def triangulated_scales(folder: Path, out: Path, session: dict, kids: list[str])
 
     def inputs(k):
         if k not in cache:
-            gray = cv2.imread(str(session_file(folder, kfs[k]["img"])), cv2.IMREAD_GRAYSCALE)
+            gray = read_session_image(session_file(folder, kfs[k]["img"]), cv2.IMREAD_GRAYSCALE)
             cache[k] = (gray, keyframe_K_cv(kfs[k]), keyframe_depth(out, k, turns[k]))
         return cache[k]
 

@@ -43,7 +43,7 @@ Each run loads one model and processes images one at a time; mapanything runs al
 | `cam_to_world` | mapanything only. float64 4x4, OpenCV camera, metres. Frame: the first image's camera, or the `--poses` world when poses are given |
 | `intrinsics_predicted` | mapanything only. What its output rays imply, in input pixels |
 
-`DIR/run.json` records the model, checkpoint repo, revision and sha256, code commit, device, torch version, flags, load time and, per image, seconds, the network input size, the exact resize and crop, and a depth summary.
+A run writes into `DIR.staging` and replaces `DIR` only when every image is done, so a run that fails midway leaves the previous run whole. `DIR/run.json` records the model, checkpoint repo, revision and sha256, code commit, device, torch version, flags, load time and, per image, seconds, the network input size, the exact resize and crop, and a depth summary.
 
 Network outputs are resampled to the input grid bilinearly. A pixel is valid only if every network pixel it draws on is valid and it lies inside the region the network saw; pixels removed by a crop are invalid.
 

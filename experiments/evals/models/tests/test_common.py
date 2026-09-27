@@ -234,3 +234,85 @@ def test_a_replaced_checkpoint_stops_the_run_before_any_output(tmp_path, monkeyp
             ]
         )
     assert not list(out.glob("*.npz"))
+
+
+def _fake_model_run(tmp_path, monkeypatch, fail_on: str | None):
+    """models.run.main on two images with a stand-in model whose checkpoint verifies; it raises
+    on the image named `fail_on` after the images before it were written."""
+    import hashlib
+    import sys
+    import types
+
+    from models import common, run
+
+    weights = tmp_path / "model.safetensors"
+    weights.write_bytes(b"pinned")
+    hub = types.ModuleType("huggingface_hub")
+    hub.try_to_load_from_cache = lambda repo, name, revision: str(weights)
+    torch = types.ModuleType("torch")
+    torch.__version__ = "fake"
+    torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+    torch.backends = types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False))
+    model = types.ModuleType("fake_model")
+    model.REPO, model.FILENAME, model.REVISION = "org/model", "model.safetensors", "rev"
+    model.SHA256 = hashlib.sha256(b"pinned").hexdigest()
+    model.LICENSE, model.CODE = "test", "test"
+    model.load = lambda device: object()
+
+    def infer(_, inputs):
+        for path in inputs.images:
+            if path.stem == fail_on:
+                raise MemoryError(f"out of memory on {path.name}")
+            depth = np.full((2, 2), 9.0, np.float32)
+            yield types.SimpleNamespace(
+                path=path,
+                depth=depth,
+                valid=np.ones((2, 2), bool),
+                intrinsics=np.array([1.0, 1, 0.5, 0.5]),
+                cam_to_world=None,
+                arrays={},
+                seconds=0.0,
+                network_wh=(2, 2),
+                resample=common.Resample(2, 2, 2, 2, 0, 0, 2, 2),
+                extra={},
+            )
+
+    model.run = infer
+    for name, module in (("huggingface_hub", hub), ("torch", torch), ("fake_model", model)):
+        monkeypatch.setitem(sys.modules, name, module)
+    monkeypatch.setitem(run.MODULES, "moge2", "fake_model")
+    listing = tmp_path / "images.txt"
+    listing.write_text("".join(f"{tmp_path / n}.jpg\n" for n in ("a", "b")))
+    for n in ("a", "b"):
+        (tmp_path / f"{n}.jpg").write_bytes(b"")
+    out = tmp_path / "out"
+    return lambda: run.main(
+        ["--model", "moge2", "--images", str(listing), "--device", "cpu", "--out", str(out)]
+    ), out
+
+
+def _snapshot(folder):
+    return {p.name: p.read_bytes() for p in sorted(folder.iterdir())}
+
+
+def test_a_run_that_fails_midway_leaves_the_previous_run_intact(tmp_path, monkeypatch):
+    main, out = _fake_model_run(tmp_path, monkeypatch, fail_on="b")
+    out.mkdir()
+    for name in ("a.npz", "b.npz", "run.json"):
+        (out / name).write_bytes(f"previous {name}".encode())
+    before = _snapshot(out)
+    with pytest.raises(MemoryError):
+        main()  # image a is predicted, then b fails
+    assert _snapshot(out) == before
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith("out")) == ["out"]
+
+
+def test_a_completed_run_replaces_the_previous_one_whole(tmp_path, monkeypatch):
+    main, out = _fake_model_run(tmp_path, monkeypatch, fail_on=None)
+    out.mkdir()
+    (out / "stale.npz").write_bytes(b"from an older image list")
+    (out / "run.json").write_text("{}")
+    main()
+    assert sorted(p.name for p in out.iterdir()) == ["a.npz", "b.npz", "run.json"]
+    assert json.loads((out / "run.json").read_text())["images"][1]["stem"] == "b"
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name.startswith("out")) == ["out"]

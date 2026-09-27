@@ -100,6 +100,13 @@ def _depth(kid, scale):
     return d
 
 
+@pytest.fixture(autouse=True)
+def _free_space_is_not_under_test(monkeypatch):
+    # Unpacking needs 3 GB left free; these tests write a few KB and must not depend on how full
+    # the machine is. test_unpack_needs_free_space_to_remain restores the bound and mocks the disk.
+    monkeypatch.setattr(field, "MIN_FREE_AFTER_UNPACK", 0)
+
+
 @pytest.fixture
 def case(tmp_path, monkeypatch):
     monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
@@ -443,6 +450,7 @@ def test_unpack_needs_free_space_to_remain(tmp_path, monkeypatch):
     from collections import namedtuple
 
     monkeypatch.setattr(field, "FIELD_DIR", tmp_path / "field")
+    monkeypatch.setattr(field, "MIN_FREE_AFTER_UNPACK", 3 * 1024**3)
     Usage = namedtuple("Usage", "total used free")
     monkeypatch.setattr(field.shutil, "disk_usage", lambda p: Usage(0, 0, 1024**3))
     archive = _zip(tmp_path / "s.zip", [("s/session.json", SESSION_JSON)])
@@ -552,3 +560,54 @@ def test_a_reported_multi_gigabyte_archive_is_refused_from_its_size_alone(tmp_pa
     monkeypatch.setattr(field.zipfile, "ZipFile", no_read)
     with pytest.raises(ValueError, match="more than 2147483648"):
         field.unpack(archive)
+
+
+def _jpeg_claiming(width: int, height: int) -> bytes:
+    """A few dozen bytes: SOI, an APP0 segment to skip, then a baseline frame header declaring
+    `width` x `height`, with no pixel data behind it."""
+    app0 = b"\xff\xe0" + (16).to_bytes(2, "big") + b"JFIF\x00" + bytes(9)
+    sof0 = (
+        b"\xff\xc0"
+        + (17).to_bytes(2, "big")
+        + b"\x08"
+        + height.to_bytes(2, "big")
+        + width.to_bytes(2, "big")
+        + b"\x03"
+        + bytes(9)
+    )
+    return b"\xff\xd8" + app0 + sof0 + b"\xff\xd9"
+
+
+def test_image_size_reads_real_and_crafted_headers(tmp_path):
+    real = tmp_path / "real.jpg"
+    cv2.imwrite(str(real), np.zeros((48, 64, 3), np.uint8))
+    assert field.image_size(real) == (64, 48)
+    png = tmp_path / "real.png"
+    cv2.imwrite(str(png), np.zeros((5, 7), np.uint8))
+    assert field.image_size(png) == (7, 5)
+    crafted = tmp_path / "bomb.jpg"
+    crafted.write_bytes(_jpeg_claiming(65535, 65535))
+    assert field.image_size(crafted) == (65535, 65535)
+
+
+def test_an_image_whose_header_claims_too_many_pixels_is_never_decoded(tmp_path, monkeypatch):
+    bomb = tmp_path / "bomb.jpg"
+    bomb.write_bytes(_jpeg_claiming(65535, 65535))  # 4.3 gigapixels claimed in 60 bytes
+
+    def no_decode(*args, **kwargs):
+        raise AssertionError("an oversized image was decoded")
+
+    monkeypatch.setattr(field.cv2, "imread", no_decode)
+    with pytest.raises(ValueError, match="more than 50000000"):
+        field.read_session_image(bomb)
+    other = tmp_path / "x.gif"
+    other.write_bytes(b"GIF89a" + bytes(20))
+    with pytest.raises(ValueError, match="not a JPEG or PNG"):
+        field.read_session_image(other)
+
+
+def test_a_session_image_within_the_bound_decodes(tmp_path):
+    path = tmp_path / "k.jpg"
+    cv2.imwrite(str(path), np.full((30, 40, 3), 200, np.uint8))
+    assert field.read_session_image(path).shape == (30, 40, 3)
+    assert field.read_session_image(path, cv2.IMREAD_GRAYSCALE).shape == (30, 40)
