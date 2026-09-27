@@ -22,7 +22,7 @@ enum ScanCopy {
                 detail: "A gray box with a round glass dial or a small screen, usually on an outside wall."
             )
         case .aimAtWallForMeter:
-            Instruction(title: "Step a little closer to the wall", detail: "Then aim at your meter again.")
+            Instruction(title: "Hold on, finding your wall", detail: "Move your phone slowly side to side, then aim at your meter again.")
         case .holdOnMeter:
             Instruction(title: "Hold your meter in the circle", detail: "Your phone takes the photo by itself.")
         case .walk(let side, let remaining):

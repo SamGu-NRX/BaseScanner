@@ -72,6 +72,29 @@ import Testing
     }
 }
 
+/// A re-fit anchors the meter again in the same world frame (`MeterAnchorTracking.anchorAgain`).
+@Suite struct AnchorAgainTests {
+    /// A close-up photo taken at t = 1, a correction at t = 2, then the re-fit at t = 3: the photo
+    /// still gets the correction made after it, and later corrections are measured from the new
+    /// anchor, not the tapped one.
+    @Test func anchoringAgainKeepsTheCorrectionsLogged() throws {
+        let pose = MeterAnchorCorrectionTests.wallHitPose(meter: SIMD3(0, 1.5, 0), outward: SIMD3(0, 0, 1))
+        var tracking = MeterAnchorTracking(pose: pose)
+        var slid = pose
+        slid.columns.3 += SIMD4(0.1, 0, 0, 0)
+        let update = tracking.update(to: slid, at: 2)
+        let slide = try #require(update)
+        let photo = wallCamera(s: 0.4).cameraToWorld
+        let refitPose = MeterAnchorCorrectionTests.wallHitPose(meter: SIMD3(0.1, 1.5, 0.6), outward: SIMD3(0, 0, 1))
+        tracking.anchorAgain(at: refitPose)
+        #expect(tracking.pose == refitPose)
+        #expect(tracking.correctedPose(photo, capturedAt: 1) == slide.pose(photo))
+        #expect(PoseCorrections(tracking).pose(photo, capturedAt: 1) == slide.pose(photo))
+        // The new anchor where it was put: no correction.
+        #expect(tracking.update(to: refitPose, at: 4) == nil)
+    }
+}
+
 @Suite struct SpatialUpdateTests {
     static let lawn = GroundPlaneEvidence(y: -0.10, kind: .unclassified, boundary: GroundPlaneChoiceTests.rectangle(x: -3...3, z: 0.2...4))
 

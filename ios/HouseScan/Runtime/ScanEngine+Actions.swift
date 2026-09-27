@@ -17,6 +17,7 @@ extension ScanEngine: ScanActions {
             // A replay has no live surfaces to raycast; its wall comes from the recording (or is
             // assumed from the trajectory, see ReplayPlayer.wallDescription).
             let wall = replay.wall
+            meterTapCamera = nil
             guard setWall(meter: wall.meter, outward: wall.outward, groundY: wall.groundY, groundMeasured: replay.groundMeasured) else { return }
             markTimes[MarkKey.meter] = captureClock
             go(.meterCloseUp)
@@ -36,29 +37,48 @@ extension ScanEngine: ScanActions {
             RuntimeLog.engine.info("meter tap refused: no vertical plane")
             return
         }
+        // An estimated plane can put the wall far from the real one (#69): one out of reach,
+        // turned from the phone, or behind a detected plane is refused, and the homeowner is asked
+        // to let ARKit find the wall first.
+        if let refusal = MeterTap.refusal(
+            hit: hit.position, normal: hit.normal, source: hit.source, camera: frame.camera, planes: detectedWallPlanes
+        ) {
+            state.guidance = .aimAtWallForMeter
+            RuntimeLog.engine.info("meter tap refused: \(refusal.description, privacy: .public)")
+            return
+        }
         meterPlaneSource = hit.source
+        meterTapCamera = frame.camera.position
         var outward = SIMD3(hit.normal.x, 0, hit.normal.z)
         if simd_dot(outward, frame.camera.position - hit.position) < 0 { outward = -outward }
         // Until a horizontal plane shows up below the wall, the ground is a guess: a phone held at
-        // chest height, 1.4 m above it. `refineGround` replaces the guess as planes arrive.
-        let measured = groundBelow(hit.position, along: simd_normalize(simd_cross(-outward, SIMD3(0, 1, 0))))
-        guard setWall(meter: hit.position, outward: outward, groundY: measured ?? frame.camera.position.y - 1.4, groundMeasured: measured != nil) else {
+        // chest height, 1.4 m above it. `SpatialUpdate` replaces the guess as planes arrive.
+        let ground = groundBelow(hit.position, along: simd_normalize(simd_cross(-outward, SIMD3(0, 1, 0))), current: nil)
+        guard setWall(meter: hit.position, outward: outward, groundY: ground?.plane.y ?? frame.camera.position.y - 1.4, groundMeasured: ground != nil) else {
             state.guidance = .aimAtWallForMeter
             return
         }
+        let groundNote = ground.map(Self.describe) ?? "a guess"
+        RuntimeLog.engine.info("meter marked on \(hit.source == .estimatedPlane ? "an estimated" : "a detected", privacy: .public) plane; ground from \(groundNote, privacy: .public)")
         // The map carries the line's source: the export writes it and the walked clearance
         // takes the server's error for it.
         updateCoverage { $0.setWallLineSource(meterLineSource) }
         setMeterAnchor(live.addMeterAnchor(at: hit.transform), pose: hit.transform)
         markTimes[MarkKey.meter] = captureClock
         go(.meterCloseUp)
+        // A wall plane ARKit already knows may disagree with an estimated hit; waiting for the
+        // planes to change would leave the close-up, and maybe the walk, on the estimated wall.
+        refitWallToDetectedPlane()
     }
 
     /// The ground at the wall of the meter at `meter`, running along `along`: a detected plane
-    /// that reaches the wall's foot by the meter and isn't furniture, floor-classified first,
-    /// then the lowest (`GroundPlaneChoice`). Nil when none does; the ground stays a guess.
-    func groundBelow(_ meter: SIMD3<Float>, along: SIMD3<Float>) -> Float? {
-        GroundPlaneChoice.groundY(meter: meter, along: along, planes: detectedGroundPlanes)
+    /// the meter is a plausible height above, that reaches the wall's foot by the meter and isn't
+    /// furniture, floor-classified first, then the one under where the phone stood to mark the
+    /// meter, then the lowest (`GroundPlaneChoice`). With `current`, the ground already measured,
+    /// it is never raised more than `GroundPlaneChoice.maximumRaise`. Nil when no plane qualifies;
+    /// the ground stays as it is.
+    func groundBelow(_ meter: SIMD3<Float>, along: SIMD3<Float>, current: Float?) -> GroundPlaneChoice.Choice? {
+        GroundPlaneChoice.choose(meter: meter, along: along, phone: meterTapCamera, current: current, planes: detectedGroundPlanes)
     }
 
     func skipCloseUp() {

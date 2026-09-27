@@ -19,6 +19,10 @@ final class ScanEngine {
     /// Which kind of plane the meter tap hit; an estimated plane widens the meter's error in the
     /// export. A replay's wall comes from the recording, so it counts as detected.
     var meterPlaneSource: MeterPlaneSource = .detectedPlane
+    /// Where the phone was when the meter was marked: the ground choice prefers the plane under
+    /// it, and a re-fit follows the tap's line of sight from it (`refitWallToDetectedPlane`). Nil
+    /// on a replay.
+    var meterTapCamera: SIMD3<Float>?
     private var live: LiveCapture?
 
     // Capture logic (HouseScanKit)
@@ -54,8 +58,11 @@ final class ScanEngine {
     // Wall geometry inputs
     private var meterAnchorID: UUID?
     /// The meter anchor's pose the wall and everything captured agree with, and the corrections
-    /// still to apply to them as ARKit refines it (`refreshMeterFromAnchor`). Nil on a replay.
+    /// still to apply to them as ARKit refines it (`applySpatialUpdate`). Nil on a replay.
     private var meterTracking: MeterAnchorTracking?
+    /// Which frames carried the meter's anchor since it was anchored, for the drift log
+    /// (`noteMeterAnchor`). Starts again with `meterTracking`.
+    private var meterAnchorPresence = MeterAnchorPresence()
     /// Whether a frame source may start, and what a failure and Start over do to it.
     private var sourceState = CaptureSourceState()
     /// Counts changes to the captured geometry: every anchor correction, ground refinement or
@@ -69,6 +76,8 @@ final class ScanEngine {
     private(set) var lastUploadSnapshot: UploadSnapshot?
     /// Detected horizontal planes, with their classes and outlines.
     private var groundPlanes: [GroundPlaneEvidence] = []
+    /// Detected vertical planes, with their classes, normals and outlines.
+    private var wallPlanes: [WallPlaneEvidence] = []
     private var lastFrame: SourceFrame?
     /// Whether `WallFrame.groundY` comes from a detected plane (or a recording's wall taps) rather
     /// than the chest-height guess, and the guess's error. The export widens position errors
@@ -232,8 +241,10 @@ final class ScanEngine {
             breakWalkedPath(because: "the walk paused (\(state.phase.rawValue) -> \(phase.rawValue))")
         }
         if state.phase == .resultAR { hideResultInCamera() }
+        let previous = state.phase
         state.phase = phase
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
+        logMeterAnchorSummary(from: previous, to: phase)
         switch phase {
         case .findMeter:
             state.guidance = .findMeter
@@ -371,7 +382,14 @@ final class ScanEngine {
             live?.setResultVisible(frame.tracking == .normal)
         }
         if let planes = frame.groundPlanes { groundPlanes = planes }
+        noteMeterAnchor(frame)
         applySpatialUpdate(frame)
+        // After the anchor correction, so the wall and the tap's phone position are in the frame
+        // these planes are reported in.
+        if let planes = frame.wallPlanes, planes != wallPlanes {
+            wallPlanes = planes
+            refitWallToDetectedPlane()
+        }
         // After the frame's corrections, so a snapshot taken on it agrees with its mesh.
         completeUploadSnapshot(with: frame)
         guard !frame.isPoseOnly else { return }
@@ -395,14 +413,19 @@ final class ScanEngine {
 
     /// ARKit's correction to the meter's anchor, then the ground from the planes this frame
     /// reports, in that order (`SpatialUpdate`): the correction moves everything captured (the
-    /// wall and corners, the kept cameras, and here the tapped marks) as one body into the frame
-    /// ARKit reports now, and the ground is then read in that same frame. A plane that stops
-    /// supporting the ground (reclassified, removed) puts it back to a guess.
+    /// wall and corners, the kept cameras, where the phone stood to mark the meter, and here the
+    /// tapped marks) as one body into the frame ARKit reports now, and the ground is then read in
+    /// that same frame. A plane that stops supporting the ground (reclassified, removed) puts it
+    /// back to a guess, and once the walk has kept a view the ground is never raised by more than
+    /// `GroundPlaneChoice.maximumRaise` (`SpatialUpdate.raiseLimit`).
     private func applySpatialUpdate(_ frame: SourceFrame) {
         guard var map = coverage else { return }
-        let before = (y: map.wall.groundY, measured: groundEvidence.measured)
+        let before = (y: map.wall.groundY, measured: groundEvidence.measured, meter: map.wall.meter)
+        // A frame made before the meter was anchored again (`refitWallToDetectedPlane`) carries
+        // the old anchor's pose, which is no correction of the new one.
+        let anchor = frame.meterAnchorID == meterAnchorID ? frame.meterAnchor : nil
         let outcome = SpatialUpdate.apply(
-            anchor: frame.meterAnchor, planes: frame.groundPlanes, time: frame.timestamp,
+            anchor: anchor, planes: frame.groundPlanes, time: frame.timestamp, phone: &meterTapCamera,
             map: &map, tracking: &meterTracking, ground: &groundEvidence)
         guard outcome.changed else { return }
         spatialRevision += 1
@@ -413,13 +436,51 @@ final class ScanEngine {
             if features != state.features { state.features = features }
             // The first tap of a mark still being made was in the old frame too.
             pendingTaps = pendingTaps.map(correction.point)
+            logAnchorCorrection(correction, step: simd_distance(map.wall.meter, before.meter), frame: frame)
         }
         if outcome.groundChanged {
-            RuntimeLog.engine.info("ground \(self.groundEvidence.measured ? "measured" : "a guess again", privacy: .public) at y=\(map.wall.groundY) (was \(before.y), \(before.measured ? "measured" : "estimated", privacy: .public))")
+            let source = outcome.groundChoice.map(Self.describe) ?? "no plane that qualifies"
+            RuntimeLog.engine.info("ground \(self.groundEvidence.measured ? "measured" : "a guess again", privacy: .public) at y=\(map.wall.groundY) from \(source, privacy: .public) (was \(before.y), \(before.measured ? "measured" : "estimated", privacy: .public))")
         }
         publishWall()
         publishCoverage()
         reprojectFeatures()
+    }
+
+    /// A ground choice for the log: the plane's id, its class and why it was chosen.
+    nonisolated static func describe(_ choice: GroundPlaneChoice.Choice) -> String {
+        "plane \(choice.plane.id) (\(choice.plane.kind), \(choice.reason.rawValue))"
+    }
+
+    /// Moves the wall to a detected wall plane that disagrees with a meter tap on an estimated
+    /// plane (`MeterTap.refit`): the meter goes where the tap's line of sight meets the plane, the
+    /// wall faces the plane's normal, and the meter is anchored again there. Tried on entering the
+    /// close-up, with the planes already known, and whenever the planes change during it. Only
+    /// during the close-up, before the walk has kept any view: coverage can't turn a wall it has
+    /// already seen (`CoverageMap.updateWall`), so a wall found wrong later stays wrong.
+    func refitWallToDetectedPlane() {
+        guard state.phase == .meterCloseUp, replay == nil, meterPlaneSource == .estimatedPlane,
+              let live, let tapCamera = meterTapCamera, let map = coverage,
+              let refit = MeterTap.refit(meter: map.wall.meter, outward: map.wall.outward, tapCamera: tapCamera, planes: wallPlanes) else { return }
+        let wall = map.wall
+        let along = simd_normalize(simd_cross(-refit.outward, SIMD3(0, 1, 0)))
+        // The same raise limit as every other ground update. No view is kept during the close-up,
+        // so it is nil here: the ground at the moved wall's foot may be higher than at the old one.
+        let choice = groundBelow(refit.meter, along: along, current: SpatialUpdate.raiseLimit(map: map, ground: groundEvidence))
+        // No plane qualifies at the moved wall: the old ground stays for now, and the next frame's
+        // planes measure it again for the new wall or put it back to a guess (`SpatialUpdate`).
+        let measured = choice != nil || groundMeasured
+        guard setWall(meter: refit.meter, outward: refit.outward, groundY: choice?.plane.y ?? wall.groundY, groundMeasured: measured) else { return }
+        meterPlaneSource = .detectedPlane
+        updateCoverage { $0.setWallLineSource(meterLineSource) }
+        meterAnchorID.map { live.removeAnchor($0) }
+        // Axes as a wall hit's: y the wall's normal, z up the wall.
+        let x = simd_normalize(simd_cross(refit.outward, SIMD3(0, 1, 0)))
+        let pose = simd_float4x4(SIMD4(x, 0), SIMD4(refit.outward, 0), SIMD4(simd_cross(x, refit.outward), 0), SIMD4(refit.meter, 1))
+        anchorMeterAgain(live.addMeterAnchor(at: pose), pose: pose)
+        let degrees = refit.turned * 180 / .pi
+        let ground = choice.map(Self.describe) ?? "kept"
+        RuntimeLog.engine.info("wall re-fitted to detected plane \(refit.planeID, privacy: .public): meter moved \(refit.moved) m, wall turned \(degrees) degrees; ground \(ground, privacy: .public)")
     }
 
     /// A raw pose ARKit reported at `time`, in the frame the wall agrees with now. The same raw
@@ -439,13 +500,85 @@ final class ScanEngine {
     }
 
     /// Door and window heights, spans and fence distances follow the wall frame; the tapped world
-    /// points stay put.
+    /// points stay put. An anchor correction moves the points and the wall together instead
+    /// (`applySpatialUpdate`), so it needs no reprojection.
     func reprojectFeatures() {
         guard let wall = coverage?.wall, !state.features.isEmpty else { return }
         var features = state.features
         for index in features.indices { Self.project(&features[index], onto: wall) }
         if features != state.features { state.features = features }
         publishFeaturesPastEnds()
+    }
+
+    // The drift log (#73). Its lines are `.notice`, which the unified log keeps on the device, so
+    // `log collect` after a walk and Console without "Include Info Messages" both show them. On a
+    // walk away and back, the lines that are there settle it, never a line being absent:
+    // corrections with the marks on their objects mean ARKit corrected its map and the marks
+    // followed; frames that had the anchor, no corrections, and marks off their objects mean
+    // drift ARKit never corrected, which no anchor can fix; frames that lost the anchor mean
+    // nothing could follow it. `t` is the capture clock the packet's manifest times use.
+
+    /// One line per correction applied (`applySpatialUpdate`), with the total since the meter was
+    /// anchored. `MeterAnchorTracking` already limits the rate: a correction is applied only once
+    /// the anchor has moved 2 cm or turned 0.4 degrees since the last one. `step` is how far it
+    /// moved the meter.
+    private func logAnchorCorrection(_ correction: YawCorrection, step: Float, frame: SourceFrame) {
+        guard let tracking = meterTracking else { return }
+        let total = tracking.sinceAnchored
+        let turned = correction.yaw * 180 / .pi
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let marks = state.features.count
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor corrected at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter: moved \(step, format: .fixed(precision: 3)) m, turned \(turned, format: .fixed(precision: 2)) degrees; since anchored (\(count) corrections): moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; \(marks) marks moved with it (phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// One line when the frames stop carrying the meter's anchor, and one when they carry it
+    /// again: while it is missing, no correction can reach the wall or the marks. The first frame
+    /// after the meter is anchored writes one too. Live only: a replay has no anchor.
+    private func noteMeterAnchor(_ frame: SourceFrame) {
+        guard let id = meterAnchorID, let tracking = meterTracking else { return }
+        let sighting: MeterAnchorPresence.Sighting =
+            frame.meterAnchorID != id ? .otherAnchor : frame.meterAnchor == nil ? .missing : .present
+        guard let change = meterAnchorPresence.observe(sighting) else { return }
+        let t = frame.timestamp
+        let fromMeter = coverage.map { simd_distance(frame.camera.position, $0.wall.meter) } ?? 0
+        let count = tracking.corrections
+        let phase = state.phase.rawValue
+        RuntimeLog.capture.notice(
+            "meter anchor in frames: \(change.rawValue, privacy: .public) at t=\(t, format: .fixed(precision: 2)) s, phone \(fromMeter, format: .fixed(precision: 1)) m from the meter (\(count) corrections so far, phase \(phase, privacy: .public))"
+        )
+    }
+
+    /// The tracking's totals on every phase change once the meter is anchored, zero corrections
+    /// included, and whether the latest frame carried the anchor. Sending the scan and opening the
+    /// AR result always write one, with no anchor too (a replay), so a walk's log ends with it.
+    private func logMeterAnchorSummary(from previous: ScanPhase, to phase: ScanPhase) {
+        let from = previous.rawValue, to = phase.rawValue
+        let t = captureClock.map { String(format: "%.2f", $0) } ?? "none"
+        guard let tracking = meterTracking else {
+            guard phase == .uploading || phase == .resultAR else { return }
+            RuntimeLog.capture.notice(
+                "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): not tracked (no meter anchor)"
+            )
+            return
+        }
+        let total = tracking.sinceAnchored
+        let totalMoved = simd_length(total.moved)
+        let totalTurned = total.yaw * 180 / .pi
+        let count = tracking.corrections
+        let frames = meterAnchorPresence
+        let last = frames.last?.rawValue ?? "no frame yet"
+        let wall = coverage == nil ? "no wall" : "wall set"
+        let marks = state.features.count
+        RuntimeLog.capture.notice(
+            "meter anchor at \(from, privacy: .public) -> \(to, privacy: .public), t=\(t, privacy: .public): \(count) corrections since anchored, moved \(totalMoved, format: .fixed(precision: 3)) m (x \(total.moved.x, format: .fixed(precision: 3)), y \(total.moved.y, format: .fixed(precision: 3)), z \(total.moved.z, format: .fixed(precision: 3))), turned \(totalTurned, format: .fixed(precision: 2)) degrees; latest frame: \(last, privacy: .public); frames with the anchor \(frames.present), without it \(frames.missing), naming another \(frames.otherAnchor); \(wall, privacy: .public), \(marks) marks"
+        )
     }
 
     private func closeUp(_ frame: SourceFrame) {
@@ -1136,6 +1269,7 @@ final class ScanEngine {
         resetPacketLog()
         relocalizingSince = nil
         groundPlanes = []
+        wallPlanes = []
         groundMeasured = false
         lastFrame = nil
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
@@ -1143,7 +1277,10 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
+        meterTapCamera = nil
         state.wall = nil
         state.coverage = .empty
         state.target = nil
@@ -1636,7 +1773,10 @@ final class ScanEngine {
         coverage = nil
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
+        meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterPlaneSource = .detectedPlane
+        meterTapCamera = nil
         store = KeyframeStore()
         recorder = Self.makeRecorder(store)
         live?.setRecorder(recorder)
@@ -1703,9 +1843,24 @@ final class ScanEngine {
     func setMeterAnchor(_ id: UUID?, pose: simd_float4x4?) {
         meterAnchorID = id
         meterTracking = pose.map(MeterAnchorTracking.init)
+        meterAnchorPresence = MeterAnchorPresence()
+    }
+
+    /// The meter anchored again at `pose` in the same world frame, by a re-fit. The corrections
+    /// logged so far stay (`MeterAnchorTracking.anchorAgain`): the close-up photo and anything
+    /// else captured before the re-fit still needs them. The drift log's totals start again.
+    private func anchorMeterAgain(_ id: UUID?, pose: simd_float4x4) {
+        meterAnchorID = id
+        meterAnchorPresence = MeterAnchorPresence()
+        if meterTracking == nil {
+            meterTracking = MeterAnchorTracking(pose: pose)
+        } else {
+            meterTracking?.anchorAgain(at: pose)
+        }
     }
 
     var detectedGroundPlanes: [GroundPlaneEvidence] { groundPlanes }
+    var detectedWallPlanes: [WallPlaneEvidence] { wallPlanes }
 
     /// The camera failed after the scan was sent: no frame will come to say tracking was lost, so
     /// the last one's "normal" would keep the AR result up and offered. The answer stays; the
@@ -1732,9 +1887,12 @@ final class ScanEngine {
         state.feed = .none
         // What the retired source saw is in its own world frame; the next source starts another.
         groundPlanes = []
+        wallPlanes = []
+        meterTapCamera = nil
         groundMeasured = false
         lastFrame = nil
         meterTracking = nil
+        meterAnchorPresence = MeterAnchorPresence()
         meterAnchorID = nil
         state.projection = nil
         state.tracking = .notAvailable

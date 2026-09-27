@@ -75,6 +75,13 @@ public struct MeterAnchorTracking: Sendable, Equatable {
     /// frame (`LiveCapture.showResult`), so it follows the anchor however far it has moved since.
     public private(set) var pose: simd_float4x4
 
+    /// The anchor's pose when the meter was anchored (tapped, or anchored again by a re-fit):
+    /// where everything captured since started out.
+    public private(set) var anchoredPose: simd_float4x4
+
+    /// How many corrections have been applied since the meter was anchored.
+    public private(set) var corrections = 0
+
     /// A correction is applied once it moves the meter 2 cm, or turns the wall 0.4 degrees, which
     /// moves a point 3 m from the meter (about where a battery stands) 2 cm. ARKit nudges the
     /// anchor by millimetres most frames, and each correction redraws the overlays; 2 cm is far
@@ -87,10 +94,21 @@ public struct MeterAnchorTracking: Sendable, Equatable {
 
     public init(pose: simd_float4x4) {
         self.pose = pose
+        anchoredPose = pose
+    }
+
+    /// All the corrections applied since the meter was anchored, as one: how far ARKit has moved
+    /// the meter (world x, y, z, in meters) and turned the wall about gravity (radians). What
+    /// hasn't reached `minimumMove` or `minimumTurn` yet isn't in it. A device log of it, with
+    /// `MeterAnchorPresence`, tells a map ARKit corrected from drift it never corrected (#73): the
+    /// marks and the result follow the first, and nothing on the phone can follow the second.
+    public var sinceAnchored: (moved: SIMD3<Float>, yaw: Float) {
+        (Self.origin(pose) - Self.origin(anchoredPose), YawCorrection(from: anchoredPose, to: pose).yaw)
     }
 
     public static func == (a: MeterAnchorTracking, b: MeterAnchorTracking) -> Bool {
-        a.pose == b.pose && a.log.map(\.time) == b.log.map(\.time) && a.log.map(\.correction) == b.log.map(\.correction)
+        a.pose == b.pose && a.anchoredPose == b.anchoredPose && a.corrections == b.corrections
+            && a.log.map(\.time) == b.log.map(\.time) && a.log.map(\.correction) == b.log.map(\.correction)
     }
 
     /// The correction from `pose` to `anchor`, seen on the frame at `time`, when it is large
@@ -102,8 +120,20 @@ public struct MeterAnchorTracking: Sendable, Equatable {
         let moved = simd_distance(correction.point(origin), origin)
         guard moved > Self.minimumMove || abs(correction.yaw) > Self.minimumTurn else { return nil }
         pose = anchor
+        corrections += 1
         log.append((time, correction))
         return correction
+    }
+
+    /// The meter anchored again at `pose`, in the same world frame (a re-fit moved the wall to a
+    /// detected plane): later corrections, and the totals since anchored, are measured from it.
+    /// The log stays, because it is still what takes a pose captured before now into the current
+    /// frame; starting it over would leave the close-up photo, and any keyframe saved before the
+    /// re-fit, uncorrected for the moves ARKit made after it was taken.
+    public mutating func anchorAgain(at pose: simd_float4x4) {
+        self.pose = pose
+        anchoredPose = pose
+        corrections = 0
     }
 
     /// What takes a pose captured at `time` into the frame the wall agrees with now: every
@@ -122,6 +152,47 @@ public struct MeterAnchorTracking: Sendable, Equatable {
 
     public func correctedCamera(_ raw: CameraFrame, capturedAt time: Double) -> CameraFrame {
         correction(since: time).moved(raw)
+    }
+
+    private static func origin(_ m: simd_float4x4) -> SIMD3<Float> {
+        SIMD3(m.columns.3.x, m.columns.3.y, m.columns.3.z)
+    }
+}
+
+/// Whether the frames since the meter was anchored carried its anchor, for the drift log (#73).
+/// A correction can only reach the marks from a frame that carries the anchor, so a walk with no
+/// corrections logged is read against this: frames that had the anchor and never moved it
+/// (drift ARKit never corrected), or frames that lost it (nothing could follow it).
+public struct MeterAnchorPresence: Sendable, Equatable {
+    public enum Sighting: String, Sendable, CaseIterable {
+        /// The frame carries the anchor's pose.
+        case present
+        /// The frame names the anchor, but ARKit no longer lists it among the frame's anchors.
+        case missing
+        /// The frame names another anchor or none: made before the meter was anchored again, or
+        /// after the session let the anchor go.
+        case otherAnchor = "other anchor"
+    }
+
+    /// What the latest frame showed; nil before the first frame since the meter was anchored.
+    public private(set) var last: Sighting?
+    public private(set) var present = 0
+    public private(set) var missing = 0
+    public private(set) var otherAnchor = 0
+
+    public init() {}
+
+    /// Counts a frame. Returns `sighting` when it differs from the frame before's (the first
+    /// frame included), nil when it is the same.
+    public mutating func observe(_ sighting: Sighting) -> Sighting? {
+        switch sighting {
+        case .present: present += 1
+        case .missing: missing += 1
+        case .otherAnchor: otherAnchor += 1
+        }
+        let changed = sighting != last
+        last = sighting
+        return changed ? sighting : nil
     }
 }
 
