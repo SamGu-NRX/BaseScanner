@@ -1,4 +1,4 @@
-# House scanning
+# BaseScanner: House Scanning App for Base Core
 
 Walk along the wall by your electric meter with an iPhone, and find out whether a home battery fits there and where it would go.
 
