@@ -58,8 +58,13 @@ public struct SceneWall: Sendable, Equatable {
 
     public func world(s: Float, height: Float, out: Float) -> SIMD3<Float> {
         let segments = chain.segments
-        let piece = segments[WallSegment.index(in: segments, atS: s)]
-        return SIMD3<Float>(meter.x, groundY, meter.z) + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out
+        return world(s: s, height: height, out: out, on: segments[WallSegment.index(in: segments, atS: s)])
+    }
+
+    /// The point at (s, height, out) in the frame of `piece`, with its line carried straight on
+    /// when s is past the piece's span.
+    func world(s: Float, height: Float, out: Float, on piece: WallSegment) -> SIMD3<Float> {
+        SIMD3<Float>(meter.x, groundY, meter.z) + piece.anchor + piece.along * (s - piece.anchorS) + piece.outward * out
             + SIMD3<Float>(0, height, 0)
     }
 
@@ -450,11 +455,21 @@ public enum SceneExport {
                 let (halfWidth, depth) = pointObjectSize(kind)
                 let left = s - halfWidth
                 let right = s + halfWidth
+                // The square is drawn in the frame of the piece the tap is on, at full size even
+                // where it reaches past a corner. Mapping each vertex through `plan` put the
+                // corners past the turn on the next piece. At an inside corner those edges
+                // crossed, and the server refused the scene as not simple (HTTP 422). The square
+                // stays centred on the tap, the one position measured, so past an inside corner
+                // part of it lies behind the next wall.
+                let pieceIndex = WallSegment.index(in: chain.segments, atS: s)
+                let piece = chain.segments[pieceIndex]
+                let corners: [(s: Float, out: Float)] = [(left, 0), (right, 0), (right, depth), (left, depth)]
+                let square = corners.map { wall.world(s: $0.s, height: 0, out: $0.out, on: piece) }
+                let span = Self.chainSpan(of: square, onPiece: pieceIndex, from: left...right, wall: wall)
                 objects.append(.init(
-                    type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(left...right),
+                    type: kind.rawValue, wall_id: wallIDAt(s), span_ft: spanFeet(span),
                     bottom_ft: bottom.map(feet), top_ft: top.map(feet), attrs: nil, source: "tap",
-                    footprint: [plan(left, 0), plan(right, 0), plan(right, depth), plan(left, depth)],
-                    plus_minus_ft: objectError))
+                    footprint: square.map(planFeet), plus_minus_ft: objectError))
             case let .fence(foot):
                 guard foot.count == 2 else {
                     throw SceneExportError.wrongPointCount(feature: "\(name) fence", expected: 2, actual: foot.count)
@@ -582,6 +597,41 @@ public enum SceneExport {
     /// 0.005 ft by which it grows seen ground, which closes it with a rounded corner of that
     /// radius rather than the sector.
     static let cornerMarginFeet: Double = 0.002
+
+    /// The stretch of the chain, s meters, that a footprint drawn on piece `onPiece` covers:
+    /// `own`, its extent on that piece, joined with every stretch of another piece's wall line
+    /// that lies inside the footprint. The footprint must be convex.
+    ///
+    /// The server reads the span first. It considers an object for the cable route only where
+    /// the span overlaps the route's stretch (`server/solver.py`, `route_objects`), and measures
+    /// the footprint against the wall line only after that. A square drawn past an inside corner
+    /// crosses the next wall beyond `own`, and one tapped just round the corner can stand across
+    /// the meter's wall, so `own` alone would let the route pass through it unchecked. A wider
+    /// span only makes the server measure more.
+    static func chainSpan(of footprint: [SIMD3<Float>], onPiece: Int, from own: ClosedRange<Float>, wall: SceneWall) -> ClosedRange<Float> {
+        var lower = own.lowerBound
+        var upper = own.upperBound
+        for (index, piece) in wall.chain.segments.enumerated() where index != onPiece {
+            let local = footprint.map { piece.coordinates(ofOffset: $0 - wall.meter) }
+            // Where the footprint meets this piece's line (out = 0): vertices on it and points
+            // where an edge crosses it. For a convex footprint these bound one stretch.
+            var s: [Float] = []
+            for (a, b) in zip(local, local.dropFirst() + local.prefix(1)) {
+                if a.out == 0 {
+                    s.append(a.s)
+                } else if b.out != 0, (a.out < 0) != (b.out < 0) {
+                    s.append(a.s + (b.s - a.s) * a.out / (a.out - b.out))
+                }
+            }
+            guard let least = s.min(), let most = s.max() else { continue }
+            let from = max(least, piece.span.lowerBound)
+            let to = min(most, piece.span.upperBound)
+            guard from <= to else { continue }
+            lower = min(lower, from)
+            upper = max(upper, to)
+        }
+        return lower...upper
+    }
 
     /// A written span in feet with `margin` either side of each corner removed: the side to the
     /// left ends at the corner less the margin rounded down to 4 decimals, the side to the right
