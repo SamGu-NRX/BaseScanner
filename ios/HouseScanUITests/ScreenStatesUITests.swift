@@ -16,6 +16,7 @@ final class ScreenStatesUITests: XCTestCase {
         // Keep the Practice-on accessibility check even when ordinary fixtures force it off.
         ("onboarding-practice", ["-practiceMeter", "YES"], "onboarding"),
         ("onboarding-moves", [], "onboarding"),
+        ("onboarding-permissions", [], "onboarding"),
         ("findMeter", ["-uiDemoPhase", "findMeter"], "findMeter"),
         ("meterCloseUp-cantGetClearShot", ["-uiDemoPhase", "meterCloseUp", "-uiDemoCloseUpFailed"], "meterCloseUp"),
         ("meterCloseUp-chooseNumber", ["-uiDemoPhase", "meterCloseUp", "-uiDemoMeterChoose"], "meterCloseUp"),
@@ -83,7 +84,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "onboarding-practice", "onboarding-moves", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "onboarding-practice", "onboarding-moves", "onboarding-permissions", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -96,6 +97,8 @@ final class ScreenStatesUITests: XCTestCase {
     /// in any text on screen.
     private static let expectations: [String: [(identifier: String?, text: String)]] = [
         "onboarding-practice": [("action.developerOptions", "Practice meter is on.")],
+        // #55: an answered permission is not asked again, so the phone only may ask.
+        "onboarding-permissions": [("onboarding.permissions", "Your phone may ask to use the camera")],
         "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
@@ -149,6 +152,8 @@ final class ScreenStatesUITests: XCTestCase {
     private static let navigation: [String: (taps: [String], shows: String)] = [
         // #85: the page after the walk page previews the moves the walk asks for.
         "onboarding-moves": (["action.onboardingNext"], "onboarding.move.1"),
+        // The last page: at AX5 its permission note scrolls with the page instead of the footer.
+        "onboarding-permissions": (["action.onboardingSkip"], "onboarding.permissions"),
     ]
 
     /// Controls a state must offer, by identifier.
