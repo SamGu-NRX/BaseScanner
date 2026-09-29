@@ -202,6 +202,45 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 5))
     }
 
+    /// A failed upload says the app can't reopen the scan after it closes, and with the scan
+    /// packaged it points to Share scan. The note, Try again and Share scan are all reachable.
+    @MainActor
+    func testOfflineRecoveryActions() throws {
+        try checkOfflineRecovery(textSize: [], name: "offline-recovery-polish")
+    }
+
+    @MainActor
+    func testOfflineRecoveryActionsAtLargestTextSize() throws {
+        try checkOfflineRecovery(textSize: Self.largestText, name: "offline-recovery-AX5-polish")
+    }
+
+    @MainActor
+    private func checkOfflineRecovery(textSize: [String], name: String) throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze",
+                               "-uiDemoPhase", "uploading", "-uiDemoOffline"] + textSize
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 15))
+        let scroll = app.scrollViews.firstMatch
+        let note = element(app, "upload.recoveryLimit")
+        for _ in 0..<8 where !note.isHittable { scroll.swipeUp(velocity: .slow) }
+        XCTAssertTrue(note.isHittable)
+        // The demo scan is packaged, so the note names the export.
+        XCTAssertTrue(note.label.contains("use Share scan to save a copy"), note.label)
+        XCTAssertTrue(note.label.contains("can't reopen it after you close the app"), note.label)
+        let retry = app.buttons["action.retryUpload"]
+        for _ in 0..<8 where !retry.isHittable { scroll.swipeUp(velocity: .slow) }
+        XCTAssertTrue(retry.isHittable)
+        let share = app.buttons["action.shareScan"]
+        for _ in 0..<8 where !share.isHittable { scroll.swipeUp(velocity: .slow) }
+        XCTAssertTrue(share.isHittable)
+        attach(app, name: name)
+        share.tap()
+        XCTAssertTrue(app.otherElements["ActivityListView"].waitForExistence(timeout: 10))
+    }
+
     @MainActor
     private func attach(_ app: XCUIApplication, name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())
