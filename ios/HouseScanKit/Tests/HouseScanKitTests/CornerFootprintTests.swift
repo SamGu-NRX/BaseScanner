@@ -54,6 +54,9 @@ import simd
         // Past an outside corner the square meets the next wall only at the corner.
         Case(name: "ac-1.7-outside-right", kind: .ac, cornerS: 2, turn: .outside, tapS: 1.7, onOnePiece: false, span: 1.2428...2.1572),
         Case(name: "gas-0.25-inside-right-far-piece", kind: .gasMeter, cornerS: 0.2, turn: .inside, tapS: 0.25, onOnePiece: false, span: -0.1...0.4),
+        // The square's side lies exactly along the meter's wall, which Float arithmetic leaves
+        // about 1e-8 m off the line.
+        Case(name: "gas-0.36-inside-right-flush", kind: .gasMeter, cornerS: 0.21, turn: .inside, tapS: 0.36, onOnePiece: false, span: -0.09...0.51),
         Case(name: "ac-1.0-inside-right", kind: .ac, cornerS: 2, turn: .inside, tapS: 1.0, onOnePiece: true, span: 0.5428...1.4572),
         Case(name: "gas-1.5-inside-right", kind: .gasMeter, cornerS: 2, turn: .inside, tapS: 1.5, onOnePiece: true, span: 1.35...1.65),
     ]

@@ -598,6 +598,11 @@ public enum SceneExport {
     /// radius rather than the sector.
     static let cornerMarginFeet: Double = 0.002
 
+    /// How close to a wall line, meters, a footprint vertex counts as on it (`chainSpan`): 0.1 mm,
+    /// above both the Float round-off of a few meters' coordinates (about 1e-6 m) and the
+    /// 0.03 mm the JSON rounding can move a vertex. Not a measurement tolerance.
+    static let onLineTolerance: Float = 1e-4
+
     /// The stretch of the chain, s meters, that a footprint drawn on piece `onPiece` covers:
     /// `own`, its extent on that piece, joined with every stretch of another piece's wall line
     /// that lies inside the footprint. The footprint must be convex.
@@ -607,19 +612,26 @@ public enum SceneExport {
     /// the footprint against the wall line only after that. A square drawn past an inside corner
     /// crosses the next wall beyond `own`, and one tapped just round the corner can stand across
     /// the meter's wall, so `own` alone would let the route pass through it unchecked. A wider
-    /// span only makes the server measure more.
+    /// span also moves where the sweep tries battery spots and, when the scene gives no error,
+    /// raises the object's default error with distance walked. Every spot is still checked in full.
     static func chainSpan(of footprint: [SIMD3<Float>], onPiece: Int, from own: ClosedRange<Float>, wall: SceneWall) -> ClosedRange<Float> {
         var lower = own.lowerBound
         var upper = own.upperBound
         for (index, piece) in wall.chain.segments.enumerated() where index != onPiece {
             let local = footprint.map { piece.coordinates(ofOffset: $0 - wall.meter) }
-            // Where the footprint meets this piece's line (out = 0): vertices on it and points
-            // where an edge crosses it. For a convex footprint these bound one stretch.
+            // Where the footprint meets this piece's line: vertices on it and points where an edge
+            // crosses it. For a convex footprint these bound one stretch. A square whose side
+            // lies along the line comes out of the Float arithmetic about 1e-8 m off it, and
+            // rounding to 0.0001 ft (0.03 mm) puts it back on, so anything within
+            // `onLineTolerance` counts as on the line.
+            let side = local.map { abs($0.out) <= onLineTolerance ? 0 : ($0.out < 0 ? -1 : 1) }
             var s: [Float] = []
-            for (a, b) in zip(local, local.dropFirst() + local.prefix(1)) {
-                if a.out == 0 {
-                    s.append(a.s)
-                } else if b.out != 0, (a.out < 0) != (b.out < 0) {
+            for i in local.indices {
+                let j = (i + 1) % local.count
+                if side[i] == 0 {
+                    s.append(local[i].s)
+                } else if side[j] != 0, side[i] != side[j] {
+                    let (a, b) = (local[i], local[j])
                     s.append(a.s + (b.s - a.s) * a.out / (a.out - b.out))
                 }
             }
