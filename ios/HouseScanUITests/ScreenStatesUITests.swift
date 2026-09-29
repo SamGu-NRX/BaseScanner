@@ -178,6 +178,38 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
+    /// The every-state audit starts on page one. Exercise the last page too: at AX5 its
+    /// permission note used to consume the footer while the camera label was truncated.
+    @MainActor
+    func testOnboardingFinishesAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "YES", "-uiDemo", "-uiDemoFreeze"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
+        attach(app, name: "onboarding-practice-AX5-polish")
+        tap(app, "action.onboardingSkip")
+        let allow = app.buttons["action.finishOnboarding"]
+        XCTAssertTrue(allow.waitForExistence(timeout: 5))
+        XCTAssertTrue(allow.isHittable)
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(allow.frame))
+        let note = element(app, "onboarding.permissions")
+        for _ in 0..<8 where !note.isHittable { app.swipeUp() }
+        XCTAssertTrue(note.isHittable, "permission explanation cannot be reached by scrolling")
+        attach(app, name: "onboarding-permissions-AX5-polish")
+        allow.tap()
+        XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    private func attach(_ app: XCUIApplication, name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     /// The brand read on the close-up is only offered: "Not <brand>" removes it and leaves the
     /// number candidates to answer.
     @MainActor
