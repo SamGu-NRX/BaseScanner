@@ -916,17 +916,29 @@ public struct CoverageMap: Sendable {
     /// Records where the space in front of the wall ends (#160, #164). With depth, a reading
     /// nearer than a sample that is that surface, or a sample at or past it, then counts as the
     /// end of the space (neither seen nor hidden) rather than as something in front of the wall to
-    /// look past. It applies to frames observed from now on and to every frame a rebuild replays;
-    /// what earlier frames recorded stays. No cell's level changes, so the revision doesn't either.
+    /// look past.
+    ///
+    /// When the surface over any cell changes and a kept frame had depth, every kept frame is
+    /// replayed against the new surface, as it is for a new ground or wall
+    /// (`replayObservedCameras`). ARKit can find a corridor's far wall only after depth frames
+    /// have marked the ground behind it hidden. Before this replay those rows stayed hidden and
+    /// the walk kept asking to look past the wall (review of #168). When ARKit stops finding a
+    /// surface, the replay marks hidden again whatever that surface ended. Real obstructions
+    /// nearer the wall stay hidden, and skipped and withdrawn cells are kept. Depth never counts a
+    /// row past the surface as seen. Frames without depth never consult the surface, so a map
+    /// without depth frames replays nothing and its revision stays the same.
     public mutating func setFarSurface(_ spans: [ObservedSpan]) {
         guard spans != farSurface else { return }
         farSurface = spans
-        farSurfaceByCell = [:]
+        var byCell: [Int: Float] = [:]
         for item in spans {
             for index in indices(overlapping: item.span) {
-                farSurfaceByCell[index] = min(farSurfaceByCell[index] ?? item.out, item.out)
+                byCell[index] = min(byCell[index] ?? item.out, item.out)
             }
         }
+        guard byCell != farSurfaceByCell else { return }
+        farSurfaceByCell = byCell
+        if observedDepths.contains(where: { $0 != nil }) { replayObservedCameras(shiftingSkippedBy: 0) }
     }
 
     /// How far out from the wall the space ends over the cell holding `s`, meters (the nearest

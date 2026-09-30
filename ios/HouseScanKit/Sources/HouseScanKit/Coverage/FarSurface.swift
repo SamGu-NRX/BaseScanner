@@ -30,6 +30,15 @@ public struct FarSurfaceConfig: Sendable, Equatable {
     /// A plane shorter than this can be looked over, or is something low standing in the space:
     /// 1 m, above an AC unit's top and below a fence's. A guess.
     public var minHeight: Float = 1.0
+    /// A plane must stand on the ground to end the space there: its outline has to reach down to
+    /// within this of the ground (`WallFrame.groundY`) and rise above that level. One that stops
+    /// higher, such as an eave, a bay window or an upper storey across a walkway, leaves open
+    /// ground under it, or ARKit hasn't seen what stands under it. One whose top stays below it
+    /// is sunk into the ground, like the far side of a window well. 0.5 m covers the 0.3 m error of
+    /// a guessed ground (`ScanEngine.estimatedGroundError`) plus 0.2 m of the foot of a fence or
+    /// wall that ARKit's outline hasn't grown down to yet. The 0.2 m is a guess: no field capture
+    /// has measured how close to the ground ARKit's outlines reach (review of #168).
+    public var maxGroundGap: Float = 0.5
     /// How far past a plane's outline, along it, a cell may still be in front of it: 0.15 m, one
     /// coverage cell, as ARKit's outline grows behind what the camera has seen. A guess.
     public var outlineMargin: Float = 0.15
@@ -46,9 +55,10 @@ public enum FarSurface {
     /// points (a quarter and three quarters along the cell) on the wall's line, straight out along
     /// the piece's outward, the distance to the nearest detected plane that faces the wall
     /// (within `maxAngle` of parallel, `minOut` to `maxOut` out, at least `minWidth` wide and
-    /// `minHeight` tall, of any class but a door or a window) and whose outline, along the plane,
-    /// reaches the point it is met at. The smaller of the two, rounded down to `quantum`, with
-    /// touching cells of equal distance merged. Cells with no such plane are left out.
+    /// `minHeight` tall, standing on the ground within `maxGroundGap`, of any class but a door or
+    /// a window) and whose outline, along the plane, reaches the point it is met at. The smaller
+    /// of the two, rounded down to `quantum`, with touching cells of equal distance merged. Cells
+    /// with no such plane are left out.
     ///
     /// A plane whose outline comes within `minOut` of the line of the nearest piece parallel to
     /// it, or crosses it, at either end is the wall's own, or runs into it, and never counts
@@ -120,6 +130,10 @@ public enum FarSurface {
             let heights = plane.boundary.map(\.y)
             guard let first = offsets.min(), let last = offsets.max(), let bottom = heights.min(), let top = heights.max(),
                   last - first >= config.minWidth, top - bottom >= config.minHeight else { return nil }
+            // The height span alone let a plane hanging well above the ground end the space
+            // under it (review of #168).
+            let groundLevel = wall.groundY + config.maxGroundGap
+            guard bottom <= groundLevel, top >= groundLevel else { return nil }
             guard Self.clearsWall(plane.center + along * first, normal: normal, wall: wall, config: config),
                   Self.clearsWall(plane.center + along * last, normal: normal, wall: wall, config: config) else { return nil }
             self.center = plane.center
