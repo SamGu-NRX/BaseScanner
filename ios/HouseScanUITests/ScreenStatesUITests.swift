@@ -133,6 +133,10 @@ final class ScreenStatesUITests: XCTestCase {
         "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
+        // At AX5 the card covers the ring's place until the open camera under it scrolls into
+        // view (testAimRingStaysInTheOpenCameraAtLargestTextSize); the legend under the card
+        // still says what the ring is for.
+        "wallWalk-aim-AX5": [("aim.legend", "It fills as your phone captures this spot")],
         // #82: a second "Can't get there" soon after the first asks before ending the scan.
         "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
         "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
@@ -716,10 +720,11 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
-    /// B-36: at AX5 the aim card filled the screen and the ring was drawn under it. The card now
-    /// ends above the middle of the screen with its words scrolling inside it, the actions start
-    /// below the middle, and the ring shows in the open camera between them without touching
-    /// the words, the reply or an action.
+    /// B-36: at AX5 the aim card filled the screen and the ring was drawn under it, where it
+    /// couldn't be seen. The ring now shows only in the open camera the chrome keeps between the
+    /// card and the actions. At every position while the chrome scrolls from its top to its end,
+    /// a ring on screen must be wholly in the window and clear of the words, the reply, the legend
+    /// and the first action; and it must show at some position, once the open camera reaches it.
     @MainActor
     func testAimRingStaysInTheOpenCameraAtLargestTextSize() throws {
         continueAfterFailure = false
@@ -730,43 +735,30 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         let window = app.windows.firstMatch.frame
         let ring = element(app, "aim.ring")
-        let words = element(app, "instruction.scroll")
-        let reply = element(app, "action.cannotAccess")
-        let mark = element(app, "action.markSomething")
-        XCTAssertTrue(words.waitForExistence(timeout: 5), "at AX5 the card's words scroll inside it")
-        XCTAssertTrue(reply.waitForExistence(timeout: 5))
-        XCTAssertTrue(mark.waitForExistence(timeout: 5))
-        XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show in the open camera")
-        XCTAssertEqual(ring.value as? String, "50 percent captured")
-        attach(app, name: "wallWalk-aim-AX5-openCamera")
+        let covers = ["instruction", "action.cannotAccess", "aim.legend", "action.markSomething"].map { ($0, element(app, $0)) }
+        XCTAssertTrue(element(app, "action.cannotAccess").waitForExistence(timeout: 5))
+        XCTAssertTrue(element(app, "aim.legend").waitForExistence(timeout: 5), "the legend must still show at the largest text size")
+        attach(app, name: "wallWalk-aim-AX5-top")
 
-        let cardBottom = max(words.frame.maxY, reply.frame.maxY)
-        XCTAssertLessThanOrEqual(cardBottom, window.midY - 80, "the card must end above the middle of the screen: \(cardBottom) in \(window)")
-        XCTAssertGreaterThanOrEqual(mark.frame.minY, window.midY + 80, "the actions must start below the middle of the screen: \(mark.frame)")
-        XCTAssertTrue(window.contains(ring.frame), "ring \(ring.frame) is not wholly on screen")
-        for (identifier, frame) in [("instruction.scroll", words.frame), ("action.cannotAccess", reply.frame), ("action.markSomething", mark.frame)] {
-            XCTAssertFalse(ring.frame.intersects(frame), "ring \(ring.frame) is under \(identifier) \(frame)")
+        var sightings = 0
+        // Short drags, so the scroll passes through every position where the window holds the ring.
+        for step in 0..<30 {
+            if ring.exists {
+                let frame = ring.frame
+                XCTAssertTrue(window.contains(frame), "step \(step): ring \(frame) is not wholly on screen")
+                for (identifier, cover) in covers where cover.exists {
+                    XCTAssertFalse(frame.intersects(cover.frame), "step \(step): ring \(frame) is under \(identifier) \(cover.frame)")
+                }
+                if sightings == 0 {
+                    XCTAssertEqual(ring.value as? String, "50 percent captured")
+                    attach(app, name: "wallWalk-aim-AX5-openCamera")
+                }
+                sightings += 1
+            }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        // The legend comes with the ring, inside the card, as the last thing under the words.
-        // Dragging the words must bring its end into the card's visible part, which is the end
-        // of what the card says, while the reply stays where it is.
-        let legend = element(app, "aim.legend")
-        XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
-        XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
-        let replyFrame = reply.frame
-        let startY = legend.frame.minY
-        func endShows() -> Bool {
-            let viewport = words.frame, shown = legend.frame
-            return shown.maxY <= viewport.maxY + 1 && shown.maxY > viewport.minY
-        }
-        for _ in 0..<12 where !endShows() {
-            let start = words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
-            start.press(forDuration: 0.1, thenDragTo: words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)), withVelocity: .slow, thenHoldForDuration: 0.3)
-        }
-        XCTAssertTrue(endShows(), "the legend's end \(legend.frame) never scrolled into the card's words \(words.frame)")
-        XCTAssertLessThan(legend.frame.minY, startY - 1, "the words never scrolled: the legend stayed at \(startY)")
-        XCTAssertEqual(reply.frame.minY, replyFrame.minY, accuracy: 1, "the reply must stay put while the words scroll")
-        attach(app, name: "wallWalk-aim-AX5-legendScrolled")
+        XCTAssertGreaterThan(sightings, 0, "the ring never showed while the open camera scrolled past it")
     }
 
     /// At AX5 a scrolled onboarding page ran on under the page dots. On every page, before and
@@ -802,18 +794,22 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
-    /// Drags the onboarding page up, at most twelve times, until the bottom of its last element
+    /// Swipes the page on screen up, at most twelve times, until the bottom of its last element
     /// shows above the footer. At AX5 a single move can be taller than the page's viewport, so
-    /// only its bottom edge marks the end.
+    /// only its bottom edge marks the end. The swipe goes to the page's own scroll view: a drag
+    /// at a screen point left the second page where it was (run 36743027718).
     @MainActor
     private func scrollPageToEnd(_ app: XCUIApplication, last: XCUIElement, footer: XCUIElement) -> Bool {
+        let window = app.windows.firstMatch.frame
         func atEnd() -> Bool {
             let frame = last.frame
-            return frame.maxY <= footer.frame.minY + 1 && frame.maxY > app.windows.firstMatch.frame.minY
+            return frame.maxY <= footer.frame.minY + 1 && frame.maxY > window.minY
+        }
+        guard let page = app.scrollViews.allElementsBoundByIndex.first(where: { abs($0.frame.minX - window.minX) < 1 && $0.frame.width > 0 }) else {
+            return false
         }
         for _ in 0..<12 where !atEnd() {
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -240)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            page.swipeUp(velocity: .slow)
         }
         return atEnd()
     }
@@ -928,7 +924,8 @@ final class ScreenStatesUITests: XCTestCase {
             if screen == "result" { tap(app, "result.details") }
             XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+        // An AX5 state takes its own entry where it has one, else the default size's.
+        for expected in Self.expectations[name] ?? Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
                 let target = ElementRead.snapshot(element(app, identifier))

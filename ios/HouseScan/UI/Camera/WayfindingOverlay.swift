@@ -18,8 +18,10 @@ struct WayfindingOverlay: View {
     /// An aim step's target that was just completed, drawn as a full ring in place of `target`
     /// while it is on screen (`CameraOverlays` holds it for a moment).
     var completed: SIMD3<Float>? = nil
-    /// Called with whether a filling ring is on screen, each time that changes (`CameraOverlays`
-    /// shows the ring's legend once one has).
+    /// Called with whether an aim step's filling ring has its target on screen, each time that
+    /// changes (`CameraOverlays` shows the ring's legend once one has). On screen, not in the
+    /// open camera: at the largest text sizes the card can cover the ring's place until the
+    /// chrome scrolls, and the legend under the card still says what the ring is for.
     var onFillingRingShown: ((Bool) -> Void)? = nil
     /// The open camera between the instruction card and the actions (`CameraChrome`). The ring
     /// shows only inside it and the edge arrows keep to it. Until the chrome has been laid out,
@@ -41,12 +43,12 @@ struct WayfindingOverlay: View {
                 // from its last fill to green.
                 if let shown = marker(in: size, band: band) {
                     TargetMarker(placement: shown.placement, progress: shown.progress)
-                    if progress != nil, completed == nil, case .onScreen = shown.placement {
-                        Color.clear
-                            .frame(width: 0, height: 0)
-                            .onAppear { onFillingRingShown?(true) }
-                            .onDisappear { onFillingRingShown?(false) }
-                    }
+                }
+                if fillingTargetOnScreen(in: size) {
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .onAppear { onFillingRingShown?(true) }
+                        .onDisappear { onFillingRingShown?(false) }
                 }
             }
             .frame(width: size.width, height: size.height)
@@ -64,7 +66,9 @@ struct WayfindingOverlay: View {
         var bottom: CGFloat
     }
 
-    /// How far inside the band the edge arrows sit: half the arrow's 52 pt disc and a margin.
+    /// The edge arrow's disc (`TargetMarker`).
+    static let arrowDiameter: CGFloat = 52
+    /// How far inside the band the edge arrows sit: half the arrow's disc and a margin.
     static let arrowInset: CGFloat = 32
 
     /// The measured window in this view's coordinates, cut to the part on screen: scrolling the
@@ -113,6 +117,15 @@ struct WayfindingOverlay: View {
 
     // MARK: Target
 
+    /// Whether an aim step's target is where a filling ring would show without the card: the
+    /// fixed rectangle used before the chrome reported its open camera.
+    private func fillingTargetOnScreen(in size: CGSize) -> Bool {
+        guard progress != nil, completed == nil, let target, let point = projection.viewPoint(for: target, in: size) else {
+            return false
+        }
+        return Self.ringBounds(in: size, band: nil, radius: 0).contains(point)
+    }
+
     /// The completed ring while it is on screen, else the target's ring or arrow.
     private func marker(in size: CGSize, band: Band?) -> (placement: TargetMarker.Placement, progress: Double?)? {
         if let completed {
@@ -124,6 +137,9 @@ struct WayfindingOverlay: View {
     }
 
     private func placement(for target: SIMD3<Float>, in size: CGSize, band: Band?) -> TargetMarker.Placement {
+        // Less of the open camera on screen than an arrow's disc: at the largest text sizes the
+        // chrome has scrolled it away, and anything drawn would sit on the card or the actions.
+        if let band, band.bottom - band.top < Self.arrowDiameter { return .hidden }
         if let point = projection.viewPoint(for: target, in: size) {
             let scale = wall.flatMap { WallProjection(projection: projection, wall: $0, size: size).pointsPerMeter(at: target) }
             let radius = min(64, max(30, (scale ?? 90) * 0.28))

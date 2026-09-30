@@ -34,14 +34,6 @@ struct InstructionCard: View {
     /// A short line above the instruction that places it in the flow ("One more view to
     /// finish"). Read with the instruction as one VoiceOver element.
     var eyebrow: String?
-    /// Whether the words (and `legend`) scroll inside the card when the card is offered less
-    /// height than they need, with the reply staying put under them. `CameraChrome` sets it at
-    /// the accessibility text sizes, where uncapped words covered the whole camera and the aim
-    /// ring under them (B-36), and offers the card the height it may have.
-    var scrollsWords = false
-    /// The aim ring's legend, drawn in the card under the words. `CameraChrome` puts it here
-    /// only when the words scroll; otherwise the legend is its own line under the card.
-    var legend: String? = nil
 
     /// How long a new card's reply ignores taps, so a tap meant for the card that just left
     /// can't answer the next one: in the 4.1 field test, quick taps on "Can't get there" each
@@ -58,29 +50,9 @@ struct InstructionCard: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            if scrollsWords {
-                // Laid out in the same pass as the rest of the card: the stack gives the reply
-                // its height first, and the words take what is left, scrolling only when they
-                // don't fit. Nothing is measured into state, so no layout feeds back into itself.
-                ViewThatFits(in: .vertical) {
-                    words
-                    ScrollView {
-                        words
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    // Shown while scrolling and flashed once when the card appears. Left
-                    // showing, the thin grey bar on the dark card failed the accessibility
-                    // audit's contrast check in every AX5 state whose words scroll (run
-                    // 36743027718). A line cut off at the bottom is the lasting sign of more.
-                    .scrollIndicators(.automatic)
-                    .scrollIndicatorsFlash(onAppear: true)
-                    .accessibilityIdentifier("instruction.scroll")
-                }
-            } else {
-                message
-                    .id(instruction)
-                    .transition(.identity)
-            }
+            message
+                .id(instruction)
+                .transition(.identity)
             if let reply {
                 Button(reply.title, action: reply.perform)
                     .font(Typeface.caption.weight(.bold))
@@ -127,38 +99,6 @@ struct InstructionCard: View {
             do { try await Task.sleep(for: Self.replyLock) } catch { return }
             unlockedTask = shown
         }
-    }
-
-    private var words: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            message
-                .id(instruction)
-                .transition(.identity)
-            if let legend {
-                legendLine(legend)
-            }
-        }
-    }
-
-    /// The legend inside the card: set off from the words by a rule and the ring's symbol, in
-    /// the words' own colours so it is as legible as they are.
-    private func legendLine(_ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Rectangle()
-                .fill(Palette.chalk.opacity(0.2))
-                .frame(height: 1)
-                .accessibilityHidden(true)
-            Text("\(Image(systemName: "scope")) \(text)")
-                .font(Typeface.hint)
-                .foregroundStyle(Palette.chalk)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(text)
-                .accessibilityIdentifier("aim.legend")
-        }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .transition(.opacity)
     }
 
     private var message: some View {
