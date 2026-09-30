@@ -95,9 +95,10 @@ struct ResultScreen: View {
                 Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(Palette.chalk)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Palette.ink.opacity(0.7), in: .capsule)
+                    .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 8)
+                    .padding(.vertical, typeSize.isAccessibilitySize ? 8 : 4)
+                    // Wrapped onto two lines, a capsule's round ends cut into the text's corners.
+                    .background(Palette.ink.opacity(0.7), in: typeSize.isAccessibilitySize ? AnyShape(.rect(cornerRadius: 16, style: .continuous)) : AnyShape(.capsule))
                     .accessibilityLabel("Sample result, not from the server")
                     .accessibilityIdentifier("result.sampleBadge")
             }
