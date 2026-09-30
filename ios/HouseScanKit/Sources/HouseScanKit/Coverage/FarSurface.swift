@@ -30,14 +30,17 @@ public struct FarSurfaceConfig: Sendable, Equatable {
     /// A plane shorter than this can be looked over, or is something low standing in the space:
     /// 1 m, above an AC unit's top and below a fence's. A guess.
     public var minHeight: Float = 1.0
-    /// A plane must stand on the ground to end the space there: its outline has to reach down to
-    /// within this of the ground (`WallFrame.groundY`) and rise above that level. One that stops
-    /// higher, such as an eave, a bay window or an upper storey across a walkway, leaves open
-    /// ground under it, or ARKit hasn't seen what stands under it. One whose top stays below it
-    /// is sunk into the ground, like the far side of a window well. 0.5 m covers the 0.3 m error of
-    /// a guessed ground (`ScanEngine.estimatedGroundError`) plus 0.2 m of the foot of a fence or
-    /// wall that ARKit's outline hasn't grown down to yet. The 0.2 m is a guess: no field capture
-    /// has measured how close to the ground ARKit's outlines reach (review of #168).
+    /// A plane must stand on the ground to end the space there: where a cell meets it, its
+    /// outline has to reach down to within this of the ground (`WallFrame.groundY`) and rise
+    /// above that level (`Candidate.standsOnGround`). One that stops higher, such as an eave, a
+    /// bay window or an upper storey across a walkway, leaves open ground under it, or ARKit
+    /// hasn't seen what stands under it. One whose top stays below that level is sunk into the
+    /// ground, like the far side of a window well. 0.5 m covers the 0.3 m error of a guessed
+    /// ground (`ScanEngine.estimatedGroundError`) plus 0.2 m of the foot of a fence or wall that
+    /// ARKit's outline hasn't grown down to yet. The 0.2 m is a guess: no field capture has
+    /// measured how close to the ground ARKit's outlines reach (review of #168). With the ground
+    /// guessed 0.3 m too high, a plane whose outline stops 0.8 m above the real ground still
+    /// counts, and so does one rising only 0.5 m above the ground with the rest of it below.
     public var maxGroundGap: Float = 0.5
     /// How far past a plane's outline, along it, a cell may still be in front of it: 0.15 m, one
     /// coverage cell, as ARKit's outline grows behind what the camera has seen. A guess.
@@ -90,6 +93,7 @@ public enum FarSurface {
                 guard out >= config.minOut, out <= config.maxOut else { continue }
                 let along = simd_dot(foot + piece.outward * out - plane.center, plane.along)
                 guard along >= plane.first - config.outlineMargin, along <= plane.last + config.outlineMargin else { continue }
+                guard plane.standsOnGround(at: along, groundY: wall.groundY, config: config) else { continue }
                 best = min(best ?? out, out)
             }
             return best
@@ -122,6 +126,9 @@ public enum FarSurface {
         /// The outline's extent along `along`, from the centre.
         var first: Float
         var last: Float
+        /// The outline in the plane, in order around it: x along `along` from the centre, y the
+        /// world height.
+        var outline: [SIMD2<Float>]
 
         init?(_ plane: WallPlaneEvidence, wall: WallFrame, config: FarSurfaceConfig) {
             guard plane.kind != .other, let normal = plane.horizontalNormal, !plane.boundary.isEmpty else { return nil }
@@ -130,10 +137,6 @@ public enum FarSurface {
             let heights = plane.boundary.map(\.y)
             guard let first = offsets.min(), let last = offsets.max(), let bottom = heights.min(), let top = heights.max(),
                   last - first >= config.minWidth, top - bottom >= config.minHeight else { return nil }
-            // The height span alone let a plane hanging well above the ground end the space
-            // under it (review of #168).
-            let groundLevel = wall.groundY + config.maxGroundGap
-            guard bottom <= groundLevel, top >= groundLevel else { return nil }
             guard Self.clearsWall(plane.center + along * first, normal: normal, wall: wall, config: config),
                   Self.clearsWall(plane.center + along * last, normal: normal, wall: wall, config: config) else { return nil }
             self.center = plane.center
@@ -141,6 +144,26 @@ public enum FarSurface {
             self.along = along
             self.first = first
             self.last = last
+            self.outline = zip(offsets, heights).map { SIMD2($0, $1) }
+        }
+
+        /// Whether the outline stands on the ground where a cell meets it, `offset` along the
+        /// plane from its centre (held to the outline's ends): its lower edge there reaches within
+        /// `maxGroundGap` of the ground and its upper edge rises above that level. The height span
+        /// alone let a plane hanging well above the ground end the space under it (review of
+        /// #168), and the lowest point of the whole outline let a plane whose lower edge climbs
+        /// away from the ground end it past where it leaves the ground.
+        func standsOnGround(at offset: Float, groundY: Float, config: FarSurfaceConfig) -> Bool {
+            let x = min(max(offset, first), last)
+            var bottom = Float.infinity
+            var top = -Float.infinity
+            for (a, b) in zip(outline, outline.dropFirst() + outline.prefix(1)) where min(a.x, b.x) <= x && x <= max(a.x, b.x) {
+                let heights = a.x == b.x ? [a.y, b.y] : [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)]
+                bottom = min(bottom, heights.min() ?? bottom)
+                top = max(top, heights.max() ?? top)
+            }
+            let level = groundY + config.maxGroundGap
+            return bottom <= level && top >= level
         }
 
         /// Whether one horizontal end of a plane's outline stands at least `minOut` in front of

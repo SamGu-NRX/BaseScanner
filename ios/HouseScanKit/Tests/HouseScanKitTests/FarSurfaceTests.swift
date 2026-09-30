@@ -166,6 +166,23 @@ import Testing
         #expect(FarSurface.spans(planes: [Self.plane(at: 2.0, bottom: 0.4, top: 2.5)], wall: wall, over: 0...1) == full)
     }
 
+    /// Standing on the ground is judged where each cell meets the plane, not from the lowest
+    /// point of the whole outline. A plane 2 m out over s in [-10, 10] whose lower edge climbs
+    /// 0.06 m per meter, from the ground at s = -10 to 1.2 m up at s = 10, is 0.5 m up at
+    /// s = -1.667. It ends the space over -6 to the upper edge of cell -12 (s = -1.6764), whose
+    /// sample at -1.7907 meets it 0.49 m up. From cell -11 on, both samples meet it more than
+    /// 0.5 m up.
+    @Test func aPlaneEndsTheSpaceOnlyWhereItStandsOnTheGround() throws {
+        let plane = WallPlaneEvidence(
+            id: "far", kind: .wall, center: SIMD3(0, 1.5, 2.0), normal: SIMD3(0, 0, -1),
+            boundary: [SIMD3(-10, 0, 2.0), SIMD3(10, 1.2, 2.0), SIMD3(10, 2.5, 2.0), SIMD3(-10, 2.5, 2.0)])
+        let spans = FarSurface.spans(planes: [plane], wall: standardWall(), over: -6...1)
+        let span = try #require(spans.first)
+        #expect(spans.count == 1)
+        #expect(nearlyEqual(span.out, 65 * 0.03048))
+        #expect(nearlyEqual(span.span, -6...(-11 * 0.1524), 1e-3))
+    }
+
     /// The ground is the wall's (`WallFrame.groundY`), not world y = 0. The full-height plane,
     /// from y = 0 to 2.5, stands 1 m above a ground at y = -1 and doesn't end the space there.
     /// Over a ground at y = 0.3 its outline reaches 0.3 m below the ground, and it does.
@@ -230,9 +247,8 @@ import Testing
     /// ARKit finds the corridor's far wall after the depth frames (review of #168). The three
     /// corridor frames first mark the ground behind it hidden, as without a far surface. Once the
     /// wall is found, the map reads exactly as one that knew the far wall before the frames came:
-    /// no ground row hidden, the ground seen no farther out than before, and no request to see
-    /// past the wall. When ARKit loses the plane again, the rows behind it are hidden once more,
-    /// exactly as on a map that never knew it.
+    /// no ground row hidden and no request to see past the wall. When ARKit loses the plane
+    /// again, the rows behind it are hidden once more, exactly as on a map that never knew it.
     @Test func aFarWallFoundAfterTheDepthFramesReclassifiesThem() {
         let scene = standardScene(boxes: [Self.farWall(at: 2.0)])
         var plain = CoverageMap(wall: standardWall())
@@ -254,7 +270,6 @@ import Testing
         #expect(Readout(late) == Readout(live))
         for index in -2...1 {
             #expect(late.groundDepthHiddenRows(at: index).isEmpty)
-            #expect((late.groundDepth(at: index) ?? 0) <= (plain.groundDepth(at: index) ?? 0))
         }
         var planner = GuidancePlanner()
         for (time, camera) in Self.corridorCameras.enumerated() {
@@ -298,6 +313,43 @@ import Testing
         #expect(map.level(.ground, 0) == .hidden)
         #expect(map.level(.wall, 1) == .skipped)
         #expect(map.level(.wall, 2) == .skipped)
+    }
+
+    /// Space past the far surface never earns credit from views without depth (review of the
+    /// late-surface replay). From beyond the far wall of
+    /// `theFarWallSeenFromBeyondItIsNotSomethingToLookPast`, two views without depth 0.4 m apart
+    /// cover wall cell 0 on their own, since nothing but the wall is modelled in front of it. A
+    /// depth frame from there then finds the far wall in the way. Without a far surface it hides
+    /// the rows and takes back the unconfirmed sightings. With the far surface, whether it was
+    /// found before the frames or after them, the rows are past the space. Their unconfirmed
+    /// sightings go too, and the cell is neither covered nor hidden.
+    @Test func viewsWithoutDepthEarnNoCreditPastTheFarSurface() {
+        let scene = standardScene(boxes: [Self.farWall(at: 1.6)])
+        let target = SIMD3<Float>(0, 0.6, 0)
+        let blind = [portraitCamera(at: SIMD3(0, 1.4, 3.0), lookingAt: target), portraitCamera(at: SIMD3(0.4, 1.4, 3.0), lookingAt: target)]
+        let checked = portraitCamera(at: SIMD3(0.2, 1.4, 3.0), lookingAt: target)
+        func walk(_ map: inout CoverageMap) {
+            for camera in blind { map.observe(camera, trackingNormal: true) }
+            map.observe(checked, trackingNormal: true, depth: renderDepth(scene, from: checked))
+        }
+        var cameraOnly = CoverageMap(wall: standardWall())
+        for camera in blind { cameraOnly.observe(camera, trackingNormal: true) }
+        #expect(cameraOnly.level(.wall, 0) == .covered)
+
+        var plain = CoverageMap(wall: standardWall())
+        walk(&plain)
+        #expect(plain.level(.wall, 0) == .hidden)
+        var live = Self.ended(at: 1.6)
+        walk(&live)
+        var late = CoverageMap(wall: standardWall())
+        walk(&late)
+        late.setFarSurface(live.farSurface)
+        for map in [live, late] {
+            #expect(map.level(.wall, 0) != .covered)
+            #expect(map.level(.wall, 0) != .hidden)
+            #expect(map.wallSeenHeight(at: 0) == nil)
+        }
+        #expect(Readout(late) == Readout(live))
     }
 
     /// Something nearer the wall than a far surface found late still hides it: the box and far

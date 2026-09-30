@@ -291,6 +291,11 @@ public struct CoverageMap: Sendable {
         let lastWalkRow: Int
         /// Rows a kept frame's depth showed hidden behind something nearer.
         var hiddenRows: Set<Int> = []
+        /// Rows a kept frame's depth showed past where the space ends (`farSurface`), while short
+        /// of two positions. Not hidden: nothing stands in front of the wall there to look past
+        /// (#160). A later view without depth adds nothing to them, as for hidden rows: it can't
+        /// see through that surface.
+        var pastSpaceRows: Set<Int> = []
         var skipped = false
         var covered = false
 
@@ -427,8 +432,8 @@ public struct CoverageMap: Sendable {
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) {
                 let views = rowViews(band, index, from: camera, depth: depth, among: Array(rowOffsets(band).indices))
-                if !views.seen.isEmpty || !views.hidden.isEmpty {
-                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden))
+                if !views.seen.isEmpty || !views.hidden.isEmpty || !views.pastSpace.isEmpty {
+                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden, pastSpaceRows: views.pastSpace))
                 }
             }
         }
@@ -442,6 +447,8 @@ public struct CoverageMap: Sendable {
         public var rows: Set<Int>
         /// The rows the frame's depth showed hidden behind something nearer.
         public var hiddenRows: Set<Int>
+        /// The rows the frame's depth showed past where the space ends (`farSurface`).
+        public var pastSpaceRows: Set<Int> = []
     }
 
     /// Records cells a kept keyframe with normal tracking saw from `position`: the part of
@@ -455,7 +462,7 @@ public struct CoverageMap: Sendable {
 
     /// `record` without the revision: also whether any cell's level changed, which a hidden
     /// cell's row gaining a position can do without counting in `Delta`. Sightings not checked
-    /// against depth add no position to a row found hidden.
+    /// against depth add no position to a row found hidden or past where the space ends.
     @discardableResult
     private mutating func recordSightings(
         _ sightings: [Sighting], from position: SIMD3<Float>, depthChecked: Bool
@@ -467,7 +474,7 @@ public struct CoverageMap: Sendable {
             let wasSeen = cell.isSeen
             let before = cell.level
             var added = false
-            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !cell.hiddenRows.contains(row)) {
+            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !(cell.hiddenRows.contains(row) || cell.pastSpaceRows.contains(row))) {
                 // A repeated or nearby frame adds no parallax, so it adds nothing.
                 if add(&cell.rows[row], position, verified: depthChecked) { added = true }
             }
@@ -476,6 +483,13 @@ public struct CoverageMap: Sendable {
             for row in sighting.hiddenRows where cell.rows.indices.contains(row) {
                 if Self.dropUnverified(&cell.rows[row]) { added = true }
                 if cell.rows[row].count < 2, cell.hiddenRows.insert(row).inserted { added = true }
+            }
+            // A sighting no depth confirmed, of a row past where the space ends, was of that
+            // surface, as for the ground depth rows (`recordDepth`). Discarding these rows let
+            // views without depth taken before a late far surface keep a wall behind it covered.
+            for row in sighting.pastSpaceRows where cell.rows.indices.contains(row) {
+                if Self.dropUnverified(&cell.rows[row]) { added = true }
+                if cell.rows[row].count < 2, cell.pastSpaceRows.insert(row).inserted { added = true }
             }
             guard added else { continue }
             if !wasSeen, cell.isSeen { delta.newlySeen += 1 }
@@ -924,9 +938,10 @@ public struct CoverageMap: Sendable {
     /// have marked the ground behind it hidden. Before this replay those rows stayed hidden and
     /// the walk kept asking to look past the wall (review of #168). When ARKit stops finding a
     /// surface, the replay marks hidden again whatever that surface ended. Real obstructions
-    /// nearer the wall stay hidden, and skipped and withdrawn cells are kept. Depth never counts a
-    /// row past the surface as seen. Frames without depth never consult the surface, so a map
-    /// without depth frames replays nothing and its revision stays the same.
+    /// nearer the wall stay hidden, and skipped and withdrawn cells are kept. A row that depth
+    /// shows past the surface loses the sightings no depth confirmed, and later views without
+    /// depth add nothing to it (`Cell.pastSpaceRows`). Frames without depth never consult the
+    /// surface, so a map without depth frames replays nothing and its revision stays the same.
     public mutating func setFarSurface(_ spans: [ObservedSpan]) {
         guard spans != farSurface else { return }
         farSurface = spans
