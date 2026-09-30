@@ -946,7 +946,7 @@ final class ScreenStatesUITests: XCTestCase {
         // audit, after the banner's few seconds on screen, finds it again.
         let outcome = try AccessibilityAudit.run(app) { first in
             Thread.sleep(forTimeInterval: 6)
-            revealCutOff(first.findings.values.compactMap(\.frame), unlocated: first.findings.values.contains { $0.frame == nil }, in: app)
+            revealCutOff(first.findings.values.compactMap(\.frame), in: app)
         }
         if !outcome.unread.isEmpty {
             let note = XCTAttachment(string: outcome.unread.joined(separator: "\n"))
@@ -988,24 +988,13 @@ final class ScreenStatesUITests: XCTestCase {
     /// the second audit the screen scrolls until every flagged element that crosses the bottom
     /// edge is in full view; one that still fails there fails the test.
     @MainActor
-    private func revealCutOff(_ frames: [CGRect], unlocated: Bool, in app: XCUIApplication) {
+    private func revealCutOff(_ frames: [CGRect], in app: XCUIApplication) {
         let screen = app.windows.firstMatch.frame
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
-        guard let lowest = frames.filter({ $0.minY < screen.maxY && $0.maxY > screen.maxY }).map(\.maxY).max() else {
-            // An issue the audit reports with no element has no frame to scroll to. At AX5 it
-            // reported a contrast failure with no element on each walking state whose open camera
-            // reaches the bottom edge, where the first action's top or a path dot is cut off
-            // (run 36768462318); which node it measured is not identified. One step of the same
-            // slow drag gives an edge sliver the full view a homeowner would scroll to. An issue
-            // still on screen after the step is found again and fails the test.
-            if unlocated {
-                start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -screen.height * 0.25)), withVelocity: .slow, thenHoldForDuration: 0.5)
-            }
-            return
-        }
+        guard let lowest = frames.filter({ $0.minY < screen.maxY && $0.maxY > screen.maxY }).map(\.maxY).max() else { return }
         let distance = min(lowest - screen.maxY + 60, screen.height * 0.5)
         // A slow drag from mid-screen: it scrolls by about the distance dragged, without the
         // momentum a swipe adds.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
         start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -distance)), withVelocity: .slow, thenHoldForDuration: 0.5)
     }
 
