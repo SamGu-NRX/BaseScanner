@@ -60,4 +60,4 @@ A user's instruction outranks a skill.
 
 ## Portfolio entry
 
-`.portfolio/project.md` is this project's entry on kgu.one. When a change alters what the project does, its results, awards, stack or links, update that file in the same change, following the rules in its header.
+`.portfolio/project.md` is this project's entry on kgu.one. When a change alters what the project does, its results, awards, stack or links, update that file in the same change, following the rules in its header. Its first paragraph is the summary, and the long-form text below it is the write-up on the project page.
