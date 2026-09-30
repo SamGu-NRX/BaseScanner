@@ -580,12 +580,15 @@ final class ScanEngine {
     /// ground is never raised by more than `GroundPlaneChoice.maximumRaise`.
     ///
     /// `pendingRise` is how far the meter's anchor has risen since the wall last followed it,
-    /// below the size `MeterAnchorTracking` applies. The planes have moved with it, so the ground
-    /// is compared and set in the wall's own frame: a rigid move then reads as no ground change,
-    /// and the correction that follows doesn't add the rise a second time.
+    /// below the size `MeterAnchorTracking` applies. The planes have moved with it, so the choice
+    /// sees the meter and the current ground raised by it, and the ground is set in the wall's
+    /// own frame: a rigid move then reads as no ground change, the correction that follows
+    /// doesn't add the rise a second time, and `maximumRaise` and the meter's height above the
+    /// plane are judged as they would be once it applied.
     private func refineGround(pendingRise: Float) {
-        guard var wall = coverage?.wall,
-              let choice = groundBelow(wall.meter, along: wall.along, current: groundMeasured ? wall.groundY : nil) else { return }
+        guard var wall = coverage?.wall else { return }
+        let meter = wall.meter + SIMD3(0, pendingRise, 0)
+        guard let choice = groundBelow(meter, along: wall.along, current: groundMeasured ? wall.groundY + pendingRise : nil) else { return }
         let y = choice.plane.y - pendingRise
         // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
         guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
