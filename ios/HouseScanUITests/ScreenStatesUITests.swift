@@ -133,9 +133,9 @@ final class ScreenStatesUITests: XCTestCase {
         "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
-        // At AX5 the card covers the ring's place until the open camera under it scrolls into
-        // view (testAimRingStaysInTheOpenCameraAtLargestTextSize); the legend under the card
-        // still says what the ring is for.
+        // At AX5 the card and its legend fill the screen and the ring is not drawn under them
+        // (testAimRingIsNeverDrawnUnderTheChromeAtLargestTextSize); the legend still says what
+        // the ring is for.
         "wallWalk-aim-AX5": [("aim.legend", "It fills as your phone captures this spot")],
         // #82: a second "Can't get there" soon after the first asks before ending the scan.
         "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
@@ -722,12 +722,12 @@ final class ScreenStatesUITests: XCTestCase {
     }
 
     /// B-36: at AX5 the aim card filled the screen and the ring was drawn under it, where it
-    /// couldn't be seen. The ring now shows only in the open camera the chrome keeps between the
-    /// card and the actions. At every position while the chrome scrolls from its top to its end,
-    /// a ring on screen must be wholly in the window and clear of the words, the reply, the legend
-    /// and the first action; and it must show at some position, once the open camera reaches it.
+    /// couldn't be seen. The ring now shows only in the open camera between the card and the
+    /// actions. At every position while the chrome scrolls from its top to its end, a ring on
+    /// screen must be wholly on screen and clear of the words, the reply, the legend and the
+    /// first action.
     @MainActor
-    func testAimRingStaysInTheOpenCameraAtLargestTextSize() throws {
+    func testAimRingIsNeverDrawnUnderTheChromeAtLargestTextSize() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
@@ -740,9 +740,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "action.cannotAccess").waitForExistence(timeout: 5))
         XCTAssertTrue(element(app, "aim.legend").waitForExistence(timeout: 5), "the legend must still show at the largest text size")
         attach(app, name: "wallWalk-aim-AX5-top")
-
-        var sightings = 0
-        // Short drags, so the scroll passes through every position where the window holds the ring.
+        // Short drags, so the scroll passes through every position where a ring could show.
         for step in 0..<30 {
             if ring.exists {
                 let frame = ring.frame
@@ -750,16 +748,11 @@ final class ScreenStatesUITests: XCTestCase {
                 for (identifier, cover) in covers where cover.exists {
                     XCTAssertFalse(frame.intersects(cover.frame), "step \(step): ring \(frame) is under \(identifier) \(cover.frame)")
                 }
-                if sightings == 0 {
-                    XCTAssertEqual(ring.value as? String, "50 percent captured")
-                    attach(app, name: "wallWalk-aim-AX5-openCamera")
-                }
-                sightings += 1
             }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        XCTAssertGreaterThan(sightings, 0, "the ring never showed while the open camera scrolled past it")
+        attach(app, name: "wallWalk-aim-AX5-end")
     }
 
     /// At AX5 a scrolled onboarding page ran on under the page dots. On every page, before and

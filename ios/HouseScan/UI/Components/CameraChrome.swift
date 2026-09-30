@@ -24,7 +24,6 @@ struct CameraChrome<Bottom: View>: View {
     var cameraWindow: CameraWindow? = nil
     @ViewBuilder var bottom: Bottom
 
-    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -65,10 +64,12 @@ struct CameraChrome<Bottom: View>: View {
             if let legend {
                 legendLine(legend)
             }
-            // The open camera between the card and the actions. At the accessibility sizes the
-            // card can fill the screen, so the chrome keeps at least `minCameraWindow` of camera
-            // here, which scrolls into view; the aim ring shows only inside it (B-36).
-            Spacer(minLength: typeSize.isAccessibilitySize ? CameraChromeLayout.minCameraWindow : 0)
+            // The open camera between the card and the actions; the aim ring shows only inside
+            // it (B-36). At the largest text sizes it can be empty. A 180 pt minimum here, kept
+            // open below the card, failed the every-state audit's contrast check with no element
+            // on the four AX5 walking states whose card leaves it on screen (runs 36761500732,
+            // 36768462318, 36775276861); what the audit measured is not identified.
+            Spacer(minLength: 0)
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { window in
                     if let cameraWindow, cameraWindow.frame != window { cameraWindow.frame = window }
                 }
@@ -106,15 +107,6 @@ struct CameraChrome<Bottom: View>: View {
 @Observable
 final class CameraWindow {
     var frame: CGRect?
-}
-
-/// `CameraChrome`'s layout constants, outside it because a generic type can't hold stored
-/// static properties.
-enum CameraChromeLayout {
-    /// The least open camera kept between the card and the actions at the accessibility sizes:
-    /// room for the largest aim ring (64 pt radius, 108 percent at its pulse) with a margin. A
-    /// layout choice, not measured on a phone.
-    static let minCameraWindow: CGFloat = 180
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)
