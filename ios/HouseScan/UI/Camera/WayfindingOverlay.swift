@@ -146,29 +146,17 @@ struct WayfindingOverlay: View {
             if Self.ringBounds(in: size, band: band, radius: radius).contains(point) {
                 return .onScreen(point, radius: radius)
             }
-            // Near the card or the actions a smaller ring can still fit whole; below the smallest
-            // ring's size, the arrow takes over.
+            // Near the card or the actions a smaller ring can still fit whole.
             if let band, let fitted = Self.fittedRadius(at: point, in: size, band: band), fitted < radius {
                 return .onScreen(point, radius: fitted)
             }
-            // On screen but under the card or the actions. The camera's own direction to it
-            // starts at the optical axis, which can be the target itself, so the arrow points
-            // from the lane to where the target is drawn.
-            if band != nil, CGRect(origin: .zero, size: size).contains(point) {
-                let lane = Self.lane(in: size, band: band)
-                let offset = CGVector(dx: point.x - lane.midX, dy: point.y - lane.midY)
-                let length = (offset.dx * offset.dx + offset.dy * offset.dy).squareRoot()
-                // At the lane's middle there is no way to point, and the ring doesn't fit: the
-                // open camera is too short to guide in, so neither shows until it grows.
-                guard length > 1 else { return .hidden }
-                let direction = CGVector(dx: offset.dx / length, dy: offset.dy / length)
-                // A target inside the lane would put the lane's edge past it, with the arrow
-                // pointing back the way it came; the arrow stops a disc short of the target.
-                let edge = Self.arrowPoint(toward: direction, in: size, band: band)
-                let toEdge = ((edge.x - lane.midX) * (edge.x - lane.midX) + (edge.y - lane.midY) * (edge.y - lane.midY)).squareRoot()
-                let reach = min(toEdge, max(length - Self.arrowDiameter, 0))
-                let arrow = CGPoint(x: lane.midX + direction.dx * reach, y: lane.midY + direction.dy * reach)
-                return .offScreen(arrow, angle: .radians(atan2(direction.dy, direction.dx)))
+            // On screen but under the card or the actions: nothing, as before the chrome reported
+            // its open camera, when the ring was drawn there out of sight. The ring shows once
+            // the open camera reaches it. An arrow there pointed at a place the homeowner can't
+            // see, and failed the accessibility audit's contrast check over the path's dots at
+            // AX5 (run 36761500732).
+            if let band, point.y >= 0, point.y <= size.height, point.y < band.top || point.y > band.bottom {
+                return .hidden
             }
         }
         guard let direction = projection.screenDirection(toward: target) else {
@@ -178,10 +166,9 @@ struct WayfindingOverlay: View {
     }
 
     /// Where a ring's centre may be for the ring to show: with the whole ring, at the largest
-    /// point of its pulse, on screen and in the open camera. Near the edges or partly under the
-    /// card, the arrow takes over, since a half-visible ring would be ambiguous and one under
-    /// the card can't be seen at all. Without a band, the fixed rectangle used before the chrome
-    /// reported one, sized for the default text.
+    /// point of its pulse, on screen and in the open camera. Near the screen's edges the arrow
+    /// takes over, since a half-visible ring would be ambiguous. Without a band, the fixed
+    /// rectangle used before the chrome reported one, sized for the default text.
     static func ringBounds(in size: CGSize, band: Band?, radius: CGFloat) -> CGRect {
         guard let band else {
             return CGRect(x: 36, y: 150, width: size.width - 72, height: size.height - 330)
