@@ -747,19 +747,24 @@ final class ScreenStatesUITests: XCTestCase {
         for (identifier, frame) in [("instruction.scroll", words.frame), ("action.cannotAccess", reply.frame), ("action.markSomething", mark.frame)] {
             XCTAssertFalse(ring.frame.intersects(frame), "ring \(ring.frame) is under \(identifier) \(frame)")
         }
-        // The legend comes with the ring, inside the card, below the words. Dragging the words
-        // must bring all of it into the card's visible part while the reply stays where it is.
+        // The legend comes with the ring, inside the card, as the last thing under the words.
+        // Dragging the words must bring its end into the card's visible part, which is the end
+        // of what the card says, while the reply stays where it is.
         let legend = element(app, "aim.legend")
         XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
         let replyFrame = reply.frame
-        var shown = words.frame.contains(legend.frame)
-        for _ in 0..<8 where !shown {
+        let startY = legend.frame.minY
+        func endShows() -> Bool {
+            let viewport = words.frame, shown = legend.frame
+            return shown.maxY <= viewport.maxY + 1 && shown.maxY > viewport.minY
+        }
+        for _ in 0..<12 where !endShows() {
             let start = words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
             start.press(forDuration: 0.1, thenDragTo: words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)), withVelocity: .slow, thenHoldForDuration: 0.3)
-            shown = words.frame.contains(legend.frame)
         }
-        XCTAssertTrue(shown, "the legend \(legend.frame) never scrolled fully into the card's words \(words.frame)")
+        XCTAssertTrue(endShows(), "the legend's end \(legend.frame) never scrolled into the card's words \(words.frame)")
+        XCTAssertLessThan(legend.frame.minY, startY - 1, "the words never scrolled: the legend stayed at \(startY)")
         XCTAssertEqual(reply.frame.minY, replyFrame.minY, accuracy: 1, "the reply must stay put while the words scroll")
         attach(app, name: "wallWalk-aim-AX5-legendScrolled")
     }
@@ -778,34 +783,38 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         let footer = element(app, "onboarding.footer")
         XCTAssertTrue(footer.waitForExistence(timeout: 5))
-        // Each page's heading, to tell when its page has scrolled as far as it goes.
-        let headings = ["Let's find a spot for your battery", "What the walk asks for", "Your phone takes the photos", "Stay safe out there"]
-        for (index, title) in headings.enumerated() {
+        // Each page's last element: the page is at its end once that sits wholly above the footer.
+        let ends: [XCUIElement] = [
+            app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Walk along the wall by your electric meter")).firstMatch,
+            element(app, "onboarding.move.5"),
+            element(app, "onboarding.privacy"),
+            element(app, "onboarding.permissions"),
+        ]
+        for (index, last) in ends.enumerated() {
             let page = index + 1
             // Let the page slide settle.
             Thread.sleep(forTimeInterval: 0.8)
             assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots")
-            let heading = app.staticTexts[title]
-            XCTAssertTrue(heading.waitForExistence(timeout: 5), "page \(page): missing its heading")
-            XCTAssertTrue(scrollPageToEnd(app, heading: heading), "page \(page) never stopped scrolling")
+            XCTAssertTrue(last.waitForExistence(timeout: 5), "page \(page): missing its last element")
+            XCTAssertTrue(scrollPageToEnd(app, last: last, footer: footer), "page \(page): its end \(last.frame) never came above the footer \(footer.frame)")
             assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-end")
-            if page < headings.count { tap(app, "action.onboardingNext") }
+            if page < ends.count { tap(app, "action.onboardingNext") }
         }
     }
 
-    /// Drags the onboarding page up until its heading stops moving: the page's end. False if it
-    /// still moved after twelve drags.
+    /// Drags the onboarding page up, at most twelve times, until its last element sits wholly
+    /// between the top of the screen and the footer.
     @MainActor
-    private func scrollPageToEnd(_ app: XCUIApplication, heading: XCUIElement) -> Bool {
-        var last = heading.frame.minY
-        for _ in 0..<12 {
+    private func scrollPageToEnd(_ app: XCUIApplication, last: XCUIElement, footer: XCUIElement) -> Bool {
+        func atEnd() -> Bool {
+            let frame = last.frame
+            return frame.minY >= app.windows.firstMatch.frame.minY && frame.maxY <= footer.frame.minY + 1
+        }
+        for _ in 0..<12 where !atEnd() {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -240)), withVelocity: .slow, thenHoldForDuration: 0.3)
-            let now = heading.frame.minY
-            if abs(now - last) < 1 { return true }
-            last = now
         }
-        return false
+        return atEnd()
     }
 
     /// The band from the footer's top edge to the button's, where the dots sit, must be the

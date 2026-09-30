@@ -137,9 +137,9 @@ struct WayfindingOverlay: View {
                 let lane = Self.lane(in: size, band: band)
                 let offset = CGVector(dx: point.x - lane.midX, dy: point.y - lane.midY)
                 let length = (offset.dx * offset.dx + offset.dy * offset.dy).squareRoot()
-                // At the lane's middle there is no way to point; a band too short for the ring
-                // shows it where it is.
-                guard length > 1 else { return .onScreen(point, radius: radius) }
+                // At the lane's middle there is no way to point, and the ring doesn't fit: the
+                // open camera is too short to guide in, so neither shows until it grows.
+                guard length > 1 else { return .hidden }
                 let direction = CGVector(dx: offset.dx / length, dy: offset.dy / length)
                 return .offScreen(Self.arrowPoint(toward: direction, in: size, band: band), angle: .radians(atan2(direction.dy, direction.dx)))
             }
