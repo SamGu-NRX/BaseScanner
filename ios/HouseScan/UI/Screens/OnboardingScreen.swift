@@ -228,6 +228,7 @@ private struct OnboardingPageView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .accessibilityIdentifier("onboarding.page")
     }
 
     private var text: some View {

@@ -631,8 +631,9 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
         app.terminate()
 
-        // At the largest text size the card's words scroll inside it, and the legend scrolls with
-        // them in the card instead of going behind it or disappearing.
+        // At the largest text size the card fills most of the screen. The legend sits under it in
+        // the same stack, so it grows and scrolls with the card instead of going behind it or
+        // disappearing.
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
@@ -805,7 +806,9 @@ final class ScreenStatesUITests: XCTestCase {
             let frame = last.frame
             return frame.maxY <= footer.frame.minY + 1 && frame.maxY > window.minY
         }
-        guard let page = app.scrollViews.allElementsBoundByIndex.first(where: { abs($0.frame.minX - window.minX) < 1 && $0.frame.width > 0 }) else {
+        // The page on screen, not its neighbours in the pager.
+        guard let page = app.scrollViews.matching(identifier: "onboarding.page").allElementsBoundByIndex
+            .first(where: { abs($0.frame.minX - window.minX) < 1 && $0.frame.width > 0 }) else {
             return false
         }
         for _ in 0..<12 where !atEnd() {

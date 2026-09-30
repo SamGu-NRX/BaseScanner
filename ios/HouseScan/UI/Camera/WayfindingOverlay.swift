@@ -146,6 +146,11 @@ struct WayfindingOverlay: View {
             if Self.ringBounds(in: size, band: band, radius: radius).contains(point) {
                 return .onScreen(point, radius: radius)
             }
+            // Near the card or the actions a smaller ring can still fit whole; below the smallest
+            // ring's size, the arrow takes over.
+            if let band, let fitted = Self.fittedRadius(at: point, in: size, band: band), fitted < radius {
+                return .onScreen(point, radius: fitted)
+            }
             // On screen but under the card or the actions. The camera's own direction to it
             // starts at the optical axis, which can be the target itself, so the arrow points
             // from the lane to where the target is drawn.
@@ -157,7 +162,13 @@ struct WayfindingOverlay: View {
                 // open camera is too short to guide in, so neither shows until it grows.
                 guard length > 1 else { return .hidden }
                 let direction = CGVector(dx: offset.dx / length, dy: offset.dy / length)
-                return .offScreen(Self.arrowPoint(toward: direction, in: size, band: band), angle: .radians(atan2(direction.dy, direction.dx)))
+                // A target inside the lane would put the lane's edge past it, with the arrow
+                // pointing back the way it came; the arrow stops a disc short of the target.
+                let edge = Self.arrowPoint(toward: direction, in: size, band: band)
+                let toEdge = ((edge.x - lane.midX) * (edge.x - lane.midX) + (edge.y - lane.midY) * (edge.y - lane.midY)).squareRoot()
+                let reach = min(toEdge, max(length - Self.arrowDiameter, 0))
+                let arrow = CGPoint(x: lane.midX + direction.dx * reach, y: lane.midY + direction.dy * reach)
+                return .offScreen(arrow, angle: .radians(atan2(direction.dy, direction.dx)))
             }
         }
         guard let direction = projection.screenDirection(toward: target) else {
@@ -184,6 +195,14 @@ struct WayfindingOverlay: View {
             width: max(size.width - 2 * inset, 0),
             height: max(band.bottom - band.top - 2 * reach, 0)
         )
+    }
+
+    /// The largest ring radius, down to the smallest ring's 30 pt, that fits whole at `point` in
+    /// the band and on screen, pulse included. Nil when not even that fits.
+    static func fittedRadius(at point: CGPoint, in size: CGSize, band: Band) -> CGFloat? {
+        let clearance = min(point.y - band.top, band.bottom - point.y, point.x, size.width - point.x)
+        let radius = clearance / 1.08
+        return radius >= 30 ? radius : nil
     }
 
     /// Where the edge arrows keep: the band inset by `arrowInset`. A band too short for that
