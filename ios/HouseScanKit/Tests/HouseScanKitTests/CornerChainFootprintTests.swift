@@ -158,8 +158,8 @@ import simd
         let object = try #require(try Value.parse(data)["objects"]?[0])
         let points = (object["footprint"]?.array ?? []).compactMap(\.numbers)
         let span = try #require(object["span_ft"]?.numbers)
-        guard points.count == 4, points.allSatisfy({ $0.count == 2 }), span.count == 2 else {
-            return (["footprint \(points) or span \(span) is not four points and a pair"], span)
+        guard points.count == 4, points.allSatisfy({ $0.count == 2 }), span.count == 2, span[0] <= span[1] else {
+            return (["footprint \(points) or span \(span) is not four points and an ordered pair"], span)
         }
         let exported = points.map { SIMD2($0[0], $0[1]) }
 
@@ -209,7 +209,9 @@ import simd
         }
         for (s, piece) in walk {
             let wallPoint = piece.point(s) * feet
-            guard Base.distance(wallPoint, toConvex: exported) < 1e-4 else { continue }
+            // Only points inside or on the footprint: one just outside it can lie farther along an
+            // angled wall than the span's rounded end.
+            guard Base.distance(wallPoint, toConvex: exported) == 0 else { continue }
             if !(span[0] - tolerance...span[1] + tolerance).contains(s * feet) {
                 problems.append("wall at s = \(s) m is inside the footprint but outside span \(span)")
                 break
@@ -306,6 +308,7 @@ import simd
         let result = try Self.check(c, data)
         #expect(result.problems.isEmpty, "\(result.problems)")
         let span = try #require(c.span)
+        try #require(result.span.count == 2)
         #expect(
             abs(result.span[0] - span.lowerBound * Self.feet) < Self.tolerance && abs(result.span[1] - span.upperBound * Self.feet) < Self.tolerance,
             "span \(result.span) ft, worked by hand \(span) m")
@@ -358,8 +361,9 @@ import simd
             let results = try adjacent.map { try Self.check(c, data, onPiece: $0) }
             #expect(results.contains { $0.problems.isEmpty }, "\(c.name): \(results.map(\.problems))")
             let object = try #require(try Value.parse(data)["objects"]?[0])
-            let points = (object["footprint"]?.array ?? []).compactMap(\.numbers).map { SIMD2($0[0], $0[1]) }
-            exported.append((points, results[0].span))
+            let numbers = (object["footprint"]?.array ?? []).compactMap(\.numbers)
+            try #require(numbers.count == 4 && numbers.allSatisfy { $0.count == 2 } && results[0].span.count == 2)
+            exported.append((numbers.map { SIMD2($0[0], $0[1]) }, results[0].span))
         }
         let (right, left) = (exported[0], exported[1])
         withKnownIssue("An exact-corner tap's square stands on the piece left of the corner, so mirror images differ") {
