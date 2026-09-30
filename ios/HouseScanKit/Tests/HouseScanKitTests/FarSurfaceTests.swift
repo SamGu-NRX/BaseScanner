@@ -183,6 +183,22 @@ import Testing
         #expect(nearlyEqual(span.span, -6...(-11 * 0.1524), 1e-3))
     }
 
+    /// A gap in the outline at that height is no ground contact either. A C-shaped outline 2 m
+    /// out covers 0 to 2.5 m up over s in [-10, -5], and from there to s = 1 only 0 to 0.2 m and
+    /// 1.2 to 2.5 m: its lowest and highest points there still span the ground, but nothing of
+    /// it stands 0.5 m up. It ends the space over -8 to the upper edge of cell -34
+    /// (s = -5.0292), whose sample at -5.1435 meets the solid part.
+    @Test func aGapInTheOutlineIsNoGroundContact() throws {
+        let outline: [SIMD2<Float>] = [[-10, 0], [1, 0], [1, 0.2], [-5, 0.2], [-5, 1.2], [1, 1.2], [1, 2.5], [-10, 2.5]]
+        let plane = WallPlaneEvidence(
+            id: "far", kind: .wall, center: SIMD3(0, 1.25, 2.0), normal: SIMD3(0, 0, -1),
+            boundary: outline.map { SIMD3($0.x, $0.y, 2.0) })
+        let spans = FarSurface.spans(planes: [plane], wall: standardWall(), over: -8...0.9)
+        let span = try #require(spans.first)
+        #expect(spans.count == 1)
+        #expect(nearlyEqual(span.span, -8...(-33 * 0.1524), 1e-3))
+    }
+
     /// The ground is the wall's (`WallFrame.groundY`), not world y = 0. The full-height plane,
     /// from y = 0 to 2.5, stands 1 m above a ground at y = -1 and doesn't end the space there.
     /// Over a ground at y = 0.3 its outline reaches 0.3 m below the ground, and it does.
@@ -322,19 +338,25 @@ import Testing
     /// depth frame from there then finds the far wall in the way. Without a far surface it hides
     /// the rows and takes back the unconfirmed sightings. With the far surface, whether it was
     /// found before the frames or after them, the rows are past the space. Their unconfirmed
-    /// sightings go too, and the cell is neither covered nor hidden.
+    /// sightings go too, and the cell is neither covered nor hidden. Two more views without depth
+    /// afterwards, 1 m apart, add nothing to those rows.
     @Test func viewsWithoutDepthEarnNoCreditPastTheFarSurface() {
         let scene = standardScene(boxes: [Self.farWall(at: 1.6)])
         let target = SIMD3<Float>(0, 0.6, 0)
         let blind = [portraitCamera(at: SIMD3(0, 1.4, 3.0), lookingAt: target), portraitCamera(at: SIMD3(0.4, 1.4, 3.0), lookingAt: target)]
         let checked = portraitCamera(at: SIMD3(0.2, 1.4, 3.0), lookingAt: target)
+        let after = [portraitCamera(at: SIMD3(-0.4, 1.4, 3.0), lookingAt: target), portraitCamera(at: SIMD3(0.6, 1.4, 3.0), lookingAt: target)]
         func walk(_ map: inout CoverageMap) {
             for camera in blind { map.observe(camera, trackingNormal: true) }
             map.observe(checked, trackingNormal: true, depth: renderDepth(scene, from: checked))
+            for camera in after { map.observe(camera, trackingNormal: true) }
         }
         var cameraOnly = CoverageMap(wall: standardWall())
         for camera in blind { cameraOnly.observe(camera, trackingNormal: true) }
         #expect(cameraOnly.level(.wall, 0) == .covered)
+        var laterOnly = CoverageMap(wall: standardWall())
+        for camera in after { laterOnly.observe(camera, trackingNormal: true) }
+        #expect(laterOnly.level(.wall, 0) == .covered)
 
         var plain = CoverageMap(wall: standardWall())
         walk(&plain)

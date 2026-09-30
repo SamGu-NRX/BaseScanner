@@ -31,8 +31,8 @@ public struct FarSurfaceConfig: Sendable, Equatable {
     /// 1 m, above an AC unit's top and below a fence's. A guess.
     public var minHeight: Float = 1.0
     /// A plane must stand on the ground to end the space there: where a cell meets it, its
-    /// outline has to reach down to within this of the ground (`WallFrame.groundY`) and rise
-    /// above that level (`Candidate.standsOnGround`). One that stops higher, such as an eave, a
+    /// outline has to cover the point this far above the ground (`WallFrame.groundY`), reaching
+    /// down to within this of the ground and rising above it (`Candidate.standsOnGround`). One that stops higher, such as an eave, a
     /// bay window or an upper storey across a walkway, leaves open ground under it, or ARKit
     /// hasn't seen what stands under it. One whose top stays below that level is sunk into the
     /// ground, like the far side of a window well. 0.5 m covers the 0.3 m error of a guessed
@@ -148,22 +148,29 @@ public enum FarSurface {
         }
 
         /// Whether the outline stands on the ground where a cell meets it, `offset` along the
-        /// plane from its centre (held to the outline's ends): its lower edge there reaches within
-        /// `maxGroundGap` of the ground and its upper edge rises above that level. The height span
-        /// alone let a plane hanging well above the ground end the space under it (review of
-        /// #168), and the lowest point of the whole outline let a plane whose lower edge climbs
-        /// away from the ground end it past where it leaves the ground.
+        /// plane from its centre (held to the outline's ends): the outline covers the point
+        /// `maxGroundGap` above the ground there, so it reaches down to within that of the ground
+        /// and rises above it in one piece. The height span alone let a plane hanging well above
+        /// the ground end the space under it (review of #168). The outline's lowest and highest
+        /// points would still let a plane end it across a gap at that height, or, taken over the
+        /// whole outline, past where its lower edge climbs away from the ground.
         func standsOnGround(at offset: Float, groundY: Float, config: FarSurfaceConfig) -> Bool {
-            let x = min(max(offset, first), last)
-            var bottom = Float.infinity
-            var top = -Float.infinity
-            for (a, b) in zip(outline, outline.dropFirst() + outline.prefix(1)) where min(a.x, b.x) <= x && x <= max(a.x, b.x) {
-                let heights = a.x == b.x ? [a.y, b.y] : [a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x)]
-                bottom = min(bottom, heights.min() ?? bottom)
-                top = max(top, heights.max() ?? top)
+            let point = SIMD2(min(max(offset, first), last), groundY + config.maxGroundGap)
+            var inside = false
+            for (a, b) in zip(outline, outline.dropFirst() + outline.prefix(1)) {
+                if Self.distance(from: point, toEdge: a, b) <= 1e-4 { return true }
+                // Even-odd rule, casting the ray up from the point.
+                guard (a.x > point.x) != (b.x > point.x) else { continue }
+                if a.y + (b.y - a.y) * (point.x - a.x) / (b.x - a.x) > point.y { inside.toggle() }
             }
-            let level = groundY + config.maxGroundGap
-            return bottom <= level && top >= level
+            return inside
+        }
+
+        private static func distance(from point: SIMD2<Float>, toEdge a: SIMD2<Float>, _ b: SIMD2<Float>) -> Float {
+            let edge = b - a
+            let length = simd_length_squared(edge)
+            let t = length > 0 ? min(max(simd_dot(point - a, edge) / length, 0), 1) : 0
+            return simd_distance(point, a + edge * t)
         }
 
         /// Whether one horizontal end of a plane's outline stands at least `minOut` in front of
