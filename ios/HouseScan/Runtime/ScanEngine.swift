@@ -189,6 +189,9 @@ final class ScanEngine {
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
     private(set) var placement: PlacementResult?
+    /// Whether a ground change took the answer down and no answer has been shown since
+    /// (`answerAfter(_:)`).
+    private var groundFreshness = GroundFreshness()
     /// The latest scan-bundle write (`saveBundle`), and a count of writes started, so only the
     /// latest one offers its bundle.
     private var bundleTask: Task<Void, Never>?
@@ -295,6 +298,10 @@ final class ScanEngine {
         state.endScanTooShort = false
         let previous = state.phase
         state.phase = phase
+        if phase == .result, state.result != nil {
+            groundFreshness.answerShown()
+            injectGroundForTest()
+        }
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         logMeterAnchorSummary(from: previous, to: phase)
         switch phase {
@@ -369,8 +376,41 @@ final class ScanEngine {
             try? Data().write(to: gate.appending(path: "\(phase.rawValue).held"))
         }
         let deadline = ContinuousClock.now + .seconds(240)
-        while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
+        // A cancelled upload (`answerAfter`) stops waiting: its sleeps would return at once.
+        while ContinuousClock.now < deadline, !Task.isCancelled, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    /// The watch behind `-injectGroundRise`, started at the first result of a scan.
+    private var groundInjection: Task<Void, Never>?
+
+    /// With `-injectGroundRise`, feeds the ground refine a detected floor above the current
+    /// ground each time the UI test drops `inject-ground` in the gate folder, through `ingest` as
+    /// a frame from ARKit would. It only supplies the evidence: what the answer does about it is
+    /// the engine's own path under test.
+    private func injectGroundForTest() {
+        guard groundInjection == nil, replay != nil, options.autopilot, let rise = options.injectGroundRise,
+              let gate = options.autopilotGate else { return }
+        let scan = generation
+        let trigger = gate.appending(path: "inject-ground")
+        groundInjection = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.generation == scan else { return }
+                if FileManager.default.fileExists(atPath: trigger.path) {
+                    try? FileManager.default.removeItem(at: trigger)
+                    guard let wall = self.coverage?.wall, var frame = self.lastFrame else { return }
+                    let foot = SIMD2<Float>(wall.meter.x, wall.meter.z)
+                    frame.groundPlanes = [GroundPlaneEvidence(
+                        y: wall.groundY + rise, kind: .floor,
+                        boundary: [foot + SIMD2(-1, -1), foot + SIMD2(1, -1), foot + SIMD2(1, 1), foot + SIMD2(-1, 1)],
+                        id: "injected-ground")]
+                    frame.isPoseOnly = true
+                    RuntimeLog.engine.info("test: injecting a floor \(rise) m above the ground on \(self.state.phase.rawValue, privacy: .public)")
+                    self.ingest(frame)
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
     }
 
@@ -495,17 +535,26 @@ final class ScanEngine {
             state.tracking = frame.tracking
             live?.setResultVisible(frame.tracking == .normal)
         }
+        noteMeterAnchor(frame)
+        // A frame made before the meter was anchored again carries the old anchor's pose. First,
+        // so the ground refine compares this frame's planes with a wall already in this frame's
+        // world: the other way round, a correction that moved the planes and the anchor together
+        // read as a ground change, and then moved the refined ground a second time.
+        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
-            refineGround()
+            // The correction still too small to apply. It turns only about gravity, which leaves
+            // heights alone, so its translation's y is how far every point rises.
+            var pendingRise: Float = 0
+            if frame.meterAnchorID == meterAnchorID, let tracked = meterTracking?.pose, let anchor = frame.meterAnchor {
+                pendingRise = YawCorrection(from: tracked, to: anchor).translation.y
+            }
+            refineGround(pendingRise: pendingRise)
         }
         if !frame.wallPlanes.isEmpty, frame.wallPlanes != wallPlanes {
             wallPlanes = frame.wallPlanes
             refitWallToDetectedPlane()
         }
-        noteMeterAnchor(frame)
-        // A frame made before the meter was anchored again carries the old anchor's pose.
-        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
         noteFarSurface()
         trackRelocalization(frame)
@@ -529,10 +578,18 @@ final class ScanEngine {
     /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
     /// wall always replaces the guess, and a better plane replaces an earlier one. A measured
     /// ground is never raised by more than `GroundPlaneChoice.maximumRaise`.
-    private func refineGround() {
-        guard var wall = coverage?.wall,
-              let choice = groundBelow(wall.meter, along: wall.along, current: groundMeasured ? wall.groundY : nil) else { return }
-        let y = choice.plane.y
+    ///
+    /// `pendingRise` is how far the meter's anchor has risen since the wall last followed it,
+    /// below the size `MeterAnchorTracking` applies. The planes have moved with it, so the choice
+    /// sees the meter and the current ground raised by it, and the ground is set in the wall's
+    /// own frame: a rigid move then reads as no ground change, the correction that follows
+    /// doesn't add the rise a second time, and `maximumRaise` and the meter's height above the
+    /// plane are judged as they would be once it applied.
+    private func refineGround(pendingRise: Float) {
+        guard var wall = coverage?.wall else { return }
+        let meter = wall.meter + SIMD3(0, pendingRise, 0)
+        guard let choice = groundBelow(meter, along: wall.along, current: groundMeasured ? wall.groundY + pendingRise : nil) else { return }
+        let y = choice.plane.y - pendingRise
         // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
         guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
         RuntimeLog.engine.info("ground at y=\(y) from \(Self.describe(choice), privacy: .public) (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
@@ -541,6 +598,8 @@ final class ScanEngine {
         coverage?.heightError = 0
         // Rebuilds coverage from the kept cameras: the rows now sit at other heights.
         coverage?.updateWall(wall)
+        // Before the wall is published, which would redraw the AR result on the new ground.
+        answerAfter(.ground)
         publishWall()
         publishCoverage()
         reprojectFeatures()
@@ -602,6 +661,7 @@ final class ScanEngine {
         var features = state.features
         for index in features.indices { features[index].points = features[index].points.map(correction.point) }
         if features != state.features { state.features = features }
+        answerAfter(.anchorCorrection)
         publishWall()
         publishCoverage()
         logAnchorCorrection(correction, step: step, frame: frame)
@@ -1471,7 +1531,7 @@ final class ScanEngine {
         case .cameraDenied:
             // As for a failed session: once the scan is sent, the answer stays on screen.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera access lost after capture")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
@@ -1479,11 +1539,11 @@ final class ScanEngine {
                 fail(.cameraDenied)
             }
         case .failed(let message):
-            // Once the scan is sent, the upload and its result no longer need the camera: keep
-            // them on screen. Only the AR view needs it, and it already hides the battery while
-            // the camera isn't tracking.
+            // Once the scan is sent, the upload, the spot check's saved photo and the result no
+            // longer need the camera: keep them on screen. Only the AR view needs it, and it
+            // already hides the battery while the camera isn't tracking.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
@@ -1547,6 +1607,9 @@ final class ScanEngine {
         resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
+        groundFreshness = GroundFreshness()
+        groundInjection?.cancel()
+        groundInjection = nil
         placement = nil
         state.result = nil
         state.upload = .idle
@@ -1598,6 +1661,58 @@ final class ScanEngine {
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
         publishFeaturesPastEnds()
+    }
+
+    /// Takes the answer down when a ground change leaves it describing a ground the phone no
+    /// longer has (`GroundFreshness`), before `publishWall` can draw it again on the new one.
+    private func answerAfter(_ change: GroundFreshness.Change) {
+        let screen: GroundFreshness.Screen = switch state.phase {
+        case .uploading: .sending
+        case .spotConfirm: .spotCheck
+        case .result: .result
+        case .resultAR: .resultInCamera
+        default: .noAnswer
+        }
+        switch groundFreshness.after(change, on: screen) {
+        case .keep:
+            return
+        case .sendAgain:
+            RuntimeLog.engine.info("ground changed on \(self.state.phase.rawValue, privacy: .public): answer taken down, sending the scan again")
+            withdrawAnswer()
+            startUpload()
+        case .fail:
+            RuntimeLog.engine.error("ground changed again on \(self.state.phase.rawValue, privacy: .public) before a new answer: none shown")
+            withdrawAnswer()
+            uploadTask?.cancel()
+            uploadTask = nil
+            state.upload = Self.groundKeptChanging
+            // Already on the upload screen when the resend was under way, where `go` does nothing.
+            go(.uploading)
+            updateRecording()
+        }
+    }
+
+    /// The upload screen when the ground changed again before the resend's answer was shown.
+    /// "Try again" sends the scan as it is then.
+    static let groundKeptChanging = UploadState.failed(
+        message: "The phone was still measuring the ground under your wall, so we didn't show an answer. Your scan is saved on this phone, so you can try again.",
+        offline: false)
+
+    /// Takes the answer off the spot check, the result, its 3D preview and the camera view. The
+    /// homeowner's earlier spot answers stay: they name stretches along the wall, which a ground
+    /// change doesn't move.
+    private func withdrawAnswer() {
+        placement = nil
+        state.result = nil
+        state.spotCheck = nil
+        spotConfirm.pending = nil
+        spotConfirm.request = nil
+        // A spot photo still loading for this answer (`presentAnswer`) must not open its check
+        // once a retry brings back an equal answer.
+        spotConfirm.asked += 1
+        state.followUps = 0
+        state.upload = .packaging
+        hideResultInCamera()
     }
 
     /// "See it on your wall" on the live camera. The screen draws the result over the camera
@@ -1880,6 +1995,8 @@ final class ScanEngine {
 
     private func upload() async {
         let scan = generation
+        // A ground change can cancel a resend before it starts (`answerAfter`); its failure stays.
+        guard !Task.isCancelled else { return }
         state.upload = .packaging
         // Sending again from a failed upload stays on this phase, so `go` doesn't restart them.
         updateRecording()
@@ -1887,7 +2004,7 @@ final class ScanEngine {
         for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
         }
-        guard scan == generation else { return }
+        guard scan == generation, !Task.isCancelled else { return }
         // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
         // overhead, off the main actor since ray casts over a whole mesh take a while.
         let meshSnapshot = live?.meshSnapshot()
@@ -1896,7 +2013,7 @@ final class ScanEngine {
             let wall = map.wall
             let span = Self.exportSpan(map)
             measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-            guard scan == generation else { return }
+            guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data
@@ -1921,6 +2038,8 @@ final class ScanEngine {
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
                 }
             }
+            // A cancelled upload (a ground change during a resend) must not show its answer.
+            try Task.checkCancellation()
             guard scan == generation else { return }
             if analyzingSince == nil { analyzingSince = ContinuousClock.now }
             state.upload = .analyzing
@@ -1930,7 +2049,8 @@ final class ScanEngine {
             let dwell = UploadPacing.remaining(since: analyzingSince, minimum: .seconds(Self.analyzingMinimum), now: ContinuousClock.now)
             if dwell > .zero {
                 try await Task.sleep(for: dwell)
-                guard scan == generation, state.phase == .uploading else { return }
+                // A sleep that ended before the cancel doesn't throw.
+                guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             }
             placement = result
             noteExchange(scene: scene, answer: data)
@@ -1945,7 +2065,7 @@ final class ScanEngine {
                 // (`state.result` set, upload `.done`, both kept through the request): long
                 // enough to read before the camera takes over.
                 try await Task.sleep(for: .seconds(Self.followUpHold))
-                guard scan == generation, state.phase == .uploading else { return }
+                guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
                 automaticGaps.append(next.plan)
                 RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
                 beginServerGap(next.item, plan: next.plan)
@@ -1954,13 +2074,15 @@ final class ScanEngine {
             // Every step ticked, "Clearances checked" last, for `resultHold` before the result
             // replaces the screen: going on in the same turn never drew the tick (issue #31).
             try await Task.sleep(for: .seconds(Self.resultHold))
-            guard scan == generation, state.phase == .uploading else { return }
+            guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             // Keep the completion tick, then ask about the proposed spot before showing it.
             presentAnswer()
         } catch is CancellationError {
             return
         } catch {
-            guard scan == generation else { return }
+            // URLSession reports a cancelled request as a URLError, which would replace the
+            // failure the canceller already shows.
+            guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.state(for: error)
             updateRecording()
@@ -2108,6 +2230,9 @@ final class ScanEngine {
         walkRefusals = WalkRefusals()
         resetTiltUp()
         resetSpotChecks()
+        groundFreshness = GroundFreshness()
+        groundInjection?.cancel()
+        groundInjection = nil
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
