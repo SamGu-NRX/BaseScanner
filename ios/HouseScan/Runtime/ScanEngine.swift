@@ -1676,7 +1676,13 @@ final class ScanEngine {
         case .resultAR: .resultInCamera
         default: .noAnswer
         }
-        switch groundFreshness.after(change, on: screen, scenePackaged: scenePackaged) {
+        // A failed or refused upload has no answer coming, so its scene no longer counts as
+        // packaged: the failure stays until "Try again", which packages the current ground.
+        let answerPending = switch state.upload {
+        case .failed, .rejected: false
+        case .idle, .packaging, .uploading, .analyzing, .done: scenePackaged
+        }
+        switch groundFreshness.after(change, on: screen, scenePackaged: answerPending) {
         case .keep:
             return
         case .sendAgain:
