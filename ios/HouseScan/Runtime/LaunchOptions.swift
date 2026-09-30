@@ -23,7 +23,7 @@ import OSLog
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
 /// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
-///   first result shows, each time a file named `inject-ground` appears in the gate folder the
+///   first upload starts, each time a file named `inject-ground` appears in the gate folder the
 ///   app deletes it and hands the engine a detected floor that many meters above its current
 ///   ground, as ARKit refining the ground would (`ScanEngine.injectGroundForTest`). Replays carry
 ///   no plane evidence, so this is the only way a UI test reaches that path. Meters must be over

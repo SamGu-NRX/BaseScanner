@@ -57,6 +57,37 @@ import Testing
         #expect(!rule.awaitingNewAnswer)
     }
 
+    @Test(arguments: GroundFreshness.Screen.allCases, [false, true])
+    func packagingAndAwaitingMatrix(screen: GroundFreshness.Screen, packaged: Bool) {
+        for awaiting in [false, true] {
+            for change in GroundFreshness.Change.allCases {
+                var rule = awaiting ? Self.afterOneWithdrawal() : GroundFreshness()
+                let expected: GroundFreshness.Action
+                if change == .anchorCorrection || screen == .noAnswer {
+                    expected = .keep
+                } else if awaiting {
+                    expected = .fail
+                } else if screen == .sending && !packaged {
+                    expected = .keep
+                } else {
+                    expected = .sendAgain
+                }
+                #expect(rule.after(change, on: screen, scenePackaged: packaged) == expected)
+                #expect(rule.awaitingNewAnswer == (awaiting || expected == .sendAgain))
+            }
+        }
+    }
+
+    @Test func aPackagedFirstUploadUsesOneResendUntilAnAnswerIsShown() {
+        var rule = GroundFreshness()
+        #expect(rule.after(.ground, on: .sending, scenePackaged: true) == .sendAgain)
+        #expect(rule.awaitingNewAnswer)
+        #expect(rule.after(.ground, on: .sending, scenePackaged: false) == .fail)
+        #expect(rule.awaitingNewAnswer)
+        rule.answerShown()
+        #expect(rule.after(.ground, on: .sending, scenePackaged: true) == .sendAgain)
+    }
+
     @Test(arguments: answerScreens)
     func anAnswerShownStartsANewResend(screen: GroundFreshness.Screen) {
         var rule = Self.afterOneWithdrawal()

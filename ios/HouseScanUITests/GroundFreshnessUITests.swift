@@ -87,6 +87,48 @@ final class GroundFreshnessUITests: XCTestCase {
         XCTAssertTrue(app.buttons["action.retryUpload"].exists)
     }
 
+    @MainActor
+    func testAGroundRefineAfterFirstPackagingResendsBeforeShowingTheAnswer() throws {
+        let files = FileManager.default
+        let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try files.createDirectory(at: gate, withIntermediateDirectories: true)
+        defer { try? files.removeItem(at: gate) }
+        // Hold the first answer before it can open a spot check or an automatic server request.
+        for phase in ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "spotConfirm"] {
+            try Data().write(to: gate.appending(path: phase))
+        }
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-replay", FullFlowUITests.fixture, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path,
+            "-practiceMeter", "NO", "-sampleResult", "-injectGroundRise", "0.05",
+        ]
+        app.launch()
+        let any = app.descendants(matching: .any)
+        let result = any["screen.result"]
+        let spotCheck = any["screen.spotConfirm"]
+        let uploading = any["screen.uploading"]
+        let held = gate.appending(path: "uploading.held")
+        XCTAssertTrue(waitUntil(timeout: 300) { files.fileExists(atPath: held.path) }, "the first packaged upload never held its answer")
+        XCTAssertTrue(uploading.exists)
+        XCTAssertFalse(result.exists)
+        XCTAssertFalse(spotCheck.exists)
+
+        // The first upload is still awaiting presentation. A new held marker can only come
+        // from another completed upload, not from the first upload's already-waiting gate.
+        try files.removeItem(at: held)
+        let trigger = gate.appending(path: "inject-ground")
+        try Data().write(to: trigger)
+        XCTAssertTrue(waitUntil(timeout: 10) { !files.fileExists(atPath: trigger.path) }, "the first upload never took the injected ground")
+        XCTAssertTrue(waitUntil(timeout: 60) { files.fileExists(atPath: held.path) }, "a ground change after first packaging did not resend")
+        XCTAssertTrue(uploading.exists)
+        XCTAssertFalse(result.exists, "the withdrawn first answer reached the result")
+        XCTAssertFalse(spotCheck.exists, "the withdrawn first answer reached the spot check")
+        XCTAssertFalse(app.buttons["action.retryUpload"].exists, "the first change failed instead of using its one resend")
+
+        try Data().write(to: gate.appending(path: "uploading"))
+        XCTAssertTrue(result.waitForExistence(timeout: 120), "the resend's answer never reached the result")
+    }
+
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {

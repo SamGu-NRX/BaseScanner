@@ -54,15 +54,19 @@ public struct GroundFreshness: Equatable, Sendable {
     public init() {}
 
     /// The decision for one change on one screen, recording a withdrawal.
-    public mutating func after(_ change: Change, on screen: Screen) -> Action {
+    /// `scenePackaged` means the upload's ground is fixed, even while its answer is readied.
+    /// Before packaging, a first upload still reads the current ground; after it, the answer
+    /// needs the same withdrawal and single resend as an answer already on screen.
+    public mutating func after(_ change: Change, on screen: Screen, scenePackaged: Bool = false) -> Action {
         guard change == .ground else { return .keep }
         switch screen {
         case .noAnswer:
             return .keep
         case .sending:
-            // A first upload is built from the scan at the moment it is packaged; only an
-            // upload that is itself a resend has already used its one try.
-            return awaitingNewAnswer ? .fail : .keep
+            if awaitingNewAnswer { return .fail }
+            guard scenePackaged else { return .keep }
+            awaitingNewAnswer = true
+            return .sendAgain
         case .spotCheck, .result, .resultInCamera:
             if awaitingNewAnswer { return .fail }
             awaitingNewAnswer = true

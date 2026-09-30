@@ -190,6 +190,8 @@ final class ScanEngine {
     // Upload
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
+    /// The current upload's scene has fixed its ground; keep this true through answer pacing.
+    private var scenePackaged = false
     private(set) var placement: PlacementResult?
     /// Whether a ground change took the answer down and no answer has been shown since
     /// (`answerAfter(_:)`).
@@ -384,7 +386,7 @@ final class ScanEngine {
         }
     }
 
-    /// The watch behind `-injectGroundRise`, started at the first result of a scan.
+    /// The watch behind `-injectGroundRise`, started at the first upload of a scan.
     private var groundInjection: Task<Void, Never>?
 
     /// With `-injectGroundRise`, feeds the ground refine a detected floor above the current
@@ -1674,7 +1676,7 @@ final class ScanEngine {
         case .resultAR: .resultInCamera
         default: .noAnswer
         }
-        switch groundFreshness.after(change, on: screen) {
+        switch groundFreshness.after(change, on: screen, scenePackaged: scenePackaged) {
         case .keep:
             return
         case .sendAgain:
@@ -1989,7 +1991,9 @@ final class ScanEngine {
     // MARK: Upload
 
     func startUpload() {
+        scenePackaged = false
         go(.uploading)
+        injectGroundForTest()
         uploadTask?.cancel()
         uploadTask = Task { await upload() }
     }
@@ -2020,6 +2024,7 @@ final class ScanEngine {
         let scene: Data
         do {
             scene = try sceneJSON(mesh: measured)
+            scenePackaged = true
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
