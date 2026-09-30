@@ -300,6 +300,7 @@ final class ScanEngine {
         state.phase = phase
         if phase == .result, state.result != nil {
             groundFreshness.answerShown()
+            injectGroundForTest()
         }
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         logMeterAnchorSummary(from: previous, to: phase)
@@ -378,6 +379,38 @@ final class ScanEngine {
         // A cancelled upload (`answerAfter`) stops waiting: its sleeps would return at once.
         while ContinuousClock.now < deadline, !Task.isCancelled, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
+        }
+    }
+
+    /// The watch behind `-injectGroundRise`, started at the first result of a scan.
+    private var groundInjection: Task<Void, Never>?
+
+    /// With `-injectGroundRise`, feeds the ground refine a detected floor above the current
+    /// ground each time the UI test drops `inject-ground` in the gate folder, through `ingest` as
+    /// a frame from ARKit would. It only supplies the evidence: what the answer does about it is
+    /// the engine's own path under test.
+    private func injectGroundForTest() {
+        guard groundInjection == nil, replay != nil, options.autopilot, let rise = options.injectGroundRise,
+              let gate = options.autopilotGate else { return }
+        let scan = generation
+        let trigger = gate.appending(path: "inject-ground")
+        groundInjection = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.generation == scan else { return }
+                if FileManager.default.fileExists(atPath: trigger.path) {
+                    try? FileManager.default.removeItem(at: trigger)
+                    guard let wall = self.coverage?.wall, var frame = self.lastFrame else { return }
+                    let foot = SIMD2<Float>(wall.meter.x, wall.meter.z)
+                    frame.groundPlanes = [GroundPlaneEvidence(
+                        y: wall.groundY + rise, kind: .floor,
+                        boundary: [foot + SIMD2(-1, -1), foot + SIMD2(1, -1), foot + SIMD2(1, 1), foot + SIMD2(-1, 1)],
+                        id: "injected-ground")]
+                    frame.isPoseOnly = true
+                    RuntimeLog.engine.info("test: injecting a floor \(rise) m above the ground on \(self.state.phase.rawValue, privacy: .public)")
+                    self.ingest(frame)
+                }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
         }
     }
 
@@ -1558,6 +1591,8 @@ final class ScanEngine {
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
         groundFreshness = GroundFreshness()
+        groundInjection?.cancel()
+        groundInjection = nil
         placement = nil
         state.result = nil
         state.upload = .idle
@@ -2173,6 +2208,8 @@ final class ScanEngine {
         resetTiltUp()
         resetSpotChecks()
         groundFreshness = GroundFreshness()
+        groundInjection?.cancel()
+        groundInjection = nil
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.

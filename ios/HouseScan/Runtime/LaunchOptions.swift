@@ -22,6 +22,12 @@ import OSLog
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
+/// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
+///   first result shows, each time a file named `inject-ground` appears in the gate folder the
+///   app deletes it and hands the engine a detected floor that many meters above its current
+///   ground, as ARKit refining the ground would (`ScanEngine.injectGroundForTest`). Replays carry
+///   no plane evidence, so this is the only way a UI test reaches that path. Meters must be over
+///   the engine's 1 cm refine threshold and at most `GroundPlaneChoice.maximumRaise`.
 /// - `-simulateAppStore`: run as an App Store install would, so the developer options and practice
 ///   meter are unavailable whatever the stored switch says (`DeveloperSettings`). It can only take
 ///   the switch away, never offer it.
@@ -35,6 +41,7 @@ struct LaunchOptions: Equatable {
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
     var simulateAppStore = false
+    var injectGroundRise: Float?
 
     init(
         arguments: [String] = ProcessInfo.processInfo.arguments,
@@ -55,6 +62,12 @@ struct LaunchOptions: Equatable {
         sampleResult = arguments.contains("-sampleResult")
         if let gate = value(after: "-autopilotGate") { autopilotGate = URL(fileURLWithPath: gate, isDirectory: true) }
         if let hold = value(after: "-autopilotHold").flatMap(Double.init), hold > 0 { autopilotHold = hold }
+        if let text = value(after: "-injectGroundRise") {
+            guard let meters = Float(text), meters > 0.01, meters <= 0.1 else {
+                preconditionFailure("-injectGroundRise takes meters over 0.01 and at most 0.1, got \(text)")
+            }
+            injectGroundRise = meters
+        }
     }
 
     /// An http(s) URL with a host, or nil. An empty build setting leaves the plist value empty,
