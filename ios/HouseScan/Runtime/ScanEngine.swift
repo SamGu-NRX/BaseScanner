@@ -1481,7 +1481,7 @@ final class ScanEngine {
         case .cameraDenied:
             // As for a failed session: once the scan is sent, the answer stays on screen.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera access lost after capture")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
@@ -1489,11 +1489,11 @@ final class ScanEngine {
                 fail(.cameraDenied)
             }
         case .failed(let message):
-            // Once the scan is sent, the upload and its result no longer need the camera: keep
-            // them on screen. Only the AR view needs it, and it already hides the battery while
-            // the camera isn't tracking.
+            // Once the scan is sent, the upload, the spot check's saved photo and the result no
+            // longer need the camera: keep them on screen. Only the AR view needs it, and it
+            // already hides the battery while the camera isn't tracking.
             switch state.phase {
-            case .uploading, .result, .resultAR:
+            case .uploading, .spotConfirm, .result, .resultAR:
                 RuntimeLog.engine.error("camera session failed after capture: \(message, privacy: .public)")
                 _ = sourceState.sourceFailed(.recoverable, afterCapture: true)
                 loseSpatialResult()
