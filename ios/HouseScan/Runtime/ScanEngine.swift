@@ -189,6 +189,9 @@ final class ScanEngine {
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
     private(set) var placement: PlacementResult?
+    /// Whether a ground change took the answer down and no answer has been shown since
+    /// (`answerAfter(_:)`).
+    private var groundFreshness = GroundFreshness()
     /// The latest scan-bundle write (`saveBundle`), and a count of writes started, so only the
     /// latest one offers its bundle.
     private var bundleTask: Task<Void, Never>?
@@ -295,6 +298,9 @@ final class ScanEngine {
         state.endScanTooShort = false
         let previous = state.phase
         state.phase = phase
+        if phase == .result, state.result != nil {
+            groundFreshness.answerShown()
+        }
         RuntimeLog.state.info("STATE=\(phase.rawValue, privacy: .public)")
         logMeterAnchorSummary(from: previous, to: phase)
         switch phase {
@@ -369,7 +375,8 @@ final class ScanEngine {
             try? Data().write(to: gate.appending(path: "\(phase.rawValue).held"))
         }
         let deadline = ContinuousClock.now + .seconds(240)
-        while ContinuousClock.now < deadline, !FileManager.default.fileExists(atPath: file.path) {
+        // A cancelled upload (`answerAfter`) stops waiting: its sleeps would return at once.
+        while ContinuousClock.now < deadline, !Task.isCancelled, !FileManager.default.fileExists(atPath: file.path) {
             try? await Task.sleep(for: .milliseconds(100))
         }
     }
@@ -541,6 +548,8 @@ final class ScanEngine {
         coverage?.heightError = 0
         // Rebuilds coverage from the kept cameras: the rows now sit at other heights.
         coverage?.updateWall(wall)
+        // Before the wall is published, which would redraw the AR result on the new ground.
+        answerAfter(.ground)
         publishWall()
         publishCoverage()
         reprojectFeatures()
@@ -602,6 +611,7 @@ final class ScanEngine {
         var features = state.features
         for index in features.indices { features[index].points = features[index].points.map(correction.point) }
         if features != state.features { state.features = features }
+        answerAfter(.anchorCorrection)
         publishWall()
         publishCoverage()
         logAnchorCorrection(correction, step: step, frame: frame)
@@ -1547,6 +1557,7 @@ final class ScanEngine {
         resetSpotChecks()
         // An answer describes a scan that no longer exists; the next upload brings a new one.
         uploadTask?.cancel()
+        groundFreshness = GroundFreshness()
         placement = nil
         state.result = nil
         state.upload = .idle
@@ -1598,6 +1609,55 @@ final class ScanEngine {
         )
         if state.phase == .resultAR { showResultInCamera(rising: false) }
         publishFeaturesPastEnds()
+    }
+
+    /// Takes the answer down when a ground change leaves it describing a ground the phone no
+    /// longer has (`GroundFreshness`), before `publishWall` can draw it again on the new one.
+    private func answerAfter(_ change: GroundFreshness.Change) {
+        let screen: GroundFreshness.Screen = switch state.phase {
+        case .uploading: .sending
+        case .spotConfirm: .spotCheck
+        case .result: .result
+        case .resultAR: .resultInCamera
+        default: .noAnswer
+        }
+        switch groundFreshness.after(change, on: screen) {
+        case .keep:
+            return
+        case .sendAgain:
+            RuntimeLog.engine.info("ground changed on \(self.state.phase.rawValue, privacy: .public): answer taken down, sending the scan again")
+            withdrawAnswer()
+            startUpload()
+        case .fail:
+            RuntimeLog.engine.error("ground changed again on \(self.state.phase.rawValue, privacy: .public) before a new answer: none shown")
+            withdrawAnswer()
+            uploadTask?.cancel()
+            uploadTask = nil
+            state.upload = Self.groundKeptChanging
+            // Already on the upload screen when the resend was under way, where `go` does nothing.
+            go(.uploading)
+            updateRecording()
+        }
+    }
+
+    /// The upload screen when the ground changed again before the resend's answer was shown.
+    /// "Try again" sends the scan as it is then.
+    static let groundKeptChanging = UploadState.failed(
+        message: "The phone was still measuring the ground under your wall, so we didn't show an answer. Your scan is saved on this phone, so you can try again.",
+        offline: false)
+
+    /// Takes the answer off the spot check, the result, its 3D preview and the camera view. The
+    /// homeowner's earlier spot answers stay: they name stretches along the wall, which a ground
+    /// change doesn't move.
+    private func withdrawAnswer() {
+        placement = nil
+        state.result = nil
+        state.spotCheck = nil
+        spotConfirm.pending = nil
+        spotConfirm.request = nil
+        state.followUps = 0
+        state.upload = .packaging
+        hideResultInCamera()
     }
 
     /// "See it on your wall" on the live camera. The screen draws the result over the camera
@@ -1921,6 +1981,8 @@ final class ScanEngine {
                     self.state.upload = fraction >= 1 ? .analyzing : .uploading(fraction: fraction)
                 }
             }
+            // A cancelled upload (a ground change during a resend) must not show its answer.
+            try Task.checkCancellation()
             guard scan == generation else { return }
             if analyzingSince == nil { analyzingSince = ContinuousClock.now }
             state.upload = .analyzing
@@ -1960,7 +2022,9 @@ final class ScanEngine {
         } catch is CancellationError {
             return
         } catch {
-            guard scan == generation else { return }
+            // URLSession reports a cancelled request as a URLError, which would replace the
+            // failure the canceller already shows.
+            guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.error("upload failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.state(for: error)
             updateRecording()
@@ -2108,6 +2172,7 @@ final class ScanEngine {
         walkRefusals = WalkRefusals()
         resetTiltUp()
         resetSpotChecks()
+        groundFreshness = GroundFreshness()
         placement = nil
         // The bundle belongs to the scan being thrown away; `generation` stops a write in flight
         // from offering it again.
