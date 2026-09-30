@@ -194,3 +194,52 @@ public enum FarSurface {
         }
     }
 }
+
+/// Keeps a coverage map's far surface measured from the vertical planes ARKit tracks
+/// (`ScanEngine.noteFarSurface`). It measures again whenever the planes, the wall, the excluded
+/// plane or the stretch measured over change, and gives nil otherwise.
+///
+/// The stretch is where kept frames look (`CoverageMap.viewedExtent`), rounded outward to whole
+/// `step`s. It used to be the stretch seen, `seenExtent`, plus `maxDistance` either way. But a
+/// change of far surface rebuilds the map from its kept frames (`CoverageMap.setFarSurface`), and
+/// the rebuild changes what counts as seen. With every view taken from beyond a far wall, the
+/// cells behind it went from hidden to past the space. The stretch seen then emptied, the next
+/// frame measured around the meter, where the far wall wasn't, and the rebuild hid the cells
+/// again, on alternate frames (review of #168). The kept cameras don't change in a rebuild.
+public struct FarSurfaceTracker: Sendable {
+    /// The stretch grows in whole steps as the walk goes on, so the far surface, and with it a
+    /// rebuild of every kept frame, changes about once per step walked, not on every kept frame
+    /// that reaches a little farther. 1 m is a guess: no one has timed a rebuild on a phone.
+    public static let step: Float = 1
+
+    private struct Basis: Equatable {
+        var planes: [WallPlaneEvidence]
+        var wall: WallFrame
+        var range: ClosedRange<Float>
+        var excluding: Set<String>
+    }
+
+    private var basis: Basis?
+
+    public init() {}
+
+    /// The spans to set on `map` (`CoverageMap.setFarSurface`), or nil when nothing they are
+    /// measured from changed since the last call.
+    public mutating func spans(for map: CoverageMap, planes: [WallPlaneEvidence], excluding ids: Set<String>) -> [ObservedSpan]? {
+        let next = Basis(planes: planes, wall: map.wall, range: Self.range(for: map), excluding: ids)
+        guard next != basis else { return nil }
+        basis = next
+        return FarSurface.spans(planes: planes, wall: map.wall, over: next.range, cellWidth: map.config.cellWidth, excluding: ids)
+    }
+
+    /// Forgets what was measured, so the next call measures again.
+    public mutating func reset() { basis = nil }
+
+    /// Where kept frames look, rounded outward to whole steps. Before any frame is kept, 1 m
+    /// either side of the meter and `maxDistance` beyond, as the stretch seen gave then.
+    public static func range(for map: CoverageMap) -> ClosedRange<Float> {
+        let reach = map.config.maxDistance
+        let viewed = map.viewedExtent ?? (-1 - reach)...(1 + reach)
+        return ((viewed.lowerBound / step).rounded(.down) * step)...((viewed.upperBound / step).rounded(.up) * step)
+    }
+}

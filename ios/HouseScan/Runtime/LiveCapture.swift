@@ -455,7 +455,7 @@ final class LiveSessionDelegate: NSObject, ARSessionDelegate, Sendable {
         var snapshot = SourceFrame(
             id: "live-\(count)", timestamp: frame.timestamp, camera: camera, tracking: tracking,
             quality: quality, jpeg: .none, still: nil, meterAnchor: meterAnchor, meterAnchorID: shared.meterAnchorID,
-            groundPlanes: ground, wallPlanes: walls
+            planes: PlaneSnapshot(ground: ground, walls: walls)
         )
         let image = tracking == .normal && shouldEncode(mode: shared.mode, time: frame.timestamp, camera: camera)
             ? PixelBufferBox(buffer: frame.capturedImage) : nil

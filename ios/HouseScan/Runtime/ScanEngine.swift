@@ -68,13 +68,15 @@ final class ScanEngine {
     private var meterAnchorPresence = MeterAnchorPresence()
     /// Whether a frame source may start, and what a failure and Start over do to it.
     private var sourceState = CaptureSourceState()
+    /// The planes ARKit tracked at the last frame that carried them (`SourceFrame.planes`).
+    private var planes = PlaneSnapshot()
     /// Detected horizontal planes, with their classes and outlines.
-    private var groundPlanes: [GroundPlaneEvidence] = []
+    private var groundPlanes: [GroundPlaneEvidence] { planes.ground }
     /// Detected vertical planes, with their classes, normals and outlines.
-    private var wallPlanes: [WallPlaneEvidence] = []
-    /// What the coverage map's far surface was last measured from (`noteFarSurface`): the planes,
-    /// the wall and the stretch seen.
-    private var farSurfaceBasis: (planes: [WallPlaneEvidence], wall: WallFrame, seen: ClosedRange<Float>?)?
+    private var wallPlanes: [WallPlaneEvidence] { planes.walls }
+    /// Measures the coverage map's far surface again when what it depends on changes
+    /// (`noteFarSurface`).
+    private var farSurface = FarSurfaceTracker()
     /// The detected plane the meter's wall was refit to (`refitWallToDetectedPlane`): the wall's
     /// own, never where the space in front of it ends.
     private var refitPlaneID: String?
@@ -401,10 +403,15 @@ final class ScanEngine {
                     try? FileManager.default.removeItem(at: trigger)
                     guard let wall = self.coverage?.wall, var frame = self.lastFrame else { return }
                     let foot = SIMD2<Float>(wall.meter.x, wall.meter.z)
-                    frame.groundPlanes = [GroundPlaneEvidence(
-                        y: wall.groundY + rise, kind: .floor,
-                        boundary: [foot + SIMD2(-1, -1), foot + SIMD2(1, -1), foot + SIMD2(1, 1), foot + SIMD2(-1, 1)],
-                        id: "injected-ground")]
+                    // A snapshot as a live frame carries one, with the injected floor for ground
+                    // and the vertical planes as they stand. Pose-only, so nothing else in
+                    // `ingest` runs for it. The replay frame it copies carries no planes.
+                    frame.planes = PlaneSnapshot(
+                        ground: [GroundPlaneEvidence(
+                            y: wall.groundY + rise, kind: .floor,
+                            boundary: [foot + SIMD2(-1, -1), foot + SIMD2(1, -1), foot + SIMD2(1, 1), foot + SIMD2(-1, 1)],
+                            id: "injected-ground")],
+                        walls: self.wallPlanes)
                     frame.isPoseOnly = true
                     RuntimeLog.engine.info("test: injecting a floor \(rise) m above the ground on \(self.state.phase.rawValue, privacy: .public)")
                     self.ingest(frame)
@@ -541,8 +548,12 @@ final class ScanEngine {
         // world: the other way round, a correction that moved the planes and the anchor together
         // read as a ground change, and then moved the refined ground a second time.
         if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
-        if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
-            groundPlanes = frame.groundPlanes
+        // Only a frame that carries planes says anything about them. A live snapshot with none
+        // left means ARKit stopped tracking them, so a far wall it lost stops ending the space.
+        // Before, an empty list was ignored, whether or not the frame carried planes (review of
+        // #168).
+        let changed = planes.update(from: frame.planes)
+        if changed.ground {
             // The correction still too small to apply. It turns only about gravity, which leaves
             // heights alone, so its translation's y is how far every point rises.
             var pendingRise: Float = 0
@@ -551,8 +562,7 @@ final class ScanEngine {
             }
             refineGround(pendingRise: pendingRise)
         }
-        if !frame.wallPlanes.isEmpty, frame.wallPlanes != wallPlanes {
-            wallPlanes = frame.wallPlanes
+        if changed.walls {
             refitWallToDetectedPlane()
         }
         guard !frame.isPoseOnly else { return }
@@ -1102,20 +1112,12 @@ final class ScanEngine {
 
     /// Measures where the space in front of the wall ends from the vertical planes ARKit found
     /// (`FarSurface.spans`) and gives it to the coverage map, again whenever the planes, the wall
-    /// or the stretch seen change: a corridor's far wall or a side yard's fence is then the end of
-    /// the space, not something to look past (#160), and a walk-out line behind it is not asked
-    /// for as if it could be walked (#164). Over the stretch seen and `maxDistance` beyond it
-    /// either way, the farthest a kept frame looks along the wall.
+    /// or where kept frames look change (`FarSurfaceTracker`): a corridor's far wall or a side
+    /// yard's fence is then the end of the space, not something to look past (#160), and a
+    /// walk-out line behind it is not asked for as if it could be walked (#164).
     private func noteFarSurface() {
-        guard let map = coverage else { return }
-        let seen = map.seenExtent
-        if let basis = farSurfaceBasis, basis.planes == wallPlanes, basis.wall == map.wall, basis.seen == seen { return }
-        farSurfaceBasis = (wallPlanes, map.wall, seen)
-        let around = seen ?? -1...1
-        let reach = map.config.maxDistance
-        let spans = FarSurface.spans(
-            planes: wallPlanes, wall: map.wall, over: (around.lowerBound - reach)...(around.upperBound + reach), cellWidth: map.config.cellWidth,
-            excluding: Set(refitPlaneID.map { [$0] } ?? []))
+        guard let map = coverage,
+              let spans = farSurface.spans(for: map, planes: wallPlanes, excluding: Set(refitPlaneID.map { [$0] } ?? [])) else { return }
         if spans.isEmpty != map.farSurface.isEmpty {
             let found = spans.map(\.out).min().map { "found, nearest \($0) m out, over \(spans.count) stretches" } ?? "none"
             RuntimeLog.engine.info("far surface: \(found, privacy: .public)")
@@ -1566,9 +1568,8 @@ final class ScanEngine {
         recorder.restart()
         resetPacketLog()
         relocalizingSince = nil
-        groundPlanes = []
-        wallPlanes = []
-        farSurfaceBasis = nil
+        planes = PlaneSnapshot()
+        farSurface.reset()
         refitPlaneID = nil
         groundMeasured = false
         lastFrame = nil
@@ -2196,7 +2197,7 @@ final class ScanEngine {
         uploadTask?.cancel()
         replay?.stop()
         coverage = nil
-        farSurfaceBasis = nil
+        farSurface.reset()
         refitPlaneID = nil
         liveDots.reset()
         state.liveDots = .empty

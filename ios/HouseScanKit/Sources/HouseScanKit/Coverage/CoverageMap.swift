@@ -1399,6 +1399,16 @@ public struct CoverageMap: Sendable {
         return cellRange(low).lowerBound...cellRange(high).upperBound
     }
 
+    /// The s extent kept frames look over: every kept camera's s, `maxDistance` either way, which
+    /// covers the cells a frame samples (`candidateIndices`). Nil before any frame is kept.
+    /// Unlike `seenExtent`, a rebuild from the same cameras leaves it where it is, so a far
+    /// surface measured over it (`FarSurfaceTracker`) can't change with what the rebuild decides.
+    public var viewedExtent: ClosedRange<Float>? {
+        let along = observedCameras.map { wall.wallPoint($0.position).s }
+        guard let low = along.min(), let high = along.max() else { return nil }
+        return (low - config.maxDistance)...(high + config.maxDistance)
+    }
+
     /// Range worth drawing: seen cells plus fog ahead, clipped to the marked ends. Before anything
     /// is seen, the fog around the meter.
     public var visibleRange: ClosedRange<Float> {
