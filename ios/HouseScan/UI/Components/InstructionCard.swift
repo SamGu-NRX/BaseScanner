@@ -68,8 +68,11 @@ struct InstructionCard: View {
                         words
                     }
                     .scrollBounceBehavior(.basedOnSize)
-                    .scrollIndicators(.visible)
-                    // A line cut off at the bottom is the only other sign there is more to read.
+                    // Shown while scrolling and flashed once when the card appears. Left
+                    // showing, the thin grey bar on the dark card failed the accessibility
+                    // audit's contrast check in every AX5 state whose words scroll (run
+                    // 36743027718). A line cut off at the bottom is the lasting sign of more.
+                    .scrollIndicators(.automatic)
                     .scrollIndicatorsFlash(onAppear: true)
                     .accessibilityIdentifier("instruction.scroll")
                 }

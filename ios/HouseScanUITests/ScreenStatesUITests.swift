@@ -783,7 +783,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         let footer = element(app, "onboarding.footer")
         XCTAssertTrue(footer.waitForExistence(timeout: 5))
-        // Each page's last element: the page is at its end once that sits wholly above the footer.
+        // Each page's last element: the page is at its end once its bottom shows above the footer.
         let ends: [XCUIElement] = [
             app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Walk along the wall by your electric meter")).firstMatch,
             element(app, "onboarding.move.5"),
@@ -796,19 +796,20 @@ final class ScreenStatesUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.8)
             assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots")
             XCTAssertTrue(last.waitForExistence(timeout: 5), "page \(page): missing its last element")
-            XCTAssertTrue(scrollPageToEnd(app, last: last, footer: footer), "page \(page): its end \(last.frame) never came above the footer \(footer.frame)")
+            XCTAssertTrue(scrollPageToEnd(app, last: last, footer: footer), "page \(page): the bottom of its last element \(last.frame) never came above the footer \(footer.frame)")
             assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-end")
             if page < ends.count { tap(app, "action.onboardingNext") }
         }
     }
 
-    /// Drags the onboarding page up, at most twelve times, until its last element sits wholly
-    /// between the top of the screen and the footer.
+    /// Drags the onboarding page up, at most twelve times, until the bottom of its last element
+    /// shows above the footer. At AX5 a single move can be taller than the page's viewport, so
+    /// only its bottom edge marks the end.
     @MainActor
     private func scrollPageToEnd(_ app: XCUIApplication, last: XCUIElement, footer: XCUIElement) -> Bool {
         func atEnd() -> Bool {
             let frame = last.frame
-            return frame.minY >= app.windows.firstMatch.frame.minY && frame.maxY <= footer.frame.minY + 1
+            return frame.maxY <= footer.frame.minY + 1 && frame.maxY > app.windows.firstMatch.frame.minY
         }
         for _ in 0..<12 where !atEnd() {
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
