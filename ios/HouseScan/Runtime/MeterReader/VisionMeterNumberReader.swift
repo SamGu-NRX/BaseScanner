@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import HouseScanKit
 import ImageIO
+import OSLog
 import Vision
 
 /// Reads the meter number from a close-up with Apple Vision, configured as the close-up eval
@@ -46,6 +47,13 @@ struct VisionMeterNumberReader: MeterNumberReader {
         do {
             try VNImageRequestHandler(cgImage: image, orientation: orientation).perform([text, barcodes])
         } catch {
+            // The homeowner sees this as "no number", so the log is the only place that says Vision
+            // itself failed (e.g. com.apple.Vision 9, "Could not create inference context", in one
+            // Mac's simulator). Domain and code are framework identifiers and stay public. The
+            // message is Vision's free text, so it stays private: nothing vouches that it never
+            // names a file or carries content.
+            let failure = error as NSError
+            RuntimeLog.engine.error("meter number: Vision failed, reading as no number: \(failure.domain, privacy: .public) \(failure.code, privacy: .public) \(failure.localizedDescription, privacy: .private)")
             return retakeNoNumber
         }
 
