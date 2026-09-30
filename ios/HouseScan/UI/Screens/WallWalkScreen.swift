@@ -12,6 +12,8 @@ struct WallWalkScreen: View {
     let actions: any ScanActions
 
     @State private var cameraSize: CGSize = .zero
+    /// The open camera between the card and the actions, for the aim ring (`CameraChrome`).
+    @State private var cameraWindow: CGRect?
     @State private var trayOpen = false
     @State private var taps: [TapRipple.Ripple] = []
     /// The aim ring's legend while it shows, drawn under the card (#81).
@@ -22,7 +24,7 @@ struct WallWalkScreen: View {
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: nil, cardLegend: $cardLegend)
+            CameraOverlays(state: state, highlight: nil, cardLegend: $cardLegend, clearArea: cameraWindow)
             if state.coaching == .relocalizing, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up shows what to aim at.
                 SavedMeterPhoto(image: meterPhoto)
@@ -48,7 +50,8 @@ struct WallWalkScreen: View {
                     taps.append(.init(point: point))
                     actions.markFeaturePoint(at: point, viewSize: cameraSize)
                 },
-                legend: cardLegend
+                legend: cardLegend,
+                cameraWindow: $cameraWindow
             ) {
                 VStack(spacing: 10) {
                     controls
@@ -165,10 +168,15 @@ struct WallWalkScreen: View {
     private var controls: some View {
         switch controlsKey {
         case .marking:
-            HStack(spacing: 10) {
-                Button("Cancel") { actions.cancelMarking() }
-                    .buttonStyle(.secondaryProminent)
-                    .accessibilityIdentifier("action.cancelMarking")
+            actionRow {
+                Button {
+                    actions.cancelMarking()
+                } label: {
+                    Text("Cancel")
+                        .frame(maxWidth: stacksActions ? .infinity : nil)
+                }
+                .buttonStyle(.secondaryProminent)
+                .accessibilityIdentifier("action.cancelMarking")
                 Button {
                     taps.append(.init(point: CGPoint(x: cameraSize.width / 2, y: cameraSize.height / 2)))
                     actions.markFeaturePoint(at: nil, viewSize: cameraSize)
@@ -278,13 +286,12 @@ struct WallWalkScreen: View {
             .transition(.opacity)
         case .nextWall:
             // Back asks about the end again (#70); marking something waits for the walk.
-            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
-            layout {
+            actionRow {
                 Button {
                     actions.cancelNextWall()
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
-                        .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                        .frame(maxWidth: stacksActions ? .infinity : nil)
                 }
                 .buttonStyle(.secondaryProminent)
                 .accessibilityHint("Asks again what's at this end of the wall")
@@ -309,13 +316,16 @@ struct WallWalkScreen: View {
         case .markEnd, .finish, .walking:
             // One row for all three, so "Mark something" stays the same view while the button
             // beside it changes. Rebuilt per case, it crossfaded out as a frozen copy that the
-            // accessibility audit reported as not following Dynamic Type.
-            HStack(spacing: 10) {
+            // accessibility audit reported as not following Dynamic Type. `actionRow` swaps
+            // the row for a stack at accessibility sizes without rebuilding it.
+            actionRow {
                 // While the walk asks to look past an obstruction, that step has one way out
                 // ("Can't see past it" in the card), so "Mark something" steps aside without
-                // leaving the row: it keeps its place and stays the same view.
+                // leaving the row: it keeps its place and stays the same view. Stacked, an
+                // empty full-width slot would push the map up, so it also gives up its height.
                 markSomethingButton
                     .opacity(isSeeingBehind ? 0 : 1)
+                    .frame(height: isSeeingBehind && stacksActions ? 0 : nil)
                     .allowsHitTesting(!isSeeingBehind)
                     .accessibilityHidden(isSeeingBehind)
                 switch controlsKey {
@@ -324,6 +334,7 @@ struct WallWalkScreen: View {
                         actions.markWallEnd(at: nil, viewSize: cameraSize)
                     } label: {
                         Label("Wall ends here", systemImage: "flag.fill")
+                            .frame(maxWidth: stacksActions ? .infinity : nil)
                     }
                     .buttonStyle(.primary)
                     .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
@@ -334,7 +345,7 @@ struct WallWalkScreen: View {
                         actions.endWallHere()
                     } label: {
                         Label("Wall ends here", systemImage: "flag")
-                            .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                            .frame(maxWidth: stacksActions ? .infinity : nil)
                     }
                     .buttonStyle(.secondaryProminent)
                     .accessibilityHint("Ends the wall where you're standing, at the dashed line on the map")
@@ -345,16 +356,30 @@ struct WallWalkScreen: View {
                         actions.finishWalk()
                     } label: {
                         Label("Done with this wall", systemImage: "checkmark")
+                            .frame(maxWidth: stacksActions ? .infinity : nil)
                     }
                     .buttonStyle(.primary)
                     .accessibilityIdentifier("action.finishWalk")
                     .transition(.opacity)
                 default:
-                    Spacer(minLength: 0)
+                    // Keeps "Mark something" to its own width in the row; stacked, it already
+                    // spans the screen and a spacer would only add height.
+                    if !stacksActions { Spacer(minLength: 0) }
                 }
             }
             .transition(.opacity)
         }
+    }
+
+    /// Two actions side by side while their words fit on a line, one above the other at the
+    /// accessibility text sizes, where a side-by-side pair broke "Mark something" and "Wall
+    /// ends here" into one or two letters a line (B-28). `AnyLayout` keeps each button the
+    /// same view when the size changes, so nothing is rebuilt or crossfaded.
+    private var stacksActions: Bool { typeSize.isAccessibilitySize }
+
+    private func actionRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        let layout = stacksActions ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
+        return layout(content)
     }
 
     /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
@@ -410,7 +435,7 @@ struct WallWalkScreen: View {
         } label: {
             Label("Mark something", systemImage: "mappin.and.ellipse")
                 .labelStyle(.titleAndIcon)
-                .frame(maxWidth: typeSize.isAccessibilitySize ? .infinity : nil)
+                .frame(maxWidth: stacksActions ? .infinity : nil)
         }
         .buttonStyle(.secondaryProminent)
         .accessibilityHint("Pin a gas meter, door, window, AC unit, driveway or fence")

@@ -16,10 +16,20 @@ struct CameraChrome<Bottom: View>: View {
     /// the window's global space). Nil when the screen has nothing to tap.
     var onCameraTap: ((CGPoint) -> Void)?
     /// A line under the card about something drawn on the camera: the aim ring's legend
-    /// (`CameraOverlays`). It is part of the chrome's stack, so it grows with the card and
-    /// scrolls with it at the largest text sizes, where the card covers most of the camera.
+    /// (`CameraOverlays`). At the accessibility sizes it goes inside the card instead and
+    /// scrolls with the words there (`InstructionCard.legend`).
     var legend: String? = nil
+    /// Set to the open camera between the card and the actions, in global coordinates, for
+    /// the aim ring to stay inside (`WayfindingOverlay.clearArea`). It moves when the chrome
+    /// scrolls.
+    var cameraWindow: Binding<CGRect?>? = nil
     @ViewBuilder var bottom: Bottom
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var capsWords: Bool { typeSize.isAccessibilitySize }
+    /// The status row's height, for the card's budget.
+    @State private var statusRowHeight: CGFloat = 0
 
     var body: some View {
         // One layout at every text size: the chrome fills the screen and, only when the largest
@@ -28,7 +38,7 @@ struct CameraChrome<Bottom: View>: View {
         // it, behind the chrome.
         GeometryReader { proxy in
             ScrollView {
-                stack
+                stack(cardMaxHeight: capsWords ? cardMaxHeight(proxy) : nil)
                     .frame(width: proxy.size.width)
                     .frame(minHeight: proxy.size.height)
                     .background {
@@ -45,8 +55,16 @@ struct CameraChrome<Bottom: View>: View {
         }
     }
 
-    private var stack: some View {
-        VStack(spacing: 10) {
+    /// The tallest the card may be for it to end `windowHalfHeight` above the middle of the
+    /// screen, measured from the top of this view, which starts under the status bar.
+    private func cardMaxHeight(_ proxy: GeometryProxy) -> CGFloat {
+        let screenMiddle = (proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom) / 2 - proxy.safeAreaInsets.top
+        let above = CameraChromeLayout.stackTopPadding + statusRowHeight + CameraChromeLayout.stackSpacing
+        return max(CameraChromeLayout.minCardHeight, (screenMiddle - CameraChromeLayout.windowHalfHeight - above).rounded(.down))
+    }
+
+    private func stack(cardMaxHeight: CGFloat?) -> some View {
+        VStack(spacing: CameraChromeLayout.stackSpacing) {
             HStack(alignment: .center) {
                 ModeBadge(isReplay: isReplay, isAutopilot: isAutopilot)
                 Spacer(minLength: 8)
@@ -55,16 +73,29 @@ struct CameraChrome<Bottom: View>: View {
                 }
             }
             .frame(minHeight: 36)
-            InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
-            if let legend {
+            .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusRowHeight = $0 }
+            InstructionCard(
+                instruction: instruction,
+                tone: tone,
+                reply: reply,
+                eyebrow: eyebrow,
+                // Capped, the words scroll and the legend scrolls with them; a separate legend
+                // line at these sizes ran to seven lines and took the camera's place.
+                legend: capsWords ? legend : nil,
+                maxHeight: cardMaxHeight
+            )
+            if let legend, !capsWords {
                 legendLine(legend)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: capsWords ? 2 * CameraChromeLayout.windowHalfHeight : 0)
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { window in
+                    if let cameraWindow, cameraWindow.wrappedValue != window { cameraWindow.wrappedValue = window }
+                }
             bottom
         }
         .animation(.easeOut(duration: 0.2), value: legend)
         .padding(.horizontal, Metrics.edge)
-        .padding(.top, 4)
+        .padding(.top, CameraChromeLayout.stackTopPadding)
         .padding(.bottom, 8)
     }
 
@@ -83,6 +114,22 @@ struct CameraChrome<Bottom: View>: View {
             .accessibilityIdentifier("aim.legend")
             .transition(.opacity)
     }
+}
+
+/// `CameraChrome`'s layout constants, outside it because a generic type can't hold stored
+/// static properties.
+enum CameraChromeLayout {
+    /// Half the open camera the chrome keeps around the middle of the screen at the
+    /// accessibility sizes, where the reticle sits and where a target the phone points at
+    /// lands. Room for a 64 pt aim ring with a margin. Uncapped, one instruction at AX5 filled
+    /// an iPhone 17's screen and hid the ring under it (B-36). A layout choice, not measured on
+    /// a phone.
+    static let windowHalfHeight: CGFloat = 90
+    /// The shortest the card gets to keep that window: about two lines of the instruction at
+    /// AX5 and its reply. On a small screen the window gives way first.
+    static let minCardHeight: CGFloat = 200
+    static let stackSpacing: CGFloat = 10
+    static let stackTopPadding: CGFloat = 4
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)

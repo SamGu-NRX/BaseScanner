@@ -13,13 +13,15 @@ struct GapRequestScreen: View {
     let actions: any ScanActions
 
     @State private var cameraSize: CGSize = .zero
+    /// The open camera between the card and the actions, for the aim ring (`CameraChrome`).
+    @State private var cameraWindow: CGRect?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: state.gap)
+            CameraOverlays(state: state, highlight: state.gap, clearArea: cameraWindow)
             if state.gap?.isSatisfied == true {
                 SuccessBadge()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -42,7 +44,8 @@ struct GapRequestScreen: View {
                 photoCount: state.captureCount,
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
-                isAutopilot: state.isAutopilot
+                isAutopilot: state.isAutopilot,
+                cameraWindow: $cameraWindow
             ) {
                 VStack(spacing: 10) {
                     if asking {

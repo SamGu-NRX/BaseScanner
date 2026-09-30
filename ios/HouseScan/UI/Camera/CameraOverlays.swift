@@ -7,13 +7,19 @@ struct CameraOverlays: View {
     /// Set to the aim ring's legend while it shows, for the screen to draw under its card
     /// (`CameraChrome.legend`). Nil on screens with no legend.
     var cardLegend: Binding<String?>? = nil
+    /// The open camera between the card and the actions (`CameraChrome.cameraWindow`), for the
+    /// aim ring to stay inside.
+    var clearArea: CGRect? = nil
 
     /// The step the aim ring's legend first showed with. The legend explains the first ring that
     /// fills and retires once that step ends (#81); it isn't needed on every ring after.
     @State private var legendStep: GuidanceStep? = nil
     @State private var legendRetired = false
-    /// Whether a filling ring is on screen (`WayfindingOverlay.onFillingRingShown`): the legend
-    /// explains the ring, so it shows only with it.
+    /// Whether a filling ring has shown during this step (`WayfindingOverlay.onFillingRingShown`):
+    /// the legend explains the ring, so it waits for one. It then stays for the step even if the
+    /// ring turns into an arrow. The legend takes room from the open camera the ring must sit
+    /// in, so a legend that left with the ring could let the ring back, and bring itself back,
+    /// on every frame.
     @State private var fillingRingShown = false
     /// The aim step on screen, with its target, so the update that ends it can still score it.
     @State private var lastAim: AimSnapshot? = nil
@@ -38,6 +44,7 @@ struct CameraOverlays: View {
         .animation(.easeOut(duration: 0.2), value: state.tracking == .normal)
         .onChange(of: AimSnapshot(step: state.guidance, target: state.target), initial: true) { old, new in
             if new.step != old.step {
+                fillingRingShown = false
                 if let legendStep, new.step != legendStep { legendRetired = true }
                 if let target = completed(old) {
                     completedTarget = target
@@ -82,7 +89,8 @@ struct CameraOverlays: View {
                         target: state.target,
                         progress: state.aimProgress,
                         completed: heldTarget,
-                        onFillingRingShown: { shown in fillingRingShown = shown }
+                        onFillingRingShown: { shown in if shown { fillingRingShown = true } },
+                        clearArea: clearArea
                     )
                     .transition(.opacity)
                 }
@@ -132,13 +140,13 @@ struct CameraOverlays: View {
         return target
     }
 
-    /// The legend, while the first filling ring is on screen and short of full (#81).
+    /// The legend, once the first filling ring has shown and while it is short of full (#81).
     ///
     /// It goes under the instruction card, in the chrome's own stack, rather than beside the
     /// ring: beside it, it went behind the card at accessibility text sizes (the card grows
     /// and is drawn over the camera layers), and any layout that dropped it where there was no
-    /// room left the people with the largest text without it. In the stack it grows with the
-    /// card and scrolls with it at any size.
+    /// room left the people with the largest text without it. At the accessibility sizes it
+    /// sits inside the card and scrolls with the card's words.
     private var shownLegend: String? {
         guard fillingRingShown, !legendRetired, state.marking == nil, heldTarget == nil,
               let progress = state.aimProgress, progress < 1 else { return nil }

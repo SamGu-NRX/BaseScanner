@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Every screen state, including ones a replay never reaches (camera denied, offline upload,
@@ -626,9 +627,8 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
         app.terminate()
 
-        // At the largest text size the card fills most of the screen. The legend sits under it in
-        // the same stack, so it grows and scrolls with the card instead of going behind it or
-        // disappearing.
+        // At the largest text size the card's words scroll inside it, and the legend scrolls with
+        // them in the card instead of going behind it or disappearing.
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
@@ -644,6 +644,189 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         XCTAssertFalse(element(app, "aim.ring").exists, "off screen, the arrow stands in for the ring")
         XCTAssertFalse(element(app, "aim.legend").exists, "the legend goes with the ring")
+    }
+
+    // MARK: Largest text layout
+
+    /// The content width inside a camera screen's side margins (`Metrics.edge`, 16 pt), less a
+    /// point for rounding.
+    private static func contentWidth(_ window: CGRect) -> CGFloat { window.width - 2 * 16 - 1 }
+
+    /// B-28: side by side at AX5, "Mark something" and "Wall ends here" broke into one or two
+    /// letters a line. Every pair of wall-walk actions must stack there, each spanning the
+    /// content width. A button taller than a quarter of the screen is a label broken a letter a
+    /// line; a stacked two-line label is about 130 pt on an iPhone 17. At the default size the
+    /// walk's pair stays on one row.
+    @MainActor
+    func testWallWalkActionsStackAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        func launch(_ extra: [String], textSize: [String] = Self.largestText) {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + extra + textSize
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        }
+
+        launch([], textSize: [])
+        let mark = element(app, "action.markSomething"), end = element(app, "action.endHere")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5) && end.waitForExistence(timeout: 5))
+        XCTAssertEqual(mark.frame.midY, end.frame.midY, accuracy: 1, "at the default size the walk's two actions share a row")
+        app.terminate()
+
+        launch([])
+        assertStacked(app, "action.markSomething", "action.endHere", name: "wallWalk-walking-AX5-stacked")
+        // The walk's reply ends the side here, which asks for the wall's end.
+        scrollToTop(app)
+        tapReply(app, "Can't get there")
+        assertStacked(app, "action.markSomething", "action.markEnd", name: "wallWalk-markEnd-AX5-stacked")
+        app.terminate()
+
+        launch(["-uiDemoTiltUp"])
+        assertStacked(app, "action.markSomething", "action.finishWalk", name: "wallWalk-finish-AX5-stacked")
+        app.terminate()
+
+        launch(["-uiDemoMarking", "window"])
+        assertStacked(app, "action.cancelMarking", "action.markPoint", name: "wallWalk-marking-AX5-stacked")
+        app.terminate()
+    }
+
+    @MainActor
+    private func assertStacked(_ app: XCUIApplication, _ upper: String, _ lower: String, name: String) {
+        let window = app.windows.firstMatch.frame
+        let first = element(app, upper), second = element(app, lower)
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "\(name): missing \(upper)")
+        XCTAssertTrue(second.waitForExistence(timeout: 5), "\(name): missing \(lower)")
+        for (identifier, target) in [(upper, first), (lower, second)] {
+            let frame = target.frame
+            XCTAssertGreaterThanOrEqual(frame.width, Self.contentWidth(window), "\(name): \(identifier) is \(frame.width) pt wide in a \(window.width) pt window; beside another action its words break apart")
+            XCTAssertLessThanOrEqual(frame.height, window.height / 4, "\(name): \(identifier) is \(frame.height) pt tall; its label breaks a letter or two a line")
+        }
+        XCTAssertLessThanOrEqual(first.frame.maxY, second.frame.minY + 0.5, "\(name): \(upper) \(first.frame) must sit above \(lower) \(second.frame)")
+        XCTAssertTrue(scrollUntilHittable(second, in: app), "\(name): \(lower) can't be reached")
+        attach(app, name: name)
+    }
+
+    /// Drags the screen down until its top shows, for a control that scrolled out of view.
+    @MainActor
+    private func scrollToTop(_ app: XCUIApplication) {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<3 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: step)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+    }
+
+    /// B-36: at AX5 the aim card filled the screen and the ring was drawn under it. The card now
+    /// ends above the middle of the screen with its words scrolling inside it, the actions start
+    /// below the middle, and the ring shows in the open camera between them without touching
+    /// the words, the reply or an action.
+    @MainActor
+    func testAimRingStaysInTheOpenCameraAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let window = app.windows.firstMatch.frame
+        let ring = element(app, "aim.ring")
+        let words = element(app, "instruction.scroll")
+        let reply = element(app, "action.cannotAccess")
+        let mark = element(app, "action.markSomething")
+        XCTAssertTrue(words.waitForExistence(timeout: 5), "at AX5 the card's words scroll inside it")
+        XCTAssertTrue(reply.waitForExistence(timeout: 5))
+        XCTAssertTrue(mark.waitForExistence(timeout: 5))
+        XCTAssertTrue(ring.waitForExistence(timeout: 5), "the aim ring must show in the open camera")
+        XCTAssertEqual(ring.value as? String, "50 percent captured")
+        attach(app, name: "wallWalk-aim-AX5-openCamera")
+
+        let cardBottom = max(words.frame.maxY, reply.frame.maxY)
+        XCTAssertLessThanOrEqual(cardBottom, window.midY - 80, "the card must end above the middle of the screen: \(cardBottom) in \(window)")
+        XCTAssertGreaterThanOrEqual(mark.frame.minY, window.midY + 80, "the actions must start below the middle of the screen: \(mark.frame)")
+        XCTAssertTrue(window.contains(ring.frame), "ring \(ring.frame) is not wholly on screen")
+        for (identifier, frame) in [("instruction.scroll", words.frame), ("action.cannotAccess", reply.frame), ("action.markSomething", mark.frame)] {
+            XCTAssertFalse(ring.frame.intersects(frame), "ring \(ring.frame) is under \(identifier) \(frame)")
+        }
+        // The legend comes with the ring, inside the card, and reads in full there.
+        let legend = element(app, "aim.legend")
+        XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
+        XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+    }
+
+    /// At AX5 a scrolled onboarding page ran on under the page dots. On every page, before and
+    /// after scrolling it to its end, the row the dots sit in must show only the background
+    /// beside the dots. Read from the screenshot's pixels: the dots are hidden from
+    /// accessibility, and a page's frame alone can't show what it paints past its edge.
+    @MainActor
+    func testOnboardingTextStaysClearOfThePageDotsAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
+        let footer = element(app, "onboarding.footer")
+        XCTAssertTrue(footer.waitForExistence(timeout: 5))
+        for page in 1...4 {
+            // Let the page slide settle.
+            Thread.sleep(forTimeInterval: 0.8)
+            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots")
+            for _ in 0..<4 {
+                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+                start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -240)), withVelocity: .slow, thenHoldForDuration: 0.2)
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-scrolled")
+            if page < 4 { tap(app, "action.onboardingNext") }
+        }
+    }
+
+    /// The band from the footer's top edge to the button's, where the dots sit, must be the
+    /// background colour except for the middle 120 pt, which holds the dots.
+    @MainActor
+    private func assertDotsRowClear(_ app: XCUIApplication, name: String) {
+        let footer = element(app, "onboarding.footer").frame
+        let button = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["action.onboardingNext", "action.finishOnboarding"])).firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "\(name): missing the footer's button")
+        let band = CGRect(x: footer.minX, y: footer.minY, width: footer.width, height: button.frame.minY - footer.minY)
+        XCTAssertGreaterThan(band.height, 8, "\(name): no room for the dots above the button: \(footer) vs \(button.frame)")
+        let screenshot = app.screenshot()
+        attach(app, name: name)
+        guard let pixels = ScreenPixels(screenshot.image) else {
+            XCTFail("\(name): cannot read the screenshot's pixels")
+            return
+        }
+        if let stray = pixels.firstMismatch(in: band, excludingMiddle: 120) {
+            XCTFail("\(name): something other than the background is drawn beside the page dots at \(stray) in \(band)")
+        }
+    }
+
+    /// At AX5 the Replay and sample-result badges covered most of the result's 3D view. There
+    /// they sit clear of it, in full on screen; at the default size they stay on the view.
+    @MainActor
+    func testResultBadgesKeepOffTheModelAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (textSize, name) in [([String](), "result-badges"), (Self.largestText, "result-badges-AX5")] {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result"] + textSize
+            app.launch()
+            XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 15))
+            let window = app.windows.firstMatch.frame
+            let model = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "3D view of your wall")).firstMatch
+            XCTAssertTrue(model.waitForExistence(timeout: 5), "\(name): missing the 3D view")
+            for identifier in ["modeBadge", "result.sampleBadge"] {
+                let badge = element(app, identifier)
+                XCTAssertTrue(badge.waitForExistence(timeout: 5), "\(name): missing \(identifier)")
+                XCTAssertTrue(window.contains(badge.frame), "\(name): \(identifier) \(badge.frame) runs off screen")
+                if textSize.isEmpty {
+                    XCTAssertTrue(model.frame.contains(badge.frame), "\(name): \(identifier) \(badge.frame) must stay on the 3D view \(model.frame)")
+                } else {
+                    XCTAssertFalse(model.frame.intersects(badge.frame), "\(name): \(identifier) \(badge.frame) covers the 3D view \(model.frame)")
+                }
+            }
+            attach(app, name: name)
+            app.terminate()
+        }
     }
 
     /// "Share scan" opens the system share sheet with the scan file.
@@ -826,5 +1009,61 @@ final class ScreenStatesUITests: XCTestCase {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: target)
         XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 5), .completed, "the reply \"\(title)\" never took taps")
         target.tap()
+    }
+}
+
+/// A screenshot's pixels, read in the screen's points.
+private struct ScreenPixels {
+    private let data: [UInt8]
+    private let width: Int
+    private let height: Int
+    private let scale: CGFloat
+
+    init?(_ image: UIImage) {
+        guard let cgImage = image.cgImage, image.size.width > 0 else { return nil }
+        let w = cgImage.width, h = cgImage.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        // Drawn upright into a bitmap context, the first row in memory is the image's top row.
+        let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return nil }
+        data = bytes
+        width = w
+        height = h
+        scale = CGFloat(w) / image.size.width
+    }
+
+    private func pixel(_ x: Int, _ y: Int) -> (Int, Int, Int) {
+        let i = (y * width + x) * 4
+        return (Int(data[i]), Int(data[i + 1]), Int(data[i + 2]))
+    }
+
+    /// The first pixel in `rect`, outside `middle` points around its centre line, that differs
+    /// from the pixel 2 pt inside the rect's left edge on the same row by more than a rendering
+    /// tolerance. Nil when every pixel matches.
+    func firstMismatch(in rect: CGRect, excludingMiddle middle: CGFloat) -> CGPoint? {
+        let tolerance = 24
+        let top = max(Int((rect.minY * scale).rounded(.up)), 0), bottom = min(Int((rect.maxY * scale).rounded(.down)), height)
+        let left = max(Int((rect.minX * scale).rounded(.up)), 0), right = min(Int((rect.maxX * scale).rounded(.down)), width)
+        guard top < bottom, left < right else { return nil }
+        let rows = top..<bottom, columns = left..<right
+        let skip = (rect.midX - middle / 2) * scale...(rect.midX + middle / 2) * scale
+        let referenceX = min(max(Int(((rect.minX + 2) * scale).rounded()), 0), width - 1)
+        for y in rows {
+            let background = pixel(referenceX, y)
+            for x in columns where !skip.contains(CGFloat(x)) {
+                let (r, g, b) = pixel(x, y)
+                if abs(r - background.0) > tolerance || abs(g - background.1) > tolerance || abs(b - background.2) > tolerance {
+                    return CGPoint(x: CGFloat(x) / scale, y: CGFloat(y) / scale)
+                }
+            }
+        }
+        return nil
     }
 }

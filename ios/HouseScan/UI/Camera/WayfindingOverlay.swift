@@ -19,12 +19,17 @@ struct WayfindingOverlay: View {
     /// while it is on screen (`CameraOverlays` holds it for a moment).
     var completed: SIMD3<Float>? = nil
     /// Called with whether a filling ring is on screen, each time that changes (`CameraOverlays`
-    /// shows the ring's legend under the card only while it is).
+    /// shows the ring's legend once one has).
     var onFillingRingShown: ((Bool) -> Void)? = nil
+    /// The open camera between the instruction card and the actions, in global coordinates
+    /// (`CameraChrome.cameraWindow`). The ring shows only inside it and the edge arrows keep to
+    /// it. Nil until the chrome has been laid out, when fixed bands stand in.
+    var clearArea: CGRect? = nil
 
     var body: some View {
         GeometryReader { proxy in
             let size = proxy.size
+            let band = verticalBand(origin: proxy.frame(in: .global).origin)
             ZStack {
                 Canvas { context, size in
                     drawPath(in: &context, size: size)
@@ -32,7 +37,7 @@ struct WayfindingOverlay: View {
                 .accessibilityHidden(true)
                 // One marker either way, so a ring that completes keeps its identity and animates
                 // from its last fill to green.
-                if let shown = marker(in: size) {
+                if let shown = marker(in: size, band: band) {
                     TargetMarker(placement: shown.placement, progress: shown.progress)
                     if progress != nil, completed == nil, case .onScreen = shown.placement {
                         Color.clear
@@ -50,10 +55,19 @@ struct WayfindingOverlay: View {
 
     // MARK: Lane
 
-    /// The band clear of the instruction card above and the buttons and map below, which are
-    /// drawn over this layer. The off-screen arrows keep to it.
-    private static let laneTop: CGFloat = 260
-    private static let laneBottomInset: CGFloat = 300
+    /// The top and bottom of the camera left open by the instruction card above and the
+    /// buttons and map below, which are drawn over this layer, in this view's coordinates.
+    struct Band: Equatable {
+        var top: CGFloat
+        var bottom: CGFloat
+    }
+
+    /// How far inside the band the edge arrows sit: half the arrow's 52 pt disc and a margin.
+    static let arrowInset: CGFloat = 32
+
+    private func verticalBand(origin: CGPoint) -> Band? {
+        clearArea.map { Band(top: $0.minY - origin.y, bottom: $0.maxY - origin.y) }
+    }
 
     // MARK: Path
 
@@ -93,42 +107,64 @@ struct WayfindingOverlay: View {
     // MARK: Target
 
     /// The completed ring while it is on screen, else the target's ring or arrow.
-    private func marker(in size: CGSize) -> (placement: TargetMarker.Placement, progress: Double?)? {
+    private func marker(in size: CGSize, band: Band?) -> (placement: TargetMarker.Placement, progress: Double?)? {
         if let completed {
-            let held = placement(for: completed, in: size)
+            let held = placement(for: completed, in: size, band: band)
             if case .onScreen = held { return (placement: held, progress: 1.0) }
         }
         guard let target else { return nil }
-        return (placement: placement(for: target, in: size), progress: progress)
+        return (placement: placement(for: target, in: size, band: band), progress: progress)
     }
 
-    private func placement(for target: SIMD3<Float>, in size: CGSize) -> TargetMarker.Placement {
-        // The ring shows while its center is comfortably on screen; the chevron takes over
-        // near the edges, where a half-visible ring would be ambiguous.
-        let bounds = CGRect(x: 36, y: 150, width: size.width - 72, height: size.height - 330)
-        if let point = projection.viewPoint(for: target, in: size), bounds.contains(point) {
+    private func placement(for target: SIMD3<Float>, in size: CGSize, band: Band?) -> TargetMarker.Placement {
+        if let point = projection.viewPoint(for: target, in: size) {
             let scale = wall.flatMap { WallProjection(projection: projection, wall: $0, size: size).pointsPerMeter(at: target) }
             let radius = min(64, max(30, (scale ?? 90) * 0.28))
-            return .onScreen(point, radius: radius)
+            if Self.ringBounds(in: size, band: band, radius: radius).contains(point) {
+                return .onScreen(point, radius: radius)
+            }
         }
         guard let direction = projection.screenDirection(toward: target) else {
             return .hidden
         }
-        // Arrows keep to the lane, clear of the card and the controls.
-        let lane = CGRect(
-            x: 40,
-            y: Self.laneTop,
-            width: size.width - 80,
-            height: max(size.height - Self.laneTop - Self.laneBottomInset, 80)
+        return .offScreen(Self.arrowPoint(toward: direction, in: size, band: band), angle: .radians(atan2(direction.dy, direction.dx)))
+    }
+
+    /// Where a ring's centre may be for the ring to show: comfortably on screen, and with the
+    /// whole ring in the open camera. Near the edges or partly under the card, the arrow takes
+    /// over, since a half-visible ring would be ambiguous and one under the card can't be seen
+    /// at all. Without a band, the fixed rectangle used before the chrome reported one, sized
+    /// for the default text.
+    static func ringBounds(in size: CGSize, band: Band?, radius: CGFloat) -> CGRect {
+        guard let band else {
+            return CGRect(x: 36, y: 150, width: size.width - 72, height: size.height - 330)
+        }
+        return CGRect(
+            x: 36,
+            y: band.top + radius,
+            width: max(size.width - 72, 0),
+            height: max(band.bottom - band.top - 2 * radius, 0)
         )
+    }
+
+    /// The edge arrow's centre: where a line from the middle of the lane toward the target
+    /// leaves the lane. The lane is the band inset by `arrowInset`; a band too short for the
+    /// arrow puts it on the band's middle line, which still keeps it off the card. Without a
+    /// band, the fixed lane used before the chrome reported one.
+    static func arrowPoint(toward direction: CGVector, in size: CGSize, band: Band?) -> CGPoint {
+        let lane: CGRect
+        if let band {
+            let top = band.top + arrowInset
+            let bottom = max(band.bottom - arrowInset, top)
+            lane = CGRect(x: 40, y: top, width: max(size.width - 80, 0), height: bottom - top)
+        } else {
+            lane = CGRect(x: 40, y: 260, width: size.width - 80, height: max(size.height - 560, 80))
+        }
         let center = CGPoint(x: lane.midX, y: lane.midY)
-        let halfWidth = lane.width / 2
-        let halfHeight = lane.height / 2
-        let tx = direction.dx == 0 ? CGFloat.infinity : halfWidth / abs(direction.dx)
-        let ty = direction.dy == 0 ? CGFloat.infinity : halfHeight / abs(direction.dy)
+        let tx = direction.dx == 0 ? CGFloat.infinity : (lane.width / 2) / abs(direction.dx)
+        let ty = direction.dy == 0 ? CGFloat.infinity : (lane.height / 2) / abs(direction.dy)
         let t = min(tx, ty)
-        let edge = CGPoint(x: center.x + direction.dx * t, y: center.y + direction.dy * t)
-        return .offScreen(edge, angle: .radians(atan2(direction.dy, direction.dx)))
+        return CGPoint(x: center.x + direction.dx * t, y: center.y + direction.dy * t)
     }
 }
 

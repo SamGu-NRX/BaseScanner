@@ -34,6 +34,18 @@ struct InstructionCard: View {
     /// A short line above the instruction that places it in the flow ("One more view to
     /// finish"). Read with the instruction as one VoiceOver element.
     var eyebrow: String?
+    /// The aim ring's legend, drawn in the card under the words. `CameraChrome` puts it here
+    /// only when it caps the card (`maxHeight`); otherwise the legend is its own line under
+    /// the card.
+    var legend: String? = nil
+    /// The tallest the card may be. Past it, the words (and `legend`) scroll inside the card
+    /// and the reply stays put under them. Nil: the card is as tall as its words.
+    /// `CameraChrome` sets it at the accessibility text sizes, where uncapped words covered the
+    /// whole camera and the aim ring under them (B-36).
+    var maxHeight: CGFloat? = nil
+
+    /// The least the words keep when `maxHeight` is small, so a line and a half still shows.
+    private static let minWordsHeight: CGFloat = 96
 
     /// How long a new card's reply ignores taps, so a tap meant for the card that just left
     /// can't answer the next one: in the 4.1 field test, quick taps on "Can't get there" each
@@ -45,14 +57,36 @@ struct InstructionCard: View {
     /// The task whose reply has been on screen for `replyLock`. Compared with the current task
     /// in the same update that changes it, so a new reply is locked from its first frame.
     @State private var unlockedTask: Instruction?
+    /// The capped words' full height, measured inside their scroll view.
+    @State private var wordsHeight: CGFloat?
+    /// The reply's height with its padding, taken from `maxHeight` to cap the words.
+    @State private var replyHeight: CGFloat = 0
+
+    private var wordsCap: CGFloat? {
+        maxHeight.map { max(Self.minWordsHeight, $0 - (reply == nil ? 0 : replyHeight)) }
+    }
 
     private var replyTask: Instruction { reply?.task ?? instruction }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            message
-                .id(instruction)
-                .transition(.identity)
+            if let wordsCap {
+                // Measured rather than proposed: the chrome's own scroll view proposes no
+                // height, so a flexible frame would clip the words instead of scrolling them.
+                // Until the first measurement the card takes the cap.
+                ScrollView {
+                    words
+                        .onGeometryChange(for: CGFloat.self, of: \.size.height) { wordsHeight = $0 }
+                }
+                .frame(height: min(wordsHeight ?? wordsCap, wordsCap))
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.visible)
+                // A line cut off at the bottom is the only other sign there is more to read.
+                .scrollIndicatorsFlash(onAppear: true)
+                .accessibilityIdentifier("instruction.scroll")
+            } else {
+                words
+            }
             if let reply {
                 Button(reply.title, action: reply.perform)
                     .font(Typeface.caption.weight(.bold))
@@ -69,6 +103,7 @@ struct InstructionCard: View {
                     .accessibilityIdentifier(reply.identifier)
                     .padding([.horizontal, .bottom], 12)
                     .padding(.top, -4)
+                    .onGeometryChange(for: CGFloat.self, of: \.size.height) { replyHeight = $0 }
                     // Appears and goes at once, like the message above it: the walk's request can
                     // change every few seconds, and a fading button spends those moments as faint
                     // text on the card, which the accessibility audit caught twice on CI (runs
@@ -99,6 +134,38 @@ struct InstructionCard: View {
             do { try await Task.sleep(for: Self.replyLock) } catch { return }
             unlockedTask = shown
         }
+    }
+
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            message
+                .id(instruction)
+                .transition(.identity)
+            if let legend {
+                legendLine(legend)
+            }
+        }
+    }
+
+    /// The legend inside the card: set off from the words by a rule and the ring's symbol, in
+    /// the words' own colours so it is as legible as they are.
+    private func legendLine(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Rectangle()
+                .fill(Palette.chalk.opacity(0.2))
+                .frame(height: 1)
+                .accessibilityHidden(true)
+            Text("\(Image(systemName: "scope")) \(text)")
+                .font(Typeface.hint)
+                .foregroundStyle(Palette.chalk)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(text)
+                .accessibilityIdentifier("aim.legend")
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transition(.opacity)
     }
 
     private var message: some View {
