@@ -535,6 +535,12 @@ final class ScanEngine {
             state.tracking = frame.tracking
             live?.setResultVisible(frame.tracking == .normal)
         }
+        noteMeterAnchor(frame)
+        // A frame made before the meter was anchored again carries the old anchor's pose. First,
+        // so the ground refine compares this frame's planes with a wall already in this frame's
+        // world: the other way round, a correction that moved the planes and the anchor together
+        // read as a ground change, and then moved the refined ground a second time.
+        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
             refineGround()
@@ -543,9 +549,6 @@ final class ScanEngine {
             wallPlanes = frame.wallPlanes
             refitWallToDetectedPlane()
         }
-        noteMeterAnchor(frame)
-        // A frame made before the meter was anchored again carries the old anchor's pose.
-        if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         guard !frame.isPoseOnly else { return }
         noteFarSurface()
         trackRelocalization(frame)
@@ -1690,6 +1693,9 @@ final class ScanEngine {
         state.spotCheck = nil
         spotConfirm.pending = nil
         spotConfirm.request = nil
+        // A spot photo still loading for this answer (`presentAnswer`) must not open its check
+        // once a retry brings back an equal answer.
+        spotConfirm.asked += 1
         state.followUps = 0
         state.upload = .packaging
         hideResultInCamera()
@@ -1975,6 +1981,8 @@ final class ScanEngine {
 
     private func upload() async {
         let scan = generation
+        // A ground change can cancel a resend before it starts (`answerAfter`); its failure stays.
+        guard !Task.isCancelled else { return }
         state.upload = .packaging
         // Sending again from a failed upload stays on this phase, so `go` doesn't restart them.
         updateRecording()
@@ -1982,7 +1990,7 @@ final class ScanEngine {
         for _ in 0..<200 where (pendingSaves[scan] ?? 0) > 0 {
             try? await Task.sleep(for: .milliseconds(50))
         }
-        guard scan == generation else { return }
+        guard scan == generation, !Task.isCancelled else { return }
         // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
         // overhead, off the main actor since ray casts over a whole mesh take a while.
         let meshSnapshot = live?.meshSnapshot()
@@ -1991,7 +1999,7 @@ final class ScanEngine {
             let wall = map.wall
             let span = Self.exportSpan(map)
             measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-            guard scan == generation else { return }
+            guard scan == generation, !Task.isCancelled else { return }
             RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
         }
         let scene: Data

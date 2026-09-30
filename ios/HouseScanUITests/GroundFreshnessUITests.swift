@@ -35,6 +35,10 @@ final class GroundFreshnessUITests: XCTestCase {
         let result = any["screen.result"]
         let uploading = any["screen.uploading"]
         XCTAssertTrue(result.waitForExistence(timeout: 300), "the replay never reached the result")
+        // The autopilot is parked at the shut result gate, so it no longer answers spot checks or
+        // retries uploads: otherwise it could retry the failure step 4 looks for.
+        let resultHeld = gate.appending(path: "result.held")
+        XCTAssertTrue(waitUntil(timeout: 30) { files.fileExists(atPath: resultHeld.path) }, "the autopilot never finished with the result")
 
         /// Shuts the upload gate, so the next upload holds its answer on the upload screen.
         func holdNextUpload() throws {
