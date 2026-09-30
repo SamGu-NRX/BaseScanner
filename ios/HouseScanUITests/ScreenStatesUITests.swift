@@ -747,10 +747,21 @@ final class ScreenStatesUITests: XCTestCase {
         for (identifier, frame) in [("instruction.scroll", words.frame), ("action.cannotAccess", reply.frame), ("action.markSomething", mark.frame)] {
             XCTAssertFalse(ring.frame.intersects(frame), "ring \(ring.frame) is under \(identifier) \(frame)")
         }
-        // The legend comes with the ring, inside the card, and reads in full there.
+        // The legend comes with the ring, inside the card, below the words. Dragging the words
+        // must bring all of it into the card's visible part while the reply stays where it is.
         let legend = element(app, "aim.legend")
         XCTAssertTrue(legend.waitForExistence(timeout: 5), "the first aim ring must come with its legend")
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        let replyFrame = reply.frame
+        var shown = words.frame.contains(legend.frame)
+        for _ in 0..<8 where !shown {
+            let start = words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            start.press(forDuration: 0.1, thenDragTo: words.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            shown = words.frame.contains(legend.frame)
+        }
+        XCTAssertTrue(shown, "the legend \(legend.frame) never scrolled fully into the card's words \(words.frame)")
+        XCTAssertEqual(reply.frame.minY, replyFrame.minY, accuracy: 1, "the reply must stay put while the words scroll")
+        attach(app, name: "wallWalk-aim-AX5-legendScrolled")
     }
 
     /// At AX5 a scrolled onboarding page ran on under the page dots. On every page, before and
@@ -767,18 +778,34 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
         let footer = element(app, "onboarding.footer")
         XCTAssertTrue(footer.waitForExistence(timeout: 5))
-        for page in 1...4 {
+        // Each page's heading, to tell when its page has scrolled as far as it goes.
+        let headings = ["Let's find a spot for your battery", "What the walk asks for", "Your phone takes the photos", "Stay safe out there"]
+        for (index, title) in headings.enumerated() {
+            let page = index + 1
             // Let the page slide settle.
             Thread.sleep(forTimeInterval: 0.8)
             assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots")
-            for _ in 0..<4 {
-                let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-                start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -240)), withVelocity: .slow, thenHoldForDuration: 0.2)
-            }
-            Thread.sleep(forTimeInterval: 0.5)
-            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-scrolled")
-            if page < 4 { tap(app, "action.onboardingNext") }
+            let heading = app.staticTexts[title]
+            XCTAssertTrue(heading.waitForExistence(timeout: 5), "page \(page): missing its heading")
+            XCTAssertTrue(scrollPageToEnd(app, heading: heading), "page \(page) never stopped scrolling")
+            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-end")
+            if page < headings.count { tap(app, "action.onboardingNext") }
         }
+    }
+
+    /// Drags the onboarding page up until its heading stops moving: the page's end. False if it
+    /// still moved after twelve drags.
+    @MainActor
+    private func scrollPageToEnd(_ app: XCUIApplication, heading: XCUIElement) -> Bool {
+        var last = heading.frame.minY
+        for _ in 0..<12 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -240)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            let now = heading.frame.minY
+            if abs(now - last) < 1 { return true }
+            last = now
+        }
+        return false
     }
 
     /// The band from the footer's top edge to the button's, where the dots sit, must be the

@@ -8,8 +8,8 @@ struct CameraOverlays: View {
     /// (`CameraChrome.legend`). Nil on screens with no legend.
     var cardLegend: Binding<String?>? = nil
     /// The open camera between the card and the actions (`CameraChrome.cameraWindow`), for the
-    /// aim ring to stay inside.
-    var clearArea: CGRect? = nil
+    /// aim ring to stay inside. Passed through unread, so its changes don't redraw the fog.
+    var cameraWindow: CameraWindow? = nil
 
     /// The step the aim ring's legend first showed with. The legend explains the first ring that
     /// fills and retires once that step ends (#81); it isn't needed on every ring after.
@@ -90,7 +90,7 @@ struct CameraOverlays: View {
                         progress: state.aimProgress,
                         completed: heldTarget,
                         onFillingRingShown: { shown in if shown { fillingRingShown = true } },
-                        clearArea: clearArea
+                        cameraWindow: cameraWindow
                     )
                     .transition(.opacity)
                 }

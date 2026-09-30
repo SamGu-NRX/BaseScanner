@@ -19,17 +19,15 @@ struct CameraChrome<Bottom: View>: View {
     /// (`CameraOverlays`). At the accessibility sizes it goes inside the card instead and
     /// scrolls with the words there (`InstructionCard.legend`).
     var legend: String? = nil
-    /// Set to the open camera between the card and the actions, in global coordinates, for
-    /// the aim ring to stay inside (`WayfindingOverlay.clearArea`). It moves when the chrome
-    /// scrolls.
-    var cameraWindow: Binding<CGRect?>? = nil
+    /// Given the open camera between the card and the actions, for the aim ring to stay inside
+    /// (`WayfindingOverlay`). It moves when the chrome scrolls.
+    var cameraWindow: CameraWindow? = nil
     @ViewBuilder var bottom: Bottom
 
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var capsWords: Bool { typeSize.isAccessibilitySize }
-    /// The status row's height, for the card's budget.
-    @State private var statusRowHeight: CGFloat = 0
 
     var body: some View {
         // One layout at every text size: the chrome fills the screen and, only when the largest
@@ -38,7 +36,7 @@ struct CameraChrome<Bottom: View>: View {
         // it, behind the chrome.
         GeometryReader { proxy in
             ScrollView {
-                stack(cardMaxHeight: capsWords ? cardMaxHeight(proxy) : nil)
+                stack(topLimit: capsWords ? topLimit(proxy) : nil)
                     .frame(width: proxy.size.width)
                     .frame(minHeight: proxy.size.height)
                     .background {
@@ -55,48 +53,57 @@ struct CameraChrome<Bottom: View>: View {
         }
     }
 
-    /// The tallest the card may be for it to end `windowHalfHeight` above the middle of the
-    /// screen, measured from the top of this view, which starts under the status bar.
-    private func cardMaxHeight(_ proxy: GeometryProxy) -> CGFloat {
+    /// How tall the status row and the card together may be for the card to end
+    /// `windowHalfHeight` above the middle of the screen. This view starts under the status
+    /// bar, above the stack's top padding.
+    private func topLimit(_ proxy: GeometryProxy) -> CGFloat {
         let screenMiddle = (proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom) / 2 - proxy.safeAreaInsets.top
-        let above = CameraChromeLayout.stackTopPadding + statusRowHeight + CameraChromeLayout.stackSpacing
-        return max(CameraChromeLayout.minCardHeight, (screenMiddle - CameraChromeLayout.windowHalfHeight - above).rounded(.down))
+        return (screenMiddle - CameraChromeLayout.windowHalfHeight - CameraChromeLayout.stackTopPadding).rounded(.down)
     }
 
-    private func stack(cardMaxHeight: CGFloat?) -> some View {
+    private func stack(topLimit: CGFloat?) -> some View {
         VStack(spacing: CameraChromeLayout.stackSpacing) {
-            HStack(alignment: .center) {
-                ModeBadge(isReplay: isReplay, isAutopilot: isAutopilot)
-                Spacer(minLength: 8)
-                if let photoCount {
-                    PhotoCounter(count: photoCount, lastCaptureID: lastCaptureID)
+            if let topLimit {
+                CardUnderStatusLayout(spacing: CameraChromeLayout.stackSpacing, limit: topLimit) {
+                    statusRow
+                    // The legend scrolls with the words in the card; a separate legend line at
+                    // these sizes ran to seven lines and took the camera's place.
+                    card(scrollsWords: true, legend: legend)
                 }
-            }
-            .frame(minHeight: 36)
-            .onGeometryChange(for: CGFloat.self, of: \.size.height) { statusRowHeight = $0 }
-            InstructionCard(
-                instruction: instruction,
-                tone: tone,
-                reply: reply,
-                eyebrow: eyebrow,
-                // Capped, the words scroll and the legend scrolls with them; a separate legend
-                // line at these sizes ran to seven lines and took the camera's place.
-                legend: capsWords ? legend : nil,
-                maxHeight: cardMaxHeight
-            )
-            if let legend, !capsWords {
-                legendLine(legend)
+            } else {
+                statusRow
+                card(scrollsWords: false, legend: nil)
+                if let legend {
+                    legendLine(legend)
+                }
             }
             Spacer(minLength: capsWords ? 2 * CameraChromeLayout.windowHalfHeight : 0)
                 .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { window in
-                    if let cameraWindow, cameraWindow.wrappedValue != window { cameraWindow.wrappedValue = window }
+                    if let cameraWindow, cameraWindow.frame != window { cameraWindow.frame = window }
                 }
             bottom
         }
-        .animation(.easeOut(duration: 0.2), value: legend)
+        // The legend's arrival resizes the stack. With Reduce Motion it lands at once, since a
+        // shorter resize still moves everything under it.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: legend)
         .padding(.horizontal, Metrics.edge)
         .padding(.top, CameraChromeLayout.stackTopPadding)
         .padding(.bottom, 8)
+    }
+
+    private var statusRow: some View {
+        HStack(alignment: .center) {
+            ModeBadge(isReplay: isReplay, isAutopilot: isAutopilot)
+            Spacer(minLength: 8)
+            if let photoCount {
+                PhotoCounter(count: photoCount, lastCaptureID: lastCaptureID)
+            }
+        }
+        .frame(minHeight: 36)
+    }
+
+    private func card(scrollsWords: Bool, legend: String?) -> some View {
+        InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow, scrollsWords: scrollsWords, legend: legend)
     }
 
     /// One Text with the symbol inline, as the result's sample badge is: the audit reported a
@@ -116,6 +123,15 @@ struct CameraChrome<Bottom: View>: View {
     }
 }
 
+/// The open camera between the instruction card and the actions, in global coordinates.
+/// `CameraChrome` writes it and only `WayfindingOverlay` reads it, so scrolling the chrome
+/// redraws the aim overlay rather than the whole screen, as state owned by the screen did.
+@MainActor
+@Observable
+final class CameraWindow {
+    var frame: CGRect?
+}
+
 /// `CameraChrome`'s layout constants, outside it because a generic type can't hold stored
 /// static properties.
 enum CameraChromeLayout {
@@ -130,6 +146,35 @@ enum CameraChromeLayout {
     static let minCardHeight: CGFloat = 200
     static let stackSpacing: CGFloat = 10
     static let stackTopPadding: CGFloat = 4
+}
+
+/// The status row, then the card under it, offered the height left under `limit` (never less
+/// than `CameraChromeLayout.minCardHeight`). The chrome's scroll view offers its content no
+/// height at all, so without this the card would never be told it has to fit.
+private struct CardUnderStatusLayout: Layout {
+    var spacing: CGFloat
+    var limit: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let (status, card) = sizes(proposal: proposal, subviews: subviews)
+        return CGSize(width: proposal.width ?? max(status.width, card.width), height: status.height + spacing + card.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let (status, card) = sizes(proposal: ProposedViewSize(width: bounds.width, height: nil), subviews: subviews)
+        subviews[0].place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: status.height))
+        subviews[1].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY + status.height + spacing),
+            proposal: ProposedViewSize(width: bounds.width, height: card.height)
+        )
+    }
+
+    private func sizes(proposal: ProposedViewSize, subviews: Subviews) -> (status: CGSize, card: CGSize) {
+        let status = subviews[0].sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        let room = max(CameraChromeLayout.minCardHeight, limit - status.height - spacing)
+        let card = subviews[1].sizeThatFits(ProposedViewSize(width: proposal.width, height: room))
+        return (status, CGSize(width: card.width, height: min(card.height, room)))
+    }
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)

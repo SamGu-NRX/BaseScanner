@@ -13,7 +13,7 @@ struct WallWalkScreen: View {
 
     @State private var cameraSize: CGSize = .zero
     /// The open camera between the card and the actions, for the aim ring (`CameraChrome`).
-    @State private var cameraWindow: CGRect?
+    @State private var cameraWindow = CameraWindow()
     @State private var trayOpen = false
     @State private var taps: [TapRipple.Ripple] = []
     /// The aim ring's legend while it shows, drawn under the card (#81).
@@ -24,7 +24,7 @@ struct WallWalkScreen: View {
     var body: some View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
-            CameraOverlays(state: state, highlight: nil, cardLegend: $cardLegend, clearArea: cameraWindow)
+            CameraOverlays(state: state, highlight: nil, cardLegend: $cardLegend, cameraWindow: cameraWindow)
             if state.coaching == .relocalizing, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up shows what to aim at.
                 SavedMeterPhoto(image: meterPhoto)
@@ -51,7 +51,7 @@ struct WallWalkScreen: View {
                     actions.markFeaturePoint(at: point, viewSize: cameraSize)
                 },
                 legend: cardLegend,
-                cameraWindow: $cameraWindow
+                cameraWindow: cameraWindow
             ) {
                 VStack(spacing: 10) {
                     controls
@@ -173,7 +173,7 @@ struct WallWalkScreen: View {
                     actions.cancelMarking()
                 } label: {
                     Text("Cancel")
-                        .frame(maxWidth: stacksActions ? .infinity : nil)
+                        .spansStack(stacksActions)
                 }
                 .buttonStyle(.secondaryProminent)
                 .accessibilityIdentifier("action.cancelMarking")
@@ -334,7 +334,7 @@ struct WallWalkScreen: View {
                         actions.markWallEnd(at: nil, viewSize: cameraSize)
                     } label: {
                         Label("Wall ends here", systemImage: "flag.fill")
-                            .frame(maxWidth: stacksActions ? .infinity : nil)
+                            .spansStack(stacksActions)
                     }
                     .buttonStyle(.primary)
                     .accessibilityHint("Marks the end of the wall at the circle in the middle of the screen")
@@ -356,7 +356,7 @@ struct WallWalkScreen: View {
                         actions.finishWalk()
                     } label: {
                         Label("Done with this wall", systemImage: "checkmark")
-                            .frame(maxWidth: stacksActions ? .infinity : nil)
+                            .spansStack(stacksActions)
                     }
                     .buttonStyle(.primary)
                     .accessibilityIdentifier("action.finishWalk")
@@ -371,15 +371,19 @@ struct WallWalkScreen: View {
         }
     }
 
-    /// Two actions side by side while their words fit on a line, one above the other at the
-    /// accessibility text sizes, where a side-by-side pair broke "Mark something" and "Wall
-    /// ends here" into one or two letters a line (B-28). `AnyLayout` keeps each button the
-    /// same view when the size changes, so nothing is rebuilt or crossfaded.
+    /// Two actions side by side at the default sizes, one above the other at the accessibility
+    /// sizes, where a side-by-side pair broke "Mark something" and "Wall ends here" into one or
+    /// two letters a line (B-28). The default row is the same `HStack` as before; the buttons
+    /// are rebuilt only when the text size crosses into the accessibility sizes.
     private var stacksActions: Bool { typeSize.isAccessibilitySize }
 
+    @ViewBuilder
     private func actionRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        let layout = stacksActions ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 10))
-        return layout(content)
+        if stacksActions {
+            VStack(spacing: 8, content: content)
+        } else {
+            HStack(spacing: 10, content: content)
+        }
     }
 
     /// The capture gate's coaching (slow down, texture, light, hold steady) comes and goes within
@@ -509,5 +513,17 @@ struct FeatureTray: View {
         }
         .padding(16)
         .background(ScrimShape.rounded())
+    }
+}
+
+private extension View {
+    /// Full width when the actions stack, as wide as its words when they share a row.
+    @ViewBuilder
+    func spansStack(_ stacked: Bool) -> some View {
+        if stacked {
+            frame(maxWidth: .infinity)
+        } else {
+            self
+        }
     }
 }
