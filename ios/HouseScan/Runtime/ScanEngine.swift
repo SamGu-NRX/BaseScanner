@@ -543,7 +543,13 @@ final class ScanEngine {
         if frame.meterAnchorID == meterAnchorID { refreshMeterFromAnchor(frame) }
         if !frame.groundPlanes.isEmpty, frame.groundPlanes != groundPlanes {
             groundPlanes = frame.groundPlanes
-            refineGround()
+            // The correction still too small to apply. It turns only about gravity, which leaves
+            // heights alone, so its translation's y is how far every point rises.
+            var pendingRise: Float = 0
+            if frame.meterAnchorID == meterAnchorID, let tracked = meterTracking?.pose, let anchor = frame.meterAnchor {
+                pendingRise = YawCorrection(from: tracked, to: anchor).translation.y
+            }
+            refineGround(pendingRise: pendingRise)
         }
         if !frame.wallPlanes.isEmpty, frame.wallPlanes != wallPlanes {
             wallPlanes = frame.wallPlanes
@@ -572,10 +578,15 @@ final class ScanEngine {
     /// Re-runs the ground lookup as ARKit adds or grows horizontal planes, so a plane below the
     /// wall always replaces the guess, and a better plane replaces an earlier one. A measured
     /// ground is never raised by more than `GroundPlaneChoice.maximumRaise`.
-    private func refineGround() {
+    ///
+    /// `pendingRise` is how far the meter's anchor has risen since the wall last followed it,
+    /// below the size `MeterAnchorTracking` applies. The planes have moved with it, so the ground
+    /// is compared and set in the wall's own frame: a rigid move then reads as no ground change,
+    /// and the correction that follows doesn't add the rise a second time.
+    private func refineGround(pendingRise: Float) {
         guard var wall = coverage?.wall,
               let choice = groundBelow(wall.meter, along: wall.along, current: groundMeasured ? wall.groundY : nil) else { return }
-        let y = choice.plane.y
+        let y = choice.plane.y - pendingRise
         // 1 cm: far under tap error, and it keeps plane jitter from republishing every frame.
         guard !groundMeasured || abs(y - wall.groundY) > 0.01 else { return }
         RuntimeLog.engine.info("ground at y=\(y) from \(Self.describe(choice), privacy: .public) (was \(wall.groundY), \(self.groundMeasured ? "measured" : "estimated", privacy: .public))")
@@ -2035,7 +2046,8 @@ final class ScanEngine {
             let dwell = UploadPacing.remaining(since: analyzingSince, minimum: .seconds(Self.analyzingMinimum), now: ContinuousClock.now)
             if dwell > .zero {
                 try await Task.sleep(for: dwell)
-                guard scan == generation, state.phase == .uploading else { return }
+                // A sleep that ended before the cancel doesn't throw.
+                guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             }
             placement = result
             noteExchange(scene: scene, answer: data)
@@ -2050,7 +2062,7 @@ final class ScanEngine {
                 // (`state.result` set, upload `.done`, both kept through the request): long
                 // enough to read before the camera takes over.
                 try await Task.sleep(for: .seconds(Self.followUpHold))
-                guard scan == generation, state.phase == .uploading else { return }
+                guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
                 automaticGaps.append(next.plan)
                 RuntimeLog.engine.info("answer lists capturable evidence: asking for it (\(self.automaticGaps.count) of at most \(Self.maxAutomaticGaps))")
                 beginServerGap(next.item, plan: next.plan)
@@ -2059,7 +2071,7 @@ final class ScanEngine {
             // Every step ticked, "Clearances checked" last, for `resultHold` before the result
             // replaces the screen: going on in the same turn never drew the tick (issue #31).
             try await Task.sleep(for: .seconds(Self.resultHold))
-            guard scan == generation, state.phase == .uploading else { return }
+            guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             // Keep the completion tick, then ask about the proposed spot before showing it.
             presentAnswer()
         } catch is CancellationError {
