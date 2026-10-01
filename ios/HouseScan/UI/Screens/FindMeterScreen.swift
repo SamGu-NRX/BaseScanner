@@ -1,3 +1,4 @@
+import HouseScanKit
 import SwiftUI
 
 /// "Find your electric meter": aim the reticle at the meter and tap the big button, or tap the
@@ -67,14 +68,12 @@ struct FindMeterScreen: View {
         return !ScanCopy.coachingReplacesTask(coaching)
     }
 
-    /// Where the reticle is and the button marks, in the camera view's (global) coordinates, when
-    /// the card folds: the middle of the open camera's part on screen. Nil means the middle of
-    /// the screen, as at every other size.
+    /// Where the reticle is and the button marks (`OpenCameraAim`). Nil means the middle of the
+    /// screen, as at every size where the card doesn't fold. One value for both, so the button
+    /// always marks where the reticle is drawn.
     private var aimPoint: CGPoint? {
-        guard aims, typeSize.isAccessibilitySize, let window = cameraWindow.frame else { return nil }
-        let shown = window.intersection(CGRect(origin: .zero, size: cameraSize))
-        guard !shown.isNull, shown.height > 0 else { return nil }
-        return CGPoint(x: shown.midX, y: shown.midY)
+        guard aims, typeSize.isAccessibilitySize else { return nil }
+        return OpenCameraAim.point(folds: true, window: cameraWindow.frame, camera: cameraSize)
     }
 
     private var markHint: String {
