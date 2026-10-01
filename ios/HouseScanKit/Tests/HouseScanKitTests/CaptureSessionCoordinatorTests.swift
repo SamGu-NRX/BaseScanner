@@ -431,6 +431,38 @@ struct NativeCaptureFixture: Sendable {
         #expect(server.requests("POST captures/finalize").isEmpty)
     }
 
+    /// A withdrawal is saved before `answerConsent(false)` returns: a relaunch straight after it
+    /// does not resume the sealed capture, even though the uploader has not saved its end yet.
+    @Test func aWithdrawnCaptureIsNotResumedAfterARelaunch() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        server.state.withLock { $0.held = ["POST captures/finalize"] }
+        let environment = NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures)
+        let coordinator = CaptureSessionCoordinator(environment: environment)
+        coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
+        let (tap, hit) = try fixture.tap(at: fixture.start + 1)
+        coordinator.meterTapped(tap, hit: hit)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2.5, purpose: "meter_close"))
+        for i in 0..<3 { coordinator.kept(try fixture.photo(at: fixture.start + 3 + Double(i) * 1.5)) }
+        coordinator.captureEnded(acceptedCloseUpAt: fixture.start + 2.5)
+        let session = try #require(coordinator.session)
+        let uploader = try #require(session.uploader)
+        let stateURL = CaptureUploader.stateURL(in: session.folder)
+        for _ in 0..<500 where (try? CaptureUploadState.load(from: stateURL))?.packet == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(try CaptureUploadState.load(from: stateURL).packet != nil)
+
+        coordinator.answerConsent(false)
+        // The same main-actor turn: the abandon task has not run yet.
+        #expect(try CaptureUploadState.load(from: stateURL).end == nil)
+        #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
+
+        server.release("POST captures/finalize")
+        server.state.withLock { $0.held = [] }
+        await uploader.settled()
+        #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
+    }
+
     /// Photos kept after the scan was sent don't change the frozen packet or start more uploads.
     @Test func photosAfterTheScanWasSentAreNotAdded() async throws {
         defer { try? FileManager.default.removeItem(at: root) }

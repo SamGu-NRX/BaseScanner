@@ -226,6 +226,9 @@ public final class CaptureSessionCoordinator {
     public var onResult: (@MainActor (CaptureResult.Record) -> Void)?
     /// The packet's ARKit epoch: one packet is one world.
     public static let epoch = "e1"
+    /// Written into a capture's folder when the homeowner takes back their yes. A relaunch never
+    /// resumes a folder that has it.
+    public static let withdrawnFileName = "consent-withdrawn"
 
     public init(environment: Environment?) {
         self.environment = environment
@@ -248,6 +251,13 @@ public final class CaptureSessionCoordinator {
         } else if let uploader = session.uploader {
             session.consentWithdrawn = true
             session.uploader = nil
+            // Abandoning is asynchronous, so the marker is what keeps a relaunch from resuming
+            // this capture if the app quits before the uploader saves its end.
+            do {
+                try Data().write(to: session.folder.appending(path: Self.withdrawnFileName), options: .atomic)
+            } catch {
+                environment?.log("capture upload: the withdrawal could not be saved: \(error)")
+            }
             Task { await uploader.abandon("consent withdrawn") }
         }
     }
@@ -371,7 +381,8 @@ public final class CaptureSessionCoordinator {
         else { return [] }
         var resumed: [CaptureUploader] = []
         for folder in folders {
-            guard let saved = try? CaptureUploadState.load(from: CaptureUploader.stateURL(in: folder)), saved.end == nil, saved.packet != nil,
+            guard !FileManager.default.fileExists(atPath: folder.appending(path: Self.withdrawnFileName).path),
+                  let saved = try? CaptureUploadState.load(from: CaptureUploader.stateURL(in: folder)), saved.end == nil, saved.packet != nil,
                   let uploader = try? CaptureUploader.resume(folder: folder, base: environment.endpoint, http: environment.http, policy: environment.policy)
             else { continue }
             resumed.append(uploader)
