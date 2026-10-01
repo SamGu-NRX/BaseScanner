@@ -125,16 +125,20 @@ struct WallWalkScreen: View {
         return .normal
     }
 
-    /// Steps where the homeowner aims the camera: walking, marking the wall's end or the next
-    /// wall, finishing. Their card folds its detail at the largest text sizes so the camera
-    /// stays open (`CameraChrome.aims`). Not a question, a mark, the tray, coaching that replaces
-    /// the task or a refusal: there every word on the card is what to do now.
+    /// Steps where the homeowner aims the camera and the card's second line only explains:
+    /// walking, aiming, marking the wall's end, finishing. Their card folds that line at the
+    /// largest text sizes so the camera stays open (`CameraChrome.aims`). Not where the second
+    /// line is itself what to do now: looking past an obstruction ("Look at it from the side"),
+    /// a step back added to an aim step, marking the next wall ("Put the circle on it"). Nor a
+    /// question, a mark, the tray, coaching that replaces the task, or a refusal.
     private var aims: Bool {
         switch controlsKey {
-        case .walking, .markEnd, .finish, .nextWall:
+        case .walking, .markEnd, .finish:
             if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
+            if case .seeBehind = state.guidance { return false }
+            if state.guidanceHint?.stepBack == true { return false }
             return tone != .refusal
-        case .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
+        case .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
             return false
         }
     }

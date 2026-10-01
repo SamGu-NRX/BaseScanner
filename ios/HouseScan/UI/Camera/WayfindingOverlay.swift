@@ -343,6 +343,7 @@ private struct ArrowAccessibility: ViewModifier {
                 .accessibilityElement()
                 .accessibilityLabel("Spot to show, \(way)")
                 .accessibilityValue(progress >= 1 ? "Captured" : "\(Int((min(max(progress, 0), 1) * 100).rounded())) percent captured")
+                .accessibilityAddTraits(.updatesFrequently)
                 .accessibilityIdentifier("aim.arrow")
         } else {
             content.accessibilityHidden(true)

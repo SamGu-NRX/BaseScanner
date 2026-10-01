@@ -125,13 +125,18 @@ struct GapRequestScreen: View {
         }
     }
 
-    /// An open request has the homeowner aim the camera, so its card folds its detail at the
-    /// largest text sizes (`CameraChrome.aims`). Not the overhead question, a request already
-    /// seen, or coaching that replaces the request.
+    /// An open request has the homeowner aim the camera, so its card folds its second line at
+    /// the largest text sizes (`CameraChrome.aims`). Not where that line is what to do now:
+    /// stepping back for ground further out, the walk out with its live "this needs" reading, or
+    /// a walk the space can't hold, which points at "I can't get there". Nor the overhead
+    /// question, a request already seen, or coaching that replaces the request.
     private var aims: Bool {
-        if asking || state.gap?.isSatisfied == true { return false }
+        guard let gap = state.gap, !asking, !gap.isSatisfied else { return false }
         if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
-        return true
+        switch gap.reason {
+        case .groundOut, .walkOut: return false
+        default: return true
+        }
     }
 
     /// As on the walk: tracking problems and standing past an end replace the request, and the

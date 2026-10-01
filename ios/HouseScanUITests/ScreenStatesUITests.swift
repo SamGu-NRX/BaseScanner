@@ -789,16 +789,6 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(scrollUntilHittable(mark, in: app), "Mark something must be reachable by scrolling")
     }
 
-    /// Temporary: the audit on the AX5 aim state and the off-screen aim state, whose arrow now
-    /// reads the ring's progress to VoiceOver. Removed before the final every-state run.
-    @MainActor
-    func testAimArrowStatesPassTheAudit() throws {
-        for (name, ax5) in [("wallWalk-aim", true), ("wallWalk-aimOffScreen", false)] {
-            guard let state = Self.states.first(where: { $0.name == name }) else { continue }
-            try check(ax5 ? "\(name)-AX5" : name, arguments: state.arguments + (ax5 ? Self.largestText : []), screen: state.screen)
-        }
-    }
-
     /// At AX5, Details opens the folded how-to words and the ring's legend, and closes them again.
     @MainActor
     func testFoldedDetailsOpenAndCloseAtLargestTextSize() throws {
@@ -819,6 +809,29 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "instruction.details")
         XCTAssertTrue(detail.waitForNonExistence(timeout: 5), "Details must close again")
         XCTAssertFalse(legend.exists)
+    }
+
+    /// Where a card's second line is itself what to do now, it stays on the card at AX5: looking
+    /// past an obstruction, and the walk out with its live reading.
+    @MainActor
+    func testActionWordsStayOnTheCardAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (state, words) in [("wallWalk-seeBehind", "Look at it from the side"), ("gapRequest-walkOut", "Follow the dotted line")] {
+            guard let fixture = Self.states.first(where: { $0.name == state }) else {
+                XCTFail("no state named \(state)")
+                continue
+            }
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + fixture.arguments + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.\(fixture.screen)").waitForExistence(timeout: 15))
+            let card = element(app, "instruction")
+            XCTAssertTrue(card.waitForExistence(timeout: 5))
+            let label = ElementRead.snapshot(card)?.label ?? ""
+            XCTAssertTrue(label.contains(words), "\(state): \"\(words)\" must stay on the card, got \(label)")
+            XCTAssertFalse(element(app, "instruction.details").exists, "\(state): nothing to fold")
+            app.terminate()
+        }
     }
 
     /// Coaching that rides along with the task says what to do now, so the folded card at AX5
@@ -1102,6 +1115,10 @@ final class ScreenStatesUITests: XCTestCase {
         // whether it is hittable then fails the test outright ("Activation point invalid";
         // result.details in run 36820279307, mid-transition from the spot check).
         while !Self.laidOut(target.frame), Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        guard Self.laidOut(target.frame) else {
+            XCTFail("\(identifier) was never laid out: \(target.frame)")
+            return
+        }
         let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
         if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
             target.tap()
@@ -1112,7 +1129,7 @@ final class ScreenStatesUITests: XCTestCase {
     }
 
     private static func laidOut(_ frame: CGRect) -> Bool {
-        frame.minX.isFinite && frame.minY.isFinite && !frame.isEmpty
+        [frame.minX, frame.minY, frame.width, frame.height].allSatisfy(\.isFinite) && !frame.isEmpty
     }
 
     @MainActor
