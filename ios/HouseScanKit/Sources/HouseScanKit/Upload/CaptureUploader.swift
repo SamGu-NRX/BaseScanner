@@ -70,6 +70,8 @@ public actor CaptureUploader {
     /// True once the homeowner took back their yes. Every save happens while holding it, so no
     /// save can land between the withdrawal and the abandoned state it leads to.
     private nonisolated let withdrawal = Mutex(false)
+    /// The running loop, reachable without the actor so a withdrawal can cancel it at once.
+    private nonisolated let running = Mutex<Task<Void, Never>?>(nil)
     /// Set when a state change could not be saved: the loop stops rather than send a request the
     /// saved state doesn't know about.
     private var saveFailed = false
@@ -175,23 +177,42 @@ public actor CaptureUploader {
 
     public static let withdrawnReason = "consent withdrawn"
 
-    /// The homeowner took back their yes. Before returning, this writes the marker `resume`
-    /// refuses, or removes the saved state if the marker can't be written, and from then on every
-    /// save records the upload as abandoned, so no reply still in flight can leave a capture a
-    /// relaunch would resume. Returns whether the marker was written. Call `abandon` afterwards to
-    /// stop the loop.
+    /// How a withdrawal was recorded on disk.
+    public enum WithdrawalRecord: Sendable, Equatable {
+        /// The marker `resume` refuses was written.
+        case marked
+        /// The marker couldn't be written, so the saved state was removed instead.
+        case savedStateRemoved
+        /// Neither the marker nor the removal succeeded: a relaunch could still find the saved
+        /// yes until a later save records the upload as abandoned.
+        case notRecorded(String)
+    }
+
+    /// The homeowner took back their yes. Before returning, this records the withdrawal on disk
+    /// (see `WithdrawalRecord`) and cancels the running loop, which cancels requests it has not
+    /// finished. From then on no request is admitted and every save of this uploader records the
+    /// upload as abandoned, so a reply that still arrives can't leave a capture a relaunch would
+    /// resume. Call `abandon` afterwards to end the upload in memory.
     @discardableResult
-    public nonisolated func withdrawConsent() -> Bool {
-        withdrawal.withLock { withdrawn in
+    public nonisolated func withdrawConsent() -> WithdrawalRecord {
+        let record = withdrawal.withLock { withdrawn -> WithdrawalRecord in
             withdrawn = true
             do {
                 try Data().write(to: CaptureUploadState.withdrawnURL(in: folder), options: .atomic)
-                return true
+                return .marked
             } catch {
-                try? FileManager.default.removeItem(at: Self.stateURL(in: folder))
-                return false
+                do {
+                    try FileManager.default.removeItem(at: Self.stateURL(in: folder))
+                    return .savedStateRemoved
+                } catch let removal as NSError where removal.domain == NSCocoaErrorDomain && removal.code == NSFileNoSuchFileError {
+                    return .savedStateRemoved
+                } catch {
+                    return .notRecorded(Self.describe(error))
+                }
             }
         }
+        running.withLock { $0?.cancel() }
+        return record
     }
 
     /// Ends this upload for good: a world reset or starting over. Replies still in flight are
@@ -207,8 +228,10 @@ public actor CaptureUploader {
 
     /// Starts the loop if it is idle: after a relaunch, or when the network is back.
     public func kick() {
-        guard loop == nil, state.end == nil else { return }
-        loop = Task { await self.drive() }
+        guard loop == nil, state.end == nil, !isWithdrawn else { return }
+        let task = Task { await self.drive() }
+        loop = task
+        running.withLock { $0 = task }
     }
 
     /// Waits for the loop to go idle: nothing to send until more input, or ended.
@@ -338,6 +361,7 @@ public actor CaptureUploader {
                     let local = folder.appending(path: file.sealed.path)
                     let http = self.http
                     group.addTask {
+                        if self.isWithdrawn { return (file.sealed.path, .failure(Withdrawn())) }
                         do { return (file.sealed.path, .success(try await http.upload(request, file: local))) } catch { return (file.sealed.path, .failure(error)) }
                     }
                 }
@@ -345,6 +369,7 @@ public actor CaptureUploader {
                 for await result in group { out.append(result) }
                 return out
             }
+            if isWithdrawn { throw Withdrawn() }
             guard attempt == state.attemptID, state.end == nil else { return }
             for (path, result) in results {
                 state.files[path]?.attempts += 1
@@ -557,7 +582,8 @@ public actor CaptureUploader {
     private func persist() {
         do {
             try withdrawal.withLock { withdrawn in
-                if withdrawn, state.end == nil {
+                // A withdrawal outranks any end a late reply set (finished, failed).
+                if withdrawn, state.end != .abandoned(Self.withdrawnReason) {
                     state.end = .abandoned(Self.withdrawnReason)
                     // Replies still in flight belong to the old attempt and are dropped.
                     state.attemptID = UUID().uuidString

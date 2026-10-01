@@ -250,8 +250,12 @@ public final class CaptureSessionCoordinator {
             session.uploader = nil
             // Recorded before returning, so a relaunch can't resume this capture even if the app
             // quits before the abandon below runs.
-            if !uploader.withdrawConsent() {
+            switch uploader.withdrawConsent() {
+            case .marked: break
+            case .savedStateRemoved:
                 environment?.log("capture upload: the withdrawal marker could not be written; the saved upload was removed instead")
+            case .notRecorded(let error):
+                environment?.log("capture upload: the withdrawal could not be saved (\(error)); a relaunch could still find this capture until the upload is saved as abandoned")
             }
             Task { await uploader.abandon(CaptureUploader.withdrawnReason) }
         }
