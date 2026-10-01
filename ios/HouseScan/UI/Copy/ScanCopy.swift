@@ -199,7 +199,10 @@ enum ScanCopy {
     /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
     static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
         guard let coaching else { return task }
-        return Instruction(title: task.title, detail: task.detail, note: coachingNote(coaching))
+        // A copy, so the task keeps everything else it carries, such as its folded words.
+        var card = task
+        card.note = coachingNote(coaching)
+        return card
     }
 
     // MARK: Aim ring

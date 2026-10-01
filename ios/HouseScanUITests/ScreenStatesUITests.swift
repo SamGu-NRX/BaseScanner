@@ -844,44 +844,54 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// Root's review of the AX5 frame at 35cc8521: unfolded, the see-behind card covered the camera,
     /// and the spot it asks the homeowner to look past, down to its reply. Folded, what to do leads,
-    /// the reply stays, the camera opens between the card and the actions, and Details holds the
-    /// situation and where it is.
+    /// ride-along coaching and the reply stay, the camera opens between the card and the controls
+    /// below it, and Details holds the situation and where it is. The step's ring has no progress,
+    /// so it is hidden from VoiceOver and its place is checked in the attached frames.
     @MainActor
     func testSeeBehindLeadsWithItsActionAtLargestTextSize() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"] + Self.largestText
-        app.launch()
-        defer { app.terminate() }
-        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
-        let window = app.windows.firstMatch.frame
-        let card = element(app, "instruction")
-        let details = element(app, "instruction.details")
-        let cantSee = reply(app, "Can't see past it")
-        let mark = element(app, "action.markSomething")
-        XCTAssertTrue(card.waitForExistence(timeout: 5), "missing instruction")
-        XCTAssertTrue(details.waitForExistence(timeout: 5), "the situation must fold under Details")
-        XCTAssertTrue(cantSee.waitForExistence(timeout: 5), "missing the reply Can't see past it")
-        XCTAssertTrue(mark.waitForExistence(timeout: 5), "missing action.markSomething")
-        let label = ElementRead.snapshot(card)?.label ?? ""
-        XCTAssertTrue(label.contains("Look at it from the side or step around it"), "what to do must lead, got \(label)")
-        XCTAssertFalse(label.contains("Something is in front of the wall here"), "the situation must fold under Details, got \(label)")
-        XCTAssertTrue(details.isHittable, "Details must be reachable without scrolling")
-        XCTAssertTrue(cantSee.isHittable, "Can't see past it must be reachable without scrolling")
-        let cardBottom = max(card.frame.maxY, details.frame.maxY, cantSee.frame.maxY)
-        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
-        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "the camera must stay open between the card and the actions: \(openCamera)")
-        for marker in [element(app, "aim.ring"), element(app, "aim.arrow")] where marker.exists {
-            XCTAssertTrue(openCamera.contains(marker.frame), "the spot's marker \(marker.frame) must be in the open camera \(openCamera)")
-        }
-        attach(app, name: "wallWalk-seeBehind-AX5-folded")
+        for (coaching, name) in [(nil, "wallWalk-seeBehind-AX5-folded"), ("slowDown", "wallWalk-seeBehind-slowDown-AX5-folded")] {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"]
+                + (coaching.map { ["-uiDemoCoaching", $0] } ?? []) + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+            let window = app.windows.firstMatch.frame
+            let card = element(app, "instruction")
+            let details = element(app, "instruction.details")
+            let cantSee = reply(app, "Can't see past it")
+            XCTAssertTrue(card.waitForExistence(timeout: 5), "missing instruction")
+            XCTAssertTrue(details.waitForExistence(timeout: 5), "\(name): the situation must fold under Details")
+            XCTAssertTrue(cantSee.waitForExistence(timeout: 5), "\(name): missing the reply Can't see past it")
+            let label = ElementRead.snapshot(card)?.label ?? ""
+            XCTAssertTrue(label.contains("Look at it from the side or step around it"), "\(name): what to do must lead, got \(label)")
+            XCTAssertFalse(label.contains("Something is in front of the wall here"), "\(name): the situation must fold under Details, got \(label)")
+            if coaching != nil {
+                XCTAssertTrue(label.contains("Slow down"), "\(name): the coaching must stay in view, got \(label)")
+            }
+            XCTAssertTrue(details.isHittable, "\(name): Details must be reachable without scrolling")
+            XCTAssertTrue(cantSee.isHittable, "\(name): Can't see past it must be reachable without scrolling")
+            // "Mark something" steps aside on this step, so the camera ends at the first control
+            // shown below the card, or at the bottom of the screen.
+            let cardBottom = max(card.frame.maxY, details.frame.maxY, cantSee.frame.maxY)
+            let below = ["action.endHere", "action.markEnd", "action.finishWalk", "wallTape"]
+                .map { element(app, $0) }
+                .filter { $0.exists && $0.frame.minY > cardBottom }
+                .map(\.frame.minY)
+            let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: min(below.min() ?? window.maxY, window.maxY) - cardBottom)
+            XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the controls: \(openCamera)")
+            attach(app, name: name)
 
-        tap(app, "instruction.details")
-        let detail = element(app, "instruction.detail")
-        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the situation")
-        XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter"), "detail reads \(detail.label)")
-        XCTAssertTrue(scrollUntilHittable(cantSee, in: app), "Can't see past it must stay reachable with Details open")
-        attach(app, name: "wallWalk-seeBehind-AX5-details")
+            if coaching == nil {
+                tap(app, "instruction.details")
+                let detail = element(app, "instruction.detail")
+                XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the situation")
+                XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter"), "detail reads \(detail.label)")
+                XCTAssertTrue(scrollUntilHittable(cantSee, in: app), "Can't see past it must stay reachable with Details open")
+                attach(app, name: "wallWalk-seeBehind-AX5-details")
+            }
+            app.terminate()
+        }
     }
 
     /// Coaching that rides along with the task says what to do now, so the folded card at AX5
