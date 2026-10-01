@@ -85,7 +85,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "onboarding-practice", "onboarding-moves", "onboarding-permissions", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "onboarding-practice", "onboarding-moves", "onboarding-permissions", "findMeter", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -105,6 +105,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
         // At AX5 looking past it leads, and the situation folds under Details.
         "wallWalk-seeBehind-AX5": [("instruction", "Look around it"), ("instruction.details", "Details")],
+        // At AX5 the meter's description folds under Details, and the camera stays open.
+        "findMeter-AX5": [("instruction", "Find your electric meter"), ("instruction.details", "Details")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
         "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
@@ -892,6 +894,76 @@ final class ScreenStatesUITests: XCTestCase {
             }
             app.terminate()
         }
+    }
+
+    /// Root's manual pass at b6ee153b: after "Allow camera" at AX5, the find-meter card filled the
+    /// camera with its description, hid the reticle at the middle of the screen, and pushed "This
+    /// is my meter" below the screen. Folded, the task stays, the description sits under Details,
+    /// the camera opens between the card and the button, and the button marks the meter.
+    @MainActor
+    func testFindMeterKeepsTheCameraOpenAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "findMeter"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 15))
+        assertFindMeterFolded(app, task: "Find your electric meter", description: "A gray box with a round glass dial", name: "findMeter-AX5-folded")
+
+        let details = element(app, "instruction.details")
+        tap(app, "instruction.details")
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the meter's description")
+        XCTAssertTrue(detail.label.contains("A gray box with a round glass dial or a small screen, usually on an outside wall."), "detail reads \(detail.label)")
+        attach(app, name: "findMeter-AX5-details")
+        tap(app, "instruction.details")
+        XCTAssertTrue(detail.waitForNonExistence(timeout: 5), "Details must close again")
+        XCTAssertTrue(details.isHittable)
+
+        tap(app, "action.markMeter")
+        XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 10), "This is my meter must mark the meter")
+    }
+
+    /// The practice scan's find-meter step folds the same way: "Tap a spot on a wall" stays, the
+    /// sample's explanation sits under Details, and "Put the sample meter here" is on screen. The
+    /// real engine on a replay, since only it starts a practice scan.
+    @MainActor
+    func testPracticeFindMeterKeepsTheCameraOpenAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-replay", FullFlowUITests.fixture, "-sampleResult", "-practiceMeter", "YES"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 30))
+        if element(app, "action.onboardingSkip").waitForExistence(timeout: 5) { tap(app, "action.onboardingSkip") }
+        tap(app, "action.finishOnboarding", timeout: 15)
+        XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 15))
+        XCTAssertEqual(element(app, "action.markMeter").label, "Put the sample meter here")
+        assertFindMeterFolded(app, task: "Tap a spot on a wall", description: "A sample meter goes there", name: "findMeter-practice-AX5-folded")
+        tap(app, "action.markMeter")
+        XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 15), "Put the sample meter here must mark the meter")
+    }
+
+    /// The folded find-meter card: the task in view, its description under Details, the button
+    /// whole on screen without scrolling, and open camera between them for the reticle (76 pt).
+    @MainActor
+    private func assertFindMeterFolded(_ app: XCUIApplication, task: String, description: String, name: String) {
+        let window = app.windows.firstMatch.frame
+        let card = element(app, "instruction")
+        let details = element(app, "instruction.details")
+        let mark = element(app, "action.markMeter")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "\(name): missing instruction")
+        XCTAssertTrue(details.waitForExistence(timeout: 5), "\(name): the description must fold under Details")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5), "\(name): missing action.markMeter")
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains(task), "\(name): the task must stay on the card, got \(label)")
+        XCTAssertFalse(label.contains(description), "\(name): the description must fold under Details, got \(label)")
+        let cardBottom = max(card.frame.maxY, details.frame.maxY)
+        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
+        attach(app, name: name)
+        XCTAssertTrue(details.isHittable, "\(name): Details must be reachable without scrolling")
+        XCTAssertTrue(window.contains(mark.frame) && mark.isHittable, "\(name): the mark button must be whole on screen without scrolling: \(mark.frame) in \(window)")
+        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the button: \(openCamera)")
     }
 
     /// Coaching that rides along with the task says what to do now, so the folded card at AX5
