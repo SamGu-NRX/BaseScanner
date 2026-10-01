@@ -63,7 +63,7 @@ import Testing
             for change in GroundFreshness.Change.allCases {
                 var rule = awaiting ? Self.afterOneWithdrawal() : GroundFreshness()
                 let expected: GroundFreshness.Action
-                if change == .anchorCorrection || screen == .noAnswer {
+                if change == .anchorCorrection || screen == .noAnswer || screen == .stopped {
                     expected = .keep
                 } else if awaiting {
                     expected = .fail
@@ -76,6 +76,21 @@ import Testing
                 #expect(rule.awaitingNewAnswer == (awaiting || expected == .sendAgain))
             }
         }
+    }
+
+    /// A failed or refused upload keeps its own screen: an offline failure keeps its reason, and
+    /// a refusal keeps "Back to review" rather than offering to resend a refused scan. A resend's
+    /// failure stays protected, so its "Try again" still uses no second resend.
+    @Test(arguments: [false, true])
+    func aStoppedUploadKeepsItsFailureAndItsResendState(packaged: Bool) {
+        var first = GroundFreshness()
+        #expect(first.after(.ground, on: .stopped, scenePackaged: packaged) == .keep)
+        #expect(first == GroundFreshness())
+
+        var resend = Self.afterOneWithdrawal()
+        #expect(resend.after(.ground, on: .stopped, scenePackaged: packaged) == .keep)
+        #expect(resend == Self.afterOneWithdrawal())
+        #expect(resend.after(.ground, on: .sending, scenePackaged: true) == .fail)
     }
 
     @Test func aPackagedFirstUploadUsesOneResendUntilAnAnswerIsShown() {

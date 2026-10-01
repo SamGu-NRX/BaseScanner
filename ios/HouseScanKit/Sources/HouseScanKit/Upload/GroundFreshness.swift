@@ -30,6 +30,10 @@ public struct GroundFreshness: Equatable, Sendable {
         case noAnswer
         /// The upload screen: the scan is on its way, or its answer is being readied.
         case sending
+        /// The upload screen showing a failure or a refusal: no answer is up and none is coming.
+        /// The homeowner's own choice ("Try again", or back to the review after a refusal) sends
+        /// the scan as it is then, so a ground change leaves that screen as it is.
+        case stopped
         /// The spot check, which draws the answer's spot on a kept photo.
         case spotCheck
         /// The result screen and its 3D preview.
@@ -60,7 +64,7 @@ public struct GroundFreshness: Equatable, Sendable {
     public mutating func after(_ change: Change, on screen: Screen, scenePackaged: Bool = false) -> Action {
         guard change == .ground else { return .keep }
         switch screen {
-        case .noAnswer:
+        case .noAnswer, .stopped:
             return .keep
         case .sending:
             if awaitingNewAnswer { return .fail }

@@ -1670,19 +1670,17 @@ final class ScanEngine {
     /// longer has (`GroundFreshness`), before `publishWall` can draw it again on the new one.
     private func answerAfter(_ change: GroundFreshness.Change) {
         let screen: GroundFreshness.Screen = switch state.phase {
-        case .uploading: .sending
+        case .uploading:
+            switch state.upload {
+            case .failed, .rejected: .stopped
+            case .idle, .packaging, .uploading, .analyzing, .done: .sending
+            }
         case .spotConfirm: .spotCheck
         case .result: .result
         case .resultAR: .resultInCamera
         default: .noAnswer
         }
-        // A failed or refused upload has no answer coming, so its scene no longer counts as
-        // packaged: the failure stays until "Try again", which packages the current ground.
-        let answerPending = switch state.upload {
-        case .failed, .rejected: false
-        case .idle, .packaging, .uploading, .analyzing, .done: scenePackaged
-        }
-        switch groundFreshness.after(change, on: screen, scenePackaged: answerPending) {
+        switch groundFreshness.after(change, on: screen, scenePackaged: scenePackaged) {
         case .keep:
             return
         case .sendAgain:
