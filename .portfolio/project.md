@@ -45,5 +45,5 @@ Hunter Carver built the 3D model and the rule checks. Aiden Johnston ran field t
 - Most of the system still lives in open pull requests, guided capture and the rules engine included.
 - Our first run on a real phone placed nothing. The app put both ends of the wall at the meter, which left the server a wall with no length to search.
 - Our best tracking result came from an iPhone 14 Pro Max, which has LiDAR. An iPhone 6s drifted two to three times past what the server allows.
-- Reading the meter number is only half solved. The phone read the text in full on 71 of 73 photos but picked the right line on only 21 of 75, because a nameplate carries several numbers. For now the app shows three candidates and the homeowner taps the right one.
+- Reading the meter number is only half solved. A nameplate carries several numbers, and the reader’s top three guesses held the right meter number on 27 of 34 held-out photos. For now the app shows those three candidates and the homeowner taps the right one.
 - The pool and driveway distances are placeholders, because we couldn’t find public values.
