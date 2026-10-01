@@ -40,7 +40,15 @@ struct FindMeterScreen: View {
                     ripple(at: aimPoint ?? CGPoint(x: cameraSize.width / 2, y: cameraSize.height / 2))
                     actions.markMeter(at: aimPoint, viewSize: cameraSize)
                 } label: {
-                    Label(state.isPracticeScan ? ScanCopy.practiceMarkMeter : "This is my meter", systemImage: "mappin.and.ellipse")
+                    let label = Label(state.isPracticeScan ? ScanCopy.practiceMarkMeter : "This is my meter", systemImage: "mappin.and.ellipse")
+                    // At the largest text sizes the pin took a fifth of the width and put "Put the
+                    // sample meter here" on four lines, below the screen; the words say what the
+                    // button does without it, as on the walk's stacked actions.
+                    if typeSize.isAccessibilitySize {
+                        label.labelStyle(.titleOnly)
+                    } else {
+                        label
+                    }
                 }
                 .buttonStyle(.primary)
                 .accessibilityHint(markHint)
