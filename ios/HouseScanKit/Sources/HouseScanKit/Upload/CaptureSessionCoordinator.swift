@@ -248,16 +248,12 @@ public final class CaptureSessionCoordinator {
         } else if let uploader = session.uploader {
             session.consentWithdrawn = true
             session.uploader = nil
-            // Abandoning is asynchronous, so the marker is what keeps a relaunch from resuming
-            // this capture if the app quits before the uploader saves its end. If the marker can't
-            // be written, the saved upload state goes instead: without it nothing resumes.
-            do {
-                try Data().write(to: CaptureUploadState.withdrawnURL(in: session.folder), options: .atomic)
-            } catch {
-                environment?.log("capture upload: the withdrawal marker could not be written (\(error)); removing the saved upload")
-                try? FileManager.default.removeItem(at: CaptureUploader.stateURL(in: session.folder))
+            // Recorded before returning, so a relaunch can't resume this capture even if the app
+            // quits before the abandon below runs.
+            if !uploader.withdrawConsent() {
+                environment?.log("capture upload: the withdrawal marker could not be written; the saved upload was removed instead")
             }
-            Task { await uploader.abandon("consent withdrawn") }
+            Task { await uploader.abandon(CaptureUploader.withdrawnReason) }
         }
     }
 

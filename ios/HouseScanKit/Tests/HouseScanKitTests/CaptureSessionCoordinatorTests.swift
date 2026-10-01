@@ -454,7 +454,6 @@ struct NativeCaptureFixture: Sendable {
 
         coordinator.answerConsent(false)
         // The same main-actor turn: the abandon task has not run yet.
-        #expect(try CaptureUploadState.load(from: stateURL).end == nil)
         #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
         #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10)) == nil)
 
@@ -464,28 +463,46 @@ struct NativeCaptureFixture: Sendable {
         #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
     }
 
-    /// When the withdrawal marker can't be written, the saved upload is removed instead, so a
-    /// relaunch still finds nothing to resume.
-    @Test func aWithdrawalThatCannotBeMarkedRemovesTheSavedUpload() async throws {
+    /// A reply that lands after the homeowner withdrew, but before the uploader is abandoned,
+    /// can't save a capture a relaunch would resume, whether or not the withdrawal marker could
+    /// be written. The main actor is held from the withdrawal to the checks, so the abandon task
+    /// the withdrawal schedules can't run first; only the withdrawal itself can stop the save.
+    @Test(arguments: [false, true]) func aReplyAfterWithdrawalCannotSaveAResumableCapture(markerBlocked: Bool) async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
+        server.state.withLock { $0.held = ["POST captures/files"] }
         let environment = NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures)
         let coordinator = CaptureSessionCoordinator(environment: environment)
         coordinator.begin(recording: fixture.recording)
         coordinator.answerConsent(true)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2))
         let session = try #require(coordinator.session)
         let uploader = try #require(session.uploader)
         let stateURL = CaptureUploader.stateURL(in: session.folder)
-        #expect(FileManager.default.fileExists(atPath: stateURL.path))
-        // A directory where the marker goes makes writing it fail.
-        try FileManager.default.createDirectory(at: CaptureUploadState.withdrawnURL(in: session.folder).appending(path: "blocked"), withIntermediateDirectories: true)
+        for _ in 0..<500 where server.requests("POST captures/files").isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(server.requests("POST captures/files").count == 1)
+        if markerBlocked {
+            // A directory where the marker goes makes writing it fail.
+            try FileManager.default.createDirectory(
+                at: CaptureUploadState.withdrawnURL(in: session.folder).appending(path: "blocked"), withIntermediateDirectories: true)
+        }
 
         coordinator.answerConsent(false)
-        #expect(!FileManager.default.fileExists(atPath: stateURL.path))
+        // No suspension from here to the checks.
+        let before = try? Data(contentsOf: stateURL)
+        #expect((before == nil) == markerBlocked)
+        server.release("POST captures/files")
+        // The uploader saves the register reply on its own executor.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, (try? Data(contentsOf: stateURL)) == before { usleep(10_000) }
+        let saved = try CaptureUploadState.load(from: stateURL)
+        #expect(saved.end == .abandoned("consent withdrawn"))
+        #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10)) == nil)
+        #expect(server.requests("PUT upload").isEmpty)
 
-        // Abandoning runs in its own task after this turn.
-        for _ in 0..<500 where await uploader.snapshot.end == nil { try await Task.sleep(for: .milliseconds(10)) }
-        #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
+        server.state.withLock { $0.held = [] }
+        await uploader.settled()
+        #expect(server.requests("PUT upload").isEmpty)
     }
 
     /// Photos kept after the scan was sent don't change the frozen packet or start more uploads.

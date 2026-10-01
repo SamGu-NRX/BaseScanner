@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Sends one capture to the capture API while it is being taken: create once, then register, PUT
 /// and commit each sealed file as it arrives, then finalize with the frozen packet (possibly
@@ -44,6 +45,9 @@ public actor CaptureUploader {
         var retryAfter: Double?
     }
 
+    /// The homeowner took back their yes: nothing more is sent.
+    struct Withdrawn: Error {}
+
     /// The server refused something a retry can't change.
     struct Refused: Error {
         var step: String
@@ -63,6 +67,9 @@ public actor CaptureUploader {
     private var retryingAt: Date?
     private var digestRetried: Set<String> = []
     private var notReadyReads = 0
+    /// True once the homeowner took back their yes. Every save happens while holding it, so no
+    /// save can land between the withdrawal and the abandoned state it leads to.
+    private nonisolated let withdrawal = Mutex(false)
     /// Set when a state change could not be saved: the loop stops rather than send a request the
     /// saved state doesn't know about.
     private var saveFailed = false
@@ -166,6 +173,27 @@ public actor CaptureUploader {
         kick()
     }
 
+    public static let withdrawnReason = "consent withdrawn"
+
+    /// The homeowner took back their yes. Before returning, this writes the marker `resume`
+    /// refuses, or removes the saved state if the marker can't be written, and from then on every
+    /// save records the upload as abandoned, so no reply still in flight can leave a capture a
+    /// relaunch would resume. Returns whether the marker was written. Call `abandon` afterwards to
+    /// stop the loop.
+    @discardableResult
+    public nonisolated func withdrawConsent() -> Bool {
+        withdrawal.withLock { withdrawn in
+            withdrawn = true
+            do {
+                try Data().write(to: CaptureUploadState.withdrawnURL(in: folder), options: .atomic)
+                return true
+            } catch {
+                try? FileManager.default.removeItem(at: Self.stateURL(in: folder))
+                return false
+            }
+        }
+    }
+
     /// Ends this upload for good: a world reset or starting over. Replies still in flight are
     /// dropped when they arrive.
     public func abandon(_ reason: String) {
@@ -192,6 +220,8 @@ public actor CaptureUploader {
 
     private func drive() async {
         while !Task.isCancelled, state.end == nil, !saveFailed {
+            // A withdrawal sends nothing more; the save records the upload as abandoned.
+            if isWithdrawn { persist(); break }
             let attempt = state.attemptID
             do {
                 let progressed = try await step()
@@ -207,6 +237,9 @@ public actor CaptureUploader {
                 log?("capture-upload retry step=\(error.step) in=\(String(format: "%.1f", delay))s detail=\(error.detail)")
                 publish()
                 do { try await sleep(delay) } catch { break }
+            } catch is Withdrawn {
+                persist()
+                break
             } catch let error as Refused {
                 guard attempt == state.attemptID else { break }
                 state.end = .failed(step: error.step, codes: error.codes, status: error.status)
@@ -291,6 +324,8 @@ public actor CaptureUploader {
         var transient: Transient?
         var index = 0
         while index < files.count {
+            // Each batch of PUTs is admitted only while the homeowner's yes stands.
+            if isWithdrawn { throw Withdrawn() }
             let chunk = files[index..<min(index + policy.maxConcurrentPuts, files.count)]
             index += chunk.count
             let results = await withTaskGroup(of: (String, Result<HTTPReply, any Error>).self) { group in
@@ -484,6 +519,9 @@ public actor CaptureUploader {
     }
 
     private func call(_ step: String, _ request: URLRequest) async throws -> (HTTPReply, String) {
+        // Every API request is admitted only while the homeowner's yes stands. One already sent
+        // finishes, but its reply can only save the upload as abandoned.
+        if isWithdrawn { throw Withdrawn() }
         let attempt = state.attemptID
         let reply: HTTPReply
         do {
@@ -514,9 +552,18 @@ public actor CaptureUploader {
         log?("capture-upload stage=\(name) t=\(String(format: "%.2f", since))s committed=\(state.committedCount)/\(state.files.count)")
     }
 
+    private nonisolated var isWithdrawn: Bool { withdrawal.withLock { $0 } }
+
     private func persist() {
         do {
-            try state.save(to: Self.stateURL(in: folder))
+            try withdrawal.withLock { withdrawn in
+                if withdrawn, state.end == nil {
+                    state.end = .abandoned(Self.withdrawnReason)
+                    // Replies still in flight belong to the old attempt and are dropped.
+                    state.attemptID = UUID().uuidString
+                }
+                try state.save(to: Self.stateURL(in: folder))
+            }
         } catch {
             saveFailed = true
             log?("capture-upload stopped: the upload state could not be saved (\(Self.describe(error)))")
