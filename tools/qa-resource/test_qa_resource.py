@@ -693,6 +693,27 @@ sys.exit(q.main(sys.argv[2:]))
         self.assertIsNone(job["childPgid"])
         self.assert_lock_free()
 
+    def test_setup_failure_after_job_creation_records_terminal_error(self):
+        failures = {
+            "fifo-open": "q.open_cancel_reader = lambda directory: (_ for _ in ()).throw(OSError(24, 'Too many open files'))",
+            "fifo-make": "q.os.mkfifo = lambda *args, **kwargs: (_ for _ in ()).throw(OSError(28, 'No space left on device'))",
+        }
+        for name, patch_line in failures.items():
+            with self.subTest(name=name):
+                bootstrap = BOOTSTRAP.split("sys.exit")[0] + patch_line + "\nsys.exit(q.main(sys.argv[2:]))\n"
+                runner = self.launch(self.job_args(name), bootstrap)
+                output, error = runner.communicate(timeout=8)
+                self.assertEqual(runner.returncode, 125, error)
+                job = self.job(name)
+                self.assertEqual(job["status"], "error")
+                self.assertIsNotNone(job["finishedAt"])
+                self.assertIn("Errno", job["error"])
+                # The job is terminal, not stale: wait reports the error instead of exit 4.
+                result = self.invoke(self.cli("wait", name, ["--max-wait", "2"]))
+                self.assertEqual(result.returncode, 125, result.stderr)
+                self.assertIsNone(job["childPgid"])
+                self.assert_lock_free()
+
     def test_submit_hangup_during_spawn_with_ignored_sigchld_cancels_and_reports(self):
         bootstrap = BOOTSTRAP.split("sys.exit")[0] + '''
 q.signal.signal(q.signal.SIGCHLD, q.signal.SIG_IGN)

@@ -748,11 +748,32 @@ def create_job(args):
                ownerToken=secrets.token_hex(16), escapedProcesses=[], cancelChannel=CANCEL_FIFO,
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
-    (directory / "output.log").touch()
-    (directory / "runner.log").touch()
-    os.mkfifo(directory / CANCEL_FIFO, 0o600)
     write_job(directory, job)
+    try:
+        (directory / "output.log").touch()
+        (directory / "runner.log").touch()
+        os.mkfifo(directory / CANCEL_FIFO, 0o600)
+    except OSError as error:
+        raise fail_unstarted_job(directory, live, job, f"cannot set up job files: {error}") from error
     return directory, live, job
+
+
+class JobSetupError(RuntimeError):
+    pass
+
+
+def fail_unstarted_job(directory, live, job, message):
+    """Record a terminal error for a job whose runner never started, then drop its lock.
+
+    Without this the job would stay `queued` with no runner, `wait` would report it stale,
+    and its id could not be reused.
+    """
+    job.update(status="error", exitCode=125, error=message, finishedAt=timestamp())
+    try:
+        write_job(directory, job)
+    finally:
+        live.close()
+    return JobSetupError(f"job {job['jobId']}: {message}")
 
 
 class CancelListener:
@@ -1316,11 +1337,17 @@ def main(argv=None):
             parser.error("argv is required after --")
         try:
             directory, live, job = create_job(args)
+            # Hold the cancel FIFO's read end from job creation, so a cancel sent before the
+            # runner's listener starts is queued in the pipe rather than refused.
+            try:
+                cancel_fd = open_cancel_reader(directory)
+            except OSError as error:
+                raise fail_unstarted_job(directory, live, job, f"cannot open the cancel FIFO: {error}") from error
         except ValueError as error:
             parser.error(str(error))
-        # Hold the cancel FIFO's read end from job creation, so a cancel sent before the
-        # runner's listener starts is queued in the pipe rather than refused.
-        cancel_fd = open_cancel_reader(directory)
+        except JobSetupError as error:
+            print(str(error), file=sys.stderr)
+            return 125
         if args.command == "submit":
             return submit(directory, live, job, args.lock, cancel_fd)
         return run_job(directory, live, job, args.lock, cancel_fd=cancel_fd)
