@@ -758,15 +758,16 @@ def create_job(args):
 class CancelListener:
     """Turn a byte on the job's FIFO into SIGTERM for this runner's main thread.
 
-    `cancel` never signals a PID. It can write only while this process holds the read end;
-    once the runner is gone the open fails with ENXIO, so a reused PID is never reached.
+    `cancel` never signals a PID. It can write only while the job's read end is open; once
+    the runner is gone the open fails with ENXIO, so a reused PID is never reached.
     The caller owns this object as soon as it exists, so a cancel that interrupts
     start() still reaches stop() in cleanup.
     """
 
-    def __init__(self, directory):
-        # O_RDWR keeps a writer open too, so read blocks instead of returning EOF. Not inheritable.
-        self.fd = os.open(directory / CANCEL_FIFO, os.O_RDWR)
+    def __init__(self, directory, fd=None):
+        # The job's creator opens the read end before the runner starts and hands it over, so a
+        # cancel sent during runner startup waits in the pipe instead of failing with ENXIO.
+        self.fd = open_cancel_reader(directory) if fd is None else fd
         self.thread = None
         self.active = True
         self.guard = threading.Lock()
@@ -811,6 +812,11 @@ class CancelListener:
         os.close(self.fd)
 
 
+def open_cancel_reader(directory):
+    # O_RDWR keeps a writer open too, so read blocks instead of returning EOF. Not inheritable.
+    return os.open(directory / CANCEL_FIFO, os.O_RDWR)
+
+
 def ignore_runner_signals(signals):
     for sig in signals:
         signal.signal(sig, signal.SIG_IGN)
@@ -845,7 +851,8 @@ def release_ticket(path, ticket):
     return errors
 
 
-def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadline=None):
+def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadline=None,
+            cancel_fd=None):
     global_lock = child = owned = None
     child_finished = False
     cleanup_errors = []
@@ -879,8 +886,9 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         # submit starts the runner with these blocked; a cancel that arrived meanwhile is
         # raised here, inside the try, so it still gets a terminal result and cleanup.
         signal.pthread_sigmask(signal.SIG_UNBLOCK, RUNNER_SIGNALS)
-        if (directory / CANCEL_FIFO).exists():
-            listener = CancelListener(directory)
+        if cancel_fd is not None or (directory / CANCEL_FIFO).exists():
+            listener = CancelListener(directory, cancel_fd)
+            cancel_fd = None
             listener.start()
         update(runnerPid=os.getpid(), runnerStart=runner_start(os.getpid()))
         if ticket is None:
@@ -1014,6 +1022,8 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             ignore_runner_signals(old_signals)
         if listener is not None:
             cleanup_step(cleanup_errors, "stop cancel listener", listener.stop)
+        elif cancel_fd is not None:
+            cleanup_step(cleanup_errors, "close cancel fd", lambda: os.close(cancel_fd))
         try:
             code = stop_owned_command(child, owned)
             if child_finished and job["status"] == "running":
@@ -1061,19 +1071,20 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
     return exit_code(job)
 
 
-def resume(directory, fd, lock_path, ticket_fd, ticket_path, deadline):
+def resume(directory, fd, lock_path, ticket_fd, ticket_path, deadline, cancel_fd):
     directory = Path(directory)
     with os.fdopen(fd, "a+") as live, os.fdopen(ticket_fd, "a+") as ticket:
         return run_job(directory, live, read_job(directory), Path(lock_path), echo=False,
-                       owned_ticket=(Path(ticket_path), ticket), deadline=deadline)
+                       owned_ticket=(Path(ticket_path), ticket), deadline=deadline,
+                       cancel_fd=cancel_fd)
 
 
-def submit(directory, live, job, lock_path):
+def submit(directory, live, job, lock_path, cancel_fd):
     # Allocate the ticket before returning the receipt. Runner scheduling must not
     # reverse two completed submissions. Both locked descriptions survive exec.
     script = ("import sys; sys.path.insert(0, sys.argv[1]); import qa_resource as q; "
               "sys.exit(q.resume(sys.argv[2], int(sys.argv[3]), sys.argv[4], "
-              "int(sys.argv[5]), sys.argv[6], float(sys.argv[7])))")
+              "int(sys.argv[5]), sys.argv[6], float(sys.argv[7]), int(sys.argv[8])))")
     ticket_path = ticket = runner = None
     close_errors = []
     deadline = time.monotonic() + job["admissionDeadline"]
@@ -1102,14 +1113,19 @@ def submit(directory, live, job, lock_path):
                     try:
                         runner = subprocess.Popen([sys.executable, "-c", script, str(Path(__file__).parent),
                                                    str(directory), str(live.fileno()), str(lock_path),
-                                                   str(ticket.fileno()), str(ticket_path), str(deadline)],
-                                                  pass_fds=(live.fileno(), ticket.fileno()), start_new_session=True,
+                                                   str(ticket.fileno()), str(ticket_path), str(deadline),
+                                                   str(cancel_fd)],
+                                                  pass_fds=(live.fileno(), ticket.fileno(), cancel_fd),
+                                                  start_new_session=True,
                                                   stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
                     finally:
                         signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
-                # A blocked receipt writer must not keep a finished job alive.
+                # A blocked receipt writer must not keep a finished job alive, or keep the
+                # cancel FIFO open after its runner is gone.
                 cleanup_step(close_errors, "close submitted ticket fd", ticket.close)
                 cleanup_step(close_errors, "close submitted liveness fd", live.close)
+                cleanup_step(close_errors, "close submitted cancel fd", lambda: os.close(cancel_fd))
+                cancel_fd = None
                 receipt = dict(jobId=job["jobId"], jobDir=str(directory),
                                resultFile=str(directory / "job.json"), pid=runner.pid)
                 printing = False
@@ -1157,6 +1173,8 @@ def submit(directory, live, job, lock_path):
             cleanup_step(close_errors, "release unsubmitted ticket",
                          lambda: close_errors.extend(release_ticket(ticket_path, ticket)))
         cleanup_step(close_errors, "close submitted liveness fd", live.close)
+        if cancel_fd is not None:
+            cleanup_step(close_errors, "close cancel fd", lambda: os.close(cancel_fd))
         if runner is None and close_errors:
             job.update(status="cleanup_failed", exitCode=125, cleanupError="; ".join(close_errors))
             cleanup_step(close_errors, "write submission cleanup errors", lambda: write_job(directory, job))
@@ -1300,9 +1318,12 @@ def main(argv=None):
             directory, live, job = create_job(args)
         except ValueError as error:
             parser.error(str(error))
+        # Hold the cancel FIFO's read end from job creation, so a cancel sent before the
+        # runner's listener starts is queued in the pipe rather than refused.
+        cancel_fd = open_cancel_reader(directory)
         if args.command == "submit":
-            return submit(directory, live, job, args.lock)
-        return run_job(directory, live, job, args.lock)
+            return submit(directory, live, job, args.lock, cancel_fd)
+        return run_job(directory, live, job, args.lock, cancel_fd=cancel_fd)
     directory = args.state_dir / "jobs" / (args.job_id or "")
     if args.job_id and not (directory / "job.json").is_file():
         print(f"unknown job {args.job_id}: {directory / 'job.json'}", file=sys.stderr)

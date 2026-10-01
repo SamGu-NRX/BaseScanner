@@ -665,6 +665,34 @@ sys.exit(q.main(sys.argv[2:]))
             self.assertFalse(qa.group_has_members(job["childPgid"]))
         self.assert_lock_free()
 
+    def test_cancel_during_runner_startup_is_queued_not_refused(self):
+        # Delay the detached runner before it starts its listener. The job's creator already
+        # holds the FIFO's read end, so the cancel is accepted and delivered once it starts.
+        bootstrap = BOOTSTRAP.split("sys.exit")[0] + '''
+spawn = q.subprocess.Popen
+def slow_runner(args, *positional, **keywords):
+    if isinstance(args, list) and len(args) > 2 and 'q.resume(' in str(args[2]):
+        args = list(args)
+        args[2] = 'import time; time.sleep(1.5); ' + args[2]
+    return spawn(args, *positional, **keywords)
+q.subprocess.Popen = slow_runner
+sys.exit(q.main(sys.argv[2:]))
+'''
+        args = self.job_args("startup-cancel", "import time; time.sleep(30)", timeout=40)
+        args[0] = "submit"
+        submitter = self.launch(args, bootstrap)
+        output, error = submitter.communicate(timeout=8)
+        self.assertEqual(submitter.returncode, 0, error)
+        self.assertIsNone(self.job("startup-cancel")["runnerPid"])
+        cancel = self.invoke(self.cli("cancel", "startup-cancel"))
+        self.assertEqual(cancel.returncode, 0, cancel.stderr)
+        result = self.invoke(self.cli("wait", "startup-cancel", ["--max-wait", "8"]))
+        self.assertEqual(result.returncode, 130, result.stderr)
+        job = json.loads(result.stdout)
+        self.assertEqual(job["status"], "cancelled")
+        self.assertIsNone(job["childPgid"])
+        self.assert_lock_free()
+
     def test_submit_hangup_during_spawn_with_ignored_sigchld_cancels_and_reports(self):
         bootstrap = BOOTSTRAP.split("sys.exit")[0] + '''
 q.signal.signal(q.signal.SIGCHLD, q.signal.SIG_IGN)
