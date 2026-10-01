@@ -12,15 +12,57 @@ import Testing
         .appendingPathComponent("../../..")
         .standardizedFileURL
 
-    /// Apple's required-reason APIs by category, as Swift spells them. Disk space and active
-    /// keyboards are listed so a first use of them fails loudly too.
-    private static let apis: [String: String] = [
-        "NSPrivacyAccessedAPICategoryUserDefaults": #"\bUserDefaults\b|@AppStorage|NSUbiquitousKeyValueStore"#,
-        "NSPrivacyAccessedAPICategoryFileTimestamp": #"\.creationDate\b|\.modificationDate\b|fileModificationDate|contentModificationDateKey|creationDateKey|\bgetattrlist|\bfgetattrlist|\bfstatat\(|\bl?stat\(|\bfstat\("#,
+    /// Apple's required-reason APIs by category, as Swift can spell them. A C call may have
+    /// spaces before its parenthesis. Disk space and active keyboards are listed so a first use
+    /// of them fails loudly too.
+    static let apis: [String: String] = [
+        "NSPrivacyAccessedAPICategoryUserDefaults": #"\bUserDefaults\b|@AppStorage\b|\bNSUbiquitousKeyValueStore\b"#,
+        "NSPrivacyAccessedAPICategoryFileTimestamp": #"\bcreationDate\b|\bmodificationDate\b|\bfileModificationDate\b|\bcontentModificationDate(Key)?\b|\bcreationDateKey\b|\battributesOfItem\b|\bfileAttributes\b|\b(f|l)?getattrlist(bulk|at)?\s*\(|\b(f|l)?stat(at)?\s*\("#,
         "NSPrivacyAccessedAPICategorySystemBootTime": #"\bsystemUptime\b|\bmach_absolute_time\b"#,
-        "NSPrivacyAccessedAPICategoryDiskSpace": #"volumeAvailableCapacity|volumeTotalCapacity|systemFreeSize|systemSize\b|\bstatv?fs\(|\bfstatv?fs\("#,
+        "NSPrivacyAccessedAPICategoryDiskSpace": #"\bvolumeAvailableCapacity\w*|\bvolumeTotalCapacity\w*|\bsystemFreeSize\b|\bsystemSize\b|\bf?statv?fs\s*\("#,
         "NSPrivacyAccessedAPICategoryActiveKeyboards": #"\bactiveInputModes\b"#,
     ]
+
+    /// Swift source with its comments blanked. Comment markers inside string literals stay code,
+    /// so a URL in a string can't hide the rest of its line. Block comments may nest, as in Swift.
+    static func code(_ source: String) -> String {
+        var out = ""
+        var chars = Array(source)[...]
+        var depth = 0
+        var inString = false
+        while let c = chars.first {
+            let next = chars.dropFirst().first
+            if depth > 0 {
+                if c == "*", next == "/" { depth -= 1; chars = chars.dropFirst(2); continue }
+                if c == "/", next == "*" { depth += 1; chars = chars.dropFirst(2); continue }
+                if c == "\n" { out.append(c) }
+                chars = chars.dropFirst()
+            } else if inString {
+                out.append(c)
+                if c == "\\", let escaped = next { out.append(escaped); chars = chars.dropFirst(2); continue }
+                if c == "\"" || c == "\n" { inString = false }
+                chars = chars.dropFirst()
+            } else if c == "/", next == "/" {
+                chars = chars.drop { $0 != "\n" }
+            } else if c == "/", next == "*" {
+                depth = 1
+                chars = chars.dropFirst(2)
+            } else {
+                if c == "\"" { inString = true }
+                out.append(c)
+                chars = chars.dropFirst()
+            }
+        }
+        return out
+    }
+
+    /// The categories whose APIs appear in `source`'s code.
+    static func categories(in source: String) -> Set<String> {
+        let code = code(source)
+        return Set(apis.compactMap { category, pattern in
+            code.range(of: pattern, options: .regularExpression) == nil ? nil : category
+        })
+    }
 
     private static func manifest() throws -> [String: [String]] {
         let url = ios.appendingPathComponent("HouseScan/PrivacyInfo.xcprivacy")
@@ -43,15 +85,8 @@ import Testing
             let root = ios.appendingPathComponent(folder)
             let walker = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
             for case let file as URL in walker where file.pathExtension == "swift" {
-                // Comments name APIs without calling them.
-                let code = try String(contentsOf: file, encoding: .utf8)
-                    .split(separator: "\n", omittingEmptySubsequences: false)
-                    .map { line in line.range(of: "//").map { String(line[..<$0.lowerBound]) } ?? String(line) }
-                    .joined(separator: "\n")
-                for (category, pattern) in apis where used[category] == nil {
-                    if code.range(of: pattern, options: .regularExpression) != nil {
-                        used[category] = file.path.replacingOccurrences(of: ios.path + "/", with: "")
-                    }
+                for category in categories(in: try String(contentsOf: file, encoding: .utf8)) where used[category] == nil {
+                    used[category] = file.path.replacingOccurrences(of: ios.path + "/", with: "")
                 }
             }
         }
@@ -75,5 +110,35 @@ import Testing
             "NSPrivacyAccessedAPICategoryFileTimestamp": ["C617.1"],
             "NSPrivacyAccessedAPICategorySystemBootTime": ["35F9.1", "8FFB.1"],
         ])
+    }
+
+    // The scanner on its own, so a gap in it can't hide behind today's sources.
+
+    @Test(arguments: [
+        ("statfs (path, &stats)", "NSPrivacyAccessedAPICategoryDiskSpace"),
+        ("let free = values.volumeAvailableCapacityForImportantUsage", "NSPrivacyAccessedAPICategoryDiskSpace"),
+        ("fstatvfs(fd, &info)", "NSPrivacyAccessedAPICategoryDiskSpace"),
+        ("let a = try fm.attributesOfItem(atPath: p)", "NSPrivacyAccessedAPICategoryFileTimestamp"),
+        ("let d = values.contentModificationDate", "NSPrivacyAccessedAPICategoryFileTimestamp"),
+        ("lstat (path, &s)", "NSPrivacyAccessedAPICategoryFileTimestamp"),
+        ("getattrlistbulk(fd, &list, buf, n, 0)", "NSPrivacyAccessedAPICategoryFileTimestamp"),
+        ("let t = mach_absolute_time()", "NSPrivacyAccessedAPICategorySystemBootTime"),
+        ("@AppStorage(\"k\") var on = false", "NSPrivacyAccessedAPICategoryUserDefaults"),
+        ("let url = \"https://example.com\"; let up = ProcessInfo.processInfo.systemUptime", "NSPrivacyAccessedAPICategorySystemBootTime"),
+        ("let s = \"/* not a comment\"; UserDefaults.standard.set(1, forKey: \"k\")", "NSPrivacyAccessedAPICategoryUserDefaults"),
+        ("UITextInputMode.activeInputModes", "NSPrivacyAccessedAPICategoryActiveKeyboards"),
+    ])
+    func theScannerFindsAUse(source: String, category: String) {
+        #expect(Self.categories(in: source) == [category])
+    }
+
+    @Test(arguments: [
+        "// UserDefaults.standard is not used here",
+        "/* systemUptime\n   /* nested */ mach_absolute_time */",
+        "let status = statusText(code)",
+        "let restated = 1",
+    ])
+    func theScannerIgnoresCommentsAndLookalikes(source: String) {
+        #expect(Self.categories(in: source).isEmpty)
     }
 }
