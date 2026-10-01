@@ -59,6 +59,17 @@ final class LoopbackCaptureAPI: Sendable {
         var loseNextFinalize = false
         /// The homeowner message the result carries.
         var resultMessage = "The loopback receiver's test result."
+        /// Answer the next N result reads 404 `result_not_ready`: the run is done but its answer
+        /// is not readable yet.
+        var notReadyResults = 0
+        /// Answer the next N result reads 200 with the capture's status and run but a null
+        /// outcome, the body the API serves before the run has written its answer.
+        var outcomelessResults = 0
+        /// Answer the next N result reads 200 with a body that is not JSON.
+        var unreadableResults = 0
+        /// The status a capture ends in once every listed file is committed. Only `manual_review`
+        /// ends with an outcome; `failed` ends with a `failed` event and none.
+        var endStatus = "manual_review"
         /// Answer the next commit with this split instead of the truth.
         var commitOverride: ((committed: [String], notFound: [String], mismatch: [String]))?
         /// Routes whose answers wait until `release` is called.
@@ -180,7 +191,17 @@ final class LoopbackCaptureAPI: Sendable {
             case ("POST", "finalize"): return finalize(r, &capture, &s)
             case ("GET", "events"): return events(r, &capture)
             case ("GET", "result"):
-                let outcome: Any = capture.status == "manual_review"
+                if s.notReadyResults > 0 {
+                    s.notReadyResults -= 1
+                    return error(404, "result_not_ready")
+                }
+                if s.unreadableResults > 0 {
+                    s.unreadableResults -= 1
+                    return (200, Data("<html>not a result</html>".utf8))
+                }
+                let withheld = s.outcomelessResults > 0
+                if withheld { s.outcomelessResults -= 1 }
+                let outcome: Any = capture.status == "manual_review" && !withheld
                     ? ["kind": "manual_review", "profile": "C", "message": s.resultMessage, "viewsNeeded": [], "reasons": []] as [String: Any]
                     : NSNull()
                 return (200, json(["runId": capture.runID ?? "", "status": capture.status, "viewsNeeded": [], "memberActions": [], "outcome": outcome]))
@@ -282,7 +303,7 @@ final class LoopbackCaptureAPI: Sendable {
         }
         c.committed.formUnion(committed)
         if !committed.isEmpty { c.events.append(("files_committed", ["committed": String(c.committed.count)])) }
-        startIfComplete(&c)
+        startIfComplete(&c, endStatus: s.endStatus)
         return (200, json(["committed": committed, "notFound": notFound, "mismatch": mismatch]))
     }
 
@@ -308,20 +329,24 @@ final class LoopbackCaptureAPI: Sendable {
                 c.finalizeLost = true
                 c.events.append(("failed", ["code": "storage_unavailable", "next": "retry_finalize"]))
             }
-            startIfComplete(&c)
+            startIfComplete(&c, endStatus: s.endStatus)
         } else if c.finalizeLost {
             c.finalizeLost = false
-            startIfComplete(&c)
+            startIfComplete(&c, endStatus: s.endStatus)
         }
         let missing = c.listed.filter { !c.committed.contains($0) }
         return (202, json(["status": missing.isEmpty ? "processing" : "awaiting_files", "missing": missing, "runId": c.runID!, "etaS": 1]))
     }
 
-    private func startIfComplete(_ c: inout Capture) {
+    private func startIfComplete(_ c: inout Capture, endStatus: String) {
         guard c.packetSHA != nil, !c.finalizeLost, c.status == "awaiting_files", c.listed.allSatisfy(c.committed.contains) else { return }
-        c.status = "manual_review"
+        c.status = endStatus
         c.events.append(("stage", ["stage": "ingest", "status": "ok", "runId": c.runID!]))
-        c.events.append(("verdict_ready", ["kind": "manual_review", "runId": c.runID!]))
+        if endStatus == "manual_review" {
+            c.events.append(("verdict_ready", ["kind": "manual_review", "runId": c.runID!]))
+        } else {
+            c.events.append(("failed", ["code": "packet_invalid", "runId": c.runID!]))
+        }
     }
 
     private func events(_ r: Request, _ c: inout Capture) -> (Int, Data) {

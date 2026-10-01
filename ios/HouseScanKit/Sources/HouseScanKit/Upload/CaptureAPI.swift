@@ -148,6 +148,10 @@ public enum CaptureAPI {
 
     /// Statuses after which the capture changes no more.
     public static let terminalStatuses: Set<String> = ["complete", "manual_review", "failed", "expired", "needs_views"]
+
+    /// Terminal statuses that can end a capture with no answer, so a result read carrying one and
+    /// a null outcome is final. The others come with the run's outcome.
+    public static let statusesWithoutOutcome: Set<String> = ["failed", "expired"]
 }
 
 /// An HTTP answer: status, body and the headers the uploader reads.

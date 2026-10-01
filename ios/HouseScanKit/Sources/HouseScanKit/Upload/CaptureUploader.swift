@@ -23,6 +23,11 @@ public actor CaptureUploader {
         public var maxRefusedPuts = 6
         /// `retry_finalize` answers followed before the upload stops.
         public var maxFinalizeRetries = 3
+        /// Result reads that find the run's answer not readable yet before the upload stops. Each
+        /// waits the retry delay first, so the default allows about three minutes. No measurement
+        /// of how long a finished run's answer takes to become readable sets this number; it only
+        /// keeps an answer that never appears from holding the upload open.
+        public var maxNotReadyResults = 10
 
         public init() {}
 
@@ -57,6 +62,7 @@ public actor CaptureUploader {
     private var failures = 0
     private var retryingAt: Date?
     private var digestRetried: Set<String> = []
+    private var notReadyReads = 0
     /// Set when a state change could not be saved: the loop stops rather than send a request the
     /// saved state doesn't know about.
     private var saveFailed = false
@@ -405,17 +411,47 @@ public actor CaptureUploader {
         guard attempt == state.attemptID else { return }
         guard (200..<300).contains(reply.status) else {
             if try captureGone(reply) { return }
+            // The run reads as done before its answer is stored.
+            if reply.status == 404, CaptureAPI.errorCodes(reply.body).contains("result_not_ready") { try notReady(reply) }
             throw Refused(step: "result", status: reply.status, codes: CaptureAPI.errorCodes(reply.body))
         }
-        struct RunOnly: Decodable { var runId: String?; var status: String? }
-        let run = try? JSONDecoder().decode(RunOnly.self, from: reply.body)
-        if let runID = run?.runId, runID != state.finalized?.runID {
+        guard let head = try? JSONDecoder().decode(ResultHead.self, from: reply.body) else {
+            throw Refused(step: "result", status: reply.status, codes: ["result_unreadable"])
+        }
+        if let runID = head.runId, runID != state.finalized?.runID {
             throw Refused(step: "result", status: reply.status, codes: ["result_for_another_run"])
         }
+        let status = head.status ?? state.backendStatus ?? "unknown"
+        // Until the run has written its answer the API serves the capture's status with a null
+        // outcome, and that status can already be one the capture ends in.
+        if head.outcome == nil, !CaptureAPI.statusesWithoutOutcome.contains(status) { try notReady(reply) }
         state.result = reply.body
-        state.end = .finished(status: run?.status ?? state.backendStatus ?? "unknown")
+        state.end = .finished(status: status)
         mark("result")
         persist()
+    }
+
+    /// The parts of a result read that say whether it is this run's answer. The rest is decoded
+    /// later from the saved bytes.
+    private struct ResultHead: Decodable {
+        var runId: String?
+        var status: String?
+        var outcome: Present?
+    }
+
+    /// Any JSON value. Decoding keeps only that the key held something other than null.
+    private struct Present: Decodable {
+        init(from decoder: any Decoder) throws {}
+    }
+
+    /// Always throws: a retry after the usual wait, or the end of the upload once
+    /// `maxNotReadyResults` reads have found no answer.
+    private func notReady(_ reply: HTTPReply) throws -> Never {
+        notReadyReads += 1
+        guard notReadyReads <= policy.maxNotReadyResults else {
+            throw Refused(step: "result", status: reply.status, codes: ["result_not_ready"])
+        }
+        throw Transient(step: "result", detail: "result not ready (\(notReadyReads))", retryAfter: reply.retryAfter)
     }
 
     // MARK: Plumbing

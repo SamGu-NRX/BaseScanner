@@ -15,7 +15,7 @@ import Testing
 
         init(
             packetID: String = UUID().uuidString, appVersion: String = "test (1)", server: LoopbackCaptureAPI? = nil,
-            http: any CaptureHTTP = URLSessionCaptureHTTP.ephemeral(timeout: 10)
+            http: any CaptureHTTP = URLSessionCaptureHTTP.ephemeral(timeout: 10), policy: CaptureUploader.Policy = Rig.fast
         ) throws {
             self.http = http
             self.server = try server ?? LoopbackCaptureAPI()
@@ -24,7 +24,7 @@ import Testing
             uploader = try CaptureUploader.start(
                 folder: capture.folder, base: self.server.base, http: http,
                 create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: appVersion)),
-                consentedAt: Date(), policy: Self.fast, sleep: { _ in try await Task.sleep(for: .milliseconds(10)) })
+                consentedAt: Date(), policy: policy, sleep: { _ in try await Task.sleep(for: .milliseconds(10)) })
         }
 
         static var fast: CaptureUploader.Policy {
@@ -227,6 +227,90 @@ import Testing
         #expect(Set(finals.map(\.body)).count == 1)
         #expect(await rig.uploader.snapshot.end == .finished(status: "manual_review"))
         #expect(await rig.uploader.snapshot.finalizeRetries == 1)
+    }
+
+    /// The run is done but its answer is not readable yet (404 `result_not_ready`): the uploader
+    /// reads again after a wait instead of failing the capture.
+    @Test func aResultNotReadableYetIsReadAgain() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.notReadyResults = 2 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .finished(status: "manual_review"))
+        #expect(try Self.outcomeKind(done.result) == .manualReview)
+        #expect(rig.server.requests("GET captures/result").count == 3)
+    }
+
+    /// The API answers a result read with the capture's status and a null outcome until the run
+    /// has written its answer. A terminal status with that body is not the answer.
+    @Test func aResultWithoutItsOutcomeIsReadAgain() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.outcomelessResults = 2 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .finished(status: "manual_review"))
+        #expect(try Self.outcomeKind(done.result) == .manualReview)
+        #expect(rig.server.requests("GET captures/result").count == 3)
+    }
+
+    /// An answer that never becomes readable ends the upload visibly after the policy's reads,
+    /// rather than waiting forever.
+    @Test func aResultThatNeverArrivesEndsTheUpload() async throws {
+        var policy = Rig.fast
+        policy.maxNotReadyResults = 3
+        let rig = try Rig(policy: policy)
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.outcomelessResults = 100 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .failed(step: "result", codes: ["result_not_ready"], status: 200))
+        #expect(done.result == nil)
+        #expect(rig.server.requests("GET captures/result").count == 4)
+    }
+
+    /// A 200 whose body is not a result is refused by name instead of being kept as the answer.
+    @Test func anUnreadableResultStopsTheUpload() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.unreadableResults = 1 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .failed(step: "result", codes: ["result_unreadable"], status: 200))
+        #expect(done.result == nil)
+        #expect(rig.server.requests("GET captures/result").count == 1)
+    }
+
+    /// `failed` ends a capture without an answer, so its outcomeless result is final at once.
+    @Test func aFailedCaptureEndsWithoutWaitingForAnOutcome() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.endStatus = "failed" }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .finished(status: "failed"))
+        #expect(try Self.outcomeKind(done.result) == nil)
+        #expect(rig.server.requests("GET captures/result").count == 1)
+    }
+
+    static func outcomeKind(_ body: Data?) throws -> CaptureResult.OutcomeKind? {
+        try JSONDecoder().decode(CaptureResult.Response.self, from: #require(body)).outcome?.kind
     }
 
     /// Storage that keeps refusing the sealed bytes' digest stops the upload after one retry
