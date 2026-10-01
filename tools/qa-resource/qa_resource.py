@@ -16,8 +16,10 @@ import select
 import secrets
 import shlex
 import signal
+import stat
 import subprocess
 import sys
+import threading
 import time
 
 # Operational limits copied from qa-slot.py, not calibrated measurements.
@@ -42,6 +44,8 @@ _SYSCTL.restype = ctypes.c_int
 HEAVY_NAMES = {"xcodebuild", "swift-build", "swift-test", "swift-frontend",
                "swift-driver", "blender"}
 SERVICE_TEST = "AgentDeviceRunnerUITests/RunnerTests/testCommand"
+CANCEL_FIFO = "cancel.fifo"
+STOP_LISTENER = b"q"
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled", "admission_timeout",
             "error", "cleanup_failed"}
 
@@ -741,13 +745,75 @@ def create_job(args):
                signal=None, error=None, shutdownExitCode=None, cleanupError=None,
                queuedAt=timestamp(), admittedAt=None, finishedAt=None,
                admissionDeadline=args.admission_deadline, timeout=args.timeout,
-               ownerToken=secrets.token_hex(16), escapedProcesses=[],
+               ownerToken=secrets.token_hex(16), escapedProcesses=[], cancelChannel=CANCEL_FIFO,
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
     (directory / "output.log").touch()
     (directory / "runner.log").touch()
+    os.mkfifo(directory / CANCEL_FIFO, 0o600)
     write_job(directory, job)
     return directory, live, job
+
+
+class CancelListener:
+    """Turn a byte on the job's FIFO into SIGTERM for this runner's main thread.
+
+    `cancel` never signals a PID. It can write only while this process holds the read end;
+    once the runner is gone the open fails with ENXIO, so a reused PID is never reached.
+    The caller owns this object as soon as it exists, so a cancel that interrupts
+    start() still reaches stop() in cleanup.
+    """
+
+    def __init__(self, directory):
+        # O_RDWR keeps a writer open too, so read blocks instead of returning EOF. Not inheritable.
+        self.fd = os.open(directory / CANCEL_FIFO, os.O_RDWR)
+        self.thread = None
+        self.active = True
+        self.guard = threading.Lock()
+        self.main = threading.main_thread().ident
+
+    def _listen(self):
+        while True:
+            try:
+                byte = os.read(self.fd, 1)
+            except OSError:
+                return
+            if not byte or byte == STOP_LISTENER:
+                return
+            with self.guard:
+                # stop() clears this first, so nothing is delivered once cleanup has begun.
+                if self.active:
+                    signal.pthread_kill(self.main, signal.SIGTERM)
+
+    def start(self):
+        # Start the thread with every signal blocked, so SIGALRM, SIGTERM and SIGINT keep
+        # interrupting the main thread's flock, sleep and kqueue waits. A cancel read before
+        # the mask is restored is raised here, after self.thread is recorded.
+        previous = signal.pthread_sigmask(signal.SIG_BLOCK, signal.valid_signals())
+        try:
+            self.thread = threading.Thread(target=self._listen, name="qa-resource-cancel", daemon=True)
+            self.thread.start()
+        finally:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+
+    def stop(self):
+        with self.guard:
+            self.active = False
+        if self.thread is None:
+            os.close(self.fd)
+            return
+        # Closing an fd while another thread is blocked reading it can hang on macOS, so
+        # close only after the thread has provably exited. Otherwise leave it for process exit.
+        os.write(self.fd, STOP_LISTENER)
+        self.thread.join(timeout=CLEANUP_CONFIRM_SECONDS)
+        if self.thread.is_alive():
+            raise RuntimeError("cancel listener did not exit; its FIFO fd stays open until the runner exits")
+        os.close(self.fd)
+
+
+def ignore_runner_signals(signals):
+    for sig in signals:
+        signal.signal(sig, signal.SIG_IGN)
 
 
 def acquire_ticket(state_dir, job_id, deadline):
@@ -808,7 +874,14 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             signal.signal(sig, signal.SIG_IGN)
         raise Cancelled(signum)
     old_signals = {sig: signal.signal(sig, interrupted) for sig in RUNNER_SIGNALS}
+    listener = None
     try:
+        # submit starts the runner with these blocked; a cancel that arrived meanwhile is
+        # raised here, inside the try, so it still gets a terminal result and cleanup.
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, RUNNER_SIGNALS)
+        if (directory / CANCEL_FIFO).exists():
+            listener = CancelListener(directory)
+            listener.start()
         update(runnerPid=os.getpid(), runnerStart=runner_start(os.getpid()))
         if ticket is None:
             ticket_path, ticket = acquire_ticket(directory.parent.parent, job["jobId"], deadline)
@@ -933,8 +1006,14 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         def mark_cleanup_errors():
             if cleanup_errors:
                 job.update(status="cleanup_failed", exitCode=125, cleanupError="; ".join(cleanup_errors))
-        for sig in old_signals:
-            cleanup_step(cleanup_errors, f"ignore signal {sig}", lambda sig=sig: signal.signal(sig, signal.SIG_IGN))
+        try:
+            ignore_runner_signals(old_signals)
+        except Cancelled:
+            # The one-shot handler fired as cleanup began. It already ignores further signals,
+            # and the job's outcome was settled before cleanup, so cleanup simply continues.
+            ignore_runner_signals(old_signals)
+        if listener is not None:
+            cleanup_step(cleanup_errors, "stop cancel listener", listener.stop)
         try:
             code = stop_owned_command(child, owned)
             if child_finished and job["status"] == "running":
@@ -1000,22 +1079,66 @@ def submit(directory, live, job, lock_path):
     deadline = time.monotonic() + job["admissionDeadline"]
     try:
         ticket_path, ticket = acquire_ticket(directory.parent.parent, job["jobId"], deadline)
-        with (directory / "runner.log").open("a") as log:
-            with deferred_signals((signal.SIGTERM, signal.SIGINT)) as pending:
-                runner = subprocess.Popen([sys.executable, "-c", script, str(Path(__file__).parent),
-                                           str(directory), str(live.fileno()), str(lock_path),
-                                           str(ticket.fileno()), str(ticket_path), str(deadline)],
-                                          pass_fds=(live.fileno(), ticket.fileno()), start_new_session=True,
-                                          stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+        # Keep SIGCHLD at its default so an exited runner stays an unreaped zombie and its PID
+        # cannot be reused before an interrupted submit signals it. An inherited SIG_IGN
+        # would make the kernel reap it at once.
+        previous_sigchld = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        try:
+            pending = []
+            def record(signum, frame):
+                if not pending:
+                    pending.append(signum)
+            def interrupt(signum, frame):
+                # One-shot, so a second signal cannot escape the cancellation below.
+                for sig in RUNNER_SIGNALS:
+                    signal.signal(sig, signal.SIG_IGN)
+                raise Cancelled(signum)
+            previous_handlers = {sig: signal.signal(sig, record) for sig in RUNNER_SIGNALS}
+            try:
+                with (directory / "runner.log").open("a") as log:
+                    # The runner inherits this mask and unblocks after installing its handlers,
+                    # so a SIGTERM sent to it right after spawn still gets a clean cancellation.
+                    previous_mask = signal.pthread_sigmask(signal.SIG_BLOCK, RUNNER_SIGNALS)
+                    try:
+                        runner = subprocess.Popen([sys.executable, "-c", script, str(Path(__file__).parent),
+                                                   str(directory), str(live.fileno()), str(lock_path),
+                                                   str(ticket.fileno()), str(ticket_path), str(deadline)],
+                                                  pass_fds=(live.fileno(), ticket.fileno()), start_new_session=True,
+                                                  stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT)
+                    finally:
+                        signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
                 # A blocked receipt writer must not keep a finished job alive.
                 cleanup_step(close_errors, "close submitted ticket fd", ticket.close)
                 cleanup_step(close_errors, "close submitted liveness fd", live.close)
-            if pending:
-                raise Cancelled(pending[0])
+                receipt = dict(jobId=job["jobId"], jobDir=str(directory),
+                               resultFile=str(directory / "job.json"), pid=runner.pid)
+                printing = False
+                # From here an interruption cancels the job instead of abandoning it, and a
+                # submitter blocked on a full stdout pipe can still be stopped.
+                for sig in RUNNER_SIGNALS:
+                    signal.signal(sig, interrupt)
+                try:
+                    if pending:
+                        raise Cancelled(pending[0])
+                    printing = True
+                    write_receipt(receipt)
+                except Cancelled:
+                    # Still our unreaped child (SIGCHLD is default and nothing here waits on
+                    # it), so this PID cannot belong to another process.
+                    os.kill(runner.pid, signal.SIGTERM)
+                    if not printing:
+                        receipt["cancelRequested"] = True
+                        for sig, handler in previous_handlers.items():
+                            signal.signal(sig, handler)
+                        write_receipt(receipt)
+                    return 130
+            finally:
+                for sig, handler in previous_handlers.items():
+                    signal.signal(sig, handler)
             if close_errors:
                 raise RuntimeError("; ".join(close_errors))
-        print(json.dumps(dict(jobId=job["jobId"], jobDir=str(directory),
-                              resultFile=str(directory / "job.json"), pid=runner.pid)), flush=True)
+        finally:
+            signal.signal(signal.SIGCHLD, previous_sigchld)
     except Cancelled:
         return 130
     except Exception as error:
@@ -1038,6 +1161,14 @@ def submit(directory, live, job, lock_path):
             job.update(status="cleanup_failed", exitCode=125, cleanupError="; ".join(close_errors))
             cleanup_step(close_errors, "write submission cleanup errors", lambda: write_job(directory, job))
     return 0
+
+
+def write_receipt(receipt):
+    # Unbuffered, so an interrupted write leaves nothing for exit to flush into a full pipe.
+    sys.stdout.flush()
+    data = (json.dumps(receipt) + "\n").encode()
+    while data:
+        data = data[os.write(sys.stdout.fileno(), data):]
 
 
 def live_report(directory):
@@ -1080,28 +1211,36 @@ def wait_job(directory, max_wait):
 
 
 def cancel_job(directory):
-    # Keep a shared fd open for inspection, but never signal after lock acquisition.
+    # Cancellation never signals a PID. It writes one byte to the job's FIFO, which only the
+    # live runner reads; with no reader the open fails, so nothing else can receive it.
     with (directory / "live.lock").open("r") as live:
         try:
             fcntl.flock(live, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except BlockingIOError:
             job = read_job(directory)
-            if not job["runnerPid"] or not job["runnerStart"]:
-                print("runner identity is not recorded yet; no signal sent", file=sys.stderr)
+            if not job.get("cancelChannel"):
+                print(f"job {job.get('jobId', directory.name)} was started by a runner without a cancel channel; "
+                      "this version never signals a runner PID, so use the qa_resource.py that "
+                      "started it; no signal sent", file=sys.stderr)
                 return 4
             try:
-                matches = runner_start(job["runnerPid"]) == job["runnerStart"]
-            except Exception:
-                matches = False
-            if not matches:
-                print("runner start time does not match; no signal sent", file=sys.stderr)
-                return 4
+                fd = os.open(directory / CANCEL_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+            except OSError as error:
+                if error.errno in (errno.ENXIO, errno.ENOENT):
+                    print("runner is not listening for cancellation; no signal sent", file=sys.stderr)
+                    return 4
+                raise
             try:
-                # macOS needs per-job IPC to rule out PID reuse between the start-time check and this signal.
-                os.kill(job["runnerPid"], signal.SIGTERM)
-            except ProcessLookupError:
-                print("runner exited; no signal sent", file=sys.stderr)
-                return 4
+                if not stat.S_ISFIFO(os.fstat(fd).st_mode):
+                    print(f"{directory / CANCEL_FIFO} is not a FIFO; nothing sent", file=sys.stderr)
+                    return 4
+                try:
+                    os.write(fd, b"c")
+                except BrokenPipeError:
+                    print("runner stopped listening for cancellation; no signal sent", file=sys.stderr)
+                    return 4
+            finally:
+                os.close(fd)
             print(json.dumps(dict(jobId=job["jobId"], cancelRequested=True)))
             return 0
         print(json.dumps(live_report(directory)))

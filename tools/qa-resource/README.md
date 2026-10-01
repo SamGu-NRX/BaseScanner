@@ -20,6 +20,8 @@ Read `~/.codex/qa-resource/jobs/ID/job.json` for status, reasons, timestamps, ow
 
 Nothing pushes a completion event to T3 or a manager session. A parent learns the result in one of two ways. It can block in `wait`, running it again with the same id if its shell tool's time limit is shorter than the job. Or it can start `run` as a background command and let its host report the exit. Either way, `job.json` holds the result.
 
+`cancel` never signals a PID. Each runner reads a per-job FIFO, `cancel.fifo` in the job directory, and cancels itself when a byte arrives. When no runner holds the read end, `cancel` cannot open the FIFO, reports that nothing was sent, and returns 4, so a reused runner PID can never receive the request. Jobs started by an older runner have no FIFO, and `cancel` refuses them. If `submit` is interrupted after starting the runner, it cancels that runner, which is still its own unreaped child, and prints the receipt with `cancelRequested: true` before returning 130, so `wait` can follow the job to `cancelled`.
+
 Read `job.json`, not just the exit code. `run` and `wait` return the child's code for success or failure, 124 for child timeout, 130 for cancellation, 75 for admission timeout, and 125 for sensing or cleanup errors. `wait` returns 3 when its own deadline expires without affecting the job, 4 for a runner that died without a terminal result, and 2 for an unknown job. Child exit codes can overlap these values. If a child dies from signal N, `run` and `wait` return 128+N. `job.json` keeps the negative child return code in `exitCode` and N in `signal`.
 
 Admission requires memory pressure level 1 or 2, at least 35% memory free, and at least 5 GiB free on the HOME volume. These are operational limits copied from `qa-slot.py`, not calibrated measurements. Unreadable resources fail admission. Heavy build and render processes block admission, except a verified agent-device `testCommand` service. That service blocks a simulator job only on the same device. The named simulator must exist and be Shutdown; other booted devices do not block. Package and render jobs never call `simctl`.
@@ -46,9 +48,8 @@ Invisible descendants are not stopped. Darwin omits the environment of `cs_restr
 
 A chain whose processes each live shorter than one scan interval can evade two-pass confirmation. Microsecond start times avoid coarse `lstart` identity checks for escaped PIDs, but the check-to-signal PID reuse window remains.
 
-The queue cannot identify a foreign shared-lock holder or attribute a heavy process to a project. FIFO ordering applies only to this tool's tickets; `qa-slot.py` and `package-run.py` still race for the shared flock. Cancellation signals only a verified live runner, which stops its own child group and proven escaped descendants, and shuts down only the device it booted. The runner handles SIGTERM, SIGINT, and SIGHUP; later signals cannot interrupt cleanup. A stale job's recorded group and booted-device ownership are reported, never cleaned. Inspect those manually before reusing a device.
+The queue cannot identify a foreign shared-lock holder or attribute a heavy process to a project. FIFO ordering applies only to this tool's tickets; `qa-slot.py` and `package-run.py` still race for the shared flock. Cancellation stops only the job's own child group and proven escaped descendants, and shuts down only the device the job booted. The runner handles SIGTERM, SIGINT, and SIGHUP; later signals cannot interrupt cleanup. A stale job's recorded group and booted-device ownership are reported, never cleaned. Inspect those manually before reusing a device.
 
-Cancel can signal a reused PID if reuse happens between the runner start-time check and SIGTERM; eliminating that window on macOS needs per-job IPC.
 
 Boot ownership does not identify a simulator session; if another lane shuts down and re-boots the same UDID mid-job, final shutdown affects their session.
 

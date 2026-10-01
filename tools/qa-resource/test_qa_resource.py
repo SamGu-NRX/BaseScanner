@@ -647,13 +647,70 @@ def interrupted_spawn(argv, *args, **kwargs):
 q.subprocess.Popen = interrupted_spawn
 sys.exit(q.main(sys.argv[2:]))
 '''
-        args = self.job_args("submit-cancel")
+        args = self.job_args("submit-cancel", "import time; time.sleep(30)", timeout=40)
         args[0] = "submit"
         submitter = self.launch(args, bootstrap)
-        self.finish(submitter, "submit-cancel", 130)
+        output, error = submitter.communicate(timeout=8)
+        self.assertEqual(submitter.returncode, 130, error)
+        # An interrupted submit still reports the job it started, and cancels it.
+        receipt = json.loads(output)
+        self.assertEqual(receipt["jobId"], "submit-cancel")
+        self.assertTrue(receipt["cancelRequested"])
         result = self.invoke(self.cli("wait", "submit-cancel", ["--max-wait", "6"]))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(result.stdout)["status"], "succeeded")
+        self.assertEqual(result.returncode, 130, result.stderr)
+        job = json.loads(result.stdout)
+        self.assertEqual(job["status"], "cancelled")
+        # Usually the cancel lands before admission; if the payload did start, it must be gone.
+        if job["childPgid"] is not None:
+            self.assertFalse(qa.group_has_members(job["childPgid"]))
+        self.assert_lock_free()
+
+    def test_submit_hangup_during_spawn_with_ignored_sigchld_cancels_and_reports(self):
+        bootstrap = BOOTSTRAP.split("sys.exit")[0] + '''
+q.signal.signal(q.signal.SIGCHLD, q.signal.SIG_IGN)
+original = q.subprocess.Popen
+def interrupted_spawn(argv, *args, **kwargs):
+    if 'q.resume' in ' '.join(argv):
+        # The runner PID stays pinned only if SIGCHLD is not ignored while submit can signal it.
+        assert q.signal.getsignal(q.signal.SIGCHLD) == q.signal.SIG_DFL
+    runner = original(argv, *args, **kwargs)
+    if 'q.resume' in ' '.join(argv):
+        q.signal.raise_signal(q.signal.SIGHUP)
+    return runner
+q.subprocess.Popen = interrupted_spawn
+sys.exit(q.main(sys.argv[2:]))
+'''
+        args = self.job_args("submit-hup", "import time; time.sleep(30)", timeout=40)
+        args[0] = "submit"
+        submitter = self.launch(args, bootstrap)
+        output, error = submitter.communicate(timeout=8)
+        self.assertEqual(submitter.returncode, 130, error)
+        self.assertTrue(json.loads(output)["cancelRequested"])
+        result = self.invoke(self.cli("wait", "submit-hup", ["--max-wait", "6"]))
+        self.assertEqual(result.returncode, 130, result.stderr)
+        job = json.loads(result.stdout)
+        self.assertEqual(job["status"], "cancelled")
+        if job["childPgid"] is not None:
+            self.assertFalse(qa.group_has_members(job["childPgid"]))
+        self.assert_lock_free()
+
+    def test_cancel_at_cleanup_entry_still_finishes_cleanup(self):
+        runner_bootstrap = BOOTSTRAP.split("sys.exit")[0] + '''
+original = q.ignore_runner_signals
+calls = []
+def cancelled_on_entry(signals):
+    calls.append(1)
+    if len(calls) == 1:
+        raise q.Cancelled(q.signal.SIGTERM)
+    return original(signals)
+q.ignore_runner_signals = cancelled_on_entry
+sys.exit(q.main(sys.argv[2:]))
+'''
+        runner = self.launch(self.job_args("cleanup-entry", "import time; time.sleep(.2)"), runner_bootstrap)
+        result = self.finish(runner, "cleanup-entry", 0)
+        self.assertEqual(result["status"], "succeeded")
+        self.assertIsNotNone(result["finishedAt"])
+        self.assertFalse(qa.group_has_members(result["childPgid"]))
         self.assert_lock_free()
 
     def test_blocked_submit_receipt_does_not_hold_finished_jobs_liveness(self):
@@ -1205,6 +1262,94 @@ class PureTests(unittest.TestCase):
              patch.object(qa, "group_has_members", return_value=True):
             with self.assertRaisesRegex(RuntimeError, "live members remain"):
                 qa.signal_owned_group(123, signal.SIGTERM)
+
+    def test_cancel_writes_fifo_and_never_signals_a_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / "live.lock").touch()
+            os.mkfifo(directory / qa.CANCEL_FIFO, 0o600)
+            qa.write_job(directory, dict(jobId="fifo", runnerPid=os.getpid(), runnerStart="x",
+                                         cancelChannel=qa.CANCEL_FIFO))
+            with (directory / "live.lock").open("a+") as live:
+                fcntl.flock(live, fcntl.LOCK_EX)
+                with patch.object(qa.os, "kill") as kill, patch.object(qa.os, "killpg") as killpg, \
+                     contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    # Live lock held but no runner reading: nothing is sent anywhere.
+                    self.assertEqual(qa.cancel_job(directory), 4)
+                    reader = os.open(directory / qa.CANCEL_FIFO, os.O_RDONLY | os.O_NONBLOCK)
+                    try:
+                        self.assertEqual(qa.cancel_job(directory), 0)
+                        self.assertEqual(os.read(reader, 8), b"c")
+                    finally:
+                        os.close(reader)
+                    kill.assert_not_called()
+                    killpg.assert_not_called()
+
+    def test_cancel_reports_reader_gone_between_open_and_write(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / "live.lock").touch()
+            os.mkfifo(directory / qa.CANCEL_FIFO, 0o600)
+            qa.write_job(directory, dict(jobId="gone", cancelChannel=qa.CANCEL_FIFO))
+            reader = os.open(directory / qa.CANCEL_FIFO, os.O_RDONLY | os.O_NONBLOCK)
+            try:
+                with (directory / "live.lock").open("a+") as live:
+                    fcntl.flock(live, fcntl.LOCK_EX)
+                    with patch.object(qa.os, "write", side_effect=BrokenPipeError(32, "Broken pipe")), \
+                         contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(qa.cancel_job(directory), 4)
+            finally:
+                os.close(reader)
+
+    def test_listener_stop_failure_never_hangs_and_disables_delivery(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            os.mkfifo(directory / qa.CANCEL_FIFO, 0o600)
+            listener = qa.CancelListener(directory)
+            listener.start()
+            with patch.object(qa.os, "write", side_effect=OSError(5, "Input/output error")):
+                with self.assertRaises(OSError):
+                    listener.stop()
+            self.assertFalse(listener.active)
+            # A cancel that arrives after cleanup began is read but never delivered.
+            with patch.object(qa.signal, "pthread_kill") as deliver:
+                writer = os.open(directory / qa.CANCEL_FIFO, os.O_WRONLY | os.O_NONBLOCK)
+                os.write(writer, b"c")
+                os.write(writer, qa.STOP_LISTENER)
+                os.close(writer)
+                listener.thread.join(timeout=3)
+                deliver.assert_not_called()
+            self.assertFalse(listener.thread.is_alive())
+            os.close(listener.fd)
+
+    def test_listener_is_owned_before_its_start_can_be_interrupted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            os.mkfifo(directory / qa.CANCEL_FIFO, 0o600)
+            listener = qa.CancelListener(directory)
+            with patch.object(qa.threading.Thread, "start", side_effect=qa.Cancelled(signal.SIGTERM)):
+                with self.assertRaises(qa.Cancelled):
+                    listener.start()
+            # The caller already holds the object, so cleanup can still close its fd.
+            self.assertIsNotNone(listener.thread)
+            listener.thread = None
+            listener.stop()
+            with self.assertRaises(OSError):
+                os.fstat(listener.fd)
+
+    def test_cancel_refuses_legacy_job_without_channel(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            (directory / "live.lock").touch()
+            qa.write_job(directory, dict(jobId="legacy", runnerPid=os.getpid(),
+                                         runnerStart=qa.runner_start(os.getpid())))
+            with (directory / "live.lock").open("a+") as live:
+                fcntl.flock(live, fcntl.LOCK_EX)
+                stderr = io.StringIO()
+                with patch.object(qa.os, "kill") as kill, contextlib.redirect_stderr(stderr):
+                    self.assertEqual(qa.cancel_job(directory), 4)
+                kill.assert_not_called()
+                self.assertIn("without a cancel channel", stderr.getvalue())
 
     def test_cancel_pid_start_mismatch_never_signals(self):
         with tempfile.TemporaryDirectory() as temp:
