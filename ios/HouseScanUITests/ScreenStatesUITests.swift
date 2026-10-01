@@ -736,8 +736,9 @@ final class ScreenStatesUITests: XCTestCase {
     /// B-36: at AX5 the aim card filled the screen and hid the aim ring under it. On a step that
     /// has the homeowner aim, the card now keeps the task and its reply in view, folds the how-to
     /// words and the ring's legend under Details, and the chrome leaves the camera open between
-    /// the card and the actions. The ring shows in that open camera, and at no scroll position is
-    /// it drawn under the words, Details, the reply or an action.
+    /// the card and the actions. The spot's marker is in that open camera: the ring, or, while
+    /// the spot is under the card, an arrow toward it that reads the ring's progress. At no
+    /// scroll position is either drawn under the words, Details, the reply or an action.
     @MainActor
     func testAimCameraStaysOpenAtLargestTextSize() throws {
         continueAfterFailure = false
@@ -751,7 +752,6 @@ final class ScreenStatesUITests: XCTestCase {
         let details = element(app, "instruction.details")
         let reply = element(app, "action.cannotAccess")
         let mark = element(app, "action.markSomething")
-        let ring = element(app, "aim.ring")
         for (identifier, target) in [("instruction", card), ("instruction.details", details), ("action.cannotAccess", reply), ("action.markSomething", mark)] {
             XCTAssertTrue(target.waitForExistence(timeout: 5), "missing \(identifier)")
         }
@@ -762,27 +762,41 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(details.isHittable, "Details must be reachable without scrolling")
         XCTAssertTrue(reply.isHittable, "the card's reply must be reachable without scrolling")
         let cardBottom = max(card.frame.maxY, details.frame.maxY, reply.frame.maxY)
-        XCTAssertGreaterThanOrEqual(mark.frame.minY - cardBottom, 150, "the camera must stay open between the card (ends \(cardBottom)) and the actions (start \(mark.frame.minY))")
+        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
+        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "the camera must stay open between the card and the actions: \(openCamera)")
+
+        let ring = element(app, "aim.ring")
+        let arrow = element(app, "aim.arrow")
+        let marker = ring.exists ? ring : arrow
+        XCTAssertTrue(marker.waitForExistence(timeout: 5), "the spot needs its ring or an arrow toward it")
+        XCTAssertTrue(openCamera.contains(marker.frame), "the spot's marker \(marker.frame) must be in the open camera \(openCamera)")
+        XCTAssertEqual(ElementRead.snapshot(marker)?.value as? String, "50 percent captured", "the marker must read the spot's progress")
         attach(app, name: "wallWalk-aim-AX5-folded")
 
-        var sightings = 0
         let covers = ["instruction", "instruction.details", "action.cannotAccess", "action.markSomething"].map { ($0, element(app, $0)) }
-        // Short drags, so the scroll passes through every position where the ring could show.
-        for step in 0..<30 {
-            if ring.exists {
-                let frame = ring.frame
-                XCTAssertTrue(window.contains(frame), "step \(step): ring \(frame) is not wholly on screen")
+        // Short drags through every scroll position; where the screen fits, nothing moves.
+        for step in 0..<12 {
+            for (name, shown) in [("ring", ring), ("arrow", arrow)] where shown.exists {
+                let frame = shown.frame
+                XCTAssertTrue(window.contains(frame), "step \(step): \(name) \(frame) is not wholly on screen")
                 for (identifier, cover) in covers where cover.exists {
-                    XCTAssertFalse(frame.intersects(cover.frame), "step \(step): ring \(frame) is under \(identifier) \(cover.frame)")
+                    XCTAssertFalse(frame.intersects(cover.frame), "step \(step): \(name) \(frame) is under \(identifier) \(cover.frame)")
                 }
-                if sightings == 0 { attach(app, name: "wallWalk-aim-AX5-ring") }
-                sightings += 1
             }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
             start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.2)
         }
-        XCTAssertGreaterThan(sightings, 0, "the ring never showed in the open camera")
         XCTAssertTrue(scrollUntilHittable(mark, in: app), "Mark something must be reachable by scrolling")
+    }
+
+    /// Temporary: the audit on the AX5 aim state and the off-screen aim state, whose arrow now
+    /// reads the ring's progress to VoiceOver. Removed before the final every-state run.
+    @MainActor
+    func testAimArrowStatesPassTheAudit() throws {
+        for (name, ax5) in [("wallWalk-aim", true), ("wallWalk-aimOffScreen", false)] {
+            guard let state = Self.states.first(where: { $0.name == name }) else { continue }
+            try check(ax5 ? "\(name)-AX5" : name, arguments: state.arguments + (ax5 ? Self.largestText : []), screen: state.screen)
+        }
     }
 
     /// At AX5, Details opens the folded how-to words and the ring's legend, and closes them again.
@@ -827,47 +841,6 @@ final class ScreenStatesUITests: XCTestCase {
             XCTAssertTrue(element(app, "instruction.details").exists, "\(coaching): Details must hold the folded words")
             attach(app, name: "wallWalk-\(coaching)-AX5-folded")
             app.terminate()
-        }
-    }
-
-    /// Temporary diagnostic for B-36: XCTest's own contrast audit, with no handler, on the four
-    /// AX5 walking states where a contrast finding without an element appeared whenever the camera
-    /// stayed open under a short card (runs 36761500732, 36768462318, 36775276861). Unhandled,
-    /// XCTest attaches its own picture of each issue, which the shared handler suppresses. Remove
-    /// with the test below.
-    @MainActor
-    func testWalkingStatesNativeContrastAuditAtLargestTextSize() throws {
-        continueAfterFailure = true
-        for name in ["wallWalk", "wallWalk-endPreview", "wallWalk-hidden", "wallWalk-fullLegend"] {
-            guard let state = Self.states.first(where: { $0.name == name }) else { continue }
-            let app = XCUIApplication()
-            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + state.arguments + Self.largestText
-            app.launch()
-            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
-            Thread.sleep(forTimeInterval: 1)
-            attach(app, name: "\(name)-AX5-native")
-            let notes = ["mark", "endHere", "markEnd"].map { "action.\($0)" } + ["action.markSomething", "instruction", "instruction.details", "action.cannotAccess"]
-            let frames = notes.map { "\($0): \(element(app, $0).exists ? String(describing: element(app, $0).frame) : "absent")" }
-            let note = XCTAttachment(string: (frames + ["window: \(app.windows.firstMatch.frame)"]).joined(separator: "\n"))
-            note.name = "\(name)-AX5-native-frames"
-            note.lifetime = .keepAlways
-            add(note)
-            try app.performAccessibilityAudit(for: .contrast)
-            app.terminate()
-        }
-    }
-
-    /// Temporary diagnostic for B-36: the audit on the aiming states at AX5 alone, so a change to
-    /// the open camera is judged without the full every-state run. Remove before the final run,
-    /// where the every-state audit covers these states.
-    @MainActor
-    func testAimingStatesPassTheAuditAtLargestTextSize() throws {
-        for name in ["wallWalk", "wallWalk-endPreview", "wallWalk-hidden", "wallWalk-fullLegend", "wallWalk-aim", "wallWalk-slowDown", "gapRequest"] {
-            guard let state = Self.states.first(where: { $0.name == name }) else {
-                XCTFail("no state named \(name)")
-                continue
-            }
-            try check("\(name)-AX5", arguments: state.arguments + Self.largestText, screen: state.screen)
         }
     }
 
@@ -1125,6 +1098,10 @@ final class ScreenStatesUITests: XCTestCase {
         let target = element(app, identifier)
         let deadline = Date().addingTimeInterval(timeout)
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        // An element can exist before its screen is laid out, with an infinite frame, and asking
+        // whether it is hittable then fails the test outright ("Activation point invalid";
+        // result.details in run 36820279307, mid-transition from the spot check).
+        while !Self.laidOut(target.frame), Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
         let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
         if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
             target.tap()
@@ -1132,6 +1109,10 @@ final class ScreenStatesUITests: XCTestCase {
         }
         XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
+    }
+
+    private static func laidOut(_ frame: CGRect) -> Bool {
+        frame.minX.isFinite && frame.minY.isFinite && !frame.isEmpty
     }
 
     @MainActor

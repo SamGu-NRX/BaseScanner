@@ -267,9 +267,9 @@ struct TargetMarker: View {
                 .background(Palette.signal, in: .circle)
                 .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 2))
                 .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                .modifier(ArrowAccessibility(progress: progress, angle: angle))
                 .position(point)
                 .transition(.opacity)
-                .accessibilityHidden(true)
         case .hidden:
             EmptyView()
         }
@@ -327,5 +327,32 @@ struct TargetMarker: View {
         .accessibilityLabel("Spot to show")
         .accessibilityValue(done ? "Captured" : "\(Int((progress * 100).rounded())) percent captured")
         .accessibilityIdentifier("aim.ring")
+    }
+}
+
+/// An arrow standing in for a filling ring reads as the ring does, with the way to turn: at the
+/// largest text sizes the ring is often under the card, and hiding the arrow too left VoiceOver
+/// without the spot's progress. Other arrows (a plain target, the AR result's spot) stay hidden.
+private struct ArrowAccessibility: ViewModifier {
+    var progress: Double?
+    var angle: Angle
+
+    func body(content: Content) -> some View {
+        if let progress {
+            content
+                .accessibilityElement()
+                .accessibilityLabel("Spot to show, \(way)")
+                .accessibilityValue(progress >= 1 ? "Captured" : "\(Int((min(max(progress, 0), 1) * 100).rounded())) percent captured")
+                .accessibilityIdentifier("aim.arrow")
+        } else {
+            content.accessibilityHidden(true)
+        }
+    }
+
+    /// The arrow's direction in words, by its larger component. Screen y grows downward.
+    private var way: String {
+        let dx = cos(angle.radians), dy = sin(angle.radians)
+        if abs(dx) >= abs(dy) { return dx > 0 ? "to the right" : "to the left" }
+        return dy > 0 ? "below" : "above"
     }
 }
