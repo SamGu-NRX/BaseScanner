@@ -4,9 +4,11 @@ import SwiftUI
 /// Where to stand and where to aim: a blue dotted path on the ground toward the next place to
 /// stand, and a ring on the point to aim at (or an edge arrow when it is off screen).
 ///
-/// Each part sets its own accessibility: the path and arrow are hidden, while the filling ring
-/// is read (#81). A new part is read by VoiceOver unless it hides itself. The ring's legend is
-/// drawn under the instruction card (`CameraChrome.legend`), not here.
+/// Each part sets its own accessibility: the path is hidden, and the filling ring is read (#81).
+/// An arrow standing in for a filling ring is read like the ring, with its direction ("Spot to
+/// show, above"); other arrows are hidden (`ArrowAccessibility`). A new part is read by
+/// VoiceOver unless it hides itself. The ring's legend is drawn under the instruction card
+/// (`CameraChrome.legend`), not here.
 struct WayfindingOverlay: View {
     var projection: CameraProjection
     var wall: WallGeometry?

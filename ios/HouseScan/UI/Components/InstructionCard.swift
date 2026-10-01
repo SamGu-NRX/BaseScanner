@@ -106,8 +106,9 @@ struct InstructionCard: View {
         .transition(.identity)
         .frame(maxWidth: .infinity)
         .background(ScrimShape.rounded())
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.text, value: instruction)
-        .animation(Motion.text, value: reply == nil)
+        // Only the scrim's height eases. Reduce Motion asks for no size changes, so it snaps.
+        .animation(reduceMotion ? nil : Motion.text, value: instruction)
+        .animation(reduceMotion ? nil : Motion.text, value: reply == nil)
         .onChange(of: instruction.title) { detailsShown = false }
         .task(id: replyTask) {
             // Cleared first, so a task that comes back within the lock (A, B, A) is locked again.
