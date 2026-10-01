@@ -46,6 +46,11 @@ TERMINAL = {"succeeded", "failed", "timed_out", "cancelled", "admission_timeout"
             "error", "cleanup_failed"}
 
 
+
+def is_heavy(comm):
+    # Compare case-insensitively: Blender.app's executable is .../Contents/MacOS/Blender.
+    return Path(comm).name.lower() in HEAVY_NAMES
+
 class Cancelled(Exception):
     def __init__(self, signum):
         self.signum = signum
@@ -354,7 +359,7 @@ def list_processes():
     processes = []
     for row in rows.splitlines():
         pid, pgid, state, comm = row.strip().split(maxsplit=3)
-        if int(pid) == os.getpid() or state.startswith("Z") or Path(comm).name not in HEAVY_NAMES:
+        if int(pid) == os.getpid() or state.startswith("Z") or not is_heavy(comm):
             continue
         # comm may contain spaces. Only the first three columns are split.
         # A timed-out ps is killed, but subprocess.run's subsequent reap is unbounded.
@@ -381,7 +386,7 @@ def option_values(tokens, option):
 
 def classify_process(process, kind, device=None):
     """Return blocker, ignored, or irrelevant without inspecting the machine."""
-    if process.get("stat", "").startswith("Z") or Path(process["comm"]).name not in HEAVY_NAMES:
+    if process.get("stat", "").startswith("Z") or not is_heavy(process["comm"]):
         return "irrelevant"
     try:
         tokens = shlex.split(process["args"])
@@ -753,7 +758,10 @@ def acquire_ticket(state_dir, job_id, deadline):
             fcntl.flock(guard, fcntl.LOCK_EX)
         counter = queue / "counter"
         seq = int(counter.read_text()) + 1 if counter.exists() else 1
-        counter.write_text(str(seq))
+        # Replace atomically: a truncated counter would fail every later submission.
+        temporary = queue / "counter.tmp"
+        temporary.write_text(str(seq))
+        os.replace(temporary, counter)
         path = queue / f"{seq:012d}.{job_id}"
         ticket = path.open("a+")
         fcntl.flock(ticket, fcntl.LOCK_EX | fcntl.LOCK_NB)

@@ -1137,6 +1137,33 @@ class OwnershipTests(unittest.TestCase):
 
 
 class PureTests(unittest.TestCase):
+    def test_blender_app_bundle_executable_blocks_package_job(self):
+        process = dict(comm="/Applications/Blender.app/Contents/MacOS/Blender",
+                       args="/Applications/Blender.app/Contents/MacOS/Blender -b scene.blend -f 1")
+        self.assertEqual(qa.classify_process(process, "package"), "blocker")
+        self.assertTrue(qa.is_heavy("/usr/local/bin/blender"))
+        self.assertFalse(qa.is_heavy("/Applications/T3 Code.app/Contents/MacOS/T3 Code"))
+
+    def test_counter_survives_failed_write_and_next_ticket_continues(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp)
+            path, ticket = qa.acquire_ticket(state, "first", time.monotonic() + 3)
+            qa.release_ticket(path, ticket)
+            counter = state / "queue" / "counter"
+            self.assertEqual(counter.read_text(), "1")
+            real_write = Path.write_text
+            def failing(self, *args, **kwargs):
+                if self.name == "counter.tmp":
+                    raise OSError(28, "No space left on device")
+                return real_write(self, *args, **kwargs)
+            with patch.object(Path, "write_text", failing):
+                with self.assertRaises(OSError):
+                    qa.acquire_ticket(state, "second", time.monotonic() + 3)
+            self.assertEqual(counter.read_text(), "1")
+            path, ticket = qa.acquire_ticket(state, "third", time.monotonic() + 3)
+            self.assertEqual(path.name, "000000000002.third")
+            qa.release_ticket(path, ticket)
+
     def setUp(self):
         # These tests mock payload Popen; never inspect or signal their fictitious PIDs.
         for name in ("owner_blockers", "owned_processes"):
