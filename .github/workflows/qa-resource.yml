@@ -1,0 +1,43 @@
+name: QA resource queue
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/qa-resource/**"
+      - ".github/workflows/qa-resource.yml"
+  pull_request:
+    paths:
+      - "tools/qa-resource/**"
+      - ".github/workflows/qa-resource.yml"
+
+# Pull request code runs here, so the token can only read and no secrets are used.
+permissions:
+  contents: read
+
+# A newer commit cancels a pull request's older run. Each push to main gets a group of its own,
+# because a shared group would replace a pending push before it was tested.
+concurrency:
+  group: qa-resource-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  qa-resource-tests:
+    name: QA resource queue tests
+    # The queue reads Darwin-only process data (sysctl KERN_PROCARGS2 and kinfo_proc) and
+    # uses kqueue, so its tests need macOS. They need no Xcode, simulator or build setup.
+    runs-on: macos-26
+    # The 74 tests took about 55 s locally. The limit leaves room for runner setup.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The suite was developed and passed on Python 3.14.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+      - name: Run the queue tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m unittest discover -s tools/qa-resource -p 'test_*.py' -v

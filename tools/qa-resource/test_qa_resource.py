@@ -941,12 +941,18 @@ time.sleep(10)
         self.assert_lock_free()
 
     def test_submit_wait_max_wait_does_not_affect_job(self):
-        args = self.job_args("short-wait", "import time; time.sleep(.5)")
+        # The payload waits for a release file, so a slow runner cannot finish it before the short wait.
+        release = self.root / "release-short-wait"
+        payload = ("import os, time\n"
+                   f"while not os.path.exists({str(release)!r}):\n"
+                   "    time.sleep(.02)\n")
+        args = self.job_args("short-wait", payload, timeout=10)
         args[0] = "submit"
         self.assertEqual(self.invoke(args).returncode, 0)
         result = self.invoke(self.cli("wait", "short-wait", ["--max-wait", ".05"]))
         self.assertEqual(result.returncode, 3, result.stderr)
         self.assertTrue(json.loads(result.stdout)["live"])
+        release.touch()
         final = self.invoke(self.cli("wait", "short-wait", ["--max-wait", "6"]))
         self.assertEqual(final.returncode, 0, final.stderr)
         self.assertEqual(json.loads(final.stdout)["status"], "succeeded")
