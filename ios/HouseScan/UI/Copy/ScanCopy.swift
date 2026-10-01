@@ -96,10 +96,11 @@ enum ScanCopy {
                 title: "Something is in front of the wall here",
                 // A place to look, not a measurement: "About 5 ft", not "4 ft 11 in".
                 detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it.",
-                // At AX5 the unfolded card covered the camera and the spot it asks about.
+                // At AX5 the unfolded card covered the camera and the spot it asks about. The lead
+                // stays two lines even beside a coaching icon; the full words are under Details.
                 folded: Instruction.Folded(
-                    title: "Look at it from the side or step around it",
-                    detail: "Something is in front of the wall here, \(Distance.aroundFromMeter(s...s))."
+                    title: "Look around it",
+                    detail: "Something is in front of the wall here, \(Distance.aroundFromMeter(s...s)). Look at it from the side or step around it."
                 )
             )
         case .gap:

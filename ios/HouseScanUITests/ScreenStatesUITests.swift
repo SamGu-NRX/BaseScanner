@@ -104,7 +104,7 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
         // At AX5 looking past it leads, and the situation folds under Details.
-        "wallWalk-seeBehind-AX5": [("instruction", "Look at it from the side or step around it"), ("instruction.details", "Details")],
+        "wallWalk-seeBehind-AX5": [("instruction", "Look around it"), ("instruction.details", "Details")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
         "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
@@ -864,7 +864,7 @@ final class ScreenStatesUITests: XCTestCase {
             XCTAssertTrue(details.waitForExistence(timeout: 5), "\(name): the situation must fold under Details")
             XCTAssertTrue(cantSee.waitForExistence(timeout: 5), "\(name): missing the reply Can't see past it")
             let label = ElementRead.snapshot(card)?.label ?? ""
-            XCTAssertTrue(label.contains("Look at it from the side or step around it"), "\(name): what to do must lead, got \(label)")
+            XCTAssertTrue(label.contains("Look around it"), "\(name): what to do must lead, got \(label)")
             XCTAssertFalse(label.contains("Something is in front of the wall here"), "\(name): the situation must fold under Details, got \(label)")
             if coaching != nil {
                 XCTAssertTrue(label.contains("Slow down"), "\(name): the coaching must stay in view, got \(label)")
@@ -879,14 +879,14 @@ final class ScreenStatesUITests: XCTestCase {
                 .filter { $0.exists && $0.frame.minY > cardBottom }
                 .map(\.frame.minY)
             let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: min(below.min() ?? window.maxY, window.maxY) - cardBottom)
-            XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the controls: \(openCamera)")
             attach(app, name: name)
+            XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the controls: \(openCamera)")
 
             if coaching == nil {
                 tap(app, "instruction.details")
                 let detail = element(app, "instruction.detail")
                 XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the situation")
-                XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter"), "detail reads \(detail.label)")
+                XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter. Look at it from the side or step around it."), "detail reads \(detail.label)")
                 XCTAssertTrue(scrollUntilHittable(cantSee, in: app), "Can't see past it must stay reachable with Details open")
                 attach(app, name: "wallWalk-seeBehind-AX5-details")
             }
