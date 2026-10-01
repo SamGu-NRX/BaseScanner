@@ -796,6 +796,14 @@ final class ScreenStatesUITests: XCTestCase {
         let target = element(app, identifier)
         let deadline = Date().addingTimeInterval(timeout)
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
+        // An element can exist before its screen is laid out, with an infinite frame, and asking
+        // whether it is hittable then fails the test outright ("Activation point invalid";
+        // result.details in run 36820279307, mid-transition from the spot check).
+        while !Self.laidOut(target.frame), Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        guard Self.laidOut(target.frame) else {
+            XCTFail("\(identifier) was never laid out: \(target.frame)")
+            return
+        }
         let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
         if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
             target.tap()
@@ -803,6 +811,10 @@ final class ScreenStatesUITests: XCTestCase {
         }
         XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
+    }
+
+    private static func laidOut(_ frame: CGRect) -> Bool {
+        [frame.minX, frame.minY, frame.width, frame.height].allSatisfy(\.isFinite) && !frame.isEmpty
     }
 
     @MainActor
