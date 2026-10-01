@@ -291,6 +291,11 @@ public struct CoverageMap: Sendable {
         let lastWalkRow: Int
         /// Rows a kept frame's depth showed hidden behind something nearer.
         var hiddenRows: Set<Int> = []
+        /// Rows a kept frame's depth showed past where the space ends (`farSurface`), while short
+        /// of two positions. Not hidden: nothing stands in front of the wall there to look past
+        /// (#160). A later view without depth adds nothing to them, as for hidden rows: it can't
+        /// see through that surface.
+        var pastSpaceRows: Set<Int> = []
         var skipped = false
         var covered = false
 
@@ -427,8 +432,8 @@ public struct CoverageMap: Sendable {
         for band in SurfaceBand.allCases {
             for index in candidateIndices(for: camera) {
                 let views = rowViews(band, index, from: camera, depth: depth, among: Array(rowOffsets(band).indices))
-                if !views.seen.isEmpty || !views.hidden.isEmpty {
-                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden))
+                if !views.seen.isEmpty || !views.hidden.isEmpty || !views.pastSpace.isEmpty {
+                    seen.append(Sighting(band: band, index: index, rows: views.seen, hiddenRows: views.hidden, pastSpaceRows: views.pastSpace))
                 }
             }
         }
@@ -442,6 +447,8 @@ public struct CoverageMap: Sendable {
         public var rows: Set<Int>
         /// The rows the frame's depth showed hidden behind something nearer.
         public var hiddenRows: Set<Int>
+        /// The rows the frame's depth showed past where the space ends (`farSurface`).
+        public var pastSpaceRows: Set<Int> = []
     }
 
     /// Records cells a kept keyframe with normal tracking saw from `position`: the part of
@@ -455,7 +462,7 @@ public struct CoverageMap: Sendable {
 
     /// `record` without the revision: also whether any cell's level changed, which a hidden
     /// cell's row gaining a position can do without counting in `Delta`. Sightings not checked
-    /// against depth add no position to a row found hidden.
+    /// against depth add no position to a row found hidden or past where the space ends.
     @discardableResult
     private mutating func recordSightings(
         _ sightings: [Sighting], from position: SIMD3<Float>, depthChecked: Bool
@@ -467,7 +474,7 @@ public struct CoverageMap: Sendable {
             let wasSeen = cell.isSeen
             let before = cell.level
             var added = false
-            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !cell.hiddenRows.contains(row)) {
+            for row in sighting.rows where cell.rows.indices.contains(row) && (depthChecked || !(cell.hiddenRows.contains(row) || cell.pastSpaceRows.contains(row))) {
                 // A repeated or nearby frame adds no parallax, so it adds nothing.
                 if add(&cell.rows[row], position, verified: depthChecked) { added = true }
             }
@@ -476,6 +483,13 @@ public struct CoverageMap: Sendable {
             for row in sighting.hiddenRows where cell.rows.indices.contains(row) {
                 if Self.dropUnverified(&cell.rows[row]) { added = true }
                 if cell.rows[row].count < 2, cell.hiddenRows.insert(row).inserted { added = true }
+            }
+            // A sighting no depth confirmed, of a row past where the space ends, was of that
+            // surface, as for the ground depth rows (`recordDepth`). Discarding these rows let
+            // views without depth taken before a late far surface keep a wall behind it covered.
+            for row in sighting.pastSpaceRows where cell.rows.indices.contains(row) {
+                if Self.dropUnverified(&cell.rows[row]) { added = true }
+                if cell.rows[row].count < 2, cell.pastSpaceRows.insert(row).inserted { added = true }
             }
             guard added else { continue }
             if !wasSeen, cell.isSeen { delta.newlySeen += 1 }
@@ -916,17 +930,36 @@ public struct CoverageMap: Sendable {
     /// Records where the space in front of the wall ends (#160, #164). With depth, a reading
     /// nearer than a sample that is that surface, or a sample at or past it, then counts as the
     /// end of the space (neither seen nor hidden) rather than as something in front of the wall to
-    /// look past. It applies to frames observed from now on and to every frame a rebuild replays;
-    /// what earlier frames recorded stays. No cell's level changes, so the revision doesn't either.
+    /// look past.
+    ///
+    /// When the surface over any cell changes and a kept frame had depth, every kept frame is
+    /// replayed against the new surface, as it is for a new ground or wall
+    /// (`replayObservedCameras`). ARKit can find a corridor's far wall only after depth frames
+    /// have marked the ground behind it hidden. Before this replay those rows stayed hidden and
+    /// the walk kept asking to look past the wall (review of #168). When ARKit stops finding a
+    /// surface, the replay marks hidden again whatever that surface ended. Real obstructions
+    /// nearer the wall stay hidden, and skipped and withdrawn cells are kept. A row that depth
+    /// shows past the surface loses the sightings no depth confirmed, and later views without
+    /// depth add nothing to it (`Cell.pastSpaceRows`). Frames without depth never consult the
+    /// surface, so a map without depth frames replays nothing and its revision stays the same.
     public mutating func setFarSurface(_ spans: [ObservedSpan]) {
+        setFarSurface(spans, replay: true)
+    }
+
+    // Wall updates and corner turns already replay all kept frames. They update the lookup
+    // without replaying here, so each operation rebuilds once, with its own skipped-cell shift.
+    private mutating func setFarSurface(_ spans: [ObservedSpan], replay: Bool) {
         guard spans != farSurface else { return }
         farSurface = spans
-        farSurfaceByCell = [:]
+        var byCell: [Int: Float] = [:]
         for item in spans {
             for index in indices(overlapping: item.span) {
-                farSurfaceByCell[index] = min(farSurfaceByCell[index] ?? item.out, item.out)
+                byCell[index] = min(byCell[index] ?? item.out, item.out)
             }
         }
+        guard byCell != farSurfaceByCell else { return }
+        farSurfaceByCell = byCell
+        if replay, observedDepths.contains(where: { $0 != nil }) { replayObservedCameras(shiftingSkippedBy: 0) }
     }
 
     /// How far out from the wall the space ends over the cell holding `s`, meters (the nearest
@@ -1263,7 +1296,7 @@ public struct CoverageMap: Sendable {
         leftEnd = leftEnd.map { $0 + delta }
         rightEnd = rightEnd.map { $0 + delta }
         // Where the space ends stays where it was in the world, as the ends do.
-        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) })
+        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) }, replay: false)
         pendingShift += delta
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
@@ -1333,7 +1366,7 @@ public struct CoverageMap: Sendable {
         limitEnds.remove(side)
         // Past the corner s runs along the new piece, which the surface found in front of the old
         // one says nothing about; the caller measures it again against the new chain.
-        setFarSurface([])
+        setFarSurface([], replay: false)
         replayObservedCameras(shiftingSkippedBy: 0)
         return corner
     }
@@ -1370,6 +1403,16 @@ public struct CoverageMap: Sendable {
         let seen = cells.values.flatMap { $0.filter { $0.value.isSeen || !$0.value.hiddenRows.isEmpty }.keys }
         guard let low = seen.min(), let high = seen.max() else { return nil }
         return cellRange(low).lowerBound...cellRange(high).upperBound
+    }
+
+    /// The s extent kept frames look over: every kept camera's s, `maxDistance` either way, which
+    /// covers the cells a frame samples (`candidateIndices`). Nil before any frame is kept.
+    /// Unlike `seenExtent`, a rebuild from the same cameras leaves it where it is, so a far
+    /// surface measured over it (`FarSurfaceTracker`) can't change with what the rebuild decides.
+    public var viewedExtent: ClosedRange<Float>? {
+        let along = observedCameras.map { wall.wallPoint($0.position).s }
+        guard let low = along.min(), let high = along.max() else { return nil }
+        return (low - config.maxDistance)...(high + config.maxDistance)
     }
 
     /// Range worth drawing: seen cells plus fog ahead, clipped to the marked ends. Before anything
