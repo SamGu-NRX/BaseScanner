@@ -125,18 +125,18 @@ struct GapRequestScreen: View {
         }
     }
 
-    /// An open request has the homeowner aim the camera, so its card folds its second line at
-    /// the largest text sizes (`CameraChrome.aims`). Not where that line is what to do now:
-    /// stepping back for ground further out, the walk out with its live "this needs" reading, or
-    /// a walk the space can't hold, which points at "I can't get there". Nor the overhead
-    /// question, a request already seen, or coaching that replaces the request.
+    /// The phone's own request for ground by a likely spot has the homeowner aim the camera, and
+    /// its second line only says why ("This might be a spot for the battery"), so it folds at the
+    /// largest text sizes (`CameraChrome.aims`). Every other request's second line is the action
+    /// or its extent: stepping back for ground further out, the walk out with its live "this
+    /// needs" reading or "tap I can't get there", tilting up to the roof or sky, and a server's
+    /// own words, which this screen can't judge. Nor the overhead question, a request already
+    /// seen, or coaching that replaces the request.
     private var aims: Bool {
         guard let gap = state.gap, !asking, !gap.isSatisfied else { return false }
         if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
-        switch gap.reason {
-        case .groundOut, .walkOut: return false
-        default: return true
-        }
+        if case .groundNearCandidate = gap.reason { return true }
+        return false
     }
 
     /// As on the walk: tracking problems and standing past an end replace the request, and the

@@ -125,20 +125,22 @@ struct WallWalkScreen: View {
         return .normal
     }
 
-    /// Steps where the homeowner aims the camera and the card's second line only explains:
-    /// walking, aiming, marking the wall's end, finishing. Their card folds that line at the
-    /// largest text sizes so the camera stays open (`CameraChrome.aims`). Not where the second
-    /// line is itself what to do now: looking past an obstruction ("Look at it from the side"),
-    /// a step back added to an aim step, marking the next wall ("Put the circle on it"). Nor a
-    /// question, a mark, the tray, coaching that replaces the task, or a refusal.
+    /// Steps where the homeowner aims the camera and the title says what to do, so the card's
+    /// second line (how to hold the phone, where along the wall, how far to go) can fold at the
+    /// largest text sizes and leave the camera open (`CameraChrome.aims`). The aim ring marks the
+    /// place, and a step to the side moves into the title when it is needed (`ScanCopy.aim`).
+    /// Not where the second line is the action: looking past an obstruction ("Look at it from the
+    /// side"), a step back added to an aim step, the wall's end, whose title only asks ("Aim
+    /// where the wall stops"), marking the next wall. Nor a question, a mark, the tray, coaching
+    /// that replaces the task, or a refusal.
     private var aims: Bool {
         switch controlsKey {
-        case .walking, .markEnd, .finish:
+        case .walking, .finish:
             if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
             if case .seeBehind = state.guidance { return false }
             if state.guidanceHint?.stepBack == true { return false }
             return tone != .refusal
-        case .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
+        case .markEnd, .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
             return false
         }
     }

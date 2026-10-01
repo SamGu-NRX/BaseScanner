@@ -812,12 +812,16 @@ final class ScreenStatesUITests: XCTestCase {
     }
 
     /// Where a card's second line is itself what to do now, it stays on the card at AX5: looking
-    /// past an obstruction, and the walk out with its live reading.
+    /// past an obstruction, the walk out with its live reading, stepping back for ground further
+    /// out, and tilting up to the roof or the sky.
     @MainActor
     func testActionWordsStayOnTheCardAtLargestTextSize() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        for (state, words) in [("wallWalk-seeBehind", "Look at it from the side"), ("gapRequest-walkOut", "Follow the dotted line")] {
+        for (state, words) in [
+            ("wallWalk-seeBehind", "Look at it from the side"), ("gapRequest-walkOut", "Follow the dotted line"),
+            ("gapRequest-groundOut", "Step back and tilt down"), ("gapRequest-overhead", "up to the roof or the sky"),
+        ] {
             guard let fixture = Self.states.first(where: { $0.name == state }) else {
                 XCTFail("no state named \(state)")
                 continue
