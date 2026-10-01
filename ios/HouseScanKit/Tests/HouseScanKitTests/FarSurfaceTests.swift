@@ -251,13 +251,98 @@ import Testing
         var levels: [SurfaceBand: [CoverageLevel]]
         var hiddenDepthRows: [Set<Int>]
         var groundDepths: [Float?]
+        var coveredIntervals: [SurfaceBand: [ClosedRange<Float>]]
+        var wallSpans: [ObservedSpan]
+        var groundSpans: [ObservedSpan]
+        var facingSpans: [ObservedSpan]
 
-        init(_ map: CoverageMap) {
-            let cells = Array(-3...3)
+        init(_ map: CoverageMap, cells: ClosedRange<Int> = -3...3) {
             levels = Dictionary(uniqueKeysWithValues: SurfaceBand.allCases.map { band in (band, cells.map { map.level(band, $0) }) })
             hiddenDepthRows = cells.map(map.groundDepthHiddenRows(at:))
             groundDepths = cells.map(map.groundDepth(at:))
+            coveredIntervals = Dictionary(uniqueKeysWithValues: SurfaceBand.allCases.map { ($0, map.coveredIntervals($0)) })
+            wallSpans = map.wallSeenSpans()
+            groundSpans = map.groundDepthSpans()
+            facingSpans = map.facingSpans()
         }
+    }
+
+    /// A one-cell meter refinement changes the far-surface lookup, but the wall update owns
+    /// the single replay and the shift of skipped and withdrawn cells.
+    @Test func movingTheMeterWithDepthAndAFarSurfaceReplaysOnce() {
+        let scene = standardScene(boxes: [Self.farWall(at: 2.5)])
+        let cameras = Self.corridorCameras + [wallCamera(s: 0), wallCamera(s: 0.3)]
+        let depths = cameras.map { renderDepth(scene, from: $0) }
+        var map = Self.ended(at: 2.5)
+        for index in cameras.indices {
+            map.observe(cameras[index], trackingNormal: true, time: Double(index), depth: depths[index])
+        }
+        map.markSkipped(.wall, map.cellRange(20))
+        map.withdrawClaims(over: map.cellRange(2))
+        let oldSurface = map.farSurface
+        let lookupS = oldSurface[0].span.lowerBound + map.config.cellWidth / 2
+        #expect(map.farSurface(atS: lookupS) != nil)
+        let before = map.revision
+        var moved = map.wall
+        moved.meter.x -= map.config.cellWidth
+
+        map.updateWall(moved)
+
+        #expect(map.revision == before + 1)
+        #expect(map.farSurface != oldSurface)
+        #expect(map.farSurface(atS: lookupS) == nil)
+        var reference = CoverageMap(wall: moved, config: map.config)
+        reference.setFarSurface(oldSurface.map {
+            ObservedSpan(span: ($0.span.lowerBound + map.config.cellWidth)...($0.span.upperBound + map.config.cellWidth), out: $0.out)
+        })
+        reference.markSkipped(.wall, reference.cellRange(21))
+        reference.withdrawClaims(over: reference.cellRange(3))
+        for index in cameras.indices {
+            reference.observe(cameras[index], trackingNormal: true, time: Double(index), depth: depths[index])
+        }
+        #expect(map.level(.wall, 21) == .skipped)
+        #expect(map.withdrawnCells == Set([3]))
+        #expect(!reference.wallSeenSpans().isEmpty)
+        #expect(Readout(map, cells: -45...45) == Readout(reference, cells: -45...45))
+    }
+
+    /// Following a marked corner clears the old far surface before the one replay against the
+    /// new wall chain; the homeowner's skipped and withdrawn answers keep their cell indices.
+    @Test func turningACornerWithDepthAndAFarSurfaceReplaysOnce() throws {
+        let scene = standardScene(boxes: [Self.farWall(at: 2.5)])
+        let cameras = Self.corridorCameras + [wallCamera(s: 0), wallCamera(s: 0.3)]
+        let depths = cameras.map { renderDepth(scene, from: $0) }
+        var map = Self.ended(at: 2.5)
+        for index in cameras.indices {
+            map.observe(cameras[index], trackingNormal: true, time: Double(index), depth: depths[index])
+        }
+        map.markSkipped(.wall, map.cellRange(20))
+        map.withdrawClaims(over: map.cellRange(2))
+        map.setEnd(.right, at: 0.6)
+        map.setEndIsLimit(.right, true)
+        let before = map.revision
+        var finalWall = map.wall
+        var corner = try Self.corner(on: finalWall, at: SIMD3(0.6, 0, -2), outward: SIMD3(1, 0, 0))
+        corner.source = .plane
+        finalWall.turn(.right, at: corner)
+
+        let followed = try map.turnCorner(.right, meeting: SIMD3(0.6, 0, -2), outward: SIMD3(1, 0, 0), source: .plane)
+
+        #expect(map.revision == before + 1)
+        #expect(followed == corner)
+        #expect(map.wall == finalWall)
+        #expect(map.rightEnd == nil && map.limitEnds.isEmpty)
+        #expect(map.farSurface.isEmpty && map.farSurface(atS: 0) == nil)
+        var reference = CoverageMap(wall: finalWall, config: map.config)
+        reference.markSkipped(.wall, reference.cellRange(20))
+        reference.withdrawClaims(over: reference.cellRange(2))
+        for index in cameras.indices {
+            reference.observe(cameras[index], trackingNormal: true, time: Double(index), depth: depths[index])
+        }
+        #expect(map.level(.wall, 20) == .skipped)
+        #expect(map.withdrawnCells == Set([2]))
+        #expect(!reference.groundDepthHiddenRows(at: 0).isEmpty)
+        #expect(Readout(map, cells: -45...45) == Readout(reference, cells: -45...45))
     }
 
     /// ARKit finds the corridor's far wall after the depth frames (review of #168). The three

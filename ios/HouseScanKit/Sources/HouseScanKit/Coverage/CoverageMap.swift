@@ -943,6 +943,12 @@ public struct CoverageMap: Sendable {
     /// depth add nothing to it (`Cell.pastSpaceRows`). Frames without depth never consult the
     /// surface, so a map without depth frames replays nothing and its revision stays the same.
     public mutating func setFarSurface(_ spans: [ObservedSpan]) {
+        setFarSurface(spans, replay: true)
+    }
+
+    // Wall updates and corner turns already replay all kept frames. They update the lookup
+    // without replaying here, so each operation rebuilds once, with its own skipped-cell shift.
+    private mutating func setFarSurface(_ spans: [ObservedSpan], replay: Bool) {
         guard spans != farSurface else { return }
         farSurface = spans
         var byCell: [Int: Float] = [:]
@@ -953,7 +959,7 @@ public struct CoverageMap: Sendable {
         }
         guard byCell != farSurfaceByCell else { return }
         farSurfaceByCell = byCell
-        if observedDepths.contains(where: { $0 != nil }) { replayObservedCameras(shiftingSkippedBy: 0) }
+        if replay, observedDepths.contains(where: { $0 != nil }) { replayObservedCameras(shiftingSkippedBy: 0) }
     }
 
     /// How far out from the wall the space ends over the cell holding `s`, meters (the nearest
@@ -1290,7 +1296,7 @@ public struct CoverageMap: Sendable {
         leftEnd = leftEnd.map { $0 + delta }
         rightEnd = rightEnd.map { $0 + delta }
         // Where the space ends stays where it was in the world, as the ends do.
-        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) })
+        setFarSurface(farSurface.map { ObservedSpan(span: ($0.span.lowerBound + delta)...($0.span.upperBound + delta), out: $0.out) }, replay: false)
         pendingShift += delta
         let whole = Int((pendingShift / config.cellWidth).rounded())
         pendingShift -= Float(whole) * config.cellWidth
@@ -1360,7 +1366,7 @@ public struct CoverageMap: Sendable {
         limitEnds.remove(side)
         // Past the corner s runs along the new piece, which the surface found in front of the old
         // one says nothing about; the caller measures it again against the new chain.
-        setFarSurface([])
+        setFarSurface([], replay: false)
         replayObservedCameras(shiftingSkippedBy: 0)
         return corner
     }
