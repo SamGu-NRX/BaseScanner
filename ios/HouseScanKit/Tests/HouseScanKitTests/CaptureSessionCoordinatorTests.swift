@@ -376,6 +376,61 @@ struct NativeCaptureFixture: Sendable {
         #expect(Set(creates) == [first.packetID, second.packetID])
     }
 
+    /// A reset that ends the session before its kept photos are sealed still deletes their staged
+    /// copies, so no copy of a home photo outlives the packet it was kept for.
+    @Test func aResetDeletesPhotosStagedForTheEndedSession() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        let coordinator = CaptureSessionCoordinator(
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures, sends: false))
+        let staging = captures.appending(path: "staging")
+        func staged() -> [String] { (try? FileManager.default.contentsOfDirectory(atPath: staging.path)) ?? [] }
+
+        coordinator.begin(recording: fixture.recording)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2))
+        coordinator.kept(try fixture.photo(at: fixture.start + 3))
+        #expect(staged().count == 2)
+        // No suspension between keeping and the reset, so the queued work finds the session ended.
+        coordinator.newWorld("start over", recording: fixture.recording, newScan: true)
+        coordinator.kept(try fixture.photo(at: fixture.start + 4))
+        await coordinator.settle()
+        for _ in 0..<500 where !staged().isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(staged().isEmpty)
+    }
+
+    /// A no after a yes stops sending: the upload is abandoned, nothing kept later goes up, the
+    /// packet is never finalized, and a second yes in the same scan does not start it again.
+    @Test func aNoAfterAYesStopsSending() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        let coordinator = CaptureSessionCoordinator(
+            environment: NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures))
+        coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2))
+        await coordinator.settle()
+        let session = try #require(coordinator.session)
+        let uploader = try #require(session.uploader)
+        await uploader.settled()
+        let putsBefore = server.requests("PUT upload").count
+        #expect(putsBefore == 1)
+
+        coordinator.answerConsent(false)
+        coordinator.kept(try fixture.photo(at: fixture.start + 4))
+        coordinator.answerConsent(true)
+        let (tap, hit) = try fixture.tap(at: fixture.start + 1)
+        coordinator.meterTapped(tap, hit: hit)
+        coordinator.captureEnded(acceptedCloseUpAt: nil)
+        await coordinator.settle()
+        await uploader.settled()
+
+        #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
+        #expect(coordinator.session === session && session.uploader == nil)
+        #expect(server.requests("PUT upload").count == putsBefore)
+        #expect(server.requests("POST captures").count == 1)
+        #expect(server.requests("POST captures/finalize").isEmpty)
+    }
+
     /// Photos kept after the scan was sent don't change the frozen packet or start more uploads.
     @Test func photosAfterTheScanWasSentAreNotAdded() async throws {
         defer { try? FileManager.default.removeItem(at: root) }

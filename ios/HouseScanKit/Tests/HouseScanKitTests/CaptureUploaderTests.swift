@@ -294,6 +294,22 @@ import Testing
         #expect(rig.server.requests("GET captures/result").count == 1)
     }
 
+    /// An outcome missing fields the app needs is refused by name instead of finishing the upload
+    /// with an answer nothing can show.
+    @Test func aMalformedOutcomeStopsTheUpload() async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.malformedOutcomeResults = 1 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        await rig.uploader.settled()
+
+        let done = await rig.uploader.snapshot
+        #expect(done.end == .failed(step: "result", codes: ["result_unreadable"], status: 200))
+        #expect(done.result == nil)
+        #expect(rig.server.requests("GET captures/result").count == 1)
+    }
+
     /// `failed` ends a capture without an answer, so its outcomeless result is final at once.
     @Test func aFailedCaptureEndsWithoutWaitingForAnOutcome() async throws {
         let rig = try Rig()

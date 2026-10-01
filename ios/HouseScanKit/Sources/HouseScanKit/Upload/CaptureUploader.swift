@@ -415,7 +415,12 @@ public actor CaptureUploader {
             if reply.status == 404, CaptureAPI.errorCodes(reply.body).contains("result_not_ready") { try notReady(reply) }
             throw Refused(step: "result", status: reply.status, codes: CaptureAPI.errorCodes(reply.body))
         }
-        guard let head = try? JSONDecoder().decode(ResultHead.self, from: reply.body) else {
+        // The whole body must decode as the result the app reads, or a finished upload could hold
+        // an answer nothing can show.
+        let decoder = JSONDecoder()
+        guard let response = try? decoder.decode(CaptureResult.Response.self, from: reply.body),
+              let head = try? decoder.decode(ResultHead.self, from: reply.body)
+        else {
             throw Refused(step: "result", status: reply.status, codes: ["result_unreadable"])
         }
         if let runID = head.runId, runID != state.finalized?.runID {
@@ -424,24 +429,17 @@ public actor CaptureUploader {
         let status = head.status ?? state.backendStatus ?? "unknown"
         // Until the run has written its answer the API serves the capture's status with a null
         // outcome, and that status can already be one the capture ends in.
-        if head.outcome == nil, !CaptureAPI.statusesWithoutOutcome.contains(status) { try notReady(reply) }
+        if response.outcome == nil, !CaptureAPI.statusesWithoutOutcome.contains(status) { try notReady(reply) }
         state.result = reply.body
         state.end = .finished(status: status)
         mark("result")
         persist()
     }
 
-    /// The parts of a result read that say whether it is this run's answer. The rest is decoded
-    /// later from the saved bytes.
+    /// The run and status as the server wrote them; `CaptureResult.Status` keeps no raw text.
     private struct ResultHead: Decodable {
         var runId: String?
         var status: String?
-        var outcome: Present?
-    }
-
-    /// Any JSON value. Decoding keeps only that the key held something other than null.
-    private struct Present: Decodable {
-        init(from decoder: any Decoder) throws {}
     }
 
     /// Always throws: a retry after the usual wait, or the end of the upload once

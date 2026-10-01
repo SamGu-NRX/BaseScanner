@@ -67,6 +67,9 @@ final class LoopbackCaptureAPI: Sendable {
         var outcomelessResults = 0
         /// Answer the next N result reads 200 with a body that is not JSON.
         var unreadableResults = 0
+        /// Answer the next N result reads 200 with an outcome that has a kind but none of the
+        /// other fields an outcome must carry.
+        var malformedOutcomeResults = 0
         /// The status a capture ends in once every listed file is committed. Only `manual_review`
         /// ends with an outcome; `failed` ends with a `failed` event and none.
         var endStatus = "manual_review"
@@ -198,6 +201,11 @@ final class LoopbackCaptureAPI: Sendable {
                 if s.unreadableResults > 0 {
                     s.unreadableResults -= 1
                     return (200, Data("<html>not a result</html>".utf8))
+                }
+                if s.malformedOutcomeResults > 0 {
+                    s.malformedOutcomeResults -= 1
+                    return (200, json(["runId": capture.runID ?? "", "status": capture.status, "viewsNeeded": [], "memberActions": [],
+                                       "outcome": ["kind": "manual_review"]]))
                 }
                 let withheld = s.outcomelessResults > 0
                 if withheld { s.outcomelessResults -= 1 }

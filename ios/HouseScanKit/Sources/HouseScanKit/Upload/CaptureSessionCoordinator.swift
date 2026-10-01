@@ -179,6 +179,8 @@ public final class CaptureSessionCoordinator {
         var chain: Task<Void, Never>?
         var sealing = false
         var ended = false
+        /// The homeowner said no after a yes: this capture is never sent again.
+        var consentWithdrawn = false
         /// packet.json as frozen, once the scan was sent for placement.
         var frozen: Data?
         /// The server's result for this session's capture, decoded and bound to it.
@@ -191,10 +193,12 @@ public final class CaptureSessionCoordinator {
         }
 
         /// Runs `work` after everything queued before it, unless the session has ended by then.
-        func enqueue(_ work: @escaping @MainActor (Session) async -> Void) {
+        /// `cleanup` runs either way, after `work` when it ran.
+        func enqueue(_ work: @escaping @MainActor (Session) async -> Void, cleanup: (@MainActor @Sendable () -> Void)? = nil) {
             let previous = chain
             chain = Task {
                 await previous?.value
+                defer { cleanup?() }
                 guard !self.ended else { return }
                 await work(self)
             }
@@ -233,10 +237,19 @@ public final class CaptureSessionCoordinator {
         environment?.sends == true && consent == nil && session != nil
     }
 
+    /// A no after a yes stops this capture's upload for good: nothing kept later is sent, and a
+    /// second yes in the same scan does not start it again. What the server already has stays there.
     public func answerConsent(_ yes: Bool, at time: Date = Date()) {
         consent = yes
         consentedAt = yes ? time : nil
-        if yes, let session { startUploading(session) }
+        guard let session else { return }
+        if yes {
+            startUploading(session)
+        } else if let uploader = session.uploader {
+            session.consentWithdrawn = true
+            session.uploader = nil
+            Task { await uploader.abandon("consent withdrawn") }
+        }
     }
 
     // MARK: Scan events
@@ -272,8 +285,8 @@ public final class CaptureSessionCoordinator {
             environment.log("capture packet: a kept photo could not be copied: \(error)")
             return
         }
-        session.enqueue { session in
-            defer { try? FileManager.default.removeItem(at: staged) }
+        // The copy is deleted even when a reset ends the session before this work runs.
+        session.enqueue({ session in
             do {
                 let producer = try session.producer(first: (photo.t, photo.cameraImageSize), info: environment.sessionInfo)
                 let data = try await Task.detached(priority: .utility) { try Data(contentsOf: staged) }.value
@@ -289,7 +302,7 @@ public final class CaptureSessionCoordinator {
             } catch {
                 environment.log("capture packet: a kept photo was not sealed: \(error)")
             }
-        }
+        }, cleanup: { try? FileManager.default.removeItem(at: staged) })
     }
 
     /// The homeowner marked the meter: its frame becomes a keyframe and the tap goes on it.
@@ -381,7 +394,8 @@ public final class CaptureSessionCoordinator {
     /// Opens the capture on the server and queues everything sealed so far, then the frozen
     /// packet if the scan was already sent. Photos kept later go up as they are sealed.
     private func startUploading(_ session: Session) {
-        guard let environment, environment.sends, consent == true, let consentedAt, session.uploader == nil, !session.ended else { return }
+        guard let environment, environment.sends, consent == true, let consentedAt, session.uploader == nil, !session.ended,
+              !session.consentWithdrawn else { return }
         do {
             let uploader = try CaptureUploader.start(
                 folder: session.folder, base: environment.endpoint, http: environment.http,
