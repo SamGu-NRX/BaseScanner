@@ -6,6 +6,16 @@ import HouseScanKit
 struct Instruction: Hashable {
     var title: String
     var detail: String?
+    /// Coaching riding along with the task (`ScanCopy.withCoaching`), such as "Slow down.". Kept
+    /// apart from `detail` so a card that folds its detail away at the largest text sizes still
+    /// shows it (`InstructionCard.foldsDetail`).
+    var note: String? = nil
+
+    /// The second line as one text: the detail, then the note on a line of its own.
+    var detailAndNote: String? {
+        let lines = [detail, note].compactMap(\.self)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
 }
 
 /// All user-facing words for engine values. The engine sends meanings (contract `GuidanceStep`,
@@ -173,8 +183,7 @@ enum ScanCopy {
     /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
     static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
         guard let coaching else { return task }
-        let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
-        return Instruction(title: task.title, detail: detail)
+        return Instruction(title: task.title, detail: task.detail, note: coachingNote(coaching))
     }
 
     // MARK: Aim ring

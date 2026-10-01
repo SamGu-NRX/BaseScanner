@@ -78,6 +78,9 @@ struct OnboardingScreen: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            // At AX5 a scrolled page's text showed under the page dots (screenshots at e7031990).
+            // Clipped here and covered by the footer's background below, a page can't draw there.
+            .clipped()
 
             VStack(spacing: 16) {
                 PageDots(count: pages.count, current: page)
@@ -110,7 +113,13 @@ struct OnboardingScreen: View {
             }
             .animation(Motion.screen, value: page)
             .padding(.horizontal, 24)
+            // Space between the last line of a scrolled page and the dots.
+            .padding(.top, 12)
             .padding(.bottom, 12)
+            // Opaque, so nothing drawn past the page view's edge shows under the dots.
+            .background(Palette.canvas)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("onboarding.footer")
         }
         .background(Palette.canvas.ignoresSafeArea())
     }
@@ -219,6 +228,7 @@ private struct OnboardingPageView: View {
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .accessibilityIdentifier("onboarding.page")
     }
 
     private var text: some View {
@@ -341,6 +351,10 @@ private struct WalkArt: View {
                         .position(x: size.width * (0.14 + 0.72 * phase), y: size.height * 0.72)
                     Text("About 2 min")
                         .font(Typeface.caption)
+                        // The drawing is a fixed 260 pt and hidden from VoiceOver, and the page's
+                        // first sentence says "about 2 minutes" at full size. Past this size the
+                        // caption covered the meter it is drawn beside.
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)

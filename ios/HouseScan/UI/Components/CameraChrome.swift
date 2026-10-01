@@ -16,10 +16,22 @@ struct CameraChrome<Bottom: View>: View {
     /// the window's global space). Nil when the screen has nothing to tap.
     var onCameraTap: ((CGPoint) -> Void)?
     /// A line under the card about something drawn on the camera: the aim ring's legend
-    /// (`CameraOverlays`). It is part of the chrome's stack, so it grows with the card and
-    /// scrolls with it at the largest text sizes, where the card covers most of the camera.
+    /// (`CameraOverlays`). On an aiming step at the accessibility sizes it folds under the
+    /// card's Details instead (`aims`).
     var legend: String? = nil
+    /// Given the open camera between the card and the actions, for the aim ring to stay inside
+    /// (`WayfindingOverlay`). It moves when the chrome scrolls.
+    var cameraWindow: CameraWindow? = nil
+    /// Whether this step has the homeowner aim the camera, so at the accessibility text sizes
+    /// the card folds its detail and the legend under "Details" (`InstructionCard.foldsDetail`)
+    /// and leaves the camera open. Questions and refusals keep every word in view.
+    var aims = false
     @ViewBuilder var bottom: Bottom
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var folds: Bool { aims && typeSize.isAccessibilitySize }
 
     var body: some View {
         // One layout at every text size: the chrome fills the screen and, only when the largest
@@ -55,14 +67,25 @@ struct CameraChrome<Bottom: View>: View {
                 }
             }
             .frame(minHeight: 36)
-            InstructionCard(instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow)
-            if let legend {
+            InstructionCard(
+                instruction: instruction, tone: tone, reply: reply, eyebrow: eyebrow,
+                foldsDetail: folds, legend: folds ? legend : nil
+            )
+            if let legend, !folds {
                 legendLine(legend)
             }
-            Spacer(minLength: 0)
+            // The open camera between the card and the actions; the aim ring shows only inside
+            // it (B-36). On an aiming step at the accessibility sizes it keeps at least
+            // `minCameraWindow`, and the actions below scroll into reach.
+            Spacer(minLength: folds ? CameraChromeLayout.minCameraWindow : 0)
+                .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { window in
+                    if let cameraWindow, cameraWindow.frame != window { cameraWindow.frame = window }
+                }
             bottom
         }
-        .animation(.easeOut(duration: 0.2), value: legend)
+        // The legend's arrival resizes the stack. With Reduce Motion it lands at once, since a
+        // shorter resize still moves everything under it.
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: legend)
         .padding(.horizontal, Metrics.edge)
         .padding(.top, 4)
         .padding(.bottom, 8)
@@ -83,6 +106,24 @@ struct CameraChrome<Bottom: View>: View {
             .accessibilityIdentifier("aim.legend")
             .transition(.opacity)
     }
+}
+
+/// The open camera between the instruction card and the actions, in global coordinates.
+/// `CameraChrome` writes it and only `WayfindingOverlay` reads it, so scrolling the chrome
+/// redraws the aim overlay, not the whole screen.
+@MainActor
+@Observable
+final class CameraWindow {
+    var frame: CGRect?
+}
+
+/// `CameraChrome`'s layout constants, outside it because a generic type can't hold stored
+/// static properties.
+enum CameraChromeLayout {
+    /// The least open camera on an aiming step at the accessibility sizes: room for the largest
+    /// aim ring (64 pt radius, 108 percent at its pulse) with a margin. A layout choice checked
+    /// against the iPhone 17 frames, not measured on a phone.
+    static let minCameraWindow: CGFloat = 180
 }
 
 /// Reads the full-screen camera view size so buttons can send "the reticle" (nil point)
