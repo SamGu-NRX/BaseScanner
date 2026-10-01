@@ -830,6 +830,33 @@ final class ScreenStatesUITests: XCTestCase {
         }
     }
 
+    /// Temporary diagnostic for B-36: XCTest's own contrast audit, with no handler, on the four
+    /// AX5 walking states where a contrast finding without an element appeared whenever the camera
+    /// stayed open under a short card (runs 36761500732, 36768462318, 36775276861). Unhandled,
+    /// XCTest attaches its own picture of each issue, which the shared handler suppresses. Remove
+    /// with the test below.
+    @MainActor
+    func testWalkingStatesNativeContrastAuditAtLargestTextSize() throws {
+        continueAfterFailure = true
+        for name in ["wallWalk", "wallWalk-endPreview", "wallWalk-hidden", "wallWalk-fullLegend"] {
+            guard let state = Self.states.first(where: { $0.name == name }) else { continue }
+            let app = XCUIApplication()
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + state.arguments + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+            Thread.sleep(forTimeInterval: 1)
+            attach(app, name: "\(name)-AX5-native")
+            let notes = ["mark", "endHere", "markEnd"].map { "action.\($0)" } + ["action.markSomething", "instruction", "instruction.details", "action.cannotAccess"]
+            let frames = notes.map { "\($0): \(element(app, $0).exists ? String(describing: element(app, $0).frame) : "absent")" }
+            let note = XCTAttachment(string: (frames + ["window: \(app.windows.firstMatch.frame)"]).joined(separator: "\n"))
+            note.name = "\(name)-AX5-native-frames"
+            note.lifetime = .keepAlways
+            add(note)
+            try app.performAccessibilityAudit(for: .contrast)
+            app.terminate()
+        }
+    }
+
     /// Temporary diagnostic for B-36: the audit on the aiming states at AX5 alone, so a change to
     /// the open camera is judged without the full every-state run. Remove before the final run,
     /// where the every-state audit covers these states.
