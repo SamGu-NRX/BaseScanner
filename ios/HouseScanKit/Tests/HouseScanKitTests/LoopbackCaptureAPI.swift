@@ -345,7 +345,7 @@ final class LoopbackCaptureAPI: Sendable {
         if endStatus == "manual_review" {
             c.events.append(("verdict_ready", ["kind": "manual_review", "runId": c.runID!]))
         } else {
-            c.events.append(("failed", ["code": "packet_invalid", "runId": c.runID!]))
+            c.events.append(("failed", ["code": "loopback_run_failed", "runId": c.runID!]))
         }
     }
 
