@@ -102,8 +102,9 @@ public actor CaptureUploader {
         return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
     }
 
-    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, when it was
-    /// created on another API than `base`, or when it holds no yes for `base`. The resumed upload
+    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, when the
+    /// homeowner withdrew their yes, when it was created on another API than `base`, or when it
+    /// holds no yes for `base`. The resumed upload
     /// gets a new attempt id, so nothing from the previous process can land in it.
     public static func resume(
         folder: URL, base: URL, http: any CaptureHTTP, policy: Policy = .init(),
@@ -111,7 +112,9 @@ public actor CaptureUploader {
         sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) throws -> CaptureUploader? {
         let url = stateURL(in: folder)
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard FileManager.default.fileExists(atPath: url.path),
+              !FileManager.default.fileExists(atPath: CaptureUploadState.withdrawnURL(in: folder).path)
+        else { return nil }
         var state = try CaptureUploadState.load(from: url)
         guard state.destination == base.absoluteString, state.consent?.destination == base.absoluteString else { return nil }
         state.attemptID = UUID().uuidString

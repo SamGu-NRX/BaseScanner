@@ -456,10 +456,35 @@ struct NativeCaptureFixture: Sendable {
         // The same main-actor turn: the abandon task has not run yet.
         #expect(try CaptureUploadState.load(from: stateURL).end == nil)
         #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
+        #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10)) == nil)
 
         server.release("POST captures/finalize")
         server.state.withLock { $0.held = [] }
         await uploader.settled()
+        #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
+    }
+
+    /// When the withdrawal marker can't be written, the saved upload is removed instead, so a
+    /// relaunch still finds nothing to resume.
+    @Test func aWithdrawalThatCannotBeMarkedRemovesTheSavedUpload() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        let environment = NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures)
+        let coordinator = CaptureSessionCoordinator(environment: environment)
+        coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
+        let session = try #require(coordinator.session)
+        let uploader = try #require(session.uploader)
+        let stateURL = CaptureUploader.stateURL(in: session.folder)
+        #expect(FileManager.default.fileExists(atPath: stateURL.path))
+        // A directory where the marker goes makes writing it fail.
+        try FileManager.default.createDirectory(at: CaptureUploadState.withdrawnURL(in: session.folder).appending(path: "blocked"), withIntermediateDirectories: true)
+
+        coordinator.answerConsent(false)
+        #expect(!FileManager.default.fileExists(atPath: stateURL.path))
+
+        // Abandoning runs in its own task after this turn.
+        for _ in 0..<500 where await uploader.snapshot.end == nil { try await Task.sleep(for: .milliseconds(10)) }
         #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
     }
 

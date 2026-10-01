@@ -5,6 +5,11 @@ import Foundation
 /// and finalize) are saved as the exact bytes first sent, never re-encoded.
 public struct CaptureUploadState: Codable, Sendable, Equatable {
     public static let fileName = "capture-upload.json"
+    /// Written into a capture's folder when the homeowner takes back their yes. `CaptureUploader.resume`
+    /// never resumes a folder that has it.
+    public static let withdrawnFileName = "consent-withdrawn"
+
+    public static func withdrawnURL(in folder: URL) -> URL { folder.appending(path: withdrawnFileName) }
 
     public enum FilePhase: Codable, Sendable, Equatable {
         /// Sealed on the phone, not yet registered (or its URL must be fetched again).
