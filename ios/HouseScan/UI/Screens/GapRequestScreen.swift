@@ -45,7 +45,8 @@ struct GapRequestScreen: View {
                 lastCaptureID: state.lastCapture?.id,
                 isReplay: state.isReplay,
                 isAutopilot: state.isAutopilot,
-                cameraWindow: cameraWindow
+                cameraWindow: cameraWindow,
+                aims: aims
             ) {
                 VStack(spacing: 10) {
                     if asking {
@@ -122,6 +123,15 @@ struct GapRequestScreen: View {
         case 1: "Skips this view and checks your scan again. An installer will look at this part instead."
         default: "Skips this view and goes on to the next one. An installer will look at this part instead."
         }
+    }
+
+    /// An open request has the homeowner aim the camera, so its card folds its detail at the
+    /// largest text sizes (`CameraChrome.aims`). Not the overhead question, a request already
+    /// seen, or coaching that replaces the request.
+    private var aims: Bool {
+        if asking || state.gap?.isSatisfied == true { return false }
+        if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
+        return true
     }
 
     /// As on the walk: tracking problems and standing past an end replace the request, and the

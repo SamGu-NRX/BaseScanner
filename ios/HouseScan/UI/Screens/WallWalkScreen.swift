@@ -51,7 +51,8 @@ struct WallWalkScreen: View {
                     actions.markFeaturePoint(at: point, viewSize: cameraSize)
                 },
                 legend: cardLegend,
-                cameraWindow: cameraWindow
+                cameraWindow: cameraWindow,
+                aims: aims
             ) {
                 VStack(spacing: 10) {
                     controls
@@ -124,6 +125,20 @@ struct WallWalkScreen: View {
         return .normal
     }
 
+    /// Steps where the homeowner aims the camera: walking, marking the wall's end or the next
+    /// wall, finishing. Their card folds its detail at the largest text sizes so the camera
+    /// stays open (`CameraChrome.aims`). Not a question, a mark, the tray, coaching that replaces
+    /// the task or a refusal: there every word on the card is what to do now.
+    private var aims: Bool {
+        switch controlsKey {
+        case .walking, .markEnd, .finish, .nextWall:
+            if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
+            return tone != .refusal
+        case .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:
+            return false
+        }
+    }
+
     // MARK: Controls
 
     private enum ControlsKey: Hashable {
@@ -182,6 +197,7 @@ struct WallWalkScreen: View {
                     actions.markFeaturePoint(at: nil, viewSize: cameraSize)
                 } label: {
                     Label("Mark", systemImage: "plus.viewfinder")
+                        .spansStack(stacksActions)
                 }
                 .buttonStyle(.primary)
                 .accessibilityHint("Marks the point under the circle in the middle of the screen")
@@ -291,7 +307,7 @@ struct WallWalkScreen: View {
                     actions.cancelNextWall()
                 } label: {
                     Label("Back", systemImage: "chevron.backward")
-                        .frame(maxWidth: stacksActions ? .infinity : nil)
+                        .spansStack(stacksActions)
                 }
                 .buttonStyle(.secondaryProminent)
                 .accessibilityHint("Asks again what's at this end of the wall")
@@ -300,6 +316,7 @@ struct WallWalkScreen: View {
                     actions.markNextWall(at: nil, viewSize: cameraSize)
                 } label: {
                     Label("Mark next wall", systemImage: nextWallSymbol)
+                        .spansStack(stacksActions)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.primary)
@@ -345,7 +362,7 @@ struct WallWalkScreen: View {
                         actions.endWallHere()
                     } label: {
                         Label("Wall ends here", systemImage: "flag")
-                            .frame(maxWidth: stacksActions ? .infinity : nil)
+                            .spansStack(stacksActions)
                     }
                     .buttonStyle(.secondaryProminent)
                     .accessibilityHint("Ends the wall where you're standing, at the dashed line on the map")
@@ -438,8 +455,7 @@ struct WallWalkScreen: View {
             trayOpen = true
         } label: {
             Label("Mark something", systemImage: "mappin.and.ellipse")
-                .labelStyle(.titleAndIcon)
-                .frame(maxWidth: stacksActions ? .infinity : nil)
+                .spansStack(stacksActions)
         }
         .buttonStyle(.secondaryProminent)
         .accessibilityHint("Pin a gas meter, door, window, AC unit, driveway or fence")
@@ -517,13 +533,16 @@ struct FeatureTray: View {
 }
 
 private extension View {
-    /// Full width when the actions stack, as wide as its words when they share a row.
+    /// Stacked, a wall-walk action spans the screen and shows its words alone; in a row it is
+    /// as wide as its words, with its icon. At the largest text sizes the icon took a third of
+    /// the width and broke "Mark something" into three lines ("some-", "thing"); the words say
+    /// what the button does without it.
     @ViewBuilder
     func spansStack(_ stacked: Bool) -> some View {
         if stacked {
-            frame(maxWidth: .infinity)
+            labelStyle(.titleOnly).frame(maxWidth: .infinity)
         } else {
-            self
+            labelStyle(.titleAndIcon)
         }
     }
 }

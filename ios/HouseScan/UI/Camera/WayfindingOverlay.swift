@@ -150,13 +150,24 @@ struct WayfindingOverlay: View {
             if let band, let fitted = Self.fittedRadius(at: point, in: size, band: band), fitted < radius {
                 return .onScreen(point, radius: fitted)
             }
-            // On screen but under the card or the actions: nothing, as before the chrome reported
-            // its open camera, when the ring was drawn there out of sight. The ring shows once
-            // the open camera reaches it. An arrow there pointed at a place the homeowner can't
-            // see, and failed the accessibility audit's contrast check over the path's dots at
-            // AX5 (run 36761500732).
+            // On screen but under the card or the actions: the arrow in the open camera points
+            // to where the spot is drawn, as the edge arrow does for a spot off screen, so the
+            // homeowner tilts toward it and the ring comes into the open. The camera's own
+            // direction to it starts at the optical axis, which can be the spot itself. An arrow
+            // here was taken out at 22f78017 on a guess about the audit; the audit's finding
+            // stayed without it (run 36768462318).
             if let band, point.y >= 0, point.y <= size.height, point.y < band.top || point.y > band.bottom {
-                return .hidden
+                let lane = Self.lane(in: size, band: band)
+                let offset = CGVector(dx: point.x - lane.midX, dy: point.y - lane.midY)
+                let length = (offset.dx * offset.dx + offset.dy * offset.dy).squareRoot()
+                guard length > 1 else { return .hidden }
+                let direction = CGVector(dx: offset.dx / length, dy: offset.dy / length)
+                // Stops a disc short of the spot, so it never lands past it pointing back.
+                let edge = Self.arrowPoint(toward: direction, in: size, band: band)
+                let toEdge = ((edge.x - lane.midX) * (edge.x - lane.midX) + (edge.y - lane.midY) * (edge.y - lane.midY)).squareRoot()
+                let reach = min(toEdge, max(length - Self.arrowDiameter, 0))
+                let arrow = CGPoint(x: lane.midX + direction.dx * reach, y: lane.midY + direction.dy * reach)
+                return .offScreen(arrow, angle: .radians(atan2(direction.dy, direction.dx)))
             }
         }
         guard let direction = projection.screenDirection(toward: target) else {
