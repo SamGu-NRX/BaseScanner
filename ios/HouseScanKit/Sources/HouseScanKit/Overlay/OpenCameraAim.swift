@@ -16,7 +16,10 @@ public enum OpenCameraAim {
     public static func point(folds: Bool, window: CGRect?, camera: CGSize) -> CGPoint? {
         guard folds, let window else { return nil }
         let shown = window.intersection(CGRect(origin: .zero, size: camera))
-        guard !shown.isNull, shown.height > 0, shown.width > 0 else { return nil }
+        // Only the height matters. The chrome measures the open camera from a Spacer, which
+        // can be zero points wide; requiring a width put the reticle back under the card at AX5
+        // (run 36877327250).
+        guard !shown.isNull, shown.height > 0 else { return nil }
         return CGPoint(x: shown.midX, y: shown.midY)
     }
 }

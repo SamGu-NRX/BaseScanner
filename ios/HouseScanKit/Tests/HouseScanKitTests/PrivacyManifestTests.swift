@@ -23,34 +23,64 @@ import Testing
         "NSPrivacyAccessedAPICategoryActiveKeyboards": #"\bactiveInputModes\b"#,
     ]
 
-    /// Swift source with its comments blanked. Comment markers inside string literals stay code,
-    /// so a URL in a string can't hide the rest of its line. Block comments may nest, as in Swift.
+    /// Swift source with its comments and string text blanked, so only code is searched: a
+    /// string or a comment that names an API doesn't count as calling it. An interpolation
+    /// inside a string (`"\\(UserDefaults.standard...)"`) is code and stays. Block comments may
+    /// nest, as in Swift. Multi-line and raw strings aren't parsed as such; their lines are read
+    /// as code, which can only add a category, never hide one.
     static func code(_ source: String) -> String {
+        enum Mode { case code(parens: Int, interpolation: Bool), string }
         var out = ""
         var chars = Array(source)[...]
-        var depth = 0
-        var inString = false
+        var modes: [Mode] = [.code(parens: 0, interpolation: false)]
+        var commentDepth = 0
         while let c = chars.first {
             let next = chars.dropFirst().first
-            if depth > 0 {
-                if c == "*", next == "/" { depth -= 1; chars = chars.dropFirst(2); continue }
-                if c == "/", next == "*" { depth += 1; chars = chars.dropFirst(2); continue }
+            if commentDepth > 0 {
+                if c == "*", next == "/" { commentDepth -= 1; chars = chars.dropFirst(2); continue }
+                if c == "/", next == "*" { commentDepth += 1; chars = chars.dropFirst(2); continue }
                 if c == "\n" { out.append(c) }
                 chars = chars.dropFirst()
-            } else if inString {
-                out.append(c)
-                if c == "\\", let escaped = next { out.append(escaped); chars = chars.dropFirst(2); continue }
-                if c == "\"" || c == "\n" { inString = false }
-                chars = chars.dropFirst()
-            } else if c == "/", next == "/" {
-                chars = chars.drop { $0 != "\n" }
-            } else if c == "/", next == "*" {
-                depth = 1
-                chars = chars.dropFirst(2)
-            } else {
-                if c == "\"" { inString = true }
-                out.append(c)
-                chars = chars.dropFirst()
+                continue
+            }
+            switch modes[modes.count - 1] {
+            case .string:
+                if c == "\\", next == "(" {
+                    modes.append(.code(parens: 1, interpolation: true))
+                    out.append("\\(")
+                    chars = chars.dropFirst(2)
+                } else if c == "\\", next != nil {
+                    out.append("  ")
+                    chars = chars.dropFirst(2)
+                } else if c == "\"" || c == "\n" {
+                    modes.removeLast()
+                    out.append(c)
+                    chars = chars.dropFirst()
+                } else {
+                    out.append(" ")
+                    chars = chars.dropFirst()
+                }
+            case .code(let parens, let interpolation):
+                if c == "/", next == "/" {
+                    chars = chars.drop { $0 != "\n" }
+                } else if c == "/", next == "*" {
+                    commentDepth = 1
+                    chars = chars.dropFirst(2)
+                } else {
+                    if c == "\"" {
+                        modes.append(.string)
+                    } else if c == "(" {
+                        modes[modes.count - 1] = .code(parens: parens + 1, interpolation: interpolation)
+                    } else if c == ")", parens > 0 {
+                        if interpolation, parens == 1 {
+                            modes.removeLast()
+                        } else {
+                            modes[modes.count - 1] = .code(parens: parens - 1, interpolation: interpolation)
+                        }
+                    }
+                    out.append(c)
+                    chars = chars.dropFirst()
+                }
             }
         }
         return out
@@ -127,6 +157,8 @@ import Testing
         ("let url = \"https://example.com\"; let up = ProcessInfo.processInfo.systemUptime", "NSPrivacyAccessedAPICategorySystemBootTime"),
         ("let s = \"/* not a comment\"; UserDefaults.standard.set(1, forKey: \"k\")", "NSPrivacyAccessedAPICategoryUserDefaults"),
         ("UITextInputMode.activeInputModes", "NSPrivacyAccessedAPICategoryActiveKeyboards"),
+        ("let on = \"\\(UserDefaults.standard.bool(forKey: \"k\"))\"", "NSPrivacyAccessedAPICategoryUserDefaults"),
+        ("log(\"saved \\(n) at \\(f(\")\"))\"); let t = ProcessInfo.processInfo.systemUptime", "NSPrivacyAccessedAPICategorySystemBootTime"),
     ])
     func theScannerFindsAUse(source: String, category: String) {
         #expect(Self.categories(in: source) == [category])
@@ -137,8 +169,10 @@ import Testing
         "/* systemUptime\n   /* nested */ mach_absolute_time */",
         "let status = statusText(code)",
         "let restated = 1",
+        "let note = \"UserDefaults and systemUptime are only named here\"",
+        "print(\"a quote \\\" then mach_absolute_time\")",
     ])
-    func theScannerIgnoresCommentsAndLookalikes(source: String) {
+    func theScannerIgnoresCommentsStringsAndLookalikes(source: String) {
         #expect(Self.categories(in: source).isEmpty)
     }
 }

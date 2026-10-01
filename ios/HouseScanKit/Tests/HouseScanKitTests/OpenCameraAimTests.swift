@@ -22,6 +22,13 @@ import Testing
         #expect(OpenCameraAim.point(folds: true, window: window, camera: Self.camera) == CGPoint(x: 201, y: 530))
     }
 
+    /// What the chrome measures: its open camera is a Spacer, which can be zero points wide.
+    /// Rejecting that put the reticle back under the card at AX5 (run 36877327250).
+    @Test func theChromesZeroWidthSpacerAimsAtItsMiddle() {
+        let window = CGRect(x: 201, y: 420, width: 0, height: 220)
+        #expect(OpenCameraAim.point(folds: true, window: window, camera: Self.camera) == CGPoint(x: 201, y: 530))
+    }
+
     /// Scrolled down, the window's top leaves the screen and the aim follows what is left.
     @Test func aWindowCutAtTheTopAimsAtItsPartOnScreen() {
         let window = CGRect(x: 16, y: -100, width: 370, height: 300)
