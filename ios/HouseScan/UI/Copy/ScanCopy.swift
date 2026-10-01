@@ -10,6 +10,17 @@ struct Instruction: Hashable {
     /// apart from `detail` so a card that folds its detail away at the largest text sizes still
     /// shows it (`InstructionCard.foldsDetail`).
     var note: String? = nil
+    /// The card's words when it folds at the largest text sizes, where the title only names the
+    /// situation and the detail holds what to do: the doing leads, and the situation moves under
+    /// Details. Nil keeps the title and folds the detail.
+    var folded: Folded? = nil
+
+    struct Folded: Hashable {
+        /// What to do now, in place of `title`.
+        var title: String
+        /// The situation and where it is, under Details in place of `detail`.
+        var detail: String
+    }
 
     /// The second line as one text: the detail, then the note on a line of its own.
     var detailAndNote: String? {
@@ -84,7 +95,12 @@ enum ScanCopy {
             Instruction(
                 title: "Something is in front of the wall here",
                 // A place to look, not a measurement: "About 5 ft", not "4 ft 11 in".
-                detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it."
+                detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it.",
+                // At AX5 the unfolded card covered the camera and the spot it asks about.
+                folded: Instruction.Folded(
+                    title: "Look at it from the side or step around it",
+                    detail: "Something is in front of the wall here, \(Distance.aroundFromMeter(s...s))."
+                )
             )
         case .gap:
             Instruction(title: "One more view", detail: nil)

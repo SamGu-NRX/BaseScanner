@@ -103,6 +103,8 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        // At AX5 looking past it leads, and the situation folds under Details.
+        "wallWalk-seeBehind-AX5": [("instruction", "Look at it from the side or step around it"), ("instruction.details", "Details")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
         "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
@@ -431,7 +433,8 @@ final class ScreenStatesUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "action.keepWalking").waitForExistence(timeout: 15))
         XCTAssertFalse(element(app, "action.cannotAccess").exists, "the card's reply must wait for the answer")
-        tap(app, "action.keepWalking", timeout: 5)
+        // Run 36841096811: on a slow runner each hittability check took 1-2 s and 5 s ran out.
+        tap(app, "action.keepWalking", timeout: 15)
         XCTAssertTrue(element(app, "action.keepWalking").waitForNonExistence(timeout: 5), "the answer must close the question")
         XCTAssertTrue(element(app, "screen.wallWalk").exists, "Keep walking must stay on the walk")
         app.terminate()
@@ -811,15 +814,16 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertFalse(legend.exists)
     }
 
-    /// Where a card's second line is itself what to do now, it stays on the card at AX5: looking
-    /// past an obstruction, the walk out with its live reading, stepping back for ground further
-    /// out, and tilting up to the roof or the sky.
+    /// Where a card's second line is itself what to do now, it stays on the card at AX5: the walk
+    /// out with its live reading, stepping back for ground further out, and tilting up to the roof
+    /// or the sky. Looking past an obstruction leads with its action instead
+    /// (`testSeeBehindLeadsWithItsActionAtLargestTextSize`).
     @MainActor
     func testActionWordsStayOnTheCardAtLargestTextSize() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
         for (state, words) in [
-            ("wallWalk-seeBehind", "Look at it from the side"), ("gapRequest-walkOut", "Follow the dotted line"),
+            ("gapRequest-walkOut", "Follow the dotted line"),
             ("gapRequest-groundOut", "Step back and tilt down"), ("gapRequest-overhead", "up to the roof or the sky"),
         ] {
             guard let fixture = Self.states.first(where: { $0.name == state }) else {
@@ -836,6 +840,48 @@ final class ScreenStatesUITests: XCTestCase {
             XCTAssertFalse(element(app, "instruction.details").exists, "\(state): nothing to fold")
             app.terminate()
         }
+    }
+
+    /// Root's review of the AX5 frame at 35cc8521: unfolded, the see-behind card covered the camera,
+    /// and the spot it asks the homeowner to look past, down to its reply. Folded, what to do leads,
+    /// the reply stays, the camera opens between the card and the actions, and Details holds the
+    /// situation and where it is.
+    @MainActor
+    func testSeeBehindLeadsWithItsActionAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let window = app.windows.firstMatch.frame
+        let card = element(app, "instruction")
+        let details = element(app, "instruction.details")
+        let cantSee = reply(app, "Can't see past it")
+        let mark = element(app, "action.markSomething")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "missing instruction")
+        XCTAssertTrue(details.waitForExistence(timeout: 5), "the situation must fold under Details")
+        XCTAssertTrue(cantSee.waitForExistence(timeout: 5), "missing the reply Can't see past it")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5), "missing action.markSomething")
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Look at it from the side or step around it"), "what to do must lead, got \(label)")
+        XCTAssertFalse(label.contains("Something is in front of the wall here"), "the situation must fold under Details, got \(label)")
+        XCTAssertTrue(details.isHittable, "Details must be reachable without scrolling")
+        XCTAssertTrue(cantSee.isHittable, "Can't see past it must be reachable without scrolling")
+        let cardBottom = max(card.frame.maxY, details.frame.maxY, cantSee.frame.maxY)
+        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
+        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "the camera must stay open between the card and the actions: \(openCamera)")
+        for marker in [element(app, "aim.ring"), element(app, "aim.arrow")] where marker.exists {
+            XCTAssertTrue(openCamera.contains(marker.frame), "the spot's marker \(marker.frame) must be in the open camera \(openCamera)")
+        }
+        attach(app, name: "wallWalk-seeBehind-AX5-folded")
+
+        tap(app, "instruction.details")
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the situation")
+        XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter"), "detail reads \(detail.label)")
+        XCTAssertTrue(scrollUntilHittable(cantSee, in: app), "Can't see past it must stay reachable with Details open")
+        attach(app, name: "wallWalk-seeBehind-AX5-details")
     }
 
     /// Coaching that rides along with the task says what to do now, so the folded card at AX5

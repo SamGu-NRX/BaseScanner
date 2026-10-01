@@ -129,15 +129,16 @@ struct WallWalkScreen: View {
     /// second line (how to hold the phone, where along the wall, how far to go) can fold at the
     /// largest text sizes and leave the camera open (`CameraChrome.aims`). The aim ring marks the
     /// place, and a step to the side moves into the title when it is needed (`ScanCopy.aim`).
-    /// Not where the second line is the action: looking past an obstruction ("Look at it from the
-    /// side"), a step back added to an aim step, the wall's end, whose title only asks ("Aim
-    /// where the wall stops"), marking the next wall. Nor a question, a mark, the tray, coaching
-    /// that replaces the task, or a refusal.
+    /// Looking past an obstruction folds the other way: its action ("Look at it from the side")
+    /// leads and the situation goes under Details (`Instruction.folded`), since unfolded at AX5
+    /// it covered the camera and the spot it asks about. Not where the second line is the action
+    /// and nothing leads with it: a step back added to an aim step, the wall's end, whose title
+    /// only asks ("Aim where the wall stops"), marking the next wall. Nor a question, a mark, the
+    /// tray, coaching that replaces the task, or a refusal.
     private var aims: Bool {
         switch controlsKey {
         case .walking, .finish:
             if let coaching, ScanCopy.coachingReplacesTask(coaching) { return false }
-            if case .seeBehind = state.guidance { return false }
             if state.guidanceHint?.stepBack == true { return false }
             return tone != .refusal
         case .markEnd, .nextWall, .marking, .endScanQuestion, .endQuestion, .overheadQuestion, .nextWallConfirm, .tray:

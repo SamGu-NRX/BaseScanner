@@ -60,7 +60,11 @@ struct InstructionCard: View {
 
     private var replyTask: Instruction { reply?.task ?? instruction }
 
-    private var hasDetails: Bool { foldsDetail && (instruction.detail != nil || legend != nil) }
+    private var hasDetails: Bool { foldsDetail && (foldedDetail != nil || legend != nil) }
+
+    /// The words the card shows: folded, a step that leads with its action does (`Instruction.folded`).
+    private var title: String { foldsDetail ? (instruction.folded?.title ?? instruction.title) : instruction.title }
+    private var foldedDetail: String? { instruction.folded?.detail ?? instruction.detail }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
@@ -137,7 +141,7 @@ struct InstructionCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.bottom, 2)
                 }
-                Text(instruction.title)
+                Text(title)
                     .font(Typeface.instruction)
                     .foregroundStyle(Palette.chalk)
                     .fixedSize(horizontal: false, vertical: true)
@@ -165,7 +169,7 @@ struct InstructionCard: View {
     private var details: some View {
         DisclosureGroup(isExpanded: $detailsShown) {
             VStack(alignment: .leading, spacing: 12) {
-                if let detail = instruction.detail {
+                if let detail = foldedDetail {
                     Text(detail)
                         .font(Typeface.hint)
                         .foregroundStyle(Palette.chalk.opacity(0.92))
