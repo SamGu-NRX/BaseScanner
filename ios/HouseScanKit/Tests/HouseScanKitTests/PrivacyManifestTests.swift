@@ -24,52 +24,82 @@ import Testing
     ]
 
     /// Swift source with its comments and string text blanked, so only code is searched: a
-    /// string or a comment that names an API doesn't count as calling it. An interpolation
-    /// inside a string (`"\\(UserDefaults.standard...)"`) is code and stays. Block comments may
-    /// nest, as in Swift. Multi-line and raw strings aren't parsed as such; their lines are read
-    /// as code, which can only add a category, never hide one.
+    /// string or a comment that names an API doesn't count as calling it. Interpolations
+    /// (`\\(...)`, or `\\#(...)` in a raw string) are code and stay. Ordinary, multi-line
+    /// (`"""`) and raw (`#"..."#`) strings each end only at their own delimiter, so a quote
+    /// inside one can't hide the code after it. Block comments may nest, as in Swift.
     static func code(_ source: String) -> String {
-        enum Mode { case code(parens: Int, interpolation: Bool), string }
+        enum Mode {
+            case code(parens: Int, interpolation: Bool)
+            case string(hashes: Int, multiline: Bool)
+        }
+        let chars = Array(source)
+        func at(_ i: Int) -> Character? { i < chars.count ? chars[i] : nil }
+        func hashes(from i: Int) -> Int {
+            var n = 0
+            while at(i + n) == "#" { n += 1 }
+            return n
+        }
+        /// Whether a string's closing delimiter starts at `i`: one quote, or three, then the
+        /// string's hashes.
+        func closes(at i: Int, hashes h: Int, multiline: Bool) -> Int? {
+            let quotes = multiline ? 3 : 1
+            guard (0..<quotes).allSatisfy({ at(i + $0) == "\"" }), hashes(from: i + quotes) >= h else { return nil }
+            return quotes + h
+        }
         var out = ""
-        var chars = Array(source)[...]
         var modes: [Mode] = [.code(parens: 0, interpolation: false)]
         var commentDepth = 0
-        while let c = chars.first {
-            let next = chars.dropFirst().first
+        var i = 0
+        while let c = at(i) {
+            let next = at(i + 1)
             if commentDepth > 0 {
-                if c == "*", next == "/" { commentDepth -= 1; chars = chars.dropFirst(2); continue }
-                if c == "/", next == "*" { commentDepth += 1; chars = chars.dropFirst(2); continue }
+                if c == "*", next == "/" { commentDepth -= 1; i += 2; continue }
+                if c == "/", next == "*" { commentDepth += 1; i += 2; continue }
                 if c == "\n" { out.append(c) }
-                chars = chars.dropFirst()
+                i += 1
                 continue
             }
             switch modes[modes.count - 1] {
-            case .string:
-                if c == "\\", next == "(" {
-                    modes.append(.code(parens: 1, interpolation: true))
-                    out.append("\\(")
-                    chars = chars.dropFirst(2)
-                } else if c == "\\", next != nil {
-                    out.append("  ")
-                    chars = chars.dropFirst(2)
-                } else if c == "\"" || c == "\n" {
+            case .string(let h, let multiline):
+                if let length = closes(at: i, hashes: h, multiline: multiline) {
                     modes.removeLast()
+                    out.append(contentsOf: chars[i..<(i + length)])
+                    i += length
+                } else if c == "\\", hashes(from: i + 1) >= h, at(i + 1 + h) == "(" {
+                    modes.append(.code(parens: 1, interpolation: true))
+                    out.append(contentsOf: chars[i...(i + 1 + h)])
+                    i += 2 + h
+                } else if c == "\\", h == 0, next != nil {
+                    // An escape in an ordinary string: the escaped character is text.
+                    out.append(next == "\n" ? "\n" : " ")
+                    out.append(" ")
+                    i += 2
+                } else if c == "\n" {
+                    // A single-line string can't span lines; end it here rather than hide code.
+                    if !multiline { modes.removeLast() }
                     out.append(c)
-                    chars = chars.dropFirst()
+                    i += 1
                 } else {
                     out.append(" ")
-                    chars = chars.dropFirst()
+                    i += 1
                 }
             case .code(let parens, let interpolation):
+                let h = c == "#" ? hashes(from: i) : 0
                 if c == "/", next == "/" {
-                    chars = chars.drop { $0 != "\n" }
+                    while let d = at(i), d != "\n" { i += 1 }
                 } else if c == "/", next == "*" {
                     commentDepth = 1
-                    chars = chars.dropFirst(2)
+                    i += 2
+                } else if c == "\"" || (h > 0 && at(i + h) == "\"") {
+                    let quote = i + h
+                    let multiline = at(quote + 1) == "\"" && at(quote + 2) == "\""
+                    let length = h + (multiline ? 3 : 1)
+                    modes.append(.string(hashes: h, multiline: multiline))
+                    out.append(contentsOf: chars[i..<(i + length)])
+                    i += length
                 } else {
-                    if c == "\"" {
-                        modes.append(.string)
-                    } else if c == "(" {
+                    if c == "(" {
                         modes[modes.count - 1] = .code(parens: parens + 1, interpolation: interpolation)
                     } else if c == ")", parens > 0 {
                         if interpolation, parens == 1 {
@@ -79,7 +109,7 @@ import Testing
                         }
                     }
                     out.append(c)
-                    chars = chars.dropFirst()
+                    i += 1
                 }
             }
         }
@@ -159,6 +189,11 @@ import Testing
         ("UITextInputMode.activeInputModes", "NSPrivacyAccessedAPICategoryActiveKeyboards"),
         ("let on = \"\\(UserDefaults.standard.bool(forKey: \"k\"))\"", "NSPrivacyAccessedAPICategoryUserDefaults"),
         ("log(\"saved \\(n) at \\(f(\")\"))\"); let t = ProcessInfo.processInfo.systemUptime", "NSPrivacyAccessedAPICategorySystemBootTime"),
+        // Raw strings: an interpolation is code, and a quote inside doesn't end the string.
+        ("let s = #\"\\#(ProcessInfo.processInfo.systemUptime)\"#", "NSPrivacyAccessedAPICategorySystemBootTime"),
+        ("let s = #\"a \" b\"#; let t = ProcessInfo.processInfo.systemUptime", "NSPrivacyAccessedAPICategorySystemBootTime"),
+        // A multi-line string ends at its own delimiter, with code after it on that line.
+        ("let s = \"\"\"\n  \"quoted\" text\n  \"\"\".count + Int(ProcessInfo.processInfo.systemUptime)", "NSPrivacyAccessedAPICategorySystemBootTime"),
     ])
     func theScannerFindsAUse(source: String, category: String) {
         #expect(Self.categories(in: source) == [category])
@@ -171,6 +206,8 @@ import Testing
         "let restated = 1",
         "let note = \"UserDefaults and systemUptime are only named here\"",
         "print(\"a quote \\\" then mach_absolute_time\")",
+        "let s = #\"UserDefaults \\(not an interpolation in a raw string)\"#",
+        "let s = \"\"\"\n  systemUptime \"in\" a multi-line string\n  \"\"\"",
     ])
     func theScannerIgnoresCommentsStringsAndLookalikes(source: String) {
         #expect(Self.categories(in: source).isEmpty)
