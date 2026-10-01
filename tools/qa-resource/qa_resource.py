@@ -2,15 +2,18 @@
 """Serialize heavyweight local QA work without taking ownership of other jobs."""
 import argparse
 from contextlib import closing, contextmanager
+import ctypes
 from datetime import datetime, timezone
 import errno
 import fcntl
+from functools import lru_cache
 import json
 import math
 import os
 from pathlib import Path
 import re
 import select
+import secrets
 import shlex
 import signal
 import subprocess
@@ -30,6 +33,12 @@ SENSING_TIMEOUT = 10
 # Operational boot limit, not a measured simulator startup time.
 BOOT_TIMEOUT_SECONDS = 300
 RUNNER_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+OWNER_ENV_PREFIX = "QA_RESOURCE_OWNER_"
+_LIBC = ctypes.CDLL(None, use_errno=True)
+_SYSCTL = _LIBC.sysctl
+_SYSCTL.argtypes = [ctypes.POINTER(ctypes.c_int), ctypes.c_uint, ctypes.c_void_p,
+                   ctypes.POINTER(ctypes.c_size_t), ctypes.c_void_p, ctypes.c_size_t]
+_SYSCTL.restype = ctypes.c_int
 HEAVY_NAMES = {"xcodebuild", "swift-build", "swift-test", "swift-frontend",
                "swift-driver", "blender"}
 SERVICE_TEST = "AgentDeviceRunnerUITests/RunnerTests/testCommand"
@@ -44,6 +53,25 @@ class Cancelled(Exception):
 
 class DeadlineExpired(Exception):
     pass
+
+
+class SnapshotIncomplete(RuntimeError):
+    def __init__(self, message, processes=()):
+        super().__init__(message)
+        self.processes = list(processes)
+
+
+class SnapshotDeadline(SnapshotIncomplete):
+    pass
+
+
+def inspection_timeout(deadline):
+    if deadline is None:
+        return SENSING_TIMEOUT
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise SnapshotDeadline("inspection deadline expired; completeness uncertain")
+    return min(SENSING_TIMEOUT, remaining)
 
 
 def timestamp():
@@ -69,9 +97,9 @@ def bounded(seconds):
             signal.setitimer(signal.ITIMER_REAL, *previous)
 
 
-def command_output(argv):
+def command_output(argv, timeout=SENSING_TIMEOUT):
     # subprocess.run kills a timed-out helper, but its subsequent reap is unbounded.
-    result = subprocess.run(argv, capture_output=True, text=True, timeout=SENSING_TIMEOUT)
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     if result.returncode:
         raise RuntimeError(f"{' '.join(argv)} exited {result.returncode}: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -102,6 +130,223 @@ def sense_disk():
     if match is None:
         raise RuntimeError(f"cannot read free disk bytes: {text!r}")
     return int(match[1]) * 1024
+
+
+def _sysctl_read(mib, buffer):
+    size = ctypes.c_size_t(ctypes.sizeof(buffer))
+    name = (ctypes.c_int * len(mib))(*mib)
+    if _SYSCTL(name, len(mib), ctypes.byref(buffer), ctypes.byref(size), None, 0):
+        code = ctypes.get_errno()
+        raise OSError(code, f"sysctl {mib}: {os.strerror(code)}")
+    return size.value
+
+
+@lru_cache(maxsize=1)
+def _argmax():
+    value = ctypes.c_int()
+    _sysctl_read([1, 8], value)  # CTL_KERN, KERN_ARGMAX, from Darwin sys/sysctl.h.
+    if value.value <= 0:
+        raise OSError(errno.EINVAL, "KERN_ARGMAX returned a nonpositive buffer size")
+    return value.value
+
+
+def parse_process_env(raw, pid):
+    """Return NUL-separated candidates after the executable, including argv strings."""
+    end = raw.find(b"\0", ctypes.sizeof(ctypes.c_int))
+    if len(raw) < ctypes.sizeof(ctypes.c_int) or end < 0:
+        raise OSError(errno.EINVAL, f"malformed KERN_PROCARGS2 data for process {pid}")
+    # Empty argv[0] is indistinguishable from padding. Never use argc to skip it.
+    # These are cooperative markers in mutable process memory, not exec records.
+    return [os.fsdecode(entry) for entry in raw[end + 1:].split(b"\0") if entry]
+
+
+def process_env(pid):
+    # Darwin can omit cs_restricted environments without reporting an error.
+    buffer = ctypes.create_string_buffer(_argmax())
+    size = _sysctl_read([1, 49, pid], buffer)  # CTL_KERN, KERN_PROCARGS2.
+    return parse_process_env(ctypes.string_at(buffer, size), pid)
+
+
+class ProcessTimeval(ctypes.Structure):
+    _fields_ = [("seconds", ctypes.c_long), ("microseconds", ctypes.c_int)]
+
+
+def kernel_identity(pid):
+    # 64-bit Darwin SDK sizeof/offsetof: kinfo_proc=648, start=0, stat=36,
+    # pid=40, kp_eproc.e_ucred.cr_uid=420. Fail closed if the runtime ABI differs.
+    if ctypes.sizeof(ctypes.c_void_p) != 8 or ctypes.sizeof(ProcessTimeval) != 16:
+        raise RuntimeError("process identity requires the 64-bit Darwin kinfo_proc ABI")
+    buffer = ctypes.create_string_buffer(648)
+    try:
+        size = _sysctl_read([1, 14, 1, pid], buffer)  # CTL_KERN, KERN_PROC, KERN_PROC_PID.
+    except OSError as error:
+        if error.errno == errno.ESRCH:
+            return None
+        raise
+    if size == 0:
+        return None
+    if size != ctypes.sizeof(buffer):
+        raise RuntimeError(f"kinfo_proc size mismatch for PID {pid}: expected 648, got {size}")
+    actual_pid = ctypes.c_int.from_buffer(buffer, 40).value
+    if actual_pid != pid:
+        raise RuntimeError(f"kinfo_proc PID mismatch: requested {pid}, got {actual_pid}")
+    start = ProcessTimeval.from_buffer(buffer)
+    if start.seconds <= 0 or not 0 <= start.microseconds < 1_000_000:
+        raise RuntimeError(f"invalid kinfo_proc start time for PID {pid}")
+    return dict(pid=pid, start_us=start.seconds * 1_000_000 + start.microseconds,
+                uid=ctypes.c_uint.from_buffer(buffer, 420).value,
+                zombie=ctypes.c_byte.from_buffer(buffer, 36).value == 5)
+
+
+def process_snapshot(deadline=None):
+    rows = command_output(["ps", "-axo", "pid=,ppid=,pgid=,uid=,stat="],
+                          timeout=inspection_timeout(deadline))
+    result = {}
+    for row in rows.splitlines():
+        pid, ppid, pgid, uid, state = row.split()
+        result[int(pid)] = dict(pid=int(pid), ppid=int(ppid), pgid=int(pgid),
+                                uid=int(uid), stat=state)
+    return result
+
+
+def process_identity(pid, details=False, deadline=None):
+    columns = "pid=,ppid=,pgid=,uid=,stat=,lstart=,comm=" if details else "lstart=,comm="
+    result = subprocess.run(["ps", "-o", columns, "-p", str(pid)], capture_output=True,
+                            text=True, timeout=inspection_timeout(deadline))
+    if result.returncode == 1 and not result.stdout.strip():
+        return None
+    if result.returncode:
+        raise RuntimeError(f"cannot inspect identity for process {pid}: {result.stderr.strip()}")
+    text = result.stdout.strip()
+    identity = dict(pid=pid)
+    if details:
+        fields = text.split(maxsplit=5)
+        if len(fields) != 6:
+            raise RuntimeError(f"malformed process details for {pid}: {text!r}")
+        identity.update(pid=int(fields[0]), ppid=int(fields[1]), pgid=int(fields[2]),
+                        uid=int(fields[3]), stat=fields[4])
+        text = fields[5]
+    match = re.fullmatch(r"(\S+\s+\S+\s+\d+\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+)", text)
+    if match is None:
+        raise RuntimeError(f"malformed lstart/comm for process {pid}: {text!r}")
+    identity.update(start=match[1], comm=match[2])
+    return identity
+
+
+def process_ancestors(pid, rows):
+    ancestors = set()
+    while pid in rows:
+        pid = rows[pid]["ppid"]
+        if not pid or pid in ancestors:
+            break
+        ancestors.add(pid)
+    return ancestors
+
+
+def owner_entry(job):
+    token = job.get("ownerToken")
+    return f"{OWNER_ENV_PREFIX}{token}={job['jobId']}" if token else None
+
+
+def owned_processes(job, child_pid, deadline=None, known=None, observed=None):
+    deadline = time.monotonic() + SENSING_TIMEOUT if deadline is None else deadline
+    owned = []
+    try:
+        rows = process_snapshot(deadline)
+        root = rows.get(child_pid)
+        # After natural exit, already-reparented tokenless helpers have no ancestry.
+        root_alive = root is not None and not root["stat"].startswith("Z")
+        entry = owner_entry(job)
+        for pid, row in rows.items():
+            inspection_timeout(deadline)
+            if pid == os.getpid() or row["stat"].startswith("Z"):
+                continue
+            ancestry = root_alive and (pid == child_pid or child_pid in process_ancestors(pid, rows))
+            if row["uid"] != os.getuid() and not ancestry:
+                continue
+            before = kernel_identity(pid)
+            inspection_timeout(deadline)
+            if before is None or before["zombie"]:
+                continue
+            key = identity_key(before)
+            if known is not None and key in known:
+                owned.append(dict(known[key], pgid=row["pgid"], ppid=row["ppid"], stat=row["stat"]))
+                continue  # Historical proof is attached to this exact execution.
+            token = False
+            if before["uid"] == os.getuid() and entry is not None:
+                try:
+                    token = entry in process_env(pid)
+                except OSError as error:
+                    if error.errno == errno.ESRCH:
+                        continue  # Enumeration-to-env disappearance is settled-gone.
+                    # Restricted or unreadable environments alone are not proof.
+            inspection_timeout(deadline)
+            if not token and not ancestry:
+                continue
+            if observed is not None:
+                observed.append(pid)
+            identity = process_identity(pid, deadline=deadline)
+            after = kernel_identity(pid)
+            inspection_timeout(deadline)
+            if after is None or after["zombie"] or after["start_us"] != before["start_us"]:
+                continue  # This identity is settled-gone, not a live empty read.
+            if identity is None or after["uid"] != before["uid"]:
+                raise SnapshotIncomplete(f"unsettled owned identity for PID {pid}", owned)
+            owned.append(dict(row, **{k: identity[k] for k in ("start", "comm")},
+                              start_us=after["start_us"], uid=after["uid"],
+                              proof="token" if token else "ancestry"))
+        inspection_timeout(deadline)
+    except SnapshotIncomplete as error:
+        error.processes = owned
+        raise
+    except subprocess.TimeoutExpired as error:
+        failure = SnapshotDeadline if time.monotonic() >= deadline else SnapshotIncomplete
+        raise failure(f"process inspection timed out: {error}; completeness uncertain", owned) from error
+    except Exception as error:
+        raise SnapshotIncomplete(f"process discovery failed: {error}", owned) from error
+    return owned
+
+
+def owner_jobs(entries):
+    pattern = re.compile(r"^" + re.escape(OWNER_ENV_PREFIX) + r"[0-9a-f]{32}=")
+    return [entry[match.end():] for entry in entries if (match := pattern.match(entry))]
+
+
+def owner_blockers():
+    rows = process_snapshot()
+    excluded = process_ancestors(os.getpid(), rows) | {os.getpid()}
+    pids, reasons = [], []
+    for pid, row in rows.items():
+        if pid in excluded or row["uid"] != os.getuid() or row["stat"].startswith("Z"):
+            continue
+        try:
+            owners = owner_jobs(process_env(pid))
+        except OSError:
+            continue
+        if not owners:
+            continue
+        identity = process_identity(pid)
+        if identity is None:
+            continue
+        pids.append(pid)
+        reasons.extend(f"process {pid} ({identity['comm']}) still carries owner token of job {owner}"
+                       for owner in owners)
+    return pids, reasons
+
+
+def signal_owned_process(identity, signum):
+    """Ownership proof survives reparenting; recheck the exact proven identity."""
+    current = kernel_identity(identity["pid"])
+    if (current is None or current["start_us"] != identity["start_us"]
+            or current["uid"] != identity["uid"] or current["uid"] != os.getuid()
+            or current["zombie"]):
+        return False
+    try:
+        # Microsecond identity prevents coarse lstart reuse, not this final race.
+        os.kill(current["pid"], signum)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
 
 
 def list_processes():
@@ -203,8 +448,9 @@ def wait_process_exit(pids, seconds):
             queue.control(None, len(pids), seconds)
 
 
-def group_has_members(pgid):
-    rows = command_output(["ps", "-axo", "pgid=,stat="])
+def group_has_members(pgid, deadline=None):
+    rows = command_output(["ps", "-axo", "pgid=,stat="],
+                          timeout=inspection_timeout(deadline))
     return any(int(group) == pgid and not state.startswith("Z")
                for group, state in (row.split() for row in rows.splitlines()))
 
@@ -237,39 +483,194 @@ def wait_child_exit(child, seconds):
             return True
 
 
-def stop_owned_command(child):
+def identity_key(identity):
+    return identity["pid"], identity["start_us"], identity["uid"]
+
+
+class OwnedProcesses:
+    """Keep discovery proof attached to an exact identity until that execution ends."""
+    def __init__(self, job, child_pid, report=None):
+        self.job, self.child_pid, self.report = job, child_pid, report
+        self.identities, self.sent, self.escaped = {}, {}, {}
+        self.errors = []
+        self.last_incomplete = None
+        self.saw_owned = False
+
+    def error(self, message):
+        if message not in self.errors:
+            self.errors.append(message)
+
+    def record(self, identity, outcome):
+        key = identity_key(identity)
+        if self.escaped.get(key) != outcome:
+            self.escaped[key] = outcome
+            if self.report is not None:
+                self.report(identity, outcome)
+
+    def snapshot(self, deadline):
+        complete = True
+        self.last_incomplete = None
+        observed = []
+        try:
+            fresh = owned_processes(self.job, self.child_pid, deadline,
+                                    known=self.identities, observed=observed)
+        except SnapshotIncomplete as error:
+            fresh, complete = error.processes, False
+            self.last_incomplete = str(error)
+            if not isinstance(error, SnapshotDeadline):
+                self.error(str(error))
+        except Exception as error:
+            fresh, complete = [], False
+            self.last_incomplete = str(error)
+            self.error(str(error))
+        current = {identity_key(p): p for p in fresh}
+        for key, previous in list(self.identities.items()):
+            if key in current:
+                continue
+            current[key] = previous  # An uninspected identity is not an empty result.
+            try:
+                inspection_timeout(deadline)
+                identity = kernel_identity(previous["pid"])
+                inspection_timeout(deadline)
+            except Exception as error:
+                complete = False
+                self.last_incomplete = str(error)
+                if not isinstance(error, SnapshotDeadline):
+                    self.error(str(error))
+                if isinstance(error, SnapshotDeadline):
+                    # Retain the rest without inspecting beyond this pass's budget.
+                    current.update({k: p for k, p in self.identities.items() if k not in current})
+                    break
+                continue
+            if identity is None or identity["zombie"] or identity["start_us"] != previous["start_us"]:
+                current.pop(key)
+                self.identities.pop(key)
+                if key in self.escaped:
+                    outcome = {signal.SIGTERM: "terminated", signal.SIGKILL: "killed"}.get(
+                        self.sent.get(key), "exited")
+                    self.record(previous, outcome)
+                self.sent.pop(key, None)
+        for key, identity in current.items():
+            self.identities[key] = identity
+            if identity["pgid"] != self.child_pid and key not in self.escaped:
+                self.record(identity, "retained")
+        if time.monotonic() >= deadline:
+            complete = False
+            self.last_incomplete = "inspection deadline expired; completeness uncertain"
+        self.saw_owned = bool(observed) or bool(current)
+        return list(current.values()), complete
+
+    def signal(self, identities, signum):
+        for identity in identities:
+            key = identity_key(identity)
+            if identity["pgid"] == self.child_pid or self.sent.get(key) == signum:
+                continue
+            try:
+                if signal_owned_process(identity, signum):
+                    self.sent[key] = signum
+            except Exception as error:
+                self.error(f"signal escaped PID {identity['pid']}: {error}")
+
+    def retained(self, identities):
+        for identity in identities:
+            if identity_key(identity) in self.escaped:
+                self.record(identity, "retained")
+        return "; ".join(f"PID {p['pid']} ({p['comm']}) start {p['start']} "
+                         f"start_us {p['start_us']} uid {p['uid']}" for p in identities)
+
+
+def owned_state(child, owned, deadline):
+    remaining, complete = owned.snapshot(deadline)
+    try:
+        group_live = group_has_members(child.pid, deadline=deadline)
+    except Exception as error:
+        group_live, complete = None, False
+        owned.last_incomplete = str(error)
+        if not isinstance(error, SnapshotDeadline) and not (
+                isinstance(error, subprocess.TimeoutExpired) and time.monotonic() >= deadline):
+            owned.error(f"inspect pinned group: {error}")
+    if time.monotonic() >= deadline:
+        complete = False
+        owned.last_incomplete = "inspection deadline expired; completeness uncertain"
+    return remaining, group_live, complete
+
+
+def confirm_owned_exit(child, owned, deadline, escalate=True, poll_seconds=.1):
+    empty_at = None
+    while True:
+        remaining, group_live, complete = owned_state(child, owned, deadline)
+        now = time.monotonic()
+        if now < deadline and complete and not remaining and not group_live and not owned.saw_owned:
+            if empty_at is not None and now - empty_at >= .1:
+                return
+            empty_at = now if empty_at is None else empty_at
+        else:
+            empty_at = None
+            if escalate:
+                owned.signal(remaining, signal.SIGKILL)
+        if now >= deadline:
+            retained = owned.retained(remaining)
+            raise RuntimeError("completeness uncertain; "
+                               + (f"live members remained; retained: {retained or 'pinned group'}"
+                                  if remaining or group_live else ("live membership unknown; no two complete empty passes"
+                                  if not complete else "no two complete empty passes"))
+                               + (f"; {owned.last_incomplete}" if owned.last_incomplete else ""))
+        # Two complete empty passes reduce successor races, but a chain shorter
+        # than a scan interval can still be invisible between both passes.
+        delay = .1 if empty_at is not None else poll_seconds
+        time.sleep(min(delay, deadline - now))
+
+
+def stop_owned_command(child, owned=None):
     if child is None:
         return None
-    # Never poll or reap before the last group operation: the leader pins the pgid.
-    if signal_owned_group(child.pid, signal.SIGTERM):
-        deadline = time.monotonic() + CLEANUP_GRACE_SECONDS
-        while time.monotonic() < deadline:
-            if not group_has_members(child.pid):
-                break
-            time.sleep(0.05)
-        else:
-            signal_owned_group(child.pid, signal.SIGKILL)
-    deadline = time.monotonic() + CLEANUP_CONFIRM_SECONDS
-    while group_has_members(child.pid):
+    owned = owned if owned is not None else OwnedProcesses({}, child.pid)
+    remaining, complete = owned.snapshot(time.monotonic() + SENSING_TIMEOUT)
+    if not complete:
+        owned.error("initial discovery incomplete: " + (owned.last_incomplete or "unknown reason"))
+    # Signal discovered escapes first. Their identity stays proven even if their
+    # parents die on the group SIGTERM and launchd adopts them immediately.
+    owned.signal(remaining, signal.SIGTERM)
+    # Discovery failures must never skip either signal to the pinned group.
+    try:
+        signal_owned_group(child.pid, signal.SIGTERM)
+    except Exception as error:
+        owned.error(f"SIGTERM pinned group: {error}")
+    deadline = time.monotonic() + CLEANUP_GRACE_SECONDS
+    while True:
+        remaining, group_live, complete = owned_state(child, owned, deadline)
+        if complete and not group_live and not remaining:
+            break
+        owned.signal(remaining, signal.SIGTERM)
         if time.monotonic() >= deadline:
-            raise RuntimeError(f"could not confirm owned group {child.pid} gone")
-        time.sleep(0.05)
+            owned.signal(remaining, signal.SIGKILL)
+            try:
+                signal_owned_group(child.pid, signal.SIGKILL)
+            except Exception as error:
+                owned.error(f"SIGKILL pinned group: {error}")
+            break
+        time.sleep(min(.1, max(0, deadline - time.monotonic())))
+    try:
+        confirm_owned_exit(child, owned, time.monotonic() + CLEANUP_CONFIRM_SECONDS)
+    except Exception as error:
+        if owned.errors:
+            raise RuntimeError(f"{error}; " + "; ".join(owned.errors)) from error
+        raise
+    if owned.errors:
+        raise RuntimeError("cleanup discovery or signaling failed: " + "; ".join(owned.errors))
+    # Never poll or reap before the final complete pass: the leader pins its pgid.
     return child.wait(timeout=CLEANUP_CONFIRM_SECONDS)
 
 
-def hold_owned_group(child):
-    deadline = time.monotonic() + CLEANUP_HOLD_SECONDS
-    while True:
-        try:
-            if not group_has_members(child.pid):
-                return "no live members remained when the shared QA lock was released"
-            remaining = "live members remained"
-        except Exception as error:
-            remaining = f"live membership was unknown ({error})"
-        seconds = deadline - time.monotonic()
-        if seconds <= 0:
-            return f"{remaining} when the shared QA lock was released after the cleanup hold expired"
-        time.sleep(min(1, seconds))
+def hold_owned_group(child, owned=None):
+    owned = owned if owned is not None else OwnedProcesses({}, child.pid)
+    try:
+        confirm_owned_exit(child, owned, time.monotonic() + CLEANUP_HOLD_SECONDS,
+                           escalate=False, poll_seconds=1)
+        return "no live members remained when the shared QA lock was released"
+    except Exception as error:
+        return (f"{error} when the shared QA lock was released "
+                "after the cleanup hold expired")
 
 
 def cleanup_step(errors, label, action):
@@ -335,6 +736,7 @@ def create_job(args):
                signal=None, error=None, shutdownExitCode=None, cleanupError=None,
                queuedAt=timestamp(), admittedAt=None, finishedAt=None,
                admissionDeadline=args.admission_deadline, timeout=args.timeout,
+               ownerToken=secrets.token_hex(16), escapedProcesses=[],
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
     (directory / "output.log").touch()
@@ -370,7 +772,7 @@ def release_ticket(path, ticket):
 
 
 def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadline=None):
-    global_lock = child = None
+    global_lock = child = owned = None
     child_finished = False
     cleanup_errors = []
     ticket_path, ticket = owned_ticket if owned_ticket else (None, None)
@@ -384,6 +786,14 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         log.write(line + "\n")
         if echo:
             print(line, flush=True)
+    def report_escaped(identity, outcome):
+        record = {key: identity[key] for key in ("pid", "start_us", "uid", "start", "comm", "proof")}
+        record["outcome"] = outcome
+        records = job.setdefault("escapedProcesses", [])
+        records[:] = [p for p in records if (p["pid"], p.get("start_us"), p.get("uid")) !=
+                      identity_key(record)] + [record]
+        cleanup_step(cleanup_errors, "record escaped process",
+                     lambda: update(escapedProcesses=records))
     def interrupted(signum, frame):
         # A second signal must not escape while the first exception is handled.
         for sig in RUNNER_SIGNALS:
@@ -421,7 +831,9 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             with bounded(deadline - time.monotonic()):
                 pressure, memory = sense_memory()
                 reasons = resource_blockers(pressure, memory, sense_disk())
-                heavy, ignored = [], []
+                heavy, owner_reasons = owner_blockers()
+                reasons.extend(owner_reasons)
+                ignored = []
                 for process in list_processes():
                     classification = classify_process(process, job["kind"], job["device"])
                     if classification == "blocker":
@@ -483,8 +895,14 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         with (directory / "output.log").open("a") as output:
             # Record cancellation without blocking signals inherited by the payload.
             with deferred_signals(RUNNER_SIGNALS) as pending:
+                environment = os.environ.copy()
+                if job.get("ownerToken") is None:
+                    job["ownerToken"] = secrets.token_hex(16)
+                environment[f"{OWNER_ENV_PREFIX}{job['ownerToken']}"] = job["jobId"]
                 child = subprocess.Popen(job["argv"], cwd=job["cwd"], start_new_session=True,
-                                         stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT)
+                                         env=environment, stdin=subprocess.DEVNULL,
+                                         stdout=output, stderr=subprocess.STDOUT)
+                owned = OwnedProcesses(job, child.pid, report_escaped)
                 child_started = time.monotonic()
                 job["childPgid"] = child.pid
                 write_job(directory, job)
@@ -510,7 +928,7 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
         for sig in old_signals:
             cleanup_step(cleanup_errors, f"ignore signal {sig}", lambda sig=sig: signal.signal(sig, signal.SIG_IGN))
         try:
-            code = stop_owned_command(child)
+            code = stop_owned_command(child, owned)
             if child_finished and job["status"] == "running":
                 job.update(status="succeeded" if code == 0 else "failed", exitCode=code,
                            signal=-code if code < 0 else None)
@@ -520,7 +938,7 @@ def run_job(directory, live, job, lock_path, echo=True, owned_ticket=None, deadl
             cleanup_step(cleanup_errors, "write cleanup hold status", lambda: write_job(directory, job))
             if child is not None:
                 try:
-                    cleanup_errors.append(hold_owned_group(child))
+                    cleanup_errors.append(hold_owned_group(child, owned))
                 except Exception as hold_error:
                     cleanup_errors.append(f"cleanup hold: {hold_error}; live membership unknown at lock release")
                 # All group signaling and inspection are over before this reap.
@@ -720,6 +1138,9 @@ def main(argv=None):
     args.state_dir = args.state_dir.expanduser().resolve()
     args.lock = args.lock.expanduser().resolve()
     if args.command in ("run", "submit"):
+        owners = owner_jobs(f"{key}={value}" for key, value in os.environ.items())
+        if owners:
+            parser.error(f"nested qa-resource jobs are not supported: this process belongs to job {owners[0]}")
         args.cwd = args.cwd.expanduser().resolve()
         if not args.cwd.is_dir():
             parser.error("--cwd must be an existing directory")

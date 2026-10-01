@@ -26,9 +26,27 @@ Admission requires memory pressure level 1 or 2, at least 35% memory free, and a
 
 Heavy-process exit waits use kqueue. Memory recovery, disk space, and device state have no stdlib kernel notification here, so they are resampled every 30 seconds. The global lock stays held during resource waits. The admission deadline covers queueing and resource checks. Simulator boot and bootstatus each have a fixed 300-second limit, an operational limit rather than a measured startup time. Cancellation waits for the boot result and ownership record. If boot times out, the runner reports the device state but never shuts it down without proof of ownership. The child timeout starts separately.
 
+## Escaped descendants
+
+Each payload gets a random `QA_RESOURCE_OWNER_<token>=<jobId>` environment entry. At admission and cleanup, the runner reads process memory with Darwin `KERN_PROCARGS2`. An exact entry or live-parent ancestry proves ownership at discovery. The parser checks every NUL-separated string after the executable because empty `argv[0]` is indistinguishable from padding. Admission accepts only owner headers with a 32-character lowercase hexadecimal token.
+
+On cancellation, timeout, and normal exit, the runner signals discovered escapes before its pinned child group. Discovery proof stays attached to PID, microsecond start time, and uid even after reparenting or token removal. Each per-PID signal rechecks that identity with `KERN_PROC_PID` and excludes zombies and other uids. The runner never signals an escaped process's new group. The leader stays unreaped until checks finish.
+
+`escapedProcesses` in `job.json` and `runner.log` records `pid`, `start_us`, `uid`, human-readable `start`, executable at discovery, proof, and outcome. `terminated` and `killed` mean the runner sent that signal and then confirmed the identity was no longer live. `exited` means no signal was sent; `retained` means cleanup could not confirm exit.
+
+Confirmation requires two consecutive complete empty passes at least 0.1 seconds apart, after the last observed owned process. Incomplete reads or expired inspection budgets never count as empty. Discovery errors do not skip signaling the pinned group, but the job reports `cleanup_failed` and enters the cleanup hold.
+
+Admission waits for live same-user owner entries, including orphans from dead runners or expired holds. It never signals these blockers. The runner and its ancestors are excluded as a defense. The payload does not inherit the global lock descriptor. `run` and `submit` reject an inherited owner entry before creating a job, returning 2 with `nested qa-resource jobs are not supported: this process belongs to job X`.
+
 ## What the tool cannot guarantee
 
-The queue cannot identify a foreign shared-lock holder or attribute a heavy process to a project. FIFO ordering applies only to this tool's tickets; `qa-slot.py` and `package-run.py` still race for the shared flock. Cancellation signals only a verified live runner, which stops its own child group and shuts down only the device it booted. The runner handles SIGTERM, SIGINT, and SIGHUP; later signals cannot interrupt cleanup. A stale job's recorded group and booted-device ownership are reported, never cleaned. Inspect those manually before reusing a device.
+The token is a cooperative marker in mutable process memory, not an authenticated exec record. A process can overwrite its environment strings, exec without the token, or copy the token. Copying it onto an unrelated same-uid process makes cleanup treat that process as owned and signal it.
+
+Invisible descendants are not stopped. Darwin omits the environment of `cs_restricted` processes without an error, other-uid environments are unreadable, and already-reparented tokenless helpers have no ancestry after natural exit. An unreadable environment without ancestry is not ownership proof. A descendant under another uid cannot be signaled; if ancestry finds it, cleanup fails. `succeeded` means no observable owned process remained, not that every descendant was stopped.
+
+A chain whose processes each live shorter than one scan interval can evade two-pass confirmation. Microsecond start times avoid coarse `lstart` identity checks for escaped PIDs, but the check-to-signal PID reuse window remains.
+
+The queue cannot identify a foreign shared-lock holder or attribute a heavy process to a project. FIFO ordering applies only to this tool's tickets; `qa-slot.py` and `package-run.py` still race for the shared flock. Cancellation signals only a verified live runner, which stops its own child group and proven escaped descendants, and shuts down only the device it booted. The runner handles SIGTERM, SIGINT, and SIGHUP; later signals cannot interrupt cleanup. A stale job's recorded group and booted-device ownership are reported, never cleaned. Inspect those manually before reusing a device.
 
 Cancel can signal a reused PID if reuse happens between the runner start-time check and SIGTERM; eliminating that window on macOS needs per-job IPC.
 
@@ -36,4 +54,4 @@ Boot ownership does not identify a simulator session; if another lane shuts down
 
 A stuck helper is killed at its subprocess timeout, but `subprocess.run` then reaps it without a deadline, so that failure can exceed the stated limits.
 
-If group cleanup fails, the runner holds the shared lock for up to 300 more seconds, an operational limit rather than a measured recovery time. It releases the lock when no live members remain or the hold expires, records the outcome in `cleanupError`, and keeps status `cleanup_failed`.
+If group or escaped-process cleanup fails, the runner holds the shared lock for up to 300 more seconds, an operational limit rather than a measured recovery time. It releases the lock after two complete empty passes or when the hold expires, records retained PID identities and the hold outcome in `cleanupError`, and keeps status `cleanup_failed`. Same-user token-bearing survivors still block later admission.
