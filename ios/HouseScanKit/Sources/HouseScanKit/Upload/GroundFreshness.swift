@@ -5,7 +5,9 @@
 /// clearance against the ground the scan sent, so an answer drawn on a moved ground shows a
 /// spot nobody checked. A ground change therefore takes the answer down from the spot check,
 /// the result, its 3D preview and the camera view, and sends the scan again, built from the
-/// wall as it is now. Only the server's answer to that scan comes back on screen.
+/// wall as it is now. Only the server's answer to that scan comes back on screen. The same
+/// holds once a first upload has packaged its scene, since its answer is already fixed to the
+/// old ground.
 ///
 /// An anchor correction is different: it moves the wall, its corners, the kept cameras, the
 /// marks and the ground as one body, and the answer is in wall terms (spans along the wall and
@@ -14,6 +16,10 @@
 /// One resend per withdrawal. A ground that changes again before a new answer is shown means
 /// the phone is still settling, and sending again in a loop would only keep the homeowner
 /// waiting: the upload screen shows a failure with "Try again" instead.
+///
+/// An upload that already failed or was refused has no answer up and none coming, so a ground
+/// change leaves its screen alone (`Screen.stopped`); the homeowner's own retry or review sends
+/// the scan as it is then, still within the same one resend.
 public struct GroundFreshness: Equatable, Sendable {
     /// What changed the wall.
     public enum Change: Equatable, Sendable, CaseIterable {
