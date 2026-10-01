@@ -34,6 +34,15 @@ struct InstructionCard: View {
     /// A short line above the instruction that places it in the flow ("One more view to
     /// finish"). Read with the instruction as one VoiceOver element.
     var eyebrow: String?
+    /// Whether the detail, and `legend`, fold under a "Details" disclosure. `CameraChrome` sets
+    /// it at the accessibility text sizes on steps where the homeowner aims the camera: there
+    /// the full card filled the screen and covered the aim ring (B-36). The title, the eyebrow
+    /// and coaching riding along (`Instruction.note`) always show, since they say what to do
+    /// now; the detail and the legend say how.
+    var foldsDetail = false
+    /// The aim ring's legend, inside the folded details (`foldsDetail`). Otherwise the legend
+    /// is the chrome's own line under the card (`CameraChrome.legend`).
+    var legend: String? = nil
 
     /// How long a new card's reply ignores taps, so a tap meant for the card that just left
     /// can't answer the next one: in the 4.1 field test, quick taps on "Can't get there" each
@@ -45,14 +54,22 @@ struct InstructionCard: View {
     /// The task whose reply has been on screen for `replyLock`. Compared with the current task
     /// in the same update that changes it, so a new reply is locked from its first frame.
     @State private var unlockedTask: Instruction?
+    /// Whether the folded details are open. Closed again for each new step (a new title), so the
+    /// camera opens up again; the distance to go and coaching change within a step and keep it.
+    @State private var detailsShown = false
 
     private var replyTask: Instruction { reply?.task ?? instruction }
+
+    private var hasDetails: Bool { foldsDetail && (instruction.detail != nil || legend != nil) }
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
             message
                 .id(instruction)
                 .transition(.identity)
+            if hasDetails {
+                details
+            }
             if let reply {
                 Button(reply.title, action: reply.perform)
                     .font(Typeface.caption.weight(.bold))
@@ -91,6 +108,7 @@ struct InstructionCard: View {
         .background(ScrimShape.rounded())
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.text, value: instruction)
         .animation(Motion.text, value: reply == nil)
+        .onChange(of: instruction.title) { detailsShown = false }
         .task(id: replyTask) {
             // Cleared first, so a task that comes back within the lock (A, B, A) is locked again.
             let shown = replyTask
@@ -122,8 +140,9 @@ struct InstructionCard: View {
                     .font(Typeface.instruction)
                     .foregroundStyle(Palette.chalk)
                     .fixedSize(horizontal: false, vertical: true)
-                if let detail = instruction.detail {
-                    Text(detail)
+                // Folded, only the coaching stays under the title; the detail is in `details`.
+                if let line = foldsDetail ? instruction.note : instruction.detailAndNote {
+                    Text(line)
                         .font(Typeface.hint)
                         .foregroundStyle(Palette.chalk.opacity(0.92))
                         .fixedSize(horizontal: false, vertical: true)
@@ -136,6 +155,48 @@ struct InstructionCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilityIdentifier("instruction")
+    }
+
+    /// The detail and the legend under "Details", the word and control the result screen
+    /// uses for its folded part. A DisclosureGroup, so VoiceOver reads it as collapsed or
+    /// expanded. The words appear at once, like the card's own: a fade spends its moments as
+    /// faint text, which the accessibility audit reports as low contrast.
+    private var details: some View {
+        DisclosureGroup(isExpanded: $detailsShown) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let detail = instruction.detail {
+                    Text(detail)
+                        .font(Typeface.hint)
+                        .foregroundStyle(Palette.chalk.opacity(0.92))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("instruction.detail")
+                }
+                if let legend {
+                    // One Text with the symbol inline, as the chrome's legend line is.
+                    Text("\(Image(systemName: "scope")) \(legend)")
+                        .font(Typeface.hint)
+                        .foregroundStyle(Palette.chalk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityLabel(legend)
+                        .accessibilityIdentifier("aim.legend")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+            .transition(.identity)
+        } label: {
+            Text(ScanCopy.details)
+                .font(Typeface.hint.weight(.semibold))
+                .foregroundStyle(Palette.chalk)
+                .frame(minHeight: Metrics.minTarget)
+                .accessibilityIdentifier("instruction.details")
+        }
+        .tint(Palette.chalk)
+        .transaction { $0.animation = nil }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.top, -8)
+        .padding(.bottom, reply == nil ? 8 : 4)
     }
 
     private var iconName: String? {

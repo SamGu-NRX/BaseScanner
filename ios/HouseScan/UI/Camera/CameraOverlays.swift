@@ -7,6 +7,9 @@ struct CameraOverlays: View {
     /// Set to the aim ring's legend while it shows, for the screen to draw under its card
     /// (`CameraChrome.legend`). Nil on screens with no legend.
     var cardLegend: Binding<String?>? = nil
+    /// The open camera between the card and the actions (`CameraChrome.cameraWindow`), for the
+    /// aim ring to stay inside. Passed through unread, so its changes don't redraw the fog.
+    var cameraWindow: CameraWindow? = nil
 
     /// The step the aim ring's legend first showed with. The legend explains the first ring that
     /// fills and retires once that step ends (#81); it isn't needed on every ring after.
@@ -82,7 +85,8 @@ struct CameraOverlays: View {
                         target: state.target,
                         progress: state.aimProgress,
                         completed: heldTarget,
-                        onFillingRingShown: { shown in fillingRingShown = shown }
+                        onFillingRingShown: { shown in fillingRingShown = shown },
+                        cameraWindow: cameraWindow
                     )
                     .transition(.opacity)
                 }
@@ -137,8 +141,8 @@ struct CameraOverlays: View {
     /// It goes under the instruction card, in the chrome's own stack, rather than beside the
     /// ring: beside it, it went behind the card at accessibility text sizes (the card grows
     /// and is drawn over the camera layers), and any layout that dropped it where there was no
-    /// room left the people with the largest text without it. In the stack it grows with the
-    /// card and scrolls with it at any size.
+    /// room left the people with the largest text without it. At the accessibility sizes it
+    /// folds under the card's Details with the card's other how-to words (`CameraChrome.aims`).
     private var shownLegend: String? {
         guard fillingRingShown, !legendRetired, state.marking == nil, heldTarget == nil,
               let progress = state.aimProgress, progress < 1 else { return nil }
