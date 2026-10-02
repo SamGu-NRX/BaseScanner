@@ -13,7 +13,9 @@ protocol ResultClient: AnyObject {
 /// the body and `Content-Type: application/json`. Only the JSON goes: the server's solver reads no
 /// photos and skips the image check for a bare scene.json, so the keyframes stay on the phone
 /// (and in the scan folder's `scan.zip`, which leaves only if the homeowner shares it). The
-/// response body is the result JSON.
+/// response body is the result JSON, and it is returned only when it names the scene sent: its
+/// `stats.input_sha256` must be present and be the hash of these exact bytes (`ResultBinding`).
+/// Any other answer throws, and the upload screen treats it as an answer it couldn't read.
 @MainActor
 final class HTTPResultClient: ResultClient {
     let serverURL: URL
@@ -42,6 +44,7 @@ final class HTTPResultClient: ResultClient {
                 status: http.statusCode, body: String(decoding: data.prefix(300), as: UTF8.self),
                 retryAfter: http.value(forHTTPHeaderField: "Retry-After"))
         }
+        try ResultBinding.check(answer: data, submittedScene: scene)
         progress(1)
         return data
     }
@@ -137,7 +140,9 @@ final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, Sendable {
 }
 
 /// Answers with the bundled SampleResult.json, for tests and demos without a server. The result
-/// is flagged `isSample` so the screen says it is not a real analysis.
+/// is flagged `isSample` so the screen says it is not a real analysis. It answers no particular
+/// scene (its `input_sha256` is all zeros), so it is deliberately not checked with
+/// `ResultBinding`.
 @MainActor
 final class SampleResultClient: ResultClient {
     let isSample = true
