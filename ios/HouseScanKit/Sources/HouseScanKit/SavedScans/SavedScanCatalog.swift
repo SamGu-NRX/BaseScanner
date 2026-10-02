@@ -76,7 +76,8 @@ public enum SavedScanShareError: Error, Equatable, Sendable {
 ///
 /// The share sheet reads the file it is given for as long as it is open, and a scan's own bundle
 /// can be deleted under it by a new scan's cleanup. A copy outside the scan folders can't be.
-/// On APFS the copy is a clone, so it costs no space until one side changes. Only this type
+/// The copy can be a full copy of the bundle's bytes, so it can fail on a full disk
+/// (`SavedScanShareError.copyFailed`), and is deleted as soon as the sheet closes. Only this type
 /// creates or deletes anything under `root`; the scan folders are never written.
 public struct SavedScanStaging: Sendable {
     public let root: URL

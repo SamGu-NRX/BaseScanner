@@ -41,7 +41,7 @@ struct SavedScansSheet: View {
                 }
         }
         // A copy being made belongs to the share sheet that follows it; closing now would leave
-        // the copy with no sheet to delete it. Making it takes a moment (a clone on APFS).
+        // the copy with no sheet to delete it.
         .interactiveDismissDisabled(preparing != nil)
         .presentationDetents([.medium, .large])
         .task { await open() }

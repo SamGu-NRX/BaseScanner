@@ -26,9 +26,9 @@ enum SavedScansCopy {
 
     static let share = "Share"
     static let practice = "Practice"
-    /// Under a practice scan: a drawn sample stood in for the meter, so it says nothing about a
-    /// real wall.
-    static let practiceDetail = "Sample meter, not a real wall"
+    /// Under a practice scan: a drawn sample stood in for the meter and its close-up, so the
+    /// meter's place and number describe no real meter. The wall walk itself was real.
+    static let practiceDetail = "Practice scan with a sample meter"
     static let unknownTime = "Saved time unknown"
 
     static func saved(_ date: Date, now: Date = .now, calendar: Calendar = .current) -> String {

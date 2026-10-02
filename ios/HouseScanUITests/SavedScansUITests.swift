@@ -34,6 +34,13 @@ final class SavedScansUITests: XCTestCase {
         XCTAssertFalse(row(app, "unfinished").exists, "a scan without a bundle is listed")
         XCTAssertTrue(practice.descendants(matching: .any)["savedScan.practice"].exists, "the practice scan has no Practice tag")
         XCTAssertFalse(real.descendants(matching: .any)["savedScan.practice"].exists, "a scan without a readable stamp is tagged Practice")
+        // A practice scan walked a real wall; only its meter was a sample.
+        // The row's text is one combined element, so match within labels.
+        func says(_ element: XCUIElement, _ text: String) -> Bool {
+            element.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", text)).firstMatch.exists
+        }
+        XCTAssertTrue(says(practice, "Practice scan with a sample meter"), "the practice scan doesn't say its meter was a sample")
+        XCTAssertFalse(says(app, "real wall"), "a row says a scan wasn't of a real wall")
         attach(app, "savedScans-list")
         // The audit's text-size check changes the onboarding's top bar layout; the sheet must
         // stay open through it (it closed when the button owned it).
