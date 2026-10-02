@@ -52,6 +52,14 @@ public struct WallCheck: Sendable, Equatable {
         if !passes { return .failed }
         return contactWarnings.isEmpty ? .confirmed : .unconfirmed
     }
+
+    /// The outcome of a saved check, whose record keeps only the residual test (`passes`). The
+    /// contact's own warnings come from its point record, nil when that record can't be found.
+    /// A contact with no record can't confirm the wall.
+    public static func outcome(passes: Bool, contactWarnings: [MeasurementWarning]?) -> Outcome {
+        guard let contactWarnings else { return passes ? .unconfirmed : .failed }
+        return WallCheck(passes: passes, contactWarnings: contactWarnings).outcome
+    }
 }
 
 /// The qualification of a wall, from its contacts' warnings and its validation contacts.
