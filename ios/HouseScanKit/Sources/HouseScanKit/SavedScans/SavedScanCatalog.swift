@@ -81,9 +81,17 @@ public enum SavedScanShareError: Error, Equatable, Sendable {
 /// creates or deletes anything under `root`; the scan folders are never written.
 public struct SavedScanStaging: Sendable {
     public let root: URL
+    /// This app run's folder under `root`. Each run stages into its own, so a launch can delete
+    /// the copies earlier runs left without judging by time, which a clock change would upset.
+    public let session: String
 
-    public init(root: URL) {
+    public init(root: URL, session: String = UUID().uuidString) {
         self.root = root
+        self.session = session
+    }
+
+    private var sessionRoot: URL {
+        root.appending(path: session, directoryHint: .isDirectory)
     }
 
     /// A whole copy of `scan`'s bundle under `root`, named `scan.shareFileName()`.
@@ -99,7 +107,7 @@ public struct SavedScanStaging: Sendable {
         } catch {
             throw failure(error)
         }
-        let folder = root.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        let folder = sessionRoot.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         let copy = folder.appending(path: scan.shareFileName())
         do {
             try files.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -122,25 +130,18 @@ public struct SavedScanStaging: Sendable {
     /// is left alone.
     public func remove(_ copy: URL) {
         let folder = copy.deletingLastPathComponent().standardizedFileURL
-        guard folder.deletingLastPathComponent().path == root.standardizedFileURL.path else { return }
+        guard folder.deletingLastPathComponent().path == sessionRoot.standardizedFileURL.path else { return }
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// Deletes every copy, for when no share sheet is open: copies a share left when the app was
-    /// quit with the sheet up.
-    public func removeAll() {
-        try? FileManager.default.removeItem(at: root)
-    }
-
-    /// Deletes the copies made before `date`, leaving any made since. At launch, with `date` the
-    /// launch time, that is every copy an earlier run left (a share sheet open when the app was
-    /// killed never reports back), while a share started right after launch keeps its copy.
-    public func removeCopies(madeBefore date: Date) {
+    /// Deletes the copies every other app run made, leaving this run's. At launch that is every
+    /// copy an earlier run left (a share sheet open when the app was killed never reports back),
+    /// while a share this run starts keeps its copy.
+    public func removeOtherSessions() {
         let files = FileManager.default
-        guard let folders = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey]) else { return }
-        for folder in folders {
-            let made = (try? folder.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
-            if made < date { try? files.removeItem(at: folder) }
+        guard let sessions = try? files.contentsOfDirectory(atPath: root.path) else { return }
+        for name in sessions where name != session {
+            try? files.removeItem(at: root.appending(path: name))
         }
     }
 }
