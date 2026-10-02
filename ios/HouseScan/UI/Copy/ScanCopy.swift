@@ -487,15 +487,15 @@ enum ScanCopy {
     static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
         switch step {
         case .aimAtGround, .aimAtWall:
-            (title: "Skip this spot", hint: "An installer will look at it instead.")
+            (title: "Skip this spot", hint: "An installer would need to look at it instead.")
         case .tiltUp:
-            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer will look at it instead.")
+            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer would need to look at it instead.")
         case .walk:
-            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.")
+            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer would need to look at what's past it.")
         case .markNextWall:
-            (title: "Can't get there", hint: "Skips this part of the wall. An installer will look at it instead.")
+            (title: "Can't get there", hint: "Skips this part of the wall. An installer would need to look at it instead.")
         case .seeBehind:
-            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer will look at it instead.")
+            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer would need to look at it instead.")
         case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
             nil
         }
@@ -598,7 +598,7 @@ enum ScanCopy {
         switch answer {
         case .fits: "A battery fits here"
         case .oneMoreLook: "One more look"
-        case .installer: "An installer will confirm"
+        case .installer: "Needs an installer's review"
         case .notHere: "Not on this wall"
         }
     }
@@ -667,8 +667,10 @@ enum ScanCopy {
     static let wallNotMeasuredDetail = "The scan stopped before you walked along the wall on either side of your meter, so we can't tell where a battery would fit. Scan again and walk a few steps each way."
     static let scanAgain = "Scan again"
 
-    static let installerConfirms = "An installer confirms this on site."
-    static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
+    /// Shown on every result, with or without a spot ("Not on this wall" has none), so it names
+    /// no spot.
+    static let installerConfirms = "Before any battery goes in, an installer has to confirm where it goes on site."
+    static let rulesNotFinal = "The placement rules aren't final yet, so every result needs an installer's review for now."
     // The server's result covers where the battery goes, not the panel itself.
     static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
 
@@ -690,8 +692,12 @@ enum ScanCopy {
     static let shareScan = "Share scan"
     static let shareScanContents = "Your photos and measurements, for the House Scan team"
 
+    /// A check or a view no photo can settle. It states what the result needs, never that a
+    /// review was sent: the app only shows the server's answer and contacts nobody.
+    static let needsInstaller = "Needs an installer to check"
+
     static func unsureNote(_ row: CheckRow) -> String {
-        row.needsPerson ? "An installer will check this" : "One more photo would settle this"
+        row.needsPerson ? Self.needsInstaller : "One more photo would settle this"
     }
 
     /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."

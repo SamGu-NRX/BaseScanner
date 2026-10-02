@@ -57,7 +57,7 @@ struct ResultARScreen: View {
         guard result.spot != nil else { return "The cable run and clearances, drawn on your wall" }
         return result.spotIsClean
             ? "The battery, drawn on your wall at its spot"
-            : "An outline of the spot an installer will check, drawn on your wall"
+            : "An outline of the spot an installer needs to check, drawn on your wall"
     }
 
     private var instruction: Instruction {
@@ -71,7 +71,7 @@ struct ResultARScreen: View {
         // check says so, as the result screen does.
         let title = result.decision == .pass && result.policyApproved && result.spotIsClean
             ? "Your battery could go here"
-            : "The spot an installer will check"
+            : "The spot an installer needs to check"
         let placement = ScanCopy.placement(result)
         guard !result.isSample else {
             // A sample spot drawn on the homeowner's real wall must not pass for their result.

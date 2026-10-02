@@ -97,7 +97,7 @@ struct GapRequestScreen: View {
                 Label("Show my result", systemImage: "checkmark.circle")
             }
             .buttonStyle(.secondary)
-            .accessibilityHint("Stops asking for views and shows your result. An installer will look at the parts you skip.")
+            .accessibilityHint("Stops asking for views and shows your result. An installer would need to look at the parts you skip.")
             .accessibilityIdentifier("action.showResult")
             .transition(.opacity)
         }
@@ -119,9 +119,9 @@ struct GapRequestScreen: View {
     /// so the hint doesn't promise the result; "Show my result" does.
     private var skipHint: String {
         switch followUps {
-        case 0: "Skips this view. An installer will look at this part instead."
-        case 1: "Skips this view and checks your scan again. An installer will look at this part instead."
-        default: "Skips this view and goes on to the next one. An installer will look at this part instead."
+        case 0: "Skips this view. An installer would need to look at this part instead."
+        case 1: "Skips this view and checks your scan again. An installer would need to look at this part instead."
+        default: "Skips this view and goes on to the next one. An installer would need to look at this part instead."
         }
     }
 

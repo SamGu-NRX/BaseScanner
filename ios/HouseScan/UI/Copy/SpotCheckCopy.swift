@@ -10,17 +10,17 @@ extension ScanCopy {
     static let spotClear = "It's clear"
     static let spotSomethingThere = "Something's there"
     static let spotClearHint = "Shows your result."
-    static let spotSomethingThereHint = "Leaves this area out of your scan and checks your wall again. An installer will look at it."
+    static let spotSomethingThereHint = "Leaves this area out of your scan and checks your wall again. An installer would need to look at it."
 
     static func spotAnswered(_ answer: SpotCheckAnswer) -> Instruction {
         switch answer {
         case .clear: Instruction(title: "Thanks, it's clear", detail: "Showing your result.")
-        case .somethingThere: Instruction(title: "Thanks, we'll leave that area out", detail: "Checking your wall again. An installer will look at what's there.")
+        case .somethingThere: Instruction(title: "Thanks, we'll leave that area out", detail: "Checking your wall again. An installer would need to look at what's there.")
         }
     }
 
     /// Said on the result when the homeowner said something stands where its spot is.
-    static let spotRefused = "You said something stands where this spot is. Your scan leaves that area out, and an installer will check it."
+    static let spotRefused = "You said something stands where this spot is. Your scan leaves that area out, and an installer would need to check it."
 
     /// "From 3 ft to 8 ft 6 in right of your meter": where the area runs. `spoken` spells the
     /// units out for VoiceOver.

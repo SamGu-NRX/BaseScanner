@@ -74,7 +74,7 @@ struct MeterCloseUpScreen: View {
                     if offerSkip {
                         Button("Can't get a clear shot") { actions.skipCloseUp() }
                             .buttonStyle(.secondaryProminent)
-                            .accessibilityHint("Skips the close-up. An installer will read the meter instead.")
+                            .accessibilityHint("Skips the close-up. An installer would need to read the meter instead.")
                             .accessibilityIdentifier("action.skipCloseUp")
                             .transition(.identity)
                     }
