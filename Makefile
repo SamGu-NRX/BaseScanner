@@ -1,6 +1,7 @@
 # Each suite target runs the commands of its CI job in .github/workflows/.
 # `make check` runs server, web and ios, then scoring, measure-lab, evals, recon
-# and meter-closeup where the branch has them.
+# and meter-closeup where the branch has them. It needs no Simulator, so it leaves out the
+# iOS UI suite that CI also runs; run that with `make ios-ui`.
 # tests/makefile.sh checks this dispatch with stub suites.
 
 XCODEGEN ?= xcodegen
@@ -21,7 +22,7 @@ present = $(if $(wildcard $(1)),$(2))
 # $(call require,FILE,PR): stop before any command runs when the suite's file is missing.
 require = @test -f $(1) || { echo "make $@: $(1) is missing; the suite arrives with pull request $(2)." >&2; exit 1; }
 
-.PHONY: check server web ios ios-project smoke scoring measure-lab evals recon meter-closeup
+.PHONY: check server web ios ios-package ios-build ios-ui ios-project smoke scoring measure-lab evals recon meter-closeup
 
 check: server web ios \
 	$(call present,$(SCORING),scoring) \
@@ -40,10 +41,34 @@ web:
 	cd web && pnpm install --frozen-lockfile
 	cd web && pnpm run check
 
-# CI also regenerates the project and fails on drift; run `make ios-project` for that.
+# The headless steps of .github/workflows/ios.yml: the HouseScanKit tests, then the app build.
+# Recipe lines, not prerequisites, so the build waits for the tests and is skipped when they
+# fail, even under make -j. CI also regenerates the project and fails on drift; run
+# `make ios-project` for that.
 ios:
+	$(MAKE) ios-package
+	$(MAKE) ios-build
+
+# The schema drift tests compare the vendored server contract with server/schemas, or else with
+# origin/t3/server, and skip when neither is there, so a green run can leave drift unchecked.
+# CI fetches the contract and sets HOUSESCAN_REQUIRE_UPSTREAM=1, which fails instead of skipping;
+# `make ios REQUIRE_UPSTREAM=1` does the same here.
+ios-package:
+	$(if $(filter 1,$(REQUIRE_UPSTREAM)),HOUSESCAN_REQUIRE_UPSTREAM=1 )swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
+
+ios-build:
 	xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug \
 		-destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO build
+
+# The UI suite step of .github/workflows/ios.yml. It boots a Simulator, so `check` leaves it out.
+# It skips the every-state accessibility audit (about 10 minutes) unless FULL_UI=1, as pull
+# requests do in CI. Pick the Simulator with IOS_DESTINATION, for example "id=<UDID>".
+IOS_DESTINATION ?= platform=iOS Simulator,name=iPhone 17
+IOS_AUDIT := HouseScanUITests/ScreenStatesUITests/testEveryStatePassesTheAccessibilityAudit
+ios-ui:
+	xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug \
+		-destination "$(IOS_DESTINATION)" -only-testing:HouseScanUITests \
+		$(if $(filter 1,$(FULL_UI)),,-skip-testing:$(IOS_AUDIT)) test
 
 # Regenerates ios/HouseScan.xcodeproj from ios/project.yml. Point XCODEGEN at another binary
 # if the one on PATH is not $(XCODEGEN_VERSION): make ios-project XCODEGEN=/path/to/xcodegen

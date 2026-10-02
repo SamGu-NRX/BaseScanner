@@ -35,7 +35,7 @@ cd house-scanning-master
 make check
 ```
 
-`make check` runs the same server, web and iOS test suites that CI runs. Xcode runs only on a Mac, so on Linux or Windows, run `make server web` to skip the iOS suite.
+`make check` runs the server and web checks, the iOS package tests and the iOS build that CI runs. It leaves out the iOS UI tests, which need a Simulator; run `make ios-ui` for those. Xcode runs only on a Mac, so on Linux or Windows, run `make server web` to skip the iOS checks.
 
 ## How the pieces fit together
 

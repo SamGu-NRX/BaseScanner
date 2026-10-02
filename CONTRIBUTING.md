@@ -28,7 +28,7 @@ The `size:*` label describes the effective diff. It is a review signal, not a me
 | --- | --- | --- |
 | Server checks | `server/` changes | `make server` |
 | Web checks | `web/` changes | `make web` |
-| iOS build | `ios/` changes outside Markdown, on non-draft pull requests | `make ios` |
+| iOS build | `ios/` changes outside Markdown, on non-draft pull requests | `make ios` for the HouseScanKit tests and the build; `make ios-ui` for the UI suite |
 | Makefile dispatch | `Makefile` or `tests/makefile.sh` changes | `bash tests/makefile.sh` |
 | Sync label definitions | `.github/labels.json` changes on `main` | none |
 | Label PR size | a pull request opens or updates | none |
@@ -36,7 +36,7 @@ The `size:*` label describes the effective diff. It is a review signal, not a me
 
 The iOS UI tests skip the every-state accessibility audit on pull requests, because it adds about 10 minutes and macOS runners are scarce. Add the `full-ui` label when a pull request changes screens or copy; pushes to `t3/ios-mvf` and `main` always run it.
 
-`make check` runs the server, web and iOS suites, then `make scoring`, `make measure-lab`, `make evals`, `make recon` and `make meter-closeup` for each of those folders the branch has. They need uv, Node 24 with pnpm, and Xcode 26 or newer; each directory's README has details. No check is required by branch rules yet. Don't call one required until the rules require its status.
+`make check` runs the server and web checks, the HouseScanKit tests and the iOS build, then `make scoring`, `make measure-lab`, `make evals`, `make recon` and `make meter-closeup` for each of those folders the branch has. It leaves out the iOS UI suite, because that needs a Simulator. Run it with `make ios-ui`, or `make ios-ui FULL_UI=1` to include the accessibility audit. Choose the Simulator with `IOS_DESTINATION`, such as `IOS_DESTINATION=id=<UDID>`. They need uv, Node 24 with pnpm, and Xcode 26 or newer; each directory's README has details. No check is required by branch rules yet. Don't call one required until the rules require its status.
 
 Keep workflows that run pull-request code away from production credentials and destructive external systems. A green CI run is evidence for the checks it ran, not proof that a capture works on a real house.
 
