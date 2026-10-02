@@ -27,7 +27,8 @@ import Foundation
 /// time instead let a cleanup that ran late delete a scan started after it: store A is made,
 /// Start over makes B, and A's cleanup then found B in the listing and deleted the scan in use.
 public struct ScanFolderCleanup: Sendable {
-    /// The file whose presence marks a completed scan: the bundle Share scan offers.
+    /// The bundle Share scan offers. A scan is completed when this file is a whole capture packet
+    /// (`PacketArchiveCheck`); the file being there is not enough.
     public static let bundleName = "scan.zip"
     /// The most recent completed scan, and one more: a homeowner who starts another scan still
     /// has the one before it. Each is a few tens of megabytes of photos.
