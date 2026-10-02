@@ -133,6 +133,49 @@ struct TrackingStabilityTests {
         #expect(stability.isStable(at: 21.3))
     }
 
+    @Test mutating func `an interruption end stamped before a reset still ends the interruption`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.reset(at: 20)
+        let lateEnd = stability.interruptionChanged(isInterrupted: false, at: 19)
+        #expect(lateEnd)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        #expect(!stability.isStable(at: 21.999))
+        #expect(stability.isStable(at: 22))
+    }
+
+    @Test mutating func `a pre-reset interruption end after fresh tracking starts the run no earlier than that tracking`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.reset(at: 20)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        #expect(!stability.isStable(at: 25))
+        stability.interruptionChanged(isInterrupted: false, at: 19)
+        #expect(!stability.isStable(at: 21.999))
+        #expect(stability.isStable(at: 22))
+    }
+
+    @Test mutating func `an interruption still running across a reset keeps taps waiting`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.reset(at: 20)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        #expect(!stability.isStable(at: 30))
+        stability.interruptionChanged(isInterrupted: false, at: 30)
+        #expect(!stability.isStable(at: 30.999))
+        #expect(stability.isStable(at: 31))
+    }
+
+    @Test mutating func `a pre-reset end cannot end an interruption that began after the reset`() {
+        stability.reset(at: 20)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        stability.interruptionChanged(isInterrupted: true, at: 25)
+        let staleEnd = stability.interruptionChanged(isInterrupted: false, at: 19)
+        #expect(!staleEnd)
+        #expect(!stability.isStable(at: 40))
+    }
+
     @Test mutating func `a new AR run waits for normal tracking again`() {
         stability.trackingChanged(isNormal: true, at: 10)
         stability.reset(at: 20)

@@ -47,11 +47,18 @@ public struct TrackingStability: Sendable, Equatable {
         return true
     }
 
-    /// Returns false, changing nothing, for a report from before the last reset. Ending an
-    /// interruption starts a fresh run if tracking reads normal.
+    /// Returns false, changing nothing, for a report from before the last reset, with one
+    /// exception: the end of an interruption this tracker still holds. Ending an interruption
+    /// starts a fresh run if tracking reads normal.
+    ///
+    /// A camera interruption outlives the AR run, and its end can be stamped just before a reset
+    /// and delivered after it. Refusing that end would leave the interruption held with no later
+    /// callback to clear it, so every tap would wait forever. Accepting it is safe: the reset
+    /// cleared the old run's tracking, so only reports after the reset can start a stable run.
     @discardableResult
     public mutating func interruptionChanged(isInterrupted: Bool, at time: Double) -> Bool {
-        guard isAfterReset(time), interruptionTime.map({ time > $0 }) ?? true else { return false }
+        let endsHeldInterruption = !isInterrupted && self.isInterrupted
+        guard isAfterReset(time) || endsHeldInterruption, interruptionTime.map({ time > $0 }) ?? true else { return false }
         interruptionTime = time
         self.isInterrupted = isInterrupted
         if isInterrupted {

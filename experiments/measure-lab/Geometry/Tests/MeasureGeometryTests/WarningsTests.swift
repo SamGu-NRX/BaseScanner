@@ -37,6 +37,22 @@ struct WarningsTests {
         #expect(WallStatus(contactWarnings: [[], []], checks: [check, cleanPass]).warnings.isEmpty)
     }
 
+    @Test(arguments: [MeasurementWarning.estimatedPlane, .extendedPlane, .shallowLookDown])
+    func `a saved passing check reads as unconfirmed when its contact is flagged`(flag: MeasurementWarning) {
+        #expect(WallCheck.outcome(passes: true, contactWarnings: [flag]) == .unconfirmed)
+        #expect(WallCheck.outcome(passes: false, contactWarnings: [flag]) == .failed)
+    }
+
+    @Test func `a saved check reads as confirmed only from a clean contact`() {
+        #expect(WallCheck.outcome(passes: true, contactWarnings: []) == .confirmed)
+        #expect(WallCheck.outcome(passes: false, contactWarnings: []) == .failed)
+    }
+
+    @Test func `a saved check whose contact has no record cannot confirm the wall`() {
+        #expect(WallCheck.outcome(passes: true, contactWarnings: nil) == .unconfirmed)
+        #expect(WallCheck.outcome(passes: false, contactWarnings: nil) == .failed)
+    }
+
     @Test func `a failing check from a flagged contact still fails the wall`() {
         let check = WallCheck(passes: false, contactWarnings: [.estimatedPlane])
         #expect(check.outcome == .failed)
