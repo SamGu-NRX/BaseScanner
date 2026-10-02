@@ -175,9 +175,7 @@ public struct GapPlanner: Sendable {
         case .overhead(let height): spans = reaching(Self.exported(coverage.overheadSpans(), "overhead", coverage), height)
         case .wallUp(let height): spans = reaching(Self.exported(coverage.wallSeenSpans(), "wall", coverage), height)
         }
-        let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
-        let requested = gap.requestedSpanFt ?? feet(gap.span.lowerBound)...feet(gap.span.upperBound)
-        return Self.fraction(of: requested, coveredBy: spans)
+        return Self.fraction(of: gap.requestedSpanInFeet, coveredBy: spans)
     }
 
     /// A server request is met only over its whole span: the server settles it only when observed
@@ -283,18 +281,26 @@ public struct GapPlanner: Sendable {
         let high = requested.upperBound
         guard high > low else { return 0 }
         let eps = 1e-9
-        let tolerance = 0.01
         var cursor = low
         var missing = 0.0
         let written = spans.compactMap { SceneExport.spanInward($0) }.map { ($0[0], $0[1]) }
         for (a, b) in written.sorted(by: { $0 < $1 }) {
             if b <= cursor + eps { continue }
             if a >= high - eps { break }
-            if a > cursor + eps, min(a, high) - cursor >= tolerance { missing += min(a, high) - cursor }
+            if a > cursor + eps, countsAsMissing(from: cursor, to: min(a, high)) { missing += min(a, high) - cursor }
             cursor = max(cursor, b)
         }
-        if cursor < high - eps, high - cursor >= tolerance { missing += high - cursor }
+        if cursor < high - eps, countsAsMissing(from: cursor, to: high) { missing += high - cursor }
         return max(0, 1 - missing / (high - low))
+    }
+
+    /// Whether an unseen stretch from `start` to `end`, feet, counts as missing rather than as
+    /// rounding: at least the server's COVERAGE_TOLERANCE_FT, 0.01 ft (server/scene.py `missing`
+    /// at t3/server 930e8e5). Progress (`fraction`) and the same-view rule
+    /// (`GapPlan.asksForSameView`) both decide by this one comparison, so a request stays
+    /// available exactly when it asks for evidence progress would still call missing.
+    static func countsAsMissing(from start: Double, to end: Double) -> Bool {
+        end - start >= 0.01
     }
 
     private func distanceToMeter(_ run: ClosedRange<Float>) -> Float {
@@ -419,40 +425,60 @@ extension GapPlanner {
 }
 
 extension GapPlan {
-    /// How far a request's span or reach may move and still ask for the same view: 0.1 ft
-    /// (0.03 m), meters. Numerical jitter from the server working the request out again is a few
-    /// hundredths of a foot; a guess, not measured.
-    public static let sameViewTolerance: Float = 0.03048
+    /// The span progress measures, feet: `requestedSpanFt` as the server sent it, or for a request
+    /// built in meters, `span` at the export's four decimals.
+    public var requestedSpanInFeet: ClosedRange<Double> {
+        if let requestedSpanFt { return requestedSpanFt }
+        let feet = { (meters: Float) in SceneExport.round4(Double(meters) * SceneUnits.feetPerMeter) }
+        return feet(span.lowerBound)...feet(span.upperBound)
+    }
 
-    /// Whether this request asks for no view beyond `other`'s, allowing for the server working it
-    /// out again from the next upload: the same band and kind of need, a reach no more than
-    /// `sameViewTolerance` past the other's, and a span inside the other's give or take the same
-    /// tolerance. After "I can't get there" the skipped stretch goes to review and the spot or its
-    /// error margins can move, so the same view comes back as, say, 2.41...7.9 ft instead of
-    /// 2.4...7.9 ft. A request that asks for more is a new view, even when it mostly overlaps: a
-    /// span of 2...9 ft after 2...8 ft, or ground out to 5.10 ft after 4.83 ft (issue #39). A met
-    /// past_end request moves its end on 2 m, so the next one asks for new ground and is a
+    /// The reach progress requires, feet: `requestedOutFt` as the server sent it, or the need's
+    /// meters converted, as `GapPlanner.progress` compares it. Nil for a need with no reach: cells,
+    /// or an overhead request that any recorded view meets.
+    var requestedReachInFeet: Double? {
+        let meters: Float?
+        switch need {
+        case .cells: return nil
+        case .groundOut(let out), .walkOut(let out), .wallUp(let out): meters = out
+        case .overhead(let height): meters = height
+        }
+        guard let meters else { return nil }
+        return requestedOutFt ?? Double(meters) * SceneUnits.feetPerMeter
+    }
+
+    /// Whether this request asks for no evidence beyond what `other` asks for, measured as
+    /// progress measures it: the same band and kind of need, a reach no higher than the other's
+    /// (exactly, as progress compares a reach), and no edge of the span running past the other's
+    /// far enough that progress would call the difference missing
+    /// (`GapPlanner.countsAsMissing`, 0.01 ft). An equal or contained request is the same view:
+    /// after "I can't get there" the skipped stretch goes to review, and the next answer can
+    /// come back as 2.41...7.9 ft after 2.4...7.9 ft. One that asks for more is a new view, even
+    /// when it mostly overlaps: 2...8.09 ft after 2...8 ft, or ground out to 4.833335 ft after
+    /// 4.833334 ft (issue #39, #49). The 0.1 ft allowance this replaced hid requests that
+    /// progress still called missing, and after a skip the result marked them not capturable.
+    /// A met past_end request moves its end on 2 m, so the next one asks for new ground and is a
     /// different view.
     public func asksForSameView(as other: GapPlan) -> Bool {
-        let tolerance = Self.sameViewTolerance
-        guard band == other.band, need.asksNoMore(than: other.need, within: tolerance) else { return false }
-        return span.lowerBound >= other.span.lowerBound - tolerance && span.upperBound <= other.span.upperBound + tolerance
+        guard band == other.band, need.isSameKind(as: other.need) else { return false }
+        switch (requestedReachInFeet, other.requestedReachInFeet) {
+        case (nil, _): break
+        case (_?, nil): return false
+        case let (mine?, theirs?): guard mine <= theirs else { return false }
+        }
+        let mine = requestedSpanInFeet
+        let theirs = other.requestedSpanInFeet
+        return !GapPlanner.countsAsMissing(from: mine.lowerBound, to: theirs.lowerBound)
+            && !GapPlanner.countsAsMissing(from: theirs.upperBound, to: mine.upperBound)
     }
 }
 
 extension GapPlan.Need {
-    /// The same kind of need, with any reach no more than `tolerance` meters past the other's. An
-    /// overhead need without a height (any recorded view) asks no more than one with a height.
-    func asksNoMore(than other: GapPlan.Need, within tolerance: Float) -> Bool {
+    /// The same kind of need, whatever its reach.
+    func isSameKind(as other: GapPlan.Need) -> Bool {
         switch (self, other) {
-        case (.cells, .cells):
+        case (.cells, .cells), (.groundOut, .groundOut), (.walkOut, .walkOut), (.wallUp, .wallUp), (.overhead, .overhead):
             return true
-        case let (.groundOut(a), .groundOut(b)), let (.walkOut(a), .walkOut(b)), let (.wallUp(a), .wallUp(b)):
-            return a <= b + tolerance
-        case let (.overhead(a), .overhead(b)):
-            guard let a else { return true }
-            guard let b else { return false }
-            return a <= b + tolerance
         default:
             return false
         }
