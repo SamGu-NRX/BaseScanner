@@ -7,9 +7,10 @@
 /// prompts a fresh `isStable(at:)`; it never decides stability itself.
 ///
 /// Callbacks reach the main actor through the main queue, so a report from the AR run before a
-/// reset can arrive after it. `reset(at:)` sets a cutoff: reports stamped at or before it are
-/// refused, and after it a normal report counts only once a limited or unavailable one has
-/// arrived, the fresh tracking cycle a reset run starts with (as in `FrameResetGate`).
+/// reset can arrive after it. `reset(at:)` sets a cutoff for tracking reports: those stamped at
+/// or before it are refused, and after it a normal report counts only once a limited or
+/// unavailable one has arrived, the fresh tracking cycle a reset run starts with (as in
+/// `FrameResetGate`). Interruption reports have no cutoff (`interruptionChanged`).
 public struct TrackingStability: Sendable, Equatable {
     public let requiredSeconds: Double
     private var isNormal = false
@@ -47,18 +48,18 @@ public struct TrackingStability: Sendable, Equatable {
         return true
     }
 
-    /// Returns false, changing nothing, for a report from before the last reset, with one
-    /// exception: the end of an interruption this tracker still holds. Ending an interruption
-    /// starts a fresh run if tracking reads normal.
+    /// Returns false, changing nothing, for a report older than the last interruption report.
+    /// Ending an interruption starts a fresh run if tracking reads normal.
     ///
-    /// A camera interruption outlives the AR run, and its end can be stamped just before a reset
-    /// and delivered after it. Refusing that end would leave the interruption held with no later
-    /// callback to clear it, so every tap would wait forever. Accepting it is safe: the reset
-    /// cleared the old run's tracking, so only reports after the reset can start a stable run.
+    /// A camera interruption belongs to the camera, not to an AR run, so `reset(at:)` doesn't cut
+    /// these reports off: a start or end stamped before a reset still describes the camera now.
+    /// Refusing a pre-reset end held the interruption forever, with no later callback to clear it;
+    /// refusing only pre-reset starts would let an older end clear an interruption a newer,
+    /// refused start had begun. Timestamp order alone decides. Pre-reset tracking still can't
+    /// count, because the reset's cutoff and fresh cycle apply to tracking reports.
     @discardableResult
     public mutating func interruptionChanged(isInterrupted: Bool, at time: Double) -> Bool {
-        let endsHeldInterruption = !isInterrupted && self.isInterrupted
-        guard isAfterReset(time) || endsHeldInterruption, interruptionTime.map({ time > $0 }) ?? true else { return false }
+        guard interruptionTime.map({ time > $0 }) ?? true else { return false }
         interruptionTime = time
         self.isInterrupted = isInterrupted
         if isInterrupted {

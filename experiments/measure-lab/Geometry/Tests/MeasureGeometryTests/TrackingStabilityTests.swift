@@ -114,23 +114,56 @@ struct TrackingStabilityTests {
         #expect(stability.isStable(at: 14))
     }
 
-    @Test mutating func `queued tracking and interruption reports cannot cross a reset`() {
+    @Test mutating func `queued tracking reports cannot cross a reset`() {
         stability.reset(at: 20)
         let oldLimited = stability.trackingChanged(isNormal: false, at: 19)
         let oldNormal = stability.trackingChanged(isNormal: true, at: 20)
-        let oldInterruption = stability.interruptionChanged(isInterrupted: true, at: 19.5)
-        let oldResumption = stability.interruptionChanged(isInterrupted: false, at: 20)
         let prematureNormal = stability.trackingChanged(isNormal: true, at: 20.1)
-        #expect(!oldLimited && !oldNormal && !oldInterruption && !oldResumption && !prematureNormal)
+        #expect(!oldLimited && !oldNormal && !prematureNormal)
         #expect(stability.stableAt == nil)
         let freshLimited = stability.trackingChanged(isNormal: false, at: 20.2)
         let freshNormal = stability.trackingChanged(isNormal: true, at: 20.3)
         let lateLimited = stability.trackingChanged(isNormal: false, at: 19.9)
-        let lateInterruption = stability.interruptionChanged(isInterrupted: true, at: 19.9)
         #expect(freshLimited && freshNormal)
-        #expect(!lateLimited && !lateInterruption)
+        #expect(!lateLimited)
         #expect(!stability.isStable(at: 21.299))
         #expect(stability.isStable(at: 21.3))
+    }
+
+    @Test mutating func `interruption reports cross a reset in their own order`() {
+        stability.reset(at: 20)
+        let queuedStart = stability.interruptionChanged(isInterrupted: true, at: 19.5)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 20.3)
+        #expect(queuedStart)
+        #expect(!stability.isStable(at: 25))
+        let queuedEnd = stability.interruptionChanged(isInterrupted: false, at: 19.8)
+        let olderStart = stability.interruptionChanged(isInterrupted: true, at: 19.6)
+        #expect(queuedEnd && !olderStart)
+        // The run starts no earlier than the fresh normal report after the reset.
+        #expect(!stability.isStable(at: 21.299))
+        #expect(stability.isStable(at: 21.3))
+    }
+
+    @Test mutating func `an older end cannot clear a newer start queued before a reset`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.reset(at: 20)
+        stability.interruptionChanged(isInterrupted: false, at: 15)
+        stability.interruptionChanged(isInterrupted: true, at: 18)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        #expect(!stability.isStable(at: 40))
+    }
+
+    @Test mutating func `an older end delivered after a newer start queued before a reset is refused`() {
+        stability.interruptionChanged(isInterrupted: true, at: 10)
+        stability.reset(at: 20)
+        stability.interruptionChanged(isInterrupted: true, at: 18)
+        let olderEnd = stability.interruptionChanged(isInterrupted: false, at: 15)
+        #expect(!olderEnd)
+        stability.trackingChanged(isNormal: false, at: 20.2)
+        stability.trackingChanged(isNormal: true, at: 21)
+        #expect(!stability.isStable(at: 40))
     }
 
     @Test mutating func `an interruption end stamped before a reset still ends the interruption`() {
