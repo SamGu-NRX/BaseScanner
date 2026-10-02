@@ -17,11 +17,13 @@ public enum ResultBinding {
         /// The answer names another scene. Both hashes are lowercase hex.
         case mismatch(submitted: String, declared: String)
 
+        /// Goes to the device log, so it names what went wrong but never a hash: a scene's hash
+        /// fingerprints a homeowner's scan. The values stay in the cases for callers and tests.
         public var description: String {
             switch self {
             case .noInputHash: "answer has no readable stats.input_sha256"
-            case .malformedInputHash(let value): "answer's stats.input_sha256 is malformed: \(value.prefix(80))"
-            case .mismatch(let submitted, let declared): "answer is for scene \(declared), not the scene sent (\(submitted))"
+            case .malformedInputHash(let value): "answer's stats.input_sha256 is malformed (\(value.utf8.count) bytes)"
+            case .mismatch: "answer's stats.input_sha256 is not the hash of the scene sent"
             }
         }
     }

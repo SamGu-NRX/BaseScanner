@@ -48,6 +48,21 @@ import Testing
         #expect(try Self.refusal(Self.answer(declaring: other)) == .mismatch(submitted: PacketFiles.sha256(Self.scene), declared: other))
     }
 
+    /// The upload logs a refusal's description publicly, so it carries no scene hash.
+    @Test func aRefusalsDescriptionNamesNoHash() throws {
+        let sent = PacketFiles.sha256(Self.scene)
+        let other = PacketFiles.sha256(Data("another scene".utf8))
+        let refusals: [ResultBinding.Refusal] = [
+            try Self.refusal(Self.answer(declaring: other)),
+            try Self.refusal(Self.answer(declaring: String(other.dropLast()))),
+            try Self.refusal(Self.answer(replacingHashLineWith: "")),
+        ]
+        for refusal in refusals {
+            let text = String(describing: refusal)
+            #expect(!text.contains(sent) && !text.contains(other) && !text.contains(String(other.dropLast())))
+        }
+    }
+
     /// No readable hash refuses the answer, whatever the general decoder would make of it.
     @Test(arguments: [
         ("absent", ""),
