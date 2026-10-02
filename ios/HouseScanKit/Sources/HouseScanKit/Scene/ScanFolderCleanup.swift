@@ -67,7 +67,7 @@ public struct ScanFolderCleanup: Sendable {
         obsolete = names.filter { !keep.contains($0) }.map { root.appending(path: $0) }
     }
 
-    private enum BundleState {
+    enum BundleState: Equatable {
         case absent
         case complete(savedAt: Date)
         case incomplete
@@ -82,7 +82,8 @@ public struct ScanFolderCleanup: Sendable {
     /// apart. A rewrite that starts after the second read is not caught: the folder then holds its
     /// place while its bundle is partial, until the next cleanup. Closing that needs the writer to
     /// replace the file atomically, which the packet code doesn't do.
-    private static func bundleState(_ bundle: URL) -> BundleState {
+    /// `verify` is `PacketArchiveCheck.verify`; tests pass one that rewrites the file mid-check.
+    static func bundleState(_ bundle: URL, verify: (URL) throws -> Int64 = PacketArchiveCheck.verify) -> BundleState {
         let files = FileManager.default
         let before: [FileAttributeKey: Any]
         do {
@@ -92,7 +93,7 @@ public struct ScanFolderCleanup: Sendable {
         } catch {
             return .incomplete
         }
-        guard (try? PacketArchiveCheck.verify(bundle)) != nil,
+        guard (try? verify(bundle)) != nil,
               let after = try? files.attributesOfItem(atPath: bundle.path),
               let number = before[.systemFileNumber] as? UInt64,
               after[.systemFileNumber] as? UInt64 == number,

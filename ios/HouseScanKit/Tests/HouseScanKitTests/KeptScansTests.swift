@@ -144,6 +144,30 @@ import Testing
         #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "locked", "linked", "folderBundle"])
     }
 
+    /// A retry rewrites scan.zip in place while the check may still be reading the old file. A
+    /// check that passes on the old file must not count the new, partial one as complete.
+    @Test func aBundleReplacedDuringTheCheckIsNotComplete() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("rewritten", in: root, bundledMinutesAgo: 5)
+        let bundle = root.appending(path: "rewritten/\(ScanFolderCleanup.bundleName)")
+
+        let state = ScanFolderCleanup.bundleState(bundle) { url in
+            let size = try PacketArchiveCheck.verify(url)
+            // As ZipWriter.write does: remove the file, then start a new one.
+            try FileManager.default.removeItem(at: url)
+            try Self.packet.prefix(Self.packet.count / 2).write(to: url)
+            return size
+        }
+        #expect(state == .incomplete)
+
+        // Left alone, the same bundle is complete.
+        try Self.packet.write(to: bundle)
+        let settled = ScanFolderCleanup.bundleState(bundle)
+        #expect(settled != .incomplete && settled != .absent)
+        #expect(ScanFolderCleanup.bundleState(root.appending(path: "none/\(ScanFolderCleanup.bundleName)")) == .absent)
+    }
+
     /// The scan in use is never judged, whatever its bundle; a folder made after the listing is
     /// never deleted by it.
     @Test func theScanInUseAndLaterFoldersAreSafe() throws {
