@@ -1209,9 +1209,9 @@ final class ScanEngine {
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next
-    /// one now.
+    /// one now. Stretches that stalled earlier stay deferred (`GuidancePlanner.settleCurrentTask`).
     func resetGuidanceAfterSkip(camera: CameraFrame, time: Double) {
-        planner.reset()
+        planner.settleCurrentTask()
         updateGuidance(camera: camera, time: time)
     }
 

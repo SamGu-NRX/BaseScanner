@@ -103,8 +103,8 @@ public struct GuidancePlanner: Sendable {
     private var lastFraction: Double = 0
     private var lastProgressAt: Double = 0
     /// Aim stretches that stalled. The requests chosen from the camera (the ground by the meter
-    /// and a lagging band) leave them out until `reset()`; `firstHole` still asks for them once
-    /// both ends are marked.
+    /// and a lagging band) leave them out for the rest of the scan, until `reset()`; `firstHole`
+    /// still asks for them once both ends are marked.
     private var deferred: [DeferredStretch] = []
 
     private struct DeferredStretch: Sendable {
@@ -116,8 +116,17 @@ public struct GuidancePlanner: Sendable {
         self.config = config
     }
 
-    /// Forgets the current task and the deferred stretches. The engine calls it when an action
-    /// settled the task ("Can't get there", an answered end question).
+    /// Drops the current task, so the next update chooses afresh, and keeps the stretches already
+    /// deferred. The engine calls it when an action settled the task ("Can't get there", an
+    /// answered end or overhead question, a followed corner, a refused finish). Clearing the
+    /// deferred stretches there too asked again, with a fresh stall clock, for a request that had
+    /// just stalled, instead of going on with the walk (#56).
+    public mutating func settleCurrentTask() {
+        current = nil
+    }
+
+    /// Forgets the current task and the deferred stretches. For a new scan, and for a spatial
+    /// reset, whose new world frame makes the old stretches meaningless.
     public mutating func reset() {
         current = nil
         deferred = []
