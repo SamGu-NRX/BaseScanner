@@ -27,23 +27,30 @@ struct SavedScansSheet: View {
         var id: URL { url }
     }
 
+    // Built like the app's light screens rather than a system list in a half-height sheet. In
+    // that sheet the onboarding showed through the glass behind the text (contrast), the list's
+    // header and footer and the navigation bar's Done didn't fully follow Dynamic Type, and large
+    // text ran off the sheet's bottom (hosted run 37051620836).
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle(SavedScansCopy.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") { dismiss() }
-                            .disabled(preparing != nil)
-                            .accessibilityIdentifier("action.closeSavedScans")
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                header
+                content
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
+            .frame(maxWidth: 560)
+            .frame(maxWidth: .infinity)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .background(Palette.canvas.ignoresSafeArea())
+        .presentationBackground(Palette.canvas)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
         // A copy being made belongs to the share sheet that follows it; closing now would leave
         // the copy with no sheet to delete it.
         .interactiveDismissDisabled(preparing != nil)
-        .presentationDetents([.medium, .large])
         .task { await open() }
         .sheet(item: $sharing, onDismiss: finishSharing) { copy in
             ActivitySheet(file: copy.url) { sharing = nil }
@@ -62,66 +69,79 @@ struct SavedScansSheet: View {
         .accessibilityIdentifier("savedScans")
     }
 
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(SavedScansCopy.title)
+                .font(Typeface.instruction)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button("Done") { dismiss() }
+                .font(Typeface.hint.weight(.semibold))
+                .foregroundStyle(Palette.signalText)
+                .frame(minWidth: Metrics.minTarget, minHeight: Metrics.minTarget)
+                .contentShape(.rect)
+                .buttonStyle(PressableStyle())
+                .disabled(preparing != nil)
+                .opacity(preparing != nil ? 0.45 : 1)
+                .accessibilityIdentifier("action.closeSavedScans")
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
         if let scans {
             if scans.isEmpty {
-                // Not ContentUnavailableView: it doesn't scroll, so at large text sizes in the
-                // half-height sheet its description was cut off.
-                ScrollView {
-                    VStack(spacing: 12) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 44, weight: .regular))
-                            .foregroundStyle(Palette.muted)
-                            .accessibilityHidden(true)
-                        Text(SavedScansCopy.emptyTitle)
-                            .font(Typeface.sectionTitle)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .accessibilityAddTraits(.isHeader)
-                        Text(SavedScansCopy.emptyDetail)
-                            .font(Typeface.hint)
-                            .foregroundStyle(Palette.muted)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 40)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("savedScans.empty")
+                VStack(spacing: 12) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 44, weight: .regular))
+                        .foregroundStyle(Palette.muted)
+                        .accessibilityHidden(true)
+                    Text(SavedScansCopy.emptyTitle)
+                        .font(Typeface.sectionTitle)
+                        .foregroundStyle(Palette.ink)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(SavedScansCopy.emptyDetail)
+                        .font(Typeface.hint)
+                        .foregroundStyle(Palette.muted)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .scrollBounceBehavior(.basedOnSize)
+                .padding(.horizontal, 12)
+                .padding(.top, 48)
+                .frame(maxWidth: .infinity)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("savedScans.empty")
             } else {
-                List {
-                    Section {
-                        ForEach(scans) { scan in
-                            SavedScanRow(scan: scan, isPreparing: preparing == scan.id, isBusy: preparing != nil) {
-                                share(scan)
-                            }
+                Text(SavedScansCopy.intro)
+                    .font(Typeface.hint)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("savedScans.intro")
+                VStack(spacing: 0) {
+                    ForEach(scans) { scan in
+                        if scan.id != scans.first?.id {
+                            Divider().padding(.leading, 58)
                         }
-                    } header: {
-                        Text(SavedScansCopy.intro)
-                            .textCase(nil)
-                            .font(.footnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(Palette.muted)
-                            .padding(.bottom, 4)
-                            .accessibilityIdentifier("savedScans.intro")
-                    } footer: {
-                        Label(SavedScansCopy.shareFooter, systemImage: "lock.fill")
-                            .font(.footnote)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .foregroundStyle(Palette.muted)
-                            .accessibilityIdentifier("savedScans.privacy")
+                        SavedScanRow(scan: scan, isPreparing: preparing == scan.id, isBusy: preparing != nil) {
+                            share(scan)
+                        }
+                        .padding(.vertical, 8)
                     }
                 }
-                .listStyle(.insetGrouped)
+                .padding(.horizontal, 16)
+                .background(Palette.surface, in: .rect(cornerRadius: Metrics.cardRadius, style: .continuous))
+                Label(SavedScansCopy.shareFooter, systemImage: "lock.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Palette.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("savedScans.privacy")
             }
-        } else {
-            // A list read takes milliseconds; a spinner would only flash.
-            Color.clear
         }
+        // Until the first read finishes there is nothing: it takes milliseconds, and a spinner
+        // would only flash.
     }
 
     /// No share sheet is open while this sheet opens, so copies a quit left behind go first.
