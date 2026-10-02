@@ -2,12 +2,11 @@ import Foundation
 
 /// The completed scans a homeowner can still share, read from the scan folders on disk.
 ///
-/// A scan counts by the same rule the cleanup keeps it by (`ScanFolderCleanup`): a folder with a
-/// `scan.zip`, newest bundle first, at most the `defaultKeepCompleted` the cleanup keeps. Listing
-/// the cleanup's own choice means the list never shows an older scan that the next cleanup is
-/// about to delete. On top of that rule a scan is listed only when its bundle is a whole capture
-/// packet (`PacketArchiveCheck`), since a scan quit while its bundle was being written leaves a
-/// partial `scan.zip` behind.
+/// A scan counts by the same rule the cleanup keeps it by (`ScanFolderCleanup`): a folder whose
+/// `scan.zip` is a whole capture packet (`PacketArchiveCheck`), newest bundle first, at most the
+/// `defaultKeepCompleted` the cleanup keeps. Listing the cleanup's own choice means the list never
+/// shows an older scan that the next cleanup is about to delete. Each listed bundle is checked
+/// again here, since it can change between the cleanup's reading and this one.
 ///
 /// The list is a reading of the folders at one moment, and a scan can still go after it. A new
 /// scan's cleanup deletes what its store listed when it was made, a little later and off the main
