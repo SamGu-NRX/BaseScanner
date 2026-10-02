@@ -16,7 +16,8 @@ import Testing
         init(
             packetID: String = UUID().uuidString, appVersion: String = "test (1)", server: LoopbackCaptureAPI? = nil,
             http: any CaptureHTTP = URLSessionCaptureHTTP.ephemeral(timeout: 10), policy: CaptureUploader.Policy = Rig.fast,
-            sleep: @escaping @Sendable (Double) async throws -> Void = { _ in try await Task.sleep(for: .milliseconds(10)) }
+            sleep: @escaping @Sendable (Double) async throws -> Void = { _ in try await Task.sleep(for: .milliseconds(10)) },
+            now: @escaping @Sendable () -> Date = { Date() }
         ) throws {
             self.http = http
             self.server = try server ?? LoopbackCaptureAPI()
@@ -25,7 +26,7 @@ import Testing
             uploader = try CaptureUploader.start(
                 folder: capture.folder, base: self.server.base, http: http,
                 create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: appVersion)),
-                consentedAt: Date(), policy: policy, sleep: sleep)
+                consentedAt: Date(), policy: policy, now: now, sleep: sleep)
         }
 
         static var fast: CaptureUploader.Policy {
@@ -403,10 +404,15 @@ import Testing
     }
 
     /// A server that answers an events poll at once with nothing new is not polled again at once:
-    /// the uploader waits out `minimumPollInterval` first.
+    /// the uploader waits out `minimumPollInterval` first. The clock moves only when the uploader
+    /// sleeps, so every empty answer arrives at once and each wait is the whole interval. The
+    /// terminal answer is fetched without a wait.
     @Test func emptyEventsAnsweredAtOnceArePaced() async throws {
+        let clock = Mutex(Date(timeIntervalSince1970: 1_000_000))
         let sleeps = Mutex<[Double]>([])
-        let rig = try Rig(sleep: { seconds in sleeps.withLock { $0.append(seconds) } })
+        let rig = try Rig(
+            sleep: { seconds in sleeps.withLock { $0.append(seconds) }; clock.withLock { $0 += seconds } },
+            now: { clock.withLock { $0 } })
         defer { rig.cleanUp() }
         rig.server.state.withLock { $0.processingPolls = 3 }
         await rig.uploader.add(try await rig.capture.sealImages(count: 1))
@@ -414,9 +420,57 @@ import Testing
         try #require(await Self.settles(rig.uploader))
 
         #expect(await rig.uploader.snapshot.end == .finished(status: "manual_review"))
-        let waited = sleeps.withLock { $0 }
-        #expect(waited.count == 3)
-        #expect(waited.allSatisfy { $0 > 0 && $0 <= CaptureUploader.Policy().minimumPollInterval })
+        let interval = CaptureUploader.Policy().minimumPollInterval
+        #expect(sleeps.withLock { $0 } == [interval, interval, interval])
+        #expect(rig.server.requests("GET captures/events").count == 4)
+    }
+
+    /// An empty answer the server held for the whole interval needs no further wait.
+    @Test func emptyEventsHeldPastTheIntervalAreNotPaced() async throws {
+        // Every reading of the clock is 3 s after the last, longer than the 2 s interval.
+        let clock = Mutex(Date(timeIntervalSince1970: 1_000_000))
+        let sleeps = Mutex<[Double]>([])
+        let rig = try Rig(
+            sleep: { seconds in sleeps.withLock { $0.append(seconds) } },
+            now: { clock.withLock { $0 += 3; return $0 } })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.processingPolls = 3 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .finished(status: "manual_review"))
+        #expect(sleeps.withLock { $0 }.isEmpty)
+        #expect(rig.server.requests("GET captures/events").count == 4)
+    }
+
+    /// A capture the server lost and the uploader opened again is a new run, so it gets a fresh
+    /// not-ready limit: the old run's reads don't end it.
+    @Test func aRecreatedCaptureStartsANewNotReadyLimit() async throws {
+        var policy = Rig.fast
+        policy.maxNotReadyResults = 3
+        let waits = Mutex(0)
+        // The first process quits during its third wait, after three not-ready reads.
+        let rig = try Rig(policy: policy, sleep: { _ in
+            let n = waits.withLock { $0 += 1; return $0 }
+            if n >= 3 { throw CancellationError() }
+        })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.outcomelessResults = 100 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        try #require(await Self.settles(rig.uploader))
+        #expect(try CaptureUploadState.load(from: CaptureUploader.stateURL(in: rig.capture.folder)).notReadyReads == 3)
+
+        // The server forgets every capture (a redeploy with in-memory state). The next run has
+        // one not-ready read before its answer.
+        rig.server.state.withLock { $0.captures = [:]; $0.byPacket = [:]; $0.outcomelessResults = 1 }
+        let resumed = try #require(try CaptureUploader.resume(
+            folder: rig.capture.folder, base: rig.server.base, http: rig.http, policy: policy, sleep: { _ in }))
+        await resumed.kick()
+        try #require(await Self.settles(resumed))
+        #expect(await resumed.snapshot.end == .finished(status: "manual_review"))
+        #expect(rig.server.requests("POST captures").count == 2)
     }
 
     /// `failed` ends a capture without an answer, so its outcomeless result is final at once.

@@ -574,7 +574,12 @@ public actor CaptureUploader {
         state.captureID = nil
         state.finalized = nil
         state.eventCursor = 0
-        for path in state.files.keys { state.files[path]?.phase = .queued }
+        // A new server capture is a new run: the old one's limits don't carry over.
+        state.notReadyReads = nil
+        for path in state.files.keys {
+            state.files[path]?.phase = .queued
+            state.files[path]?.unacknowledged = nil
+        }
         persist()
         return true
     }
