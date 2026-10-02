@@ -315,15 +315,15 @@ import Testing
 
     /// A request that asks for more than one already raised is a new view, even when it mostly
     /// overlaps: a longer stretch (2 to 9 ft after 2 to 8 ft, 6/7 of it already asked for) or
-    /// ground farther out (5.10 ft after 4.83 ft, 0.08 m more). An edge moved by less than the
-    /// 0.01 ft progress reads as rounding, with the same reach, is the same view. This holds for
-    /// earlier requests, skipped ones and items in the same answer.
+    /// ground farther out (5.10 ft after 4.83 ft, 0.08 m more). A span inside the earlier one, with
+    /// the same reach, is the same view. This holds for earlier requests, skipped ones and items
+    /// in the same answer.
     @Test func aRequestAskingForMoreIsANewView() throws {
         let planner = GapPlanner()
         let first = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":4.83,"message":"m"}"#)
         let longer = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,9.0],"out_ft":4.83,"message":"m"}"#)
         let farther = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":5.10,"message":"m"}"#)
-        let jitter = try item(#"{"kind":"band","band":"ground","span_ft":[1.995,8.005],"out_ft":4.83,"message":"m"}"#)
+        let jitter = try item(#"{"kind":"band","band":"ground","span_ft":[2.005,7.995],"out_ft":4.83,"message":"m"}"#)
         let asked = try #require(planner.plan(for: first, leftEnd: -3, rightEnd: 4))
 
         // After the first was raised, or skipped.
@@ -344,20 +344,12 @@ import Testing
             in: [farther, first], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [farther])
     }
 
-    /// #49: a request stays available exactly when it asks for evidence progress still calls
-    /// missing. One edge of the server's exact span_ft runs outward past an asked or skipped
-    /// request [2.0, 8.0] (or the item before it in the same answer) by 0.009, 0.010, 0.011 or
-    /// 0.09 ft. The boundaries are doubles, as in progress and on the server: 8.01 - 8.0 is
-    /// 0.0099999999999998, under the 0.01 ft counted as missing, while 2.0 - 1.99 is
-    /// 0.0100000000000000, at it. So 0.010 reads as rounding on the high edge and as missing on
-    /// the low edge, for progress and for this rule alike. Each case is checked against its
-    /// explicit expectation and against `GapPlanner.fraction` measuring the new request over
-    /// exactly the old one's span.
-    @Test(arguments: [
-        ("[2.0,8.009]", false), ("[2.0,8.01]", false), ("[2.0,8.011]", true), ("[2.0,8.09]", true),
-        ("[1.991,8.0]", false), ("[1.99,8.0]", true), ("[1.989,8.0]", true), ("[1.91,8.0]", true),
-    ])
-    func aRequestStaysAvailableExactlyWhenProgressStillCallsItMissing(spanFt: String, newView: Bool) throws {
+    /// #49: a request whose span runs past an asked or skipped one (or the item before it in the
+    /// same answer) by any amount is a new view: 0.009, 0.010, 0.011 or 0.09 ft past either edge,
+    /// with the server's exact span_ft. Spans are compared exactly; rounding tolerance is for
+    /// progress against real coverage, not for comparing two requests.
+    @Test(arguments: ["[2.0,8.009]", "[2.0,8.01]", "[2.0,8.011]", "[2.0,8.09]", "[1.991,8.0]", "[1.99,8.0]", "[1.989,8.0]", "[1.91,8.0]"])
+    func aRequestRunningPastAnEarlierOneIsANewView(spanFt: String) throws {
         let planner = GapPlanner()
         let old = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":4.833334,"message":"m"}"#)
         let oldPlan = try #require(planner.plan(for: old, leftEnd: -3, rightEnd: 4))
@@ -365,20 +357,51 @@ import Testing
         let plan = try #require(planner.plan(for: extended, leftEnd: -3, rightEnd: 4))
         let span = try #require(extended.spanFt)
         #expect(plan.requestedSpanFt == min(span.x, span.y)...max(span.x, span.y), "the request keeps the server's exact span_ft")
-        // Progress over exactly the old request's span: below 1 means it still calls part missing.
-        let feetToMeters = 1 / SceneUnits.feetPerMeter
-        let oldSpan = Float(2.0 * feetToMeters)...Float(8.0 * feetToMeters)
-        let progressCallsMissing = GapPlanner.fraction(of: plan.requestedSpanInFeet, coveredBy: [oldSpan]) < 1
-        #expect(progressCallsMissing == newView, "progress for \(spanFt)")
-        #expect(plan.asksForSameView(as: oldPlan) == !newView, "same view for \(spanFt)")
+        #expect(!plan.asksForSameView(as: oldPlan), "\(spanFt)")
         let afterAsked = planner.serverRequests(in: [extended], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [oldPlan], skipped: [], limit: 5)
         let afterSkipped = planner.serverRequests(in: [extended], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [oldPlan], skipped: [oldPlan], limit: 5)
         let oneAnswer = planner.serverRequests(in: [old, extended], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5)
-        #expect(afterAsked.map { $0.item } == (newView ? [extended] : []), "after asked for \(spanFt)")
-        #expect(afterSkipped.map { $0.item } == (newView ? [extended] : []), "after skipped for \(spanFt)")
-        #expect(oneAnswer.map { $0.item } == (newView ? [old, extended] : [old]), "one answer for \(spanFt)")
+        #expect(afterAsked.map { $0.item } == [extended], "after asked for \(spanFt)")
+        #expect(afterSkipped.map { $0.item } == [extended], "after skipped for \(spanFt)")
+        #expect(oneAnswer.map { $0.item } == [old, extended], "one answer for \(spanFt)")
         // The limit and the homeowner's stop are unchanged: no room left raises nothing.
         #expect(planner.serverRequests(in: [extended], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [oldPlan], skipped: [], limit: 0).isEmpty)
+    }
+
+    /// Root's review of d837c4e4: the rounding allowance must not stack. Coverage seen to exactly
+    /// [2, 8] ft meets [2, 8.0085] ft, since progress reads its 0.0085 ft tail as rounding. The
+    /// next request, [2, 8.0175] ft, runs only 0.009 ft past that one, but 0.0175 ft past the
+    /// coverage: progress is about 0.997, so it stays available.
+    @Test func aRoundingAllowanceUsedOnceIsNotUsedAgain() throws {
+        let planner = GapPlanner()
+        let old = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0085],"out_ft":4.833334,"message":"m"}"#)
+        let next = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0175],"out_ft":4.833334,"message":"m"}"#)
+        let oldPlan = try #require(planner.plan(for: old, leftEnd: -3, rightEnd: 4))
+        let nextPlan = try #require(planner.plan(for: next, leftEnd: -3, rightEnd: 4))
+        let feetToMeters = 1 / SceneUnits.feetPerMeter
+        let seen = Float(2.0 * feetToMeters)...Float(8.0 * feetToMeters)
+        #expect(GapPlanner.fraction(of: oldPlan.requestedSpanInFeet, coveredBy: [seen]) == 1)
+        let progress = GapPlanner.fraction(of: nextPlan.requestedSpanInFeet, coveredBy: [seen])
+        #expect(abs(progress - (1 - 0.0175 / 6.0175)) < 1e-9, "progress \(progress)")
+        #expect(!nextPlan.asksForSameView(as: oldPlan))
+        for skipped in [[GapPlan](), [oldPlan]] {
+            #expect(planner.serverRequests(in: [next], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [oldPlan], skipped: skipped, limit: 5).map { $0.item } == [next])
+        }
+    }
+
+    /// Equal and contained requests stay the same view, after asked, after skipped and within one
+    /// answer, including an edge moved inward by 0.009 ft.
+    @Test func anEqualOrContainedRequestIsTheSameView() throws {
+        let planner = GapPlanner()
+        let old = try item(#"{"kind":"band","band":"ground","span_ft":[2.0,8.0],"out_ft":4.833334,"message":"m"}"#)
+        let oldPlan = try #require(planner.plan(for: old, leftEnd: -3, rightEnd: 4))
+        for json in ["[2.0,8.0]", "[2.009,8.0]", "[2.0,7.991]", "[3.0,7.0]"] {
+            let inside = try item(#"{"kind":"band","band":"ground","span_ft":\#(json),"out_ft":4.833334,"message":"m"}"#)
+            let plan = try #require(planner.plan(for: inside, leftEnd: -3, rightEnd: 4))
+            #expect(plan.asksForSameView(as: oldPlan), "\(json)")
+            #expect(planner.serverRequests(in: [inside], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [oldPlan], skipped: [oldPlan], limit: 5).isEmpty, "\(json)")
+            #expect(planner.serverRequests(in: [old, inside], leftEnd: -3, rightEnd: 4, limitEnds: [], asked: [], skipped: [], limit: 5).map { $0.item } == [old], "\(json)")
+        }
     }
 
     /// #49: a reach is compared exactly, as progress compares it. Any reach above the old one is

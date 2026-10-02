@@ -296,9 +296,8 @@ public struct GapPlanner: Sendable {
 
     /// Whether an unseen stretch from `start` to `end`, feet, counts as missing rather than as
     /// rounding: at least the server's COVERAGE_TOLERANCE_FT, 0.01 ft (server/scene.py `missing`
-    /// at t3/server 930e8e5). Progress (`fraction`) and the same-view rule
-    /// (`GapPlan.asksForSameView`) both decide by this one comparison, so a request stays
-    /// available exactly when it asks for evidence progress would still call missing.
+    /// at t3/server 930e8e5). Only progress applies it, against the coverage actually seen; the
+    /// same-view rule (`GapPlan.asksForSameView`) compares requests exactly.
     static func countsAsMissing(from start: Double, to end: Double) -> Bool {
         end - start >= 0.01
     }
@@ -447,11 +446,14 @@ extension GapPlan {
         return requestedOutFt ?? Double(meters) * SceneUnits.feetPerMeter
     }
 
-    /// Whether this request asks for no evidence beyond what `other` asks for, measured as
-    /// progress measures it: the same band and kind of need, a reach no higher than the other's
-    /// (exactly, as progress compares a reach), and no edge of the span running past the other's
-    /// far enough that progress would call the difference missing
-    /// (`GapPlanner.countsAsMissing`, 0.01 ft). An equal or contained request is the same view:
+    /// Whether this request asks for no evidence beyond what `other` asks for: the same band and
+    /// kind of need, a reach no higher than the other's, and a span inside the other's, all
+    /// compared exactly in the requested feet progress measures. Rounding tolerance belongs to
+    /// progress alone, against the coverage actually seen: allowing it here too stacked a second
+    /// allowance on one already used, so 2...8.0175 ft after 2...8.0085 ft (met by coverage to
+    /// 8.0 ft) was dropped though progress still found 0.0175 ft missing. The server lists only
+    /// what its own reading of the uploaded scene still lacks, so an exactly contained request
+    /// asks for nothing new. An equal or contained request is the same view:
     /// after "I can't get there" the skipped stretch goes to review, and the next answer can
     /// come back as 2.41...7.9 ft after 2.4...7.9 ft. One that asks for more is a new view, even
     /// when it mostly overlaps: 2...8.09 ft after 2...8 ft, or ground out to 4.833335 ft after
@@ -468,8 +470,7 @@ extension GapPlan {
         }
         let mine = requestedSpanInFeet
         let theirs = other.requestedSpanInFeet
-        return !GapPlanner.countsAsMissing(from: mine.lowerBound, to: theirs.lowerBound)
-            && !GapPlanner.countsAsMissing(from: theirs.upperBound, to: mine.upperBound)
+        return mine.lowerBound >= theirs.lowerBound && mine.upperBound <= theirs.upperBound
     }
 }
 
