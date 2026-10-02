@@ -241,6 +241,24 @@ import Testing
         #expect(files.fileExists(atPath: folder.appending(path: ScanFolderCleanup.bundleName).path))
     }
 
+    /// At launch, copies an earlier run left go, and one made since launch stays.
+    @Test func launchRemovesOnlyCopiesMadeBeforeIt() throws {
+        defer { cleanUp() }
+        try scan("one")
+        let staging = SavedScanStaging(root: root.appending(path: "share"))
+        let listed = try #require(SavedScanCatalog(root: root).scans().first)
+        let left = try staging.stage(listed)
+        try files.setAttributes([.creationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: left.deletingLastPathComponent().path)
+        let launch = Date(timeIntervalSinceNow: -60)
+        let current = try staging.stage(listed)
+
+        staging.removeCopies(madeBefore: launch)
+        #expect(!files.fileExists(atPath: left.path))
+        #expect(files.fileExists(atPath: current.path))
+        #expect(files.fileExists(atPath: listed.archive.path))
+        SavedScanStaging(root: root.appending(path: "absent")).removeCopies(madeBefore: launch)
+    }
+
     // MARK: Names
 
     @Test func theShareNameSaysWhenAndWhetherPractice() {

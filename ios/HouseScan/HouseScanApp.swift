@@ -13,6 +13,11 @@ struct HouseScanApp: App {
             }
             // Compiles the live fog's shaders in the background long before the walk needs them.
             .task { LiveFogSupport.shared.prepare() }
+            // Share copies an earlier run left behind (`SavedScanStaging.removeCopies`).
+            .task {
+                let launch = Date(), staging = SavedScansLocation.staging
+                await Task.detached(priority: .utility) { staging.removeCopies(madeBefore: launch) }.value
+            }
         }
     }
 }

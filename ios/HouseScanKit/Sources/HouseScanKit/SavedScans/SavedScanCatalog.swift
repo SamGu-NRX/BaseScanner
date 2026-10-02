@@ -131,4 +131,16 @@ public struct SavedScanStaging: Sendable {
     public func removeAll() {
         try? FileManager.default.removeItem(at: root)
     }
+
+    /// Deletes the copies made before `date`, leaving any made since. At launch, with `date` the
+    /// launch time, that is every copy an earlier run left (a share sheet open when the app was
+    /// killed never reports back), while a share started right after launch keeps its copy.
+    public func removeCopies(madeBefore date: Date) {
+        let files = FileManager.default
+        guard let folders = try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey]) else { return }
+        for folder in folders {
+            let made = (try? folder.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
+            if made < date { try? files.removeItem(at: folder) }
+        }
+    }
 }
