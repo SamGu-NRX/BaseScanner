@@ -553,7 +553,7 @@ private struct MissingList: View {
                         .buttonStyle(TextActionStyle())
                         .accessibilityIdentifier("action.captureMissing")
                     } else {
-                        Label("An installer will check this", systemImage: "person.fill")
+                        Label(ScanCopy.needsInstaller, systemImage: "person.fill")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Palette.muted)
                     }

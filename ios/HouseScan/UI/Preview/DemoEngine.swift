@@ -1135,7 +1135,7 @@ final class DemoEngine: ScanActions {
     /// The offline sample result. Placeholder rules, so the decision is manual review.
     static let reviewSample = ResultPresentation(
         decision: .manualReview,
-        summary: "A spot 3 ft right of your meter fits, but it's close to a window, so an installer will confirm it.",
+        summary: "A spot 3 ft right of your meter fits, but it's close to a window, so it needs an installer's review.",
         policyApproved: false,
         spot: BatterySpot(span: 0.55...1.34, depth: 0.56, height: 1.1, offsetFromWall: 0.03),
         cableRoute: [SIMD2(0.16, 1.45), SIMD2(0.95, 1.45), SIMD2(0.95, 1.1)],
