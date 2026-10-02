@@ -25,6 +25,7 @@ dir=${PWD#"$TREE"/}
 echo "$dir $(basename "$0") $*" >>"$LOG"
 # The log joins arguments with spaces, so record -destination's value on its own line to show
 # whether the Makefile kept it as one argument.
+[ -n "${HOUSESCAN_REQUIRE_UPSTREAM:-}" ] && echo "$HOUSESCAN_REQUIRE_UPSTREAM" >>"$LOG.require"
 prev=
 for arg in "$@"; do
 	[ "$prev" = -destination ] && echo "$arg" >>"$LOG.destination"
@@ -47,7 +48,7 @@ folder() {
 # Makes a tree with the root Makefile and the named experiment suites. Every suite but scoring
 # gets a stub Makefile with the target the root calls; scoring gets only its pyproject.toml.
 make_tree() {
-	rm -rf "$TREE" "$LOG" "$LOG.destination"
+	rm -rf "$TREE" "$LOG" "$LOG.destination" "$LOG.require"
 	mkdir -p "$TREE/server" "$TREE/web"
 	cp "$root/Makefile" "$TREE/"
 	: >"$LOG"
@@ -135,6 +136,15 @@ expect_ios ". swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-e
 $ios_build" ios
 expect_ios "$ios_ui platform=iOS Simulator,name=iPhone 17 -only-testing:HouseScanUITests -skip-testing:$audit test" ios-ui
 expect_ios "$ios_ui id=SIM-UDID -only-testing:HouseScanUITests test" ios-ui FULL_UI=1 IOS_DESTINATION=id=SIM-UDID
+# The package tests require the server contract only when asked, as CI does.
+make_tree
+run_make ios-package || fail "make ios-package exited non-zero"
+[ -e "$LOG.require" ] && fail "make ios-package set HOUSESCAN_REQUIRE_UPSTREAM unasked"
+make_tree
+run_make ios REQUIRE_UPSTREAM=1 || fail "make ios REQUIRE_UPSTREAM=1 exited non-zero"
+[ "$(cat "$LOG.require" 2>/dev/null)" = 1 ] || fail "make ios REQUIRE_UPSTREAM=1 did not set HOUSESCAN_REQUIRE_UPSTREAM=1"
+grep -q '^\. swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors$' "$LOG" ||
+	fail "make ios REQUIRE_UPSTREAM=1 changed the package test command"
 # A destination with spaces and commas must reach xcodebuild as one argument.
 for destination in "platform=iOS Simulator,name=iPhone 17" "platform=iOS Simulator,name=iPhone 17 Pro,OS=26.5"; do
 	make_tree

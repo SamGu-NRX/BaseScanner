@@ -49,10 +49,12 @@ ios:
 	$(MAKE) ios-package
 	$(MAKE) ios-build
 
-# CI sets HOUSESCAN_REQUIRE_UPSTREAM=1 after fetching the server contract. Here the schema drift
-# tests compare against server/ when the checkout has it and skip otherwise.
+# The schema drift tests compare the vendored server contract with server/schemas, or else with
+# origin/t3/server, and skip when neither is there, so a green run can leave drift unchecked.
+# CI fetches the contract and sets HOUSESCAN_REQUIRE_UPSTREAM=1, which fails instead of skipping;
+# `make ios REQUIRE_UPSTREAM=1` does the same here.
 ios-package:
-	swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
+	$(if $(filter 1,$(REQUIRE_UPSTREAM)),HOUSESCAN_REQUIRE_UPSTREAM=1 )swift test --package-path ios/HouseScanKit -Xswiftc -warnings-as-errors
 
 ios-build:
 	xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan -configuration Debug \

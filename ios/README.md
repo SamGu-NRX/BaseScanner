@@ -70,7 +70,7 @@ xcodebuild -project ios/HouseScan.xcodeproj -scheme HouseScan \
   -destination "platform=iOS Simulator,name=iPhone 17" -only-testing:HouseScanUITests test
 ```
 
-`make ios` runs the package tests, then the build, with no Simulator. `make ios-ui` runs the UI tests as pull requests do in CI, skipping the every-state accessibility audit that takes about 10 minutes. `make ios-ui FULL_UI=1` includes it, and `IOS_DESTINATION=id=<UDID>` picks a Simulator. `make check` runs `make ios` but not `make ios-ui`.
+`make ios` runs the package tests, then the build, with no Simulator. `make ios-ui` runs the UI tests as pull requests do in CI, skipping the every-state accessibility audit that takes about 10 minutes. `make ios-ui FULL_UI=1` includes it, and `IOS_DESTINATION=id=<UDID>` picks a Simulator. `make check` runs `make ios` but not `make ios-ui`. The schema drift tests skip, rather than pass, when neither `server/schemas` nor `origin/t3/server` is in the checkout; `make ios REQUIRE_UPSTREAM=1` fails in that case, as CI does.
 
 To run the flow on a local recording, set `TEST_RUNNER_HOUSESCAN_REPLAY=<session folder>` for that `xcodebuild` command. Keep such recordings and their screenshots out of git.
 
