@@ -57,6 +57,52 @@ import Testing
         #expect(!rule.awaitingNewAnswer)
     }
 
+    @Test(arguments: GroundFreshness.Screen.allCases, [false, true])
+    func packagingAndAwaitingMatrix(screen: GroundFreshness.Screen, packaged: Bool) {
+        for awaiting in [false, true] {
+            for change in GroundFreshness.Change.allCases {
+                var rule = awaiting ? Self.afterOneWithdrawal() : GroundFreshness()
+                let expected: GroundFreshness.Action
+                if change == .anchorCorrection || screen == .noAnswer || screen == .stopped {
+                    expected = .keep
+                } else if awaiting {
+                    expected = .fail
+                } else if screen == .sending && !packaged {
+                    expected = .keep
+                } else {
+                    expected = .sendAgain
+                }
+                #expect(rule.after(change, on: screen, scenePackaged: packaged) == expected)
+                #expect(rule.awaitingNewAnswer == (awaiting || expected == .sendAgain))
+            }
+        }
+    }
+
+    /// A failed or refused upload keeps its own screen: an offline failure keeps its reason, and
+    /// a refusal keeps "Back to review" rather than offering to resend a refused scan. A resend's
+    /// failure stays protected, so its "Try again" still uses no second resend.
+    @Test(arguments: [false, true])
+    func aStoppedUploadKeepsItsFailureAndItsResendState(packaged: Bool) {
+        var first = GroundFreshness()
+        #expect(first.after(.ground, on: .stopped, scenePackaged: packaged) == .keep)
+        #expect(first == GroundFreshness())
+
+        var resend = Self.afterOneWithdrawal()
+        #expect(resend.after(.ground, on: .stopped, scenePackaged: packaged) == .keep)
+        #expect(resend == Self.afterOneWithdrawal())
+        #expect(resend.after(.ground, on: .sending, scenePackaged: true) == .fail)
+    }
+
+    @Test func aPackagedFirstUploadUsesOneResendUntilAnAnswerIsShown() {
+        var rule = GroundFreshness()
+        #expect(rule.after(.ground, on: .sending, scenePackaged: true) == .sendAgain)
+        #expect(rule.awaitingNewAnswer)
+        #expect(rule.after(.ground, on: .sending, scenePackaged: false) == .fail)
+        #expect(rule.awaitingNewAnswer)
+        rule.answerShown()
+        #expect(rule.after(.ground, on: .sending, scenePackaged: true) == .sendAgain)
+    }
+
     @Test(arguments: answerScreens)
     func anAnswerShownStartsANewResend(screen: GroundFreshness.Screen) {
         var rule = Self.afterOneWithdrawal()

@@ -17,8 +17,9 @@ import Foundation
 /// - Moving fast, turning fast and blur each show after their own spell of frames that have
 ///   them, and clear a moment after the last such frame. A spell that ends before it shows says
 ///   nothing.
-/// - Walking too fast is not raised while the homeowner is asked to stand and aim (`aiming`):
-///   the motion there is turning the phone, and "walk slower" is the wrong advice.
+/// - Walking too fast is not raised, or counted toward a spell, while the homeowner is asked to
+///   stand and aim (`aiming`): the motion there is turning the phone, and "walk slower" is the
+///   wrong advice.
 ///
 /// Every threshold is a guess to try on a phone at night, not measured.
 public struct CoachingDebouncer: Sendable {
@@ -118,6 +119,9 @@ public struct CoachingDebouncer: Sendable {
         lastTime = time
         updateDarkness(time: time, meanLuma: meanLuma)
         updateMotion(time: time, skip: skip)
+        // Walking speed isn't coached while aiming, so a spell there mustn't build up either: it
+        // would say "Slow down" on the first frames of the next walking step, however calm.
+        if aiming { spells[.movingFast] = nil }
         if darkSince != nil { return persistentDark == .showing ? .persistentlyDark : .tooDark }
         if isShown(.turningFast, at: time) { return .turningFast }
         if !aiming, isShown(.movingFast, at: time) { return .movingFast }

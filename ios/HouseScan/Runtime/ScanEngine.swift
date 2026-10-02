@@ -190,6 +190,8 @@ final class ScanEngine {
     // Upload
     let resultClient: any ResultClient
     private var uploadTask: Task<Void, Never>?
+    /// The current upload's scene has fixed its ground; keep this true through answer pacing.
+    private var scenePackaged = false
     private(set) var placement: PlacementResult?
     /// Whether a ground change took the answer down and no answer has been shown since
     /// (`answerAfter(_:)`).
@@ -384,7 +386,7 @@ final class ScanEngine {
         }
     }
 
-    /// The watch behind `-injectGroundRise`, started at the first result of a scan.
+    /// The watch behind `-injectGroundRise`, started at the first upload of a scan.
     private var groundInjection: Task<Void, Never>?
 
     /// With `-injectGroundRise`, feeds the ground refine a detected floor above the current
@@ -1207,9 +1209,9 @@ final class ScanEngine {
     }
 
     /// "I can't get there" or an answered end question settled the current task: choose the next
-    /// one now.
+    /// one now. Stretches that stalled earlier stay deferred (`GuidancePlanner.settleCurrentTask`).
     func resetGuidanceAfterSkip(camera: CameraFrame, time: Double) {
-        planner.reset()
+        planner.settleCurrentTask()
         updateGuidance(camera: camera, time: time)
     }
 
@@ -1576,6 +1578,9 @@ final class ScanEngine {
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
         live?.restart()
         coverage = nil
+        // The dot field lives in the old world frame too; kept, new depth would fuse into it.
+        liveDots.reset()
+        state.liveDots = .empty
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
@@ -1668,13 +1673,17 @@ final class ScanEngine {
     /// longer has (`GroundFreshness`), before `publishWall` can draw it again on the new one.
     private func answerAfter(_ change: GroundFreshness.Change) {
         let screen: GroundFreshness.Screen = switch state.phase {
-        case .uploading: .sending
+        case .uploading:
+            switch state.upload {
+            case .failed, .rejected: .stopped
+            case .idle, .packaging, .uploading, .analyzing, .done: .sending
+            }
         case .spotConfirm: .spotCheck
         case .result: .result
         case .resultAR: .resultInCamera
         default: .noAnswer
         }
-        switch groundFreshness.after(change, on: screen) {
+        switch groundFreshness.after(change, on: screen, scenePackaged: scenePackaged) {
         case .keep:
             return
         case .sendAgain:
@@ -1989,7 +1998,9 @@ final class ScanEngine {
     // MARK: Upload
 
     func startUpload() {
+        scenePackaged = false
         go(.uploading)
+        injectGroundForTest()
         uploadTask?.cancel()
         uploadTask = Task { await upload() }
     }
@@ -2006,28 +2017,43 @@ final class ScanEngine {
             try? await Task.sleep(for: .milliseconds(50))
         }
         guard scan == generation, !Task.isCancelled else { return }
-        // LiDAR phones: the mesh ARKit built, measured for what faces the wall and what is
-        // overhead, off the main actor since ray casts over a whole mesh take a while.
-        let meshSnapshot = live?.meshSnapshot()
-        var measured = MeshMeasurements()
-        if let mesh = meshSnapshot?.mesh, let map = coverage {
-            let wall = map.wall
-            let span = Self.exportSpan(map)
-            measured = await Task.detached(priority: .userInitiated) { Self.measure(mesh, wall: wall, over: span) }.value
-            guard scan == generation, !Task.isCancelled else { return }
-            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(measured.facing.count) facing and \(measured.overheads.count) overhead measurements")
-        }
-        let scene: Data
+        // The scene, the wall in world meters, the LiDAR mesh and the packet's inputs, read in
+        // this one turn (`captureUpload`). From here the upload's ground is fixed: a ground change
+        // while the mesh is measured withdraws this upload and sends again, once, and an anchor
+        // correction leaves it as captured (`GroundFreshness`, `answerAfter`).
+        let capture: UploadPackaging<PacketInputs>
         do {
-            scene = try sceneJSON(mesh: measured)
+            capture = try captureUpload()
         } catch {
             RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
             state.upload = UploadFailure.packaging(error)
             updateRecording()
             return
         }
+        scenePackaged = true
+        // LiDAR phones: the mesh measured against the captured wall for what faces it and what is
+        // overhead, off the main actor, then the captured scene serialized with those measurements
+        // and the same bytes given to the captured packet. A withdrawn, cancelled or reset upload
+        // comes back with nothing, so it schedules no bundle and no submit.
+        let packaged: UploadPackaging<PacketInputs>.Packaged
+        do {
+            guard let done = try await capture.package(
+                attachScene: { $0.scene = $1 },
+                isCurrent: { scan == generation && !Task.isCancelled }
+            ) else { return }
+            packaged = done
+        } catch {
+            RuntimeLog.engine.error("scene.json export failed: \(String(describing: error), privacy: .public)")
+            state.upload = UploadFailure.packaging(error)
+            updateRecording()
+            return
+        }
+        if let mesh = capture.mesh {
+            RuntimeLog.engine.info("mesh: \(mesh.vertices.count) vertices, \(mesh.indices.count / 3) triangles; \(packaged.measurement.facing.count) facing and \(packaged.measurement.overheads.count) overhead measurements")
+        }
+        let scene = packaged.scene
         writeScanStamp(answer: placement)
-        saveBundle(scene: scene, mesh: meshSnapshot)
+        saveBundle(packaged.packet)
         guard !Task.isCancelled else { return }
         state.upload = .uploading(fraction: 0)
         analyzingSince = nil
@@ -2054,7 +2080,7 @@ final class ScanEngine {
                 guard scan == generation, state.phase == .uploading, !Task.isCancelled else { return }
             }
             placement = result
-            noteExchange(scene: scene, answer: data)
+            noteExchange(scene: scene, answer: data, packet: packaged.packet)
             writeScanStamp(answer: result)
             state.result = presentation(of: result, isSample: resultClient.isSample)
             state.followUps = automaticGapQueue(result).count
@@ -2155,13 +2181,14 @@ final class ScanEngine {
     /// packet, and the upload never waits for it or fails because of it. The zip is rewritten in
     /// place, so it is not offered while a write is under way, and writes run one after another:
     /// a retry's write waits for the last one, and a write already superseded is skipped.
-    func saveBundle(scene: Data, mesh: LiveCapture.MeshSnapshot?) {
+    /// `inputs` were captured with the upload's scene (`captureUpload`); this rereads nothing.
+    func saveBundle(_ inputs: PacketInputs?) {
         state.shareableScan = nil
         bundleSerial += 1
         let serial = bundleSerial
         let scan = generation
         let previous = bundleTask
-        guard let inputs = packetInputs(scene: scene, mesh: mesh) else {
+        guard let inputs else {
             RuntimeLog.engine.error("scan bundle not written: no wall")
             return
         }

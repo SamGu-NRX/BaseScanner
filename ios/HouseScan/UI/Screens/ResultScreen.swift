@@ -10,6 +10,7 @@ struct ResultScreen: View {
 
     @State private var revealed = false
     @State private var detailsExpanded = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let result = state.result {
@@ -31,6 +32,9 @@ struct ResultScreen: View {
             VStack(alignment: .leading, spacing: 0) {
                 diorama(result)
                 VStack(alignment: .leading, spacing: 20) {
+                    if typeSize.isAccessibilitySize {
+                        badges(result)
+                    }
                     AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
                     if result.spot != nil, state.spotCheck?.answer == .somethingThere {
                         Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
@@ -68,28 +72,37 @@ struct ResultScreen: View {
             } else {
                 Palette.canvas
             }
-            VStack(alignment: .leading, spacing: 6) {
-                ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
-                if result.isSample {
-                    // The same quiet pill as ModeBadge: the answer, not the test mode, is the
-                    // loudest thing on this screen.
-                    // One Text with the flask inline, built as ModeBadge is. As a Label with
-                    // fixedSize, the audit reported its Dynamic Type as partially unsupported.
-                    Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Palette.chalk)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Palette.ink.opacity(0.7), in: .capsule)
-                        .accessibilityLabel("Sample result, not from the server")
-                        .accessibilityIdentifier("result.sampleBadge")
-                }
+            if !typeSize.isAccessibilitySize {
+                badges(result)
+                    .padding(14)
             }
-            .padding(14)
         }
         .frame(height: 340)
         .clipShape(.rect(bottomLeadingRadius: 28, bottomTrailingRadius: 28, style: .continuous))
         .ignoresSafeArea(edges: .top)
+    }
+
+    /// Over the model at the default sizes. At the accessibility sizes the two pills covered
+    /// most of it, so they sit above the answer card instead.
+    private func badges(_ result: ResultPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
+            if result.isSample {
+                // The same quiet pill as ModeBadge: the answer, not the test mode, is the
+                // loudest thing on this screen.
+                // One Text with the flask inline, built as ModeBadge is. As a Label with
+                // fixedSize, the audit reported its Dynamic Type as partially unsupported.
+                Text("\(Image(systemName: "flask.fill")) Sample result, not from the server")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(Palette.chalk)
+                    .padding(.horizontal, typeSize.isAccessibilitySize ? 14 : 8)
+                    .padding(.vertical, typeSize.isAccessibilitySize ? 8 : 4)
+                    // Wrapped onto two lines, a capsule's round ends cut into the text's corners.
+                    .background(Palette.ink.opacity(0.7), in: typeSize.isAccessibilitySize ? AnyShape(.rect(cornerRadius: 16, style: .continuous)) : AnyShape(.capsule))
+                    .accessibilityLabel("Sample result, not from the server")
+                    .accessibilityIdentifier("result.sampleBadge")
+            }
+        }
     }
 
     /// Plain small print, never boxes: none of it changes what the homeowner does next.
@@ -540,7 +553,7 @@ private struct MissingList: View {
                         .buttonStyle(TextActionStyle())
                         .accessibilityIdentifier("action.captureMissing")
                     } else {
-                        Label("An installer will check this", systemImage: "person.fill")
+                        Label(ScanCopy.needsInstaller, systemImage: "person.fill")
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(Palette.muted)
                     }

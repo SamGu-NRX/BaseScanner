@@ -50,7 +50,25 @@ final class FullFlowUITests: XCTestCase {
     @MainActor
     func testFullFlowFromReplay() throws {
         let replay = Self.environment["HOUSESCAN_REPLAY"].flatMap { $0.isEmpty ? nil : $0 } ?? Self.fixture
-        try runFlow(replay: replay)
+        // A real server's answer can be any decision; the bundled sample is always a manual review.
+        let sample = Self.environment["HOUSESCAN_SERVER_URL"]?.isEmpty ?? true
+        try runFlow(replay: replay) { app, phase in
+            if sample, phase == "result" { Self.assertInstallerReviewCopy(app) }
+        }
+    }
+
+    /// The sample result needs a person to settle it (`SampleResult.json`). The app only shows
+    /// the answer and contacts nobody, so its words say what the result needs, never that an
+    /// installer will confirm or review it.
+    @MainActor
+    private static func assertInstallerReviewCopy(_ app: XCUIApplication) {
+        func label(_ identifier: String) -> String? {
+            let element = app.descendants(matching: .any)[identifier].firstMatch
+            return element.exists ? element.label : nil
+        }
+        XCTAssertEqual(label("result.headline"), "Needs an installer's review")
+        XCTAssertEqual(label("result.installerConfirms"), "Before any battery goes in, an installer has to confirm where it goes on site.")
+        XCTAssertEqual(label("result.rulesNotFinal"), "The placement rules aren't final yet, so every result needs an installer's review for now.")
     }
 
     /// The flow from the LiDAR fixture. Depth must show the bin in front of the wall: the wall map

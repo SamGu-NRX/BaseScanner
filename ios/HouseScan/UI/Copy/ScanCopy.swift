@@ -6,6 +6,27 @@ import HouseScanKit
 struct Instruction: Hashable {
     var title: String
     var detail: String?
+    /// Coaching riding along with the task (`ScanCopy.withCoaching`), such as "Slow down.". Kept
+    /// apart from `detail` so a card that folds its detail away at the largest text sizes still
+    /// shows it (`InstructionCard.foldsDetail`).
+    var note: String? = nil
+    /// The card's words when it folds at the largest text sizes, where the title only names the
+    /// situation and the detail holds what to do: the doing leads, and the situation moves under
+    /// Details. Nil keeps the title and folds the detail.
+    var folded: Folded? = nil
+
+    struct Folded: Hashable {
+        /// What to do now, in place of `title`.
+        var title: String
+        /// The situation and where it is, under Details in place of `detail`.
+        var detail: String
+    }
+
+    /// The second line as one text: the detail, then the note on a line of its own.
+    var detailAndNote: String? {
+        let lines = [detail, note].compactMap(\.self)
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
+    }
 }
 
 /// All user-facing words for engine values. The engine sends meanings (contract `GuidanceStep`,
@@ -30,7 +51,15 @@ enum ScanCopy {
                 detail: "A gray box with a round glass dial or a small screen, usually on an outside wall."
             )
         case .aimAtWallForMeter:
-            Instruction(title: "Hold on, finding your wall", detail: "Move your phone slowly side to side, then aim at your meter again.")
+            Instruction(
+                title: "Hold on, finding your wall",
+                detail: "Move your phone slowly side to side, then aim at your meter again.",
+                // Folded at the largest text sizes, the doing leads, as on see-behind.
+                folded: Instruction.Folded(
+                    title: "Move your phone side to side",
+                    detail: "Hold on, finding your wall. Move your phone slowly side to side, then aim at your meter again."
+                )
+            )
         case .holdOnMeter:
             Instruction(title: "Hold your meter in the circle", detail: "Your phone takes the photo by itself.")
         case .walk(let side, let remaining):
@@ -74,7 +103,13 @@ enum ScanCopy {
             Instruction(
                 title: "Something is in front of the wall here",
                 // A place to look, not a measurement: "About 5 ft", not "4 ft 11 in".
-                detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it."
+                detail: "\(Distance.aroundFromMeter(s...s).capitalizedFirst). Look at it from the side or step around it.",
+                // At AX5 the unfolded card covered the camera and the spot it asks about. The lead
+                // stays two lines even beside a coaching icon; the full words are under Details.
+                folded: Instruction.Folded(
+                    title: "Look around it",
+                    detail: "Something is in front of the wall here, \(Distance.aroundFromMeter(s...s)). Look at it from the side or step around it."
+                )
             )
         case .gap:
             Instruction(title: "One more view", detail: nil)
@@ -151,10 +186,17 @@ enum ScanCopy {
 
     /// One short line for coaching that rides along with the task instead of replacing it (the
     /// walk's capture-gate coaching): the task's title and second line stay, and this goes under
-    /// them. Only the coaching's title, so the task's own words stay the bigger part of the card.
+    /// them. Mostly only the coaching's title, so the task's own words stay the bigger part of the
+    /// card. The dark coaching keeps what to do about it: it can stay up for a whole night walk, and
+    /// "It's dark here" alone doesn't say what would help.
     static func coachingNote(_ coaching: Coaching) -> String {
-        let title = ScanCopy.coaching(coaching).title
-        return title.hasSuffix(".") ? title : "\(title)."
+        switch coaching {
+        case .tooDark: return "It's dark here. Try your phone's flashlight, or come back in daylight."
+        case .tooDarkToMeasure: return "It's too dark to measure here. Try in daylight."
+        default:
+            let title = ScanCopy.coaching(coaching).title
+            return title.hasSuffix(".") ? title : "\(title)."
+        }
     }
 
     /// Tracking problems and standing past the end replace the task on the card: nothing the task
@@ -173,8 +215,10 @@ enum ScanCopy {
     /// coaching came up (#80), and the dark coaching can stay up for a whole night walk.
     static func withCoaching(_ task: Instruction, _ coaching: Coaching?) -> Instruction {
         guard let coaching else { return task }
-        let detail = [task.detail, coachingNote(coaching)].compactMap { $0 }.joined(separator: "\n")
-        return Instruction(title: task.title, detail: detail)
+        // A copy, so the task keeps everything else it carries, such as its folded words.
+        var card = task
+        card.note = coachingNote(coaching)
+        return card
     }
 
     // MARK: Aim ring
@@ -443,15 +487,15 @@ enum ScanCopy {
     static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
         switch step {
         case .aimAtGround, .aimAtWall:
-            (title: "Skip this spot", hint: "An installer will look at it instead.")
+            (title: "Skip this spot", hint: "An installer would need to look at it instead.")
         case .tiltUp:
-            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer will look at it instead.")
+            (title: "Skip this", hint: "Skips the view above this part of the wall. An installer would need to look at it instead.")
         case .walk:
-            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer will look at what's past it.")
+            (title: "Can't get there", hint: "Ends the wall at the dashed line on the map. An installer would need to look at what's past it.")
         case .markNextWall:
-            (title: "Can't get there", hint: "Skips this part of the wall. An installer will look at it instead.")
+            (title: "Can't get there", hint: "Skips this part of the wall. An installer would need to look at it instead.")
         case .seeBehind:
-            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer will look at it instead.")
+            (title: cannotSeeBehind, hint: "Skips the part behind it. An installer would need to look at it instead.")
         case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
             nil
         }
@@ -554,7 +598,7 @@ enum ScanCopy {
         switch answer {
         case .fits: "A battery fits here"
         case .oneMoreLook: "One more look"
-        case .installer: "An installer will confirm"
+        case .installer: "Needs an installer's review"
         case .notHere: "Not on this wall"
         }
     }
@@ -623,8 +667,10 @@ enum ScanCopy {
     static let wallNotMeasuredDetail = "The scan stopped before you walked along the wall on either side of your meter, so we can't tell where a battery would fit. Scan again and walk a few steps each way."
     static let scanAgain = "Scan again"
 
-    static let installerConfirms = "An installer confirms this on site."
-    static let rulesNotFinal = "The placement rules aren't final yet, so an installer reviews every result for now."
+    /// Shown on every result, with or without a spot ("Not on this wall" has none), so it names
+    /// no spot.
+    static let installerConfirms = "Before any battery goes in, an installer has to confirm where it goes on site."
+    static let rulesNotFinal = "The placement rules aren't final yet, so every result needs an installer's review for now."
     // The server's result covers where the battery goes, not the panel itself.
     static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."
 
@@ -646,8 +692,12 @@ enum ScanCopy {
     static let shareScan = "Share scan"
     static let shareScanContents = "Your photos and measurements, for the House Scan team"
 
+    /// A check or a view no photo can settle. It states what the result needs, never that a
+    /// review was sent: the app only shows the server's answer and contacts nobody.
+    static let needsInstaller = "Needs an installer to check"
+
     static func unsureNote(_ row: CheckRow) -> String {
-        row.needsPerson ? "An installer will check this" : "One more photo would settle this"
+        row.needsPerson ? Self.needsInstaller : "One more photo would settle this"
     }
 
     /// "Measured 3 ft 2 in. The rule is at least 3 ft, and the measurement can be off by about 4 in."

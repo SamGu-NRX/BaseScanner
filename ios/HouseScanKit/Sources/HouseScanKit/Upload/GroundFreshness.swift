@@ -5,7 +5,9 @@
 /// clearance against the ground the scan sent, so an answer drawn on a moved ground shows a
 /// spot nobody checked. A ground change therefore takes the answer down from the spot check,
 /// the result, its 3D preview and the camera view, and sends the scan again, built from the
-/// wall as it is now. Only the server's answer to that scan comes back on screen.
+/// wall as it is now. Only the server's answer to that scan comes back on screen. The same
+/// holds once a first upload has packaged its scene, since its answer is already fixed to the
+/// old ground.
 ///
 /// An anchor correction is different: it moves the wall, its corners, the kept cameras, the
 /// marks and the ground as one body, and the answer is in wall terms (spans along the wall and
@@ -14,6 +16,10 @@
 /// One resend per withdrawal. A ground that changes again before a new answer is shown means
 /// the phone is still settling, and sending again in a loop would only keep the homeowner
 /// waiting: the upload screen shows a failure with "Try again" instead.
+///
+/// An upload that already failed or was refused has no answer up and none coming, so a ground
+/// change leaves its screen alone (`Screen.stopped`); the homeowner's own retry or review sends
+/// the scan as it is then, still within the same one resend.
 public struct GroundFreshness: Equatable, Sendable {
     /// What changed the wall.
     public enum Change: Equatable, Sendable, CaseIterable {
@@ -30,6 +36,10 @@ public struct GroundFreshness: Equatable, Sendable {
         case noAnswer
         /// The upload screen: the scan is on its way, or its answer is being readied.
         case sending
+        /// The upload screen showing a failure or a refusal: no answer is up and none is coming.
+        /// The homeowner's own choice ("Try again", or back to the review after a refusal) sends
+        /// the scan as it is then, so a ground change leaves that screen as it is.
+        case stopped
         /// The spot check, which draws the answer's spot on a kept photo.
         case spotCheck
         /// The result screen and its 3D preview.
@@ -54,15 +64,19 @@ public struct GroundFreshness: Equatable, Sendable {
     public init() {}
 
     /// The decision for one change on one screen, recording a withdrawal.
-    public mutating func after(_ change: Change, on screen: Screen) -> Action {
+    /// `scenePackaged` means the upload's ground is fixed, even while its answer is readied.
+    /// Before packaging, a first upload still reads the current ground; after it, the answer
+    /// needs the same withdrawal and single resend as an answer already on screen.
+    public mutating func after(_ change: Change, on screen: Screen, scenePackaged: Bool = false) -> Action {
         guard change == .ground else { return .keep }
         switch screen {
-        case .noAnswer:
+        case .noAnswer, .stopped:
             return .keep
         case .sending:
-            // A first upload is built from the scan at the moment it is packaged; only an
-            // upload that is itself a resend has already used its one try.
-            return awaitingNewAnswer ? .fail : .keep
+            if awaitingNewAnswer { return .fail }
+            guard scenePackaged else { return .keep }
+            awaitingNewAnswer = true
+            return .sendAgain
         case .spotCheck, .result, .resultInCamera:
             if awaitingNewAnswer { return .fail }
             awaitingNewAnswer = true

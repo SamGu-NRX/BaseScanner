@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Every screen state, including ones a replay never reaches (camera denied, offline upload,
@@ -84,7 +85,7 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// The screens with the most text, also checked at AX5.
     private static let largestTextStates: Set<String> = [
-        "onboarding", "onboarding-practice", "onboarding-moves", "onboarding-permissions", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
+        "onboarding", "onboarding-practice", "onboarding-moves", "onboarding-permissions", "findMeter", "wallWalk", "wallWalk-endQuestion", "wallWalk-endPreview", "wallWalk-endQuestionLeavesOut", "wallWalk-nextWallRefused", "wallWalk-overheadQuestion", "gapRequest-walkOut", "gapRequest-overheadQuestion", "meterCloseUp-cantGetClearShot", "meterCloseUp-chooseNumber",
         "markFeatures", "gapRequest", "uploading-offline", "uploading-rejected", "result-review", "cameraDenied",
         "wallWalk-hidden", "wallWalk-seeBehind", "wallWalk-fullLegend", "gapRequest-followUp", "uploading-followUp",
         "markFeatures-groundQuestion", "markFeatures-groundAnswered", "markFeatures-lostPlace",
@@ -102,6 +103,10 @@ final class ScreenStatesUITests: XCTestCase {
         "wallWalk-hidden": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-fullLegend": [("wallTape", "2 sections hidden behind something")],
         "wallWalk-seeBehind": [("instruction", "Something is in front of the wall here")],
+        // At AX5 looking past it leads, and the situation folds under Details.
+        "wallWalk-seeBehind-AX5": [("instruction", "Look around it"), ("instruction.details", "Details")],
+        // At AX5 the meter's description folds under Details, and the camera stays open.
+        "findMeter-AX5": [("instruction", "Find your electric meter"), ("instruction.details", "Details")],
         "gapRequest-followUp": [("instruction", "One more view to finish")],
         // #75: a server request's stretch by its two ends, not its middle.
         "gapRequest-groundOut": [("instruction", "From 4 ft to 7 ft right of your meter.")],
@@ -132,6 +137,9 @@ final class ScreenStatesUITests: XCTestCase {
         "resultAR": [("ar.overlay", "drawn on your wall")],
         // #81: the aim ring fills as its stretch is captured.
         "wallWalk-aim": [("aim.ring", "50 percent captured")],
+        // At AX5 the aim card folds its how-to words and the ring's legend under Details
+        // (testAimCameraStaysOpenAtLargestTextSize).
+        "wallWalk-aim-AX5": [("instruction", "Tilt down to show the ground"), ("instruction.details", "Details")],
         // #82: a second "Can't get there" soon after the first asks before ending the scan.
         "wallWalk-endScanQuestion": [("instruction", "End the scan here?")],
         "wallWalk-endScanTooShort": [("instruction", "You haven't walked enough of the wall")],
@@ -427,7 +435,8 @@ final class ScreenStatesUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(element(app, "action.keepWalking").waitForExistence(timeout: 15))
         XCTAssertFalse(element(app, "action.cannotAccess").exists, "the card's reply must wait for the answer")
-        tap(app, "action.keepWalking", timeout: 5)
+        // Run 36841096811: on a slow runner each hittability check took 1-2 s and 5 s ran out.
+        tap(app, "action.keepWalking", timeout: 15)
         XCTAssertTrue(element(app, "action.keepWalking").waitForNonExistence(timeout: 5), "the answer must close the question")
         XCTAssertTrue(element(app, "screen.wallWalk").exists, "Keep walking must stay on the walk")
         app.terminate()
@@ -467,6 +476,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(label.contains("Walk slowly to your right"), "the task must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("Keep the wall and the ground in view"), "the task's second line must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+        XCTAssertTrue(label.contains("flashlight"), "the dark coaching must say what would help, got \(label)")
     }
 
     /// #80, as on the walk: the capture gate's coaching keeps a gap request on the card. The dark
@@ -484,6 +494,7 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(label.contains("Show the ground"), "the request must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("a clear look from two places"), "the request's second line must stay on the card, got \(label)")
         XCTAssertTrue(label.contains("It's dark here"), "the coaching must show on the card, got \(label)")
+        XCTAssertTrue(label.contains("flashlight"), "the dark coaching must say what would help, got \(label)")
     }
 
     /// B-09: "Add something" on the review opens the camera with the marking prompt, and the
@@ -506,6 +517,41 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.markPoint", timeout: 5)
         XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5), "the review must come back after the mark")
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
+    }
+
+    /// AX5 puts the review chips below the window. The helper must let the real tap scroll
+    /// before XCTest computes a hit point, then Cancel must return to the unchanged review.
+    @MainActor
+    func testTapHelperReachesAnOffscreenReviewChip() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        let chip = app.buttons.matching(identifier: "feature.ac").firstMatch
+        let frame = try chip.snapshot().frame
+        let window = try app.windows.firstMatch.snapshot().frame
+        XCTAssertGreaterThan(frame.maxY, window.maxY, "the regression needs a chip below the window")
+        let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
+        tap(app, "feature.ac")
+        XCTAssertTrue(element(app, "action.markPoint").waitForExistence(timeout: 5), "the tap must open the marking camera")
+        tap(app, "action.cancelMarking")
+        XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore)
+    }
+
+    @MainActor
+    func testTapHelperClosesARThroughTheDoneButton() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "resultAR"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 15))
+        tap(app, "action.closeAR")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 10), "Done must return to the result")
+        XCTAssertTrue(element(app, "screen.resultAR").waitForNonExistence(timeout: 5))
     }
 
     /// While the phone has lost its place the review can't start a mark, which taps into the
@@ -557,11 +603,24 @@ final class ScreenStatesUITests: XCTestCase {
 
     /// A refused upload offers the review, not "Try again"; from the review the scan is sent
     /// again and reaches the result.
+    ///
+    /// The pass sample (`-uiDemoPass`) lists no view to take, so the resend goes straight to the
+    /// result. The review sample asked for one more, and one wait covered a second capture, two
+    /// uploads and the server's follow-up; on run 36736877861 it ran out with the app still
+    /// uploading at 60% (#191).
+    ///
+    /// The review's own view is left to the demo, which covers it and sends by itself: 1.2 s, then
+    /// six 0.45 s steps to covered, then 1.6 s (`DemoEngine.gapScript`). This test used to tap
+    /// "I can't get there" first, which raced that script. Counted from the start of the wait for
+    /// the view, the tap's event came 3.2 to 3.5 s in when it passed (runs 37001843593 and
+    /// 37001782118). On run 37013846307 it came at 4.3 s, and on 37013940503 the tap began at
+    /// 4.5 s; both times the button had gone. Skipping is checked frozen in
+    /// `testSkippingTheGapRequestSends`.
     @MainActor
     func testRejectedUploadGoesBackToReview() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoPhase", "gapRequest", "-uiDemoRejected"]
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoPhase", "gapRequest", "-uiDemoRejected", "-uiDemoPass"]
         app.launch()
         XCTAssertTrue(element(app, "action.backToReview").waitForExistence(timeout: 30))
         XCTAssertFalse(element(app, "action.retryUpload").exists, "a refused scan must not offer Try again")
@@ -572,8 +631,27 @@ final class ScreenStatesUITests: XCTestCase {
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
-        tap(app, "action.spotClear", timeout: 40)
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "the review must open its own view")
+        tap(app, "action.spotClear", timeout: 30)
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
+    }
+
+    /// "I can't get there" on a gap request sends the scan. Frozen, the demo's gap script never
+    /// runs, so the request can't finish itself before the tap.
+    @MainActor
+    func testSkippingTheGapRequestSends() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 15))
+        // The card's reply ignores taps for a moment after it appears (`InstructionCard.replyLock`).
+        let skip = element(app, "action.skipGap")
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: skip)
+        XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 10), .completed, "I can't get there never took taps")
+        skip.tap()
+        XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 10), "skipping must send the scan")
+        XCTAssertFalse(element(app, "screen.gapRequest").exists)
     }
 
     /// #65 soft gate: with the ground or a window's question unanswered, the first "Looks
@@ -624,16 +702,17 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
         let card = element(app, "instruction")
         XCTAssertFalse(legend.frame.intersects(card.frame), "the legend must keep clear of the card: \(legend.frame) vs \(card.frame)")
+        XCTAssertFalse(element(app, "instruction.details").exists, "at the default size every word stays on the card")
         app.terminate()
 
-        // At the largest text size the card fills most of the screen. The legend sits under it in
-        // the same stack, so it grows and scrolls with the card instead of going behind it or
-        // disappearing.
+        // At the largest text size the legend is folded under Details with the card's how-to
+        // words, and still reads in full once opened.
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
         app.launch()
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        tap(app, "instruction.details")
         let largeLegend = element(app, "aim.legend")
-        XCTAssertTrue(largeLegend.waitForExistence(timeout: 5), "the legend must still show at the largest text size")
+        XCTAssertTrue(largeLegend.waitForExistence(timeout: 5), "the legend must show under Details at the largest text size")
         XCTAssertTrue(largeLegend.label.contains("It fills as your phone captures this spot"), "legend reads \(largeLegend.label)")
         let largeCard = element(app, "instruction")
         XCTAssertFalse(largeLegend.frame.intersects(largeCard.frame), "the legend must keep clear of the card: \(largeLegend.frame) vs \(largeCard.frame)")
@@ -644,6 +723,430 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
         XCTAssertFalse(element(app, "aim.ring").exists, "off screen, the arrow stands in for the ring")
         XCTAssertFalse(element(app, "aim.legend").exists, "the legend goes with the ring")
+    }
+
+    // MARK: Largest text layout
+
+    /// The content width inside a camera screen's side margins (`Metrics.edge`, 16 pt), less a
+    /// point for rounding.
+    private static func contentWidth(_ window: CGRect) -> CGFloat { window.width - 2 * 16 - 1 }
+
+    /// B-28: side by side at AX5, "Mark something" and "Wall ends here" broke into one or two
+    /// letters a line. Every pair of wall-walk actions must stack there, each spanning the
+    /// content width. A button taller than a quarter of the screen is a label broken a letter a
+    /// line; a stacked two-line label is about 130 pt on an iPhone 17. At the default size the
+    /// walk's pair stays on one row.
+    @MainActor
+    func testWallWalkActionsStackAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        func launch(_ extra: [String], textSize: [String] = Self.largestText) {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk"] + extra + textSize
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        }
+
+        launch([], textSize: [])
+        let mark = element(app, "action.markSomething"), end = element(app, "action.endHere")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5) && end.waitForExistence(timeout: 5))
+        XCTAssertEqual(mark.frame.midY, end.frame.midY, accuracy: 1, "at the default size the walk's two actions share a row")
+        app.terminate()
+
+        launch([])
+        assertStacked(app, "action.markSomething", "action.endHere", name: "wallWalk-walking-AX5-stacked")
+        // The walk's reply ends the side here, which asks for the wall's end.
+        scrollToTop(app)
+        tapReply(app, "Can't get there")
+        assertStacked(app, "action.markSomething", "action.markEnd", name: "wallWalk-markEnd-AX5-stacked")
+        app.terminate()
+
+        launch(["-uiDemoTiltUp"])
+        assertStacked(app, "action.markSomething", "action.finishWalk", name: "wallWalk-finish-AX5-stacked")
+        app.terminate()
+
+        launch(["-uiDemoMarking", "window"])
+        assertStacked(app, "action.cancelMarking", "action.markPoint", name: "wallWalk-marking-AX5-stacked")
+        app.terminate()
+    }
+
+    @MainActor
+    private func assertStacked(_ app: XCUIApplication, _ upper: String, _ lower: String, name: String) {
+        let window = app.windows.firstMatch.frame
+        let first = element(app, upper), second = element(app, lower)
+        XCTAssertTrue(first.waitForExistence(timeout: 5), "\(name): missing \(upper)")
+        XCTAssertTrue(second.waitForExistence(timeout: 5), "\(name): missing \(lower)")
+        for (identifier, target) in [(upper, first), (lower, second)] {
+            let frame = target.frame
+            XCTAssertGreaterThanOrEqual(frame.width, Self.contentWidth(window), "\(name): \(identifier) is \(frame.width) pt wide in a \(window.width) pt window; beside another action its words break apart")
+            XCTAssertLessThanOrEqual(frame.height, window.height / 4, "\(name): \(identifier) is \(frame.height) pt tall; its label breaks a letter or two a line")
+        }
+        XCTAssertLessThanOrEqual(first.frame.maxY, second.frame.minY + 0.5, "\(name): \(upper) \(first.frame) must sit above \(lower) \(second.frame)")
+        XCTAssertTrue(scrollUntilHittable(second, in: app), "\(name): \(lower) can't be reached")
+        attach(app, name: name)
+    }
+
+    /// Drags the screen down until its top shows, for a control that scrolled out of view.
+    @MainActor
+    private func scrollToTop(_ app: XCUIApplication) {
+        let step = app.windows.firstMatch.frame.height * 0.4
+        for _ in 0..<3 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: step)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        }
+    }
+
+    /// B-36: at AX5 the aim card filled the screen and hid the aim ring under it. On a step that
+    /// has the homeowner aim, the card now keeps the task and its reply in view, folds the how-to
+    /// words and the ring's legend under Details, and the chrome leaves the camera open between
+    /// the card and the actions. The spot's marker is in that open camera: the ring, or, while
+    /// the spot is under the card, an arrow toward it that reads the ring's progress. At no
+    /// scroll position is either drawn under the words, Details, the reply or an action.
+    @MainActor
+    func testAimCameraStaysOpenAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        let window = app.windows.firstMatch.frame
+        let card = element(app, "instruction")
+        let details = element(app, "instruction.details")
+        let reply = element(app, "action.cannotAccess")
+        let mark = element(app, "action.markSomething")
+        for (identifier, target) in [("instruction", card), ("instruction.details", details), ("action.cannotAccess", reply), ("action.markSomething", mark)] {
+            XCTAssertTrue(target.waitForExistence(timeout: 5), "missing \(identifier)")
+        }
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains("Tilt down to show the ground"), "the task must stay on the card, got \(label)")
+        XCTAssertFalse(label.contains("1 ft 4 in right of your meter"), "the how-to words must fold under Details, got \(label)")
+        XCTAssertFalse(element(app, "aim.legend").exists, "the legend must fold under Details")
+        XCTAssertTrue(details.isHittable, "Details must be reachable without scrolling")
+        XCTAssertTrue(reply.isHittable, "the card's reply must be reachable without scrolling")
+        let cardBottom = max(card.frame.maxY, details.frame.maxY, reply.frame.maxY)
+        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
+        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "the camera must stay open between the card and the actions: \(openCamera)")
+
+        let ring = element(app, "aim.ring")
+        let arrow = element(app, "aim.arrow")
+        let marker = ring.exists ? ring : arrow
+        XCTAssertTrue(marker.waitForExistence(timeout: 5), "the spot needs its ring or an arrow toward it")
+        XCTAssertTrue(openCamera.contains(marker.frame), "the spot's marker \(marker.frame) must be in the open camera \(openCamera)")
+        XCTAssertEqual(ElementRead.snapshot(marker)?.value as? String, "50 percent captured", "the marker must read the spot's progress")
+        attach(app, name: "wallWalk-aim-AX5-folded")
+
+        let covers = ["instruction", "instruction.details", "action.cannotAccess", "action.markSomething"].map { ($0, element(app, $0)) }
+        // Short drags through every scroll position; where the screen fits, nothing moves.
+        for step in 0..<12 {
+            for (name, shown) in [("ring", ring), ("arrow", arrow)] where shown.exists {
+                let frame = shown.frame
+                XCTAssertTrue(window.contains(frame), "step \(step): \(name) \(frame) is not wholly on screen")
+                for (identifier, cover) in covers where cover.exists {
+                    XCTAssertFalse(frame.intersects(cover.frame), "step \(step): \(name) \(frame) is under \(identifier) \(cover.frame)")
+                }
+            }
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -60)), withVelocity: .slow, thenHoldForDuration: 0.2)
+        }
+        XCTAssertTrue(scrollUntilHittable(mark, in: app), "Mark something must be reachable by scrolling")
+    }
+
+    /// At AX5, Details opens the folded how-to words and the ring's legend, and closes them again.
+    @MainActor
+    func testFoldedDetailsOpenAndCloseAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoAim"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+        tap(app, "instruction.details")
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the how-to words")
+        XCTAssertTrue(detail.label.contains("1 ft 4 in right of your meter"), "detail reads \(detail.label)")
+        let legend = element(app, "aim.legend")
+        XCTAssertTrue(legend.waitForExistence(timeout: 5), "Details must open the ring's legend")
+        XCTAssertTrue(legend.label.contains("It fills as your phone captures this spot"), "legend reads \(legend.label)")
+        attach(app, name: "wallWalk-aim-AX5-details")
+        tap(app, "instruction.details")
+        XCTAssertTrue(detail.waitForNonExistence(timeout: 5), "Details must close again")
+        XCTAssertFalse(legend.exists)
+    }
+
+    /// Where a card's second line is itself what to do now, it stays on the card at AX5: the walk
+    /// out with its live reading, stepping back for ground further out, and tilting up to the roof
+    /// or the sky. Looking past an obstruction leads with its action instead
+    /// (`testSeeBehindLeadsWithItsActionAtLargestTextSize`).
+    @MainActor
+    func testActionWordsStayOnTheCardAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (state, words) in [
+            ("gapRequest-walkOut", "Follow the dotted line"),
+            ("gapRequest-groundOut", "Step back and tilt down"), ("gapRequest-overhead", "up to the roof or the sky"),
+        ] {
+            guard let fixture = Self.states.first(where: { $0.name == state }) else {
+                XCTFail("no state named \(state)")
+                continue
+            }
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + fixture.arguments + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.\(fixture.screen)").waitForExistence(timeout: 15))
+            let card = element(app, "instruction")
+            XCTAssertTrue(card.waitForExistence(timeout: 5))
+            let label = ElementRead.snapshot(card)?.label ?? ""
+            XCTAssertTrue(label.contains(words), "\(state): \"\(words)\" must stay on the card, got \(label)")
+            XCTAssertFalse(element(app, "instruction.details").exists, "\(state): nothing to fold")
+            app.terminate()
+        }
+    }
+
+    /// Root's review of the AX5 frame at 35cc8521: unfolded, the see-behind card covered the camera,
+    /// and the spot it asks the homeowner to look past, down to its reply. Folded, what to do leads,
+    /// ride-along coaching and the reply stay, the camera opens between the card and the controls
+    /// below it, and Details holds the situation and where it is. The step's ring has no progress,
+    /// so it is hidden from VoiceOver and its place is checked in the attached frames.
+    @MainActor
+    func testSeeBehindLeadsWithItsActionAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (coaching, name) in [(nil, "wallWalk-seeBehind-AX5-folded"), ("slowDown", "wallWalk-seeBehind-slowDown-AX5-folded")] {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoSeeBehind"]
+                + (coaching.map { ["-uiDemoCoaching", $0] } ?? []) + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+            let window = app.windows.firstMatch.frame
+            let card = element(app, "instruction")
+            let details = element(app, "instruction.details")
+            let cantSee = reply(app, "Can't see past it")
+            XCTAssertTrue(card.waitForExistence(timeout: 5), "missing instruction")
+            XCTAssertTrue(details.waitForExistence(timeout: 5), "\(name): the situation must fold under Details")
+            XCTAssertTrue(cantSee.waitForExistence(timeout: 5), "\(name): missing the reply Can't see past it")
+            let label = ElementRead.snapshot(card)?.label ?? ""
+            XCTAssertTrue(label.contains("Look around it"), "\(name): what to do must lead, got \(label)")
+            XCTAssertFalse(label.contains("Something is in front of the wall here"), "\(name): the situation must fold under Details, got \(label)")
+            if coaching != nil {
+                XCTAssertTrue(label.contains("Slow down"), "\(name): the coaching must stay in view, got \(label)")
+            }
+            XCTAssertTrue(details.isHittable, "\(name): Details must be reachable without scrolling")
+            XCTAssertTrue(cantSee.isHittable, "\(name): Can't see past it must be reachable without scrolling")
+            // "Mark something" steps aside on this step, so the camera ends at the first control
+            // shown below the card, or at the bottom of the screen.
+            let cardBottom = max(card.frame.maxY, details.frame.maxY, cantSee.frame.maxY)
+            let below = ["action.endHere", "action.markEnd", "action.finishWalk", "wallTape"]
+                .map { element(app, $0) }
+                .filter { $0.exists && $0.frame.minY > cardBottom }
+                .map(\.frame.minY)
+            let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: min(below.min() ?? window.maxY, window.maxY) - cardBottom)
+            attach(app, name: name)
+            XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the controls: \(openCamera)")
+
+            if coaching == nil {
+                tap(app, "instruction.details")
+                let detail = element(app, "instruction.detail")
+                XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the situation")
+                XCTAssertTrue(detail.label.contains("Something is in front of the wall here, about 5 ft right of your meter. Look at it from the side or step around it."), "detail reads \(detail.label)")
+                XCTAssertTrue(scrollUntilHittable(cantSee, in: app), "Can't see past it must stay reachable with Details open")
+                attach(app, name: "wallWalk-seeBehind-AX5-details")
+            }
+            app.terminate()
+        }
+    }
+
+    /// Root's manual pass at b6ee153b: after "Allow camera" at AX5, the find-meter card filled the
+    /// camera with its description, hid the reticle at the middle of the screen, and pushed "This
+    /// is my meter" below the screen. Folded, the task stays, the description sits under Details,
+    /// the camera opens between the card and the button, and the button marks the meter.
+    @MainActor
+    func testFindMeterKeepsTheCameraOpenAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "findMeter"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 15))
+        assertFindMeterFolded(app, task: "Find your electric meter", description: "A gray box with a round glass dial", name: "findMeter-AX5-folded")
+
+        let details = element(app, "instruction.details")
+        tap(app, "instruction.details")
+        let detail = element(app, "instruction.detail")
+        XCTAssertTrue(detail.waitForExistence(timeout: 5), "Details must open the meter's description")
+        XCTAssertTrue(detail.label.contains("A gray box with a round glass dial or a small screen, usually on an outside wall."), "detail reads \(detail.label)")
+        attach(app, name: "findMeter-AX5-details")
+        tap(app, "instruction.details")
+        XCTAssertTrue(detail.waitForNonExistence(timeout: 5), "Details must close again")
+        XCTAssertTrue(details.isHittable)
+
+        tap(app, "action.markMeter")
+        XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 10), "This is my meter must mark the meter")
+    }
+
+    /// The practice scan's find-meter step folds the same way: "Tap a spot on a wall" stays, the
+    /// sample's explanation sits under Details, and "Put the sample meter here" is on screen. The
+    /// real engine on a replay, since only it starts a practice scan.
+    @MainActor
+    func testPracticeFindMeterKeepsTheCameraOpenAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-replay", FullFlowUITests.fixture, "-sampleResult", "-practiceMeter", "YES"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 30))
+        if element(app, "action.onboardingSkip").waitForExistence(timeout: 5) { tap(app, "action.onboardingSkip") }
+        tap(app, "action.finishOnboarding", timeout: 15)
+        XCTAssertTrue(element(app, "screen.findMeter").waitForExistence(timeout: 15))
+        XCTAssertEqual(element(app, "action.markMeter").label, "Put the sample meter here")
+        assertFindMeterFolded(app, task: "Tap a spot on a wall", description: "A sample meter goes there", name: "findMeter-practice-AX5-folded")
+        tap(app, "action.markMeter")
+        XCTAssertTrue(element(app, "screen.meterCloseUp").waitForExistence(timeout: 15), "Put the sample meter here must mark the meter")
+    }
+
+    /// The folded find-meter card: the task in view, its description under Details, the button
+    /// whole on screen without scrolling, and open camera between them for the reticle (76 pt).
+    @MainActor
+    private func assertFindMeterFolded(_ app: XCUIApplication, task: String, description: String, name: String) {
+        let window = app.windows.firstMatch.frame
+        let card = element(app, "instruction")
+        let details = element(app, "instruction.details")
+        let mark = element(app, "action.markMeter")
+        XCTAssertTrue(card.waitForExistence(timeout: 5), "\(name): missing instruction")
+        XCTAssertTrue(details.waitForExistence(timeout: 5), "\(name): the description must fold under Details")
+        XCTAssertTrue(mark.waitForExistence(timeout: 5), "\(name): missing action.markMeter")
+        let label = ElementRead.snapshot(card)?.label ?? ""
+        XCTAssertTrue(label.contains(task), "\(name): the task must stay on the card, got \(label)")
+        XCTAssertFalse(label.contains(description), "\(name): the description must fold under Details, got \(label)")
+        let cardBottom = max(card.frame.maxY, details.frame.maxY)
+        let openCamera = CGRect(x: window.minX, y: cardBottom, width: window.width, height: mark.frame.minY - cardBottom)
+        attach(app, name: name)
+        XCTAssertTrue(details.isHittable, "\(name): Details must be reachable without scrolling")
+        XCTAssertTrue(window.contains(mark.frame) && mark.isHittable, "\(name): the mark button must be whole on screen without scrolling: \(mark.frame) in \(window)")
+        XCTAssertGreaterThanOrEqual(openCamera.height, 150, "\(name): the camera must stay open between the card and the button: \(openCamera)")
+    }
+
+    /// Coaching that rides along with the task says what to do now, so the folded card at AX5
+    /// keeps it in view with the task; only the how-to words fold.
+    @MainActor
+    func testCoachingStaysOnTheFoldedCardAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (coaching, words) in [("slowDown", "Slow down"), ("tooDark", "It's dark here")] {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "wallWalk", "-uiDemoCoaching", coaching] + Self.largestText
+            app.launch()
+            XCTAssertTrue(element(app, "screen.wallWalk").waitForExistence(timeout: 15))
+            let card = element(app, "instruction")
+            XCTAssertTrue(card.waitForExistence(timeout: 5))
+            let label = ElementRead.snapshot(card)?.label ?? ""
+            XCTAssertTrue(label.contains("Walk slowly to your right"), "\(coaching): the task must stay, got \(label)")
+            XCTAssertTrue(label.contains(words), "\(coaching): the coaching must stay in view, got \(label)")
+            XCTAssertFalse(label.contains("Keep the wall and the ground in view"), "\(coaching): the how-to words must fold, got \(label)")
+            XCTAssertTrue(card.isHittable || card.frame.maxY <= app.windows.firstMatch.frame.maxY, "\(coaching): the card must be on screen")
+            XCTAssertTrue(element(app, "instruction.details").exists, "\(coaching): Details must hold the folded words")
+            attach(app, name: "wallWalk-\(coaching)-AX5-folded")
+            app.terminate()
+        }
+    }
+
+    /// At AX5 a scrolled onboarding page ran on under the page dots. On every page, before and
+    /// after scrolling it to its end, the row the dots sit in must show only the background
+    /// beside the dots. Read from the screenshot's pixels: the dots are hidden from
+    /// accessibility, and a page's frame alone can't show what it paints past its edge.
+    @MainActor
+    func testOnboardingTextStaysClearOfThePageDotsAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.onboarding").waitForExistence(timeout: 15))
+        let footer = element(app, "onboarding.footer")
+        XCTAssertTrue(footer.waitForExistence(timeout: 5))
+        // Each page's last element: the page is at its end once its bottom shows above the footer.
+        let ends: [XCUIElement] = [
+            app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Walk along the wall by your electric meter")).firstMatch,
+            element(app, "onboarding.move.5"),
+            element(app, "onboarding.privacy"),
+            element(app, "onboarding.permissions"),
+        ]
+        for (index, last) in ends.enumerated() {
+            let page = index + 1
+            // Let the page slide settle.
+            Thread.sleep(forTimeInterval: 0.8)
+            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots")
+            XCTAssertTrue(last.waitForExistence(timeout: 5), "page \(page): missing its last element")
+            XCTAssertTrue(scrollPageToEnd(app, last: last, footer: footer), "page \(page): the bottom of its last element \(last.frame) never came above the footer \(footer.frame)")
+            assertDotsRowClear(app, name: "onboarding-page\(page)-AX5-dots-end")
+            if page < ends.count { tap(app, "action.onboardingNext") }
+        }
+    }
+
+    /// Swipes the page on screen up, at most twelve times, until the bottom of its last element
+    /// shows above the footer. At AX5 a single move can be taller than the page's viewport, so
+    /// only its bottom edge marks the end. The swipe goes to the page's own scroll view: a drag
+    /// at a screen point left the second page where it was (run 36743027718).
+    @MainActor
+    private func scrollPageToEnd(_ app: XCUIApplication, last: XCUIElement, footer: XCUIElement) -> Bool {
+        let window = app.windows.firstMatch.frame
+        func atEnd() -> Bool {
+            let frame = last.frame
+            return frame.maxY <= footer.frame.minY + 1 && frame.maxY > window.minY
+        }
+        // The page on screen, not its neighbours in the pager.
+        guard let page = app.scrollViews.matching(identifier: "onboarding.page").allElementsBoundByIndex
+            .first(where: { abs($0.frame.minX - window.minX) < 1 && $0.frame.width > 0 }) else {
+            return false
+        }
+        for _ in 0..<12 where !atEnd() {
+            page.swipeUp(velocity: .slow)
+        }
+        return atEnd()
+    }
+
+    /// The band from the footer's top edge to the button's, where the dots sit, must be the
+    /// background colour except for the middle 120 pt, which holds the dots.
+    @MainActor
+    private func assertDotsRowClear(_ app: XCUIApplication, name: String) {
+        let footer = element(app, "onboarding.footer").frame
+        let button = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["action.onboardingNext", "action.finishOnboarding"])).firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 5), "\(name): missing the footer's button")
+        let band = CGRect(x: footer.minX, y: footer.minY, width: footer.width, height: button.frame.minY - footer.minY)
+        XCTAssertGreaterThan(band.height, 8, "\(name): no room for the dots above the button: \(footer) vs \(button.frame)")
+        let screenshot = app.screenshot()
+        attach(app, name: name)
+        guard let pixels = ScreenPixels(screenshot.image) else {
+            XCTFail("\(name): cannot read the screenshot's pixels")
+            return
+        }
+        if let stray = pixels.firstMismatch(in: band, excludingMiddle: 120) {
+            XCTFail("\(name): something other than the background is drawn beside the page dots at \(stray) in \(band)")
+        }
+    }
+
+    /// At AX5 the Replay and sample-result badges covered most of the result's 3D view. There
+    /// they sit clear of it, in full on screen; at the default size they stay on the view.
+    @MainActor
+    func testResultBadgesKeepOffTheModelAtLargestTextSize() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        for (textSize, name) in [([String](), "result-badges"), (Self.largestText, "result-badges-AX5")] {
+            app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result"] + textSize
+            app.launch()
+            XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 15))
+            let window = app.windows.firstMatch.frame
+            let model = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "3D view of your wall")).firstMatch
+            XCTAssertTrue(model.waitForExistence(timeout: 5), "\(name): missing the 3D view")
+            for identifier in ["modeBadge", "result.sampleBadge"] {
+                let badge = element(app, identifier)
+                XCTAssertTrue(badge.waitForExistence(timeout: 5), "\(name): missing \(identifier)")
+                XCTAssertTrue(window.contains(badge.frame), "\(name): \(identifier) \(badge.frame) runs off screen")
+                if textSize.isEmpty {
+                    XCTAssertTrue(model.frame.contains(badge.frame), "\(name): \(identifier) \(badge.frame) must stay on the 3D view \(model.frame)")
+                } else {
+                    XCTAssertFalse(model.frame.intersects(badge.frame), "\(name): \(identifier) \(badge.frame) covers the 3D view \(model.frame)")
+                }
+            }
+            attach(app, name: name)
+            app.terminate()
+        }
     }
 
     /// "Share scan" opens the system share sheet with the scan file.
@@ -708,7 +1211,8 @@ final class ScreenStatesUITests: XCTestCase {
             if screen == "result" { tap(app, "result.details") }
             XCTAssertTrue(element(app, "action.shareScan").waitForExistence(timeout: 5), "\(name): Share scan is missing")
         }
-        for expected in Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
+        // An AX5 state takes its own entry where it has one, else the default size's.
+        for expected in Self.expectations[name] ?? Self.expectations[name.hasSuffix("-AX5") ? String(name.dropLast(4)) : name] ?? [] {
             let found: Bool
             if let identifier = expected.identifier {
                 let target = ElementRead.snapshot(element(app, identifier))
@@ -788,39 +1292,28 @@ final class ScreenStatesUITests: XCTestCase {
     /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
     /// tray).
     ///
-    /// A control below the bottom edge of a scrolling screen (the review's "Add something" chips,
-    /// the result's Details) is never hittable where it is. `tap()` scrolls to it and the wait
-    /// doesn't, so once it has had a moment to settle it is tapped where it is.
+    /// The wait reads each button's frame and enabled state from one fresh snapshot. The old
+    /// separate existence/layout/hittability waits repeatedly resolved the AR Done button,
+    /// consuming its 20 s budget in PR run 37022177313 attempt 1. One wait keeps that budget.
+    /// Bottom-edge controls use XCTest's ordinary scroll-to-visible tap, before hit-point queries.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
-        let target = element(app, identifier)
-        let deadline = Date().addingTimeInterval(timeout)
-        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
-        // An element can exist before its screen is laid out, with an infinite frame, and asking
-        // whether it is hittable then fails the test outright ("Activation point invalid";
-        // result.details in run 36820279307, mid-transition from the spot check).
-        while !Self.laidOut(target.frame), Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
-        guard Self.laidOut(target.frame) else {
-            XCTFail("\(identifier) was never laid out: \(target.frame)")
+        let target = app.buttons.matching(identifier: identifier).firstMatch
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        var state = TapReadiness.State.missing
+        var lastObservation = state
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            state = TapReadiness.evaluate(deadline: deadline, now: { ProcessInfo.processInfo.systemUptime }, read: {
+                ElementRead.snapshot(target).map { .init(frame: $0.frame, isEnabled: $0.isEnabled) }
+            }, window: { ElementRead.snapshot(app.windows.firstMatch)?.frame }, hittable: { target.isHittable })
+            if state != .expired { lastObservation = state }
+            return state == .ready
+        }, object: nil)
+        guard XCTWaiter().wait(for: [ready], timeout: timeout) == .completed else {
+            XCTFail("\(identifier) not ready for tap: \(state.rawValue); last observation: \(lastObservation.rawValue)")
             return
         }
-        let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
-        if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
-            target.tap()
-            return
-        }
-        XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
-    }
-
-    private static func laidOut(_ frame: CGRect) -> Bool {
-        [frame.minX, frame.minY, frame.width, frame.height].allSatisfy(\.isFinite) && !frame.isEmpty
-    }
-
-    @MainActor
-    private func waitUntilHittable(_ target: XCUIElement, timeout: TimeInterval) -> Bool {
-        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
-        return XCTWaiter().wait(for: [hittable], timeout: timeout) == .completed
     }
 
     /// The card's reply with these words.
@@ -838,5 +1331,61 @@ final class ScreenStatesUITests: XCTestCase {
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: target)
         XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 5), .completed, "the reply \"\(title)\" never took taps")
         target.tap()
+    }
+}
+
+/// A screenshot's pixels, read in the screen's points.
+private struct ScreenPixels {
+    private let data: [UInt8]
+    private let width: Int
+    private let height: Int
+    private let scale: CGFloat
+
+    init?(_ image: UIImage) {
+        guard let cgImage = image.cgImage, image.size.width > 0 else { return nil }
+        let w = cgImage.width, h = cgImage.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        // Drawn upright into a bitmap context, the first row in memory is the image's top row.
+        let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard drawn else { return nil }
+        data = bytes
+        width = w
+        height = h
+        scale = CGFloat(w) / image.size.width
+    }
+
+    private func pixel(_ x: Int, _ y: Int) -> (Int, Int, Int) {
+        let i = (y * width + x) * 4
+        return (Int(data[i]), Int(data[i + 1]), Int(data[i + 2]))
+    }
+
+    /// The first pixel in `rect`, outside `middle` points around its centre line, that differs
+    /// from the pixel 2 pt inside the rect's left edge on the same row by more than a rendering
+    /// tolerance. Nil when every pixel matches.
+    func firstMismatch(in rect: CGRect, excludingMiddle middle: CGFloat) -> CGPoint? {
+        let tolerance = 24
+        let top = max(Int((rect.minY * scale).rounded(.up)), 0), bottom = min(Int((rect.maxY * scale).rounded(.down)), height)
+        let left = max(Int((rect.minX * scale).rounded(.up)), 0), right = min(Int((rect.maxX * scale).rounded(.down)), width)
+        guard top < bottom, left < right else { return nil }
+        let rows = top..<bottom, columns = left..<right
+        let skip = (rect.midX - middle / 2) * scale...(rect.midX + middle / 2) * scale
+        let referenceX = min(max(Int(((rect.minX + 2) * scale).rounded()), 0), width - 1)
+        for y in rows {
+            let background = pixel(referenceX, y)
+            for x in columns where !skip.contains(CGFloat(x)) {
+                let (r, g, b) = pixel(x, y)
+                if abs(r - background.0) > tolerance || abs(g - background.1) > tolerance || abs(b - background.2) > tolerance {
+                    return CGPoint(x: CGFloat(x) / scale, y: CGFloat(y) / scale)
+                }
+            }
+        }
+        return nil
     }
 }

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Required-reason APIs the app calls, with Apple's approved reason for each use. Only first-party
+code ships in the app; HouseScanKit has no dependencies. Tracking and collected data types are
+not declared here: they belong to the App Store privacy answers, which this file does not decide.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- The Practice meter switch: the app's own key in standard defaults
+		     (DeveloperSettings.swift, DeveloperOptions.swift). -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+		<!-- Which earlier scan.zip in the app's Caches folder is newest, to keep it
+		     (ScanFolderCleanup.swift). -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<!-- systemUptime. 35F9.1: time between a homeowner's "can't get there" taps
+		     (ScanEngine+Ends.swift refusalClock), and dropping recorded frames from before a
+		     restart (CaptureRecorder.restart). 8FFB.1: the wall-clock time of the first recorded
+		     frame, the packet's capture.started_at (CaptureRecorder.append). -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+				<string>8FFB.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
