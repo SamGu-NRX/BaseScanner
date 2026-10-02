@@ -29,6 +29,13 @@ public actor CaptureUploader {
         /// of how long a finished run's answer takes to become readable sets this number; it only
         /// keeps an answer that never appears from holding the upload open.
         public var maxNotReadyResults = 10
+        /// Times one file may be left out of a register answer or a commit acknowledgement before
+        /// the upload stops. Each time waits the retry delay first. No measurement sets this; it
+        /// keeps a server that never takes a file from getting the same photo forever.
+        public var maxUnacknowledged = 5
+        /// Seconds between events polls that come back at once with nothing new and the capture
+        /// still running, for a server or proxy that doesn't hold the poll. Not measured.
+        public var minimumPollInterval = 2.0
 
         public init() {}
 
@@ -66,7 +73,6 @@ public actor CaptureUploader {
     private var failures = 0
     private var retryingAt: Date?
     private var digestRetried: Set<String> = []
-    private var notReadyReads = 0
     /// True once the homeowner took back their yes. Every save happens while holding it, so no
     /// save can land between the withdrawal and the abandoned state it leads to.
     private nonisolated let withdrawal = Mutex(false)
@@ -334,12 +340,40 @@ public actor CaptureUploader {
             if file.state == "committed" {
                 setPhase(file.path, .committed)
             } else if let target = file.upload, target.method == "PUT", let url = target.url {
+                // Photos go only over https, or http to this machine for tests, and only to a URL
+                // the PUT can use: a URL that doesn't parse would leave the file registered forever.
+                if let problem = Self.uploadURLProblem(url) { throw Refused(step: "register", status: reply.status, codes: [problem]) }
                 setPhase(file.path, .registered(url: url, headers: target.headers ?? [:], expiresAt: target.expiresAt.flatMap(Self.parseDate)))
             } else {
                 throw Refused(step: "register", status: reply.status, codes: ["upload_method_\(file.upload?.method ?? "none")"])
             }
         }
+        let answered = Set(answer.files.map(\.path))
+        try unacknowledged(files.map(\.sealed.path).filter { !answered.contains($0) }, step: "register", status: reply.status)
+    }
+
+    /// Counts files the server didn't take, saves, and backs off (or stops once one has been left
+    /// out more than `maxUnacknowledged` times). Saves and returns when there are none.
+    private func unacknowledged(_ paths: [String], step: String, status: Int) throws {
+        for path in paths {
+            let count = (state.files[path]?.unacknowledged ?? 0) + 1
+            state.files[path]?.unacknowledged = count
+        }
         persist()
+        guard !paths.isEmpty else { return }
+        if paths.contains(where: { (state.files[$0]?.unacknowledged ?? 0) > policy.maxUnacknowledged }) {
+            throw Refused(step: step, status: status, codes: ["not_acknowledged"])
+        }
+        throw Transient(step: step, detail: "\(paths.count) not acknowledged", retryAfter: nil)
+    }
+
+    /// Why `text` can't receive a photo: nil when it is an https URL, or http to this machine.
+    static func uploadURLProblem(_ text: String) -> String? {
+        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), let host = url.host(), !host.isEmpty else {
+            return "upload_url_invalid"
+        }
+        let local = host == "127.0.0.1" || host == "localhost"
+        return scheme == "https" || (scheme == "http" && local) ? nil : "upload_url_insecure"
     }
 
     private func put(_ files: [CaptureUploadState.File]) async throws {
@@ -351,9 +385,13 @@ public actor CaptureUploader {
             if isWithdrawn { throw Withdrawn() }
             let chunk = files[index..<min(index + policy.maxConcurrentPuts, files.count)]
             index += chunk.count
+            // A URL saved before it was checked goes back to register, which checks it.
+            for file in chunk {
+                if case .registered(let url, _, _) = file.phase, Self.uploadURLProblem(url) != nil { setPhase(file.sealed.path, .queued) }
+            }
             let results = await withTaskGroup(of: (String, Result<HTTPReply, any Error>).self) { group in
                 for file in chunk {
-                    guard case .registered(let url, let headers, _) = file.phase, let target = URL(string: url) else { continue }
+                    guard case .registered(let url, let headers, _) = file.phase, Self.uploadURLProblem(url) == nil, let target = URL(string: url) else { continue }
                     var request = URLRequest(url: target)
                     request.httpMethod = "PUT"
                     // Exactly the headers the server signed; never the API's own credentials.
@@ -414,7 +452,7 @@ public actor CaptureUploader {
         }
         if !committed.isEmpty { mark("firstCommit") }
         if state.packet != nil, state.files.values.allSatisfy({ $0.phase == .committed }) { mark("lastCommit") }
-        persist()
+        try unacknowledged(files.map(\.sealed.path).filter { !committed.contains($0) }, step: "commit", status: reply.status)
     }
 
     private func finalize() async throws {
@@ -440,6 +478,7 @@ public actor CaptureUploader {
         var request = URLRequest(url: components.url!)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = Double(policy.eventsWait) + 30
+        let sent = now()
         let (reply, attempt) = try await call("events", request)
         guard attempt == state.attemptID else { return }
         guard (200..<300).contains(reply.status), let answer = try? JSONDecoder().decode(CaptureAPI.EventsResponse.self, from: reply.body) else {
@@ -465,6 +504,12 @@ public actor CaptureUploader {
         }
         if !answer.events.isEmpty { log?("capture-upload events status=\(answer.status) last=\(state.lastEvent ?? "")") }
         persist()
+        // An answer that came back at once with nothing new means the server didn't hold the
+        // poll; waiting here keeps the loop from asking again immediately.
+        let waited = now().timeIntervalSince(sent)
+        if answer.events.isEmpty, !CaptureAPI.terminalStatuses.contains(answer.status), waited < policy.minimumPollInterval {
+            try await sleep(policy.minimumPollInterval - waited)
+        }
     }
 
     private func fetchResult() async throws {
@@ -508,7 +553,9 @@ public actor CaptureUploader {
     /// Always throws: a retry after the usual wait, or the end of the upload once
     /// `maxNotReadyResults` reads have found no answer.
     private func notReady(_ reply: HTTPReply) throws -> Never {
-        notReadyReads += 1
+        let notReadyReads = (state.notReadyReads ?? 0) + 1
+        state.notReadyReads = notReadyReads
+        persist()
         guard notReadyReads <= policy.maxNotReadyResults else {
             throw Refused(step: "result", status: reply.status, codes: ["result_not_ready"])
         }

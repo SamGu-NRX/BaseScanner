@@ -25,6 +25,9 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
         public var sealed: SealedFile
         public var phase: FilePhase = .queued
         public var attempts = 0
+        /// Register answers that left this file out, plus commit answers that didn't acknowledge
+        /// it. Nil in state saved before this was counted.
+        public var unacknowledged: Int?
         /// Order in which the file was sealed, the tie-break after priority.
         public var sequence: Int
 
@@ -88,6 +91,9 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
     public var eventCursor = 0
     /// `retry_finalize` answers followed so far.
     public var finalizeRetries = 0
+    /// Result reads that found no answer yet. Saved so a relaunch continues the same limit; nil in
+    /// state saved before this was counted.
+    public var notReadyReads: Int?
     public var backendStatus: String?
     public var lastEvent: String?
     public var result: Data?

@@ -73,6 +73,15 @@ final class LoopbackCaptureAPI: Sendable {
         /// The status a capture ends in once every listed file is committed. Only `manual_review`
         /// ends with an outcome; `failed` ends with a `failed` event and none.
         var endStatus = "manual_review"
+        /// Every register answer gives this URL for its PUTs instead of the loopback's own.
+        var uploadURLOverride: String?
+        /// Register answers leave out every file, as if the server never saw the request's list.
+        var registerOmitsFiles = false
+        /// Commits never acknowledge a file: every path comes back in `notFound`.
+        var commitNeverAcknowledges = false
+        /// Once every listed file is committed, the next N event polls answer at once with status
+        /// `processing` and no events, as a server that doesn't hold the poll would; then the run ends.
+        var processingPolls = 0
         /// Answer the next commit with this split instead of the truth.
         var commitOverride: ((committed: [String], notFound: [String], mismatch: [String]))?
         /// Routes whose answers wait until `release` is called.
@@ -192,7 +201,7 @@ final class LoopbackCaptureAPI: Sendable {
             case ("POST", "files"): return register(r, &capture, &s)
             case ("POST", "files:commit"): return commit(r, &capture, &s)
             case ("POST", "finalize"): return finalize(r, &capture, &s)
-            case ("GET", "events"): return events(r, &capture)
+            case ("GET", "events"): return events(r, &capture, &s)
             case ("GET", "result"):
                 if s.notReadyResults > 0 {
                     s.notReadyResults -= 1
@@ -262,10 +271,11 @@ final class LoopbackCaptureAPI: Sendable {
                 out.append(["path": path, "state": "committed"])
                 continue
             }
+            if s.registerOmitsFiles { continue }
             let token = UUID().uuidString
             s.tokens[token] = (c.id, path)
             out.append(["path": path, "state": "pending", "upload": [
-                "method": "PUT", "url": "http://127.0.0.1:\(port)/upload/\(token)",
+                "method": "PUT", "url": s.uploadURLOverride ?? "http://127.0.0.1:\(port)/upload/\(token)",
                 "headers": ["Content-Type": type, "Content-MD5": md5], "expiresAt": "2099-01-01T00:00:00Z",
             ]])
         }
@@ -308,6 +318,11 @@ final class LoopbackCaptureAPI: Sendable {
         if let forced = s.commitOverride {
             s.commitOverride = nil
             (committed, notFound, mismatch) = forced
+        }
+        if s.commitNeverAcknowledges {
+            notFound += committed + mismatch
+            committed = []
+            mismatch = []
         }
         c.committed.formUnion(committed)
         if !committed.isEmpty { c.events.append(("files_committed", ["committed": String(c.committed.count)])) }
@@ -357,7 +372,12 @@ final class LoopbackCaptureAPI: Sendable {
         }
     }
 
-    private func events(_ r: Request, _ c: inout Capture) -> (Int, Data) {
+    private func events(_ r: Request, _ c: inout Capture, _ s: inout State) -> (Int, Data) {
+        if c.status == "manual_review" || c.status == "failed", s.processingPolls > 0, c.runID != nil {
+            s.processingPolls -= 1
+            let after = Int(r.query["after"] ?? "0") ?? 0
+            return (200, json(["status": "processing", "next": after, "events": [] as [Any]]))
+        }
         let after = Int(r.query["after"] ?? "0") ?? 0
         let list = c.events.enumerated().filter { $0.offset + 1 > after }.map { index, event in
             ["seq": index + 1, "type": event.type, "at": "2026-09-27T00:00:00Z", "data": event.data] as [String: Any]

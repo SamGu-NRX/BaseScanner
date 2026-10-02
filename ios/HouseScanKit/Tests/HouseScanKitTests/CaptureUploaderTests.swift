@@ -15,7 +15,8 @@ import Testing
 
         init(
             packetID: String = UUID().uuidString, appVersion: String = "test (1)", server: LoopbackCaptureAPI? = nil,
-            http: any CaptureHTTP = URLSessionCaptureHTTP.ephemeral(timeout: 10), policy: CaptureUploader.Policy = Rig.fast
+            http: any CaptureHTTP = URLSessionCaptureHTTP.ephemeral(timeout: 10), policy: CaptureUploader.Policy = Rig.fast,
+            sleep: @escaping @Sendable (Double) async throws -> Void = { _ in try await Task.sleep(for: .milliseconds(10)) }
         ) throws {
             self.http = http
             self.server = try server ?? LoopbackCaptureAPI()
@@ -24,7 +25,7 @@ import Testing
             uploader = try CaptureUploader.start(
                 folder: capture.folder, base: self.server.base, http: http,
                 create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: appVersion)),
-                consentedAt: Date(), policy: policy, sleep: { _ in try await Task.sleep(for: .milliseconds(10)) })
+                consentedAt: Date(), policy: policy, sleep: sleep)
         }
 
         static var fast: CaptureUploader.Policy {
@@ -308,6 +309,114 @@ import Testing
         #expect(done.end == .failed(step: "result", codes: ["result_unreadable"], status: 200))
         #expect(done.result == nil)
         #expect(rig.server.requests("GET captures/result").count == 1)
+    }
+
+    /// Whether `uploader` goes idle within `seconds`. A loop that never goes idle fails the test
+    /// here instead of hanging the run; the process ending stops it.
+    static func settles(_ uploader: CaptureUploader, within seconds: Int = 20) async -> Bool {
+        let done = Mutex(false)
+        Task.detached { await uploader.settled(); done.withLock { $0 = true } }
+        let deadline = ContinuousClock.now + .seconds(seconds)
+        while ContinuousClock.now < deadline {
+            if done.withLock({ $0 }) { return true }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return false
+    }
+
+    /// A storage URL that is not https (or http to this machine) is refused when it is
+    /// registered, before any bytes go to it; one that doesn't parse is refused the same way
+    /// instead of leaving the file registered and the loop spinning.
+    @Test(arguments: [("http://storage.example.com/upload/x", "upload_url_insecure"), ("", "upload_url_invalid")])
+    func aStorageURLThatIsNotSafeIsRefusedBeforeAnyPut(url: String, code: String) async throws {
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.uploadURLOverride = url }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .failed(step: "register", codes: [code], status: 200))
+        #expect(rig.server.requests("POST captures/files").count == 1)
+        #expect(rig.server.requests("PUT upload").isEmpty)
+    }
+
+    /// Commits that never acknowledge a file back off between tries and stop after the policy's
+    /// limit, instead of sending the same photo again and again.
+    @Test func aCommitThatNeverAcknowledgesBacksOffAndStops() async throws {
+        var policy = Rig.fast
+        policy.maxUnacknowledged = 3
+        let sleeps = Mutex<[Double]>([])
+        let rig = try Rig(policy: policy, sleep: { seconds in sleeps.withLock { $0.append(seconds) } })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.commitNeverAcknowledges = true }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .failed(step: "commit", codes: ["not_acknowledged"], status: 200))
+        // The images are the close-up still and its keyframe.
+        #expect(rig.server.requests("POST captures/files:commit").count == 4)
+        #expect(sleeps.withLock { $0.count } == 3)
+    }
+
+    /// Register answers that leave a file out back off and stop the same way.
+    @Test func aRegisterThatOmitsFilesBacksOffAndStops() async throws {
+        var policy = Rig.fast
+        policy.maxUnacknowledged = 3
+        let sleeps = Mutex<[Double]>([])
+        let rig = try Rig(policy: policy, sleep: { seconds in sleeps.withLock { $0.append(seconds) } })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.registerOmitsFiles = true }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .failed(step: "register", codes: ["not_acknowledged"], status: 200))
+        #expect(rig.server.requests("POST captures/files").count == 4)
+        #expect(rig.server.requests("PUT upload").isEmpty)
+        #expect(sleeps.withLock { $0.count } == 3)
+    }
+
+    /// The limit on reads that find no answer is saved with the upload, so relaunching doesn't
+    /// start it again: across two processes the reads still stop at `maxNotReadyResults + 1`.
+    @Test func theNotReadyLimitSurvivesARelaunch() async throws {
+        var policy = Rig.fast
+        policy.maxNotReadyResults = 3
+        let waits = Mutex(0)
+        // The first process quits during its second wait.
+        let rig = try Rig(policy: policy, sleep: { _ in
+            let n = waits.withLock { $0 += 1; return $0 }
+            if n >= 2 { throw CancellationError() }
+        })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.outcomelessResults = 100 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        try #require(await Self.settles(rig.uploader))
+        #expect(rig.server.requests("GET captures/result").count == 2)
+        #expect(await rig.uploader.snapshot.end == nil)
+
+        let resumed = try #require(try CaptureUploader.resume(
+            folder: rig.capture.folder, base: rig.server.base, http: rig.http, policy: policy, sleep: { _ in }))
+        await resumed.kick()
+        try #require(await Self.settles(resumed))
+        #expect(await resumed.snapshot.end == .failed(step: "result", codes: ["result_not_ready"], status: 200))
+        #expect(rig.server.requests("GET captures/result").count == 4)
+    }
+
+    /// A server that answers an events poll at once with nothing new is not polled again at once:
+    /// the uploader waits out `minimumPollInterval` first.
+    @Test func emptyEventsAnsweredAtOnceArePaced() async throws {
+        let sleeps = Mutex<[Double]>([])
+        let rig = try Rig(sleep: { seconds in sleeps.withLock { $0.append(seconds) } })
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.processingPolls = 3 }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try await rig.finishAndSeal()
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .finished(status: "manual_review"))
+        let waited = sleeps.withLock { $0 }
+        #expect(waited.count == 3)
+        #expect(waited.allSatisfy { $0 > 0 && $0 <= CaptureUploader.Policy().minimumPollInterval })
     }
 
     /// `failed` ends a capture without an answer, so its outcomeless result is final at once.
