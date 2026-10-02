@@ -572,8 +572,15 @@ final class ScreenStatesUITests: XCTestCase {
     /// The pass sample (`-uiDemoPass`) lists no view to take, so the resend goes straight to the
     /// result. The review sample asked for one more, and one wait covered a second capture, two
     /// uploads and the server's follow-up; on run 36736877861 it ran out with the app still
-    /// uploading at 60% (#191). Skipping the review's own view sends at once, so each wait below
-    /// covers one step.
+    /// uploading at 60% (#191).
+    ///
+    /// The review's own view is left to the demo, which covers it and sends by itself: 1.2 s, then
+    /// six 0.45 s steps to covered, then 1.6 s (`DemoEngine.gapScript`). This test used to tap
+    /// "I can't get there" first, which raced that script. Counted from the start of the wait for
+    /// the view, the tap's event came 3.2 to 3.5 s in when it passed (runs 37001843593 and
+    /// 37001782118). On run 37013846307 it came at 4.3 s, and on 37013940503 the tap began at
+    /// 4.5 s; both times the button had gone. Skipping is checked frozen in
+    /// `testSkippingTheGapRequestSends`.
     @MainActor
     func testRejectedUploadGoesBackToReview() throws {
         continueAfterFailure = false
@@ -590,13 +597,26 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertTrue(element(app, "review.unanswered").waitForExistence(timeout: 5))
         tap(app, "action.confirmFeatures")
         XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 10), "the review must open its own view")
+        tap(app, "action.spotClear", timeout: 30)
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
+    }
+
+    /// "I can't get there" on a gap request sends the scan. Frozen, the demo's gap script never
+    /// runs, so the request can't finish itself before the tap.
+    @MainActor
+    func testSkippingTheGapRequestSends() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "gapRequest"]
+        app.launch()
+        XCTAssertTrue(element(app, "screen.gapRequest").waitForExistence(timeout: 15))
         // The card's reply ignores taps for a moment after it appears (`InstructionCard.replyLock`).
         let skip = element(app, "action.skipGap")
         let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true AND isHittable == true"), object: skip)
         XCTAssertEqual(XCTWaiter().wait(for: [ready], timeout: 10), .completed, "I can't get there never took taps")
         skip.tap()
-        tap(app, "action.spotClear", timeout: 30)
-        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 20))
+        XCTAssertTrue(element(app, "screen.uploading").waitForExistence(timeout: 10), "skipping must send the scan")
+        XCTAssertFalse(element(app, "screen.gapRequest").exists)
     }
 
     /// #65 soft gate: with the ground or a window's question unanswered, the first "Looks
