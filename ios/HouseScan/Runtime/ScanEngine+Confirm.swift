@@ -11,6 +11,9 @@ struct SpotConfirmState {
     /// The last upload's scene.json, and the sha256 of it and of the answer to it: what a check
     /// asked now is bound to, and the scene the bundle is written again with after "It's clear".
     var lastScene: Data?
+    /// The capture packet's inputs from that same upload, with `lastScene` attached: the packet
+    /// written again after "It's clear" (`answerSpotCheck`).
+    var lastPacket: ScanEngine.PacketInputs?
     var sceneSHA256: String?
     var answerSHA256: String?
     /// The check on screen: its area, the photo shown and the exchange it came from.
@@ -50,8 +53,9 @@ extension ScanEngine {
 
     /// Records the upload's scene and the answer to it, which a check asked about this answer
     /// is bound to. Call it once the answer has decoded.
-    func noteExchange(scene: Data, answer: Data) {
+    func noteExchange(scene: Data, answer: Data, packet: PacketInputs?) {
         spotConfirm.lastScene = scene
+        spotConfirm.lastPacket = packet
         spotConfirm.sceneSHA256 = PacketFiles.sha256(scene)
         spotConfirm.answerSHA256 = PacketFiles.sha256(answer)
     }
@@ -125,8 +129,10 @@ extension ScanEngine {
                 return
             }
             // The bundle was written at the upload, before this answer: write it again so its
-            // guidance log holds the answer.
-            if let scene = spotConfirm.lastScene { saveBundle(scene: scene, mesh: liveCapture?.meshSnapshot()) }
+            // guidance log holds the answer. The upload's captured packet is reused, with only
+            // the guidance log read again and placed in that packet's frame, so the packet keeps
+            // the submitted scene's geometry, mesh and photos rather than mixing in a later wall.
+            if let packet = spotConfirm.lastPacket { saveBundle(withCurrentGuidance(packet)) }
             go(.result)
         }
     }
