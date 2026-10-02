@@ -11,6 +11,9 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 work=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$work"' EXIT
 export LOG="$work/log" TREE="$work/tree" FAIL_AT="" SLOW_TOOL=""
+# A caller's own settings would leak into the cases below: make reads REQUIRE_UPSTREAM from the
+# environment, and the stubs record an inherited HOUSESCAN_REQUIRE_UPSTREAM.
+unset REQUIRE_UPSTREAM HOUSESCAN_REQUIRE_UPSTREAM FULL_UI IOS_DESTINATION
 failures=0
 
 # A stub fails when FAIL_AT is "<folder> <command>" for it, such as "experiments/evals make".
