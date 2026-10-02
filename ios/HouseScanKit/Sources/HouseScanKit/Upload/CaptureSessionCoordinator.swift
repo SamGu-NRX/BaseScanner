@@ -181,6 +181,7 @@ public final class CaptureSessionCoordinator {
         var ended = false
         /// The homeowner said no after a yes: this capture is never sent again.
         var consentWithdrawn = false
+        var withdrawalFailure: ConsentWithdrawalError?
         /// packet.json as frozen, once the scan was sent for placement.
         var frozen: Data?
         /// The server's result for this session's capture, decoded and bound to it.
@@ -237,28 +238,38 @@ public final class CaptureSessionCoordinator {
         environment?.sends == true && consent == nil && session != nil
     }
 
+    public enum ConsentWithdrawalError: Error, Sendable, Equatable {
+        /// Sending stopped in this process, but a relaunch may still find the old saved yes.
+        case notRecorded(String)
+    }
+
     /// A no after a yes stops this capture's upload for good: nothing kept later is sent, and a
     /// second yes in the same scan does not start it again. What the server already has stays there.
-    public func answerConsent(_ yes: Bool, at time: Date = Date()) {
+    /// Failure means sending stopped here but the withdrawal could not be saved for a relaunch.
+    @discardableResult
+    public func answerConsent(_ yes: Bool, at time: Date = Date()) -> Result<Void, ConsentWithdrawalError> {
         consent = yes
         consentedAt = yes ? time : nil
-        guard let session else { return }
+        guard let session else { return .success(()) }
+        if let failure = session.withdrawalFailure { return .failure(failure) }
         if yes {
             startUploading(session)
         } else if let uploader = session.uploader {
             session.consentWithdrawn = true
             session.uploader = nil
-            // Recorded before returning, so a relaunch can't resume this capture even if the app
-            // quits before the abandon below runs.
+            // The result distinguishes durable withdrawal from stopping only this live process.
             switch uploader.withdrawConsent() {
             case .marked: break
             case .savedStateRemoved:
                 environment?.log("capture upload: the withdrawal marker could not be written; the saved upload was removed instead")
             case .notRecorded(let error):
-                environment?.log("capture upload: the withdrawal could not be saved (\(error)); a relaunch could still find this capture until the upload is saved as abandoned")
+                session.withdrawalFailure = .notRecorded(error)
+                environment?.log("capture upload: the withdrawal could not be saved (\(error)); sending stopped in this process, but a relaunch could still find the saved consent")
             }
             Task { await uploader.abandon(CaptureUploader.withdrawnReason) }
         }
+        if let failure = session.withdrawalFailure { return .failure(failure) }
+        return .success(())
     }
 
     // MARK: Scan events
@@ -412,9 +423,9 @@ public final class CaptureSessionCoordinator {
                 policy: environment.policy)
             session.uploader = uploader
             // Status and results from an ended session's uploader never reach the screen.
-            let publish: @Sendable (CaptureUploadStatus) -> Void = { [weak self] status in
+            let publish: @Sendable (CaptureUploadStatus) -> Void = { [weak self, weak session] status in
                 Task { @MainActor in
-                    guard let self, self.session === session else { return }
+                    guard let self, let session, self.session === session else { return }
                     self.onStatus?(status)
                     if status.resultAvailable, session.result == nil { await self.bindResult(of: session) }
                 }
@@ -464,7 +475,10 @@ public final class CaptureSessionCoordinator {
         self.session = nil
         session.ended = true
         onStatus?(nil)
-        if let uploader = session.uploader { Task { await uploader.abandon(reason) } }
+        if let uploader = session.uploader {
+            uploader.stopSending()
+            Task { await uploader.abandon(reason) }
+        }
     }
 }
 

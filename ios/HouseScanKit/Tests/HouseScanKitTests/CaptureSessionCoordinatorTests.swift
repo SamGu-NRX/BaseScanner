@@ -464,6 +464,110 @@ struct NativeCaptureFixture: Sendable {
         #expect(await uploader.snapshot.end == .abandoned("consent withdrawn"))
     }
 
+    /// A relaunch scan in the live process must not create a second sender for the sealed
+    /// folder. On the old code B survives A's withdrawal and sends the remaining files.
+    @Test func withdrawalCoversTheFolderDuringResumeDiscovery() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        server.state.withLock { $0.held = ["POST captures/finalize"] }
+        let environment = NativeCaptureFixture.environment(
+            endpoint: server.base, http: UncancellableHTTP(URLSessionCaptureHTTP.ephemeral(timeout: 10)), captures: captures)
+        let coordinator = CaptureSessionCoordinator(environment: environment)
+        coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
+        let (tap, hit) = try fixture.tap(at: fixture.start + 1)
+        coordinator.meterTapped(tap, hit: hit)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2.5, purpose: "meter_close"))
+        for i in 0..<3 { coordinator.kept(try fixture.photo(at: fixture.start + 3 + Double(i) * 1.5)) }
+        coordinator.captureEnded(acceptedCloseUpAt: fixture.start + 2.5)
+        let uploader = try #require(coordinator.session?.uploader)
+        try await waitUntilParked(server, "POST captures/finalize")
+
+        let duplicates = CaptureSessionCoordinator(environment: environment).resumeSealedCaptures()
+        for duplicate in duplicates { await duplicate.kick() }
+        if !duplicates.isEmpty {
+            for _ in 0..<500 where server.requests("POST captures/finalize").count < 2 {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            try #require(server.requests("POST captures/finalize").count == 2)
+        }
+        #expect(duplicates.isEmpty)
+        coordinator.answerConsent(false)
+        let puts = server.requests("PUT upload").count
+        let commits = server.requests("POST captures/files:commit").count
+        server.state.withLock { $0.held = [] }
+        server.release("POST captures/finalize")
+        try #require(await CaptureUploaderTests.settles(uploader))
+        for duplicate in duplicates { try #require(await CaptureUploaderTests.settles(duplicate)) }
+        #expect(server.requests("PUT upload").count == puts)
+        #expect(server.requests("POST captures/files:commit").count == commits)
+        #expect(server.requests("GET captures/result").isEmpty)
+        #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
+    }
+
+    @Test func droppingAnIdleCoordinatorReleasesFolderOwnership() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        let environment = NativeCaptureFixture.environment(endpoint: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10), captures: captures)
+        var coordinator: CaptureSessionCoordinator? = CaptureSessionCoordinator(environment: environment)
+        coordinator?.begin(recording: fixture.recording)
+        coordinator?.answerConsent(true)
+        coordinator?.kept(try fixture.photo(at: fixture.start + 2))
+        await coordinator?.settle()
+        let folder = try #require(coordinator?.session?.folder)
+        weak var oldSession = coordinator?.session
+        weak var oldUploader = coordinator?.session?.uploader
+        coordinator = nil
+        for _ in 0..<500 where oldSession != nil || oldUploader != nil { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(oldSession == nil && oldUploader == nil)
+        let resumed = try #require(try CaptureUploader.resume(folder: folder, base: server.base, http: environment.http))
+        await resumed.kick()
+        try #require(await CaptureUploaderTests.settles(resumed))
+        #expect(server.requests("POST captures").count == 1)
+    }
+
+    @Test func anUnsavedWithdrawalIsReturnedToTheCaller() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let server = try LoopbackCaptureAPI()
+        server.state.withLock { $0.held = ["POST captures/files"] }
+        let environment = NativeCaptureFixture.environment(
+            endpoint: server.base, http: UncancellableHTTP(URLSessionCaptureHTTP.ephemeral(timeout: 10)), captures: captures)
+        let coordinator = CaptureSessionCoordinator(environment: environment)
+        coordinator.begin(recording: fixture.recording)
+        coordinator.answerConsent(true)
+        coordinator.kept(try fixture.photo(at: fixture.start + 2))
+        let session = try #require(coordinator.session)
+        let uploader = try #require(session.uploader)
+        try await waitUntilParked(server, "POST captures/files")
+        let stateURL = CaptureUploader.stateURL(in: session.folder)
+        let before = try Data(contentsOf: stateURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: session.folder.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: session.folder.path) }
+
+        let result = coordinator.answerConsent(false)
+        guard case .failure(.notRecorded(let detail)) = result else {
+            Issue.record("The caller must receive the persistence failure")
+            server.state.withLock { $0.held = [] }
+            server.release("POST captures/files")
+            return
+        }
+        #expect(detail.contains("marker:") && detail.contains("state removal:"))
+        #expect(try Data(contentsOf: stateURL) == before)
+        // Repeated answers must not turn the failed withdrawal into a reported success.
+        if case .success = coordinator.answerConsent(false) { Issue.record("Repeated no lost the failure") }
+        if case .success = coordinator.answerConsent(true) { Issue.record("Later yes lost the failure") }
+        #expect(session.uploader == nil)
+        #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: environment.http) == nil)
+        #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
+        server.state.withLock { $0.held = [] }
+        server.release("POST captures/files")
+        try #require(await CaptureUploaderTests.settles(uploader))
+        #expect(server.requests("PUT upload").isEmpty)
+        #expect(server.requests("POST captures/files:commit").isEmpty)
+        // All writes still fail, so the app cannot promise the persisted yes was removed.
+        #expect(try Data(contentsOf: stateURL) == before)
+    }
+
     /// Waits, suspending, until the loopback has parked an answer for `route`.
     func waitUntilParked(_ server: LoopbackCaptureAPI, _ route: String) async throws {
         for _ in 0..<1000 where server.state.withLock({ $0.parked[route]?.isEmpty ?? true }) { try await Task.sleep(for: .milliseconds(10)) }

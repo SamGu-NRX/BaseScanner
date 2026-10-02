@@ -11,6 +11,25 @@ public struct CaptureUploadState: Codable, Sendable, Equatable {
 
     public static func withdrawnURL(in folder: URL) -> URL { folder.appending(path: withdrawnFileName) }
 
+    /// Called with the uploader's folder registry locked so no initial save or reply can restore
+    /// a yes between these writes. Neither failing proves anything durable after a process exit.
+    static func recordWithdrawal(in folder: URL) -> CaptureUploader.WithdrawalRecord {
+        do {
+            try Data().write(to: withdrawnURL(in: folder), options: .atomic)
+            return .marked
+        } catch {
+            let markerError = CaptureUploader.describe(error)
+            do {
+                try FileManager.default.removeItem(at: CaptureUploader.stateURL(in: folder))
+                return .savedStateRemoved
+            } catch let removal as NSError where removal.domain == NSCocoaErrorDomain && removal.code == NSFileNoSuchFileError {
+                return .savedStateRemoved
+            } catch {
+                return .notRecorded("marker: \(markerError); state removal: \(CaptureUploader.describe(error))")
+            }
+        }
+    }
+
     public enum FilePhase: Codable, Sendable, Equatable {
         /// Sealed on the phone, not yet registered (or its URL must be fetched again).
         case queued

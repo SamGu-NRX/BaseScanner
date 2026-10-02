@@ -10,7 +10,13 @@ import Testing
         let server: LoopbackCaptureAPI
         let root: URL
         let capture: SyntheticCapture04
-        let uploader: CaptureUploader
+        private var ownedUploader: CaptureUploader?
+        var uploader: CaptureUploader {
+            guard let ownedUploader else { preconditionFailure("The test released this uploader to simulate process exit") }
+            return ownedUploader
+        }
+
+        mutating func releaseUploader() { ownedUploader = nil }
         let http: any CaptureHTTP
 
         init(
@@ -23,7 +29,7 @@ import Testing
             self.server = try server ?? LoopbackCaptureAPI()
             root = FileManager.default.temporaryDirectory.appending(path: "uploader-\(UUID().uuidString)")
             capture = try SyntheticCapture04(folder: root.appending(path: "packet"), packetID: packetID)
-            uploader = try CaptureUploader.start(
+            ownedUploader = try CaptureUploader.start(
                 folder: capture.folder, base: self.server.base, http: http,
                 create: .init(packetId: packetID, tier: .arkit, device: .init(model: "iPhone15,4", systemVersion: "26.0", appVersion: appVersion)),
                 consentedAt: Date(), policy: policy, now: now, sleep: sleep)
@@ -101,12 +107,17 @@ import Testing
     /// A relaunch resumes the saved capture: same packet and capture ids, no second create, and the
     /// old process's attempt id is replaced.
     @Test func relaunchResumesTheSameCapture() async throws {
-        let rig = try Rig()
+        var rig = try Rig()
         defer { rig.cleanUp() }
         await rig.uploader.add(try await rig.capture.sealImages(count: 2))
         await rig.uploader.settled()
         let before = await rig.uploader.snapshot
 
+        // The old process releases every uploader before the new one resumes its saved state.
+        weak var released = rig.uploader
+        rig.releaseUploader()
+        for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(released == nil)
         let resumed = try #require(try CaptureUploader.resume(
             folder: rig.capture.folder, base: rig.server.base, http: rig.http, policy: Rig.fast, sleep: { _ in }))
         let after = await resumed.snapshot
@@ -417,7 +428,7 @@ import Testing
         policy.maxNotReadyResults = 3
         let waits = Mutex(0)
         // The first process quits during its second wait.
-        let rig = try Rig(policy: policy, sleep: { _ in
+        var rig = try Rig(policy: policy, sleep: { _ in
             let n = waits.withLock { $0 += 1; return $0 }
             if n >= 2 { throw CancellationError() }
         })
@@ -429,6 +440,11 @@ import Testing
         #expect(rig.server.requests("GET captures/result").count == 2)
         #expect(await rig.uploader.snapshot.end == nil)
 
+        // The old process releases every uploader before the new one resumes its saved state.
+        weak var released = rig.uploader
+        rig.releaseUploader()
+        for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(released == nil)
         let resumed = try #require(try CaptureUploader.resume(
             folder: rig.capture.folder, base: rig.server.base, http: rig.http, policy: policy, sleep: { _ in }))
         await resumed.kick()
@@ -485,7 +501,7 @@ import Testing
         policy.maxNotReadyResults = 3
         let waits = Mutex(0)
         // The first process quits during its third wait, after three not-ready reads.
-        let rig = try Rig(policy: policy, sleep: { _ in
+        var rig = try Rig(policy: policy, sleep: { _ in
             let n = waits.withLock { $0 += 1; return $0 }
             if n >= 3 { throw CancellationError() }
         })
@@ -499,6 +515,11 @@ import Testing
         // The server forgets every capture (a redeploy with in-memory state). The next run has
         // one not-ready read before its answer.
         rig.server.state.withLock { $0.captures = [:]; $0.byPacket = [:]; $0.outcomelessResults = 1 }
+        // The old process releases every uploader before the new one resumes its saved state.
+        weak var released = rig.uploader
+        rig.releaseUploader()
+        for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
+        try #require(released == nil)
         let resumed = try #require(try CaptureUploader.resume(
             folder: rig.capture.folder, base: rig.server.base, http: rig.http, policy: policy, sleep: { _ in }))
         await resumed.kick()

@@ -75,11 +75,26 @@ public actor CaptureUploader {
     private var failures = 0
     private var retryingAt: Date?
     private var digestRetried: Set<String> = []
-    /// True once the homeowner took back their yes. Every save happens while holding it, so no
-    /// save can land between the withdrawal and the abandoned state it leads to.
-    private nonisolated let withdrawal = Mutex(false)
-    /// The running loop, reachable without the actor so a withdrawal can cancel it at once.
-    private nonisolated let running = Mutex<Task<Void, Never>?>(nil)
+    /// The registry covers public start/resume as well as coordinator discovery. An idle live
+    /// uploader still owns its folder, since it can receive more sealed files. Weak ownership
+    /// releases only after the uploader and its running task are gone. Withdrawn entries stay
+    /// for this process's lifetime, including when every disk write failed.
+    private struct FolderEntry {
+        weak var owner: CaptureUploader?
+        var withdrawn = false
+        var stopped = false
+        var running: Task<Void, Never>?
+    }
+    private static let folders = Mutex<[String: FolderEntry]>([:])
+    private nonisolated let folderKey: String
+
+    public enum OwnershipError: Error, Sendable, Equatable {
+        case alreadyOwned
+        case consentWithdrawn
+        /// Use resume for an existing saved upload; start must never overwrite its consent.
+        case savedUploadExists
+        case folderIdentityUnavailable
+    }
     /// Set when a state change could not be saved: the loop stops rather than send a request the
     /// saved state doesn't know about.
     private var saveFailed = false
@@ -88,11 +103,23 @@ public actor CaptureUploader {
 
     public nonisolated static func stateURL(in folder: URL) -> URL { folder.appending(path: CaptureUploadState.fileName) }
 
+    /// Resolve symbolic links before asking for the filesystem's case-correct path. The
+    /// canonical-path resource alone preserves a final-component symlink on macOS.
+    /// Refuse an unknown identity instead of allowing a second registry key for one folder.
+    private static func canonicalFolder(_ folder: URL) throws -> URL {
+        let fresh = URL(fileURLWithPath: folder.path, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
+        guard let path = try fresh.resourceValues(forKeys: [.canonicalPathKey]).canonicalPath else {
+            throw OwnershipError.folderIdentityUnavailable
+        }
+        return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
     private init(
         folder: URL, base: URL, http: any CaptureHTTP, state: CaptureUploadState, policy: Policy,
         now: @escaping @Sendable () -> Date, sleep: @escaping @Sendable (Double) async throws -> Void
     ) {
         self.folder = folder
+        self.folderKey = folder.path
         self.base = base
         self.http = http
         self.state = state
@@ -108,35 +135,54 @@ public actor CaptureUploader {
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) throws -> CaptureUploader {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        var state = CaptureUploadState(attemptID: UUID().uuidString, packetID: create.packetId, createBody: try encoder.encode(create))
-        state.destination = base.absoluteString
-        state.consent = .init(grantedAt: consentedAt, destination: base.absoluteString)
-        state.marks["started"] = now()
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        try state.save(to: stateURL(in: folder))
-        return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
+        let folder = try canonicalFolder(folder)
+        return try folders.withLock { entries in
+            entries = entries.filter { $0.value.owner != nil || $0.value.withdrawn }
+            guard entries[folder.path]?.withdrawn != true,
+                  !FileManager.default.fileExists(atPath: CaptureUploadState.withdrawnURL(in: folder).path)
+            else { throw OwnershipError.consentWithdrawn }
+            guard entries[folder.path]?.owner == nil else { throw OwnershipError.alreadyOwned }
+            guard !FileManager.default.fileExists(atPath: stateURL(in: folder).path) else { throw OwnershipError.savedUploadExists }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            var state = CaptureUploadState(attemptID: UUID().uuidString, packetID: create.packetId, createBody: try encoder.encode(create))
+            state.destination = base.absoluteString
+            state.consent = .init(grantedAt: consentedAt, destination: base.absoluteString)
+            state.marks["started"] = now()
+            try state.save(to: stateURL(in: folder))
+            let uploader = CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
+            entries[folder.path] = FolderEntry(owner: uploader)
+            return uploader
+        }
     }
 
-    /// The capture saved in `folder`, as a relaunch finds it; nil when there is none, when the
-    /// homeowner withdrew their yes, when it was created on another API than `base`, or when it
-    /// holds no yes for `base`. The resumed upload
-    /// gets a new attempt id, so nothing from the previous process can land in it.
+    /// Resumes a saved upload with its recorded consent and endpoint. Returns nil when absent,
+    /// ended or withdrawn; throws `alreadyOwned` while another live uploader owns the folder.
+    /// The new attempt id and ownership are saved together, before any request can start.
     public static func resume(
         folder: URL, base: URL, http: any CaptureHTTP, policy: Policy = .init(),
         now: @escaping @Sendable () -> Date = { Date() },
         sleep: @escaping @Sendable (Double) async throws -> Void = { try await Task.sleep(for: .seconds($0)) }
     ) throws -> CaptureUploader? {
-        let url = stateURL(in: folder)
-        guard FileManager.default.fileExists(atPath: url.path),
-              !FileManager.default.fileExists(atPath: CaptureUploadState.withdrawnURL(in: folder).path)
-        else { return nil }
-        var state = try CaptureUploadState.load(from: url)
-        guard state.destination == base.absoluteString, state.consent?.destination == base.absoluteString else { return nil }
-        state.attemptID = UUID().uuidString
-        try state.save(to: url)
-        return CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return nil }
+        let folder = try canonicalFolder(folder)
+        return try folders.withLock { entries in
+            entries = entries.filter { $0.value.owner != nil || $0.value.withdrawn }
+            let url = stateURL(in: folder)
+            guard entries[folder.path]?.withdrawn != true,
+                  FileManager.default.fileExists(atPath: url.path),
+                  !FileManager.default.fileExists(atPath: CaptureUploadState.withdrawnURL(in: folder).path)
+            else { return nil }
+            guard entries[folder.path]?.owner == nil else { throw OwnershipError.alreadyOwned }
+            var state = try CaptureUploadState.load(from: url)
+            guard state.end == nil, state.destination == base.absoluteString, state.consent?.destination == base.absoluteString else { return nil }
+            state.attemptID = UUID().uuidString
+            try state.save(to: url)
+            let uploader = CaptureUploader(folder: folder, base: base, http: http, state: state, policy: policy, now: now, sleep: sleep)
+            entries[folder.path] = FolderEntry(owner: uploader)
+            return uploader
+        }
     }
 
     public func observe(_ observer: @escaping @Sendable (CaptureUploadStatus) -> Void, log: (@Sendable (String) -> Void)? = nil) {
@@ -196,50 +242,52 @@ public actor CaptureUploader {
         case notRecorded(String)
     }
 
-    /// The homeowner took back their yes. Before returning, this records the withdrawal on disk
-    /// (see `WithdrawalRecord`) and cancels the running loop, which cancels requests it has not
-    /// finished. From then on no request is admitted and every save of this uploader records the
-    /// upload as abandoned, so a reply that still arrives can't leave a capture a relaunch would
-    /// resume. Call `abandon` afterwards to end the upload in memory.
+    /// Revokes the folder before returning and cancels its running task. A request already
+    /// admitted to a transport that ignores cancellation may finish; its reply cannot admit
+    /// another request or save resumable consent. `.notRecorded` means only the live process
+    /// is protected: after a crash the old saved yes may still exist.
     @discardableResult
     public nonisolated func withdrawConsent() -> WithdrawalRecord {
-        let record = withdrawal.withLock { withdrawn -> WithdrawalRecord in
-            withdrawn = true
-            do {
-                try Data().write(to: CaptureUploadState.withdrawnURL(in: folder), options: .atomic)
-                return .marked
-            } catch {
-                do {
-                    try FileManager.default.removeItem(at: Self.stateURL(in: folder))
-                    return .savedStateRemoved
-                } catch let removal as NSError where removal.domain == NSCocoaErrorDomain && removal.code == NSFileNoSuchFileError {
-                    return .savedStateRemoved
-                } catch {
-                    return .notRecorded(Self.describe(error))
-                }
-            }
+        let (record, task) = Self.folders.withLock { entries in
+            entries[folderKey, default: FolderEntry()].withdrawn = true
+            let record = CaptureUploadState.recordWithdrawal(in: folder)
+            return (record, entries[folderKey]?.running)
         }
-        running.withLock { $0?.cancel() }
+        // Cancellation handlers belong to the transport; never call them while holding our lock.
+        task?.cancel()
         return record
+    }
+
+    /// Closes admission synchronously when a coordinator ends a world, before its queued actor
+    /// work can kick the upload. Ownership stays until the old uploader and its requests die.
+    nonisolated func stopSending() {
+        let task = Self.folders.withLock { entries in
+            entries[folderKey]?.stopped = true
+            return entries[folderKey]?.running
+        }
+        task?.cancel()
     }
 
     /// Ends this upload for good: a world reset or starting over. Replies still in flight are
     /// dropped when they arrive.
     public func abandon(_ reason: String) {
+        stopSending()
         guard state.end == nil else { return }
         state.end = .abandoned(reason)
         state.attemptID = UUID().uuidString
         loop?.cancel()
-        loop = nil
         persist()
     }
 
     /// Starts the loop if it is idle: after a relaunch, or when the network is back.
     public func kick() {
-        guard loop == nil, state.end == nil, !isWithdrawn else { return }
-        let task = Task { await self.drive() }
-        loop = task
-        running.withLock { $0 = task }
+        guard loop == nil, state.end == nil, !saveFailed else { return }
+        Self.folders.withLock { entries in
+            guard let entry = entries[folderKey], entry.owner === self, !entry.withdrawn, !entry.stopped else { return }
+            let task = Task { await self.drive() }
+            loop = task
+            entries[folderKey]?.running = task
+        }
     }
 
     /// Waits for the loop to go idle: nothing to send until more input, or ended.
@@ -281,6 +329,7 @@ public actor CaptureUploader {
             }
         }
         loop = nil
+        Self.folders.withLock { $0[folderKey]?.running = nil }
     }
 
     /// One unit of work. False when there is nothing to do until more input arrives.
@@ -386,7 +435,7 @@ public actor CaptureUploader {
         var index = 0
         while index < files.count {
             // Each batch of PUTs is admitted only while the homeowner's yes stands.
-            if isWithdrawn { throw Withdrawn() }
+            if !canSend || Task.isCancelled { throw Withdrawn() }
             let chunk = files[index..<min(index + policy.maxConcurrentPuts, files.count)]
             index += chunk.count
             // A URL saved before it was checked goes back to register, which checks it.
@@ -403,7 +452,7 @@ public actor CaptureUploader {
                     let local = folder.appending(path: file.sealed.path)
                     let http = self.http
                     group.addTask {
-                        if self.isWithdrawn { return (file.sealed.path, .failure(Withdrawn())) }
+                        if !self.canSend || Task.isCancelled { return (file.sealed.path, .failure(Withdrawn())) }
                         do { return (file.sealed.path, .success(try await http.upload(request, file: local))) } catch { return (file.sealed.path, .failure(error)) }
                     }
                 }
@@ -411,7 +460,7 @@ public actor CaptureUploader {
                 for await result in group { out.append(result) }
                 return out
             }
-            if isWithdrawn { throw Withdrawn() }
+            if !canSend || Task.isCancelled { throw Withdrawn() }
             guard attempt == state.attemptID, state.end == nil else { return }
             for (path, result) in results {
                 state.files[path]?.attempts += 1
@@ -602,7 +651,7 @@ public actor CaptureUploader {
     private func call(_ step: String, _ request: URLRequest) async throws -> (HTTPReply, String) {
         // Every API request is admitted only while the homeowner's yes stands. One already sent
         // finishes, but its reply can only save the upload as abandoned.
-        if isWithdrawn { throw Withdrawn() }
+        if !canSend || Task.isCancelled { throw Withdrawn() }
         let attempt = state.attemptID
         let reply: HTTPReply
         do {
@@ -633,11 +682,20 @@ public actor CaptureUploader {
         log?("capture-upload stage=\(name) t=\(String(format: "%.2f", since))s committed=\(state.committedCount)/\(state.files.count)")
     }
 
-    private nonisolated var isWithdrawn: Bool { withdrawal.withLock { $0 } }
+    private nonisolated var isWithdrawn: Bool { Self.folders.withLock { $0[folderKey]?.withdrawn == true } }
+
+    private nonisolated var canSend: Bool {
+        Self.folders.withLock { entries in
+            guard let entry = entries[folderKey] else { return false }
+            return entry.owner === self && !entry.withdrawn && !entry.stopped
+        }
+    }
 
     private func persist() {
         do {
-            try withdrawal.withLock { withdrawn in
+            try Self.folders.withLock { entries in
+                guard entries[folderKey]?.owner === self else { throw OwnershipError.alreadyOwned }
+                let withdrawn = entries[folderKey]?.withdrawn == true
                 // A withdrawal outranks any end a late reply set (finished, failed).
                 if withdrawn, state.end != .abandoned(Self.withdrawnReason) {
                     state.end = .abandoned(Self.withdrawnReason)
