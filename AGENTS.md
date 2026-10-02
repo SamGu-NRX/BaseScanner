@@ -51,9 +51,9 @@ A user's instruction outranks a skill.
 
 ## Working in the repository
 
-- `make check` runs every suite on the branch. `make ios`, `make server`, `make web`, `make scoring`, `make measure-lab`, `make evals`, `make recon` and `make meter-closeup` run one each.
+- `make check` runs `make server`, `make web` and `make ios`, then `make scoring`, `make measure-lab`, `make evals`, `make recon` and `make meter-closeup` where the branch has them. It leaves out the iOS UI suite, which needs a Simulator, and the Makefile dispatch test (`bash tests/makefile.sh`). `make ios` runs the HouseScanKit tests and the app build. `make ios-ui` runs the UI suite as pull requests do in CI, and `FULL_UI=1` adds the every-state accessibility audit. `make server`, `make web`, `make scoring`, `make measure-lab`, `make evals`, `make recon` and `make meter-closeup` run one suite each.
 - Branch from `main`, keep one writer per branch, and open a pull request. People merge, and agents never push to `main` or merge, so a person sees every change before it lands.
-- Several agents share one Mac. Exit code 137 means the system killed the process, usually for memory. Find the large allocation before rerunning, because one runaway process can freeze the whole machine.
+- Several agents share one Mac. Exit code 137 means the system killed the process, usually for memory. Find the large allocation before rerunning, because one runaway process can freeze the whole machine. Swift, Xcode and Simulator commands, including `make ios` and `make ios-ui`, are heavy. Where the machine has a shared command lock, run them inside it, for example `/usr/bin/lockf -k <lock file> make ios-ui`, and keep to one Simulator at a time.
 - Put `DEVELOPMENT_TEAM` in `ios/Config/Local.xcconfig` (copy `Local.xcconfig.example`), not in Xcode's Signing & Capabilities pane. The pane writes into `project.pbxproj`, and CI fails on that drift.
 - After editing `ios/project.yml`, run `make ios-project` (it needs XcodeGen 2.46.0) and commit the regenerated project. CI regenerates it and fails on any difference.
 - `sites/landing` is a submodule. Change the landing page in its own repository.
