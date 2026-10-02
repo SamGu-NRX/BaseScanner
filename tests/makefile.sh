@@ -10,7 +10,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 # Resolved, because the stubs compare it with $PWD, and macOS's /var is a link to /private/var.
 work=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$work"' EXIT
-export LOG="$work/log" TREE="$work/tree" FAIL_AT=""
+export LOG="$work/log" TREE="$work/tree" FAIL_AT="" SLOW_TOOL=""
 failures=0
 
 # A stub fails when FAIL_AT is "<folder> <command>" for it, such as "experiments/evals make".
@@ -18,6 +18,8 @@ mkdir "$work/bin"
 for tool in uv pnpm swift xcodebuild; do
 	cat >"$work/bin/$tool" <<'EOF'
 #!/bin/sh
+# SLOW_TOOL delays one stub, so a step that wrongly runs alongside it logs first.
+[ "$(basename "$0")" = "${SLOW_TOOL:-}" ] && sleep 1
 dir=${PWD#"$TREE"/}
 [ "$dir" = "$PWD" ] && dir=.
 echo "$dir $(basename "$0") $*" >>"$LOG"
@@ -153,6 +155,24 @@ elif grep -q '^\. xcodebuild' "$LOG"; then
 	fail "check built the app after the HouseScanKit tests failed"
 fi
 FAIL_AT=""
+
+# 2d. The same order holds under make -j. The slowed swift stub would log after a build that
+#     wrongly started alongside it.
+SLOW_TOOL=swift
+make_tree
+if ! run_make -j4 ios; then
+	fail "make -j4 ios exited non-zero"
+elif [ "$(awk '{print $2}' "$LOG" | tr '\n' ' ')" != "swift xcodebuild " ]; then
+	fail "make -j4 ios did not run the tests before the build"
+fi
+FAIL_AT=". swift"
+make_tree
+if run_make -j4 ios; then
+	fail "make -j4 ios passed although the HouseScanKit tests failed"
+elif grep -q '^\. xcodebuild' "$LOG"; then
+	fail "make -j4 ios built the app although the HouseScanKit tests failed"
+fi
+FAIL_AT="" SLOW_TOOL=""
 
 # 3. Naming a missing suite fails loudly and runs nothing.
 for suite in $suites; do

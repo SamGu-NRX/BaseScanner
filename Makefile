@@ -42,8 +42,12 @@ web:
 	cd web && pnpm run check
 
 # The headless steps of .github/workflows/ios.yml: the HouseScanKit tests, then the app build.
-# CI also regenerates the project and fails on drift; run `make ios-project` for that.
-ios: ios-package ios-build
+# Recipe lines, not prerequisites, so the build waits for the tests and is skipped when they
+# fail, even under make -j. CI also regenerates the project and fails on drift; run
+# `make ios-project` for that.
+ios:
+	$(MAKE) ios-package
+	$(MAKE) ios-build
 
 # CI sets HOUSESCAN_REQUIRE_UPSTREAM=1 after fetching the server contract. Here the schema drift
 # tests compare against server/ when the checkout has it and skip otherwise.
