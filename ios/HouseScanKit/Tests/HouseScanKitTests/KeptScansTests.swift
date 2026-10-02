@@ -113,8 +113,8 @@ import Testing
         #expect(Self.names(later.obsolete) == ["intact2"])
     }
 
-    /// A folder whose bundle can't be read, or whose bundle is a link or a folder, holds no place
-    /// and is not deleted.
+    /// A folder whose bundle can't be read, or whose bundle is a link or a folder, and a link in
+    /// place of a scan folder hold no place and are not deleted.
     @Test func bundlesThatCannotBeJudgedAreLeftAlone() throws {
         let root = try Self.makeRoot()
         let files = FileManager.default
@@ -134,14 +134,16 @@ import Testing
         try files.createDirectory(at: root.appending(path: "folderBundle/\(ScanFolderCleanup.bundleName)"), withIntermediateDirectories: true)
 
         try Data("stray".utf8).write(to: root.appending(path: "stray.txt"))
+        // A link to the newest intact scan, named to sort ahead of it: it must not take a place.
+        try files.createSymbolicLink(at: root.appending(path: "zalias"), withDestinationURL: root.appending(path: "intact1"))
 
         let cleanup = ScanFolderCleanup(root: root, keeping: "now")
         #expect(Self.names(cleanup.keptCompleted) == ["intact1", "intact2"])
-        #expect(Set(Self.names(cleanup.incompleteBundles)) == ["locked", "linked", "folderBundle"])
+        #expect(Set(Self.names(cleanup.incompleteBundles)) == ["locked", "linked", "folderBundle", "zalias"])
         // A stray file is not a scan folder and goes, as before.
         #expect(Self.names(cleanup.obsolete) == ["stray.txt"])
         #expect(cleanup.run().isEmpty)
-        #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "locked", "linked", "folderBundle"])
+        #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "locked", "linked", "folderBundle", "zalias"])
     }
 
     /// A retry rewrites scan.zip in place while the check may still be reading the old file. A

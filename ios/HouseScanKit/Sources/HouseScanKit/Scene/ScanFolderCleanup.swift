@@ -47,8 +47,17 @@ public struct ScanFolderCleanup: Sendable {
         var completed: [(name: String, date: Date)] = []
         var incomplete: [String] = []
         for name in names {
-            // A plain file beside the scan folders holds no bundle; it goes, as before.
-            if (try? files.attributesOfItem(atPath: root.appending(path: name).path))?[.type] as? FileAttributeType == .typeRegular { continue }
+            // Only a real folder is judged by its bundle. A plain file beside the scan folders holds
+            // no bundle and goes, as before. A link (attributesOfItem doesn't follow one) would
+            // reach another folder's bundle, so it and its target could take both kept places;
+            // it, and an entry whose type can't be read, hold no place and are left alone.
+            switch (try? files.attributesOfItem(atPath: root.appending(path: name).path))?[.type] as? FileAttributeType {
+            case .typeDirectory?: break
+            case .typeRegular?: continue
+            default:
+                incomplete.append(name)
+                continue
+            }
             let bundle = root.appending(path: name).appending(path: Self.bundleName)
             switch Self.bundleState(bundle) {
             case .absent:
