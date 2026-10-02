@@ -168,7 +168,9 @@ public struct HTTPReply: Sendable, Equatable {
 }
 
 /// How the uploader reaches the network. HTTP error statuses come back as replies; only transport
-/// failures throw.
+/// failures throw. An implementation must not follow redirects: the uploader checks each URL
+/// before it sends a photo there, and a redirect would send it somewhere unchecked. A redirect
+/// comes back as its own 3xx reply.
 public protocol CaptureHTTP: Sendable {
     func send(_ request: URLRequest) async throws -> HTTPReply
     /// `file` as the whole body of `request`, streamed from disk.
@@ -195,13 +197,26 @@ public struct URLSessionCaptureHTTP: CaptureHTTP {
     }
 
     public func send(_ request: URLRequest) async throws -> HTTPReply {
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request, delegate: NoRedirects.shared)
         return Self.reply(data, response)
     }
 
     public func upload(_ request: URLRequest, file: URL) async throws -> HTTPReply {
-        let (data, response) = try await session.upload(for: request, fromFile: file)
+        let (data, response) = try await session.upload(for: request, fromFile: file, delegate: NoRedirects.shared)
         return Self.reply(data, response)
+    }
+
+    /// Refuses every redirect, so the task returns the 3xx response itself. URLSession follows
+    /// redirects by default, and App Transport Security alone would still allow one to another
+    /// https host, or to plain http on the local network, which the app's Info.plist permits.
+    final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+        static let shared = NoRedirects()
+
+        func urlSession(
+            _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest
+        ) async -> URLRequest? {
+            nil
+        }
     }
 
     static func reply(_ data: Data, _ response: URLResponse) -> HTTPReply {

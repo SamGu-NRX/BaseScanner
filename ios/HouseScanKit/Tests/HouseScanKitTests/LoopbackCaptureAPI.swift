@@ -82,6 +82,9 @@ final class LoopbackCaptureAPI: Sendable {
         /// Once every listed file is committed, the next N event polls answer at once with status
         /// `processing` and no events, as a server that doesn't hold the poll would; then the run ends.
         var processingPolls = 0
+        /// Routes ("PUT upload", "POST captures", ...) answered `307` with the given `Location`, as
+        /// a server sending the request somewhere else would.
+        var redirects: [String: String] = [:]
         /// Answer the next commit with this split instead of the truth.
         var commitOverride: ((committed: [String], notFound: [String], mismatch: [String]))?
         /// Routes whose answers wait until `release` is called.
@@ -167,14 +170,15 @@ final class LoopbackCaptureAPI: Sendable {
 
     private func handle(_ request: Request, _ connection: NWConnection) {
         let route = Self.route(request)
-        let (drop, hold) = state.withLock { s -> (Bool, Bool) in
+        let (drop, hold, redirect) = state.withLock { s -> (Bool, Bool, String?) in
             s.log.append(request)
-            return (s.dropNext.remove(route) != nil, s.held.contains(route))
+            return (s.dropNext.remove(route) != nil, s.held.contains(route), s.redirects[route])
         }
-        let (status, body) = answer(request)
+        let (status, body) = redirect == nil ? answer(request) : (307, Data())
+        let location = redirect.map { "Location: \($0)\r\n" } ?? ""
         let send: @Sendable () -> Void = {
             if drop { return connection.cancel() }
-            let head = "HTTP/1.1 \(status) X\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+            let head = "HTTP/1.1 \(status) X\r\n\(location)Content-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
             connection.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in connection.cancel() })
         }
         if hold {

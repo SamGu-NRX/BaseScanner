@@ -29,9 +29,11 @@ public actor CaptureUploader {
         /// of how long a finished run's answer takes to become readable sets this number; it only
         /// keeps an answer that never appears from holding the upload open.
         public var maxNotReadyResults = 10
-        /// Times one file may be left out of a register answer or a commit acknowledgement before
-        /// the upload stops. Each time waits the retry delay first. No measurement sets this; it
-        /// keeps a server that never takes a file from getting the same photo forever.
+        /// Retries after a register answer leaves a file out or a commit doesn't acknowledge it,
+        /// counted per file per server capture. Each retry waits the retry delay; the upload stops
+        /// on the next unacknowledged answer, so a file is sent at most `maxUnacknowledged + 1`
+        /// times. No measurement sets this; it keeps a server that never takes a file from getting
+        /// the same photo forever.
         public var maxUnacknowledged = 5
         /// Seconds between events polls that come back at once with nothing new and the capture
         /// still running, for a server or proxy that doesn't hold the poll. Not measured.
@@ -340,8 +342,10 @@ public actor CaptureUploader {
             if file.state == "committed" {
                 setPhase(file.path, .committed)
             } else if let target = file.upload, target.method == "PUT", let url = target.url {
-                // Photos go only over https, or http to this machine for tests, and only to a URL
-                // the PUT can use: a URL that doesn't parse would leave the file registered forever.
+                // Photos go only to an https URL, or http to this machine for tests, and only to a
+                // URL the PUT can use: a URL that doesn't parse would leave the file registered
+                // forever. This checks the URL as given; `CaptureHTTP` refuses redirects, so a
+                // storage server can't send the photo on to a URL this never checked.
                 if let problem = Self.uploadURLProblem(url) { throw Refused(step: "register", status: reply.status, codes: [problem]) }
                 setPhase(file.path, .registered(url: url, headers: target.headers ?? [:], expiresAt: target.expiresAt.flatMap(Self.parseDate)))
             } else {

@@ -341,6 +341,40 @@ import Testing
         #expect(rig.server.requests("PUT upload").isEmpty)
     }
 
+    /// Storage that answers a PUT with a redirect doesn't get the photo sent on: the real
+    /// `URLSession` transport refuses every redirect, so the photo reaches only the URL that passed
+    /// the check, and the 307 comes back as a storage refusal. The redirect goes to a second local
+    /// server, which must see nothing.
+    @Test func aStorageRedirectIsNotFollowed() async throws {
+        let elsewhere = try LoopbackCaptureAPI()
+        var policy = Rig.fast
+        policy.maxRefusedPuts = 2
+        let rig = try Rig(policy: policy)
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.redirects["PUT upload"] = "http://127.0.0.1:\(elsewhere.port)/upload/elsewhere" }
+        await rig.uploader.add(try await rig.capture.sealImages(count: 1))
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .failed(step: "put", codes: ["storage_refused"], status: 307))
+        #expect(!rig.server.requests("PUT upload").isEmpty)
+        #expect(elsewhere.state.withLock { $0.log.isEmpty })
+    }
+
+    /// The API's own requests aren't redirected either: a 307 on create comes back as the reply,
+    /// which the uploader refuses by its status, and the second server sees nothing.
+    @Test func anAPIRedirectIsNotFollowed() async throws {
+        let elsewhere = try LoopbackCaptureAPI()
+        let rig = try Rig()
+        defer { rig.cleanUp() }
+        rig.server.state.withLock { $0.redirects["POST captures"] = "\(elsewhere.base.absoluteString)/captures" }
+        await rig.uploader.kick()
+        try #require(await Self.settles(rig.uploader))
+
+        #expect(await rig.uploader.snapshot.end == .failed(step: "create", codes: [], status: 307))
+        #expect(rig.server.requests("POST captures").count == 1)
+        #expect(elsewhere.state.withLock { $0.log.isEmpty })
+    }
+
     /// Commits that never acknowledge a file back off between tries and stop after the policy's
     /// limit, instead of sending the same photo again and again.
     @Test func aCommitThatNeverAcknowledgesBacksOffAndStops() async throws {
