@@ -28,6 +28,16 @@ Admission requires memory pressure level 1 or 2, at least 35% memory free, and a
 
 Heavy-process exit waits use kqueue. Memory recovery, disk space, and device state have no stdlib kernel notification here, so they are resampled every 30 seconds. The global lock stays held during resource waits. The admission deadline covers queueing and resource checks. Simulator boot and bootstatus each have a fixed 300-second limit, an operational limit rather than a measured startup time. Cancellation waits for the boot result and ownership record. If boot times out, the runner reports the device state but never shuts it down without proof of ownership. The child timeout starts separately.
 
+## Inside a machine-wide command lock
+
+Some machines also make every heavy command take an outer lock, such as `/usr/bin/lockf -k <lock> <command>`. Take that lock first and run the queue's `run` inside it:
+
+```sh
+/usr/bin/lockf -k <lock> python3 tools/qa-resource/qa_resource.py run --job-id JOB --kind package --cwd "$PWD" --admission-deadline 1800 --timeout 3600 -- <command>
+```
+
+`lockf` holds its lock only until its own command exits. `run` stays in the foreground until cleanup ends, so both locks cover the whole job. `submit` returns as soon as the detached runner starts, so under `lockf` the job runs without the outer lock. Don't put `lockf` inside the queue (`... -- lockf <lock> <command>`) either. That reverses the lock order, so a job waits on another lane that holds the outer lock while it waits for the queue. A simulator job would also boot its device before it holds the outer lock. Cancel with `cancel --job-id`, not by killing `lockf`.
+
 ## Escaped descendants
 
 Each payload gets a random `QA_RESOURCE_OWNER_<token>=<jobId>` environment entry. At admission and cleanup, the runner reads process memory with Darwin `KERN_PROCARGS2`. An exact entry or live-parent ancestry proves ownership at discovery. The parser checks every NUL-separated string after the executable because empty `argv[0]` is indistinguishable from padding. Admission accepts only owner headers with a 32-character lowercase hexadecimal token.
