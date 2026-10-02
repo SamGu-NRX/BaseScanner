@@ -511,7 +511,14 @@ struct NativeCaptureFixture: Sendable {
         blockUntilSaved(stateURL, differentFrom: before)
         let saved = try CaptureUploadState.load(from: stateURL)
         #expect(saved.end == .abandoned("consent withdrawn"))
-        #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10)) == nil)
+        if markerBlocked {
+            // The blocking directory sits at the marker's path and would stop a resume by itself;
+            // without it only the saved end can.
+            try FileManager.default.removeItem(at: CaptureUploadState.withdrawnURL(in: session.folder))
+        } else {
+            #expect(try CaptureUploader.resume(folder: session.folder, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10)) == nil)
+        }
+        #expect(CaptureSessionCoordinator(environment: environment).resumeSealedCaptures().isEmpty)
         #expect(server.requests("PUT upload").isEmpty)
 
         server.state.withLock { $0.held = [] }
