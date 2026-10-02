@@ -25,6 +25,14 @@ import Testing
         #expect(s.arUnavailable == .noOutcome(.processing))
     }
 
+    /// A capture that failed or expired has no outcome, and it is over: it is not shown as
+    /// still working.
+    @Test(arguments: ["failed", "expired"]) func aCaptureThatEndedWithoutAnOutcomeIsNotWorking(status: String) throws {
+        let s = try Self.summary(#"{"runId":"run_A","status":"\#(status)","viewsNeeded":[],"memberActions":[]}"#)
+        #expect(s.state == .ended(CaptureResult.Status(rawValue: status)))
+        #expect(s.message == nil && s.prompts.isEmpty)
+    }
+
     @Test func manualReviewKeepsTheServersWordsAndNoInventedChecks() throws {
         let s = try Self.summary(#"""
         {"runId":"run_A","status":"manual_review","viewsNeeded":[],"memberActions":[],

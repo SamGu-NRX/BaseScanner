@@ -9,6 +9,8 @@ public struct CaptureResultSummary: Sendable, Equatable {
         /// The run has no outcome yet.
         case working(CaptureResult.Status)
         case decided(CaptureResult.OutcomeKind)
+        /// The capture is over without an outcome: it failed or expired.
+        case ended(CaptureResult.Status)
     }
 
     public var state: State
@@ -27,7 +29,14 @@ public struct CaptureResultSummary: Sendable, Equatable {
     /// when the scan has none to place a box on (AR then says so, after the other checks).
     public init(_ record: CaptureResult.Record, world: CaptureResult.Association, meterAnchor: simd_float4x4?) {
         let response = record.response
-        state = response.outcome.map { .decided($0.kind) } ?? .working(response.status)
+        state = if let outcome = response.outcome {
+            .decided(outcome.kind)
+        } else {
+            switch response.status {
+            case .failed, .expired: .ended(response.status)
+            default: .working(response.status)
+            }
+        }
         message = response.outcome?.message
         let views = response.viewsNeeded.isEmpty ? response.outcome?.viewsNeeded ?? [] : response.viewsNeeded
         prompts = views.map(\.prompt)
