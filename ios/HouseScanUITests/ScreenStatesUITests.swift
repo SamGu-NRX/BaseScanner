@@ -519,6 +519,41 @@ final class ScreenStatesUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore + 1)
     }
 
+    /// AX5 puts the review chips below the window. The helper must let the real tap scroll
+    /// before XCTest computes a hit point, then Cancel must return to the unchanged review.
+    @MainActor
+    func testTapHelperReachesAnOffscreenReviewChip() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "markFeatures"] + Self.largestText
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.markFeatures").waitForExistence(timeout: 15))
+        let chip = app.buttons.matching(identifier: "feature.ac").firstMatch
+        let frame = try chip.snapshot().frame
+        let window = try app.windows.firstMatch.snapshot().frame
+        XCTAssertGreaterThan(frame.maxY, window.maxY, "the regression needs a chip below the window")
+        let rowsBefore = app.buttons.matching(identifier: "action.deleteFeature").count
+        tap(app, "feature.ac")
+        XCTAssertTrue(element(app, "action.markPoint").waitForExistence(timeout: 5), "the tap must open the marking camera")
+        tap(app, "action.cancelMarking")
+        XCTAssertTrue(element(app, "action.confirmFeatures").waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(identifier: "action.deleteFeature").count, rowsBefore)
+    }
+
+    @MainActor
+    func testTapHelperClosesARThroughTheDoneButton() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "resultAR"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(element(app, "screen.resultAR").waitForExistence(timeout: 15))
+        tap(app, "action.closeAR")
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 10), "Done must return to the result")
+        XCTAssertTrue(element(app, "screen.resultAR").waitForNonExistence(timeout: 5))
+    }
+
     /// While the phone has lost its place the review can't start a mark, which taps into the
     /// scene: the chips give way to a line saying so, and "Looks complete" still sends the scan.
     @MainActor
@@ -1257,39 +1292,28 @@ final class ScreenStatesUITests: XCTestCase {
     /// and a tap there misses without an error (the button flow at 577acc4 never opened the mark
     /// tray).
     ///
-    /// A control below the bottom edge of a scrolling screen (the review's "Add something" chips,
-    /// the result's Details) is never hittable where it is. `tap()` scrolls to it and the wait
-    /// doesn't, so once it has had a moment to settle it is tapped where it is.
+    /// The wait reads each button's frame and enabled state from one fresh snapshot. The old
+    /// separate existence/layout/hittability waits repeatedly resolved the AR Done button,
+    /// consuming its 20 s budget in PR run 37022177313 attempt 1. One wait keeps that budget.
+    /// Bottom-edge controls use XCTest's ordinary scroll-to-visible tap, before hit-point queries.
     @MainActor
     private func tap(_ app: XCUIApplication, _ identifier: String, timeout: TimeInterval = 20) {
-        let target = element(app, identifier)
-        let deadline = Date().addingTimeInterval(timeout)
-        XCTAssertTrue(target.waitForExistence(timeout: timeout), "missing \(identifier)")
-        // An element can exist before its screen is laid out, with an infinite frame, and asking
-        // whether it is hittable then fails the test outright ("Activation point invalid";
-        // result.details in run 36820279307, mid-transition from the spot check).
-        while !Self.laidOut(target.frame), Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
-        guard Self.laidOut(target.frame) else {
-            XCTFail("\(identifier) was never laid out: \(target.frame)")
+        let target = app.buttons.matching(identifier: identifier).firstMatch
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        var state = TapReadiness.State.missing
+        var lastObservation = state
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            state = TapReadiness.evaluate(deadline: deadline, now: { ProcessInfo.processInfo.systemUptime }, read: {
+                ElementRead.snapshot(target).map { .init(frame: $0.frame, isEnabled: $0.isEnabled) }
+            }, window: { ElementRead.snapshot(app.windows.firstMatch)?.frame }, hittable: { target.isHittable })
+            if state != .expired { lastObservation = state }
+            return state == .ready
+        }, object: nil)
+        guard XCTWaiter().wait(for: [ready], timeout: timeout) == .completed else {
+            XCTFail("\(identifier) not ready for tap: \(state.rawValue); last observation: \(lastObservation.rawValue)")
             return
         }
-        let settled = waitUntilHittable(target, timeout: min(3, max(0, deadline.timeIntervalSinceNow)))
-        if settled || target.frame.maxY > app.windows.firstMatch.frame.maxY {
-            target.tap()
-            return
-        }
-        XCTAssertTrue(waitUntilHittable(target, timeout: max(1, deadline.timeIntervalSinceNow)), "missing or not tappable: \(identifier)")
         target.tap()
-    }
-
-    private static func laidOut(_ frame: CGRect) -> Bool {
-        [frame.minX, frame.minY, frame.width, frame.height].allSatisfy(\.isFinite) && !frame.isEmpty
-    }
-
-    @MainActor
-    private func waitUntilHittable(_ target: XCUIElement, timeout: TimeInterval) -> Bool {
-        let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: target)
-        return XCTWaiter().wait(for: [hittable], timeout: timeout) == .completed
     }
 
     /// The card's reply with these words.
