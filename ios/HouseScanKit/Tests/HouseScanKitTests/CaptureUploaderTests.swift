@@ -114,7 +114,7 @@ import Testing
         let before = await rig.uploader.snapshot
 
         // The old process releases every uploader before the new one resumes its saved state.
-        weak var released = rig.uploader
+        weak let released = rig.uploader
         rig.releaseUploader()
         for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(released == nil)
@@ -441,7 +441,7 @@ import Testing
         #expect(await rig.uploader.snapshot.end == nil)
 
         // The old process releases every uploader before the new one resumes its saved state.
-        weak var released = rig.uploader
+        weak let released = rig.uploader
         rig.releaseUploader()
         for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(released == nil)
@@ -516,7 +516,7 @@ import Testing
         // one not-ready read before its answer.
         rig.server.state.withLock { $0.captures = [:]; $0.byPacket = [:]; $0.outcomelessResults = 1 }
         // The old process releases every uploader before the new one resumes its saved state.
-        weak var released = rig.uploader
+        weak let released = rig.uploader
         rig.releaseUploader()
         for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(released == nil)

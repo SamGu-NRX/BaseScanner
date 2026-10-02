@@ -42,7 +42,7 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
         let server = try LoopbackCaptureAPI()
         var first: CaptureUploader? = try create(root, server.base)
-        weak var released = first
+        weak let released = first
         first = nil
         try #require(released == nil)
         let owners = await withTaskGroup(of: CaptureUploader?.self, returning: [CaptureUploader].self) { group in
@@ -94,7 +94,7 @@ import Testing
         #expect(throws: CaptureUploader.OwnershipError.alreadyOwned) {
             try CaptureUploader.resume(folder: root, base: server.base, http: URLSessionCaptureHTTP.ephemeral(timeout: 10))
         }
-        weak var released = owner
+        weak let released = owner
         owner = nil
         for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(released == nil)
@@ -120,7 +120,7 @@ import Testing
             try await Task.sleep(for: .milliseconds(10))
         }
         try #require(server.state.withLock { !($0.parked["POST captures"]?.isEmpty ?? true) })
-        weak var runningOwner = owner
+        weak let runningOwner = owner
         owner = nil
         #expect(runningOwner != nil)
         #expect(throws: CaptureUploader.OwnershipError.alreadyOwned) {
@@ -175,7 +175,7 @@ import Testing
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: rig.capture.folder.path)
         if FileManager.default.fileExists(atPath: marker.path) { try FileManager.default.removeItem(at: marker) }
         try staleConsent.write(to: stateURL, options: .atomic)
-        weak var released = rig.uploader
+        weak let released = rig.uploader
         rig.releaseUploader()
         for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(released == nil)

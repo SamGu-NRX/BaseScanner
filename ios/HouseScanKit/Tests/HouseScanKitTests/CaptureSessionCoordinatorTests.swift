@@ -515,8 +515,8 @@ struct NativeCaptureFixture: Sendable {
         coordinator?.kept(try fixture.photo(at: fixture.start + 2))
         await coordinator?.settle()
         let folder = try #require(coordinator?.session?.folder)
-        weak var oldSession = coordinator?.session
-        weak var oldUploader = coordinator?.session?.uploader
+        weak let oldSession = coordinator?.session
+        weak let oldUploader = coordinator?.session?.uploader
         coordinator = nil
         for _ in 0..<500 where oldSession != nil || oldUploader != nil { try await Task.sleep(for: .milliseconds(10)) }
         try #require(oldSession == nil && oldUploader == nil)
