@@ -72,6 +72,11 @@ public enum Packet04Check {
                 continue
             }
             if let epoch = tap.epoch, epoch != frame.epoch { out.append("tap \(tap.id) epoch differs from its keyframe's") }
+            // Compared pairwise below, a missing or extra component, or a NaN, would go unseen.
+            guard tap.rayOrigin.count == 3, tap.rayDirection.count == 3, (tap.rayOrigin + tap.rayDirection).allSatisfy(\.isFinite) else {
+                out.append("tap \(tap.id) ray is not two finite 3-vectors")
+                continue
+            }
             let replay = ray(pose: frame.pose, intrinsics: frame.intrinsics, pixel: tap.pixel)
             let error = zip(replay.origin + replay.direction, tap.rayOrigin + tap.rayDirection).map { abs($0 - $1) }.max() ?? .infinity
             if !(error <= tapReplayTolerance) { out.append("tap \(tap.id) ray replays with error \(error)") }

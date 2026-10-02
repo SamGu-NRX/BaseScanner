@@ -166,6 +166,30 @@ func temporaryPacketFolder(_ name: String) -> URL {
         #expect(Packet04Check.problems(broken, folder: nil).contains { $0.hasPrefix("tap tap1 ray replays with error") })
     }
 
+    /// A tap ray must be two 3-vectors of finite numbers. Joined and compared pairwise, a missing
+    /// or misshaped vector, or a NaN, could otherwise pass the replay check unseen.
+    @Test(arguments: [
+        ([0.1, 1.5, -2], []),
+        ([0.1, 1.5], [-2, 0, 0, -1]),
+        ([0.1, 1.5, -2], [0, 0, -1, 0]),
+        ([0.1, 1.5, -2], [0, Double.nan, -1]),
+        ([0.1, .infinity, -2], [0, 0, -1]),
+    ] as [([Double], [Double])])
+    func aTapRayThatIsNotTwoFinite3VectorsIsRefused(origin: [Double], direction: [Double]) async throws {
+        let folder = temporaryPacketFolder("p04-tap-shape")
+        defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
+        let capture = try SyntheticCapture04(folder: folder)
+        _ = try await capture.sealImages(count: 1)
+        try await capture.producer.addTap(id: "tap1", label: "meter", keyframe: "k00001", pixel: SIMD2(48, 36), time: SyntheticCapture04.start + 0.2, hit: nil)
+        let packet = try JSONDecoder().decode(Packet04.Packet.self, from: try await capture.finish().packet)
+        #expect(!Packet04Check.problems(packet, folder: nil).contains { $0.hasPrefix("tap tap1") })
+
+        var broken = packet
+        broken.taps?[0].rayOrigin = origin
+        broken.taps?[0].rayDirection = direction
+        #expect(Packet04Check.problems(broken, folder: nil).contains { $0.hasPrefix("tap tap1") })
+    }
+
     @Test func checksCatchAMalformedPacket() async throws {
         let folder = temporaryPacketFolder("p04-malformed")
         defer { try? FileManager.default.removeItem(at: folder.deletingLastPathComponent()) }
