@@ -144,11 +144,12 @@ struct SavedScansSheet: View {
         // would only flash.
     }
 
-    /// No share sheet is open while this sheet opens, so copies a quit left behind go first.
+    /// Copies earlier runs left go too, in case launch's pass hasn't run yet; this run's own copy
+    /// is deleted when its share sheet closes, so nothing here can touch a share in progress.
     private func open() async {
         let catalog = catalog, staging = staging
         let found = await Task.detached(priority: .userInitiated) { () -> [SavedScan] in
-            staging.removeAll()
+            staging.removeOtherSessions()
             return catalog.scans()
         }.value
         scans = found

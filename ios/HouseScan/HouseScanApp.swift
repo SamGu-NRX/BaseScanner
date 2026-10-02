@@ -2,13 +2,12 @@ import SwiftUI
 
 @main
 struct HouseScanApp: App {
-    /// Runs once per process, before any window exists: share copies made before this moment
-    /// belong to an earlier run, whose share sheet can't still be reading them. Not a view's
-    /// `.task`, which runs again for each window or reappearance and would take a later cutoff,
-    /// one that could cover a copy this run is sharing.
+    /// Runs once per process, before any window exists: deletes the share copies earlier runs
+    /// left, whose share sheets can't still be reading them. This run's copies live in its own
+    /// session folder (`SavedScansLocation.staging`), so they are never among them.
     init() {
-        let launch = Date(), staging = SavedScansLocation.staging
-        Task.detached(priority: .utility) { staging.removeCopies(madeBefore: launch) }
+        let staging = SavedScansLocation.staging
+        Task.detached(priority: .utility) { staging.removeOtherSessions() }
     }
 
     var body: some Scene {

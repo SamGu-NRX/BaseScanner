@@ -16,7 +16,9 @@ enum SavedScansLocation {
     }
 
     /// In the app's temporary folder, apart from the scan folders, so the store's cleanup never
-    /// sees a copy and a copy never outlives the system's own tmp purge.
+    /// sees a copy and a copy never outlives the system's own tmp purge. One session per process:
+    /// a static is made once.
     static let staging = SavedScanStaging(
-        root: FileManager.default.temporaryDirectory.appending(path: "SavedScanShares", directoryHint: .isDirectory))
+        root: FileManager.default.temporaryDirectory.appending(path: "SavedScanShares", directoryHint: .isDirectory),
+        session: UUID().uuidString)
 }

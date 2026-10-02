@@ -223,7 +223,7 @@ import Testing
         #expect((try? files.contentsOfDirectory(atPath: staging.root.path))?.isEmpty ?? true)
     }
 
-    /// `remove` deletes only folders it made; `removeAll` clears every copy and nothing else.
+    /// `remove` deletes only folders it made, and removing copies never touches a scan.
     @Test func removalStaysInsideTheStagingFolder() throws {
         defer { cleanUp() }
         let folder = try scan("keep")
@@ -236,27 +236,35 @@ import Testing
         let first = try staging.stage(listed)
         let second = try staging.stage(listed)
         #expect(first != second)
-        staging.removeAll()
-        #expect(!files.fileExists(atPath: staging.root.path))
+        staging.remove(first)
+        #expect(!files.fileExists(atPath: first.path) && files.fileExists(atPath: second.path))
+        SavedScanStaging(root: staging.root).removeOtherSessions()
+        #expect(!files.fileExists(atPath: second.path))
         #expect(files.fileExists(atPath: folder.appending(path: ScanFolderCleanup.bundleName).path))
     }
 
-    /// At launch, copies an earlier run left go, and one made since launch stays.
-    @Test func launchRemovesOnlyCopiesMadeBeforeIt() throws {
+    /// At launch, the copies earlier runs left go and this run's stay, whatever the clock says.
+    @Test func launchRemovesOnlyOtherRunsCopies() throws {
         defer { cleanUp() }
         try scan("one")
-        let staging = SavedScanStaging(root: root.appending(path: "share"))
+        let shares = root.appending(path: "share")
+        let earlier = SavedScanStaging(root: shares, session: "earlier")
+        let current = SavedScanStaging(root: shares, session: "current")
         let listed = try #require(SavedScanCatalog(root: root).scans().first)
-        let left = try staging.stage(listed)
-        try files.setAttributes([.creationDate: Date(timeIntervalSinceNow: -3600)], ofItemAtPath: left.deletingLastPathComponent().path)
-        let launch = Date(timeIntervalSinceNow: -60)
-        let current = try staging.stage(listed)
+        let left = try earlier.stage(listed)
+        let mine = try current.stage(listed)
+        // A clock set back between runs: the earlier copy looks newer than this run's.
+        try files.setAttributes([.creationDate: Date(timeIntervalSinceNow: 3600)], ofItemAtPath: left.deletingLastPathComponent().path)
 
-        staging.removeCopies(madeBefore: launch)
+        current.removeOtherSessions()
         #expect(!files.fileExists(atPath: left.path))
-        #expect(files.fileExists(atPath: current.path))
+        #expect(files.fileExists(atPath: mine.path))
         #expect(files.fileExists(atPath: listed.archive.path))
-        SavedScanStaging(root: root.appending(path: "absent")).removeCopies(madeBefore: launch)
+        // A run removes only its own session's copies one by one.
+        current.remove(left)
+        earlier.remove(mine)
+        #expect(files.fileExists(atPath: mine.path))
+        SavedScanStaging(root: root.appending(path: "absent")).removeOtherSessions()
     }
 
     // MARK: Names
