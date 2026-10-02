@@ -1578,6 +1578,9 @@ final class ScanEngine {
         // A fresh map: the old world frame is gone, so its anchors and planes are meaningless.
         live?.restart()
         coverage = nil
+        // The dot field lives in the old world frame too; kept, new depth would fuse into it.
+        liveDots.reset()
+        state.liveDots = .empty
         meterAnchorID.map { live?.removeAnchor($0) }
         meterAnchorID = nil
         meterTracking = nil
