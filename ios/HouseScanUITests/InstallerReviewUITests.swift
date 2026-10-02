@@ -2,7 +2,9 @@ import XCTest
 
 /// The result says what it needs from a person, never that one was contacted: the app only shows
 /// the server's answer. Held still on the demo's review sample (`DemoEngine.reviewSample`), whose
-/// window check needs a person and whose ground check needs a photo.
+/// window check needs a person and whose ground check needs a photo. Its headline is "One more
+/// look", since a view can still be captured; `FullFlowUITests.testFullFlowFromReplay` checks the
+/// installer headline on the bundled sample.
 final class InstallerReviewUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -14,7 +16,6 @@ final class InstallerReviewUITests: XCTestCase {
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result"]
         app.launch()
         XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 15))
-        XCTAssertEqual(element(app, "result.headline").label, "Needs an installer's review")
         XCTAssertEqual(element(app, "result.installerConfirms").label, "Before any battery goes in, an installer has to confirm where it goes on site.")
 
         // The full list of checks sits under Details, below the footnotes.
