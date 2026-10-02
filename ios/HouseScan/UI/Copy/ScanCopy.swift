@@ -667,7 +667,9 @@ enum ScanCopy {
     static let wallNotMeasuredDetail = "The scan stopped before you walked along the wall on either side of your meter, so we can't tell where a battery would fit. Scan again and walk a few steps each way."
     static let scanAgain = "Scan again"
 
-    static let installerConfirms = "An installer has to confirm the spot on site before a battery goes in."
+    /// Shown on every result, with or without a spot ("Not on this wall" has none), so it names
+    /// no spot.
+    static let installerConfirms = "Before any battery goes in, an installer has to confirm where it goes on site."
     static let rulesNotFinal = "The placement rules aren't final yet, so every result needs an installer's review for now."
     // The server's result covers where the battery goes, not the panel itself.
     static let panelReview = "Your electrical panel still needs an electrician's review. This scan only covers where the battery can go."

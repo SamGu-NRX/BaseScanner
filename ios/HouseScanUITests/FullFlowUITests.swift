@@ -67,7 +67,7 @@ final class FullFlowUITests: XCTestCase {
             return element.exists ? element.label : nil
         }
         XCTAssertEqual(label("result.headline"), "Needs an installer's review")
-        XCTAssertEqual(label("result.installerConfirms"), "An installer has to confirm the spot on site before a battery goes in.")
+        XCTAssertEqual(label("result.installerConfirms"), "Before any battery goes in, an installer has to confirm where it goes on site.")
         XCTAssertEqual(label("result.rulesNotFinal"), "The placement rules aren't final yet, so every result needs an installer's review for now.")
     }
 
