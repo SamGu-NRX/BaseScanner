@@ -46,7 +46,11 @@ extension ScanCopy {
     static let spotNotChecked = "You couldn't check the area around this spot, so your scan leaves it out as not checked. Someone would need to check it in person."
     /// Said on the result when an area the homeowner couldn't check is not this result's spot: the
     /// answer after it names no spot, or a spot elsewhere. That area still counts as unseen.
-    static let scanNotChecked = "You couldn't check an area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person."
+    /// Beside a notice about this spot it speaks of another area.
+    static func scanNotChecked(besideSpotNotice: Bool) -> String {
+        let which = besideSpotNotice ? "You also couldn't check another area along this wall" : "You couldn't check an area along this wall"
+        return "\(which), so your scan leaves it out as not checked. Someone would need to check it in person."
+    }
 
     /// "From 3 ft to 8 ft 6 in right of your meter": where the area runs along the wall, nearer
     /// end first. An end less than half an inch from the meter rounds to 0 in and is read as the

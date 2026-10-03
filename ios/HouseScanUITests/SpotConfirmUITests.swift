@@ -205,6 +205,16 @@ final class SpotConfirmUITests: XCTestCase {
             }
             app.terminate()
         }
+        // An earlier area left unchecked, beside this spot's own "I can't check this area": both
+        // are said, the second as another area (Greptile on #206).
+        let both = launchResult(answer: "cannotCheck", ["-uiDemoUncheckedElsewhere"])
+        let spotNotice = element(both, "result.spotNotChecked"), wallNotice = element(both, "result.scanNotChecked")
+        XCTAssertTrue(spotNotice.waitForExistence(timeout: 10), "the spot's notice is missing beside another unchecked area")
+        XCTAssertTrue(Self.canBeReadByScrolling(wallNotice, in: both), "the other area's notice can't be scrolled onto the screen")
+        XCTAssertEqual(ElementRead.snapshot(wallNotice)?.label, "You also couldn't check another area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person.")
+        attach(both, name: "result-spotAndScanNotChecked")
+        both.terminate()
+
         let refused = launchResult(answer: "somethingThere", noSpot)
         XCTAssertTrue(element(refused, "result.headline").waitForExistence(timeout: 10))
         for id in ["result.spotRefused", "result.spotNotChecked", "result.scanNotChecked"] {

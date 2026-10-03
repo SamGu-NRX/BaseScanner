@@ -102,7 +102,7 @@ final class SpotCannotCheckUITests: XCTestCase {
     /// neither speaks of "this spot" nor of something standing there.
     @MainActor
     func testCannotCheckThenNoSpotStillSaysAnAreaWasNotChecked() throws {
-        try runToNoSpotResult(answer: "-autopilotCannotCheck") { app in
+        try runToResult(answer: "-autopilotCannotCheck", thenAnswerFile: "reject-nearest") { app in
             let any = app.descendants(matching: .any)
             let notice = any["result.scanNotChecked"]
             XCTAssertTrue(notice.waitForExistence(timeout: 10), "a result without a spot lost the area the homeowner couldn't check")
@@ -113,11 +113,28 @@ final class SpotCannotCheckUITests: XCTestCase {
         }
     }
 
+    /// "I can't check this area", then an answer that names another spot (Fixtures/results/
+    /// spot-left.json), which the autopilot answers "It's clear". The result's own spot is clear,
+    /// so it has no spot notice, but the first area is still out of the scan, and the result says
+    /// so.
+    @MainActor
+    func testCannotCheckThenAnotherSpotStillSaysAnAreaWasNotChecked() throws {
+        try runToResult(answer: "-autopilotCannotCheck", thenAnswerFile: "spot-left") { app in
+            let any = app.descendants(matching: .any)
+            let notice = any["result.scanNotChecked"]
+            XCTAssertTrue(notice.waitForExistence(timeout: 10), "a result for another spot lost the area the homeowner couldn't check")
+            XCTAssertEqual(ElementRead.snapshot(notice)?.label, "You couldn't check an area along this wall, so your scan leaves it out as not checked. Someone would need to check it in person.")
+            XCTAssertFalse(any["result.spotNotChecked"].exists, "the other spot, answered clear, reads as not checked")
+            XCTAssertFalse(any["result.spotRefused"].exists, "the result says something stands there")
+            self.attach(app, name: "engine-result-otherSpot-scanNotChecked")
+        }
+    }
+
     /// The same answer without a spot after "Something's there": nothing was left unchecked, so
     /// the result says nothing about an unchecked area.
     @MainActor
     func testSomethingThereThenNoSpotLeavesNothingUnchecked() throws {
-        try runToNoSpotResult(answer: "-autopilotSomethingThere") { app in
+        try runToResult(answer: "-autopilotSomethingThere", thenAnswerFile: "reject-nearest") { app in
             let any = app.descendants(matching: .any)
             XCTAssertTrue(any["result.headline"].waitForExistence(timeout: 10))
             for id in ["result.scanNotChecked", "result.spotNotChecked", "result.spotRefused"] {
@@ -127,9 +144,11 @@ final class SpotCannotCheckUITests: XCTestCase {
     }
 
     /// Runs the synthetic wall to the result with `answer` as the first spot answer and every
-    /// upload after it answered without a spot, then hands the held result to `check`.
+    /// upload after it answered with Fixtures/results/`thenAnswerFile`.json
+    /// (`-sampleResultAfterSpotAnswer`), then hands the held result to `check`. Later spot checks
+    /// are answered "It's clear".
     @MainActor
-    private func runToNoSpotResult(answer: String, check: (XCUIApplication) -> Void) throws {
+    private func runToResult(answer: String, thenAnswerFile: String, check: (XCUIApplication) -> Void) throws {
         let files = FileManager.default
         let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
         try files.createDirectory(at: gate, withIntermediateDirectories: true)
@@ -138,11 +157,11 @@ final class SpotCannotCheckUITests: XCTestCase {
         for phase in ["onboarding", "findMeter", "meterCloseUp", "wallWalk", "markFeatures", "gapRequest", "uploading", "spotConfirm"] {
             try Data().write(to: gate.appending(path: phase))
         }
-        let noSpot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/results/reject-nearest.json").path
+        let file = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "Fixtures/results/\(thenAnswerFile).json").path
         let app = XCUIApplication()
         app.launchArguments = [
             "-replay", FullFlowUITests.fixture, "-autopilot", "-autopilotHold", "1.5", "-autopilotGate", gate.path,
-            "-practiceMeter", "NO", "-sampleResult", answer, "-sampleResultAfterSpotAnswer", noSpot,
+            "-practiceMeter", "NO", "-sampleResult", answer, "-sampleResultAfterSpotAnswer", file,
         ]
         app.launch()
         defer { app.terminate() }

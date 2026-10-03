@@ -22,6 +22,9 @@ struct SpotConfirmState {
     var request: GuidanceLog.Request?
     /// Checks asked in this scan, for their ids.
     var asked = 0
+    /// The area of the spot the answer being shown names, nil while it names none: the result
+    /// speaks of an unchecked area apart from it (`ScanViewState.uncheckedAreaElsewhere`).
+    var shownArea: SpotArea?
 }
 
 /// The spot check: before an answer's spot is shown as the result, the homeowner is shown the
@@ -68,12 +71,14 @@ extension ScanEngine {
         guard let result = state.result, let spot = result.spot, let wall = coverage?.wall,
               let sceneSHA256 = spotConfirm.sceneSHA256, let answerSHA256 = spotConfirm.answerSHA256 else {
             state.spotCheck = nil
+            spotConfirm.shownArea = nil
             go(.result)
             return
         }
         let area = SpotArea(
             spot: spot.span, spotOut: spot.offsetFromWall...(spot.offsetFromWall + spot.depth),
             zones: result.clearances.map { (span: $0.span, depth: $0.depth) })
+        spotConfirm.shownArea = area
         spotConfirm.asked += 1
         let id = spotConfirm.asked
         if let settled = spotConfirm.confirmations.settling(area) {

@@ -48,6 +48,8 @@ import SwiftUI
 /// - `-uiDemoSpotAnswered <clear|somethingThere|cannotCheck>`: with `-uiDemoPhase spotConfirm`,
 ///   the check is answered and says what happens next. With `-uiDemoPhase result`, the result
 ///   follows that answer, so it shows the answer's notice.
+/// - `-uiDemoUncheckedElsewhere`: with `-uiDemoPhase result`, an earlier area of the wall was
+///   answered "I can't check this area", so the result says so beside its spot's notice.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

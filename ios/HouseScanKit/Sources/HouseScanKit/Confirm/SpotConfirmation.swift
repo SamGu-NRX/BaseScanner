@@ -229,10 +229,14 @@ public struct SpotConfirmations: Sendable, Equatable {
         records.last { $0.area.holds(area) }
     }
 
-    /// Whether any check of this scan was answered "I can't check this area". Its claims stay
-    /// withdrawn for the rest of the scan (`CoverageMap.withdrawClaims`), so every later answer,
-    /// with a spot or without one, rests on a stretch of wall nobody checked.
-    public var leftAreaUnchecked: Bool {
-        records.contains { $0.answer == .cannotCheck }
+    /// Whether an area other than `shown` was answered "I can't check this area" in this scan.
+    /// Its claims stay withdrawn for the rest of the scan (`CoverageMap.withdrawClaims`), so every
+    /// later answer rests on a stretch nobody checked, whatever spot it names. An answer whose
+    /// area holds `shown` is about the shown spot itself, which the result speaks of separately;
+    /// with no spot shown (nil), every such answer counts.
+    public func leftUnchecked(besides shown: SpotArea?) -> Bool {
+        records.contains { record in
+            record.answer == .cannotCheck && !(shown.map { record.area.holds($0) } ?? false)
+        }
     }
 }

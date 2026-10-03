@@ -175,25 +175,48 @@ import Testing
     /// doesn't make it checked. Only "I can't check this area" leaves an area unchecked, and a new
     /// record (the engine's reset, `ScanEngine.resetSpotChecks`) holds none.
     @Test func anAreaLeftUncheckedStaysUncheckedForTheScan() {
-        var checks = SpotConfirmations()
-        #expect(!checks.leftAreaUnchecked)
-        checks.record(Self.confirmation(Self.area, .clear))
-        checks.record(Self.confirmation(Self.area, .somethingThere))
-        #expect(!checks.leftAreaUnchecked)
-
-        checks.record(Self.confirmation(Self.area, .cannotCheck))
-        #expect(checks.leftAreaUnchecked)
         var moved = Self.area
         moved.spot = 1.2...2.0
-        checks.record(Self.confirmation(moved, .clear))
         var wider = Self.area
         wider.span = 0.9...3.0
+        var checks = SpotConfirmations()
+        #expect(!checks.leftUnchecked(besides: nil))
+        checks.record(Self.confirmation(Self.area, .clear))
+        checks.record(Self.confirmation(Self.area, .somethingThere))
+        #expect(!checks.leftUnchecked(besides: nil))
+        #expect(!checks.leftUnchecked(besides: moved))
+
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(checks.leftUnchecked(besides: nil))
+        #expect(checks.leftUnchecked(besides: moved))
+        checks.record(Self.confirmation(moved, .clear))
         checks.record(Self.confirmation(wider, .clear))
         #expect(checks.settling(Self.area)?.answer == .clear)
-        #expect(checks.leftAreaUnchecked)
+        #expect(checks.leftUnchecked(besides: nil))
+        #expect(checks.leftUnchecked(besides: moved))
 
         checks = SpotConfirmations()
-        #expect(!checks.leftAreaUnchecked)
+        #expect(!checks.leftUnchecked(besides: nil))
+    }
+
+    /// The answer about the spot shown isn't another area: the result speaks of it on its own.
+    /// "I can't check this area" about one spot and then about a second leaves the first
+    /// unchecked beside the second (Greptile on #206), and with no spot shown both count.
+    @Test func anUncheckedAreaIsElsewhereUnlessItHoldsTheSpotShown() {
+        var moved = Self.area
+        moved.spot = 1.2...2.0
+        var smaller = Self.area
+        smaller.span = Self.spot
+        var checks = SpotConfirmations()
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(!checks.leftUnchecked(besides: Self.area))
+        #expect(!checks.leftUnchecked(besides: smaller))
+        #expect(checks.leftUnchecked(besides: moved))
+
+        checks.record(Self.confirmation(moved, .cannotCheck))
+        #expect(checks.leftUnchecked(besides: moved))
+        #expect(checks.leftUnchecked(besides: Self.area))
+        #expect(checks.leftUnchecked(besides: nil))
     }
 
     /// The latest answer about an area wins whichever two it is, so "I can't check this area"

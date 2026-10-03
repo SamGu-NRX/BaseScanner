@@ -217,13 +217,13 @@ final class ScanEngine {
     var guidanceLog = GuidanceLog()
     /// The spot check (`ScanEngine+Confirm.swift`). What follows from its records is read from
     /// them on every change, so recording an answer sets it and a reset clears it:
-    /// `ScanViewState.spotAreaUnchecked`, and the UI tests' answer file
+    /// `ScanViewState.uncheckedAreaElsewhere`, and the UI tests' answer file
     /// (`-sampleResultAfterSpotAnswer`), which applies only once this scan has an answer other
     /// than "It's clear", so a scan after Start over or a new wall starts on the bundled sample.
     var spotConfirm = SpotConfirmState() {
         didSet {
-            let unchecked = spotConfirm.confirmations.leftAreaUnchecked
-            if state.spotAreaUnchecked != unchecked { state.spotAreaUnchecked = unchecked }
+            let elsewhere = spotConfirm.confirmations.leftUnchecked(besides: spotConfirm.shownArea)
+            if state.uncheckedAreaElsewhere != elsewhere { state.uncheckedAreaElsewhere = elsewhere }
             if let file = options.sampleResultAfterSpotAnswer, let sample = resultClient as? SampleResultClient {
                 sample.answerFile = spotConfirm.confirmations.records.contains { !$0.answer.keepsClaims } ? file : nil
             }
@@ -1729,6 +1729,7 @@ final class ScanEngine {
         state.spotCheck = nil
         spotConfirm.pending = nil
         spotConfirm.request = nil
+        spotConfirm.shownArea = nil
         // A spot photo still loading for this answer (`presentAnswer`) must not open its check
         // once a retry brings back an equal answer.
         spotConfirm.asked += 1
