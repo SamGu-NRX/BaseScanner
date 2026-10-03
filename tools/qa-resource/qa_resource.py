@@ -44,6 +44,9 @@ _SYSCTL.restype = ctypes.c_int
 HEAVY_NAMES = {"xcodebuild", "swift-build", "swift-test", "swift-frontend",
                "swift-driver", "blender"}
 SERVICE_TEST = "AgentDeviceRunnerUITests/RunnerTests/testCommand"
+# Every xcodebuild action except test-without-building, which the service runs.
+XCODEBUILD_BUILD_ACTIONS = frozenset({"build", "build-for-testing", "analyze", "archive", "test",
+                                      "installsrc", "install", "clean", "docbuild"})
 CANCEL_FIFO = "cancel.fifo"
 STOP_LISTENER = b"q"
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled", "admission_timeout",
@@ -398,10 +401,15 @@ def classify_process(process, kind, device=None):
         return "blocker"
     service = (Path(process["comm"]).name == "xcodebuild"
                and "test-without-building" in tokens
+               # xcodebuild accepts several actions, and -only-testing constrains only test
+               # actions. A value spelled like an action only makes this more conservative.
+               and not XCODEBUILD_BUILD_ACTIONS.intersection(tokens)
                # -only-testing may repeat. Any other selected suite does heavy work of its own.
                and set(option_values(tokens, "-only-testing")) == {SERVICE_TEST})
     if not service:
         return "blocker"
+    if kind != "simulator":
+        return "ignored"
     destinations = []
     for index, token in enumerate(tokens):
         if token == "-destination":
@@ -411,9 +419,11 @@ def classify_process(process, kind, device=None):
             while end < len(tokens) and not tokens[end].startswith("-"):
                 end += 1
             destinations.append(" ".join(tokens[index + 1:end]))
-    matches = any(re.search(r"(?:^|,)\s*id=" + re.escape(device or "") + r"(?:,|$)", d)
-                  for d in destinations)
-    return "blocker" if kind == "simulator" and matches else "ignored"
+    # Only explicit ids prove the service is on another device. A name, an OS or an implicit
+    # destination may resolve to this one while it is still Shutdown.
+    ids = [re.search(r"(?:^|,)\s*id=([^,\s]+)", d) for d in destinations]
+    elsewhere = bool(ids) and all(match and match.group(1) != device for match in ids)
+    return "ignored" if elsewhere else "blocker"
 
 
 def resource_blockers(pressure, memory_percent, free_bytes):
@@ -749,7 +759,18 @@ def create_job(args):
                ownerToken=secrets.token_hex(16), escapedProcesses=[], cancelChannel=CANCEL_FIFO,
                ignoredProcesses=[], logs={name: str(directory / (name + ".log"))
                                          for name in ("output", "runner")})
-    write_job(directory, job)
+    try:
+        write_job(directory, job)
+    except OSError as error:
+        # No record exists to carry an error, and the directory alone would reject every retry
+        # of this id as a duplicate. This call created it, so removing it touches nothing else.
+        live.close()
+        leftovers = []
+        for path in (directory / "job.json.tmp", directory / "job.json", directory / "live.lock", directory):
+            cleanup_step(leftovers, f"remove {path}",
+                         lambda path=path: path.rmdir() if path == directory else path.unlink(missing_ok=True))
+        detail = f"; {'; '.join(leftovers)}" if leftovers else ""
+        raise JobSetupError(f"job {args.job_id}: cannot write the job record: {error}{detail}") from error
     try:
         (directory / "output.log").touch()
         (directory / "runner.log").touch()
@@ -1110,6 +1131,14 @@ def submit(directory, live, job, lock_path, cancel_fd):
     ticket_path = ticket = runner = None
     close_errors = []
     deadline = time.monotonic() + job["admissionDeadline"]
+    def interrupt(signum, frame):
+        # One-shot, so a second signal cannot escape the cancellation below.
+        for sig in RUNNER_SIGNALS:
+            signal.signal(sig, signal.SIG_IGN)
+        raise Cancelled(signum)
+    # Until the runner exists nothing else will finish this job's record, so an interruption
+    # while waiting for the ticket must record it as cancelled rather than leave it queued.
+    original_handlers = {sig: signal.signal(sig, interrupt) for sig in RUNNER_SIGNALS}
     try:
         ticket_path, ticket = acquire_ticket(directory.parent.parent, job["jobId"], deadline)
         # Keep SIGCHLD at its default so an exited runner stays an unreaped zombie and its PID
@@ -1121,12 +1150,10 @@ def submit(directory, live, job, lock_path, cancel_fd):
             def record(signum, frame):
                 if not pending:
                     pending.append(signum)
-            def interrupt(signum, frame):
-                # One-shot, so a second signal cannot escape the cancellation below.
-                for sig in RUNNER_SIGNALS:
-                    signal.signal(sig, signal.SIG_IGN)
-                raise Cancelled(signum)
-            previous_handlers = {sig: signal.signal(sig, record) for sig in RUNNER_SIGNALS}
+            # Replace interrupt directly, leaving no gap where the default action could kill us.
+            for sig in RUNNER_SIGNALS:
+                signal.signal(sig, record)
+            previous_handlers = original_handlers
             try:
                 with (directory / "runner.log").open("a") as log:
                     # The runner inherits this mask and unblocks after installing its handlers,
@@ -1180,7 +1207,11 @@ def submit(directory, live, job, lock_path, cancel_fd):
                 raise RuntimeError("; ".join(close_errors))
         finally:
             signal.signal(signal.SIGCHLD, previous_sigchld)
-    except Cancelled:
+    except Cancelled as error:
+        if runner is None:
+            job.update(status="cancelled", exitCode=130, signal=error.signum,
+                       error="submit was interrupted before its runner started", finishedAt=timestamp())
+            write_job(directory, job)
         return 130
     except Exception as error:
         if runner is not None:
@@ -1203,6 +1234,9 @@ def submit(directory, live, job, lock_path, cancel_fd):
         if runner is None and close_errors:
             job.update(status="cleanup_failed", exitCode=125, cleanupError="; ".join(close_errors))
             cleanup_step(close_errors, "write submission cleanup errors", lambda: write_job(directory, job))
+        # The inner block restores these once it starts. This covers an exit before it.
+        for sig, handler in original_handlers.items():
+            signal.signal(sig, handler)
     return 0
 
 

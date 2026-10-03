@@ -1295,12 +1295,26 @@ class PureTests(unittest.TestCase):
             self.assertEqual(qa.classify_process(process, "simulator", "A4EE0B20-1654-4B67-B54E-D071DA1E9601"), "blocker")
             self.assertEqual(qa.classify_process(process, "simulator", "other"), "ignored")
 
+    def test_service_without_explicit_ids_blocks_every_simulator(self):
+        service = f"xcodebuild test-without-building -only-testing:{qa.SERVICE_TEST}"
+        for destination in ("", " -destination platform=iOS Simulator,name=iPhone 16,OS=18.0",
+                            " -destination platform=iOS Simulator,id=other -destination platform=iOS Simulator,name=iPhone 16"):
+            process = dict(comm="xcodebuild", args=service + destination)
+            with self.subTest(destination=destination):
+                self.assertEqual(qa.classify_process(process, "simulator", "ours"), "blocker")
+                self.assertEqual(qa.classify_process(process, "package"), "ignored")
+        process = dict(comm="xcodebuild", args=service + " -destination platform=iOS Simulator,id=other"
+                       " -destination platform=iOS Simulator,id=third")
+        self.assertEqual(qa.classify_process(process, "simulator", "ours"), "ignored")
+
     def test_xcodebuild_without_all_markers_blocks(self):
         for args in ("xcodebuild", f"xcodebuild -only-testing {qa.SERVICE_TEST}",
                      "xcodebuild test-without-building -only-testing WrongTest",
                      f"xcodebuild test-without-building echo {qa.SERVICE_TEST}",
                      f"xcodebuild test-without-building -only-testing {qa.SERVICE_TEST} -only-testing OtherUITests",
-                     f"xcodebuild test-without-building -only-testing:OtherUITests -only-testing:{qa.SERVICE_TEST}"):
+                     f"xcodebuild test-without-building -only-testing:OtherUITests -only-testing:{qa.SERVICE_TEST}",
+                     f"xcodebuild build test-without-building -only-testing:{qa.SERVICE_TEST}",
+                     f"xcodebuild test-without-building build-for-testing -only-testing:{qa.SERVICE_TEST}"):
             self.assertEqual(qa.classify_process(dict(comm="xcodebuild", args=args), "package"), "blocker")
         self.assertEqual(qa.classify_process(dict(comm="swift-build", args="", stat="Z"), "package"), "irrelevant")
         self.assertEqual(qa.classify_process(dict(comm="/Applications/T3 Code App", args="blender"), "package"), "irrelevant")
@@ -1434,6 +1448,45 @@ class PureTests(unittest.TestCase):
             self.assertEqual(qa.release_ticket(path, ticket), [])
             self.assertEqual(qa.release_ticket(path, None), [])
             self.assertFalse(path.exists())
+
+    def test_failed_first_record_write_leaves_the_id_reusable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = Mock(state_dir=root / "state", job_id="no-space", kind="package", argv=["unused"],
+                        cwd=root, device=None, admission_deadline=3, timeout=1)
+            def full_disk(directory, job):
+                (directory / "job.json.tmp").write_text("partial")
+                raise OSError(28, "No space left on device")
+            with patch.object(qa, "write_job", side_effect=full_disk):
+                with self.assertRaisesRegex(qa.JobSetupError, "cannot write the job record: .*No space left"):
+                    qa.create_job(args)
+            self.assertFalse((root / "state/jobs/no-space").exists())
+            directory, live, job = qa.create_job(args)
+            live.close()
+            self.assertEqual(qa.read_job(directory)["status"], "queued")
+
+    def test_submit_interrupted_while_waiting_for_its_ticket_records_cancelled(self):
+        for sig in qa.RUNNER_SIGNALS:
+            with self.subTest(signal=sig), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                args = Mock(state_dir=root / "state", job_id="interrupted", kind="package", argv=["unused"],
+                            cwd=root, device=None, admission_deadline=3, timeout=1)
+                directory, live, job = qa.create_job(args)
+                before = {s: signal.getsignal(s) for s in qa.RUNNER_SIGNALS}
+                def waiting(*unused):
+                    # Without submit's handler this signal would kill the test runner itself.
+                    self.assertNotIn(signal.getsignal(sig), (signal.SIG_DFL, signal.default_int_handler))
+                    os.kill(os.getpid(), sig)
+                    self.fail("the signal did not interrupt the ticket wait")
+                with patch.object(qa, "acquire_ticket", side_effect=waiting), \
+                     patch.object(qa.subprocess, "Popen") as spawn:
+                    code = qa.submit(directory, live, job, root / "lock", qa.open_cancel_reader(directory))
+                self.assertEqual(code, 130)
+                spawn.assert_not_called()
+                result = qa.read_job(directory)
+                self.assertEqual((result["status"], result["signal"]), ("cancelled", sig))
+                self.assertEqual({s: signal.getsignal(s) for s in qa.RUNNER_SIGNALS}, before)
+                self.assertFalse(qa.live_report(directory)["live"])
 
     def test_cleanup_hold_keeps_lock_until_group_gone_or_deadline(self):
         for members_remain in (False, True):
