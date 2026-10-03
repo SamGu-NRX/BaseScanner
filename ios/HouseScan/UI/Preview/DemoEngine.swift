@@ -179,8 +179,21 @@ final class DemoEngine: ScanActions {
                 anchor: SIMD3(corner, 0, 0), anchorS: corner)]
             state.wall?.rightEnd = corner + 1.6
         }
-        if let raw = value("-uiDemoSpotAnswered"), state.phase == .spotConfirm {
-            state.spotCheck?.answer = raw == "somethingThere" ? .somethingThere : .clear
+        if let raw = value("-uiDemoSpotAnswered") {
+            let answer = Self.spotAnswer(raw)
+            switch state.phase {
+            case .spotConfirm:
+                state.spotCheck?.answer = answer
+            case .result:
+                // The result after that answer, which the result's notice reads. With a
+                // `-uiDemoResultFile` answer that names no spot there is no check to keep, and
+                // only the wall-wide notice after "I can't check this area" remains.
+                // `-uiDemoUncheckedElsewhere` adds an earlier area left unchecked.
+                state.spotCheck = sampleSpotCheck(answer: answer)
+                state.uncheckedAreaElsewhere = (answer == .cannotCheck && state.spotCheck == nil) || arguments.contains("-uiDemoUncheckedElsewhere")
+            default:
+                break
+            }
         }
         // The spot check without an outline: no kept photo shows the area (`-uiDemoSpotNoPhoto`),
         // or a photo but no wall to draw the area on it with (`-uiDemoSpotNoWall`).
@@ -404,17 +417,33 @@ final class DemoEngine: ScanActions {
     /// The spot check of the answer's spot, before the result. The made-up zones don't hold the
     /// spot, so the area is the footprint alone, as the engine would draw it.
     private func enterSpotCheck() {
-        let result = sample
         state.shareableScan = Self.demoScan
         state.upload = .done
-        state.result = result
-        guard let spot = result.spot else { return showResult() }
+        state.result = sample
+        guard let check = sampleSpotCheck(answer: nil) else { return showResult() }
+        state.spotCheck = check
+        state.phase = .spotConfirm
+    }
+
+    /// The check of the sample's spot, nil when the sample names none.
+    private func sampleSpotCheck(answer: SpotCheckAnswer?) -> SpotCheck? {
+        let result = sample
+        guard let spot = result.spot else { return nil }
         let out = spot.offsetFromWall...(spot.offsetFromWall + spot.depth)
-        state.spotCheck = SpotCheck(
+        return SpotCheck(
             id: 1, spot: spot.span, spotOut: out, spotHeight: spot.height, area: spot.span, areaDepth: out.upperBound,
             photo: DemoScene.image.map { SpotCheck.Photo(image: $0, projection: DemoScene.projection) },
-            answer: nil, isSample: result.isSample)
-        state.phase = .spotConfirm
+            answer: answer, isSample: result.isSample)
+    }
+
+    /// `-uiDemoSpotAnswered`'s value. Anything else is a typo in a test's arguments.
+    private static func spotAnswer(_ raw: String) -> SpotCheckAnswer {
+        switch raw {
+        case "clear": .clear
+        case "somethingThere": .somethingThere
+        case "cannotCheck": .cannotCheck
+        default: preconditionFailure("-uiDemoSpotAnswered takes clear, somethingThere or cannotCheck, got \(raw)")
+        }
     }
 
     private func showResult() {
@@ -1052,6 +1081,7 @@ final class DemoEngine: ScanActions {
         followUpSkipped = false
         spotChecked = false
         state.spotCheck = nil
+        state.uncheckedAreaElsewhere = false
         tiltUpSettled = false
         tiltUpTicks = 0
         state.overheadQuestion = false
@@ -1241,13 +1271,13 @@ private extension ResultPresentation {
 
 extension DemoEngine {
     /// Like the engine: the answer stays up a moment, then the result, or the check again.
-    func answerSpotCheck(clear: Bool) {
+    func answerSpotCheck(_ answer: SpotCheckAnswer) {
         guard state.phase == .spotConfirm, state.spotCheck?.answer == nil else { return }
-        state.spotCheck?.answer = clear ? .clear : .somethingThere
+        state.spotCheck?.answer = answer
         spotChecked = true
         run { engine in
             guard await engine.pause(1.2) else { return }
-            if clear { engine.showResult() } else { engine.enterUpload() }
+            if answer == .clear { engine.showResult() } else { engine.enterUpload() }
         }
     }
 

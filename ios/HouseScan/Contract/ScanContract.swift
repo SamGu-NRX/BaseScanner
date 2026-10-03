@@ -759,6 +759,10 @@ enum SpotCheckAnswer: Equatable, Sendable {
     case clear
     /// Something stands there: the scan stops claiming that area and is checked again.
     case somethingThere
+    /// The homeowner can't see or reach the area to say: it was not observed, which is neither
+    /// an obstruction nor clear. The scan stops claiming that area and is checked again, and the
+    /// result says nobody checked it.
+    case cannotCheck
 }
 
 /// The one question asked before an answer's spot is shown as the result: is anything standing
@@ -891,6 +895,11 @@ final class ScanViewState {
     var result: ResultPresentation?
     /// The homeowner's check of the proposed spot, retained beside the result.
     var spotCheck: SpotCheck?
+    /// True when the homeowner answered "I can't check this area" about an area other than the
+    /// spot the result names, or while it names none. That area stays out of the scan, so the
+    /// result says so beside whatever it says about its own spot. Cleared with the scan's spot
+    /// checks.
+    var uncheckedAreaElsewhere = false
     /// True while the engine sees the AR scene drawing the result in the live camera
     /// (`ResultOverlayPolicy`). The AR screen then draws no overlay of its own; otherwise it
     /// draws `BatteryOverlay`.
@@ -995,8 +1004,8 @@ protocol ScanActions: AnyObject {
     func retryUpload()
     /// After a rejected upload: back to the feature review, keeping the scan.
     func backToReview()
-    /// The answer to `ScanViewState.spotCheck`: true when nothing stands in the area.
-    func answerSpotCheck(clear: Bool)
+    /// The answer to `ScanViewState.spotCheck`.
+    func answerSpotCheck(_ answer: SpotCheckAnswer)
     /// Start a capture for a server-listed missing item.
     func captureMissing(_ id: String)
     func showAR()

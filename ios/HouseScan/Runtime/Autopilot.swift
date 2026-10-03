@@ -17,10 +17,10 @@ final class Autopilot {
     /// back to pixels use the same size.
     private let viewSize = CGSize(width: 393, height: 852)
     private var hold: Double { engine.options.autopilotHold }
-    /// Set once a spot check was answered "Something's there" (`-autopilotSomethingThere`): the
-    /// checks after it are answered "It's clear", so a server that keeps moving the spot can't
-    /// keep the run going.
-    private var answeredSomethingThere = false
+    /// Set once a spot check was answered "Something's there" (`-autopilotSomethingThere`) or "I
+    /// can't check this area" (`-autopilotCannotCheck`): the checks after it are answered "It's
+    /// clear", so a server that keeps moving the spot can't keep the run going.
+    private var withheldClear = false
 
     init(engine: ScanEngine) {
         self.engine = engine
@@ -399,18 +399,26 @@ final class Autopilot {
         return false
     }
 
-    /// "It's clear", or with `-autopilotSomethingThere` "Something's there" the first time. After
-    /// a refusal the stretch it withdrew goes to the gate folder as `spot-refusal.json` (the
-    /// stretch's s in feet, as scene.json's spans), for the UI test to check the scene against.
+    /// "It's clear", or the first time "Something's there" with `-autopilotSomethingThere` and "I
+    /// can't check this area" with `-autopilotCannotCheck`. After either, the stretch the answer
+    /// withdrew goes to the gate folder as `spot-refusal.json` (the stretch's s in feet, as
+    /// scene.json's spans), for the UI test to check the scene against.
     private func answerSpotCheck() async {
         guard let check = engine.state.spotCheck, check.answer == nil else { return }
         await pause(hold)
         await engine.waitForGate(.spotConfirm)
-        let refuse = engine.options.autopilotSomethingThere && !answeredSomethingThere
-        engine.answerSpotCheck(clear: !refuse)
-        log("spot check \(check.id) over \(format(check.area)): \(refuse ? "something's there" : "it's clear")")
-        if refuse {
-            answeredSomethingThere = true
+        let options = engine.options
+        let first: SpotCheckAnswer = options.autopilotCannotCheck ? .cannotCheck : options.autopilotSomethingThere ? .somethingThere : .clear
+        let answer: SpotCheckAnswer = withheldClear ? .clear : first
+        engine.answerSpotCheck(answer)
+        let said = switch answer {
+        case .clear: "it's clear"
+        case .somethingThere: "something's there"
+        case .cannotCheck: "I can't check this area"
+        }
+        log("spot check \(check.id) over \(format(check.area)): \(said)")
+        if answer != .clear {
+            withheldClear = true
             writeRefusalForTest()
         }
         _ = await waitUntil(timeout: 20) { self.engine.state.phase != .spotConfirm }

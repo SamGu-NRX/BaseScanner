@@ -1,16 +1,17 @@
 import SwiftUI
 
 /// The spot check before the result: one kept photo with the answer's spot and its clearance area
-/// outlined, and one question with two equal answers. A photo can claim wall and ground behind a
-/// bush, so the homeowner, who is standing there, says whether anything is in the way.
+/// outlined, and one question with three equal answers. A photo can claim wall and ground behind
+/// a bush, so the homeowner, who is standing there, says whether anything is in the way, or that
+/// they can't see or reach the area to say.
 ///
 /// Without an outline (no kept photo shows the area, or there is no wall to draw it with) the
 /// area is given in words instead: where it runs beside the meter, how far out from the wall and
 /// how high up it. The question then names no outline, and no photo is shown, since a photo with
 /// nothing marked on it would leave the homeowner guessing which part of it is meant.
 ///
-/// The answer replaces the two buttons and stays up a moment, saying what happens next, before
-/// the engine moves on (to the result, or to checking the wall again).
+/// The answer replaces the buttons and stays up a moment, saying what happens next, before the
+/// engine moves on (to the result, or to checking the wall again).
 struct SpotConfirmScreen: View {
     let state: ScanViewState
     let actions: any ScanActions
@@ -184,7 +185,7 @@ struct SpotConfirmScreen: View {
             .accessibilityIdentifier("spot.area.\(id)")
     }
 
-    /// The two answers, or once answered, what happens next.
+    /// The answers, or once answered, what happens next.
     @ViewBuilder
     private func answerArea(_ check: SpotCheck) -> some View {
         if let answer = check.answer {
@@ -196,15 +197,20 @@ struct SpotConfirmScreen: View {
         }
     }
 
-    /// Two equal answers on a white card, so neither reads as the default.
+    /// Three equal answers on a white card, so none reads as the default. "I can't check this
+    /// area" has the same size and weight as the other two: a homeowner who can't see the area
+    /// should find saying so as easy as guessing.
     private var answers: some View {
         VStack(spacing: 10) {
-            AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotCheck(clear: true) }
+            AnswerButton(title: ScanCopy.spotClear, selected: false) { actions.answerSpotCheck(.clear) }
                 .accessibilityHint(ScanCopy.spotClearHint)
                 .accessibilityIdentifier("action.spotClear")
-            AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotCheck(clear: false) }
+            AnswerButton(title: ScanCopy.spotSomethingThere, selected: false) { actions.answerSpotCheck(.somethingThere) }
                 .accessibilityHint(ScanCopy.spotSomethingThereHint)
                 .accessibilityIdentifier("action.spotSomethingThere")
+            AnswerButton(title: ScanCopy.spotCannotCheck, selected: false) { actions.answerSpotCheck(.cannotCheck) }
+                .accessibilityHint(ScanCopy.spotCannotCheckHint)
+                .accessibilityIdentifier("action.spotCannotCheck")
         }
         .padding(12)
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
@@ -228,7 +234,7 @@ private struct Answered: View {
     var body: some View {
         let copy = ScanCopy.spotAnswered(answer)
         HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: answer == .clear ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+            Image(systemName: Self.symbol(answer))
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(answer == .clear ? Palette.passInk : Palette.reviewInk)
                 .accessibilityHidden(true)
@@ -249,6 +255,16 @@ private struct Answered: View {
         .background(Palette.surface, in: .rect(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("spot.answered")
+    }
+
+    /// A tick for clear, the check-again arrows for an obstruction, and an eye struck through for
+    /// an area nobody checked, as on the result's notice.
+    private static func symbol(_ answer: SpotCheckAnswer) -> String {
+        switch answer {
+        case .clear: "checkmark.circle.fill"
+        case .somethingThere: "arrow.triangle.2.circlepath"
+        case .cannotCheck: "eye.slash"
+        }
     }
 }
 
