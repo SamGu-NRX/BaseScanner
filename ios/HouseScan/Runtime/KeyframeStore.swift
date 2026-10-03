@@ -162,26 +162,51 @@ final class KeyframeStore {
         case writeFailed = "write failed"
     }
 
-    /// Writes a still such as the meter close-up from `frame`. Returns false when there was
-    /// nothing to write. The still stands for its purpose only once accepted (`acceptStill`).
-    func saveStill(_ frame: SourceFrame, name: String) async -> Bool {
+    /// What became of a `saveStill`. The two failures need different words on screen: a photo
+    /// that couldn't be written is a phone problem the homeowner can retry or skip, while a
+    /// discarded world frame has already sent the flow back to finding the meter (B-20: both
+    /// used to read as a blurry photo).
+    enum StillSave: Equatable {
+        case saved
+        /// No image bytes to write, or the write failed (a full phone, say). Nothing new is
+        /// listed; a still saved earlier under the same name stays as it was.
+        case notWritten
+        /// Written, but in a world frame discarded meanwhile, so it isn't kept.
+        case worldDiscarded
+    }
+
+    /// Writes a still such as the meter close-up from `frame`. The still stands for its purpose
+    /// only once accepted (`acceptStill`).
+    func saveStill(_ frame: SourceFrame, name: String) async -> StillSave {
         let directory = directory
         let id = Self.purpose(of: name)
         let startedIn = epoch
-        let written = await Task.detached(priority: .utility) { () -> StoredKeyframe? in
-            guard let data = Self.data(of: frame.jpeg), (try? data.write(to: directory.appending(path: name), options: .atomic)) != nil else { return nil }
-            return Self.stored(frame, id: id, jpeg: data, in: directory)
+        let written = await Task.detached(priority: .utility) { () -> Result<StoredKeyframe, KeyframeWriteFailure> in
+            guard let data = Self.data(of: frame.jpeg) else { return .failure(.noPhoto) }
+            do {
+                try data.write(to: directory.appending(path: name), options: .atomic)
+            } catch {
+                return .failure(.writeFailed)
+            }
+            return .success(Self.stored(frame, id: id, jpeg: data, in: directory))
         }.value
-        guard let written else { return false }
+        let stored: StoredKeyframe
+        switch written {
+        case .success(let entry):
+            stored = entry
+        case .failure(let failure):
+            RuntimeLog.capture.error("still \(name, privacy: .public) not stored: \(failure.rawValue, privacy: .public)")
+            return .notWritten
+        }
         // Taken in a world frame that was discarded while the file was being written. The file is
         // left alone: a close-up in the new frame may already have written the same name, and
         // nothing reads a still that `stillFrames` doesn't list.
         guard startedIn == epoch else {
             RuntimeLog.capture.info("still \(name, privacy: .public) not kept: its world frame was discarded")
-            return false
+            return .worldDiscarded
         }
-        stillCatalog.save(written, purpose: id, fileName: name)
-        return true
+        stillCatalog.save(stored, purpose: id, fileName: name)
+        return .saved
     }
 
     /// The homeowner accepted the still saved as `name` (the meter number read from it was
@@ -195,14 +220,6 @@ final class KeyframeStore {
     /// a plain photo of the scan.
     func withdrawStill(_ name: String) {
         stillCatalog.withdraw(Self.purpose(of: name))
-    }
-
-    func thumbnail(ofStill name: String) async -> CGImage? {
-        let url = directory.appending(path: name)
-        return await Task.detached(priority: .utility) { () -> CGImage? in
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            return ImageWork.uprightThumbnail(jpeg: data)
-        }.value
     }
 
     /// Forgets keyframes and stills taken in a world frame that no longer exists (after a failed

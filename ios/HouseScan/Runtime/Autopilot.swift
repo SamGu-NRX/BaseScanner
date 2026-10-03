@@ -119,7 +119,7 @@ final class Autopilot {
         let state = engine.state
         guard state.phase == .meterCloseUp else { return .left }
         if case .choose(let candidates) = state.meterNumber, let first = candidates.first { return .choose(first) }
-        if case .aiming(_, let problem?) = state.closeUp, problem == .noNumber || problem == .numberTooSmall { return .retake(problem) }
+        if case .aiming(_, let problem?) = state.closeUp, [.noNumber, .numberTooSmall, .photoNotSaved].contains(problem) { return .retake(problem) }
         return nil
     }
 
