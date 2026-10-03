@@ -153,13 +153,21 @@ final class ResultCardUITests: XCTestCase {
         URL(fileURLWithPath: file).deletingLastPathComponent().appending(path: "Fixtures/results/\(name).json").path
     }
 
-    /// Scrolls until the whole element is inside the window, so the screenshot shows it.
+    /// Scrolls until the whole element is inside the window, so the screenshot shows it. Each
+    /// drag moves the content by what is missing, at most a third of the window, toward the
+    /// target: a fixed swipe could carry a tall line from below the window to above it, and
+    /// swiping on in one direction would never bring it back.
     @MainActor
     private func scrollIntoView(_ target: XCUIElement, in app: XCUIApplication) {
         let window = app.windows.firstMatch.frame
-        let scroll = app.scrollViews.firstMatch
-        for _ in 0..<10 where !window.contains(target.frame) {
-            scroll.swipeUp(velocity: .slow)
+        let margin: CGFloat = 24
+        let start = app.scrollViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+        for _ in 0..<12 where !window.contains(target.frame) {
+            let frame = target.frame
+            let shift: CGFloat = frame.maxY > window.maxY
+                ? -min(frame.maxY - window.maxY + margin, window.height / 3)
+                : min(window.minY - frame.minY + margin, window.height / 3)
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: shift)))
         }
         XCTAssertTrue(window.contains(target.frame), "\(target.identifier) can't be scrolled fully into view")
     }
