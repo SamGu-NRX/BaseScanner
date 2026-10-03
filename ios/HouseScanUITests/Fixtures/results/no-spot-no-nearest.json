@@ -1,0 +1,84 @@
+{
+ "schema_version": "1.0",
+ "decision": "reject",
+ "summary": "Test answer: no spot within reach works: every spot fails route length, wall backing. Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's.",
+ "reasons": [
+  {
+   "code": "all_spots_fail",
+   "checks": [
+    "route_length",
+    "wall_backing"
+   ],
+   "message": "Every spot on the walls scanned fails at least one check by a clear margin."
+  }
+ ],
+ "policy": {
+  "id": "demo",
+  "version": "2026-09-26",
+  "auto_approve": true,
+  "sources": [
+   "public"
+  ],
+  "rules_sha256": "5a1e0c7d00000000000000000000000000000000000000000000000000000000",
+  "notice": "Demo rules: public values and placeholders (pool 10 ft, drive 5 ft), not Base's."
+ },
+ "spot": null,
+ "route": null,
+ "checks": [],
+ "nearest_considered": null,
+ "missing_evidence": [],
+ "ends": {
+  "left": {
+   "kind": "limit",
+   "s_ft": -1.0,
+   "point": [
+    -1.0,
+    0.0
+   ]
+  },
+  "right": {
+   "kind": "limit",
+   "s_ft": 36.0,
+   "point": [
+    36.0,
+    0.0
+   ]
+  }
+ },
+ "sweep": [
+  {
+   "wall_id": "wall",
+   "segment": 0,
+   "start_ft": [
+    -1.0,
+    -1.0
+   ],
+   "outcome": "fail",
+   "failing": [
+    "wall_backing"
+   ],
+   "unsure": []
+  },
+  {
+   "wall_id": "wall",
+   "segment": 1,
+   "start_ft": [
+    21.0,
+    33.416667
+   ],
+   "outcome": "fail",
+   "failing": [
+    "route_length"
+   ],
+   "unsure": []
+  }
+ ],
+ "stats": {
+  "candidates": 0,
+  "pass": 0,
+  "unsure": 0,
+  "fail": 0,
+  "elapsed_ms": 0,
+  "input_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+ }
+}

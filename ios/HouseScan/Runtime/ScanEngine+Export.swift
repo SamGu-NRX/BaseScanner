@@ -252,26 +252,28 @@ extension ScanEngine {
                 needsPerson: check.needsPerson,
                 measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters),
                 comparison: check.comparison.map(Self.comparison),
+                reviewThreshold: check.reviewThresholdFt.map(meters), reviewBandApplies: check.reviewBandApplies,
                 settledBy: result.evidenceIndex(settling: check.id).map(Self.missingID)
             )
         }
 
-        // A run's start_ft is a range of battery LEFT edges, so the wall it describes reaches one
-        // battery width past its last start. The spot carries the size, or after a reject the
-        // nearest spot, which the server sized the same way. With neither, the zone is drawn over
-        // the starts alone at 0.3 m deep, which understates it.
-        let sized = spot ?? nearestSpot
-        let depth = sized?.depth ?? 0.3
-        let width = sized.map { $0.span.upperBound - $0.span.lowerBound } ?? 0
-        let clearances = result.sweep.enumerated().map { index, run in
-            let first = meters(min(run.startFt.x, run.startFt.y))
-            let last = meters(max(run.startFt.x, run.startFt.y))
+        // The spot carries the battery's size, or without one the nearest spot, which the server
+        // sized the same way. With neither, `sweepZones` gives no zones: the result keeps its
+        // wall, summary and reasons, and no view draws floor the server never sized.
+        let sized = (spot ?? nearestSpot).map {
+            ResultMarkLayout.BatterySize(width: $0.span.upperBound - $0.span.lowerBound, depth: $0.depth)
+        }
+        let zones = ResultMarkLayout.sweepZones(
+            starts: result.sweep.map { SIMD2(meters($0.startFt.x), meters($0.startFt.y)) }, battery: sized)
+        // One zone per run, or none.
+        let clearances = zip(result.sweep, zones).enumerated().map { index, pair in
+            let (run, zone) = pair
             return ClearanceZone(
                 id: "sweep-\(index)",
                 label: (run.failing + run.unsure).joined(separator: ", "),
                 outcome: Self.outcome(run.outcome),
-                span: first...(last + width),
-                depth: depth
+                span: zone.span,
+                depth: zone.depth
             )
         }
 
