@@ -827,13 +827,23 @@ final class ScanEngine {
         Task {
             // The task can start after a reset or after the flow left the close-up.
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            let photo = await closeUpPhoto(frame)
+            var photo = await closeUpPhoto(frame)
+            if options.failCloseUpSave, replay != nil { photo.jpeg = .none }
             // Drawing a practice photo suspends: a reset meanwhile must not save into the new scan.
             guard scan == generation, state.phase == .meterCloseUp else { return }
             let saved = await store.saveStill(photo, name: "meter_close.jpg")
             guard scan == generation, state.phase == .meterCloseUp else { return }
-            if !saved {
-                retakeCloseUp(.blurry)
+            switch saved {
+            case .saved:
+                break
+            case .notWritten:
+                retakeCloseUp(.photoNotSaved)
+                return
+            case .worldDiscarded:
+                // The discard sent the flow back to finding the meter, so the phase guard above
+                // returns first. Past it, the meter was found again while this file was written:
+                // the shot belongs to the old frame, and the new close-up is left to take its own.
+                RuntimeLog.engine.info("close-up from a discarded world frame dropped")
                 return
             }
             let thumbnail = await store.thumbnail(ofStill: "meter_close.jpg")
@@ -860,7 +870,7 @@ final class ScanEngine {
         closeUpCredit.photoChecked(view, passed: readout?.photoPassedChecks == true)
         guard let readout else {
             RuntimeLog.engine.error("close-up photo could not be read back for the meter number")
-            retakeCloseUp(.noNumber)
+            retakeCloseUp(.photoNotSaved)
             return
         }
         guard !readout.candidates.isEmpty else {
