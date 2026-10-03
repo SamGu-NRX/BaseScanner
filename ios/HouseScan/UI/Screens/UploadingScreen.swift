@@ -138,11 +138,14 @@ private struct UnusableAnswerActions: View {
         }
     }
 
+    /// Asking again needs the scan open: the app can't reopen a scan after it closes. A packaged
+    /// scan stays among the kept scans, and Saved scans on the first screen can still share its
+    /// file then, but not ask again (as for a failed upload, `upload.recoveryLimit`).
     private var note: String {
         switch (repeated, shareableScan != nil) {
-        case (false, true): "Keep this scan open to try again, or use Share scan to save a copy. House Scan can't reopen it after you close the app."
+        case (false, true): "Keep this scan open to try again. If you close the app, you can still share its saved file from Saved scans on the first screen, but not try again."
         case (false, false): "Keep this scan open to try again. House Scan can't reopen it after you close the app."
-        case (true, true): "Share scan saves a copy you can send to the House Scan team. House Scan can't reopen this scan after you close the app."
+        case (true, true): "Share scan saves a copy you can send to the House Scan team. You can also share it later from Saved scans on the first screen."
         case (true, false): "House Scan can't reopen this scan after you close the app."
         }
     }

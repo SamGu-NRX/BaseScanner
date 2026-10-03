@@ -101,6 +101,10 @@ final class UploadRecoveryUITests: XCTestCase {
             let title = attempts == 1 ? "We couldn't use the server's answer" : "The answer still couldn't be used"
             XCTAssertTrue(any.matching(NSPredicate(format: "label == %@", title)).firstMatch.exists, "attempt \(attempts): title")
             XCTAssertEqual(note.label.contains("Share scan saves a copy"), attempts > 1, "attempt \(attempts): note reads \(note.label)")
+            // The frozen demo scan is packaged, so both notes point to Saved scans (#205), and the
+            // first still says closing the app ends trying again.
+            XCTAssertTrue(note.label.contains("from Saved scans on the first screen"), "attempt \(attempts): note reads \(note.label)")
+            XCTAssertEqual(note.label.contains("but not try again"), attempts == 1, "attempt \(attempts): note reads \(note.label)")
             XCTAssertTrue(any["action.retryUpload"].exists)
             XCTAssertTrue(any["action.startOver"].exists)
             XCTAssertFalse(any["action.backToReview"].exists)
