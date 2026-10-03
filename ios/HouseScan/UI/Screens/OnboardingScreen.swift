@@ -7,6 +7,7 @@ struct OnboardingScreen: View {
     let actions: any ScanActions
 
     @State private var page = 0
+    @State private var showsSavedScans = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -49,13 +50,16 @@ struct OnboardingScreen: View {
             Group {
                 if typeSize.isAccessibilitySize {
                     // The replay badge, Practice label and Skip squeezed the label into
-                    // single syllables at AX5. Give Practice its own full-width row.
+                    // single syllables at AX5. Give Practice its own full-width row, and Saved
+                    // scans too.
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
                             Spacer()
                             skipButton
                         }
+                        SavedScansButton { showsSavedScans = true }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         DeveloperOptionsButton()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -64,6 +68,7 @@ struct OnboardingScreen: View {
                         ModeBadge(isReplay: state.isReplay, isAutopilot: state.isAutopilot)
                         DeveloperOptionsButton()
                         Spacer()
+                        SavedScansButton { showsSavedScans = true }
                         skipButton
                     }
                 }
@@ -122,6 +127,7 @@ struct OnboardingScreen: View {
             .accessibilityIdentifier("onboarding.footer")
         }
         .background(Palette.canvas.ignoresSafeArea())
+        .savedScansSheet(isPresented: $showsSavedScans)
     }
 
     @ViewBuilder
