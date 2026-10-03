@@ -506,7 +506,8 @@ enum ScanCopy {
     /// that ask to go somewhere. The wall's end (`markEnd`) asks whether the wall ends here, so
     /// its reply is the other answer: the wall goes on. It had none, and a wall running past
     /// 20 ft had no true answer to "Is this the end of the wall?" (B-06). The end goes where the
-    /// phone stands, unexplored, exactly as "Can't get there" on the walk puts it.
+    /// walk reached, unexplored, exactly as "Can't get there" on the walk puts it (`WalkedEnd`):
+    /// the phone's place, but no farther than a little past the last view of the wall.
     static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
         switch step {
         case .aimAtGround, .aimAtWall:
@@ -520,7 +521,7 @@ enum ScanCopy {
         case .seeBehind:
             (title: cannotSeeBehind, hint: "Skips the part behind it. An installer would need to look at it instead.")
         case .markEnd:
-            (title: wallKeepsGoing, hint: "Ends this side where you're standing. An installer would need to look at the wall past it.")
+            (title: wallKeepsGoing, hint: "Ends this side where your walk reached. An installer would need to look at the wall past it.")
         case .findMeter, .aimAtWallForMeter, .holdOnMeter, .stepBack, .walkComplete, .gap:
             nil
         }

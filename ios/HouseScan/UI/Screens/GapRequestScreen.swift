@@ -22,7 +22,7 @@ struct GapRequestScreen: View {
         ZStack {
             CameraSizeReader(size: $cameraSize)
             CameraOverlays(state: state, highlight: state.gap, cameraWindow: cameraWindow)
-            if state.coaching == .relocalizing, let meterPhoto {
+            if showsMeterPhoto, let meterPhoto {
                 // "Point at the meter like this.": the saved close-up, as on the walk (B-23).
                 SavedMeterPhoto(image: meterPhoto)
                     .transition(.opacity)
@@ -82,7 +82,7 @@ struct GapRequestScreen: View {
             }
         }
         .animation(reduceMotion ? .easeOut(duration: 0.15) : Motion.pin, value: state.gap?.isSatisfied)
-        .animation(.easeOut(duration: 0.2), value: state.coaching == .relocalizing)
+        .animation(.easeOut(duration: 0.2), value: showsMeterPhoto)
     }
 
     /// "Show my result", on every request the check sent back, even with one view left: the
@@ -164,6 +164,12 @@ struct GapRequestScreen: View {
     private var meterPhoto: CGImage? {
         if case .captured(let image) = state.closeUp { return image }
         return nil
+    }
+
+    /// The close-up shows only while the card says "Point at the meter like this.", not under
+    /// the overhead question, which outranks the coaching.
+    private var showsMeterPhoto: Bool {
+        meterPhoto != nil && instruction == ScanCopy.coaching(.relocalizing, meterPhoto: true)
     }
 
     /// The coaching on the card, marked with its symbol (`tone`). Once the view is in, the

@@ -556,11 +556,13 @@ enum NextWallRefusal: Equatable, Sendable {
 /// Why "Wall ends here" at the circle marked no end (`ScanViewState.endMarkRefusal`). Before,
 /// the button did nothing at all in each case, and nothing said why (B-06).
 enum EndMarkRefusal: Error, Equatable, Sendable {
-    /// The circle isn't on the wall within the distance a camera's view counts for
-    /// (`CoverageConfig.maxDistance`): on the ground, the sky, or far down a long wall.
+    /// The circle isn't on the wall: aimed at the ground, so the ray meets the wall's plane under
+    /// the floor, or past the distance a camera's view counts for (`CoverageConfig.maxDistance`)
+    /// far down a long wall. Aimed above the wall is kept (`EndAim`).
     case noWall
     /// The circle is on the wall on this side of the meter, not the side the card asks about.
     case otherSide(WallSide)
+    /// The phone has lost its place, or ARKit is still starting.
     case trackingNotReady
 }
 

@@ -99,17 +99,23 @@ extension ScanEngine {
     }
 
     /// Where "Wall ends here" at the circle puts the end the card asks for on `asked`, or why it
-    /// can't (B-06): the phone's place unknown; the circle off the wall, with no hit within the
-    /// distance a view counts for or a hit below the ground, which is aiming at the ground; or the
-    /// circle on the other side of the meter. The circle is the middle of the view, which is the
-    /// sensor image's middle whatever the view's size. Shared by the button and its preview, so
-    /// the tape never shows an end the button would refuse.
+    /// can't (`EndAim`, B-06). The circle is the middle of the view, which is the sensor image's
+    /// middle whatever the view's size. Shared by the button and its preview, so the tape never
+    /// shows an end the button would refuse. The phone's place counts as unknown while it is lost
+    /// or ARKit is still starting; moving fast or a plain surface keeps it, as for marks.
     func circleEnd(asked: WallSide, frame: SourceFrame, map: CoverageMap) -> Result<WallPoint, EndMarkRefusal> {
-        guard frame.tracking == .normal else { return .failure(.trackingNotReady) }
-        guard let hit = nearbyWallHit(frame.camera.ray(throughPixel: frame.camera.imageSize / 2), camera: frame.camera, wall: map.wall),
-              hit.height >= -(ObjectTap.belowGroundSlack + max(0, map.heightError)) else { return .failure(.noWall) }
-        let side: WallSide = hit.s < 0 ? .left : .right
-        return side == asked ? .success(hit) : .failure(.otherSide(side))
+        var lostPlace = frame.tracking.hasLostItsPlace
+        if case .limited(.initializing) = frame.tracking { lostPlace = true }
+        let hit = map.wall.intersectWall(frame.camera.ray(throughPixel: frame.camera.imageSize / 2))
+        switch EndAim.verdict(
+            hit: hit, camera: frame.camera.position, wall: map.wall, reach: map.config.maxDistance,
+            groundError: map.heightError, askedLeft: asked == .left, lostPlace: lostPlace
+        ) {
+        case .end(let point): return .success(point)
+        case .lostPlace: return .failure(.trackingNotReady)
+        case .offWall: return .failure(.noWall)
+        case .otherSide: return .failure(.otherSide(asked == .left ? .right : .left))
+        }
     }
 
     /// Republishes the end preview; called with every guidance update, since the phone moves.

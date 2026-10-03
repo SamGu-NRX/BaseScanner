@@ -119,7 +119,11 @@ final class DemoEngine: ScanActions {
             reachedRight = demoRightEnd
             refreshCoverage()
             refreshGuidance()
-            if arguments.contains("-uiDemoEndMarkRefusal") { state.endMarkRefusal = .noWall }
+            if arguments.contains("-uiDemoEndMarkRefusal") {
+                // As in the real engine, a circle off the wall has no end preview (`circleEnd`).
+                state.endMarkRefusal = .noWall
+                state.endPreview = nil
+            }
         }
         if arguments.contains("-uiDemoEndPreview") {
             walkedBack = 1.5
