@@ -5,7 +5,8 @@ import Synchronization
 /// A placement server on 127.0.0.1 for client tests: real HTTP, so the tests drive the actual
 /// `URLSession` transport. Each request gets the reply `respond` builds from it, and every request
 /// is kept for the test to inspect. It speaks only what these tests need: one request per
-/// connection, a `Content-Length` body, and the reply closes the connection.
+/// connection, a `Content-Length` body, and the reply closes the connection. The listener's
+/// handlers hold the server weakly, so the listener closes when the test drops the server.
 final class LoopbackPlacementServer: Sendable {
     struct Request: Sendable {
         var method: String
@@ -36,12 +37,19 @@ final class LoopbackPlacementServer: Sendable {
         listener = try NWListener(using: parameters)
         let ready = DispatchSemaphore(value: 0)
         listener.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
-        listener.newConnectionHandler = { [queue] connection in
+        listener.newConnectionHandler = { [weak self, queue] connection in
+            guard self != nil else { return connection.cancel() }
             connection.start(queue: queue)
-            Self.receive(connection, buffer: Data()) { request in self.answer(request, on: connection) }
+            Self.receive(connection, buffer: Data()) { [weak self] request in
+                guard let self else { return connection.cancel() }
+                self.answer(request, on: connection)
+            }
         }
         listener.start(queue: queue)
-        guard ready.wait(timeout: .now() + 5) == .success, listener.port != nil else { throw URLError(.cannotConnectToHost) }
+        guard ready.wait(timeout: .now() + 5) == .success, listener.port != nil else {
+            listener.cancel()
+            throw URLError(.cannotConnectToHost)
+        }
     }
 
     deinit { listener.cancel() }

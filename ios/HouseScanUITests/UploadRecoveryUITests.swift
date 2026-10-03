@@ -13,18 +13,23 @@ final class UploadRecoveryUITests: XCTestCase {
     }
 
     /// The real engine against a placement server on 127.0.0.1. The first answer names another
-    /// scene; every later one names the scene it was sent. The synthetic wall plays to the upload,
-    /// the unbound answer shows nothing of itself, nothing is sent again until "Try again", and
-    /// the answer after that reaches the result.
+    /// scene. The second names the scene sent but has a result schema House Scan doesn't read.
+    /// Every later one is the bundled sample naming the scene sent. The synthetic wall plays to
+    /// the upload; neither unusable answer shows anything of itself, nothing is sent again until
+    /// "Try again", the second says asking again might not help, and the third reaches the result.
     @MainActor
-    func testAnAnswerForAnotherSceneIsHeldBackUntilTryAgain() throws {
-        let sample = try Data(contentsOf: Self.sampleResult)
+    func testUnusableAnswersAreHeldBackUntilTryAgain() throws {
+        let sample = String(decoding: try Data(contentsOf: Self.sampleResult), as: UTF8.self)
         let zeros = String(repeating: "0", count: 64)
-        XCTAssertTrue(String(decoding: sample, as: UTF8.self).contains("\"input_sha256\": \"\(zeros)\""))
+        let schema = "\"schema_version\": \"1.0\""
+        XCTAssertTrue(sample.contains("\"input_sha256\": \"\(zeros)\""))
+        XCTAssertTrue(sample.contains(schema))
         let server = try PlacementStub { request, index in
-            let named = index == 0 ? Self.sha256(Data("another scene".utf8)) : Self.sha256(request.body)
-            return Data(String(decoding: sample, as: UTF8.self).replacingOccurrences(of: zeros, with: named).utf8)
+            var answer = sample.replacingOccurrences(of: zeros, with: index == 0 ? Self.sha256(Data("another scene".utf8)) : Self.sha256(request.body))
+            if index == 1 { answer = answer.replacingOccurrences(of: schema, with: "\"schema_version\": \"9.0\"") }
+            return Data(answer.utf8)
         }
+        defer { server.stop() }
 
         let files = FileManager.default
         let gate = URL(fileURLWithPath: NSTemporaryDirectory()).appending(path: "housescan-gate-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -44,29 +49,41 @@ final class UploadRecoveryUITests: XCTestCase {
         app.launch()
         let any = app.descendants(matching: .any)
         let note = any["upload.answerNote"]
-        XCTAssertTrue(note.waitForExistence(timeout: 300), "the unbound answer never showed as an answer House Scan couldn't use")
+        let first = any.matching(NSPredicate(format: "label == %@", "We couldn't use the server's answer")).firstMatch
+        let second = any.matching(NSPredicate(format: "label == %@", "The answer still couldn't be used")).firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 300), "the unbound answer never showed as an answer House Scan couldn't use")
         XCTAssertEqual(server.requests.count, 1)
         XCTAssertEqual(server.requests.first?.path, "/v1/placements")
-        XCTAssertTrue(any.matching(NSPredicate(format: "label == %@", "We couldn't use the server's answer")).firstMatch.exists)
-        XCTAssertFalse(any["action.backToReview"].exists, "an unusable answer must not send the homeowner back to their marks")
-        XCTAssertTrue(any["action.startOver"].exists)
+        holdsWithoutAsking(app, requests: 1, server: server, shot: "uploading-unusableAnswer-engine-1")
 
-        // Nothing asks again on its own, and nothing of the answer reaches a later screen.
-        Thread.sleep(forTimeInterval: 6)
-        XCTAssertEqual(server.requests.count, 1, "the app asked again without a tap")
+        tap(app, "action.retryUpload")
+        XCTAssertTrue(second.waitForExistence(timeout: 60), "the undecodable answer never showed as a second unusable answer")
         XCTAssertTrue(note.exists)
-        XCTAssertFalse(any["screen.spotConfirm"].exists)
-        XCTAssertFalse(any["screen.result"].exists)
-
-        let shot = XCTAttachment(screenshot: app.screenshot())
-        shot.name = "uploading-unusableAnswer-engine"
-        shot.lifetime = .keepAlways
-        add(shot)
+        XCTAssertEqual(server.requests.count, 2)
+        holdsWithoutAsking(app, requests: 2, server: server, shot: "uploading-unusableAnswer-engine-2")
 
         tap(app, "action.retryUpload")
         XCTAssertTrue(any["screen.result"].waitForExistence(timeout: 240), "the answer after Try again never reached the result")
-        XCTAssertGreaterThanOrEqual(server.requests.count, 2)
+        XCTAssertGreaterThanOrEqual(server.requests.count, 3)
         XCTAssertTrue(server.requests.allSatisfy { $0.method == "POST" && $0.path == "/v1/placements" })
+    }
+
+    /// On an unusable answer: no "Back to review", a way to start over, and for six seconds no
+    /// request beyond `requests` and nothing of the answer on a later screen.
+    @MainActor
+    private func holdsWithoutAsking(_ app: XCUIApplication, requests: Int, server: PlacementStub, shot name: String) {
+        let any = app.descendants(matching: .any)
+        XCTAssertFalse(any["action.backToReview"].exists, "an unusable answer must not send the homeowner back to their marks")
+        XCTAssertTrue(any["action.startOver"].exists)
+        Thread.sleep(forTimeInterval: 6)
+        XCTAssertEqual(server.requests.count, requests, "the app asked again without a tap")
+        XCTAssertTrue(any["upload.answerNote"].exists)
+        XCTAssertFalse(any["screen.spotConfirm"].exists)
+        XCTAssertFalse(any["screen.result"].exists)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     /// The first unusable answer leads with "Try again"; the second says asking again might not
@@ -141,7 +158,8 @@ final class UploadRecoveryUITests: XCTestCase {
 /// A placement server on 127.0.0.1 that the app in the Simulator reaches like any other: every
 /// request is answered 200 with the body `answer` builds from it and its index, and kept for the
 /// test. It speaks only what the app sends: one request per connection with a `Content-Length`
-/// body, and it closes the connection after replying.
+/// body, and it closes the connection after replying. `stop()` closes the listener; the
+/// listener's handlers hold the stub weakly, so dropping it closes the listener too.
 final class PlacementStub: Sendable {
     struct Request: Sendable {
         var method: String
@@ -165,13 +183,22 @@ final class PlacementStub: Sendable {
         listener = try NWListener(using: parameters)
         let ready = DispatchSemaphore(value: 0)
         listener.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
-        listener.newConnectionHandler = { [queue] connection in
+        listener.newConnectionHandler = { [weak self, queue] connection in
+            guard self != nil else { return connection.cancel() }
             connection.start(queue: queue)
-            Self.receive(connection, buffer: Data()) { request in self.reply(to: request, on: connection) }
+            Self.receive(connection, buffer: Data()) { [weak self] request in
+                guard let self else { return connection.cancel() }
+                self.reply(to: request, on: connection)
+            }
         }
         listener.start(queue: queue)
-        guard ready.wait(timeout: .now() + 5) == .success, listener.port != nil else { throw URLError(.cannotConnectToHost) }
+        guard ready.wait(timeout: .now() + 5) == .success, listener.port != nil else {
+            listener.cancel()
+            throw URLError(.cannotConnectToHost)
+        }
     }
+
+    func stop() { listener.cancel() }
 
     deinit { listener.cancel() }
 
