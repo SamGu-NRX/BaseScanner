@@ -148,8 +148,9 @@ final class SampleResultClient: ResultClient {
     let isSample = true
     /// Seconds the fake upload takes, so each upload state is visible in demos and UI tests.
     let pace: Double
-    /// A server answer in a JSON file that replaces the bundled sample from the next upload on.
-    /// Set only by `-sampleResultAfterSpotAnswer`, for UI tests.
+    /// A server answer in a JSON file that replaces the bundled sample while it is set. Only the
+    /// engine sets it, from `-sampleResultAfterSpotAnswer` and the scan's spot answers
+    /// (`ScanEngine.spotConfirm`), for UI tests.
     var answerFile: URL?
 
     init(pace: Double) {

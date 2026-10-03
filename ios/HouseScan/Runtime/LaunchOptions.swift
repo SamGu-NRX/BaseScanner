@@ -26,8 +26,8 @@ import OSLog
 ///   area" instead of "It's clear". It can't be combined with `-autopilotSomethingThere`.
 /// - `-sampleResultAfterSpotAnswer <path>` (debug builds only): with the bundled sample, the
 ///   upload sent after a spot check answered "Something's there" or "I can't check this area",
-///   and every upload after it, is answered with the server answer in this JSON file, such as
-///   one without a spot.
+///   and every later upload of that scan, is answered with the server answer in this JSON file,
+///   such as one without a spot. Start over or a new wall goes back to the bundled sample.
 /// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
 ///   first upload starts, each time a file named `inject-ground` appears in the gate folder the
 ///   app deletes it and hands the engine a detected floor that many meters above its current

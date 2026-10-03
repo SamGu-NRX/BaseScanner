@@ -215,12 +215,18 @@ final class ScanEngine {
     }
     /// Every request the homeowner was shown, for the packet.
     var guidanceLog = GuidanceLog()
-    /// The spot check (`ScanEngine+Confirm.swift`). `ScanViewState.spotAreaUnchecked` is read from
-    /// its records on every change, so recording an answer sets it and a reset clears it.
+    /// The spot check (`ScanEngine+Confirm.swift`). What follows from its records is read from
+    /// them on every change, so recording an answer sets it and a reset clears it:
+    /// `ScanViewState.spotAreaUnchecked`, and the UI tests' answer file
+    /// (`-sampleResultAfterSpotAnswer`), which applies only once this scan has an answer other
+    /// than "It's clear", so a scan after Start over or a new wall starts on the bundled sample.
     var spotConfirm = SpotConfirmState() {
         didSet {
             let unchecked = spotConfirm.confirmations.leftAreaUnchecked
             if state.spotAreaUnchecked != unchecked { state.spotAreaUnchecked = unchecked }
+            if let file = options.sampleResultAfterSpotAnswer, let sample = resultClient as? SampleResultClient {
+                sample.answerFile = spotConfirm.confirmations.records.contains { !$0.answer.keepsClaims } ? file : nil
+            }
         }
     }
     /// When each mark was made, on the capture clock (`MarkKey`).
