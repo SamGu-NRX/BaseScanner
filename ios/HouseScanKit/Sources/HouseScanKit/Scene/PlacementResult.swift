@@ -7,7 +7,8 @@ import Foundation
 //
 // Unknown keys are ignored. The server adds optional fields within schema 1.0 without changing
 // schema_version: `checks[].review_threshold_ft` and `sweep[].segment` arrived that way on
-// 2026-09-26, and rejecting them stopped every real upload from reaching the result screen. An
+// 2026-09-26, and rejecting them stopped every real upload from reaching the result screen
+// (`review_threshold_ft` is now read, and stays optional). An
 // unknown value of an enum the app presents (decision, outcome, unsure_cause, and the others
 // below) still fails, because the app can't show a decision or outcome it doesn't know.
 // `reasons[].code`, `policy.sources` and `route.crossings[].effect` are plain strings: the app
@@ -372,6 +373,10 @@ public struct PlacementCheck: Codable, Sendable, Equatable {
     public var measuredFt: Double?
     public var plusMinusFt: Double?
     public var thresholdFt: Double?
+    /// A second, stricter line on the passing side of `thresholdFt`, on checks with a review band
+    /// (route_length): a measurement that doesn't clear it is at best UNSURE even when it clears
+    /// `thresholdFt` (result.schema.json). Optional in the schema; nil when the answer has none.
+    public var reviewThresholdFt: Double?
     public var comparison: PlacementComparison?
     public var subject: String?
     public var rule: PlacementRule
@@ -382,6 +387,7 @@ public struct PlacementCheck: Codable, Sendable, Equatable {
         case measuredFt = "measured_ft"
         case plusMinusFt = "plus_minus_ft"
         case thresholdFt = "threshold_ft"
+        case reviewThresholdFt = "review_threshold_ft"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -394,6 +400,7 @@ public struct PlacementCheck: Codable, Sendable, Equatable {
         measuredFt = try c.decode(Double?.self, forKey: .measuredFt)
         plusMinusFt = try c.decode(Double?.self, forKey: .plusMinusFt)
         thresholdFt = try c.decode(Double?.self, forKey: .thresholdFt)
+        reviewThresholdFt = try c.decodeIfPresent(Double.self, forKey: .reviewThresholdFt)
         comparison = try c.decode(PlacementComparison?.self, forKey: .comparison)
         subject = try c.decodeIfPresent(String.self, forKey: .subject)
         rule = try c.decode(PlacementRule.self, forKey: .rule)
@@ -409,6 +416,7 @@ public struct PlacementCheck: Codable, Sendable, Equatable {
         try c.encode(measuredFt, forKey: .measuredFt)
         try c.encode(plusMinusFt, forKey: .plusMinusFt)
         try c.encode(thresholdFt, forKey: .thresholdFt)
+        try c.encodeIfPresent(reviewThresholdFt, forKey: .reviewThresholdFt)
         try c.encode(comparison, forKey: .comparison)
         try c.encodeIfPresent(subject, forKey: .subject)
         try c.encode(rule, forKey: .rule)

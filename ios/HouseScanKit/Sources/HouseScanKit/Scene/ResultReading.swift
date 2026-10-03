@@ -83,6 +83,28 @@ public enum ResultReading {
         return Array((fails + unsure + passes).prefix(limit))
     }
 
+    /// Whether a check's review line (`PlacementCheck.reviewThresholdFt`) explains its outcome, so
+    /// the card can say that past it the check needs review. Reads the server's outcome and never
+    /// replaces it. True only when all of these hold:
+    /// - the outcome is UNSURE: a PASS cleared the line, and a FAIL is past the limit itself;
+    /// - the check has a measurement, a limit, a review line and a direction;
+    /// - the review line lies on the passing side of the limit (under a maximum, over a
+    ///   minimum), so there is a band between them;
+    /// - the measurement doesn't clear the review line by the schema's own test (at_most clears
+    ///   when measured + error < review line; at_least when measured - error > review line).
+    /// A missing or negative error counts as none.
+    public static func reviewBandApplies(
+        outcome: PlacementOutcome, measured: Double?, plusMinus: Double?, threshold: Double?,
+        reviewThreshold: Double?, comparison: PlacementComparison?
+    ) -> Bool {
+        guard outcome == .unsure, let measured, let threshold, let reviewThreshold, let comparison else { return false }
+        let error = max(plusMinus ?? 0, 0)
+        switch comparison {
+        case .atMost: return reviewThreshold < threshold && !(measured + error < reviewThreshold)
+        case .atLeast: return reviewThreshold > threshold && !(measured - error > reviewThreshold)
+        }
+    }
+
     /// How far `measured` clears `threshold` on the passing side, in units of `plusMinus` when it
     /// is positive, else in the measurement's own units. Negative when it misses. Without a
     /// comparison the side is unknown, so the distance to the limit either way.

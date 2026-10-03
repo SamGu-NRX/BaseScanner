@@ -252,6 +252,7 @@ extension ScanEngine {
                 needsPerson: check.needsPerson,
                 measured: check.measuredFt.map(meters), threshold: check.thresholdFt.map(meters), plusMinus: check.plusMinusFt.map(meters),
                 comparison: check.comparison.map(Self.comparison),
+                reviewThreshold: check.reviewThresholdFt.map(meters),
                 settledBy: result.evidenceIndex(settling: check.id).map(Self.missingID)
             )
         }

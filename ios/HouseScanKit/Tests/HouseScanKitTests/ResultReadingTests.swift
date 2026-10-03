@@ -210,6 +210,7 @@ import simd
     @Test(arguments: [
         ("pass", ResultReading.Answer.fits), ("reject-nearest", .notHere),
         ("unsure-view", .oneMoreLook), ("no-clean-spot", .installer),
+        ("no-spot-no-nearest", .notHere), ("review-band", .installer),
     ])
     func uiResultFilesReadAsNamed(file: String, answer: ResultReading.Answer) throws {
         let url = URL(fileURLWithPath: #filePath)

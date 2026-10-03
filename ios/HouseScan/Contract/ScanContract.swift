@@ -665,6 +665,10 @@ struct CheckRow: Identifiable, Equatable, Sendable {
     var plusMinus: Float? = nil
     /// Whether `threshold` is a minimum or a maximum, when the server said which.
     var comparison: RuleComparison? = nil
+    /// A stricter line inside `threshold`, meters, when the server sent one (`review_threshold_ft`,
+    /// on the cable run): a measurement that doesn't clear it needs review even within the limit.
+    /// Nil when the answer has none.
+    var reviewThreshold: Float? = nil
     /// The `MissingEvidence.id` of the first view that would settle this check, when the server
     /// named one.
     var settledBy: String? = nil

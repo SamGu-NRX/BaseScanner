@@ -704,19 +704,55 @@ enum ScanCopy {
     /// The limit says whether it is a minimum or a maximum: without it, the 20 ft cable limit read
     /// like a minimum under "Measured 3 ft".
     /// `spoken` spells out feet and inches for VoiceOver, which reads "ft" and "in" as letters.
+    ///
+    /// When the server's review line explains an unsure check (`reviewBand`), the rule names it too:
+    /// "Measured 16 ft. The rule is at most 20 ft, and anything over 15 ft needs an installer's
+    /// review. The measurement can be off by about 6 in." Without it, a cable run inside the
+    /// maximum read as passing under "Not sure yet". It says what the rule needs, never that a
+    /// review was sent: the app contacts nobody.
     static func measurement(_ row: CheckRow, spoken: Bool = false) -> String? {
         guard let measured = row.measured else { return nil }
         let length = spoken ? Distance.spoken : Distance.feetAndInches
         var parts = [measuredLine(measured, length: length)]
         if let threshold = row.threshold {
             let limit = ruleLimit(threshold, row.comparison, length: length)
-            if let plusMinus = row.plusMinus, plusMinus > 0 {
-                parts.append("The rule is \(limit), and the measurement can be off by about \(length(plusMinus)).")
+            let error = row.plusMinus.flatMap { $0 > 0 ? length($0) : nil }
+            if let band = reviewBand(row, length: length) {
+                parts.append("The rule is \(limit), and \(band) needs an installer's review.")
+                if let error {
+                    parts.append("The measurement can be off by about \(error).")
+                }
+            } else if let error {
+                parts.append("The rule is \(limit), and the measurement can be off by about \(error).")
             } else {
                 parts.append("The rule is \(limit).")
             }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// "anything over 15 ft" under a maximum, "anything under 4 ft" over a minimum: the side of the
+    /// check's review line that needs review. Nil unless `ResultReading.reviewBandApplies` says
+    /// the line explains this check's outcome.
+    static func reviewBand(_ row: CheckRow, length: (Float) -> String = Distance.feetAndInches) -> String? {
+        guard let review = row.reviewThreshold, let comparison = row.comparison else { return nil }
+        let outcome: PlacementOutcome = switch row.outcome {
+        case .pass: .pass
+        case .fail: .fail
+        case .unsure: .unsure
+        }
+        let direction: PlacementComparison = switch comparison {
+        case .atLeast: .atLeast
+        case .atMost: .atMost
+        }
+        guard ResultReading.reviewBandApplies(
+            outcome: outcome, measured: row.measured.map(Double.init), plusMinus: row.plusMinus.map(Double.init),
+            threshold: row.threshold.map(Double.init), reviewThreshold: Double(review), comparison: direction)
+        else { return nil }
+        return switch comparison {
+        case .atMost: "anything over \(length(review))"
+        case .atLeast: "anything under \(length(review))"
+        }
     }
 
     /// "Measured 3 ft 2 in.", or "Overlaps by 1 ft 3 in." below zero. A clearance the server
