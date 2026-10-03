@@ -8,7 +8,7 @@ final class ResultCardUITests: XCTestCase {
 
     /// What the review-band line says aloud. The visible line is the same sentence with "ft" and
     /// "in" (`ScanCopy.cardLine`), so the two can't disagree.
-    private static let reviewBandSpoken = "Measured 16 feet. The rule is at most 20 feet, and anything over 15 feet "
+    private static let reviewBandSpoken = "Measured 16 feet. The rule is at most 20 feet, and anything 15 feet or more "
         + "needs an installer's review. The measurement can be off by about 6 inches."
 
     /// Words that would say a person was contacted or a review arranged. The app contacts nobody,
