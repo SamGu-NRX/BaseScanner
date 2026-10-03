@@ -45,8 +45,9 @@ import SwiftUI
 ///   followed it, so the window and part of its clearance zone are round the corner. For the
 ///   result model: `-uiDemoPhase result -uiDemoCorner`.
 /// - `-uiDemoPhase spotConfirm`: the spot check before the result, on the made-up sample spot.
-/// - `-uiDemoSpotAnswered <clear|somethingThere>`: with `-uiDemoPhase spotConfirm`, the check is
-///   answered and says what happens next.
+/// - `-uiDemoSpotAnswered <clear|somethingThere|cannotCheck>`: with `-uiDemoPhase spotConfirm`,
+///   the check is answered and says what happens next. With `-uiDemoPhase result`, the result
+///   follows that answer, so it shows the answer's notice.
 /// - `-uiDemoFollowUp`: with `-uiDemoPhase uploading` or `gapRequest`, the check has answered
 ///   and asked for one more view: the upload screen as it hands over, or the view itself.
 ///

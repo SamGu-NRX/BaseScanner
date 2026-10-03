@@ -24,18 +24,26 @@ extension ScanCopy {
     }
     static let spotClear = "It's clear"
     static let spotSomethingThere = "Something's there"
+    /// For a homeowner who can't see or reach the area, so they needn't guess between the other
+    /// two. It says nothing about what is there.
+    static let spotCannotCheck = "I can't check this area"
     static let spotClearHint = "Shows your result."
     static let spotSomethingThereHint = "Leaves this area out of your scan and checks your wall again. An installer would need to look at it."
+    static let spotCannotCheckHint = "Leaves this area out of your scan as not checked, and checks your wall again. Someone would need to check it in person."
 
     static func spotAnswered(_ answer: SpotCheckAnswer) -> Instruction {
         switch answer {
         case .clear: Instruction(title: "Thanks, it's clear", detail: "Showing your result.")
         case .somethingThere: Instruction(title: "Thanks, we'll leave that area out", detail: "Checking your wall again. An installer would need to look at what's there.")
+        case .cannotCheck: Instruction(title: "Thanks, we'll mark that area not checked", detail: "Checking your wall again. Someone would need to check that area in person.")
         }
     }
 
     /// Said on the result when the homeowner said something stands where its spot is.
     static let spotRefused = "You said something stands where this spot is. Your scan leaves that area out, and an installer would need to check it."
+    /// Said on the result when the homeowner couldn't check the spot's area. It says the area
+    /// went unchecked, never that something was seen there or that anyone has been asked to look.
+    static let spotNotChecked = "You couldn't check the area around this spot, so your scan leaves it out as not checked. Someone would need to check it in person."
 
     /// "From 3 ft to 8 ft 6 in right of your meter": where the area runs along the wall, nearer
     /// end first. An end less than half an inch from the meter rounds to 0 in and is read as the

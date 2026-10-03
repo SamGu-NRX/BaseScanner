@@ -36,9 +36,17 @@ struct ResultScreen: View {
                         badges(result)
                     }
                     AnswerCard(result: result, sourceAvailable: state.spatialResultAvailable, revealed: revealed, actions: actions)
-                    if result.spot != nil, state.spotCheck?.answer == .somethingThere {
-                        Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
-                            .accessibilityIdentifier("result.spotRefused")
+                    if result.spot != nil {
+                        switch state.spotCheck?.answer {
+                        case .somethingThere:
+                            Notice(symbol: "exclamationmark.triangle.fill", text: ScanCopy.spotRefused)
+                                .accessibilityIdentifier("result.spotRefused")
+                        case .cannotCheck:
+                            Notice(symbol: "eye.slash", text: ScanCopy.spotNotChecked)
+                                .accessibilityIdentifier("result.spotNotChecked")
+                        case .clear, nil:
+                            EmptyView()
+                        }
                     }
                     footnotes(result)
                         .padding(.horizontal, 4)

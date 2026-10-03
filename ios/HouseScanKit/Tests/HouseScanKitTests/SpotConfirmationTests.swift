@@ -115,6 +115,72 @@ import Testing
         #expect(checks.records.count == 2)
     }
 
+    // MARK: I can't check this area
+
+    /// Three answers, three meanings. Only "It's clear" keeps the claims over the area and closes
+    /// the check's guidance entry as met; "Something's there" and "I can't check this area" both
+    /// withdraw them and close it as the packet's generic skipped, yet stay different answers.
+    @Test func eachAnswerKeepsItsOwnMeaning() {
+        #expect(SpotConfirmationAnswer.allCases == [.clear, .somethingThere, .cannotCheck])
+        #expect(SpotConfirmationAnswer.allCases.map(\.keepsClaims) == [true, false, false])
+        #expect(SpotConfirmationAnswer.allCases.map(\.guidanceOutcome) == [.met, .skipped, .skipped])
+        #expect(Set(SpotConfirmationAnswer.allCases.map(\.rawValue)).count == 3)
+    }
+
+    /// "I can't check this area" is recorded as given and settles the same area, or a smaller one,
+    /// as itself: a returned spot shows the result saying the area went unchecked, never that
+    /// something was there or that it was clear, and the homeowner isn't asked again.
+    @Test func cannotCheckIsRecordedAndSettlesTheSameAreaAsItself() throws {
+        var checks = SpotConfirmations()
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(checks.records.map(\.answer) == [.cannotCheck])
+
+        var same = Self.area
+        same.spot = (Self.spot.lowerBound + 0.002)...(Self.spot.upperBound - 0.002)
+        var smaller = Self.area
+        smaller.span = Self.spot
+        for area in [Self.area, same, smaller] {
+            let settled = try #require(checks.settling(area))
+            #expect(settled.answer == .cannotCheck)
+            #expect(settled == Self.confirmation(Self.area, .cannotCheck))
+        }
+    }
+
+    /// A spot that moved, or an area that grew, isn't settled by "I can't check this area" about
+    /// the old one: the homeowner is asked about the new area. An answer about it doesn't change
+    /// what settles the old area.
+    @Test func cannotCheckDoesNotSettleAMovedOrLargerArea() {
+        var checks = SpotConfirmations()
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        var moved = Self.area
+        moved.spot = 1.2...2.0
+        var wider = Self.area
+        wider.span = 0.9...3.0
+        var deeper = Self.area
+        deeper.depth = 0.6
+        var outward = Self.area
+        outward.spotOut = 0.05...0.35
+        for area in [moved, wider, deeper, outward] {
+            #expect(checks.settling(area) == nil)
+        }
+        checks.record(Self.confirmation(wider, .clear))
+        #expect(checks.settling(wider)?.answer == .clear)
+        // The wider area holds the old one, and its answer is the latest about it.
+        #expect(checks.settling(Self.area)?.answer == .clear)
+        #expect(checks.settling(moved) == nil)
+    }
+
+    /// The latest answer about an area wins whichever two it is, so "I can't check this area"
+    /// after "Something's there" isn't read as an obstruction, and the other way round.
+    @Test func cannotCheckAndSomethingThereReplaceEachOther() {
+        var checks = SpotConfirmations()
+        checks.record(Self.confirmation(Self.area, .somethingThere))
+        checks.record(Self.confirmation(Self.area, .cannotCheck))
+        #expect(checks.settling(Self.area)?.answer == .cannotCheck)
+        checks.record(Self.confirmation(Self.area, .somethingThere))
+        #expect(checks.settling(Self.area)?.answer == .somethingThere)
+    }
+
     // MARK: Something's there
 
     /// A walk 2.6 m out from 1 m left of the meter to 3.5 m right, a kept frame every 0.5 m and

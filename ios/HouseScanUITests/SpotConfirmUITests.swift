@@ -84,7 +84,116 @@ final class SpotConfirmUITests: XCTestCase {
         XCTAssertTrue(label.contains("Thanks, we'll leave that area out"), label)
     }
 
+    // MARK: - I can't check this area
+
+    /// The three answers, in order, as each button reads.
+    private static let answers = [
+        ("action.spotClear", "It's clear"),
+        ("action.spotSomethingThere", "Something's there"),
+        ("action.spotCannotCheck", "I can't check this area"),
+    ]
+
+    /// Every answer can be reached and tapped, with and without a photo, at the default text size
+    /// and the largest: pinned under the photo at the default sizes, after the area at the
+    /// accessibility sizes, where the homeowner scrolls to them.
+    @MainActor
+    func testEveryAnswerIsReachable() throws {
+        let variants: [(name: String, arguments: [String])] = [
+            ("spotConfirm-answers-photo", []),
+            ("spotConfirm-answers-noPhoto", ["-uiDemoSpotNoPhoto"]),
+            ("spotConfirm-answers-photo-AX5", Self.largestText),
+            ("spotConfirm-answers-noPhoto-AX5", ["-uiDemoSpotNoPhoto"] + Self.largestText),
+        ]
+        for variant in variants {
+            let app = launch(variant.arguments)
+            let window = app.windows.firstMatch.frame
+            for (id, title) in Self.answers {
+                let button = app.buttons[id]
+                XCTAssertTrue(button.waitForExistence(timeout: 10), "\(variant.name): \(id) is missing")
+                XCTAssertEqual(button.label, title, "\(variant.name): \(id)")
+                for _ in 0..<8 where !button.isHittable { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
+                XCTAssertTrue(button.isHittable, "\(variant.name): \(id) can't be tapped")
+                XCTAssertTrue(window.contains(button.frame), "\(variant.name): \(id) at \(button.frame) isn't on screen in \(window)")
+                // Apple's minimum target, whatever the text size.
+                XCTAssertGreaterThanOrEqual(button.frame.height, 44, "\(variant.name): \(id) is \(button.frame.height) pt tall")
+            }
+            attach(app, name: variant.name)
+            app.terminate()
+        }
+    }
+
+    /// "I can't check this area" is taken, with or without a photo, and acknowledged as not
+    /// checked: never as something seen there, and never as a review someone has arranged.
+    @MainActor
+    func testCannotCheckIsAcknowledgedAsNotChecked() throws {
+        for (name, arguments) in [("spotConfirm-cannotCheck-photo", [String]()), ("spotConfirm-cannotCheck-noPhoto", ["-uiDemoSpotNoPhoto"])] {
+            let app = launch(arguments)
+            let answer = app.buttons["action.spotCannotCheck"]
+            XCTAssertTrue(answer.waitForExistence(timeout: 10), name)
+            let hittable = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isHittable == true"), object: answer)
+            XCTAssertEqual(XCTWaiter().wait(for: [hittable], timeout: 10), .completed, "\(name): I can't check this area can't be tapped")
+            answer.tap()
+            let answered = element(app, "spot.answered")
+            XCTAssertTrue(answered.waitForExistence(timeout: 10), name)
+            let label = ElementRead.snapshot(answered)?.label ?? ""
+            XCTAssertTrue(label.contains("Thanks, we'll mark that area not checked"), "\(name): \(label)")
+            XCTAssertTrue(label.contains("Someone would need to check that area in person."), "\(name): \(label)")
+            for claim in ["leave that area out", "what's there", "installer"] {
+                XCTAssertFalse(label.contains(claim), "\(name): \(label)")
+            }
+            for (id, _) in Self.answers {
+                XCTAssertFalse(app.buttons[id].exists, "\(name): \(id) is still offered after the answer")
+            }
+            attach(app, name: name)
+            app.terminate()
+        }
+    }
+
+    /// The result after "I can't check this area" says the area went unchecked and needs a
+    /// person, not that something stands there; at the largest text size too, with the notice
+    /// reached by scrolling. The other answers' result keeps its own notice, or none.
+    @MainActor
+    func testTheResultSaysTheAreaWasNotChecked() throws {
+        let notChecked = "You couldn't check the area around this spot, so your scan leaves it out as not checked. Someone would need to check it in person."
+        for (name, extra) in [("result-spotNotChecked", [String]()), ("result-spotNotChecked-AX5", Self.largestText)] {
+            let app = launchResult(answer: "cannotCheck", extra)
+            let notice = element(app, "result.spotNotChecked")
+            XCTAssertTrue(notice.waitForExistence(timeout: 10), "\(name): no notice")
+            let window = app.windows.firstMatch.frame
+            for _ in 0..<10 where !window.contains(notice.frame) { app.scrollViews.firstMatch.swipeUp(velocity: .slow) }
+            let read = ElementRead.snapshot(notice)
+            XCTAssertEqual(read?.label, notChecked, name)
+            XCTAssertTrue(window.contains(read?.frame ?? .zero), "\(name): the notice at \(read?.frame ?? .zero) can't be scrolled onto the screen")
+            XCTAssertFalse(element(app, "result.spotRefused").exists, "\(name): the result says something stands there")
+            attach(app, name: name)
+            let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6) }
+            for (_, finding) in outcome.persistent {
+                XCTFail("\(name): \(finding.message)")
+            }
+            app.terminate()
+        }
+        let refused = launchResult(answer: "somethingThere", [])
+        XCTAssertTrue(element(refused, "result.spotRefused").waitForExistence(timeout: 10), "Something's there lost its notice")
+        XCTAssertFalse(element(refused, "result.spotNotChecked").exists)
+        refused.terminate()
+        let clear = launchResult(answer: "clear", [])
+        XCTAssertTrue(element(clear, "result.headline").waitForExistence(timeout: 10))
+        XCTAssertFalse(element(clear, "result.spotRefused").exists)
+        XCTAssertFalse(element(clear, "result.spotNotChecked").exists)
+        clear.terminate()
+    }
+
     // MARK: - Helpers
+
+    /// The demo's result after the spot check was answered `answer`.
+    @MainActor
+    private func launchResult(answer: String, _ arguments: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "result", "-uiDemoSpotAnswered", answer] + arguments
+        app.launch()
+        XCTAssertTrue(element(app, "screen.result").waitForExistence(timeout: 15), "the result never appeared")
+        return app
+    }
 
     /// The words-only spot check: no photo element, a question that names no outline, each of
     /// the area's three lines rendered on screen with its spoken label, both answers present, and
@@ -120,6 +229,7 @@ final class SpotConfirmUITests: XCTestCase {
         XCTAssertEqual(app.descendants(matching: .any).matching(outline).count, 0, "\(name): something still mentions the outline")
         XCTAssertTrue(app.buttons["action.spotClear"].exists, "\(name): It's clear is missing")
         XCTAssertTrue(app.buttons["action.spotSomethingThere"].exists, "\(name): Something's there is missing")
+        XCTAssertTrue(app.buttons["action.spotCannotCheck"].exists, "\(name): I can't check this area is missing")
         // As ScreenStatesUITests: an issue fails only when a second pass, after a system banner
         // has had time to leave, finds it again.
         let outcome = try AccessibilityAudit.run(app) { _ in Thread.sleep(forTimeInterval: 6) }

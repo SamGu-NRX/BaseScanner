@@ -30,11 +30,13 @@ struct SpotConfirmState {
 ///
 /// Camera-only coverage and the walked path claim wall, ground and clear space they never saw
 /// (HouseScanKit `CoverageMap`, "Bounded exceptions"). "It's clear" backs those claims for this
-/// spot and shows the result. "Something's there" withdraws them over the area
-/// (`CoverageMap.withdrawClaims`), so the scene reports it unseen, and uploads again, as a closed
-/// gap does; the new answer's spot is asked about again unless an earlier answer already covers
-/// it (`SpotConfirmations.settling`). Nothing new goes into scene.json: the answer shows only as
-/// the stretch the scene no longer claims, and in the packet's guidance log.
+/// spot and shows the result. "Something's there" and "I can't check this area" withdraw them
+/// over the area (`CoverageMap.withdrawClaims`), so the scene reports it unseen, and upload
+/// again, as a closed gap does; the new answer's spot is asked about again unless an earlier
+/// answer already covers it (`SpotConfirmations.settling`), and then the result says which of
+/// the two the homeowner gave. Nothing new goes into scene.json: the answer shows only as the
+/// stretch the scene no longer claims, and in the packet's guidance log, where both close the
+/// check as skipped.
 ///
 /// The bundled sample is checked like a server's answer, and the screen labels it a sample: the
 /// UI tests and the offline demo only ever see the sample, so skipping it would leave the step
@@ -75,7 +77,8 @@ extension ScanEngine {
         spotConfirm.asked += 1
         let id = spotConfirm.asked
         if let settled = spotConfirm.confirmations.settling(area) {
-            // Kept for the result, which says when the homeowner said something stands there.
+            // Kept for the result, which says when the homeowner said something stands there or
+            // couldn't check the area.
             state.spotCheck = Self.spotCheck(id: id, area: area, spot: spot, photo: nil, answer: Self.answer(settled.answer), isSample: result.isSample)
             RuntimeLog.engine.info("spot check: s=\(area.spot.lowerBound)...\(area.spot.upperBound) was answered before (\(settled.answer.rawValue, privacy: .public)); showing the result")
             go(.result)
@@ -116,23 +119,30 @@ extension ScanEngine {
     }
 
     /// The homeowner's answer to the spot check on screen.
-    func answerSpotCheck(clear: Bool) {
+    func answerSpotCheck(_ answer: SpotCheckAnswer) {
         guard state.phase == .spotConfirm, var check = state.spotCheck, check.answer == nil, var confirmation = spotConfirm.pending else { return }
-        confirmation.answer = clear ? .clear : .somethingThere
+        confirmation.answer = Self.confirmationAnswer(answer)
         spotConfirm.confirmations.record(confirmation)
         spotConfirm.pending = nil
-        check.answer = Self.answer(confirmation.answer)
+        check.answer = answer
         state.spotCheck = check
-        // A refusal sends the area to review without the claims, like an overhead answer.
-        resolveGuidance(clear ? .met : .skipped)
+        // An answer other than "It's clear" sends the area to review without the claims, like an
+        // overhead answer.
+        resolveGuidance(confirmation.answer.guidanceOutcome)
         let area = confirmation.area
-        if !clear { updateCoverage { $0.withdrawClaims(over: area.span) } }
-        RuntimeLog.engine.info("spot check \(check.id): \(clear ? "clear" : "something there, claims withdrawn", privacy: .public) over s=\(area.span.lowerBound)...\(area.span.upperBound), photo \(confirmation.photoID ?? "none", privacy: .public), answer \(confirmation.answerSHA256.prefix(12), privacy: .public), scene \(confirmation.sceneSHA256.prefix(12), privacy: .public)")
+        let keepsClaims = confirmation.answer.keepsClaims
+        if !keepsClaims { updateCoverage { $0.withdrawClaims(over: area.span) } }
+        let said = switch confirmation.answer {
+        case .clear: "clear"
+        case .somethingThere: "something there, claims withdrawn"
+        case .cannotCheck: "can't check, claims withdrawn"
+        }
+        RuntimeLog.engine.info("spot check \(check.id): \(said, privacy: .public) over s=\(area.span.lowerBound)...\(area.span.upperBound), photo \(confirmation.photoID ?? "none", privacy: .public), answer \(confirmation.answerSHA256.prefix(12), privacy: .public), scene \(confirmation.sceneSHA256.prefix(12), privacy: .public)")
         let id = check.id
         Task {
             try? await Task.sleep(for: .seconds(spotAnsweredHold))
             guard state.phase == .spotConfirm, state.spotCheck?.id == id else { return }
-            guard clear else {
+            guard keepsClaims else {
                 // The scan without those claims goes to the server again.
                 startUpload()
                 return
@@ -147,8 +157,9 @@ extension ScanEngine {
     }
 
     /// Whether a capture can settle a gap request: not over a stretch whose claims the homeowner
-    /// withdrew, where a new view would claim the same thing past the same obstruction. Overhead
-    /// requests are not about that stretch's wall or ground.
+    /// withdrew, where a new view would claim the same thing past the same obstruction, or past
+    /// whatever kept the homeowner from checking it. Overhead requests are not about that
+    /// stretch's wall or ground.
     func captureCanSettle(_ plan: GapPlan) -> Bool {
         if case .overhead = plan.need { return true }
         return !(coverage?.hasWithdrawnClaims(overlapping: plan.span) ?? false)
@@ -199,6 +210,15 @@ extension ScanEngine {
         switch answer {
         case .clear: .clear
         case .somethingThere: .somethingThere
+        case .cannotCheck: .cannotCheck
+        }
+    }
+
+    private static func confirmationAnswer(_ answer: SpotCheckAnswer) -> SpotConfirmationAnswer {
+        switch answer {
+        case .clear: .clear
+        case .somethingThere: .somethingThere
+        case .cannotCheck: .cannotCheck
         }
     }
 }

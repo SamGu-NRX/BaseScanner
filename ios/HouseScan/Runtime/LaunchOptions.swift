@@ -22,6 +22,8 @@ import OSLog
 ///   marking the ends (`Autopilot.endWalkByCantGetThere`).
 /// - `-autopilotSomethingThere`: the autopilot answers the first spot check "Something's there"
 ///   instead of "It's clear", so the scan is checked again without that area.
+/// - `-autopilotCannotCheck`: the autopilot answers the first spot check "I can't check this
+///   area" instead of "It's clear". It can't be combined with `-autopilotSomethingThere`.
 /// - `-injectGroundRise <meters>`: with `-replay`, `-autopilot` and `-autopilotGate`, once the
 ///   first upload starts, each time a file named `inject-ground` appears in the gate folder the
 ///   app deletes it and hands the engine a detected floor that many meters above its current
@@ -40,6 +42,7 @@ struct LaunchOptions: Equatable {
     var autopilotGate: URL?
     var autopilotCantGetThere = false
     var autopilotSomethingThere = false
+    var autopilotCannotCheck = false
     var simulateAppStore = false
     var injectGroundRise: Float?
 
@@ -57,6 +60,8 @@ struct LaunchOptions: Equatable {
         autopilot = arguments.contains("-autopilot")
         autopilotCantGetThere = arguments.contains("-autopilotCantGetThere")
         autopilotSomethingThere = arguments.contains("-autopilotSomethingThere")
+        autopilotCannotCheck = arguments.contains("-autopilotCannotCheck")
+        precondition(!(autopilotSomethingThere && autopilotCannotCheck), "-autopilotSomethingThere and -autopilotCannotCheck each choose the first spot answer; pass one")
         simulateAppStore = arguments.contains("-simulateAppStore")
         serverURL = (value(after: "-serverURL") ?? defaultServerURL).flatMap(Self.serverURL)
         sampleResult = arguments.contains("-sampleResult")

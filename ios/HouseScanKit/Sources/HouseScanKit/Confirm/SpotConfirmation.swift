@@ -8,9 +8,10 @@ import simd
 // clear space in front of the wall even where something low stands under it (`CoverageMap`,
 // "Bounded exceptions"). Before the answer is shown, the app shows the homeowner one kept photo
 // of the spot and the area around it and asks whether anything stands there. "It's clear" keeps
-// the claims; "Something's there" takes them back over that area (`CoverageMap.withdrawClaims`)
-// and the scan is checked again. This file holds the parts with one correct answer: which area
-// is asked about, which photo shows it, and when an answer already given settles a new answer.
+// the claims; "Something's there" and "I can't check this area" take them back over that area
+// (`CoverageMap.withdrawClaims`) and the scan is checked again. This file holds the parts with
+// one correct answer: which area is asked about, which photo shows it, what each answer does to
+// the claims, and when an answer already given settles a new answer.
 
 /// The area a spot check asks about, meters: the spot's footprint and the clearance zone the
 /// answer drew around it, as a stretch of wall and the ground in front of it.
@@ -163,12 +164,25 @@ public enum SpotPhoto {
 // MARK: - Binding
 
 /// The homeowner's answer to a spot check.
-public enum SpotConfirmationAnswer: String, Sendable, Equatable {
+public enum SpotConfirmationAnswer: String, Sendable, Equatable, CaseIterable {
     /// Nothing stands in the area: the photo's claims over it stand, backed by this answer.
     case clear
     /// Something stands there: the claims over the area are withdrawn and the scan is checked
     /// again.
     case somethingThere
+    /// The homeowner can't see or reach the area to say: it was not observed. Neither a known
+    /// obstruction nor clear. The claims over the area are withdrawn, as for `somethingThere`,
+    /// because nothing backs them, and the scan is checked again.
+    case cannotCheck
+
+    /// Whether the answer backs the scan's claims over the area. Only "It's clear" does: an
+    /// obstruction contradicts them, and an area nobody checked leaves them unbacked.
+    public var keepsClaims: Bool { self == .clear }
+
+    /// How the check's guidance-log entry closes: met when the area is clear, otherwise the
+    /// packet's generic skipped. The packet has no outcome for "obstructed" or "not checked",
+    /// and skipped claims neither.
+    public var guidanceOutcome: PacketGuidanceEntry.Outcome { keepsClaims ? .met : .skipped }
 }
 
 /// One spot check and its answer, tied to what it was about: the area, the answer that named the
@@ -197,8 +211,10 @@ public struct SpotConfirmation: Sendable, Equatable {
 /// holds the new one (`SpotArea.holds`): the same footprint, and an area at least as large. A
 /// spot that moved, or an area that grew, is asked about again. The homeowner's answer is about
 /// the place, not the photos, so a new scene of the same place (a re-upload after another view,
-/// or after "Something's there") is settled by it; the answer and scene digests record which
-/// exchange the homeowner answered.
+/// or after "Something's there" or "I can't check this area") is settled by it, with the answer
+/// as given; the answer and scene digests record which exchange the homeowner answered. Settling
+/// a returned spot this way is also what keeps the homeowner from being asked the same question
+/// after each re-upload.
 public struct SpotConfirmations: Sendable, Equatable {
     public private(set) var records: [SpotConfirmation] = []
 

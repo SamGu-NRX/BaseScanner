@@ -2125,8 +2125,9 @@ final class ScanEngine {
         // A request raised while the phone has lost its place could only time out: show the result.
         guard !automaticGapsStopped, !state.tracking.hasLostItsPlace, let map = coverage else { return [] }
         let asked = automaticGaps + (asking.map { [$0] } ?? [])
-        // A new view cannot settle an area the homeowner has already said is obstructed.
-        // Filter before the request limit so refused areas do not consume the remaining slots.
+        // A new view cannot settle an area the homeowner has already said is obstructed, or
+        // couldn't check. Filter before the request limit so those areas do not consume the
+        // remaining slots.
         let capturable = result.missingEvidence.filter { item in
             gapPlanner.plan(for: item, leftEnd: map.leftEnd, rightEnd: map.rightEnd, limitEnds: map.limitEnds)
                 .map { captureCanSettle($0) } ?? false
