@@ -57,11 +57,16 @@ final class KeyframeStore {
     /// listed here, before a newer store can exist, and deleted later off the main actor
     /// (`ScanFolderCleanup`), so a deletion that runs late can't take a newer scan's folder.
     init() {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let scans = caches.appending(path: "Scans", directoryHint: .isDirectory)
+        let scans = Self.scansRoot
         directory = scans.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         Self.delete(ScanFolderCleanup(root: scans, keeping: directory.lastPathComponent))
+    }
+
+    /// Caches/Scans: one folder per scan. Saved scans lists the completed ones here.
+    nonisolated static var scansRoot: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appending(path: "Scans", directoryHint: .isDirectory)
     }
 
     func nextKeyframeIndex() -> Int {

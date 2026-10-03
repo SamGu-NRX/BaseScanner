@@ -48,11 +48,13 @@ struct UploadingScreen: View {
                 switch state.upload {
                 case .failed:
                     VStack(spacing: 16) {
-                        // Packets stay on disk, but the app has no way to reopen them after
-                        // relaunch. Offer export only once the shareable packet exists.
+                        // The app can't reopen a scan after relaunch, so retrying needs it open.
+                        // Once packaged, its bundle stays among the kept scans, and Saved scans on
+                        // the first screen can still share it. The Share scan button below covers
+                        // sharing now.
                         Text(state.shareableScan == nil
                              ? "Keep this scan open to try again. House Scan can't reopen it after you close the app."
-                             : "Keep this scan open to try again, or use Share scan to save a copy. House Scan can't reopen it after you close the app.")
+                             : "Keep this scan open to try again. If you close the app, you can still share its saved file from Saved scans on the first screen.")
                             .font(Typeface.hint)
                             .foregroundStyle(Palette.muted)
                             .multilineTextAlignment(.center)

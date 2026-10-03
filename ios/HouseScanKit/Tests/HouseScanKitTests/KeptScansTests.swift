@@ -10,15 +10,26 @@ import Testing
         return root
     }
 
-    /// A scan folder, completed (with its bundle, written at `minutesAgo`) or not.
-    static func scan(_ name: String, in root: URL, bundledMinutesAgo minutesAgo: Double? = nil) throws {
+    /// A capture packet as the app zips it, manifest.json first. Synthetic, never a capture.
+    static let packet: Data = try! ZipWriter.archive([
+        ZipEntry(name: "manifest.json", data: Data(#"{"version":"1.1"}"#.utf8)),
+        ZipEntry(name: "photos/p00001.jpg", data: Data((0..<4096).map { UInt8($0 % 251) })),
+    ])
+
+    /// A scan folder, completed (with its bundle, written at `minutesAgo`) or not. A `partial`
+    /// bundle is the packet cut short, as a quit during its write leaves it.
+    static func scan(_ name: String, in root: URL, bundledMinutesAgo minutesAgo: Double? = nil, partial: Bool = false) throws {
         let folder = root.appending(path: name)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try Data("photo".utf8).write(to: folder.appending(path: "k00001.jpg"))
         guard let minutesAgo else { return }
         let bundle = folder.appending(path: ScanFolderCleanup.bundleName)
-        try Data("zip".utf8).write(to: bundle)
+        try (partial ? packet.prefix(packet.count / 2) : packet).write(to: bundle)
         try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -minutesAgo * 60)], ofItemAtPath: bundle.path)
+    }
+
+    static func names(_ urls: [URL]) -> [String] {
+        urls.map(\.lastPathComponent)
     }
 
     /// A relaunch makes a new store: the two most recent completed scans stay, with their
@@ -56,6 +67,170 @@ import Testing
         // Once a newer completed scan exists, the kept one is still one of the two most recent.
         try Self.scan("run3", in: root, bundledMinutesAgo: 1)
         #expect(ScanFolderCleanup(root: root, keeping: "later").keptCompleted.map(\.lastPathComponent) == ["run3", "run2"])
+    }
+
+    /// A partial bundle takes no kept place, however new: both intact scans stay. Its folder
+    /// is left alone too, however old, since nothing shows its writer has stopped. Before,
+    /// presence alone counted, so the newer partial kept a place and an intact scan was deleted.
+    @Test(arguments: [0.5, 20.0, 60.0 * 24 * 365])
+    func aPartialBundleNeitherEvictsIntactScansNorIsDeleted(minutesAgo: Double) throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("intact1", in: root, bundledMinutesAgo: 40)
+        try Self.scan("intact2", in: root, bundledMinutesAgo: 90)
+        try Self.scan("intact3", in: root, bundledMinutesAgo: 120)
+        // Newer than every intact scan, unless it is the year-old one.
+        try Self.scan("partial", in: root, bundledMinutesAgo: minutesAgo, partial: true)
+        try Self.scan("unpackaged", in: root)
+
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(cleanup.keptCompleted) == ["intact1", "intact2"])
+        #expect(Self.names(cleanup.incompleteBundles) == ["partial"])
+        #expect(Self.names(cleanup.obsolete) == ["intact3", "unpackaged"])
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "partial"])
+        #expect(try Data(contentsOf: root.appending(path: "partial/\(ScanFolderCleanup.bundleName)")) == Self.packet.prefix(Self.packet.count / 2))
+    }
+
+    /// A bundle that fails the check for any reason (empty, not a packet) is treated like a
+    /// partial one; once its write finishes it competes like any completed scan.
+    @Test func anUnreadableBundleIsLeftAloneUntilItIsWhole() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("intact1", in: root, bundledMinutesAgo: 40)
+        try Self.scan("intact2", in: root, bundledMinutesAgo: 90)
+        let empty = root.appending(path: "empty")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        try Data().write(to: empty.appending(path: ScanFolderCleanup.bundleName))
+
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(cleanup.incompleteBundles) == ["empty"])
+        #expect(cleanup.obsolete.isEmpty)
+
+        try Self.packet.write(to: empty.appending(path: ScanFolderCleanup.bundleName))
+        let later = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(later.keptCompleted) == ["empty", "intact1"])
+        #expect(Self.names(later.obsolete) == ["intact2"])
+    }
+
+    /// A folder whose bundle can't be read, or whose bundle is a link or a folder, and a link in
+    /// place of a scan folder hold no place and are not deleted.
+    @Test func bundlesThatCannotBeJudgedAreLeftAlone() throws {
+        let root = try Self.makeRoot()
+        let files = FileManager.default
+        try Self.scan("intact1", in: root, bundledMinutesAgo: 40)
+        try Self.scan("intact2", in: root, bundledMinutesAgo: 90)
+        try Self.scan("locked", in: root, bundledMinutesAgo: 1)
+        let locked = root.appending(path: "locked")
+        try files.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        defer {
+            try? files.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+            try? files.removeItem(at: root)
+        }
+        try Self.scan("linked", in: root)
+        try files.createSymbolicLink(at: root.appending(path: "linked/\(ScanFolderCleanup.bundleName)"),
+                                     withDestinationURL: root.appending(path: "intact1/\(ScanFolderCleanup.bundleName)"))
+        try Self.scan("folderBundle", in: root)
+        try files.createDirectory(at: root.appending(path: "folderBundle/\(ScanFolderCleanup.bundleName)"), withIntermediateDirectories: true)
+
+        try Data("stray".utf8).write(to: root.appending(path: "stray.txt"))
+        // A link to the newest intact scan, named to sort ahead of it: it must not take a place.
+        try files.createSymbolicLink(at: root.appending(path: "zalias"), withDestinationURL: root.appending(path: "intact1"))
+
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(cleanup.keptCompleted) == ["intact1", "intact2"])
+        #expect(Set(Self.names(cleanup.incompleteBundles)) == ["locked", "linked", "folderBundle", "zalias"])
+        // A stray file is not a scan folder and goes, as before.
+        #expect(Self.names(cleanup.obsolete) == ["stray.txt"])
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "locked", "linked", "folderBundle", "zalias"])
+    }
+
+    /// A retry rewrites scan.zip in place while the check may still be reading the old file. A
+    /// check that passes on the old file must not count the new, partial one as complete.
+    @Test func aBundleReplacedDuringTheCheckIsNotComplete() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("rewritten", in: root, bundledMinutesAgo: 5)
+        let bundle = root.appending(path: "rewritten/\(ScanFolderCleanup.bundleName)")
+
+        let state = ScanFolderCleanup.bundleState(bundle) { url in
+            let size = try PacketArchiveCheck.verify(url)
+            // As ZipWriter.write does: remove the file, then start a new one.
+            try FileManager.default.removeItem(at: url)
+            try Self.packet.prefix(Self.packet.count / 2).write(to: url)
+            return size
+        }
+        #expect(state == .incomplete)
+
+        // Left alone, the same bundle is complete.
+        try Self.packet.write(to: bundle)
+        let settled = ScanFolderCleanup.bundleState(bundle)
+        #expect(settled != .incomplete && settled != .absent)
+        #expect(ScanFolderCleanup.bundleState(root.appending(path: "none/\(ScanFolderCleanup.bundleName)")) == .absent)
+    }
+
+    /// The scan in use is never judged, whatever its bundle; a folder made after the listing is
+    /// never deleted by it.
+    @Test func theScanInUseAndLaterFoldersAreSafe() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Self.scan("current", in: root, bundledMinutesAgo: 60, partial: true)
+        try Self.scan("old", in: root)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "current")
+        #expect(!(cleanup.obsolete + cleanup.keptCompleted + cleanup.incompleteBundles).map(\.lastPathComponent).contains("current"))
+        #expect(Self.names(cleanup.obsolete) == ["old"])
+
+        try Self.scan("later", in: root, bundledMinutesAgo: 1)
+        try Self.scan("laterPartial", in: root, bundledMinutesAgo: 60, partial: true)
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == ["current", "later", "laterPartial"])
+    }
+
+    /// The deletion runs after the listing. A folder whose bundle appeared since, partial or
+    /// whole, is left for the next cleanup, and so is a bundle a retry rewrote; one still as
+    /// listed is deleted.
+    @Test func runDeletesOnlyEntriesStillAsListed() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = FileManager.default
+        let bundle = { (name: String) in root.appending(path: "\(name)/\(ScanFolderCleanup.bundleName)") }
+        try Self.scan("intact1", in: root, bundledMinutesAgo: 40)
+        try Self.scan("intact2", in: root, bundledMinutesAgo: 90)
+        try Self.scan("intact3", in: root, bundledMinutesAgo: 120)
+        try Self.scan("rewritten", in: root, bundledMinutesAgo: 150)
+        // The same date before and after the rewrite: only the new file tells them apart.
+        let saved = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        try files.setAttributes([.modificationDate: saved], ofItemAtPath: bundle("rewritten").path)
+        try Self.scan("startsWriting", in: root)
+        try Self.scan("finishesWriting", in: root)
+        try Self.scan("stillBare", in: root)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(cleanup.obsolete) == ["finishesWriting", "intact3", "rewritten", "startsWriting", "stillBare"])
+
+        try Self.packet.prefix(Self.packet.count / 2).write(to: bundle("startsWriting"))
+        try Self.packet.write(to: bundle("finishesWriting"))
+        // A retry rewrites in place: the old file goes and a new one takes its name.
+        try files.removeItem(at: bundle("rewritten"))
+        try Self.packet.write(to: bundle("rewritten"))
+        try files.setAttributes([.modificationDate: saved], ofItemAtPath: bundle("rewritten").path)
+
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "rewritten", "startsWriting", "finishesWriting"])
+    }
+
+    /// Bundles saved at the same moment keep the order by name, newest name first, as before.
+    @Test func equalSaveTimesFallBackToNameOrder() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let bundled = Date(timeIntervalSinceNow: -30 * 60)
+        for name in ["a", "b", "c"] {
+            try Self.scan(name, in: root, bundledMinutesAgo: 30)
+            try FileManager.default.setAttributes([.modificationDate: bundled], ofItemAtPath: root.appending(path: "\(name)/\(ScanFolderCleanup.bundleName)").path)
+        }
+        let cleanup = ScanFolderCleanup(root: root, keeping: "new")
+        #expect(Self.names(cleanup.keptCompleted) == ["c", "b"])
+        #expect(Self.names(cleanup.obsolete) == ["a"])
     }
 
     /// The stamp carries the build, the server and the answer's rules, with nulls where there
