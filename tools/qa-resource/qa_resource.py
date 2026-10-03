@@ -1163,6 +1163,9 @@ def submit(directory, live, job, lock_path, cancel_fd):
                     # Still our unreaped child (SIGCHLD is default and nothing here waits on
                     # it), so this PID cannot belong to another process.
                     os.kill(runner.pid, signal.SIGTERM)
+                    # An interrupted write means stdout itself was blocked, usually a pipe
+                    # nobody drains. Writing again would block again and make this submitter
+                    # unstoppable, so only a receipt that never started is written here.
                     if not printing:
                         receipt["cancelRequested"] = True
                         for sig, handler in previous_handlers.items():

@@ -788,7 +788,8 @@ sys.exit(q.main(sys.argv[2:]))
             with (self.state / "jobs/blocked-receipt/live.lock").open("r") as live:
                 fcntl.flock(live, fcntl.LOCK_SH | fcntl.LOCK_NB)
             submitter.terminate()
-            submitter.wait(timeout=3)
+            # The interrupted write must not be retried into the same full pipe.
+            self.assertEqual(submitter.wait(timeout=3), 130)
         finally:
             if writer is not None:
                 os.close(writer)
