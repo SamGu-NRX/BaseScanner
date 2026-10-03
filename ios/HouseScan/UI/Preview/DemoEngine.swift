@@ -10,6 +10,8 @@ final class DemoEngine: ScanActions {
 
     private let freeze: Bool
     private let noFeed: Bool
+    /// `-uiDemoCloseUpSkipped`: the meter close-up was skipped.
+    private let closeUpSkipped: Bool
     private let offline: Bool
     private let passResult: Bool
     /// `-uiDemoOverlap`: the sample's spot overlaps the meter's working space (#40).
@@ -69,6 +71,7 @@ final class DemoEngine: ScanActions {
         }
         freeze = arguments.contains("-uiDemoFreeze")
         noFeed = arguments.contains("-uiDemoNoFeed")
+        closeUpSkipped = arguments.contains("-uiDemoCloseUpSkipped")
         offline = arguments.contains("-uiDemoOffline")
         passResult = arguments.contains("-uiDemoPass")
         overlapResult = arguments.contains("-uiDemoOverlap")
@@ -112,6 +115,18 @@ final class DemoEngine: ScanActions {
             case .relocalizing: state.tracking = .limited(.relocalizing)
             case .trackingLost: state.tracking = .notAvailable
             default: break
+            }
+        }
+        if arguments.contains("-uiDemoMarkEnd") {
+            // The walk has reached the right end and asks whether it ends there. With
+            // `-uiDemoEndMarkRefusal`, "Wall ends here" was just pressed with the circle off the wall.
+            reachedRight = demoRightEnd
+            refreshCoverage()
+            refreshGuidance()
+            if arguments.contains("-uiDemoEndMarkRefusal") {
+                // As in the real engine, a circle off the wall has no end preview (`circleEnd`).
+                state.endMarkRefusal = .noWall
+                state.endPreview = nil
             }
         }
         if arguments.contains("-uiDemoEndPreview") {
@@ -292,7 +307,7 @@ final class DemoEngine: ScanActions {
 
     private func enterWalk() {
         state.phase = .wallWalk
-        state.closeUp = .captured(DemoScene.meterThumbnail)
+        state.closeUp = closeUpSkipped ? .skipped : .captured(DemoScene.meterThumbnail)
         state.captureCount = max(state.captureCount, 6)
         refreshCoverage()
         refreshGuidance()
@@ -300,6 +315,9 @@ final class DemoEngine: ScanActions {
     }
 
     private func finishedWalkState() {
+        // The walk came after the close-up, as in the real flow; `-uiDemoCloseUpSkipped` says
+        // the homeowner skipped it.
+        state.closeUp = closeUpSkipped ? .skipped : .captured(DemoScene.meterThumbnail)
         reachedLeft = -demoLeftEnd
         reachedRight = demoRightEnd
         state.wall?.leftEnd = demoLeftEnd
@@ -319,7 +337,6 @@ final class DemoEngine: ScanActions {
         placeMeter()
         finishedWalkState()
         state.phase = .wallWalk
-        state.closeUp = .captured(DemoScene.meterThumbnail)
         refreshGuidance()
         run { engine in await engine.walkScript() }
     }
@@ -802,6 +819,7 @@ final class DemoEngine: ScanActions {
 
     func markWallEnd(at point: CGPoint?, viewSize: CGSize) {
         guard case .markEnd(let side) = state.guidance else { return }
+        state.endMarkRefusal = nil
         if side == .right {
             state.wall?.rightEnd = demoRightEnd
         } else {
@@ -988,6 +1006,15 @@ final class DemoEngine: ScanActions {
             return
         default:
             break
+        }
+        if case .markEnd(let side) = state.guidance {
+            // "The wall keeps going": like the real engine, the end goes where the walk reached,
+            // unexplored, and nothing asks what is there.
+            if side == .right { state.wall?.rightEnd = reachedRight } else { state.wall?.leftEnd = -reachedLeft }
+            state.endMarkRefusal = nil
+            refreshCoverage()
+            refreshGuidance()
+            return
         }
         guard case .walk(let side, _) = state.guidance else { return }
         if side == .right {

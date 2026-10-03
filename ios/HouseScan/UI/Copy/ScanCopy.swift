@@ -71,7 +71,7 @@ enum ScanCopy {
         case .markEnd(let side):
             Instruction(
                 title: "Is this the \(side.rawValue) end of the wall?",
-                detail: "Aim where the wall stops or turns a corner, and tap Wall ends here."
+                detail: "Aim where it stops or turns a corner and tap Wall ends here. If it goes on, tap The wall keeps going."
             )
         case .aimAtGround(let s):
             // A cell counts once seen from two places at least 0.25 m apart (`coveringBaseline`),
@@ -145,7 +145,9 @@ enum ScanCopy {
 
     // MARK: Coaching
 
-    static func coaching(_ coaching: Coaching) -> Instruction {
+    /// `meterPhoto` says whether the screen shows the meter close-up beside the card
+    /// (`SavedMeterPhoto`): only then can it say "like this" (B-23).
+    static func coaching(_ coaching: Coaching, meterPhoto: Bool = false) -> Instruction {
         switch coaching {
         case .initializing:
             Instruction(title: "Move your phone slowly", detail: "It's getting its bearings.")
@@ -162,7 +164,9 @@ enum ScanCopy {
         case .turnSlowly:
             Instruction(title: "Turn more slowly", detail: "Photos taken while turning come out blurred.")
         case .relocalizing:
-            Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
+            meterPhoto
+                ? Instruction(title: "Point at the meter like this.", detail: "Your phone lost its place for a moment.")
+                : Instruction(title: "Point back at your meter", detail: "Your phone lost its place for a moment.")
         case .trackingLost:
             Instruction(title: "Your phone lost its place", detail: "Aim back at your meter and move slowly.")
         case .pastWallEnd:
@@ -361,7 +365,9 @@ enum ScanCopy {
     static func refusal(_ refusal: MarkRefusal) -> String {
         switch refusal {
         case .noSurface: "Nothing to pin there. Aim at the wall or the ground and try again."
-        case .wrongSide: "That spot is behind the wall. Tap something on this side."
+        // The check is on the phone, not the tap: from behind the wall's line no tap can land
+        // (B-27), so the words say where to stand.
+        case .wrongSide: "Your phone is behind the wall's line. Step out in front of the wall, then try again."
         case .tooFarFromWall: "That's too far from the wall to matter. Tap something closer."
         case .trackingNotReady: "One moment, your phone is still finding its place."
         }
@@ -379,6 +385,20 @@ enum ScanCopy {
     }
 
     /// A refused mark of the next wall: what went wrong, then what to do.
+    static let wallKeepsGoing = "The wall keeps going"
+
+    /// Why "Wall ends here" marked nothing, and what to do instead (`EndMarkRefusal`).
+    static func endMarkRefusal(_ refusal: EndMarkRefusal, asked side: WallSide) -> Instruction {
+        switch refusal {
+        case .noWall:
+            Instruction(title: "The circle isn't on the wall", detail: "Aim it at the wall where it stops or turns, then tap Wall ends here.")
+        case .otherSide(let landed):
+            Instruction(title: "That's the \(landed.rawValue) side of your meter", detail: "Turn to the \(side.rawValue) end, then tap Wall ends here.")
+        case .trackingNotReady:
+            Instruction(title: "One moment, your phone is still finding its place", detail: "Then aim at the \(side.rawValue) end.")
+        }
+    }
+
     static func nextWallRefusal(_ refusal: NextWallRefusal) -> Instruction {
         switch refusal {
         case .noSurface: Instruction(title: "No wall under the circle", detail: "Step closer and aim at the next wall.")
@@ -483,7 +503,11 @@ enum ScanCopy {
     /// what it does on `step`; nil on a step that offers none. On an aim or tilt step the
     /// homeowner is already at the spot and it's the view that can't be had, so "Can't get
     /// there" read as the wrong answer and testers kept tilting (#63). It stays on the steps
-    /// that ask to go somewhere. The wall's end (`markEnd`) has "Wall ends here" instead.
+    /// that ask to go somewhere. The wall's end (`markEnd`) asks whether the wall ends here, so
+    /// its reply is the other answer: the wall goes on. It had none, and a wall running past
+    /// 20 ft had no true answer to "Is this the end of the wall?" (B-06). The end goes where the
+    /// walk reached, unexplored, exactly as "Can't get there" on the walk puts it (`WalkedEnd`):
+    /// the phone's place, but no farther than a little past the last view of the wall.
     static func reply(for step: GuidanceStep) -> (title: String, hint: String)? {
         switch step {
         case .aimAtGround, .aimAtWall:
@@ -496,7 +520,9 @@ enum ScanCopy {
             (title: "Can't get there", hint: "Skips this part of the wall. An installer would need to look at it instead.")
         case .seeBehind:
             (title: cannotSeeBehind, hint: "Skips the part behind it. An installer would need to look at it instead.")
-        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .markEnd, .stepBack, .walkComplete, .gap:
+        case .markEnd:
+            (title: wallKeepsGoing, hint: "Ends this side where your walk reached. An installer would need to look at the wall past it.")
+        case .findMeter, .aimAtWallForMeter, .holdOnMeter, .stepBack, .walkComplete, .gap:
             nil
         }
     }

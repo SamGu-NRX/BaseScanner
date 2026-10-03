@@ -25,6 +25,9 @@ import SwiftUI
 ///   file, mapped as the engine maps one; the UI tests keep such files in `Fixtures/results/`.
 /// - `-uiDemoNoFeed`: no camera picture, to look at the chrome alone.
 /// - `-uiDemoEndQuestion`: the walk asks what is at the left end of the wall.
+/// - `-uiDemoMarkEnd`: the walk has reached the right end and asks whether the wall ends there;
+///   with `-uiDemoEndMarkRefusal`, "Wall ends here" was just refused (circle off the wall).
+/// - `-uiDemoCloseUpSkipped`: the meter close-up was skipped, so no saved photo shows.
 /// - `-uiDemoEndPreview`: the homeowner walked back 1.5 m, so the wall map says ending the wall
 ///   where they stand leaves part of the walk out.
 /// - `-uiDemoNextWall`: the right end turns a corner and the walk asks for the next wall; with

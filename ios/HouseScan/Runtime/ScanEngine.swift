@@ -1847,6 +1847,7 @@ final class ScanEngine {
         coverage = map
         endKinds[side] = kind
         state.wallTooShort = false
+        state.endMarkRefusal = nil
         publishWall()
         publishCoverage()
         RuntimeLog.engine.info("end \(side.rawValue, privacy: .public) at s=\(s) (\(kind == .limit ? "limit" : "unexplored", privacy: .public))")
