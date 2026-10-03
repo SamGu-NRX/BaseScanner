@@ -187,6 +187,38 @@ import Testing
         #expect(try Set(FileManager.default.contentsOfDirectory(atPath: root.path)) == ["current", "later", "laterPartial"])
     }
 
+    /// The deletion runs after the listing. A folder whose bundle appeared since, partial or
+    /// whole, is left for the next cleanup, and so is a bundle a retry rewrote; one still as
+    /// listed is deleted.
+    @Test func runDeletesOnlyEntriesStillAsListed() throws {
+        let root = try Self.makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = FileManager.default
+        let bundle = { (name: String) in root.appending(path: "\(name)/\(ScanFolderCleanup.bundleName)") }
+        try Self.scan("intact1", in: root, bundledMinutesAgo: 40)
+        try Self.scan("intact2", in: root, bundledMinutesAgo: 90)
+        try Self.scan("intact3", in: root, bundledMinutesAgo: 120)
+        try Self.scan("rewritten", in: root, bundledMinutesAgo: 150)
+        // The same date before and after the rewrite: only the new file tells them apart.
+        let saved = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        try files.setAttributes([.modificationDate: saved], ofItemAtPath: bundle("rewritten").path)
+        try Self.scan("startsWriting", in: root)
+        try Self.scan("finishesWriting", in: root)
+        try Self.scan("stillBare", in: root)
+        let cleanup = ScanFolderCleanup(root: root, keeping: "now")
+        #expect(Self.names(cleanup.obsolete) == ["finishesWriting", "intact3", "rewritten", "startsWriting", "stillBare"])
+
+        try Self.packet.prefix(Self.packet.count / 2).write(to: bundle("startsWriting"))
+        try Self.packet.write(to: bundle("finishesWriting"))
+        // A retry rewrites in place: the old file goes and a new one takes its name.
+        try files.removeItem(at: bundle("rewritten"))
+        try Self.packet.write(to: bundle("rewritten"))
+        try files.setAttributes([.modificationDate: saved], ofItemAtPath: bundle("rewritten").path)
+
+        #expect(cleanup.run().isEmpty)
+        #expect(try Set(files.contentsOfDirectory(atPath: root.path)) == ["intact1", "intact2", "rewritten", "startsWriting", "finishesWriting"])
+    }
+
     /// Bundles saved at the same moment keep the order by name, newest name first, as before.
     @Test func equalSaveTimesFallBackToNameOrder() throws {
         let root = try Self.makeRoot()

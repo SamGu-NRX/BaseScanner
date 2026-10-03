@@ -1,19 +1,23 @@
 import Foundation
 
-/// Whether a file is a whole capture-packet zip, read from its two ends without unpacking it.
+/// Whether a file is a zip written to the end in the capture packet's layout, read from its two
+/// ends without unpacking it.
 ///
 /// `scan.zip` is written in place (`ZipWriter.write`), so a scan quit or crashed during the write,
 /// or a bundle still being written when a list is made, leaves a partial file under the name that
 /// marks a completed scan. The zip's last record (the end of central directory) is written last,
 /// so a file whose tail holds that record, pointing at a central directory that ends right before
 /// it, was written to the end. The first entry must be `manifest.json`, which the packet always
-/// writes first (`KeyframeStore.zipPacket`), so another zip under the name is not taken for a scan.
+/// writes first (`KeyframeStore.zipPacket`), so a zip that doesn't start with it is not taken for a
+/// scan.
 /// The central directory's first record must name the same entry at offset 0, which ties the
 /// footer, the directory and the first entry together. A symbolic link is refused, so a copy of
 /// the file is always the bytes themselves.
 ///
-/// This detects a bundle that wasn't written to the end; it is not a defense against a crafted
-/// zip. Only the app writes into its scan folders.
+/// This detects a bundle that wasn't written to the end. It does not establish that a file is a
+/// capture packet: any zip whose first entry is named `manifest.json` passes, whatever the
+/// manifest says, and the entries' contents and CRCs are not read. Only the app writes into its
+/// scan folders, which is what makes the name a sufficient marker there.
 ///
 /// The check reads at most 64 KiB from each end, whatever the archive's size. It does not check
 /// each entry's CRC: that would read every photo, and a write that reached the last record wrote

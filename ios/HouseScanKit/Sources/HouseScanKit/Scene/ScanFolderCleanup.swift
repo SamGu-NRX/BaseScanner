@@ -39,6 +39,8 @@ public struct ScanFolderCleanup: Sendable {
     public let keptCompleted: [URL]
     /// Folders whose bundle is there but not whole: left alone, holding no kept place.
     public let incompleteBundles: [URL]
+    /// What each obsolete entry was when listed. `run` deletes an entry only if it still is.
+    private let listedAs: [URL: Entry]
 
     /// Lists `root` now. An unreadable root lists nothing.
     public init(root: URL, keeping kept: String, keepCompleted: Int = defaultKeepCompleted) {
@@ -46,25 +48,16 @@ public struct ScanFolderCleanup: Sendable {
         let names = ((try? files.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0 != kept }.sorted()
         var completed: [(name: String, date: Date)] = []
         var incomplete: [String] = []
+        var entries: [String: Entry] = [:]
         for name in names {
-            // Only a real folder is judged by its bundle. A plain file beside the scan folders holds
-            // no bundle and goes, as before. A link (attributesOfItem doesn't follow one) would
-            // reach another folder's bundle, so it and its target could take both kept places;
-            // it, and an entry whose type can't be read, hold no place and are left alone.
-            switch (try? files.attributesOfItem(atPath: root.appending(path: name).path))?[.type] as? FileAttributeType {
-            case .typeDirectory?: break
-            case .typeRegular?: continue
-            default:
-                incomplete.append(name)
+            let entry = Self.entry(at: root.appending(path: name))
+            entries[name] = entry
+            switch entry {
+            case .file, .folder(.absent):
                 continue
-            }
-            let bundle = root.appending(path: name).appending(path: Self.bundleName)
-            switch Self.bundleState(bundle) {
-            case .absent:
-                continue
-            case .complete(let date):
+            case .folder(.complete(let date, _)):
                 completed.append((name, date))
-            case .incomplete:
+            case .unjudged, .folder(.incomplete):
                 incomplete.append(name)
             }
         }
@@ -73,12 +66,35 @@ public struct ScanFolderCleanup: Sendable {
         let keep = Set(keptNames + incomplete)
         keptCompleted = keptNames.map { root.appending(path: $0) }
         incompleteBundles = incomplete.map { root.appending(path: $0) }
-        obsolete = names.filter { !keep.contains($0) }.map { root.appending(path: $0) }
+        let obsoleteNames = names.filter { !keep.contains($0) }
+        obsolete = obsoleteNames.map { root.appending(path: $0) }
+        listedAs = Dictionary(uniqueKeysWithValues: obsoleteNames.compactMap { name in entries[name].map { (root.appending(path: name), $0) } })
     }
 
-    enum BundleState: Equatable {
+    /// One entry beside the scan in use.
+    enum Entry: Equatable, Sendable {
+        /// A plain file: no bundle, so it goes, as before.
+        case file
+        /// A link or an entry whose type can't be read. A link (attributesOfItem doesn't follow
+        /// one) would reach another folder's bundle, so it and its target could take both kept
+        /// places; it holds no place and is left alone.
+        case unjudged
+        /// A real folder, judged by its bundle.
+        case folder(BundleState)
+    }
+
+    static func entry(at url: URL) -> Entry {
+        switch (try? FileManager.default.attributesOfItem(atPath: url.path))?[.type] as? FileAttributeType {
+        case .typeDirectory?: .folder(bundleState(url.appending(path: bundleName)))
+        case .typeRegular?: .file
+        default: .unjudged
+        }
+    }
+
+    enum BundleState: Equatable, Sendable {
         case absent
-        case complete(savedAt: Date)
+        /// `file` is the bundle's file number: a rewrite makes a new file, whatever its date.
+        case complete(savedAt: Date, file: UInt64)
         case incomplete
     }
 
@@ -107,15 +123,21 @@ public struct ScanFolderCleanup: Sendable {
               let number = before[.systemFileNumber] as? UInt64,
               after[.systemFileNumber] as? UInt64 == number,
               after[.size] as? UInt64 == before[.size] as? UInt64 else { return .incomplete }
-        return .complete(savedAt: before[.modificationDate] as? Date ?? .distantPast)
+        return .complete(savedAt: before[.modificationDate] as? Date ?? .distantPast, file: number)
     }
 
     /// Deletes the listed folders; returns each one that could not be deleted with the reason. A
     /// folder already gone is not an error.
+    ///
+    /// The deletion runs later than the listing, off the main actor, and a folder can change in
+    /// between: a bundle write can start in a folder listed as never packaged, or finish in one.
+    /// Each entry is read again and deleted only if it is still what it was when listed; one that
+    /// changed is left for the next cleanup. A change after this second read is not caught.
     public func run() -> [(url: URL, error: any Error)] {
         let files = FileManager.default
         return obsolete.compactMap { url in
             guard files.fileExists(atPath: url.path) else { return nil }
+            guard let listed = listedAs[url], Self.entry(at: url) == listed else { return nil }
             do {
                 try files.removeItem(at: url)
                 return nil
