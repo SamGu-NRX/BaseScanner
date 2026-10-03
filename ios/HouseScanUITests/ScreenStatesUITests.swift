@@ -1156,6 +1156,10 @@ final class ScreenStatesUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["-practiceMeter", "NO", "-uiDemo", "-uiDemoFreeze", "-uiDemoPhase", "uploading", "-uiDemoRejected"]
         app.launch()
+        // The sheet must not outlive this test: left open, it stayed over the next test's launch
+        // for about 16 s and that test never found its button (run 37121918073). Terminating waits
+        // until the app, and with it the sheet, is gone.
+        defer { app.terminate() }
         tap(app, "action.shareScan")
         let sheet = app.otherElements["ActivityListView"]
         let found = sheet.waitForExistence(timeout: 10)
@@ -1167,6 +1171,9 @@ final class ScreenStatesUITests: XCTestCase {
             add(XCTAttachment(string: app.debugDescription))
         }
         XCTAssertTrue(found, "the share sheet never appeared")
+        // Close it the way a person would before the app goes.
+        sheet.swipeDown()
+        _ = sheet.waitForNonExistence(timeout: 5)
     }
 
     @MainActor
